@@ -1,6 +1,6 @@
 //! A separate browser connection suspends new targets before their first request.
-//! Response policy only changes headers; bodies remain owned by Chromium.
-//! WebSocket enforcement remains an adoption blocker; see ADOPTION.md.
+//! The session proxy enforces WebSocket destinations; response bodies and headers
+//! remain owned by Chromium.
 use super::*;
 use chromiumoxide::{cdp::browser_protocol::target::SessionId, Connection};
 use chromiumoxide_types::{CallId, EventMessage, Message};
@@ -46,7 +46,7 @@ impl Guard {
         proxy: Option<(String, ProxyCredentials)>,
     ) -> Result<Self> {
         let mut connection = Connection::<GuardEvent>::connect(endpoint).await?;
-        connection.submit_command("Fetch.enable".into(), None, json!({"handleAuthRequests":true,"patterns":[{"urlPattern":"*","requestStage":"Request"},{"urlPattern":"*","requestStage":"Response"}]}))?;
+        connection.submit_command("Fetch.enable".into(), None, json!({"handleAuthRequests":true,"patterns":[{"urlPattern":"*","requestStage":"Request"}]}))?;
         let initial = connection.submit_command("Target.setAutoAttach".into(), None, attach())?;
         let (ready, started) = tokio::sync::oneshot::channel();
         let (shutdown, mut stop) = tokio::sync::mpsc::unbounded_channel();
@@ -103,13 +103,33 @@ impl Guard {
                             if session.is_empty() { bail!("Missing policy target session"); }
                             let session = Some(SessionId::from(session));
                             let mut steps = VecDeque::new();
+                            if e.params.pointer("/targetInfo/type").and_then(Value::as_str)==Some("page") {
+                                steps.extend([
+                                    ("Page.enable",json!({})),
+                                    ("Network.enable",json!({})),
+                                    ("Network.setBypassServiceWorker",json!({"bypass":true})),
+                                    ("Page.addScriptToEvaluateOnNewDocument",json!({"source":WORKER_SCRIPT})),
+                                ]);
+                            }
                             steps.extend([
                                 ("Target.setAutoAttach",attach()),
                                 ("Runtime.runIfWaitingForDebugger",json!({})),
                             ]);
-                            if let Some((method, params)) = steps.pop_front() {
-                                let id = connection.submit_command(method.into(),session.clone(),params)?;
-                                pending.insert(id,(session,steps));
+                            // Page.enable may reply only after the initial navigation resumes.
+                            // Submit initialization in order, then resume, like the retained driver.
+                            // Awaiting each reply here deadlocks a newly-created popup.
+                            for (method,params) in steps {
+                                let id=connection.submit_command(method.into(),session.clone(),params)?;
+                                pending.insert(id,(session.clone(),VecDeque::new()));
+                            }
+                        }
+                        Message::Event(e) if e.method == "Network.webSocketCreated" => {
+                            let url=string(&e.params,"url");
+                            let http=url.replacen("ws","http",1);
+                            if !navigation(&http,&domains) {
+                                let reason=policy(2,json!([http,domains])).ok().map(|v|mask(&string(&v,"reason"),&secrets)).unwrap_or_else(||"Navigation refused".into());
+                                let mut denied=denied.lock().await;
+                                if denied.len()<100 {denied.push(json!({"url":mask(&url,&secrets).chars().take(300).collect::<String>(),"reason":reason}));}
                             }
                         }
                         Message::Event(e) if e.method == "Fetch.authRequired" => {
@@ -130,18 +150,16 @@ impl Guard {
                             { let mut trace=events.lock().await; if trace.len()<300 {trace.push(json!({"allowed":allowed,"resourceType":e.params.get("resourceType"),"scheme":url::Url::parse(url).ok().map(|u|u.scheme().to_owned()),"networkError":e.params.get("responseErrorReason")}));} }
                             let (method, params) = if !allowed {
                                 let reason = policy(2,json!([url,domains])).ok().map(|v|string(&v,"reason")).filter(|s|!s.is_empty()).unwrap_or_else(||"Navigation refused".into());
+                                let reason=mask(&reason,&secrets);
                                 let mut denied = denied.lock().await;
                                 if denied.len()<100 {denied.push(json!({"url":mask(url,&secrets).chars().take(300).collect::<String>(),"reason":reason}));}
+                                drop(denied);
                                 if string(&e.params,"resourceType")=="Document" && pages.contains(&string(&e.params,"frameId")) {
                                     *denied_navigation.lock().await=Some(reason);
                                 }
                                 ("Fetch.failRequest",json!({"requestId":id,"errorReason":"BlockedByClient"}))
-                            } else if let Some(status) = e.params.get("responseStatusCode") {
-                                let mut headers = e.params.get("responseHeaders").and_then(Value::as_array).cloned().unwrap_or_default();
-                                headers.push(json!({"name":"Content-Security-Policy","value":connect_policy(&domains)}));
-                                ("Fetch.continueResponse",response_headers(&id,status,e.params.get("responseStatusText"),headers))
                             } else {
-                                ("Fetch.continueRequest",json!({"requestId":id,"interceptResponse":true}))
+                                ("Fetch.continueRequest",json!({"requestId":id}))
                             };
                             let call = connection.submit_command(method.into(),session,params)?;
                             pending.insert(call,(None,VecDeque::new()));
@@ -182,60 +200,6 @@ impl Guard {
         self.task.is_finished()
     }
 }
-// All response fields must accompany modified headers. Never read or replace a body.
-fn response_headers(
-    id: &str,
-    status: &Value,
-    phrase: Option<&Value>,
-    headers: Vec<Value>,
-) -> Value {
-    let mut params = json!({"requestId":id,"responseCode":status,"responseHeaders":headers});
-    if let Some(phrase) = phrase {
-        if let Some(params) = params.as_object_mut() {
-            params.insert("responsePhrase".into(), phrase.clone());
-        }
-    }
-    params
-}
 fn attach() -> Value {
     json!({"autoAttach":true,"waitForDebuggerOnStart":true,"flatten":true,"filter":[{"type":"browser","exclude":true},{"type":"tab","exclude":true},{}]})
-}
-fn connect_policy(domains: &[String]) -> String {
-    let mut sources = vec!["data:".to_owned(), "blob:".to_owned()];
-    for domain in domains {
-        let lower = domain.to_lowercase();
-        let domain = lower
-            .strip_prefix("*.")
-            .or_else(|| lower.strip_prefix('.'))
-            .unwrap_or(&lower);
-        let domain = domain.strip_suffix('.').unwrap_or(domain);
-        if !domain.contains([';', ' ', '\n', '\r'])
-            && navigation(&format!("https://{domain}/"), domains)
-        {
-            for scheme in ["http", "https", "ws", "wss"] {
-                for host in [
-                    domain.to_owned(),
-                    format!("*.{domain}"),
-                    format!("{domain}."),
-                    format!("*.{domain}."),
-                ] {
-                    sources.push(format!("{scheme}://{host}:*"));
-                }
-            }
-        }
-    }
-    if sources.is_empty() {
-        "connect-src 'none'".into()
-    } else {
-        format!("connect-src {}", sources.join(" "))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn connection_policy_hosts() {
-        assert!(connect_policy(&["fixture.test".into()]).contains("ws://fixture.test:*"));
-    }
 }

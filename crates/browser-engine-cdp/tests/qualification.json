@@ -1,247 +1,65 @@
 {
-  "gate": "FAIL",
-  "priorQualificationSuperseded": true,
+  "gate": "PARTIAL",
+  "externalDifferential": "PASS",
   "expandedCases": {
-    "pass": 52,
-    "total": 54
+    "pass": 59,
+    "total": 59
   },
-  "networkEnforcementPass": false,
+  "oracleNode": "22.23.3",
+  "chromium": "157.0.8103.38 (full headless)",
+  "networkEnforcementPass": true,
   "deniedRequestsReachedFixture": {
-    "effect": 0,
-    "popup": 0,
     "resource": 0,
-    "socket": 2
+    "socket": 0,
+    "popup": 0,
+    "effect": 0,
+    "originCredentials": 0
   },
+  "proxyDenialPass": true,
+  "denialAuditPass": true,
+  "publicRedactionPass": true,
   "proxyPass": true,
-  "automaticApprovalCancellationPass": true,
+  "proxyNegativesPass": true,
+  "approvalCancellationPass": true,
+  "waitCancellationPass": true,
   "isolationPass": true,
+  "concurrentDownloadsPass": true,
   "streamingDifferentialPass": true,
-  "traceSecretRedactionPass": true,
   "blockers": {
-    "2": "BLOCKED: browser Fetch misses upgrades; continued CSP does not enforce page/subframe policy on qualified Chromium",
-    "3": "PARTIAL: positive service-worker capability/registration proof required",
-    "7": "PARTIAL: exhaustive await cancellation injection required",
-    "8": "PARTIAL: full denial audit/errors required; trace secret redaction fixed",
-    "6": "PARTIAL: cache/worker storage/concurrent downloads required",
-    "4": "PARTIAL: locator/frame/input grammar required",
-    "5": "PARTIAL: auth negatives required"
-  },
-  "actions": [
-    {
-      "name": "navigate",
-      "pass": true
+    "1": {
+      "status": "retained",
+      "evidence": "Denied popup first request reaches no server; normal popup/fallback matches."
     },
-    {
-      "name": "extract",
-      "pass": true
+    "2": {
+      "status": "CLOSED-AT-PARITY",
+      "evidence": "Retained routeWebSocket blocks page/frame but misses one worker socket; session proxy proves refusal before upstream, zero native denied handshakes, allowed socket succeeds."
     },
-    {
-      "name": "truncate",
-      "pass": true
+    "3": {
+      "status": "PARTIAL",
+      "evidence": "Positive service-worker capability; first-script popup registration now matches blocked oracle. Dedicated-worker/frame HTTP and WS pass. Shared-worker/OOPIF matrix remains."
     },
-    {
-      "name": "hover",
-      "pass": true
+    "7": {
+      "status": "PARTIAL",
+      "evidence": "Dropped wait and approval futures close automatically; proxy tasks abort. Exhaustive setup/download/close injection remains."
     },
-    {
-      "name": "click",
-      "pass": true
+    "8": {
+      "status": "PARTIAL",
+      "evidence": "Missing socket denial audit and public declared-secret reason fixed fail-before/pass-after. Complete error/audit-shape matrix remains."
     },
-    {
-      "name": "click-dom",
-      "pass": true
+    "6": {
+      "status": "PARTIAL",
+      "evidence": "Cookie/localStorage/CacheStorage/IndexedDB isolation and concurrent downloads match; isolation already passed at baseline. Worker persistence matrix remains."
     },
-    {
-      "name": "type",
-      "pass": true
+    "4": {
+      "status": "PARTIAL",
+      "evidence": "Date fill fixed fail-before/pass-after; complete locator/frame/input grammar remains."
     },
-    {
-      "name": "select",
-      "pass": true
-    },
-    {
-      "name": "clear",
-      "pass": true
-    },
-    {
-      "name": "refill",
-      "pass": true
-    },
-    {
-      "name": "arm-option",
-      "pass": true
-    },
-    {
-      "name": "delayed-option",
-      "pass": true
-    },
-    {
-      "name": "restore-option",
-      "pass": true
-    },
-    {
-      "name": "press",
-      "pass": true
-    },
-    {
-      "name": "upload",
-      "pass": true
-    },
-    {
-      "name": "screenshot",
-      "pass": true
-    },
-    {
-      "name": "scroll",
-      "pass": true
-    },
-    {
-      "name": "wait",
-      "pass": true
-    },
-    {
-      "name": "delayed",
-      "pass": true
-    },
-    {
-      "name": "missing",
-      "pass": true
-    },
-    {
-      "name": "non-get",
-      "pass": true
-    },
-    {
-      "name": "denied-domain",
-      "pass": true
-    },
-    {
-      "name": "secret",
-      "pass": true
-    },
-    {
-      "name": "secret-screenshot",
-      "pass": true
-    },
-    {
-      "name": "secret-mask",
-      "pass": true
-    },
-    {
-      "name": "submit",
-      "pass": true
-    },
-    {
-      "name": "redirect",
-      "pass": true
-    },
-    {
-      "name": "download",
-      "pass": true
-    },
-    {
-      "name": "download-wait",
-      "pass": true
-    },
-    {
-      "name": "arm-approval-mutation",
-      "pass": true
-    },
-    {
-      "name": "approval-mutation",
-      "pass": true
-    },
-    {
-      "name": "popup",
-      "pass": true
-    },
-    {
-      "name": "popup-wait",
-      "pass": true
-    },
-    {
-      "name": "popup-read",
-      "pass": true
-    },
-    {
-      "name": "popup-close",
-      "pass": true
-    },
-    {
-      "name": "popup-fallback",
-      "pass": true
-    },
-    {
-      "name": "network",
-      "pass": true
-    },
-    {
-      "name": "network-wait",
-      "pass": true
-    },
-    {
-      "name": "network-outcome",
-      "pass": false
-    },
-    {
-      "name": "service-worker",
-      "pass": true
-    },
-    {
-      "name": "service-worker-wait",
-      "pass": true
-    },
-    {
-      "name": "service-worker-outcome",
-      "pass": true
-    },
-    {
-      "name": "actionability-arm",
-      "pass": true
-    },
-    {
-      "name": "actionability-hover-disabled",
-      "pass": true
-    },
-    {
-      "name": "actionability-click",
-      "pass": true
-    },
-    {
-      "name": "actionability-dom",
-      "pass": true
-    },
-    {
-      "name": "scroll-reset",
-      "pass": true
-    },
-    {
-      "name": "scroll-wheel",
-      "pass": true
-    },
-    {
-      "name": "scroll-settle",
-      "pass": true
-    },
-    {
-      "name": "scroll-position",
-      "pass": true
-    },
-    {
-      "name": "subnetwork",
-      "pass": true
-    },
-    {
-      "name": "subnetwork-wait",
-      "pass": true
-    },
-    {
-      "name": "subnetwork-outcome",
-      "pass": false
-    },
-    {
-      "name": "wait-cap",
-      "pass": true
+    "5": {
+      "status": "PARTIAL",
+      "evidence": "Wrong-password classification fixed fail-before/pass-after; origin challenge sends no origin credentials; anonymous and two proxy identities pass. TLS/SOCKS live qualification remains."
     }
-  ]
+  },
+  "adoptionApproved": false,
+  "wired": false,
+  "nodeRetired": false
 }

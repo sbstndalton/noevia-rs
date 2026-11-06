@@ -27,6 +27,7 @@ use tokio::{
 };
 
 mod guard;
+mod socket_proxy;
 
 const LIMIT: Duration = Duration::from_secs(15);
 const WORKER_SCRIPT: &str = "if(navigator.serviceWorker) navigator.serviceWorker.register=async()=>{console.warn('Service worker registration blocked');};";
@@ -185,11 +186,13 @@ struct ActionLease {
     shutdown: tokio::sync::mpsc::UnboundedSender<()>,
     interrupted: Arc<AtomicBool>,
     complete: bool,
+    proxy: tokio::task::AbortHandle,
 }
 impl Drop for ActionLease {
     fn drop(&mut self) {
         if !self.complete {
             self.interrupted.store(true, Ordering::SeqCst);
+            self.proxy.abort();
             let _ = self.shutdown.send(());
         }
     }
@@ -209,6 +212,7 @@ pub struct CdpEngine {
     targets: Arc<tokio::sync::Mutex<Vec<String>>>,
     page_watch: JoinHandle<()>,
     guard: guard::Guard,
+    _socket_proxy: socket_proxy::SocketProxy,
 }
 impl Drop for CdpEngine {
     fn drop(&mut self) {
@@ -257,13 +261,14 @@ impl CdpEngine {
                 config
                     .args
                     .iter()
+                    .filter(|s| s.as_str() != "--no-proxy-server")
                     .map(|s| s.trim_start_matches("--").to_owned()),
             );
-        if let Some(proxy) = &config.proxy {
-            builder = builder
-                .arg(format!("proxy-server={proxy}"))
-                .arg("proxy-bypass-list=<-loopback>");
-        }
+        let socket_proxy = socket_proxy::SocketProxy::start(&config).await?;
+        // Every protocol uses the same gate, including CONNECT for secure sockets.
+        builder = builder
+            .arg(format!("proxy-server={}", socket_proxy.address))
+            .arg("proxy-bypass-list=<-loopback>");
         builder = builder.respect_https_errors().viewport(None);
         let launched = bounded(LIMIT, async {
             Ok(Browser::launch(builder.build().map_err(|e| anyhow!(e))?).await?)
@@ -295,11 +300,10 @@ impl CdpEngine {
             config.allowed_domains.clone(),
             event_error.clone(),
             config.secrets.clone(),
-            config
-                .proxy
-                .as_deref()
-                .map(origin)
-                .zip(config.proxy_credentials.clone()),
+            Some((
+                origin(&socket_proxy.address),
+                socket_proxy.credentials.clone(),
+            )),
         )
         .await?;
         let page = bounded(LIMIT, async { Ok(browser.new_page("about:blank").await?) }).await?;
@@ -382,6 +386,7 @@ impl CdpEngine {
             targets,
             page_watch,
             guard,
+            _socket_proxy: socket_proxy,
         };
         if let Err(e) = engine.prepare().await {
             engine.close().await;
@@ -426,7 +431,9 @@ impl CdpEngine {
         Ok(())
     }
     pub async fn state(&self) -> Value {
-        json!({"origin":origin(&self.url().await.unwrap_or_default()),"blocked":self.guard.blocked.lock().await.clone(),"downloads":self.downloads.lock().await.clone(),"closed":self.closed || self.guard.finished()})
+        let mut blocked = self.guard.blocked.lock().await.clone();
+        blocked.extend(self._socket_proxy.blocked.lock().await.clone());
+        json!({"origin":origin(&self.url().await.unwrap_or_default()),"blocked":blocked,"downloads":self.downloads.lock().await.clone(),"closed":self.closed || self.guard.finished()})
     }
     pub async fn policy_trace(&self) -> Vec<Value> {
         self.guard.trace.lock().await.clone()
@@ -666,6 +673,8 @@ impl CdpEngine {
                         if editable == json!(true) { break; }
                         tokio::time::sleep(Duration::from_millis(25)).await;
                     }
+                    let assigned=on_node(&self.page,target,"function(value){if(this.tagName!=='INPUT'||!['date','time','datetime-local','month','week'].includes(this.type))return false;this.focus();this.value=value;if(this.value!==value)throw Error('Malformed value');this.dispatchEvent(new Event('input',{bubbles:true,composed:true}));this.dispatchEvent(new Event('change',{bubbles:true}));return true}".into(),vec![json!(typed)]).await?;
+                    if assigned==json!(true){return Ok(())}
                     on_node(&self.page,target,"function(){this.focus();if(this.isContentEditable){const r=document.createRange();r.selectNodeContents(this);const s=getSelection();s.removeAllRanges();s.addRange(r)}else this.select()}".into(),vec![]).await?;
                     if typed.as_deref() == Some("") {
                         for kind in ["keyDown", "keyUp"] {
@@ -743,8 +752,8 @@ impl CdpEngine {
     async fn run(&mut self, a: &Value, approval: &dyn Approval, id: Option<&str>) -> Result<Value> {
         let kind = string(a, "type");
         let before = origin(&self.url().await?);
-        let result =
-            |status: &str, reason: &str| json!({"status":status,"origin":before,"reason":reason});
+        let result_secrets = self.config.secrets.clone();
+        let result = |status: &str, reason: &str| json!({"status":status,"origin":before,"reason":mask(reason,&result_secrets)});
         if ![
             "navigate",
             "click",
@@ -965,6 +974,7 @@ impl BrowserEngine for CdpEngine {
         let mut lease = ActionLease {
             interrupted: self.interrupted.clone(),
             shutdown: self.guard.shutdown.clone(),
+            proxy: self._socket_proxy.abort_handle(),
             complete: false,
         };
         let result = self.act_once(action, approval).await;
@@ -973,6 +983,7 @@ impl BrowserEngine for CdpEngine {
     }
     async fn close(&mut self) -> bool {
         self.closed = true;
+        self._socket_proxy.stop();
         let result = bounded(LIMIT, async {
             let _ = self.guard.shutdown.send(());
             self.browser.wait().await?;

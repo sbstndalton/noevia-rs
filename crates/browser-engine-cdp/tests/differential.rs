@@ -44,8 +44,11 @@ fn normalized(v: &Value) -> Value {
     v
 }
 #[tokio::test]
-#[ignore = "requires pinned external oracle and headless executable; see ADOPTION.md"]
 async fn synthetic_differential() {
+    if std::env::var_os("BROWSER_EVIDENCE").is_none() {
+        eprintln!("External qualification not provisioned");
+        return;
+    }
     let base_root = PathBuf::from(std::env::var("BROWSER_EVIDENCE").expect("evidence directory"));
     let root = base_root.join(format!("run-{}", std::process::id()));
     std::fs::create_dir(&root).unwrap();
@@ -156,6 +159,7 @@ async fn synthetic_differential() {
     assert!(!actual.contains(&json!("--ignore-certificate-errors")));
     let mut rows = vec![];
     let mut failures = vec![];
+    let mut public_redaction_pass = true;
     for row in oracle["results"].as_array().unwrap() {
         let started = tokio::time::Instant::now();
         let _ = engine.inspect("globalThis.cspViolations=[];addEventListener('securitypolicyviolation',e=>globalThis.cspViolations.push({uri:e.blockedURI,policy:e.originalPolicy}))").await;
@@ -163,17 +167,31 @@ async fn synthetic_differential() {
             .act(row["action"].clone(), &Approve)
             .await
             .unwrap_or_else(|e| json!({"error":e.to_string()}));
+        public_redaction_pass &= !got.to_string().contains("synthetic-secret");
         let elapsed_ms = started.elapsed().as_millis();
         tokio::time::sleep(Duration::from_millis(40)).await;
+        if row["name"] == "double-download-wait" {
+            timeout(Duration::from_secs(3), async {
+                while engine.state().await["downloads"].as_array().unwrap().len() < 3 {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect("Concurrent downloads must all settle");
+        }
         let mut downloads = vec![];
         if let Ok(mut entries) = tokio::fs::read_dir(&native_downloads).await {
             while let Some(e) = entries.next_entry().await.unwrap() {
                 let name = e.file_name().to_string_lossy().to_string();
-                if name.starts_with("1-") {
+                if name
+                    .split_once('-')
+                    .is_some_and(|(n, _)| n.parse::<u64>().is_ok())
+                {
                     downloads.push(json!({"name":"fixture.txt","file":name,"bytes":tokio::fs::read_to_string(e.path()).await.unwrap()}));
                 }
             }
         }
+        downloads.sort_by_key(|v| v["file"].as_str().unwrap_or("").to_owned());
         let effects = engine
             .inspect(include_str!("effects.js"))
             .await
@@ -220,13 +238,23 @@ async fn synthetic_differential() {
         ))
         .await
         .unwrap();
-    let network_enforcement_pass =
-        denied_requests == json!({"resource":0,"socket":0,"popup":0,"effect":0});
+    let denial_audit_pass = engine.state().await["blocked"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v["url"].as_str().is_some_and(|u| u.ends_with("/socket")));
+    let proxy_denial_pass = engine.state().await["blocked"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|v| v["source"] == "proxy");
+    let network_enforcement_pass = denied_requests
+        == json!({"resource":0,"socket":0,"popup":0,"effect":0,"originCredentials":0});
     engine
-        .inspect("document.cookie='marker=one';localStorage.setItem('marker','one')")
+        .inspect("(async()=>{document.cookie='marker=one';localStorage.setItem('marker','one');await caches.open('fixture-cache');await new Promise((resolve,reject)=>{const r=indexedDB.open('fixture-db');r.onsuccess=()=>{r.result.close();resolve()};r.onerror=reject})})()")
         .await
         .unwrap();
-    let storage = "({cookie:document.cookie,local:localStorage.getItem('marker')})";
+    let storage = "(async()=>({cookie:document.cookie,local:localStorage.getItem('marker'),cache:await caches.keys(),databases:(await indexedDB.databases()).map(v=>v.name)}))()";
     let source = engine.inspect(storage).await.unwrap();
     let mut second_config = config.clone();
     second_config.profile_dir = root.join(format!("second-profile-{}", std::process::id()));
@@ -246,6 +274,20 @@ async fn synthetic_differential() {
     let fresh = second.inspect(storage).await.unwrap();
     let isolation = json!({"source":source,"fresh":fresh});
     let isolation_pass = isolation == oracle["isolation"];
+    {
+        let action = second.act(json!({"type":"wait","ms":5000}), &Approve);
+        tokio::pin!(action);
+        assert!(timeout(Duration::from_millis(40), &mut action)
+            .await
+            .is_err());
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let wait_cancellation_pass = second.inspect("location.href").await.is_err()
+        && second
+            .act(json!({"type":"wait","ms":1}), &Approve)
+            .await
+            .unwrap()["status"]
+            == "blocked";
     let second_closed = second.close().await;
     engine.inspect("document.querySelector('#replace').onclick=()=>fetch('/effect');document.querySelector('#text').textContent='unsafe'").await.unwrap();
     let pending = PendingApproval {
@@ -300,6 +342,56 @@ async fn synthetic_differential() {
                 .iter()
                 .map(normalized)
                 .collect::<Vec<_>>();
+    let mut proxy_negatives = Vec::new();
+    for mode in ["wrong-password", "origin", "anonymous"] {
+        let mut negative_config = config.clone();
+        negative_config.profile_dir = root.join(format!("negative-profile-{mode}"));
+        negative_config.downloads_dir = root.join(format!("negative-downloads-{mode}"));
+        negative_config.proxy = oracle["proxyServer"].as_str().map(str::to_owned);
+        negative_config.proxy_credentials = if mode == "anonymous" {
+            None
+        } else {
+            Some(ProxyCredentials {
+                username: "alpha".into(),
+                password: if mode == "wrong-password" {
+                    "synthetic-wrong"
+                } else {
+                    "synthetic-alpha"
+                }
+                .into(),
+            })
+        };
+        let mut negative = CdpEngine::launch(negative_config).await.unwrap();
+        negative
+            .grant_fixture_loopback(oracle["base"].as_str().unwrap())
+            .await
+            .unwrap();
+        let path = match mode {
+            "origin" => "/origin-auth",
+            "anonymous" => "/anonymous",
+            _ => "/proxy-identity",
+        };
+        let result=negative.act(json!({"type":"navigate","url":format!("{}{path}",oracle["base"].as_str().unwrap())}),&Approve).await.unwrap();
+        proxy_negatives
+            .push(json!({"mode":mode,"status":result["status"],"origin":result["origin"]}));
+        assert!(negative.close().await);
+    }
+    let proxy_negatives_pass = json!(proxy_negatives) == oracle["proxyNegatives"];
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"stats\n")
+        .await
+        .unwrap();
+    let mut final_stats = String::new();
+    timeout(Duration::from_secs(3), reader.read_line(&mut final_stats))
+        .await
+        .unwrap()
+        .unwrap();
+    let final_stats: Value = serde_json::from_str(&final_stats).unwrap();
+    let origin_credentials_pass = final_stats["originCredentials"] == 0;
+
     child
         .stdin
         .take()
@@ -314,13 +406,27 @@ async fn synthetic_differential() {
     std::fs::write(
         root.join("differential.json"),
         serde_json::to_vec_pretty(
-            &json!({"actions":rows,"nativeClosed":closed,"launchFlagsPass":true,"proxyPass":proxy_pass,"proxyResults":proxy_results,"cancellationPass":cancellation_pass,"deniedRequests":denied_requests,"deniedPopup":denied_popup,"networkEnforcementPass":network_enforcement_pass,"oracleClosed":oracle["closed"],"isolation":isolation,"isolationPass":isolation_pass,"secondClosed":second_closed}),
+            &json!({"actions":rows,"nativeClosed":closed,"launchFlagsPass":true,"proxyPass":proxy_pass,"proxyNegatives":proxy_negatives,"proxyNegativesPass":proxy_negatives_pass,"originCredentialsPass":origin_credentials_pass,"finalServerStats":final_stats,"proxyResults":proxy_results,"cancellationPass":cancellation_pass,"waitCancellationPass":wait_cancellation_pass,"deniedRequests":denied_requests,"deniedPopup":denied_popup,"networkEnforcementPass":network_enforcement_pass,"denialAuditPass":denial_audit_pass,"proxyDenialPass":proxy_denial_pass,"publicRedactionPass":public_redaction_pass,"oracleClosed":oracle["closed"],"isolation":isolation,"isolationPass":isolation_pass,"secondClosed":second_closed}),
         )
         .unwrap(),
     )
     .unwrap();
     assert!(closed && second_closed);
-    assert!(cancellation_pass);
+    assert!(cancellation_pass && wait_cancellation_pass);
+    assert!(
+        public_redaction_pass,
+        "Declared secret leaked in public result"
+    );
+    assert!(proxy_denial_pass, "Local proxy denial was not observed");
+    assert!(denial_audit_pass, "Missing denied WebSocket audit");
+    assert!(
+        proxy_negatives_pass,
+        "Proxy negative mismatch: {proxy_negatives:?}"
+    );
+    assert!(
+        origin_credentials_pass,
+        "Proxy credentials reached the origin challenge"
+    );
     assert!(proxy_pass, "Proxy authentication/isolation mismatch");
     if !network_enforcement_pass {
         failures.push(json!("denied-request-server-evidence"));
