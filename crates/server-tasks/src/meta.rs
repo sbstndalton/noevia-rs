@@ -3,7 +3,7 @@ use js_json::JValue;
 fn object(rows: Vec<(&str, JValue)>) -> JValue {
     JValue::Obj(rows.into_iter().map(|(k, v)| (k.into(), v)).collect())
 }
-fn numeric(value: &JValue) -> f64 {
+pub(crate) fn numeric(value: &JValue) -> f64 {
     match value {
         JValue::Undefined => f64::NAN,
         JValue::Null => 0.0,

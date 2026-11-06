@@ -1,0 +1,1290 @@
+[
+  {
+    "name": "read",
+    "action": {
+      "type": "click",
+      "selector": "#read"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "downloads": []
+    },
+    "cards": [],
+    "disposals": [
+      "#read"
+    ]
+  },
+  {
+    "name": "deny",
+    "action": {
+      "type": "click",
+      "selector": "#submit"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "origin": "https://shop.example.test",
+      "reason": "Declined."
+    },
+    "cards": [
+      {
+        "jobId": "job",
+        "origin": "https://shop.example.test",
+        "action": "click",
+        "reason": "Submits a form.",
+        "element": {
+          "tag": "button",
+          "type": "",
+          "role": "",
+          "name": "Show details",
+          "text": "Show details",
+          "value": "",
+          "inForm": true,
+          "formMethod": "post",
+          "formAction": ""
+        },
+        "url": null,
+        "typed": null,
+        "file": null,
+        "screenshot": "cG5nIHN5bnRoZXRpYy1zZWNyZXQtNzczMQ=="
+      }
+    ],
+    "disposals": [
+      "#submit"
+    ]
+  },
+  {
+    "name": "allow",
+    "action": {
+      "type": "click",
+      "selector": "#submit"
+    },
+    "answer": "approve",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "downloads": []
+    },
+    "cards": [
+      {
+        "jobId": "job",
+        "origin": "https://shop.example.test",
+        "action": "click",
+        "reason": "Submits a form.",
+        "element": {
+          "tag": "button",
+          "type": "",
+          "role": "",
+          "name": "Show details",
+          "text": "Show details",
+          "value": "",
+          "inForm": true,
+          "formMethod": "post",
+          "formAction": ""
+        },
+        "url": null,
+        "typed": null,
+        "file": null,
+        "screenshot": "cG5nIHN5bnRoZXRpYy1zZWNyZXQtNzczMQ=="
+      }
+    ],
+    "disposals": [
+      "#submit"
+    ]
+  },
+  {
+    "name": "target changed",
+    "action": {
+      "type": "click",
+      "selector": "#submit"
+    },
+    "answer": "approve",
+    "mode": "target",
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "origin": "https://shop.example.test",
+      "reason": "The approved target changed while approval was pending; review the action again."
+    },
+    "cards": [
+      {
+        "jobId": "job",
+        "origin": "https://shop.example.test",
+        "action": "click",
+        "reason": "Submits a form.",
+        "element": {
+          "tag": "button",
+          "type": "",
+          "role": "",
+          "name": "Show details",
+          "text": "Show details",
+          "value": "",
+          "inForm": true,
+          "formMethod": "post",
+          "formAction": ""
+        },
+        "url": null,
+        "typed": null,
+        "file": null,
+        "screenshot": "cG5nIHN5bnRoZXRpYy1zZWNyZXQtNzczMQ=="
+      }
+    ],
+    "disposals": [
+      "#submit"
+    ]
+  },
+  {
+    "name": "page changed",
+    "action": {
+      "type": "click",
+      "selector": "#submit"
+    },
+    "answer": "approve",
+    "mode": "page",
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "origin": "https://other.example.test",
+      "reason": "The page changed while approval was pending; review the action again."
+    },
+    "cards": [
+      {
+        "jobId": "job",
+        "origin": "https://shop.example.test",
+        "action": "click",
+        "reason": "Submits a form.",
+        "element": {
+          "tag": "button",
+          "type": "",
+          "role": "",
+          "name": "Show details",
+          "text": "Show details",
+          "value": "",
+          "inForm": true,
+          "formMethod": "post",
+          "formAction": ""
+        },
+        "url": null,
+        "typed": null,
+        "file": null,
+        "screenshot": "cG5nIHN5bnRoZXRpYy1zZWNyZXQtNzczMQ=="
+      }
+    ],
+    "disposals": [
+      "#submit"
+    ]
+  },
+  {
+    "name": "plain type",
+    "action": {
+      "type": "type",
+      "selector": "#field",
+      "text": "hello"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "downloads": []
+    },
+    "cards": [],
+    "disposals": [
+      "#field"
+    ]
+  },
+  {
+    "name": "secret type",
+    "action": {
+      "type": "type",
+      "selector": "#field",
+      "text": "{{secret:token}}"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "downloads": []
+    },
+    "cards": [],
+    "disposals": [
+      "#field"
+    ]
+  },
+  {
+    "name": "unknown secret",
+    "action": {
+      "type": "type",
+      "selector": "#field",
+      "text": "{{secret:missing}}"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "origin": "https://shop.example.test",
+      "reason": "No secret named missing."
+    },
+    "cards": [],
+    "disposals": [
+      "#field"
+    ]
+  },
+  {
+    "name": "select",
+    "action": {
+      "type": "select",
+      "selector": "#field",
+      "value": "one"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "downloads": []
+    },
+    "cards": [],
+    "disposals": [
+      "#field"
+    ]
+  },
+  {
+    "name": "missing",
+    "action": {
+      "type": "click",
+      "selector": "#missing"
+    },
+    "answer": "approve",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "origin": "https://shop.example.test",
+      "reason": "That element is not on the page."
+    },
+    "cards": [],
+    "disposals": []
+  },
+  {
+    "name": "unknown",
+    "action": {
+      "type": "invented"
+    },
+    "answer": "approve",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "origin": "https://shop.example.test",
+      "reason": "Unknown action “invented”."
+    },
+    "cards": [],
+    "disposals": []
+  },
+  {
+    "name": "post",
+    "action": {
+      "type": "navigate",
+      "url": "https://shop.example.test/",
+      "method": "POST"
+    },
+    "answer": "approve",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "origin": "https://shop.example.test",
+      "reason": "Only plain navigation is supported; submit the page’s form instead."
+    },
+    "cards": [],
+    "disposals": []
+  },
+  {
+    "name": "navigate",
+    "action": {
+      "type": "navigate",
+      "url": "https://shop.example.test/read"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "downloads": []
+    },
+    "cards": [],
+    "disposals": []
+  },
+  {
+    "name": "upload",
+    "action": {
+      "type": "upload",
+      "selector": "#field",
+      "file": "missing"
+    },
+    "answer": "approve",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "origin": "https://shop.example.test",
+      "reason": "Only files given to this task can be uploaded."
+    },
+    "cards": [],
+    "disposals": [
+      "#field"
+    ]
+  },
+  {
+    "name": "screenshot",
+    "action": {
+      "type": "screenshot"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "evidence": {
+        "screenshot": "cG5nIHN5bnRoZXRpYy1zZWNyZXQtNzczMQ=="
+      }
+    },
+    "cards": [],
+    "disposals": []
+  },
+  {
+    "name": "extract",
+    "action": {
+      "type": "extract",
+      "selector": "#read"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "evidence": {
+        "text": "Read more"
+      }
+    },
+    "cards": [],
+    "disposals": [
+      "#read"
+    ]
+  },
+  {
+    "name": "body",
+    "action": {
+      "type": "extract"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "evidence": {
+        "text": "body text"
+      }
+    },
+    "cards": [],
+    "disposals": []
+  },
+  {
+    "name": "press",
+    "action": {
+      "type": "press",
+      "key": "Enter"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "blocked",
+      "origin": "https://shop.example.test",
+      "reason": "Declined."
+    },
+    "cards": [
+      {
+        "jobId": "job",
+        "origin": "https://shop.example.test",
+        "action": "press",
+        "reason": "Enter submits the form.",
+        "element": null,
+        "url": null,
+        "typed": null,
+        "file": null,
+        "screenshot": "cG5nIHN5bnRoZXRpYy1zZWNyZXQtNzczMQ=="
+      }
+    ],
+    "disposals": []
+  },
+  {
+    "name": "hover",
+    "action": {
+      "type": "hover",
+      "selector": "#read"
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "downloads": []
+    },
+    "cards": [],
+    "disposals": [
+      "#read"
+    ]
+  },
+  {
+    "name": "scroll",
+    "action": {
+      "type": "scroll",
+      "dy": 0
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "downloads": []
+    },
+    "cards": [],
+    "disposals": []
+  },
+  {
+    "name": "wait",
+    "action": {
+      "type": "wait",
+      "ms": 0
+    },
+    "answer": "deny",
+    "mode": null,
+    "dom": {
+      "#submit": {
+        "tag": "button",
+        "type": "",
+        "role": "",
+        "name": "Show details",
+        "text": "Show details",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#field": {
+        "tag": "input",
+        "type": "text",
+        "name": "Note",
+        "text": "",
+        "value": "",
+        "inForm": true,
+        "formMethod": "post"
+      },
+      "#read": {
+        "tag": "a",
+        "type": "",
+        "role": "",
+        "name": "Read more",
+        "text": "Read more",
+        "value": "",
+        "inForm": false,
+        "formMethod": ""
+      }
+    },
+    "secrets": {
+      "token": {
+        "value": "synthetic-secret-7731",
+        "domains": [
+          "shop.example.test"
+        ]
+      }
+    },
+    "result": {
+      "status": "done",
+      "origin": "https://shop.example.test",
+      "downloads": []
+    },
+    "cards": [],
+    "disposals": []
+  }
+]
