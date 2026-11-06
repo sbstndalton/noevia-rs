@@ -1,7 +1,7 @@
 //! Code's maintenance-only adapter to the shared inference authority. The account-bound
 //! front policy resolves local/remote roles; no model is selected or loaded by this permit.
 use crate::{
-    code::{Admission, Entering, Failure},
+    code::{Admission, Entering, Failure, Paused},
     context::{JournalContext, Permit},
 };
 use engine_admission::{Admission as Shared, Ask, Lease};
@@ -9,7 +9,10 @@ use model_stream::Cancel;
 use std::sync::Arc;
 pub trait Policy: Send + Sync {
     fn paused(&self) -> Result<bool, Failure>;
-    fn local(&self, context: &JournalContext) -> Result<bool, Failure>;
+    fn local_user(&self, user: &str) -> Result<bool, Failure>;
+    fn local(&self, context: &JournalContext) -> Result<bool, Failure> {
+        self.local_user(&context.scope().user)
+    }
 }
 pub struct Tasks {
     pub shared: Arc<Shared>,
@@ -40,6 +43,22 @@ impl Drop for Watch {
     }
 }
 impl Admission for Tasks {
+    fn paused_for<'a>(&'a self, account: Arc<crate::account::Account>) -> Paused<'a> {
+        Box::pin(async move {
+            account.fence().map_err(|_| Failure::unavailable())?;
+            if !self.policy.local_user(account.user())? {
+                return Ok(false);
+            }
+            let paused = self
+                .shared
+                .maintenance_paused(&Cancel::new())
+                .await
+                .map_err(|_| Failure::unavailable())?;
+            account.fence().map_err(|_| Failure::unavailable())?;
+            Ok(paused)
+        })
+    }
+
     fn paused(&self) -> Result<bool, Failure> {
         self.policy.paused()
     }

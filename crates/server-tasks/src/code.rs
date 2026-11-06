@@ -98,7 +98,11 @@ pub(crate) fn resource_error(error: resources::Error) -> Failure {
 }
 pub use crate::context::Permit;
 pub type Entering<'a> = Pin<Box<dyn Future<Output = Result<Arc<dyn Permit>, Failure>> + Send + 'a>>;
+pub type Paused<'a> = Pin<Box<dyn Future<Output = Result<bool, Failure>> + Send + 'a>>;
 pub trait Admission: Send + Sync {
+    fn paused_for<'a>(&'a self, _account: Arc<Account>) -> Paused<'a> {
+        Box::pin(async move { self.paused() })
+    }
     fn paused(&self) -> Result<bool, Failure>;
     fn enter(&self) -> Result<Arc<dyn Permit>, Failure> {
         Err(Failure::unavailable())
@@ -240,13 +244,6 @@ impl Code {
                 "This project already has a task running.",
             ));
         }
-        if self
-            .admission
-            .paused()
-            .map_err(|_| Failure::unavailable())?
-        {
-            return Err(Failure::public(503, INFERENCE_PAUSED));
-        }
         let program = if task.request.preparation == "planner" {
             self.planner.clone().ok_or_else(|| {
                 Failure::public(409, "The Planner pipeline is not set up on this server.")
@@ -369,6 +366,31 @@ impl Code {
         task: Task,
         answer: oneshot::Sender<Result<JValue, Failure>>,
     ) {
+        match account.list(Surface::Code, Some(&project), true) {
+            Ok(jobs) if !jobs.is_empty() => {
+                let _ = answer.send(Err(Failure::public(
+                    409,
+                    "This project already has a task running.",
+                )));
+                return;
+            }
+            Err(_) => {
+                let _ = answer.send(Err(Failure::unavailable()));
+                return;
+            }
+            _ => {}
+        }
+        match self.admission.paused_for(account.clone()).await {
+            Ok(false) => {}
+            Ok(true) => {
+                let _ = answer.send(Err(Failure::public(503, INFERENCE_PAUSED)));
+                return;
+            }
+            Err(error) => {
+                let _ = answer.send(Err(error));
+                return;
+            }
+        }
         let mut prepared = match self.prepare(account.clone(), &project, &task) {
             Ok(prepared) => prepared,
             Err(error) => {
