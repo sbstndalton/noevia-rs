@@ -97,6 +97,16 @@ pub trait Backend: Send + Sync + 'static {
     /// Changes when the directory table does (a row, a flag or a sealed key); `"unreadable"` while it
     /// cannot be read.
     fn directory_signal(&self) -> impl Future<Output = String> + Send;
+    /// A coherent directory identity and server list. Backends with a transactional row read
+    /// override this; the default refuses a list bracketed by different identities.
+    fn configuration(&self) -> impl Future<Output = Option<(String, Vec<ServerSpec>)>> + Send {
+        async {
+            let before = self.directory_signal().await;
+            let servers = self.servers().await;
+            let after = self.directory_signal().await;
+            (before == after).then_some((after, servers))
+        }
+    }
     /// An account's readiness for the per-account servers (empty when it cannot be read).
     fn account_ready(&self, user: &str) -> impl Future<Output = Ready> + Send;
     /// The value of a static-token environment variable, if set and not empty.
@@ -270,6 +280,8 @@ struct State {
     inflight: Option<watch::Receiver<Done>>,
     generation: u64,
     epoch: u64,
+    preparation: u64,
+    observed: u64,
 }
 
 /// The discovery actor. Hold it in an `Arc`.
@@ -336,6 +348,8 @@ impl<B: Backend> Actor<B> {
                 inflight: None,
                 generation: 0,
                 epoch: 0,
+                preparation: 0,
+                observed: 0,
             }),
         })
     }
@@ -383,11 +397,17 @@ impl<B: Backend> Actor<B> {
     /// `discoverMcpTools(force)`.
     pub async fn discover(self: &Arc<Self>, mut force: bool) -> Result<Arc<Snapshot>, Unavailable> {
         loop {
-            // The table's change is read first: a write that lands while the list is read is caught
-            // by the next look.
-            let signal = self.backend.directory_signal().await;
-            let servers = self.backend.servers().await;
+            // Fence preparation before its first await, independently of the listing epoch.
+            let preparation = {
+                let mut st = self.lock();
+                st.preparation += 1;
+                st.preparation
+            };
+            let (signal, servers) = self.backend.configuration().await.ok_or(Unavailable)?;
             let credentials = self.credential_key(&servers).await;
+            if self.backend.directory_signal().await != signal {
+                return Err(Unavailable);
+            }
             let now = self.backend.now_ms();
             let curated_when_empty = if servers.is_empty() {
                 mcp_manifest::manifest(self.backend.diary_mcp_write().await)
@@ -396,23 +416,24 @@ impl<B: Backend> Actor<B> {
             };
             let (waiting, start) = {
                 let mut st = self.lock();
-                // The first look only records the table (nothing was discovered yet); a later change forces.
-                if st.synced_with.as_ref().is_some_and(|seen| *seen != signal) {
+                if preparation < st.observed {
+                    return Err(Unavailable);
+                }
+                st.observed = preparation;
+                let changed = st.synced_with.as_ref().is_some_and(|seen| *seen != signal)
+                    || st
+                        .discovered_with
+                        .as_ref()
+                        .is_some_and(|seen| *seen != credentials);
+                if changed {
                     force = true;
                     st.epoch += 1;
                     st.inflight = None;
+                    st.discovered_at = 0;
+                    st.failed_at = 0;
+                    st.current = Arc::new(Snapshot::default());
                 }
                 st.synced_with = Some(signal);
-                if !force
-                    && st
-                        .discovered_with
-                        .as_deref()
-                        .is_some_and(|w| w != credentials)
-                {
-                    force = true;
-                    st.epoch += 1;
-                    st.inflight = None;
-                }
                 if servers.is_empty() {
                     // Nothing may stay offered from a list that is gone.
                     st.epoch += 1;

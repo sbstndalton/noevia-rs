@@ -76,12 +76,15 @@ struct World {
     logs: Vec<String>,
 }
 
+type PreparationPause = (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>);
+
 struct Script {
     clock: AtomicI64,
     world: Mutex<World>,
     operator: Vec<ServerSpec>,
     no_token: bool,
     diary_write: bool,
+    preparation: Mutex<Option<PreparationPause>>,
     gate: tokio::sync::watch::Sender<bool>,
 }
 
@@ -167,6 +170,11 @@ impl Backend for Script {
                 added_by: r["addedBy"].as_str().map(str::to_owned),
                 token_env: None,
             });
+        }
+        let pause = self.preparation.lock().unwrap().take();
+        if let Some((entered, resume)) = pause {
+            entered.notify_one();
+            resume.notified().await;
         }
         out
     }
@@ -408,6 +416,7 @@ fn compare_state(
 
 fn catalogue_json(c: &noevia_server::mcp_discovery::Catalogue) -> Value {
     json!({
+        "offers": c.offers,
         "mcpEnabled": c.mcp_enabled, "harnessEnabled": c.harness_enabled, "hasRepositories": c.has_repositories,
         "nextcloudConfigured": c.nextcloud_configured, "nextcloudOrigins": c.nextcloud_origins,
         "defaults": c.defaults, "connectorBoxes": c.connector_boxes,
@@ -434,9 +443,10 @@ fn compare_composition(
     let facts = js_json::parse(&sc["facts"].to_string()).unwrap();
     let cat =
         noevia_server::mcp_discovery::compose(&facts, snap, &|_| true, &[]).expect("a catalogue");
+    let mut presentation = catalogue_json(&cat);
+    presentation.as_object_mut().unwrap().remove("offers");
     assert_eq!(
-        catalogue_json(&cat),
-        expected_state["catalogue"],
+        presentation, expected_state["catalogue"],
         "{name}: the catalogue"
     );
     let picker =
@@ -486,6 +496,7 @@ async fn every_scenario_core_ran_is_replayed_by_the_actor() {
             operator: operator_of(&sc["servers"]),
             no_token: sc["noToken"].as_bool().unwrap(),
             diary_write: sc["diaryMcpWrite"].as_bool().unwrap(),
+            preparation: Mutex::new(None),
             gate,
         });
         let actor = Actor::new(Arc::clone(&backend), Timing::default());
@@ -649,6 +660,7 @@ async fn a_caller_that_goes_away_neither_cancels_nor_duplicates_the_run() {
         operator: operator_of(&sc["servers"]),
         no_token: false,
         diary_write: false,
+        preparation: Mutex::new(None),
         gate,
     });
     let actor = Actor::new(Arc::clone(&backend), Timing::default());
@@ -749,6 +761,7 @@ async fn a_server_whose_listing_panics_is_a_failed_server_not_a_missing_run() {
         operator: operator_of(&sc["servers"]),
         no_token: false,
         diary_write: false,
+        preparation: Mutex::new(None),
         gate,
     }));
     let actor = Actor::new(backend, Timing::default());
@@ -781,6 +794,7 @@ fn directory_backend(open: bool) -> Arc<Script> {
         operator: vec![],
         no_token: false,
         diary_write: false,
+        preparation: Mutex::new(None),
         gate,
     })
 }
@@ -873,4 +887,127 @@ async fn front_restart_scopes_equal_generations_to_distinct_incarnations() {
     let b = second.to_json();
     assert_ne!(a.get("incarnation"), b.get("incarnation"));
     assert!(a.get("incarnation").as_str().is_some_and(|s| !s.is_empty()));
+}
+
+#[tokio::test]
+async fn preparation_before_epoch_cannot_resurrect_removed_last_server() {
+    let backend = directory_backend(true);
+    let actor = Actor::new(backend.clone(), Timing::default());
+    let entered = Arc::new(tokio::sync::Notify::new());
+    let resume = Arc::new(tokio::sync::Notify::new());
+    *backend.preparation.lock().unwrap() = Some((entered.clone(), resume.clone()));
+    let old = tokio::spawn({
+        let actor = actor.clone();
+        async move { actor.discover(false).await }
+    });
+    entered.notified().await; // no-auth server list captured, before actor state lock
+    backend.world.lock().unwrap().dir.clear();
+    let empty = actor.discover(false).await.unwrap();
+    assert!(empty.offers.is_empty());
+    resume.notify_one();
+    let late = old.await.unwrap();
+    assert!(late.is_err() || late.unwrap().offers.is_empty());
+    assert!(actor.current().offers.is_empty());
+}
+
+#[tokio::test]
+async fn removal_invalidates_visible_catalogue_during_blocked_replacement() {
+    let backend = directory_backend(true);
+    {
+        let mut w = backend.world.lock().unwrap();
+        let mut remaining = w.dir[0].clone();
+        remaining["id"] = json!("remaining");
+        w.dir.push(remaining);
+        let tools = w.tools["removed"].clone();
+        w.tools.insert("remaining".into(), tools);
+    }
+    let actor = Actor::new(backend.clone(), Timing::default());
+    assert_eq!(actor.discover(false).await.unwrap().offers.len(), 2);
+    backend.gate.send_replace(false);
+    {
+        let mut w = backend.world.lock().unwrap();
+        w.dir.retain(|r| r["id"] != "removed");
+        w.calls.clear();
+    }
+    let refresh = tokio::spawn({
+        let actor = actor.clone();
+        async move { actor.discover(true).await }
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while backend.world.lock().unwrap().calls.is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    // This is precisely the timeout fallback used by discovered().
+    let fallback_safe = actor.current().offers.is_empty();
+    let ordinary =
+        tokio::time::timeout(std::time::Duration::from_millis(50), actor.discover(false)).await;
+    backend.gate.send_replace(true);
+    let replaced = refresh.await.unwrap().unwrap();
+    assert!(
+        fallback_safe,
+        "timeout fallback exposed superseded catalogue"
+    );
+    assert!(
+        ordinary.is_err() || ordinary.unwrap().is_err(),
+        "ordinary caller reused pre-change tools"
+    );
+    assert!(replaced.offers.iter().all(|e| e.server == "remaining"));
+}
+
+#[path = "fixtures/l-catalogue-parser.rs"]
+mod l_catalogue;
+
+#[test]
+fn all_native_offers_survive_l_catalogue_contract() {
+    use noevia_server::mcp_discovery_actor::{Entry, Snapshot};
+    for ids in [
+        vec!["search"],
+        vec!["search", "second"],
+        vec!["search", "dir-x"],
+    ] {
+        let snap = Snapshot {
+            enabled: true,
+            offers: ["tavily_search", "tavily_extract", "outside_presentation"]
+                .iter()
+                .flat_map(|name| {
+                    ids.iter().chain(ids.iter()).map(move |id| Entry {
+                        name: (*name).into(),
+                        server: (*id).into(),
+                        tool: js_json::JValue::Null,
+                        read_only: None,
+                    })
+                })
+                .collect(),
+            ..Snapshot::default()
+        };
+        let facts =
+            js_json::parse(r#"{"builtin":[],"harnessEnabled":false,"hasRepositories":false}"#)
+                .unwrap();
+        let cat = noevia_server::mcp_discovery::compose(&facts, &snap, &|_| false, &[]).unwrap();
+        let published = catalogue_json(&cat);
+        let fixtures: Vec<Value> =
+            serde_json::from_str(include_str!("fixtures/t-l-catalogue.v1.json")).unwrap();
+        let expected = fixtures
+            .iter()
+            .find(|v| v["offers"]["tavily_search"] == json!(ids))
+            .unwrap();
+        assert_eq!(&published, expected, "T publishes the cross-branch fixture");
+        let parsed =
+            l_catalogue::parse(&published).expect("L accepts T's published catalogue fixture");
+        for name in ["tavily_search", "tavily_extract", "outside_presentation"] {
+            assert_eq!(
+                parsed.offers.get(name),
+                Some(&ids.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>())
+            );
+        }
+        // L's operatorServerFor: ignore directory collisions, require exactly one operator.
+        let operators: Vec<_> = parsed.offers["tavily_search"]
+            .iter()
+            .filter(|id| id.as_str() != "dir-x")
+            .collect();
+        assert_eq!(operators.len() == 1, !ids.contains(&"second"));
+    }
 }

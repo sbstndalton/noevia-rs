@@ -357,6 +357,27 @@ impl Backend for AppBackend {
         out
     }
 
+    async fn configuration(&self) -> Option<(String, Vec<ServerSpec>)> {
+        let mut servers = self.operator.clone();
+        let Some((app, mcp)) = self.mcp() else {
+            return Some(("unreadable".into(), servers));
+        };
+        // Identity and specifications come from the same database observation.
+        let observed = tokio::task::spawn_blocking(move || {
+            let rows = mcp.dir_rows(&app).ok();
+            let signal = signal_of(rows.as_deref());
+            let specs = rows
+                .as_ref()
+                .map(|rows| specs_of(&mcp, rows))
+                .unwrap_or_default();
+            (signal, specs)
+        })
+        .await
+        .ok()?;
+        servers.extend(observed.1);
+        Some((observed.0, servers))
+    }
+
     async fn directory_signal(&self) -> String {
         let Some((app, mcp)) = self.mcp() else {
             return "unreadable".into();

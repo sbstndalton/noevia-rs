@@ -91,6 +91,8 @@ pub struct Catalogue {
     pub boxes: Vec<BoxInfo>,
     pub manifest: Vec<ManifestBox>,
     pub servers: Vec<ServerInfo>,
+    /// All native offers, ordered and deduplicated per tool, independent of presentation limits.
+    pub offers: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Catalogue {
@@ -309,7 +311,15 @@ pub fn compose(
             }
         })
         .collect();
+    let mut offers: std::collections::HashMap<String, Vec<String>> = Default::default();
+    for entry in &snap.offers {
+        let ids = offers.entry(entry.name.clone()).or_default();
+        if !ids.contains(&entry.server) {
+            ids.push(entry.server.clone());
+        }
+    }
     Some(Catalogue {
+        offers,
         mcp_enabled: snap.enabled,
         harness_enabled: facts.get("harnessEnabled").as_bool()?,
         has_repositories: facts.get("hasRepositories").as_bool()?,
