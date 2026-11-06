@@ -8,6 +8,7 @@
 //!   templates need (core `normalizeReplayHistory` and the history mapping of `createChatHandler`).
 //! - [`rounds`]: the loop's checks of a reply's text (an announced but untaken tool action, the final-answer pass).
 //! - [`sources`]: the sources a reply was grounded in, and which files can be read.
+//! - [`supervise`]: step supervision between tool rounds, and the image probe.
 //! - [`system`]: the turn's system message (account, date, project, skills, sources, frame, brains).
 //! - [`stream`]: one round's engine stream turned into the chat events the turn sends.
 //! - [`search`]: a search tool's query without the request wrapper (#1523).
@@ -36,6 +37,7 @@ pub mod route;
 pub mod search;
 pub mod sources;
 pub mod stream;
+pub mod supervise;
 pub mod system;
 mod text;
 pub mod title;
