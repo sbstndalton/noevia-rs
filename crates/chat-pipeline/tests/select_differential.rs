@@ -200,12 +200,6 @@ fn tool_selection_matches_node() {
                 checked.1 += 1;
                 continue;
             }
-            if Some(sha(&active).as_str()) != up.get("toolsSha").as_str() {
-                let _ = std::fs::write(
-                    std::env::temp_dir().join("select-diff.txt"),
-                    format!("{i}\n{}\n", wtf16::stringify(&active).unwrap_or_default()),
-                );
-            }
             assert_eq!(
                 Some(sha(&active).as_str()),
                 up.get("toolsSha").as_str(),
