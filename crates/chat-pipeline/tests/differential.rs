@@ -1498,6 +1498,15 @@ mod gate_stage {
         }
     }
 
+    /// The first difference, also written to `$TMPDIR/gate-diff.txt` (the verify log keeps one line).
+    fn same<T: PartialEq + std::fmt::Debug>(got: &T, want: &T, what: &str) {
+        if got != want {
+            let text = format!("{what}\n got: {got:?}\nwant: {want:?}\n");
+            let _ = std::fs::write(std::env::temp_dir().join("gate-diff.txt"), &text);
+            panic!("{text}");
+        }
+    }
+
     #[test]
     fn tool_calls_through_the_gate_match_node() {
         let c = wtf16::parse(include_str!("fixtures/gate-cases.json")).unwrap();
@@ -1613,7 +1622,7 @@ mod gate_stage {
                     _ => unreachable!(),
                 })
                 .collect();
-            assert_eq!(got, want, "events {what}");
+            same(&got, &want, &format!("events {what}"));
             let want_exec: Vec<String> = arr(out.get("exec"))
                 .iter()
                 .map(|e| {
@@ -1625,7 +1634,7 @@ mod gate_stage {
                     )
                 })
                 .collect();
-            assert_eq!(*io.exec.borrow(), want_exec, "exec {what}");
+            same(&*io.exec.borrow(), &want_exec, &format!("exec {what}"));
             let want_audit: Vec<String> = arr(out.get("audit"))
                 .iter()
                 .map(|a| {
@@ -1638,7 +1647,7 @@ mod gate_stage {
                     )
                 })
                 .collect();
-            assert_eq!(*io.audit.borrow(), want_audit, "audit {what}");
+            same(&*io.audit.borrow(), &want_audit, &format!("audit {what}"));
             assert_eq!(
                 io.opened.get(),
                 arr(out.get("opened")).len(),
@@ -1669,7 +1678,7 @@ mod gate_stage {
                         .iter()
                         .map(|m| (s(m.get("id")).unwrap(), s(m.get("content")).unwrap()))
                         .collect();
-                    assert_eq!(got, want, "messages {what}");
+                    same(&got, &want, &format!("messages {what}"));
                 }
                 _ => assert!(
                     !st.declined_writes.is_empty(),

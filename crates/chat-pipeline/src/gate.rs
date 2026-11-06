@@ -171,7 +171,10 @@ pub struct TurnTools {
 impl TurnTools {
     /// A turn's tool state; `decline_ends_reply`: `!spaceId?.startsWith('diary')` (#666).
     pub fn new(decline_ends_reply: bool) -> TurnTools {
-        TurnTools { decline_ends_reply, ..TurnTools::default() }
+        TurnTools {
+            decline_ends_reply,
+            ..TurnTools::default()
+        }
     }
 }
 
