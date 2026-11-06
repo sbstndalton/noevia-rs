@@ -213,7 +213,10 @@ fn concurrent_ticks_of_one_turn_never_share_or_leave_a_temporary_file() {
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
-    assert_eq!(names.len(), 1, "no temporary file is left: {names:?}");
+    assert!(
+        names.iter().all(|n| n.ends_with(".json") || n.ends_with(".owner")) && names.len() == 2,
+        "no temporary file is left: {names:?}"
+    );
     std::sync::Arc::try_unwrap(saves)
         .ok()
         .unwrap()
@@ -251,4 +254,115 @@ fn a_deleted_account_directory_is_never_recreated() {
     saves.save(Some(&entry("late")), 1.0);
     drop(saves);
     assert!(!user.exists());
+}
+
+const USER: &str = "0a1b2c3d-0000-4000-8000-00000000000a";
+
+fn delete_chat(data: &std::path::Path, chat: &str) {
+    server_projects::chat_delete::delete(
+        data,
+        USER,
+        chat,
+        server_projects::chat_delete::Kind::Unlisted,
+        server_projects::journal::Origin::Remove,
+        server_store::RustProjects::owned(),
+    )
+    .expect("deleted");
+}
+
+fn account(tmp: &tempfile::TempDir) -> std::path::PathBuf {
+    let user = tmp.path().join("users").join(USER);
+    std::fs::create_dir_all(&user).unwrap();
+    user
+}
+
+/// The store's real delete, then a late tick, a drop, and a turn admitted before the delete that starts
+/// only after it: nothing is resurrected.
+#[test]
+fn a_real_delete_fences_late_ticks_and_delayed_starts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let user = account(&tmp);
+    let a = Saves::start(&user, "c", START).unwrap();
+    a.save(Some(&entry("before")), 1.0);
+    delete_chat(tmp.path(), "c");
+    assert!(partial::read_partial(&user, "c").is_none());
+    a.save(Some(&entry("late")), 2.0);
+    drop(a);
+    assert!(partial::read_partial(&user, "c").is_none(), "no late partial");
+    let late = Saves::start(&user, "c", START);
+    assert_eq!(late.err().map(|e| e.kind()), Some(std::io::ErrorKind::NotFound), "a delayed start is refused");
+    assert!(partial::read_partial(&user, "c").is_none());
+    assert!(!partial::owner_file(&user, "c").exists());
+}
+
+/// A recreated account directory is a new incarnation: an old turn's handle publishes nothing into it.
+#[test]
+fn a_recreated_account_gets_nothing_from_an_old_turn() {
+    let tmp = tempfile::tempdir().unwrap();
+    let user = account(&tmp);
+    let a = Saves::start(&user, "c", START).unwrap();
+    std::fs::remove_dir_all(&user).unwrap();
+    std::fs::create_dir_all(&user).unwrap();
+    a.save(Some(&entry("late")), 1.0);
+    drop(a);
+    assert!(!partial::file_for(&user, "c").exists());
+}
+
+fn child(action: &str, user: &std::path::Path, data: &std::path::Path) {
+    let st = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "child_turn", "--ignored", "--nocapture"])
+        .env("PARTIAL_CHILD", action)
+        .env("PARTIAL_USER", user)
+        .env("PARTIAL_DATA", data)
+        .status()
+        .unwrap();
+    assert!(st.success(), "child {action}");
+}
+
+/// The other process of the two-process tests.
+#[test]
+#[ignore = "run by the two-process tests"]
+fn child_turn() {
+    let user = std::path::PathBuf::from(std::env::var("PARTIAL_USER").unwrap());
+    let data = std::path::PathBuf::from(std::env::var("PARTIAL_DATA").unwrap());
+    match std::env::var("PARTIAL_CHILD").unwrap().as_str() {
+        "newer" => {
+            let b = Saves::start(&user, "c", START).unwrap();
+            b.save(Some(&entry("b1")), 2.0);
+            // Still running when this process stops: its handle is never dropped here.
+            std::mem::forget(b);
+        }
+        "delete" => delete_chat(&data, "c"),
+        other => panic!("{other}"),
+    }
+}
+
+/// Another process starts a newer turn of the chat: this process's older handle neither overwrites nor
+/// removes the newer partial.
+#[test]
+fn another_process_superseding_fences_this_ones_handle() {
+    let tmp = tempfile::tempdir().unwrap();
+    let user = account(&tmp);
+    let a = Saves::start(&user, "c", START).unwrap();
+    a.save(Some(&entry("a1")), 1.0);
+    child("newer", &user, tmp.path());
+    a.save(Some(&entry("a2")), 3.0);
+    drop(a);
+    let now = partial::read_partial(&user, "c").expect("the newer partial survives");
+    assert_eq!(now.get("content").as_str(), Some("b1"));
+    assert_eq!(partial::state(&now, START), partial::State::Running, "its marker is untouched");
+}
+
+/// Another process deletes the chat: this process's handle resurrects nothing.
+#[test]
+fn another_process_deleting_fences_this_ones_handle() {
+    let tmp = tempfile::tempdir().unwrap();
+    let user = account(&tmp);
+    let a = Saves::start(&user, "c", START).unwrap();
+    a.save(Some(&entry("a1")), 1.0);
+    child("delete", &user, tmp.path());
+    a.save(Some(&entry("a2")), 2.0);
+    a.finish(Some(&entry("a3")), 3.0);
+    assert!(partial::read_partial(&user, "c").is_none());
+    assert!(Saves::start(&user, "c", START).is_err());
 }

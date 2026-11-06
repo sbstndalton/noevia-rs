@@ -184,7 +184,7 @@ fn take_back(dir: &Path, previous: Option<&[String]>) {
     }
 }
 
-fn tombstoned(dir: &Path, raw: &str) -> Result<bool, StoreError> {
+pub(crate) fn tombstoned(dir: &Path, raw: &str) -> Result<bool, StoreError> {
     let ids = tombstone_list(dir)?;
     Ok(ids_of(raw).iter().any(|i| ids.contains(i)))
 }

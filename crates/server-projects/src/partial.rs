@@ -276,33 +276,55 @@ pub fn end_partial(user_dir: &Path, chat_id: &str) -> &'static str {
     )
 }
 
-/// The turns whose partial saves may publish: one generation per chat partial file, in this process.
-/// Every write, rename and removal of a [`Saves`] happens under this lock after its generation is
-/// checked, so a superseded turn (a newer turn of the chat, or the chat's deletion: [`retire`]) can
-/// neither publish nor clean up, and two ticks never interleave.
-fn owners() -> std::sync::MutexGuard<'static, std::collections::HashMap<PathBuf, u64>> {
-    static OWNERS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<PathBuf, u64>>> =
-        std::sync::OnceLock::new();
-    OWNERS
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
 fn next_generation() -> u64 {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
-/// Any running turn's saves of the chat are superseded: none of them writes or removes its partial
-/// again. The store's chat delete calls this before it removes the file (a save in progress finishes
-/// first, under the same lock, and its file is then removed with the chat).
+/// The partial's owner: `<hex>.owner` beside it, holding the token of the one turn that may publish
+/// it. Written, checked and removed only under the user's transcript lock ([`crate::transcript`],
+/// flock: shared by every process of the store, and held by the chat's delete).
+pub fn owner_file(user_dir: &Path, chat_id: &str) -> PathBuf {
+    file_for(user_dir, chat_id).with_extension("owner")
+}
+
+fn read_owner(file: &Path) -> Option<String> {
+    std::fs::read_to_string(file).ok()
+}
+
+fn remove_owner(file: &Path) {
+    match std::fs::remove_file(file) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            eprintln!("[chat] could not remove a partial's owner ({}): {e}", file.display());
+        }
+        _ => {}
+    }
+}
+
+fn store_io(e: crate::store::StoreError) -> std::io::Error {
+    match e {
+        crate::store::StoreError::Gone => {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "the user directory is gone")
+        }
+        other => std::io::Error::other(format!("{other:?}")),
+    }
+}
+
+/// Any running turn's saves of the chat are superseded, in every process: none of them writes or
+/// removes its partial again. The caller holds the user's transcript lock (the store's chat delete,
+/// which then removes the file).
 pub fn supersede(user_dir: &Path, chat_id: &str) {
-    owners().remove(&file_for(user_dir, chat_id));
+    remove_owner(&owner_file(user_dir, chat_id));
 }
 
 /// chat-partial.cjs `startPartialSaves`: a running reply's partial. [`Saves::save`] is the timer's
 /// tick (every [`SAVE_MS`]); [`Saves::finish`] ends it.
+///
+/// Authority (review r2): [`Saves::start`] and every later write, rename and removal run under the
+/// user's transcript lock, after checking that the user directory still exists, that the chat is not
+/// tombstoned and that the owner file still names this turn's token. A newer turn (in any process),
+/// the chat's deletion or a recreated account each fail that check, so a superseded turn neither
+/// publishes nor cleans up. A check that cannot be made refuses.
 ///
 /// Dropped without `finish` (the turn's future was cancelled, or panicked, before its end ran), the
 /// last saved entry is kept, rewritten without this start's marker, so the history offers it as an
@@ -312,39 +334,58 @@ pub struct Saves {
     dir: PathBuf,
     chat: String,
     file: PathBuf,
+    owner: PathBuf,
     start: String,
-    generation: u64,
+    token: String,
     /// The bounded entry last written (without the marker), kept for a drop.
     last: std::sync::Mutex<Option<JValue>>,
     done: bool,
 }
 
 impl Saves {
-    /// Supersedes an earlier partial of the chat, and any turn of it still saving.
+    /// Supersedes an earlier partial of the chat, and any turn of it still saving. Refused
+    /// (`NotFound`) for a deleted chat or a gone user directory.
     pub fn start(user_dir: &Path, chat_id: &str, start: &str) -> std::io::Result<Saves> {
         let file = file_for(user_dir, chat_id);
-        let generation = next_generation();
-        let mut owners = owners();
+        let owner = owner_file(user_dir, chat_id);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let token = format!("{}-{}-{nanos}", std::process::id(), next_generation());
+        let _held = crate::transcript::lock_user(user_dir).map_err(store_io)?;
+        if crate::chat_delete::tombstoned(user_dir, chat_id).map_err(store_io)? {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "the chat was deleted",
+            ));
+        }
+        partials_dir(&file)?;
         clear_partial(user_dir, chat_id)?;
-        owners.insert(file.clone(), generation);
-        drop(owners);
+        replace_atomically(&owner, &token)?;
         Ok(Saves {
             dir: user_dir.to_owned(),
             chat: chat_id.to_owned(),
             file,
+            owner,
             start: start.to_owned(),
-            generation,
+            token,
             last: std::sync::Mutex::new(None),
             done: false,
         })
     }
 
-    fn current(&self, owners: &std::collections::HashMap<PathBuf, u64>) -> bool {
-        owners.get(&self.file) == Some(&self.generation)
+    /// The store's authority for one publication: the held lock, when this turn still owns the partial.
+    fn authorized(&self) -> Option<crate::lock::FileLock> {
+        let held = crate::transcript::lock_user(&self.dir).ok()?;
+        if crate::chat_delete::tombstoned(&self.dir, &self.chat).unwrap_or(true) {
+            return None;
+        }
+        (read_owner(&self.owner).as_deref() == Some(self.token.as_str())).then_some(held)
     }
 
     /// One tick: the record's `partialEntry()` (`None`: nothing to keep yet). Nothing is written once
-    /// the turn is superseded or retired.
+    /// the turn is superseded or its chat deleted.
     pub fn save(&self, entry: Option<&JValue>, now_ms: f64) {
         if self.done {
             return;
@@ -352,10 +393,9 @@ impl Saves {
         let Some(entry) = entry else {
             return;
         };
-        let owners = owners();
-        if !self.current(&owners) {
+        let Some(_held) = self.authorized() else {
             return;
-        }
+        };
         match write_partial(&self.dir, &self.chat, entry, &self.start, now_ms) {
             Ok(()) => {
                 let kept = with(
@@ -375,11 +415,10 @@ impl Saves {
     /// the file then keeps it without the marker, so the reply is offered as interrupted.
     pub fn finish(mut self, keep: Option<&JValue>, now_ms: f64) {
         self.done = true;
-        let mut owners = owners();
-        if !self.current(&owners) {
+        let Some(_held) = self.authorized() else {
             return;
-        }
-        owners.remove(&self.file);
+        };
+        remove_owner(&self.owner);
         if let Some(keep) = keep {
             let value = with(
                 bounded(keep, now_ms),
@@ -403,11 +442,10 @@ impl Drop for Saves {
             return;
         }
         self.done = true;
-        let mut owners = owners();
-        if !self.current(&owners) {
+        let Some(_held) = self.authorized() else {
             return;
-        }
-        owners.remove(&self.file);
+        };
+        remove_owner(&self.owner);
         let last = self
             .last
             .lock()
