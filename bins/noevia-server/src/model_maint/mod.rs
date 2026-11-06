@@ -31,6 +31,7 @@ pub mod ini;
 // Port contract row J: the one maintenance lease authority (replaces core model-maintenance-lease.cjs).
 pub mod lease;
 pub mod node_lease;
+pub mod preset_edit;
 pub mod reload;
 pub mod router;
 // #697 the memory watchdog (Core inference-budget-watch.cjs; `rust-budget-watch`).
@@ -180,7 +181,7 @@ pub struct Maint {
     pub(crate) card_base: String,
     pub(crate) source_client: reqwest::Client,
     /// Node's own maintenance gate: the arbiter when the inference gate gives no hold.
-    node: Arc<node_lease::NodeLeases>,
+    pub(crate) node: Arc<node_lease::NodeLeases>,
     /// The maintenance lease authority (row J): the one table of who holds the engine.
     pub authority: lease::Authority,
     /// The inbox entries that failed or could not be removed, by file name.
@@ -296,7 +297,11 @@ impl Maint {
         };
         let ini = first(get, &["LLAMACPP_PRESET_PATH"])
             .filter(|_| llama)
-            .map(|p| ini::Store::new(PathBuf::from(p), writer));
+            .map(|p| {
+                ini::Store::new(PathBuf::from(p), writer).with_publication(
+                    first(get, &["NOEVIA_PRESET_AUTHORITY_FILE"]).map(PathBuf::from),
+                )
+            });
         let state = |name: &str| {
             data_dir
                 .as_ref()
@@ -324,6 +329,14 @@ impl Maint {
             first(get, &["NOEVIA_LEGACY_UPSTREAM"]).as_deref(),
             get("NOEVIA_PROJECT_STORE_TOKEN").as_deref(),
         )?);
+        let journal = get("NOEVIA_PRESET_AUTHORITY_FILE")
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| ini.as_ref().map(|i| i.publication_path().to_owned()));
+        let authority = match journal {
+            Some(path) => lease::Authority::new().with_publication(path)?,
+            None => lease::Authority::new(),
+        };
         Ok(Maint {
             kind,
             router,
@@ -341,7 +354,7 @@ impl Maint {
             card_base,
             source_client,
             node,
-            authority: lease::Authority::new(),
+            authority,
             drain: std::sync::Mutex::new(evidence_live::DrainState::default()),
             local: Arc::new(AtomicBool::new(false)),
             data_dir,
@@ -368,28 +381,27 @@ impl Maint {
         let Some(reserved) = Reservation::take(&self.local) else {
             return Err(HoldError::Busy);
         };
-        let hold = self.acquire_locally_held(reason, max, need_gate).await?;
-        reserved.transfer();
-        Ok(hold)
-    }
-
-    async fn acquire_locally_held(
-        &self,
-        reason: &str,
-        max: Duration,
-        need_gate: bool,
-    ) -> Result<Hold, HoldError> {
-        self.acquire_inner(reason, max, need_gate, None, false)
-            .await
+        let ctx = self.acquirer();
+        let reason = reason.to_owned();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let result = ctx
+                .acquire_inner(&reason, max, need_gate, None, false)
+                .await;
+            if result.is_ok() {
+                reserved.transfer();
+            }
+            let _ = tx.send(result);
+        });
+        rx.await
+            .unwrap_or(Err(HoldRefusal::NodeUnavailable))
             .map_err(|r| match r {
                 HoldRefusal::Busy => HoldError::Busy,
                 HoldRefusal::Gate {
                     status, message, ..
                 } => HoldError::Gate { status, message },
                 HoldRefusal::NeedsGate => HoldError::NeedsGate,
-                HoldRefusal::NodeUnavailable | HoldRefusal::OverLimit | HoldRefusal::ShortLease => {
-                    HoldError::NodeUnavailable
-                }
+                _ => HoldError::NodeUnavailable,
             })
     }
 
@@ -406,6 +418,7 @@ impl Maint {
             return Err(HoldRefusal::Busy);
         };
         let hold = self
+            .acquirer()
             .acquire_inner(reason, Duration::MAX, false, Some(lease_for), false)
             .await?;
         reserved.transfer();
@@ -415,18 +428,52 @@ impl Maint {
     /// Delta review P1: a fresh hold for a recovery after a lost one, taken while the caller keeps this
     /// process's local admission closed itself (its admission fence): no new reservation, and the hold
     /// never clears local admission when it ends. The lost hold is never reused.
-    pub(super) async fn acquire_recovery(
+    pub(crate) async fn acquire_recovery(
         &self,
         reason: &str,
         lease_for: Duration,
     ) -> Result<Hold, HoldRefusal> {
         let mut hold = self
+            .acquirer()
             .acquire_inner(reason, Duration::MAX, false, Some(lease_for), true)
             .await?;
         drop(hold.defer_local_release());
         Ok(hold)
     }
 
+    fn acquirer(&self) -> Acquirer {
+        Acquirer {
+            gate: self.gate.clone(),
+            node: Arc::clone(&self.node),
+            authority: self.authority.clone(),
+            local: Arc::clone(&self.local),
+        }
+    }
+
+    /// Node's boot warning, when a gate fronts the engine and this process has no admin token for it.
+    /// `inference-gate-client.cjs` `adminTokenWarning` is the same text (a key name, never a value).
+    pub async fn missing_token_warning(&self) -> Option<&'static str> {
+        let gate = self.gate.as_ref()?;
+        if gate.has_admin() {
+            return None;
+        }
+        gate.held().await?;
+        Some(MISSING_TOKEN_WARNING)
+    }
+
+    /// Whether a job of this process holds the engine (the local flag).
+    pub fn local_held(&self) -> bool {
+        self.local.load(Ordering::Acquire)
+    }
+}
+
+struct Acquirer {
+    gate: Option<Arc<gate::Gate>>,
+    node: Arc<node_lease::NodeLeases>,
+    authority: lease::Authority,
+    local: Arc<AtomicBool>,
+}
+impl Acquirer {
     async fn acquire_inner(
         &self,
         reason: &str,
@@ -438,47 +485,64 @@ impl Maint {
         let Some(gate) = self.gate.as_ref() else {
             return Err(HoldRefusal::NeedsGate);
         };
-        match gate.hold(reason, Duration::ZERO).await {
-            Ok(Some(grant)) => Ok(Hold::gated(
-                Arc::clone(&self.local),
-                Arc::clone(gate),
-                grant,
-                reason,
-                deadline_after(max),
-            )),
+        if lease_for.is_some_and(|d| d > node_lease::MAX_LEASE) {
+            return Err(HoldRefusal::OverLimit);
+        }
+        if recovery {
+            self.authority.require_recovery();
+        }
+        let own = if recovery {
+            self.authority.try_recovery(lease_for, reason)
+        } else {
+            self.authority
+                .try_acquire(lease::Origin::Front, lease_for, reason)
+        }
+        .map_err(|_| HoldRefusal::Busy)?;
+        let mut pending = PendingLease {
+            authority: self.authority.clone(),
+            grant: Some(own.clone()),
+            node: Arc::clone(&self.node),
+            ticket: None,
+        };
+        let mut operation = ini::PublicationOperation {
+            authority: self.authority.clone(),
+            fence: self
+                .authority
+                .begin_operation(&own, "acquire", None)
+                .ok_or(HoldRefusal::NodeUnavailable)?,
+            settled: false,
+        };
+        let gate_result = gate
+            .hold_authorized(reason, Duration::ZERO, Some(&operation.fence))
+            .await;
+        if gate_result.is_ok() {
+            operation.settled = operation.authority.settle_operation(&operation.fence);
+        }
+        match gate_result {
+            Ok(Some(grant)) => {
+                let own = pending.complete();
+                Ok(Hold::gated(
+                    Arc::clone(&self.local),
+                    Arc::clone(gate),
+                    grant,
+                    own.map(|g| (self.authority.clone(), g)),
+                    reason,
+                    deadline_after(max),
+                ))
+            }
             Ok(None) => {
-                if need_gate && !gate.has_admin() && gate.held().await.is_some() {
-                    return Err(HoldRefusal::NeedsGate);
-                }
-                if lease_for.is_some_and(|d| d > node_lease::MAX_LEASE) {
-                    return Err(HoldRefusal::OverLimit);
-                }
-                // The authority first: a lease Node's gate or another job of this front holds is a 409
-                // before Node is asked anything.
+                // Without Gate, transfer Node's subordinate latch to its acknowledged barrier.
+                // A paired Gate uses the durable native journal for Node admission instead.
                 if recovery {
-                    let ticket = self.authority.require_recovery();
+                    let ticket = self.authority.recovery_ticket().unwrap_or_default();
                     if !self.node.recovery_barrier(true, &ticket).await {
                         return Err(HoldRefusal::NodeUnavailable);
                     }
                 }
-                let grant = if recovery {
-                    self.authority.try_recovery(lease_for, reason)
-                } else {
-                    self.authority
-                        .try_acquire(lease::Origin::Front, lease_for, reason)
-                };
-                let Ok(own) = grant else {
-                    return Err(HoldRefusal::Busy);
-                };
-                // Review P2: the authority grant and the latch it asks Node for are owned from here; a
-                // drop before the Hold exists gives both back (the latch by its ticket, in case Node
-                // granted it but the answer was lost).
-                let mut pending = PendingLease {
-                    authority: self.authority.clone(),
-                    grant: Some(own),
-                    node: Arc::clone(&self.node),
-                    ticket: None,
-                };
+
+                if need_gate && !gate.has_admin() && gate.held().await.is_some() {
+                    return Err(HoldRefusal::NeedsGate);
+                }
                 let ticket = pending.grant.as_ref().map(|g| g.id.clone());
                 pending.ticket.clone_from(&ticket);
                 match self
@@ -514,22 +578,6 @@ impl Maint {
                 message: f.message(),
             }),
         }
-    }
-
-    /// Node's boot warning, when a gate fronts the engine and this process has no admin token for it.
-    /// `inference-gate-client.cjs` `adminTokenWarning` is the same text (a key name, never a value).
-    pub async fn missing_token_warning(&self) -> Option<&'static str> {
-        let gate = self.gate.as_ref()?;
-        if gate.has_admin() {
-            return None;
-        }
-        gate.held().await?;
-        Some(MISSING_TOKEN_WARNING)
-    }
-
-    /// Whether a job of this process holds the engine (the local flag).
-    pub fn local_held(&self) -> bool {
-        self.local.load(Ordering::Acquire)
     }
 }
 

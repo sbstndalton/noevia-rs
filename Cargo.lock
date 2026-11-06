@@ -1838,6 +1838,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-publication"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "tempfile",
+]
+
+[[package]]
 name = "model-stream"
 version = "0.1.0"
 dependencies = [
@@ -1906,6 +1915,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "inference-admission",
+ "model-publication",
  "reqwest",
  "serde_json",
  "sha2",
@@ -1944,6 +1954,7 @@ dependencies = [
  "indexmap",
  "model-autoconfig",
  "model-files",
+ "model-publication",
  "proptest",
  "regex",
  "reqwest",
@@ -2003,6 +2014,7 @@ dependencies = [
  "llamacpp-presets",
  "long-profile",
  "mcp-frame",
+ "model-publication",
  "model-stream",
  "offsite-backup-format",
  "policy-leaves",

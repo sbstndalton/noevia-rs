@@ -77,10 +77,10 @@ async fn exact_get_requires_admin_and_builds_view_from_single_snapshot() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn writer_other_methods_and_trailing_path_still_proxy() {
+async fn other_methods_and_trailing_path_still_proxy() {
+    // The PUT is the front's preset editor (D2, tests/preset_editor.rs), not a proxied method.
     let (_d, f, up) = rig().await;
     for (method, path) in [
-        ("PUT", PATH),
         ("POST", PATH),
         ("HEAD", PATH),
         ("GET", "/api/models/preset/"),

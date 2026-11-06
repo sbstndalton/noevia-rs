@@ -285,3 +285,94 @@ async fn native_safe_defaults_never_asks_child_for_a_plan() {
     let again = send(state, &step, "").await;
     assert_eq!(again.status, 409);
 }
+
+#[tokio::test]
+async fn conditional_publication_checks_generation_at_loader_and_retains_a_queryable_receipt() {
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    let before = "[preset]\nmodel = /models/synthetic.gguf\n";
+    std::fs::write(&ini, before).unwrap();
+    let base = format!("{:x}", Sha256::digest(before.as_bytes()));
+    let journal = dir.path().join(".models.ini.noevia-publication.sqlite");
+    let db = rusqlite::Connection::open(&journal).unwrap();
+    db.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE preset_authority(singleton INTEGER PRIMARY KEY,incarnation TEXT,lease TEXT,generation TEXT,active INTEGER,until_ms TEXT,recovery INTEGER); CREATE TABLE preset_operations(id TEXT PRIMARY KEY,incarnation TEXT,lease TEXT,generation TEXT,kind TEXT,expected_revision TEXT,state TEXT,revision TEXT,created_ms INTEGER); CREATE TABLE preset_revision(singleton INTEGER PRIMARY KEY,revision TEXT)").unwrap();
+    db.execute(
+        "INSERT INTO preset_authority VALUES(1,'front','hold','2',1,?1,0)",
+        [(std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+            + 60_000)
+            .to_string()],
+    )
+    .unwrap();
+    for (operation, generation) in [("old-op", "1"), ("fresh-op", "2")] {
+        db.execute("INSERT INTO preset_operations VALUES(?1,'front','hold',?2,'preset-write',?3,'issued',NULL,0)",rusqlite::params![operation,generation,base]).unwrap();
+    }
+    drop(db);
+    let app = noevia_model_manager::router(state(
+        SectionWrites::new(&ini, (1024, 2048)),
+        "http://127.0.0.1:9",
+    ));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let after = format!("{before}ctx-size = 8192\n");
+    let proof = |operation: &str, generation: u64| serde_json::json!({"incarnation":"front","lease":"hold","generation":generation,"operation":operation,"kind":"preset-write","expectedRevision":base});
+    let stale = reqwest::Client::new()
+        .put(format!("{url}/api/v1/models-ini"))
+        .header("x-model-loader-token", TOKEN)
+        .header("content-type", "application/json")
+        .body(
+            serde_json::json!({"baseRevision":base,"text":after,"maintenance":proof("old-op",1)})
+                .to_string(),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        stale.status().as_u16(),
+        409,
+        "stale generation conflicts despite a matching INI revision"
+    );
+    assert_eq!(std::fs::read_to_string(&ini).unwrap(), before);
+    let fresh = proof("fresh-op", 2);
+    let response = reqwest::Client::new()
+        .put(format!("{url}/api/v1/models-ini"))
+        .header("x-model-loader-token", TOKEN)
+        .header("content-type", "application/json")
+        .body(serde_json::json!({"baseRevision":base,"text":after,"maintenance":fresh}).to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(std::fs::read_to_string(&ini).unwrap(), after);
+    let status = reqwest::Client::new()
+        .post(format!("{url}/api/v1/maintenance-operation/status"))
+        .header("content-type", "application/json")
+        .body(serde_json::json!({"maintenance":fresh}).to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status.status().as_u16(), 200);
+    let receipt: Value = serde_json::from_slice(&status.bytes().await.unwrap()).unwrap();
+    assert_eq!(receipt["state"], "settled");
+    assert_eq!(
+        receipt["revision"],
+        format!("{:x}", Sha256::digest(after.as_bytes()))
+    );
+    let mut forged = fresh.clone();
+    forged["operation"] = serde_json::json!("unknown-op");
+    let response = reqwest::Client::new()
+        .post(format!("{url}/api/v1/maintenance-operation/settle"))
+        .header("content-type", "application/json")
+        .body(serde_json::json!({"maintenance":forged,"state":"settled"}).to_string())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 401);
+    server.abort();
+    let _ = server.await;
+}

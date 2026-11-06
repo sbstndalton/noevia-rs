@@ -38,6 +38,7 @@ const HOP_BY_HOP: &[&str] = &[
 const GATE_HEADERS: &[&str] = &[
     "x-noevia-lease",
     "x-noevia-maintenance",
+    "x-noevia-maintenance-fence",
     "x-noevia-max-wait-ms",
     "x-noevia-client",
     "x-noevia-gate-admin",
@@ -81,6 +82,31 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
         }
         _ => None,
     };
+    let conditional_pull = parts.method == Method::POST
+        && path == "/models"
+        && parts.headers.contains_key("x-noevia-maintenance-fence");
+    if conditional_pull || !matches!(class, Class::Invalid(_) | Class::Passthrough) {
+        if let Some(path) = &gate.cfg.publication_authority {
+            let fence = parts
+                .headers
+                .get("x-noevia-maintenance-fence")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| serde_json::from_str::<model_publication::Fence>(v).ok());
+            if parts.headers.contains_key("x-noevia-maintenance-fence") && fence.is_none() {
+                return refuse(&gate, Refusal::MaintenanceHeld);
+            }
+            if conditional_pull
+                && fence
+                    .as_ref()
+                    .is_none_or(|f| f.kind != "pull" || f.expected_revision.is_none())
+            {
+                return refuse(&gate, Refusal::MaintenanceHeld);
+            }
+            if !model_publication::allows(path, fence.as_ref()) {
+                return refuse(&gate, Refusal::MaintenanceHeld);
+            }
+        }
+    }
     match class {
         Class::Invalid(refusal) => refuse(&gate, refusal),
         Class::Passthrough => send(&gate, &parts, outgoing, None, permit).await,
@@ -217,22 +243,82 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
             // models during the reload, so nothing new may be admitted meanwhile.
             let (tx, rx) = tokio::sync::oneshot::channel();
             let task_gate = Arc::clone(&gate);
+            let caller_limit = gate.cfg.reload_timeout;
             tokio::spawn(async move {
                 let maintenance = Maintenance {
                     gate: Arc::clone(&task_gate),
                 };
-                let timeout = task_gate.cfg.reload_timeout;
-                let response = match forward(&task_gate, &parts, outgoing, permit, timeout).await {
-                    Ok(upstream) => buffer_response(upstream, timeout).await,
-                    Err(refusal) => refuse(&task_gate, refusal),
-                };
+                // Caller deadlines do not cancel the engine-side effect. The task owns exclusion
+                // until the engine answers; any transport-unknown outcome retains the durable
+                // operation incident in the shared authority until a fresh covered recovery reread.
+                let settle_limit = Duration::from_secs(24 * 60 * 60);
+                let mut response =
+                    match forward(&task_gate, &parts, outgoing, permit, settle_limit).await {
+                        Ok(upstream) => buffer_response(upstream, settle_limit).await,
+                        Err(refusal) => refuse(&task_gate, refusal),
+                    };
+                if !record_settlement(
+                    &task_gate,
+                    &parts.headers,
+                    response
+                        .headers()
+                        .contains_key("x-noevia-maintenance-uncertain"),
+                )
+                .await
+                {
+                    response = uncertain(respond::json(
+                        503,
+                        &serde_json::json!({"error":"Reload settlement requires recovery."}),
+                    ));
+                }
                 drop(maintenance);
                 let _ = tx.send(response);
             });
-            rx.await
-                .unwrap_or_else(|_| respond::refusal(Refusal::EngineUnavailable))
+            match tokio::time::timeout(caller_limit, rx).await {
+                Ok(Ok(response)) => response,
+                _ => uncertain(respond::json(
+                    503,
+                    &serde_json::json!({"error":"Reload outcome is uncertain; recovery is required."}),
+                )),
+            }
         }
     }
+}
+
+async fn record_settlement(gate: &Arc<Gate>, headers: &HeaderMap, uncertain_outcome: bool) -> bool {
+    let Some(proof) = headers
+        .get("x-noevia-maintenance-fence")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| serde_json::from_str::<model_publication::Fence>(v).ok())
+    else {
+        return true;
+    };
+    let Some(url) = &gate.cfg.publication_url else {
+        return false;
+    };
+    let terminal = if uncertain_outcome {
+        "recovery"
+    } else {
+        "settled"
+    };
+    let body = serde_json::json!({"maintenance":proof,"state":terminal}).to_string();
+    let Ok(request) = axum::http::Request::builder()
+        .method(Method::POST)
+        .uri(format!("{url}/api/v1/maintenance-operation/settle"))
+        .header("content-type", "application/json")
+        .body(Body::from(body))
+    else {
+        return false;
+    };
+    matches!(tokio::time::timeout(Duration::from_secs(5),gate.client.request(request)).await,Ok(Ok(reply)) if reply.status().is_success())
+}
+
+fn uncertain(mut response: Response) -> Response {
+    response.headers_mut().insert(
+        "x-noevia-maintenance-uncertain",
+        axum::http::HeaderValue::from_static("1"),
+    );
+    response
 }
 
 /// The longest the router may take to answer an unload.

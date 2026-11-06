@@ -53,6 +53,7 @@ rust-free-chats = []
 rust-project-writes = []
 
 [dependencies]
+model-publication = { path = "../../crates/model-publication" }
 autotune-plan = { path = "../../crates/autotune-plan" }
 embedding-worker = { path = "../../crates/embedding-worker" }
 context-fit = { path = "../../crates/context-fit" }

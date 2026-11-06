@@ -89,6 +89,12 @@ pub fn from_env(get: impl Fn(&str) -> Option<String>) -> Result<GateConfig, Stri
         return Err("GATE_MAX_BUFFERED_BYTES must be at least GATE_MAX_BODY_BYTES".into());
     }
     Ok(GateConfig {
+        publication_authority: read("NOEVIA_PRESET_AUTHORITY_FILE").map(std::path::PathBuf::from),
+        publication_url: read("NOEVIA_PRESET_AUTHORITY_URL")
+            .map(|url| {
+                crate::upstream_base(&url).ok_or_else(|| "Invalid preset authority URL".to_owned())
+            })
+            .transpose()?,
         listen,
         upstream,
         admin_token,

@@ -234,7 +234,7 @@ impl NodeLeases {
     }
 
     /// Establish the recovery-required Node barrier, with acknowledgement.
-    pub(super) async fn recovery_barrier(&self, required: bool, ticket: &str) -> bool {
+    pub(crate) async fn recovery_barrier(&self, required: bool, ticket: &str) -> bool {
         // Completion requires a fresh repair proof; never send the old unscoped DELETE.
         if !required {
             return false;
@@ -246,7 +246,7 @@ impl NodeLeases {
         req.send().await.is_ok_and(|r| r.status().as_u16() == 204)
     }
 
-    pub(super) async fn complete_recovery(
+    pub(crate) async fn complete_recovery(
         &self,
         ticket: &str,
         lease: &str,

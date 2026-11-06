@@ -1344,6 +1344,11 @@ mod tests {
                 "GET {p}"
             );
             for m in ["HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+                // D2: the preset editor is the front's PUT of the one preset path.
+                if m == "PUT" && *p == crate::preset_read_routes::PATH {
+                    assert_eq!(dispatch_under(m, p, on), Some(Native::Models), "{m} {p}");
+                    continue;
+                }
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
@@ -1448,7 +1453,7 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
-                (crate::preset_read_routes::PATH, &["GET"][..]),
+                (crate::preset_read_routes::PATH, &["GET", "PUT"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]

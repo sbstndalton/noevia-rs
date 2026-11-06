@@ -27,6 +27,8 @@
 //! Every table operation is synchronous under a std mutex that is never held across an await.
 
 use rand_core::RngCore;
+use std::ops::{Deref, DerefMut};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use tokio::time::Instant;
@@ -94,6 +96,7 @@ struct Entry {
     /// A front lease whose Node restarted: it still excludes (until released or expired) but covers
     /// nothing, so no further step starts on it.
     fenced: bool,
+    recovery_ticket: Option<String>,
 }
 
 /// The active Node process start: its incarnation and the (start time, boot) it registered with.
@@ -104,6 +107,8 @@ struct NodeStart {
 }
 
 struct State {
+    journal_available: bool,
+    pending_operations: bool,
     recovery_required: bool,
     recovery_ticket: Option<String>,
     holder: Option<Entry>,
@@ -113,12 +118,81 @@ struct State {
 }
 
 struct Inner {
+    journal: Option<PathBuf>,
+    journal_anchor: Option<Mutex<model_publication::Anchor>>,
     state: Mutex<State>,
     epoch: String,
     changed: tokio::sync::Notify,
     ttl: Duration,
     hard: Duration,
     max: Duration,
+}
+
+struct AuthorityState<'a> {
+    state: MutexGuard<'a, State>,
+    journal: Option<model_publication::Guard>,
+    epoch: &'a str,
+    valid: bool,
+    recovering: bool,
+}
+impl Deref for AuthorityState<'_> {
+    type Target = State;
+    fn deref(&self) -> &State {
+        &self.state
+    }
+}
+impl DerefMut for AuthorityState<'_> {
+    fn deref_mut(&mut self) -> &mut State {
+        &mut self.state
+    }
+}
+impl Drop for AuthorityState<'_> {
+    fn drop(&mut self) {
+        let Some(journal) = self.journal.take() else {
+            return;
+        };
+        if !self.valid {
+            return;
+        }
+        let clear = self.recovering && !self.state.recovery_required;
+        if self.state.pending_operations && self.state.holder.is_none() && !clear {
+            self.state.recovery_required = true;
+            if self.state.recovery_ticket.is_none() {
+                self.state.recovery_ticket = Some(random_hex());
+            }
+        }
+        let record = model_publication::AuthorityRecord {
+            incarnation: self.epoch.to_owned(),
+            lease: self
+                .state
+                .holder
+                .as_ref()
+                .map_or_else(String::new, |e| e.id.clone()),
+            generation: self.state.generation,
+            active: self.state.holder.as_ref().is_some_and(|e| !e.fenced),
+            until_ms: self.state.holder.as_ref().map_or(0, |e| {
+                model_publication::now_ms().saturating_add(
+                    u64::try_from(
+                        e.renewed_until
+                            .min(e.hard_at)
+                            .saturating_duration_since(Instant::now())
+                            .as_millis(),
+                    )
+                    .unwrap_or(u64::MAX),
+                )
+            }),
+            recovery: self.state.recovery_required,
+        };
+        let saved = (!clear || journal.clear_operations().is_ok())
+            && journal.save_authority(&record).is_ok();
+        if !saved || journal.commit().is_err() {
+            self.state.journal_available = false;
+            self.state.recovery_required = true;
+            if let Some(e) = self.state.holder.as_mut() {
+                e.fenced = true;
+            }
+        }
+    }
 }
 
 /// The authority. Cheap to clone; every clone is the same table.
@@ -163,7 +237,11 @@ impl Authority {
     pub fn with_timing(ttl: Duration, hard: Duration, max: Duration) -> Self {
         Authority {
             inner: Arc::new(Inner {
+                journal: None,
+                journal_anchor: None,
                 state: Mutex::new(State {
+                    journal_available: true,
+                    pending_operations: false,
                     recovery_required: false,
                     recovery_ticket: None,
                     holder: None,
@@ -194,10 +272,215 @@ impl Authority {
         RENEW.min((self.inner.ttl / 3).max(Duration::from_millis(1)))
     }
 
-    fn lock(&self) -> MutexGuard<'_, State> {
-        match self.inner.state.lock() {
-            Ok(s) => s,
-            Err(p) => p.into_inner(),
+    fn lock(&self) -> AuthorityState<'_> {
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let journal = self
+            .inner
+            .journal
+            .as_ref()
+            .and_then(|path| model_publication::Guard::at(path).ok());
+        let valid = match (&self.inner.journal, &journal) {
+            (None, _) => true,
+            (Some(_), Some(j)) => j
+                .authority()
+                .ok()
+                .flatten()
+                .is_some_and(|r| r.incarnation == self.inner.epoch),
+            _ => false,
+        };
+        state.journal_available = valid;
+        if !valid {
+            state.recovery_required = true;
+            if let Some(e) = state.holder.as_mut() {
+                e.fenced = true;
+            }
+        }
+        state.pending_operations = journal
+            .as_ref()
+            .is_some_and(|j| j.pending().unwrap_or(true));
+        let recovering = state.recovery_required;
+        AuthorityState {
+            state,
+            journal,
+            valid,
+            epoch: &self.inner.epoch,
+            recovering,
+        }
+    }
+
+    /// Bind this authority to the shared publication journal. A prior start's unfinished work
+    /// becomes a recovery incident, never a grant inherited by this incarnation.
+    pub fn with_publication(mut self, path: PathBuf) -> Result<Self, String> {
+        let journal =
+            model_publication::Guard::at(&path).map_err(|_| "preset authority unavailable")?;
+        let old = journal
+            .authority()
+            .map_err(|_| "preset authority unavailable")?;
+        let recovery = old.is_some_and(|r| r.active || r.recovery)
+            || journal
+                .pending()
+                .map_err(|_| "preset authority unavailable")?;
+        journal
+            .save_authority(&model_publication::AuthorityRecord {
+                incarnation: self.inner.epoch.clone(),
+                recovery,
+                ..Default::default()
+            })
+            .map_err(|_| "preset authority unavailable")?;
+        journal
+            .commit()
+            .map_err(|_| "preset authority unavailable")?;
+        let Some(inner) = Arc::get_mut(&mut self.inner) else {
+            return Err("preset authority already shared".into());
+        };
+        inner.journal_anchor = Some(Mutex::new(
+            model_publication::Anchor::open(&path).map_err(|_| "preset authority unavailable")?,
+        ));
+        inner.journal = Some(path);
+        let state = inner
+            .state
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        state.recovery_required = recovery;
+        if recovery {
+            state.recovery_ticket = Some(random_hex());
+        }
+        Ok(self)
+    }
+
+    pub(crate) fn begin_operation(
+        &self,
+        grant: &Grant,
+        kind: &str,
+        expected_revision: Option<&str>,
+    ) -> Option<model_publication::Fence> {
+        let state = self.lock();
+        if !state.journal_available
+            || !Self::matches(&state, &grant.id, Some(grant.generation))
+            || state.holder.as_ref().is_none_or(|e| {
+                e.fenced || Instant::now() >= e.renewed_until || Instant::now() >= e.hard_at
+            })
+        {
+            return None;
+        }
+        let fence = model_publication::Fence {
+            incarnation: grant.epoch.clone(),
+            lease: grant.id.clone(),
+            generation: grant.generation,
+            operation: random_hex(),
+            kind: kind.to_owned(),
+            expected_revision: expected_revision.map(str::to_owned),
+        };
+        if let Some(journal) = &state.journal {
+            journal.begin(&fence).ok()?;
+        }
+        Some(fence)
+    }
+
+    pub(crate) fn unknown_operation(&self, fence: &model_publication::Fence) {
+        let mut state = self.lock();
+        if !state.valid
+            || !state
+                .journal
+                .as_ref()
+                .is_some_and(|j| j.operation_exists(fence).unwrap_or(true))
+        {
+            return;
+        }
+        if let Some(journal) = &state.journal {
+            let _ = journal.finish(fence, "recovery", None);
+        }
+        state.recovery_required = true;
+        state
+            .recovery_ticket
+            .get_or_insert_with(|| fence.lease.clone());
+        if let Some(e) = state.holder.as_mut() {
+            if e.id == fence.lease && e.generation == fence.generation {
+                e.fenced = true;
+            }
+        }
+    }
+    pub(crate) fn fence_grant(&self, grant: &Grant) {
+        let mut state = self.lock();
+        if !state.valid || !Self::matches(&state, &grant.id, Some(grant.generation)) {
+            return;
+        }
+        state.recovery_required = true;
+        state
+            .recovery_ticket
+            .get_or_insert_with(|| grant.id.clone());
+        if let Some(e) = state.holder.as_mut() {
+            e.fenced = true;
+        }
+    }
+
+    pub(crate) fn settle_operation(&self, fence: &model_publication::Fence) -> bool {
+        let state = self.lock();
+        state.valid
+            && state
+                .journal
+                .as_ref()
+                .is_some_and(|j| j.settle(fence).is_ok())
+    }
+
+    pub(crate) fn pending_operation_kinds(&self) -> std::io::Result<Vec<String>> {
+        let state = self.lock();
+        match &state.journal {
+            Some(j) => j.pending_kinds(),
+            None => Ok(Vec::new()),
+        }
+    }
+    #[allow(dead_code)]
+    pub(crate) fn operation_status(
+        &self,
+        fence: &model_publication::Fence,
+    ) -> std::io::Result<Option<model_publication::Receipt>> {
+        let path = self
+            .inner
+            .journal
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("Maintenance authority unavailable."))?;
+        model_publication::read_receipt(path, fence)
+    }
+
+    /// Wait for the original destination receipt; never repeat the effect or acquire a new permit.
+    /// None is unknown/recovery-required, including reconciliation that cannot prove original success.
+    #[allow(dead_code)]
+    pub(crate) async fn wait_for_settlement(
+        &self,
+        fence: &model_publication::Fence,
+        limit: Duration,
+    ) -> Option<model_publication::Receipt> {
+        let deadline = Instant::now() + limit;
+        loop {
+            let (authority, proof) = (self.clone(), fence.clone());
+            let receipt =
+                tokio::task::spawn_blocking(move || authority.operation_status(&proof)).await;
+            match receipt {
+                Ok(Ok(Some(receipt)))
+                    if matches!(receipt.state.as_str(), "settled" | "conflict") =>
+                {
+                    return Some(receipt)
+                }
+                Ok(Ok(Some(receipt))) if matches!(receipt.state.as_str(), "issued" | "running") => {
+                }
+                _ => {
+                    self.unknown_operation(fence);
+                    return None;
+                }
+            }
+            if Instant::now() >= deadline {
+                self.unknown_operation(fence);
+                return None;
+            }
+            tokio::time::sleep(
+                Duration::from_millis(25).min(deadline.saturating_duration_since(Instant::now())),
+            )
+            .await;
         }
     }
 
@@ -318,7 +601,7 @@ impl Authority {
         self.take(origin, requested, reason, false)
     }
 
-    pub(super) fn try_recovery(
+    pub(crate) fn try_recovery(
         &self,
         requested: Option<Duration>,
         reason: &str,
@@ -326,13 +609,14 @@ impl Authority {
         self.take(Origin::Front, requested, reason, true)
     }
 
-    pub(super) fn recovery_pending(&self) -> bool {
-        self.lock().recovery_required
+    pub(crate) fn recovery_pending(&self) -> bool {
+        let state = self.lock();
+        state.recovery_required || state.pending_operations
     }
-    pub(super) fn recovery_ticket(&self) -> Option<String> {
+    pub(crate) fn recovery_ticket(&self) -> Option<String> {
         self.lock().recovery_ticket.clone()
     }
-    pub(super) fn require_recovery(&self) -> String {
+    pub(crate) fn require_recovery(&self) -> String {
         let mut state = self.lock();
         state.recovery_required = true;
         if state.recovery_ticket.is_none() {
@@ -345,7 +629,7 @@ impl Authority {
         }
         state.recovery_ticket.clone().unwrap_or_default()
     }
-    pub(super) fn complete_recovery(&self, ticket: &str) -> bool {
+    pub(crate) fn complete_recovery(&self, ticket: &str) -> bool {
         let mut state = self.lock();
         if state.recovery_ticket.as_deref() != Some(ticket) {
             return false;
@@ -378,7 +662,10 @@ impl Authority {
             }
         }
         Self::expire(&mut state, now);
-        if state.holder.is_some() || (state.recovery_required && !recovery) {
+        if !state.journal_available
+            || state.holder.is_some()
+            || (state.recovery_required && !recovery)
+        {
             return Err(Refusal::Busy);
         }
         let bound_node = state.node.as_ref().map(|n| n.incarnation);
@@ -392,6 +679,7 @@ impl Authority {
             reason: reason.chars().take(300).collect(),
             bound_node: (origin == Origin::Front).then_some(bound_node).flatten(),
             fenced: false,
+            recovery_ticket: recovery.then(|| state.recovery_ticket.clone()).flatten(),
         };
         let grant = Grant {
             id: entry.id.clone(),
@@ -522,13 +810,14 @@ impl Authority {
     pub fn covers(&self, id: &str, generation: u64, step: Duration) -> bool {
         let now = Instant::now();
         let state = self.lock();
-        state.holder.as_ref().is_some_and(|e| {
-            e.id == id
-                && e.generation == generation
-                && !e.fenced
-                && now + step < e.renewed_until
-                && now + step < e.hard_at
-        })
+        state.journal_available
+            && state.holder.as_ref().is_some_and(|e| {
+                e.id == id
+                    && e.generation == generation
+                    && !e.fenced
+                    && now + step < e.renewed_until
+                    && now + step < e.hard_at
+            })
     }
 
     /// Whether any lease is held now.
@@ -563,7 +852,17 @@ impl Authority {
 /// The bodies are tiny (`BODY_LIMIT` in Core).
 pub const BODY_LIMIT: usize = 4096;
 pub const ROUTE_PREFIX: &str = "/v1/maintenance-lease";
-pub const OPS: &[&str] = &["acquire", "renew", "release", "held", "session"];
+pub const OPS: &[&str] = &[
+    "acquire",
+    "renew",
+    "release",
+    "held",
+    "session",
+    "complete-recovery",
+    "operation-begin",
+    "operation-status",
+    "operation-settle",
+];
 
 fn answer(status: u16, body: &serde_json::Value) -> axum::http::Response<axum::body::Body> {
     let mut res = axum::http::Response::new(axum::body::Body::from(body.to_string()));
@@ -661,6 +960,84 @@ pub async fn answer_node(
             Err(_) => retired(),
         };
     }
+    if op.starts_with("operation-") {
+        let Some(value) = body.get("maintenance") else {
+            return bad("maintenance required");
+        };
+        if op == "operation-begin" {
+            let Some(lease) = value.get("lease").and_then(serde_json::Value::as_str) else {
+                return bad("lease required");
+            };
+            let Some(generation) = value.get("generation").and_then(serde_json::Value::as_u64)
+            else {
+                return bad("generation required");
+            };
+            if value.get("incarnation").and_then(serde_json::Value::as_str)
+                != Some(authority.epoch())
+            {
+                return answer(409, &json!({"error":"Stale maintenance operation."}));
+            }
+            let kind = body
+                .get("kind")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            if kind.is_empty()
+                || kind.len() > 64
+                || !kind
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+            {
+                return bad("invalid operation kind");
+            }
+            let expected = body
+                .get("expectedRevision")
+                .and_then(serde_json::Value::as_str);
+            if expected.is_some_and(|r| r.len() != 64 || !r.bytes().all(|b| b.is_ascii_hexdigit()))
+            {
+                return bad("invalid expected revision");
+            }
+            let grant = Grant {
+                id: lease.to_owned(),
+                generation,
+                epoch: authority.epoch().to_owned(),
+                ttl: authority.ttl(),
+                renew_every: authority.renew_every(),
+                hard: HARD,
+            };
+            return match authority.begin_operation(&grant, kind, expected) {
+                Some(fence) => answer(201, &json!({"maintenance":fence,"state":"issued"})),
+                None => answer(409, &json!({"error":"Stale maintenance operation."})),
+            };
+        }
+        let Ok(fence) = serde_json::from_value::<model_publication::Fence>(value.clone()) else {
+            return bad("invalid maintenance operation");
+        };
+        let state = authority.lock();
+        let Some(journal) = state.journal.as_ref().filter(|_| state.valid) else {
+            return answer(503, &json!({"error":"Maintenance authority unavailable."}));
+        };
+        if op == "operation-settle" {
+            let terminal = body
+                .get("state")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("recovery");
+            if !matches!(terminal, "settled" | "conflict" | "recovery") {
+                return bad("invalid terminal state");
+            }
+            let revision = body.get("revision").and_then(serde_json::Value::as_str);
+            if journal.finish(&fence, terminal, revision).is_err() {
+                return answer(503, &json!({"error":"Maintenance authority unavailable."}));
+            }
+        }
+        return match journal.status(&fence) {
+            Ok(Some(receipt)) => answer(
+                200,
+                &json!({"state":receipt.state,"revision":receipt.revision}),
+            ),
+            Ok(None) => answer(404, &json!({"state":"unknown","recoveryRequired":true})),
+            Err(_) => answer(503, &json!({"error":"Maintenance authority unavailable."})),
+        };
+    }
     let Some(incarnation) = body.get("incarnation").and_then(serde_json::Value::as_u64) else {
         return bad("incarnation required");
     };
@@ -675,13 +1052,19 @@ pub async fn answer_node(
             };
             let max = max.map(|m| Duration::from_millis(u64::try_from(m).unwrap_or(0)));
             let wait = Duration::from_millis(wait.and_then(|w| u64::try_from(w).ok()).unwrap_or(0));
-            match authority.acquire(origin, max, reason, wait).await {
+            let grant = if body.get("recovery").and_then(serde_json::Value::as_bool) == Some(true) {
+                authority.take(origin, max, reason, true)
+            } else {
+                authority.acquire(origin, max, reason, wait).await
+            };
+            match grant {
                 Ok(g) => answer(
                     201,
                     &json!({
                         "lease": g.id,
                         "generation": g.generation,
                         "epoch": g.epoch,
+                        "incident": authority.recovery_ticket(),
                         "ttlMs": u64::try_from(g.ttl.as_millis()).unwrap_or(u64::MAX),
                         "renewMs": u64::try_from(g.renew_every.as_millis()).unwrap_or(u64::MAX),
                         "hardMs": u64::try_from(g.hard.as_millis()).unwrap_or(u64::MAX),
@@ -697,6 +1080,30 @@ pub async fn answer_node(
                 ),
                 Err(Refusal::Retired) => retired(),
             }
+        }
+        "complete-recovery" => {
+            let Some(id) = id() else {
+                return bad("lease required");
+            };
+            let Some(generation) = body.get("generation").and_then(serde_json::Value::as_u64)
+            else {
+                return bad("generation required");
+            };
+            let incident = body.get("incident").and_then(serde_json::Value::as_str);
+            let mut state = authority.lock();
+            let covered = Authority::owned_by(&state, &origin, id, Some(generation))
+                && state.holder.as_ref().is_some_and(|e| {
+                    !e.fenced
+                        && e.recovery_ticket.as_deref() == incident
+                        && Instant::now() < e.renewed_until
+                        && Instant::now() < e.hard_at
+                });
+            if !covered || state.recovery_ticket.as_deref() != incident {
+                return answer(409, &json!({"error":"Stale maintenance operation."}));
+            }
+            state.recovery_required = false;
+            state.recovery_ticket = None;
+            answer(200, &json!({}))
         }
         "renew" => {
             let Some(id) = id() else {
@@ -738,6 +1145,53 @@ mod tests {
         Origin::Node {
             incarnation: a.node_session(boot, started).unwrap().incarnation,
         }
+    }
+
+    #[tokio::test]
+    async fn publication_receipt_waits_for_the_same_operation_after_a_caller_timeout() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("authority.sqlite");
+        let a = Authority::new().with_publication(path.clone()).unwrap();
+        let g = a.try_acquire(Origin::Front, None, "publish").unwrap();
+        let proof = a.begin_operation(&g, "reload", None).unwrap();
+        let (file, p) = (path.clone(), proof.clone());
+        let destination = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let guard = model_publication::Guard::at(&file).unwrap();
+            guard.finish(&p, "settled", None).unwrap();
+            guard.commit().unwrap();
+        });
+        let receipt = a
+            .wait_for_settlement(&proof, Duration::from_secs(2))
+            .await
+            .unwrap();
+        assert_eq!(receipt.state, "settled");
+        destination.await.unwrap();
+        assert_eq!(
+            a.operation_status(&proof).unwrap().unwrap().state,
+            "settled"
+        );
+        assert!(a.covers(&g.id, g.generation, Duration::ZERO));
+    }
+    #[tokio::test]
+    async fn publication_unknown_timeout_fences_its_holder_and_survives_a_fresh_authority() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("authority.sqlite");
+        let a = Authority::new().with_publication(path.clone()).unwrap();
+        let g = a.try_acquire(Origin::Front, None, "publish").unwrap();
+        let proof = a.begin_operation(&g, "reload", None).unwrap();
+        assert!(a
+            .wait_for_settlement(&proof, Duration::from_millis(5))
+            .await
+            .is_none());
+        assert!(!a.covers(&g.id, g.generation, Duration::ZERO));
+        assert!(a.recovery_pending());
+        let restarted = Authority::new().with_publication(path).unwrap();
+        assert!(restarted.node_session("node", 1).unwrap().front_held);
+        assert_eq!(
+            restarted.try_acquire(Origin::Front, None, "new work"),
+            Err(Refusal::Busy)
+        );
     }
 
     #[test]
