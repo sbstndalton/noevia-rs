@@ -22,7 +22,8 @@ pub fn confident_escalation(scores: &JValue) -> bool {
         JValue::Num(n) if n.is_finite() => Some(*n),
         _ => None,
     };
-    let (Some(c), Some(v), Some(e)) = (score("continue"), score("verify"), score("escalate")) else {
+    let (Some(c), Some(v), Some(e)) = (score("continue"), score("verify"), score("escalate"))
+    else {
         return false;
     };
     let runner_up = c.max(v);
@@ -54,7 +55,10 @@ pub struct Decision {
     pub source: &'static str,
 }
 
-const FALLBACK: Decision = Decision { action: "continue", source: "existing" };
+const FALLBACK: Decision = Decision {
+    action: "continue",
+    source: "existing",
+};
 
 fn s(v: &str) -> JValue {
     JValue::Str(v.to_owned())
@@ -81,7 +85,13 @@ async fn race<A: Future, B: Future>(a: A, b: B) -> Result<A::Output, B::Output> 
 }
 
 /// `createStepSupervision(...).decide({ round, messages, signal, goal, wrote })`.
-pub async fn decide(io: &impl SuperviseIo, round: u32, messages: &[JValue], goal: Option<&str>, wrote: bool) -> Decision {
+pub async fn decide(
+    io: &impl SuperviseIo,
+    round: u32,
+    messages: &[JValue],
+    goal: Option<&str>,
+    wrote: bool,
+) -> Decision {
     if !io.enabled() || io.aborted() || round >= 2 {
         return FALLBACK;
     }
@@ -89,34 +99,54 @@ pub async fn decide(io: &impl SuperviseIo, round: u32, messages: &[JValue], goal
         .iter()
         .filter(|m| matches!(as_str(get(m, "role")), Some("tool" | "assistant")))
         .map(|m| {
-            let content = as_str(get(m, "content")).map(|c| tail_units(c, 1500)).unwrap_or_default();
-            JValue::obj([("role", get(m, "role").clone()), ("content", JValue::Str(content))])
+            let content = as_str(get(m, "content"))
+                .map(|c| tail_units(c, 1500))
+                .unwrap_or_default();
+            JValue::obj([
+                ("role", get(m, "role").clone()),
+                ("content", JValue::Str(content)),
+            ])
         })
         .collect();
     if outputs.len() > 8 {
         outputs.drain(..outputs.len() - 8);
     }
     let errored = |c: &str| c.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("error"));
-    if outputs.iter().any(|m| as_str(get(m, "role")) == Some("tool") && as_str(get(m, "content")).is_some_and(errored)) {
+    if outputs.iter().any(|m| {
+        as_str(get(m, "role")) == Some("tool") && as_str(get(m, "content")).is_some_and(errored)
+    }) {
         return FALLBACK;
     }
     let ms = match io.deadline_ms() {
         JValue::Num(n) if n.fract() == 0.0 && (1.0..=2000.0).contains(&n) => n as u64,
         _ => return FALLBACK,
     };
-    let request = messages.iter().rev().find(|m| as_str(get(m, "role")) == Some("user"));
+    let request = messages
+        .iter()
+        .rev()
+        .find(|m| as_str(get(m, "role")) == Some("user"));
     let goal = match goal {
         Some(g) => tail_units(g, 1500),
-        None => request.and_then(|r| as_str(get(r, "content"))).map(|c| tail_units(c, 1500)).unwrap_or_default(),
+        None => request
+            .and_then(|r| as_str(get(r, "content")))
+            .map(|c| tail_units(c, 1500))
+            .unwrap_or_default(),
     };
     let input = JValue::obj([
         ("round", JValue::Num(f64::from(round))),
         ("goal", JValue::Str(goal)),
         ("outputs", JValue::Arr(outputs)),
-        ("choices", JValue::Arr(CHOICES.iter().map(|c| s(c)).collect())),
+        (
+            "choices",
+            JValue::Arr(CHOICES.iter().map(|c| s(c)).collect()),
+        ),
     ]);
     let entry = |action: &str, fell: Option<&str>, cause: Option<&str>| {
-        let mut e = vec![("round", JValue::Num(f64::from(round))), ("action", s(action)), ("fellBack", fell.map_or(JValue::Null, s))];
+        let mut e = vec![
+            ("round", JValue::Num(f64::from(round))),
+            ("action", s(action)),
+            ("fellBack", fell.map_or(JValue::Null, s)),
+        ];
         if fell.is_some() {
             e.push(("cause", cause.map_or(JValue::Null, s)));
         }
@@ -126,7 +156,11 @@ pub async fn decide(io: &impl SuperviseIo, round: u32, messages: &[JValue], goal
     let result = match result {
         Ok(Ok(r)) => r,
         Ok(Err(cause)) => {
-            let cause = if io.aborted() { "aborted".to_owned() } else { cause };
+            let cause = if io.aborted() {
+                "aborted".to_owned()
+            } else {
+                cause
+            };
             io.log(entry("continue", Some("error"), Some(&cause)));
             return FALLBACK;
         }
@@ -150,17 +184,29 @@ pub async fn decide(io: &impl SuperviseIo, round: u32, messages: &[JValue], goal
         io.log(entry("continue", Some("no-decision"), Some(cause)));
         return FALLBACK;
     };
-    if action == "escalate" && !wrote && !confident_escalation(get(result.as_ref().unwrap_or(&JValue::Null), "scores")) {
+    if action == "escalate"
+        && !wrote
+        && !confident_escalation(get(result.as_ref().unwrap_or(&JValue::Null), "scores"))
+    {
         io.log(entry("continue", Some("weak-escalate"), None));
         return FALLBACK;
     }
     io.log(entry(action, None, None));
-    Decision { action, source: "experimental" }
+    Decision {
+        action,
+        source: "experimental",
+    }
 }
 
 /// `superviseNextStep(supervisor, input)`: the messages for the next round (a `verify` adds the check
 /// request) and whether the turn pauses (`escalate`).
-pub async fn next_step(io: Option<&impl SuperviseIo>, round: u32, messages: Vec<JValue>, goal: Option<&str>, wrote: bool) -> (Vec<JValue>, bool, Option<Decision>) {
+pub async fn next_step(
+    io: Option<&impl SuperviseIo>,
+    round: u32,
+    messages: Vec<JValue>,
+    goal: Option<&str>,
+    wrote: bool,
+) -> (Vec<JValue>, bool, Option<Decision>) {
     let Some(io) = io else {
         return (messages, false, None);
     };
@@ -202,10 +248,20 @@ pub struct VisionProbe {
 
 impl VisionProbe {
     /// `probe(baseUrl, headers, model)`.
-    pub async fn probe(&self, io: &impl ProbeIo, base_url: &str, headers: &JValue, model: &str) -> Probe {
-        let key = wtf16::stringify(&JValue::Arr(vec![s(base_url), headers.clone(), s(model)])).unwrap_or_default();
+    pub async fn probe(
+        &self,
+        io: &impl ProbeIo,
+        base_url: &str,
+        headers: &JValue,
+        model: &str,
+    ) -> Probe {
+        let key = wtf16::stringify(&JValue::Arr(vec![s(base_url), headers.clone(), s(model)]))
+            .unwrap_or_default();
         {
-            let cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let cache = self
+                .cache
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some((_, r, until)) = cache.iter().find(|(k, _, _)| *k == key) {
                 if *until > io.now_ms() {
                     return r.clone();
@@ -215,7 +271,9 @@ impl VisionProbe {
         if let Some(Err(message)) = io.admit(base_url, model).await {
             return Probe {
                 supported: false,
-                reason: Some(message.filter(|m| !m.is_empty()).unwrap_or_else(|| "The model cannot be loaded right now, so the image probe did not run.".into())),
+                reason: Some(message.filter(|m| !m.is_empty()).unwrap_or_else(|| {
+                    "The model cannot be loaded right now, so the image probe did not run.".into()
+                })),
             };
         }
         let mut root = base_url.trim_end_matches('/');
@@ -232,7 +290,16 @@ impl VisionProbe {
                         "content",
                         JValue::Arr(vec![
                             JValue::obj([("type", s("text")), ("text", s("ok"))]),
-                            JValue::obj([("type", s("image_url")), ("image_url", JValue::obj([("url", JValue::Str(format!("data:image/png;base64,{PIXEL}")))]))]),
+                            JValue::obj([
+                                ("type", s("image_url")),
+                                (
+                                    "image_url",
+                                    JValue::obj([(
+                                        "url",
+                                        JValue::Str(format!("data:image/png;base64,{PIXEL}")),
+                                    )]),
+                                ),
+                            ]),
                         ]),
                     ),
                 ])]),
@@ -254,8 +321,16 @@ impl VisionProbe {
                 reason: Some("The image probe could not reach the inference server or timed out. Retry when the server is available.".into()),
             },
         };
-        let until = io.now_ms() + if result.supported { 300_000.0 } else { 30_000.0 };
-        let mut cache = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let until = io.now_ms()
+            + if result.supported {
+                300_000.0
+            } else {
+                30_000.0
+            };
+        let mut cache = self
+            .cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // A Map's set keeps a key's place and takes the new value.
         match cache.iter_mut().find(|(k, _, _)| *k == key) {
             Some(slot) => {

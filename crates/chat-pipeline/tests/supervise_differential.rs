@@ -56,7 +56,11 @@ impl SuperviseIo for Sup<'_> {
         }
         if behaviour == "throw" {
             // causeOf(error), as the decision client reports it.
-            return Err(arr(self.k.get("logs")).first().and_then(|l| l.get("cause").as_str()).unwrap_or("exception").to_owned());
+            return Err(arr(self.k.get("logs"))
+                .first()
+                .and_then(|l| l.get("cause").as_str())
+                .unwrap_or("exception")
+                .to_owned());
         }
         if self.k.get("abortDuring") == &JValue::Bool(true) {
             self.aborted.set(true);
@@ -93,24 +97,49 @@ fn step_supervision_matches_node() {
         let d = if k.get("next") == &JValue::Bool(true) {
             let (messages, pause, d) = block(sv::next_step(Some(&io), round, msgs, goal, wrote));
             let step = k.get("step");
-            assert_eq!(&JValue::Arr(messages), step.get("messages"), "step messages {i}");
+            assert_eq!(
+                &JValue::Arr(messages),
+                step.get("messages"),
+                "step messages {i}"
+            );
             assert_eq!(Some(pause), step.get("pause").as_bool(), "pause {i}");
             d.expect("decision")
         } else {
             block(sv::decide(&io, round, &msgs, goal, wrote))
         };
         let want = k.get("decision");
-        assert_eq!((Some(d.action), Some(d.source)), (want.get("action").as_str(), want.get("source").as_str()), "decision {i}: {k:?}");
-        assert_eq!(&JValue::Arr(io.logs.borrow().clone()), k.get("logs"), "logs {i}: {k:?}");
-        assert_eq!(&JValue::Arr(io.inputs.borrow().clone()), k.get("inputs"), "provider input {i}");
+        assert_eq!(
+            (Some(d.action), Some(d.source)),
+            (want.get("action").as_str(), want.get("source").as_str()),
+            "decision {i}: {k:?}"
+        );
+        assert_eq!(
+            &JValue::Arr(io.logs.borrow().clone()),
+            k.get("logs"),
+            "logs {i}: {k:?}"
+        );
+        assert_eq!(
+            &JValue::Arr(io.inputs.borrow().clone()),
+            k.get("inputs"),
+            "provider input {i}"
+        );
     }
 }
 
 /// Dropped while the decision service is asked: nothing is logged and no later decision is taken.
 #[test]
 fn dropping_supervision_at_the_decision_await_logs_nothing() {
-    let k = wtf16::parse(r#"{"enabled":true,"deadline":500,"behaviour":"result","result":{"action":"verify"}}"#).expect("case");
-    let io = Sup { k: &k, aborted: Cell::new(false), inputs: RefCell::new(Vec::new()), logs: RefCell::new(Vec::new()), stuck: true };
+    let k = wtf16::parse(
+        r#"{"enabled":true,"deadline":500,"behaviour":"result","result":{"action":"verify"}}"#,
+    )
+    .expect("case");
+    let io = Sup {
+        k: &k,
+        aborted: Cell::new(false),
+        inputs: RefCell::new(Vec::new()),
+        logs: RefCell::new(Vec::new()),
+        stuck: true,
+    };
     struct Never<'a>(&'a Sup<'a>);
     // A deadline that never fires, so the poll stays at the provider's await.
     impl SuperviseIo for Never<'_> {
@@ -134,14 +163,20 @@ fn dropping_supervision_at_the_decision_await_logs_nothing() {
         }
     }
     let never = Never(&io);
-    let msgs = vec![JValue::obj([("role", JValue::Str("user".into())), ("content", JValue::Str("q".into()))])];
+    let msgs = vec![JValue::obj([
+        ("role", JValue::Str("user".into())),
+        ("content", JValue::Str("q".into())),
+    ])];
     {
         let mut f = pin!(sv::decide(&never, 0, &msgs, None, false));
         let mut cx = Context::from_waker(Waker::noop());
         assert!(f.as_mut().poll(&mut cx).is_pending());
     }
     assert_eq!(io.inputs.borrow().len(), 1, "the service was asked");
-    assert!(io.logs.borrow().is_empty(), "a dropped supervision logged a decision");
+    assert!(
+        io.logs.borrow().is_empty(),
+        "a dropped supervision logged a decision"
+    );
 }
 
 struct ProbeCase<'a> {
@@ -164,7 +199,10 @@ impl ProbeIo for ProbeCase<'_> {
         }
     }
     async fn post(&self, url: &str, headers: &JValue, body: &str) -> Result<(u16, String), ()> {
-        let mut h = vec![("Content-Type".to_owned(), JValue::Str("application/json".into()))];
+        let mut h = vec![(
+            "Content-Type".to_owned(),
+            JValue::Str("application/json".into()),
+        )];
         if let JValue::Obj(items) = headers {
             for (k, v) in items {
                 wtf16::set(&mut h, k, v.clone());
@@ -192,20 +230,40 @@ fn the_vision_probe_matches_node() {
     let c = wtf16::parse(include_str!("fixtures/supervise-cases.json")).expect("fixture");
     for (i, v) in arr(c.get("vision")).iter().enumerate() {
         let probe = VisionProbe::default();
-        let io = ProbeCase { admit: v.get("admit").as_str(), now: Cell::new(0.0), statuses: RefCell::new(Vec::new()), fetched: RefCell::new(Vec::new()) };
+        let io = ProbeCase {
+            admit: v.get("admit").as_str(),
+            now: Cell::new(0.0),
+            statuses: RefCell::new(Vec::new()),
+            fetched: RefCell::new(Vec::new()),
+        };
         for (k, step) in arr(v.get("steps")).iter().enumerate() {
             io.now.set(step.get("now").as_num().unwrap_or(0.0));
-            *io.statuses.borrow_mut() = arr(step.get("status")).iter().map(|s| s.as_str().unwrap_or("").to_owned()).collect();
+            *io.statuses.borrow_mut() = arr(step.get("status"))
+                .iter()
+                .map(|s| s.as_str().unwrap_or("").to_owned())
+                .collect();
             io.fetched.borrow_mut().clear();
             let a = arr(step.get("args"));
-            let got = block(probe.probe(&io, a[0].as_str().unwrap_or(""), &a[1], a[2].as_str().unwrap_or("")));
+            let got = block(probe.probe(
+                &io,
+                a[0].as_str().unwrap_or(""),
+                &a[1],
+                a[2].as_str().unwrap_or(""),
+            ));
             let want = step.get("result");
             assert_eq!(
                 got,
-                Probe { supported: want.get("supported") == &JValue::Bool(true), reason: want.get("reason").as_str().map(str::to_owned) },
+                Probe {
+                    supported: want.get("supported") == &JValue::Bool(true),
+                    reason: want.get("reason").as_str().map(str::to_owned)
+                },
                 "probe {i}/{k}: {v:?}"
             );
-            assert_eq!(&JValue::Arr(io.fetched.borrow().clone()), step.get("fetched"), "request {i}/{k}");
+            assert_eq!(
+                &JValue::Arr(io.fetched.borrow().clone()),
+                step.get("fetched"),
+                "request {i}/{k}"
+            );
         }
     }
 }
