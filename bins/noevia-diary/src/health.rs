@@ -292,3 +292,102 @@ mod tests {
         assert_eq!(served_entries(&serde_json::json!({"data": {}})), None);
     }
 }
+
+/// Runtime facts remain owned by the embedding service until its port. No counts or slot
+/// metadata are trusted from the forwarder; all persisted detail is read here without creation.
+#[derive(Deserialize)]
+struct RetrievalFacts {
+    model: String,
+    profile: String,
+    vec_available: bool,
+}
+#[derive(Serialize)]
+pub struct RetrievalStats {
+    chunks: i64,
+    vec_available: bool,
+    dim: Option<Value>,
+    model: String,
+    profile: String,
+}
+#[derive(Serialize)]
+pub struct TenantDetail {
+    journal_pending: i64,
+    journal_quarantined: i64,
+    retrieval: RetrievalStats,
+}
+#[derive(Serialize)]
+pub struct Response {
+    #[serde(flatten)]
+    pub process: Health,
+    #[serde(flatten, skip_serializing_if = "Option::is_none")]
+    pub tenant: Option<TenantDetail>,
+}
+pub fn tenant_detail(path: &std::path::Path, facts: &str) -> Option<TenantDetail> {
+    use rusqlite::{Connection, OpenFlags, OptionalExtension};
+    use sha2::{Digest, Sha256};
+    let facts: RetrievalFacts = serde_json::from_str(facts).ok()?;
+    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).ok()?;
+    let count = |sql| conn.query_row(sql, [], |r| r.get::<_, i64>(0)).ok();
+    let journal_pending = count("SELECT COUNT(*) FROM journal WHERE applied = 0")?;
+    let journal_quarantined = count(
+        "SELECT COUNT(*) FROM journal WHERE applied = 1 AND last_error LIKE 'quarantined:%'",
+    )?;
+    let chunks = count("SELECT COUNT(*) FROM chunks")?;
+    let mut dim = None;
+    if facts.vec_available {
+        let id = format!(
+            "{:x}",
+            Sha256::digest(format!("{}\0{}", facts.profile, facts.model).as_bytes())
+        );
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT value FROM vec_meta WHERE key = ?",
+                [format!("slot:{}", id.get(..16)?)],
+                |r| r.get(0),
+            )
+            .optional()
+            .ok()?
+            .flatten();
+        if let Some(raw) = raw {
+            // Python accepts unusual JSON numbers and types: decline anything outside the
+            // ordinary slot schema rather than return a different dimension.
+            let slot: Value = serde_json::from_str(&raw).ok()?;
+            let obj = slot.as_object()?;
+            let table = obj.get("table").and_then(Value::as_str).unwrap_or("");
+            let valid_name = |name: &str, prefix: &str| {
+                name.strip_prefix(prefix).is_some_and(|s| {
+                    s.len() == 16
+                        && s.bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                })
+            };
+            let valid_table = table == "vec_items" || valid_name(table, "vec_");
+            let valid_map = match obj.get("map") {
+                None | Some(Value::Null) => true,
+                Some(Value::String(s)) => valid_name(s, "vecmap_"),
+                _ => return None,
+            };
+            let d = obj.get("dim").and_then(Value::as_i64);
+            if !valid_table || !valid_map {
+                return None;
+            }
+            if d.is_some_and(|d| d > 0 && d <= 65536) || obj.get("dim") == Some(&Value::Bool(true))
+            {
+                dim = obj.get("dim").cloned();
+            } else {
+                return None;
+            }
+        }
+    }
+    Some(TenantDetail {
+        journal_pending,
+        journal_quarantined,
+        retrieval: RetrievalStats {
+            chunks,
+            vec_available: facts.vec_available,
+            dim,
+            model: facts.model,
+            profile: facts.profile,
+        },
+    })
+}

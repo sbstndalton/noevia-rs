@@ -182,6 +182,7 @@ pub enum Route {
     StorageStatus,
     WorkspaceExport,
     /// D5: PUT /api/file, POST /api/directory, POST /api/entries/append, POST /api/entries/edit.
+    ReadFile,
     PutFile,
     Directory,
     Append,
@@ -200,6 +201,7 @@ impl Route {
         matches!(
             self,
             Route::Files
+                | Route::ReadFile
                 | Route::TrashList
                 | Route::StorageStatus
                 | Route::WorkspaceExport
@@ -224,6 +226,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/files") => Some(Route::Files),
         ("GET", "/api/storage-status") => Some(Route::StorageStatus),
         ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
+        ("POST", "/api/file") => Some(Route::ReadFile),
         ("PUT", "/api/file") => Some(Route::PutFile),
         ("POST", "/api/directory") => Some(Route::Directory),
         ("POST", "/api/entries/append") => Some(Route::Append),
@@ -316,27 +319,23 @@ enum Plan {
 
 fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
     let header_uid = header(headers, "x-cowork-user-id");
-    match r {
-        Route::Health => {
-            if app.models.is_none() {
-                return Plan::Decline;
-            }
-            // Tenant detail (journal, retrieval stats) stays with Python. Served here with a
-            // tenant: only the refusals `_tenant_state` makes before touching storage, whose reply
-            // carries no detail (an unasserted legacy fallback, an oversized storage header). The
-            // handler re-checks them.
-            if health_tenant(app, headers).is_none()
-                || (header_uid.is_empty() && !app.tenant_key.is_empty())
-                || header(headers, "x-cowork-storage").len() > MAX_STORAGE_HEADER_LEN
-            {
-                Plan::Serve(None)
-            } else {
-                Plan::Decline
-            }
+    if r == Route::Health {
+        if app.models.is_none() {
+            return Plan::Decline;
         }
-        Route::Months
+        if health_tenant(app, headers).is_none()
+            || (header_uid.is_empty() && !app.tenant_key.is_empty())
+            || header(headers, "x-cowork-storage").len() > MAX_STORAGE_HEADER_LEN
+        {
+            return Plan::Serve(None);
+        }
+    }
+    match r {
+        Route::Health
+        | Route::Months
         | Route::Day
         | Route::Files
+        | Route::ReadFile
         | Route::StorageStatus
         | Route::WorkspaceExport
         | Route::PutFile
@@ -384,7 +383,9 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
             }
             let uid = header_uid.to_ascii_lowercase();
             let root = app.data_root.join("users").join(&uid);
-            let ready = if r.write() {
+            let ready = if r == Route::Health {
+                managed::ready_for_write(&root, &uid, false)
+            } else if r.write() {
                 if app.writers.is_fenced(&uid) {
                     return Plan::Decline;
                 }
@@ -493,7 +494,7 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     // FastAPI validates a write's body against the handler's parameter (its 422) before the
     // handler runs `check_auth` (its 401): a body it would refuse is Python's to answer, whatever
     // the token.
-    let write = if r.write() {
+    let write = if r.write() || r == Route::ReadFile {
         match write_body(r, &headers, body).await {
             Some(w) => Some(w),
             None => return decline(),
@@ -517,16 +518,51 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let Some(models) = app.models.as_ref() else {
                 return internal_error();
             };
-            if let Some(uid) = health_tenant(&app, &headers) {
-                // Tenant detail needs Python's per-process state (sqlite-vec, the live embedding
-                // target, recovery): only the refusals that leave it out are answered here.
-                match resolve_tenant(&app, &uid, asserted, &headers, None) {
-                    Err(resp) if resp.status().is_client_error() => {}
-                    _ => return decline(),
+            let detail = if let Some(uid) = health_tenant(&app, &headers) {
+                match resolve_tenant(&app, &uid, asserted, &headers, tenant) {
+                    Err(resp) if resp.status().is_client_error() => None,
+                    Err(_) => return decline(),
+                    Ok(t) => {
+                        let facts = header(&headers, "x-noevia-diary-retrieval");
+                        let path = t.store.db_path().with_file_name("managed-index.db");
+                        match tokio::task::spawn_blocking(move || {
+                            health::tenant_detail(&path, &facts)
+                        })
+                        .await
+                        {
+                            Ok(Some(d)) => Some(d),
+                            _ => return decline(),
+                        }
+                    }
                 }
-            }
+            } else {
+                None
+            };
             let h = health::health(&app.http, models, !app.auth_token.is_empty()).await;
-            json_response(200, &h)
+            json_response(
+                200,
+                &health::Response {
+                    process: h,
+                    tenant: detail,
+                },
+            )
+        }
+        Route::ReadFile => {
+            let Some(body) = write else {
+                return decline();
+            };
+            let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
+                Ok(t) => t,
+                Err(resp) => return *resp,
+            };
+            match tokio::task::spawn_blocking(move || {
+                workspace::file_read(&tenant.store, &body.json)
+            })
+            .await
+            {
+                Ok(r) => reply(r),
+                Err(_) => internal_error(),
+            }
         }
         Route::Files | Route::StorageStatus | Route::WorkspaceExport => {
             let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {

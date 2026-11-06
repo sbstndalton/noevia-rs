@@ -1,5 +1,5 @@
 //! D4b read routes over a ready managed tenant, byte-identical to app.py: GET /api/files
-//! (workspace_files.py file_list; POST /api/file's file_read is ported but not wired), GET /api/storage-status
+//! (workspace_files.py file_list and POST /api/file file_read), GET /api/storage-status
 //! (managed_storage.py status) and GET /api/workspace-export (workspace_export.py archive with
 //! WORKSPACE_EXPORT_IMPL=rust, i.e. the diary-workspace-export library).
 //!
@@ -240,9 +240,6 @@ pub fn files(store: &Managed, path: &str) -> Reply {
     json_reply(200, &Files { files: out })
 }
 
-/// POST /api/file (a read with a body) is not wired: D5 forwards bodies only on write routes.
-/// `file_read` is its byte-identical port, kept for when it is.
-///
 /// FastAPI's `body: dict` for POST /api/file: Some(object) when the body is JSON that Python
 /// parses the same way (UTF-8 JSON object, JSON media type or none). None: decline (Python's
 /// 422 and its lenient decoders stay with it).

@@ -362,3 +362,32 @@ async fn d4b_files_and_status_are_native_and_unreproducible_states_decline() {
     assert_eq!(s, 200);
     assert!(body.starts_with(r#"{"ok":true"#) && !body.contains("journal_pending"));
 }
+
+#[tokio::test]
+async fn file_post_reads_without_writer_permission() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(
+        dir.path(),
+        &[("memory.md", "Synthetic note")],
+        r#"{"index_enabled":false}"#,
+    );
+    let addr = start(dir.path()).await;
+    let client = reqwest::Client::new();
+    for (path, status) in [
+        ("memory.md", 200),
+        ("missing.md", 200),
+        ("../escape.md", 400),
+    ] {
+        let mut req = client.post(format!("http://{addr}/api/file"));
+        for (key, value) in forwarded() {
+            req = req.header(key, value);
+        }
+        let resp = req
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"path":path}).to_string())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status().as_u16(), status);
+    }
+}
