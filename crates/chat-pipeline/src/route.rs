@@ -130,7 +130,10 @@ pub fn stale_roles_error(missing: &[(&str, String)]) -> Option<String> {
     let list: Vec<String> = missing
         .iter()
         .map(|(role, model)| {
-            let label = LABELS.iter().find(|(r, _)| r == role).map_or("", |(_, l)| l);
+            let label = LABELS
+                .iter()
+                .find(|(r, _)| r == role)
+                .map_or("", |(_, l)| l);
             format!("{label} ({model})")
         })
         .collect();
@@ -206,7 +209,7 @@ pub struct ChatGpt {
 }
 
 /// What this section reads of the turn.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Turn {
     /// The resolved project (`project`), or `None`.
     pub project: Option<Project>,
@@ -278,7 +281,11 @@ pub trait RouteIo {
 pub enum Outcome {
     /// `json(res, status, {error})`: a plain answer, or (`streamed`) an `error` event on the stream
     /// the card opened (`{type:'error', text}`, then the end).
-    Refused { status: u16, error: String, streamed: bool },
+    Refused {
+        status: u16,
+        error: String,
+        streamed: bool,
+    },
     /// The client went away while the route was decided: the stream (if any) ends, nothing more.
     Aborted,
     /// Node throws here (a provider id with no row: `provider.id` of `null`): the turn's unhandled error.
@@ -301,7 +308,7 @@ pub struct Go {
 }
 
 /// What [`decide`] sent and how it ended.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Decided {
     /// The events sent on the stream the card opened (`route_pending`, `route_remembered`), in order.
     /// `route_pending` carries no id here: the caller's registry names it.
@@ -354,8 +361,17 @@ async fn resolve_route(
     if flag.is_none() {
         let verdict = io.check().await;
         match verdict {
-            Some(Verdict { flagged: Some(false), .. }) => {}
-            Some(v) => flag = Some(v.flag.filter(|f| !f.is_empty()).unwrap_or_else(|| "unavailable".into())),
+            Some(Verdict {
+                flagged: Some(false),
+                ..
+            }) => {}
+            Some(v) => {
+                flag = Some(
+                    v.flag
+                        .filter(|f| !f.is_empty())
+                        .unwrap_or_else(|| "unavailable".into()),
+                )
+            }
             None => flag = Some("unavailable".into()),
         }
     }
@@ -387,7 +403,10 @@ async fn resolve_route(
                 ]));
                 io.await_choice().await
             } else {
-                Some(Answer { choice: Some("timeout".into()), remember: false })
+                Some(Answer {
+                    choice: Some("timeout".into()),
+                    remember: false,
+                })
             }
         }
     };
@@ -423,14 +442,26 @@ pub async fn decide(t: &Turn, io: &impl RouteIo) -> Decided {
     let mut streamed = false;
     let outcome = decide_inner(t, io, &mut events, &mut streamed).await;
     let outcome = match outcome {
-        Outcome::Refused { status, error, .. } => Outcome::Refused { status, error, streamed },
+        Outcome::Refused { status, error, .. } => Outcome::Refused {
+            status,
+            error,
+            streamed,
+        },
         other => other,
     };
-    Decided { events, streamed, outcome }
+    Decided {
+        events,
+        streamed,
+        outcome,
+    }
 }
 
 fn refuse(status: u16, error: impl Into<String>) -> Outcome {
-    Outcome::Refused { status, error: error.into(), streamed: false }
+    Outcome::Refused {
+        status,
+        error: error.into(),
+        streamed: false,
+    }
 }
 
 async fn decide_inner(
@@ -484,11 +515,16 @@ async fn decide_inner(
                         mode,
                         when_sensitive: when,
                         has_cloud,
-                        has_local: roles.is_some_and(|r| r.get("fast").is_some() || r.get("smart").is_some()),
+                        has_local: roles
+                            .is_some_and(|r| r.get("fast").is_some() || r.get("smart").is_some()),
                         hard_local,
                         force_local: t.force_local,
                         allow_cloud: t.allow_cloud,
-                        pre_flag: if mode == "hybrid" { t.pre_flag.as_deref() } else { None },
+                        pre_flag: if mode == "hybrid" {
+                            t.pre_flag.as_deref()
+                        } else {
+                            None
+                        },
                         route_user: t.route_user.as_deref(),
                     },
                 )
@@ -502,7 +538,10 @@ async fn decide_inner(
                         "Kept local, but no local model is set for Auto. Nothing was sent.",
                     );
                 }
-                if let (Some(remember), Some(_)) = (decided.remember, t.chat_id.as_deref().filter(|c| !c.is_empty())) {
+                if let (Some(remember), Some(_)) = (
+                    decided.remember,
+                    t.chat_id.as_deref().filter(|c| !c.is_empty()),
+                ) {
                     events.push(if remember == "local" {
                         obj(vec![
                             ("type", JValue::Str("route_remembered".into())),
@@ -516,15 +555,26 @@ async fn decide_inner(
                         ])
                     });
                 }
-                let row = if decided.route == Some("cloud") { cloud_row } else { None };
+                let row = if decided.route == Some("cloud") {
+                    cloud_row
+                } else {
+                    None
+                };
                 route_target = Some((decided, row, settings.clone()));
             }
         }
     }
     let provider = match route_target.as_ref().and_then(|(_, row, _)| row.clone()) {
-        Some(row) => ProviderRow { external: true, ..row },
+        Some(row) => ProviderRow {
+            external: true,
+            ..row
+        },
         None => {
-            let id = if wants_auto { def } else { project_provider.filter(|p| !p.is_empty()).unwrap_or(def) };
+            let id = if wants_auto {
+                def
+            } else {
+                project_provider.filter(|p| !p.is_empty()).unwrap_or(def)
+            };
             match io.provider(id) {
                 Some(p) => p,
                 None => return Outcome::Thrown,
@@ -560,7 +610,10 @@ async fn decide_inner(
             .as_deref()
             .is_some_and(|w| !w.is_empty() && Some(w) != owner);
         if provider.shared || owner.is_none() || foreign {
-            return refuse(403, "A ChatGPT connection belongs to one account and cannot be used here.");
+            return refuse(
+                403,
+                "A ChatGPT connection belongs to one account and cannot be used here.",
+            );
         }
         if chatgpt.state != "connected" {
             return refuse(
@@ -573,9 +626,13 @@ async fn decide_inner(
             );
         }
     }
-    let mut model = project.and_then(|p| p.model.clone()).filter(|m| !m.is_empty());
+    let mut model = project
+        .and_then(|p| p.model.clone())
+        .filter(|m| !m.is_empty());
     let mut routed_role = None;
-    let cloud_row = route_target.as_ref().is_some_and(|(_, row, _)| row.is_some());
+    let cloud_row = route_target
+        .as_ref()
+        .is_some_and(|(_, row, _)| row.is_some());
     if wants_auto {
         let Some(roles) = t.roles_later.as_ref() else {
             return refuse(
@@ -586,13 +643,20 @@ async fn decide_inner(
         let catalogue = io.catalogue().await;
         let missing = missing_roles(roles, catalogue.as_deref());
         let creative_gone = missing.iter().any(|(r, _)| *r == "creative");
-        let rest: Vec<_> = missing.into_iter().filter(|(r, _)| *r != "creative").collect();
+        let rest: Vec<_> = missing
+            .into_iter()
+            .filter(|(r, _)| *r != "creative")
+            .collect();
         if let Some(stale) = stale_roles_error(&rest) {
             return refuse(409, stale);
         }
         let mut role = t.router_role.clone();
         if roles.get(&role).is_none() {
-            role = if roles.get("smart").is_some() { "smart".into() } else { "fast".into() };
+            role = if roles.get("smart").is_some() {
+                "smart".into()
+            } else {
+                "fast".into()
+            };
         }
         if !cloud_row
             && !creative_gone
@@ -617,7 +681,11 @@ async fn decide_inner(
             if provider.id == def {
                 "no model selected and none loaded — pick one in the model popup".to_owned()
             } else {
-                let name = provider.label.as_deref().filter(|l| !l.is_empty()).unwrap_or(&provider.id);
+                let name = provider
+                    .label
+                    .as_deref()
+                    .filter(|l| !l.is_empty())
+                    .unwrap_or(&provider.id);
                 format!("no model selected for {name} — pick one in the model popup")
             },
         );
@@ -649,7 +717,13 @@ async fn decide_inner(
         }
         None => (None, false),
     };
-    Outcome::Go(Go { provider, model, role: routed_role, route, hybrid_ungranted })
+    Outcome::Go(Go {
+        provider,
+        model,
+        role: routed_role,
+        route,
+        hybrid_ungranted,
+    })
 }
 
 fn units(s: &str) -> Vec<u16> {

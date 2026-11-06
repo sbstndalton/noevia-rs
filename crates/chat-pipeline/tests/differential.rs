@@ -859,7 +859,9 @@ fn original_noncharacters_beside_kelvin_and_long_s_are_kept_as_node_keeps_them()
 
 mod route_stage {
     //! chat.cjs:900-1150 against core's own handleChat (fixtures/record-refusals.cjs).
-    use chat_pipeline::route::{self, Answer, Cloud, Entry, Outcome, ProviderRow, Roles, Settings, Turn, Verdict};
+    use chat_pipeline::route::{
+        self, Answer, Cloud, Entry, Outcome, ProviderRow, Roles, Settings, Turn, Verdict,
+    };
     use js_json::{wtf16, JValue};
 
     fn s(v: &JValue) -> Option<String> {
@@ -949,11 +951,17 @@ mod route_stage {
         for k in arr(c.get("cases")) {
             let space = s(k.get("space")).unwrap();
             let explicit = ["routing", "model", "providerId"].iter().any(|f| has(k, f));
-            let project = (space == "diaryProject" || space == "project" || explicit).then(|| route::Project {
-                id: if space == "diaryProject" { diary.clone() } else { "fixture-project".into() },
-                routing: s(k.get("routing")),
-                model: s(k.get("model")),
-                provider: s(k.get("providerId")),
+            let project = (space == "diaryProject" || space == "project" || explicit).then(|| {
+                route::Project {
+                    id: if space == "diaryProject" {
+                        diary.clone()
+                    } else {
+                        "fixture-project".into()
+                    },
+                    routing: s(k.get("routing")),
+                    model: s(k.get("model")),
+                    provider: s(k.get("providerId")),
+                }
             });
             let flags = k.get("chatFlags");
             let rm = k.get("rm");
@@ -980,7 +988,11 @@ mod route_stage {
                 default_provider: "default".into(),
                 diary_project_id: diary.clone(),
                 roles_first: roles(k.get("roles")),
-                roles_later: if k.get("rolesGone") == &JValue::Bool(true) { None } else { roles(k.get("roles")) },
+                roles_later: if k.get("rolesGone") == &JValue::Bool(true) {
+                    None
+                } else {
+                    roles(k.get("roles"))
+                },
                 routing_modes: matches!(rm, JValue::Obj(_)).then(|| settings(rm.get("settings"))),
                 force_local: flags.get("forceLocal") == &JValue::Bool(true),
                 allow_cloud: flags.get("allowCloud") == &JValue::Bool(true),
@@ -1036,15 +1048,25 @@ mod route_stage {
             let got = block(route::decide(&turn, &io));
             let out = k.get("out");
             let what = wtf16::stringify(k).unwrap();
-            let want_events: Vec<String> = arr(out.get("events")).iter().map(|e| wtf16::stringify(e).unwrap()).collect();
-            let got_events: Vec<String> = got.events.iter().map(|e| wtf16::stringify(e).unwrap()).collect();
+            let want_events: Vec<String> = arr(out.get("events"))
+                .iter()
+                .map(|e| wtf16::stringify(e).unwrap())
+                .collect();
+            let got_events: Vec<String> = got
+                .events
+                .iter()
+                .map(|e| wtf16::stringify(e).unwrap())
+                .collect();
             assert_eq!(got_events, want_events, "events {what}");
             let kind = if let JValue::Obj(_) = out.get("refused") {
                 let r = out.get("refused");
                 assert_eq!(
                     got.outcome,
                     Outcome::Refused {
-                        status: match r.get("status") { JValue::Num(n) => *n as u16, _ => 0 },
+                        status: match r.get("status") {
+                            JValue::Num(n) => *n as u16,
+                            _ => 0,
+                        },
                         error: s(r.get("payload").get("error")).unwrap(),
                         streamed: false
                     },
@@ -1052,28 +1074,45 @@ mod route_stage {
                 );
                 "refused"
             } else if let Some(other) = s(out.get("other")) {
-                let text = other.split_once(",error::").or_else(|| other.split_once("error::")).map(|(_, t)| t.to_owned()).unwrap_or_else(|| panic!("unrecorded outcome {what}"));
+                let text = other
+                    .split_once(",error::")
+                    .or_else(|| other.split_once("error::"))
+                    .map(|(_, t)| t.to_owned())
+                    .unwrap_or_else(|| panic!("unrecorded outcome {what}"));
                 assert!(other.starts_with("route_pending"), "{what}");
                 match &got.outcome {
-                    Outcome::Refused { error, streamed: true, .. } => assert_eq!(error, &text, "{what}"),
+                    Outcome::Refused {
+                        error,
+                        streamed: true,
+                        ..
+                    } => assert_eq!(error, &text, "{what}"),
                     o => panic!("got {o:?}, Node streamed {text:?}: {what}"),
                 }
                 "streamed"
             } else {
                 let up = out.get("upstream");
-                let Outcome::Go(go) = &got.outcome else { panic!("got {:?}, Node went on: {what}", got.outcome) };
+                let Outcome::Go(go) = &got.outcome else {
+                    panic!("got {:?}, Node went on: {what}", got.outcome)
+                };
                 if let Some(m) = s(up.get("load")) {
                     assert_eq!(go.model, m, "{what}");
                     assert_eq!(go.provider.id, "default", "{what}");
                 } else {
                     assert_eq!(Some(go.model.clone()), s(up.get("model")), "{what}");
                     let url = s(up.get("url")).unwrap();
-                    assert!(url.starts_with(&go.provider.base_url), "{url} {:?}: {what}", go.provider);
+                    assert!(
+                        url.starts_with(&go.provider.base_url),
+                        "{url} {:?}: {what}",
+                        go.provider
+                    );
                 }
                 "go"
             };
             *seen.entry(kind.into()).or_default() += 1;
         }
-        assert!(seen["refused"] > 1500 && seen["go"] > 1000 && seen["streamed"] >= 10, "{seen:?}");
+        assert!(
+            seen["refused"] > 1500 && seen["go"] > 1000 && seen["streamed"] >= 10,
+            "{seen:?}"
+        );
     }
 }
