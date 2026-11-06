@@ -31,7 +31,7 @@ pub struct Account {
     lease: fs::File,
     identity: fs::Metadata,
     code: writer::Store,
-    browser: writer::Store,
+    browser: Option<writer::Store>,
     pub control: Control,
     pub workspaces: workspace::Store,
 }
@@ -49,6 +49,27 @@ impl Account {
         config: &CodeConfig,
         epoch: String,
         now: i64,
+    ) -> Result<Self, Error> {
+        Self::open_owned(data_dir, user, config, epoch, now, true)
+    }
+    /// Staged ownership: a code-only front must neither recover nor publish browser journals
+    /// while the legacy browser actor is still live. Ownership broadens only with a new runtime.
+    pub fn open_code(
+        data_dir: &Path,
+        user: &str,
+        config: &CodeConfig,
+        epoch: String,
+        now: i64,
+    ) -> Result<Self, Error> {
+        Self::open_owned(data_dir, user, config, epoch, now, false)
+    }
+    fn open_owned(
+        data_dir: &Path,
+        user: &str,
+        config: &CodeConfig,
+        epoch: String,
+        now: i64,
+        browser_owned: bool,
     ) -> Result<Self, Error> {
         let root = store::user_dir(data_dir, user).map_err(|_| Error::Unavailable)?;
         for dir in [data_dir.join("users"), root.clone()] {
@@ -72,8 +93,11 @@ impl Account {
         }
         lease.try_lock().map_err(|_| Error::Busy)?;
         let code = writer::Store::open(data_dir, user, Surface::Code).map_err(Error::Journal)?;
-        let browser =
-            writer::Store::open(data_dir, user, Surface::Browser).map_err(Error::Journal)?;
+        let browser = if browser_owned {
+            Some(writer::Store::open(data_dir, user, Surface::Browser).map_err(Error::Journal)?)
+        } else {
+            None
+        };
         let workspaces =
             workspace::Store::open(data_dir, user, config, epoch).map_err(Error::Workspace)?;
         let account = Self {
@@ -90,7 +114,9 @@ impl Account {
         };
         account.fence()?;
         account.code.recover(now).map_err(Error::Journal)?;
-        account.browser.recover(now).map_err(Error::Journal)?;
+        if let Some(browser) = &account.browser {
+            browser.recover(now).map_err(Error::Journal)?;
+        }
         account.workspaces.recover(now).map_err(Error::Workspace)?;
         Ok(account)
     }
@@ -103,7 +129,7 @@ impl Account {
         project: &str,
         id: &str,
     ) -> Result<server_projects::task_journals::Found, Error> {
-        self.fence()?;
+        self.journal(surface)?;
         server_projects::task_journals::get(&self.data_dir, &self.user, surface, project, id)
             .map_err(|_| Error::Unavailable)
     }
@@ -123,7 +149,7 @@ impl Account {
         active: bool,
     ) -> Result<Vec<server_projects::task_journals::Job>, Error> {
         let _held = self.mutation()?;
-        self.fence()?;
+        self.journal(surface)?;
         server_projects::task_journals::list(&self.data_dir, &self.user, surface, project, active)
             .map_err(|_| Error::Unavailable)
     }
@@ -197,7 +223,7 @@ impl Account {
         self.fence()?;
         Ok(match surface {
             Surface::Code => &self.code,
-            Surface::Browser => &self.browser,
+            Surface::Browser => self.browser.as_ref().ok_or(Error::Unavailable)?,
         })
     }
     pub fn create(
@@ -258,6 +284,68 @@ impl Account {
 mod tests {
     use super::*;
     const USER: &str = "11111111-1111-4111-8111-111111111111";
+    #[test]
+    fn code_only_ownership_never_recovers_or_mutates_legacy_browser_tasks() {
+        use js_json::JValue;
+        use server_projects::task_journals::{self, Found};
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("users").join(USER)).unwrap();
+        let browser = "22222222-2222-4222-8222-222222222222";
+        let code = "33333333-3333-4333-8333-333333333333";
+        let legacy = writer::Store::open(root.path(), USER, Surface::Browser).unwrap();
+        legacy.create(browser, "project", vec![], 1).unwrap();
+        legacy
+            .append(browser, "job.started", JValue::Obj(vec![]), 2)
+            .unwrap();
+        let old_code = writer::Store::open(root.path(), USER, Surface::Code).unwrap();
+        old_code.create(code, "project", vec![], 1).unwrap();
+        old_code
+            .append(code, "job.started", JValue::Obj(vec![]), 2)
+            .unwrap();
+        let path = root
+            .path()
+            .join("users")
+            .join(USER)
+            .join("jobs")
+            .join(format!("{browser}.jsonl"));
+        let before = std::fs::read(&path).unwrap();
+        let config = CodeConfig::from_env(|_| None);
+        let account =
+            Account::open_code(root.path(), USER, &config, "code-incarnation".into(), 3).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(
+            matches!(account.owned(Surface::Code,"project",code).unwrap(),Found::Task(job) if job.status.as_str()==Some("interrupted"))
+        );
+        assert!(account.owned(Surface::Browser, "project", browser).is_err());
+        assert!(account.list(Surface::Browser, None, true).is_err());
+        assert!(account
+            .append(
+                Surface::Browser,
+                browser,
+                "job.cancelled",
+                JValue::Obj(vec![]),
+                4
+            )
+            .is_err());
+        // The legacy owner continues its live job; a native Code account never steals it.
+        legacy
+            .append(
+                browser,
+                "progress",
+                JValue::Obj(vec![("stage".into(), JValue::Str("running".into()))]),
+                4,
+            )
+            .unwrap();
+        drop(account);
+        let both =
+            Account::open(root.path(), USER, &config, "unified-incarnation".into(), 5).unwrap();
+        assert!(
+            matches!(both.owned(Surface::Browser,"project",browser).unwrap(),Found::Task(job) if job.status.as_str()==Some("interrupted"))
+        );
+        assert!(
+            matches!(task_journals::get(root.path(),USER,Surface::Browser,"project",browser).unwrap(),Found::Task(job) if job.error.as_str()==Some("The server restarted before this finished."))
+        );
+    }
     #[test]
     fn recovery_waits_for_old_actor_lease_and_replaced_account_is_fenced() {
         let temp = tempfile::tempdir().unwrap();
