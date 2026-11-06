@@ -93,3 +93,19 @@ an optional task-scoped audit callback; ordinary `launch` uses no callback.
 Transport denials from browser-background services remain diagnostics rather
 than task audit entries. The retained callback's raw action-type field has a
 pending declared-secret compatibility decision before wiring.
+
+The owner approved redacting declared secrets at the audit callback boundary.
+That deliberate exception replaces the retained raw action-type echo. The
+contract test compares every other audit field exactly and checks that no raw
+sentinel reaches the callback.
+
+Locator/frame grammar uses the retained package's unmodified, hash-pinned
+browser-side DOM evaluator in isolated worlds. Rust owns traversal, CDP
+connections, deadlines, remote handles, policy and input dispatch. Separate
+renderer connections are scoped to each action. The frame suite compares
+actual same-origin and cross-origin fill/click effects, requires a positive
+iframe renderer target, checks secret binding and approval cards, and refuses
+the original node if its frame navigates during approval. The input suite
+covers label retargeting, contenteditable, color/range/number validation and
+selecting by label using the same browser-side algorithms. Transport negatives,
+remaining worker/isolation cases and exhaustive cancellation still gate wiring.

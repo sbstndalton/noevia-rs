@@ -1,0 +1,7 @@
+{
+  "package": "playwright-core",
+  "version": "1.58.2",
+  "sha256": "3bf8f5e6652ddce12c7ef927549eaa73b57fe892482090055d66855e010a5b63",
+  "license": "Apache-2.0",
+  "origin": "https://github.com/microsoft/playwright/tree/v1.58.2/packages/injected"
+}

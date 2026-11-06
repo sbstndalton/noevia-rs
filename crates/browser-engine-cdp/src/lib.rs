@@ -29,7 +29,11 @@ use tokio::{
 pub type AuditLog = Arc<dyn Fn(Value) + Send + Sync>;
 
 mod guard;
+mod selectors;
 mod socket_proxy;
+mod target;
+use selectors::NodeRef;
+use target::Control;
 
 const LIMIT: Duration = Duration::from_secs(15);
 const WORKER_SCRIPT: &str = "if(navigator.serviceWorker) navigator.serviceWorker.register=async()=>{console.warn('Service worker registration blocked');};";
@@ -99,11 +103,12 @@ async fn bounded<T>(duration: Duration, f: impl Future<Output = Result<T>>) -> R
         .await
         .map_err(|_| anyhow!("Action timed out"))?
 }
-async fn command(page: &Page, method: &'static str, params: Value) -> Result<Value> {
-    bounded(LIMIT, async {
-        Ok(page.execute(raw(method, params)).await?.result)
-    })
-    .await
+async fn command(
+    page: &(impl Control + ?Sized),
+    method: &'static str,
+    params: Value,
+) -> Result<Value> {
+    bounded(LIMIT, async { page.raw_execute(method, params).await }).await
 }
 async fn evaluate(page: &Page, expression: String) -> Result<Value> {
     let r = command(
@@ -117,7 +122,12 @@ async fn evaluate(page: &Page, expression: String) -> Result<Value> {
     }
     Ok(r.pointer("/result/value").cloned().unwrap_or(Value::Null))
 }
-async fn on_node(page: &Page, id: &str, function: String, args: Vec<Value>) -> Result<Value> {
+async fn on_node(
+    page: &(impl Control + ?Sized),
+    id: &str,
+    function: String,
+    args: Vec<Value>,
+) -> Result<Value> {
     let r = command(page,"Runtime.callFunctionOn",json!({"objectId":id,"functionDeclaration":function,"arguments":args.into_iter().map(|v|json!({"value":v})).collect::<Vec<_>>(),"returnByValue":true,"awaitPromise":true})).await?;
     if r.get("exceptionDetails").is_some() {
         bail!("Target operation failed")
@@ -162,6 +172,15 @@ fn public_error(kind: &str, error: &anyhow::Error, deadline: Duration) -> String
     }
     format!("{owner}.{method}: Browser operation failed")
 }
+fn js_truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(v) => *v,
+        Value::Number(v) => v.as_f64().is_some_and(|n| n != 0.0),
+        Value::String(v) => !v.is_empty(),
+        _ => true,
+    }
+}
 fn js_string(value: Option<&Value>) -> String {
     match value {
         None | Some(Value::Null) => String::new(),
@@ -172,6 +191,7 @@ fn js_string(value: Option<&Value>) -> String {
             .collect::<Vec<_>>()
             .join(","),
         Some(Value::Object(_)) => "[object Object]".into(),
+        Some(Value::Number(value)) => js_json::number_to_string(value.as_f64().unwrap_or(f64::NAN)),
         Some(v) => v.to_string(),
     }
 }
@@ -235,6 +255,23 @@ fn mask(text: &str, secrets: &BTreeMap<String, Secret>) -> String {
     }
     out
 }
+fn redact_audit(mut entry: Value, secrets: &BTreeMap<String, Secret>) -> Value {
+    match &mut entry {
+        Value::String(text) => *text = mask(text, secrets),
+        Value::Array(values) => {
+            for value in values {
+                *value = redact_audit(value.take(), secrets);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() {
+                *value = redact_audit(value.take(), secrets);
+            }
+        }
+        _ => {}
+    }
+    entry
+}
 struct ActionLease {
     shutdown: tokio::sync::mpsc::UnboundedSender<()>,
     interrupted: Arc<AtomicBool>,
@@ -283,6 +320,9 @@ impl CdpEngine {
         Self::launch_with_log(config, String::new(), Arc::new(|_| {})).await
     }
     pub async fn launch_with_log(config: Launch, job_id: String, log: AuditLog) -> Result<Self> {
+        let audit_secrets = config.secrets.clone();
+        let sink = log;
+        let log: AuditLog = Arc::new(move |entry| sink(redact_audit(entry, &audit_secrets)));
         let mut entropy = [0u8; 16];
         std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom")?, &mut entropy)?;
         let session_id = entropy
@@ -531,6 +571,24 @@ impl CdpEngine {
         self.browser.execute(raw("Browser.grantPermissions",json!({"origin":url.origin().ascii_serialization(),"permissions":["localNetworkAccess","localNetwork","loopbackNetwork"]}))).await?;
         Ok(())
     }
+    /// Inventory for positive renderer-process qualification using synthetic pages only.
+    pub async fn fixture_targets(&self) -> Result<Value> {
+        if !self.config.synthetic_direct {
+            bail!("Fixture inventory unavailable")
+        }
+        let result = self
+            .browser
+            .execute(raw("Target.getTargets", json!({})))
+            .await?
+            .result;
+        Ok(json!(result
+            .get("targetInfos")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|v| json!({"type":v.get("type"),"url":v.get("url")}))
+            .collect::<Vec<_>>()))
+    }
     pub async fn launch_arguments(&self) -> Result<Value> {
         Ok(self
             .browser
@@ -549,23 +607,16 @@ impl CdpEngine {
             .unwrap_or("")
             .to_owned())
     }
-    async fn target(&self, selector: Option<&str>) -> Result<String> {
-        let expr = selector
-            .map(|s| format!("document.querySelector({})", json!(s)))
-            .unwrap_or("document.activeElement".into());
+    async fn target(&self, selector: Option<&str>) -> Result<NodeRef> {
         let deadline = Instant::now() + self.config.timeout;
         loop {
-            let r = command(
-                &self.page,
-                "Runtime.evaluate",
-                json!({"expression":expr,"returnByValue":false}),
+            if let Ok(Ok(node)) = timeout(
+                deadline.saturating_duration_since(Instant::now()),
+                selectors::resolve(&self.browser, &self.page, selector),
             )
-            .await?;
-            if r.get("exceptionDetails").is_some() {
-                bail!("That element is not on the page.")
-            }
-            if let Some(id) = r.pointer("/result/objectId").and_then(Value::as_str) {
-                return Ok(id.into());
+            .await
+            {
+                return Ok(node);
             }
             if Instant::now() >= deadline {
                 bail!("That element is not on the page.")
@@ -573,10 +624,10 @@ impl CdpEngine {
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
     }
-    async fn describe(&self, id: &str) -> Result<Value> {
+    async fn describe(&self, node: &NodeRef) -> Result<Value> {
         on_node(
-            &self.page,
-            id,
+            &node.page,
+            &node.object_id,
             format!(
                 "function() {{return ({})(this)}}",
                 include_str!("describe.js")
@@ -666,11 +717,25 @@ impl CdpEngine {
             }
         }
     }
-    async fn actionable(&self, id: &str, enabled: bool) -> Result<Value> {
+    async fn actionable(&self, id: &NodeRef, enabled: bool) -> Result<Value> {
         bounded(self.config.timeout,async {
             let mut previous = Value::Null;
             loop {
-                let point=on_node(&self.page,id,"function(enabled){if(!this.isConnected)throw Error('Detached target');this.scrollIntoView({block:'center',inline:'center'});const r=this.getBoundingClientRect();if((enabled&&this.matches(':disabled'))||getComputedStyle(this).visibility==='hidden'||r.width===0||r.height===0)return null;const x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);return hit&&(hit===this||this.contains(hit))?{x,y}:null;}".into(),vec![json!(enabled)]).await?;
+                let point=on_node(&id.page,&id.object_id,"function(enabled){if(!this.isConnected)throw Error('Detached target');this.scrollIntoView({block:'center',inline:'center'});const r=this.getBoundingClientRect();if((enabled&&this.matches(':disabled'))||getComputedStyle(this).visibility==='hidden'||r.width===0||r.height===0)return null;const x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);return hit&&(hit===this||this.contains(hit))?{x,y}:null;}".into(),vec![json!(enabled)]).await?;
+                let point=if !point.is_null() {
+                    let quads=command(&id.page,"DOM.getContentQuads",json!({"objectId":id.object_id})).await?;
+                    let quad=quads.pointer("/quads/0").and_then(Value::as_array).ok_or_else(||anyhow!("Target layout unavailable"))?;
+                    let coords=quad.iter().map(|v|v.as_f64().unwrap_or(0.0)).collect::<Vec<_>>();
+                    let mut x=coords.iter().step_by(2).sum::<f64>()/4.0;
+                    let mut y=coords.iter().skip(1).step_by(2).sum::<f64>()/4.0;
+                    for (parent,backend) in &id.ancestors {
+                        let model=command(parent,"DOM.getBoxModel",json!({"backendNodeId":backend})).await?;
+                        let quad=model.pointer("/model/border").and_then(Value::as_array).ok_or_else(||anyhow!("Frame layout unavailable"))?;
+                        x+=quad.iter().step_by(2).filter_map(Value::as_f64).fold(f64::INFINITY,f64::min);
+                        y+=quad.iter().skip(1).step_by(2).filter_map(Value::as_f64).fold(f64::INFINITY,f64::min);
+                    }
+                    json!({"x":x,"y":y})
+                }else{Value::Null};
                 if !point.is_null() && point == previous {return Ok(point)}
                 previous = point;
                 tokio::time::sleep(Duration::from_millis(25)).await;
@@ -680,11 +745,14 @@ impl CdpEngine {
     async fn dispatch(
         &mut self,
         a: &Value,
-        id: Option<&str>,
+        id: Option<&NodeRef>,
         typed: Option<String>,
     ) -> Result<Option<Value>> {
-        let kind = js_string(a.get("type"));
-        let target = id.unwrap_or("");
+        let kind = js_string(a.get("type").filter(|v| js_truthy(v)));
+        let target = id.map(|n| n.object_id.as_str()).unwrap_or("");
+        let action_page = id
+            .map(|n| n.page.clone())
+            .unwrap_or_else(|| target::FrameTarget::Main(self.page.clone()));
         if id.is_none()
             && ["click", "hover", "type", "select", "upload", "submit"].contains(&kind.as_str())
         {
@@ -705,7 +773,7 @@ impl CdpEngine {
             "extract" => {
                 let text = if id.is_some() {
                     on_node(
-                        &self.page,
+                        &action_page,
                         target,
                         "function(){return this.innerText}".into(),
                         vec![],
@@ -748,80 +816,28 @@ impl CdpEngine {
                 .await?;
             }
             "submit" => {
-                on_node(&self.page,target,"function(){const f=this.form||this.closest('form')||this;f.requestSubmit?f.requestSubmit():f.submit()}".into(),vec![]).await?;
+                on_node(&action_page,target,"function(){const f=this.form||this.closest('form')||this;f.requestSubmit?f.requestSubmit():f.submit()}".into(),vec![]).await?;
             }
-            "select" => {
-                let tag = on_node(
-                    &self.page,
-                    target,
-                    "function(){return this.tagName}".into(),
-                    vec![],
-                )
-                .await?;
-                if tag != json!("SELECT") {
-                    return Err(compatibility_error(
-                        "elementHandle.selectOption: Error: Element is not a <select> element"
-                            .into(),
-                    ));
-                }
-                bounded(self.config.timeout, async {
+            "select" | "type" => {
+                let fill = kind == "type";
+                bounded(self.config.timeout,async {
                     loop {
-                        let done = on_node(&self.page,target,"function(v){if(this.tagName!=='SELECT')throw Error('Not a select');if(this.disabled)return false;const opt=Array.from(this.options).find(o=>o.value===v);if(!opt)return false;this.value=opt.value;this.dispatchEvent(new Event('input',{bubbles:true}));this.dispatchEvent(new Event('change',{bubbles:true}));return true}".into(),vec![json!(typed)]).await?;
-                        if done == json!(true) { return Ok(()); }
-                        tokio::time::sleep(Duration::from_millis(25)).await;
-                    }
-                }).await?;
-            }
-            "type" => {
-                let field=on_node(&self.page,target,"function(){return {tag:this.tagName,type:this.type,editable:this.isContentEditable}}".into(),vec![]).await?;
-                if string(&field, "tag") == "INPUT"
-                    && ![
-                        "text",
-                        "email",
-                        "number",
-                        "password",
-                        "search",
-                        "tel",
-                        "url",
-                        "color",
-                        "date",
-                        "time",
-                        "datetime-local",
-                        "month",
-                        "range",
-                        "week",
-                    ]
-                    .contains(&string(&field, "type").as_str())
-                {
-                    return Err(compatibility_error(format!(
-                        "elementHandle.fill: Error: Input of type {} cannot be filled",
-                        json!(string(&field, "type"))
-                    )));
-                }
-                if string(&field, "tag") != "INPUT"
-                    && string(&field, "tag") != "TEXTAREA"
-                    && field.get("editable").and_then(Value::as_bool) != Some(true)
-                {
-                    return Err(compatibility_error("elementHandle.fill: Error: Element is not an <input>, <textarea> or [contenteditable] element".into()));
-                }
-                self.actionable(target, true).await?;
-                bounded(self.config.timeout, async {
-                    loop {
-                        let editable = on_node(&self.page,target,"function(){return !this.disabled&&!this.readOnly&&(this.isContentEditable||this.tagName==='TEXTAREA'||this.tagName==='INPUT')}".into(),vec![]).await?;
-                        if editable == json!(true) { break; }
-                        tokio::time::sleep(Duration::from_millis(25)).await;
-                    }
-                    let assigned=on_node(&self.page,target,"function(value){if(this.tagName!=='INPUT'||!['date','time','datetime-local','month','week'].includes(this.type))return false;this.focus();this.value=value;if(this.value!==value)throw Error('Malformed value');this.dispatchEvent(new Event('input',{bubbles:true,composed:true}));this.dispatchEvent(new Event('change',{bubbles:true}));return true}".into(),vec![json!(typed)]).await?;
-                    if assigned==json!(true){return Ok(())}
-                    on_node(&self.page,target,"function(){this.focus();if(this.isContentEditable){const r=document.createRange();r.selectNodeContents(this);const s=getSelection();s.removeAllRanges();s.addRange(r)}else this.select()}".into(),vec![]).await?;
-                    if typed.as_deref() == Some("") {
-                        for kind in ["keyDown", "keyUp"] {
-                            command(&self.page,"Input.dispatchKeyEvent",json!({"type":kind,"key":"Backspace","code":"Backspace","windowsVirtualKeyCode":8})).await?;
+                        let prepared=on_node(&action_page,target,"async function(value,fill){const injected=globalThis.__browserLocator;try{const missing=await injected.checkElementStates(this,fill?['visible','enabled','editable']:['visible','enabled']);if(missing)return {retry:true};const result=fill?injected.fill(this,value):injected.selectOptions(this,[{valueOrLabel:value}]);return {result};}catch(error){return {error:error.message};}}".into(),vec![json!(typed),json!(fill)]).await?;
+                        if let Some(error)=prepared.get("error").and_then(Value::as_str) {
+                            let controlled=error=="Element is not a <select> element"||error=="Malformed value"||error=="Cannot type text into input[type=number]"||error=="Element is not an <input>, <textarea> or [contenteditable] element"||error=="Element is not an <input>, <textarea>, <select> or [contenteditable] and does not have a role allowing [aria-readonly]"||(error.starts_with("Input of type ")&&error.ends_with(" cannot be filled"));
+                            if controlled {return Err(compatibility_error(format!("elementHandle.{}: Error: {error}",if fill{"fill"}else{"selectOption"})));}
+                            bail!("Target operation failed")
                         }
-                    } else {
-                        command(&self.page,"Input.insertText",json!({"text":typed})).await?;
+                        let result=prepared.get("result").cloned().unwrap_or(Value::Null);
+                        if !fill && result.is_array() || result==json!("done") {return Ok(())}
+                        if result==json!("needsinput") {
+                            if typed.as_deref()==Some("") {
+                                for kind in ["keyDown","keyUp"] {command(&self.page,"Input.dispatchKeyEvent",json!({"type":kind,"key":"Backspace","code":"Backspace","windowsVirtualKeyCode":8})).await?;}
+                            }else{command(&self.page,"Input.insertText",json!({"text":typed})).await?;}
+                            return Ok(())
+                        }
+                        tokio::time::sleep(Duration::from_millis(25)).await;
                     }
-                    Ok(())
                 }).await?;
             }
             "upload" => {
@@ -836,14 +852,19 @@ impl CdpEngine {
                     bail!("Only files given to this task can be uploaded.")
                 }
                 command(
-                    &self.page,
+                    &action_page,
                     "DOM.setFileInputFiles",
                     json!({"objectId":target,"files":[file]}),
                 )
                 .await?;
             }
             "click" | "hover" => {
-                let p = self.actionable(target, kind == "click").await?;
+                let p = self
+                    .actionable(
+                        id.ok_or_else(|| anyhow!("Missing target"))?,
+                        kind == "click",
+                    )
+                    .await?;
                 let event = json!({"type":"mouseMoved","x":p.get("x"),"y":p.get("y")});
                 command(&self.page, "Input.dispatchMouseEvent", event.clone()).await?;
                 if kind == "click" {
@@ -855,7 +876,7 @@ impl CdpEngine {
             "press" => {
                 if id.is_some() {
                     on_node(
-                        &self.page,
+                        &action_page,
                         target,
                         "function(){this.focus()}".into(),
                         vec![],
@@ -887,8 +908,13 @@ impl CdpEngine {
         }
         Ok(None)
     }
-    async fn run(&mut self, a: &Value, approval: &dyn Approval, id: Option<&str>) -> Result<Value> {
-        let kind = js_string(a.get("type"));
+    async fn run(
+        &mut self,
+        a: &Value,
+        approval: &dyn Approval,
+        id: Option<&NodeRef>,
+    ) -> Result<Value> {
+        let kind = js_string(a.get("type").filter(|v| js_truthy(v)));
         let before = origin(&self.url().await?);
         let result_secrets = self.config.secrets.clone();
         let result = |status: &str, reason: &str| json!({"status":status,"origin":before,"reason":mask(reason,&result_secrets)});
@@ -950,12 +976,11 @@ impl CdpEngine {
         }
         let mut typed = None;
         if kind == "type" || kind == "select" {
-            let mut text = a
-                .get("text")
-                .or(a.get("value"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_owned();
+            let mut text = js_string(
+                a.get("text")
+                    .filter(|v| !v.is_null())
+                    .or_else(|| a.get("value").filter(|v| !v.is_null())),
+            );
             let specs: Vec<_> = self
                 .config
                 .secrets
@@ -1020,7 +1045,7 @@ impl CdpEngine {
                 .await
                 .unwrap_or(false);
             (self.log)(
-                json!({"event":"browser.decided","jobId":self.job_id,"type":kind,"origin":before,"decision":if answer{"approve"}else{"deny"}}),
+                json!({"event":"browser.decided","jobId":self.job_id,"type":mask(&kind,&self.config.secrets),"origin":before,"decision":if answer{"approve"}else{"deny"}}),
             );
             if !answer {
                 return Ok(result("blocked", "Declined."));
@@ -1036,26 +1061,29 @@ impl CdpEngine {
             }
             if let Some(id) = id {
                 let connected = on_node(
-                    &self.page,
-                    id,
+                    &id.page,
+                    &id.object_id,
                     "function(){return this.isConnected}".into(),
                     vec![],
                 )
-                .await?
+                .await
+                .unwrap_or(Value::Null)
                 .as_bool()
                     == Some(true);
                 let focused = kind != "press"
-                    || a.get("selector").is_some()
+                    || a.get("selector").is_some_and(js_truthy)
                     || on_node(
-                        &self.page,
-                        id,
+                        &id.page,
+                        &id.object_id,
                         "function(){return this===document.activeElement}".into(),
                         vec![],
                     )
-                    .await?
+                    .await
+                    .unwrap_or(Value::Null)
                     .as_bool()
                         == Some(true);
-                if !connected || !focused || self.describe(id).await? != element {
+                if !connected || !focused || self.describe(id).await.ok().as_ref() != Some(&element)
+                {
                     return Ok(result("blocked","The approved target changed while approval was pending; review the action again."));
                 }
             }
@@ -1155,13 +1183,13 @@ impl BrowserEngine for CdpEngine {
             proxy: self._socket_proxy.abort_handle(),
             complete: false,
         };
-        let kind = js_string(action.get("type"));
+        let kind = js_string(action.get("type").filter(|v| js_truthy(v)));
         let log_action = !self.closed;
         let result = self.act_once(action, approval).await;
         if log_action {
             if let Ok(out) = &result {
                 (self.log)(
-                    json!({"event":"browser.act","jobId":self.job_id,"session":self.session_id,"type":kind,"status":out.get("status"),"origin":out.get("origin"),"reason":out.get("reason").and_then(Value::as_str).unwrap_or("")}),
+                    json!({"event":"browser.act","jobId":self.job_id,"session":self.session_id,"type":mask(&kind,&self.config.secrets),"status":out.get("status"),"origin":out.get("origin"),"reason":out.get("reason").and_then(Value::as_str).unwrap_or("")}),
                 );
             }
         }
@@ -1205,7 +1233,7 @@ impl CdpEngine {
         if let Err(error) = self.refresh_page().await {
             return Ok(json!({"status":"blocked","origin":"","reason":error.to_string()}));
         }
-        let kind = js_string(action.get("type"));
+        let kind = js_string(action.get("type").filter(|v| js_truthy(v)));
         if ![
             "navigate",
             "click",
@@ -1224,11 +1252,12 @@ impl CdpEngine {
         {
             return self.run(&action, approval, None).await;
         }
-        let id = if (action.get("selector").is_some() && kind != "navigate") || kind == "press" {
-            match self
-                .target(action.get("selector").and_then(Value::as_str))
-                .await
-            {
+        let selector = action
+            .get("selector")
+            .filter(|v| js_truthy(v))
+            .map(|v| js_string(Some(v)));
+        let id = if (selector.is_some() && kind != "navigate") || kind == "press" {
+            match self.target(selector.as_deref()).await {
                 Ok(id) => Some(id),
                 Err(_) => {
                     return Ok(
@@ -1239,9 +1268,14 @@ impl CdpEngine {
         } else {
             None
         };
-        let result = self.run(&action, approval, id.as_deref()).await;
+        let result = self.run(&action, approval, id.as_ref()).await;
         if let Some(id) = id {
-            let _ = command(&self.page, "Runtime.releaseObject", json!({"objectId":id})).await;
+            let _ = command(
+                &id.page,
+                "Runtime.releaseObject",
+                json!({"objectId":id.object_id}),
+            )
+            .await;
         }
         result
     }

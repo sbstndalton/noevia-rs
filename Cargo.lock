@@ -382,6 +382,7 @@ dependencies = [
  "chromiumoxide",
  "chromiumoxide_types",
  "futures",
+ "js-json",
  "serde",
  "serde_json",
  "tokio",

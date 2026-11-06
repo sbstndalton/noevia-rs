@@ -16,8 +16,13 @@ struct Decline(std::sync::Arc<std::sync::Mutex<Vec<Value>>>);
 #[async_trait::async_trait]
 impl Approval for Decline {
     async fn decide(&self, card: Value) -> anyhow::Result<bool> {
+        let approve = card.pointer("/element/text").and_then(Value::as_str)
+            == Some("Delete after navigation");
         self.0.lock().unwrap().push(card);
-        Ok(false)
+        if approve {
+            tokio::time::sleep(Duration::from_millis(700)).await;
+        }
+        Ok(approve)
     }
 }
 fn normalize(v: &Value) -> Value {
@@ -71,7 +76,7 @@ async fn exact_contract() {
         executable: std::env::var("BROWSER_EXECUTABLE").unwrap().into(),
         profile_dir: root.join("profile"),
         downloads_dir: root.join("downloads"),
-        allowed_domains: if std::env::var("BROWSER_CONTRACT_MODE").as_deref() == Ok("locator") {
+        allowed_domains: if std::env::var("BROWSER_CONTRACT_MODE").is_ok() {
             vec!["fixture.test".into(), "frame.test".into()]
         } else {
             vec!["fixture.test".into()]
@@ -131,7 +136,9 @@ async fn exact_contract() {
             failures.push(row["name"].clone());
         }
         rows.push(json!({"name":row["name"],"pass":pass,"native":native,"oracle":row["result"]}));
+        std::fs::write(root.join("progress.json"),serde_json::to_vec_pretty(&json!({"rows":rows,"eventError":engine.event_error().await,"trace":engine.policy_trace().await})).unwrap()).unwrap();
     }
+    let targets = engine.fixture_targets().await.unwrap();
     let state = engine.state().await;
     assert!(engine.close().await);
     assert!(engine.close().await);
@@ -150,7 +157,7 @@ async fn exact_contract() {
         .await
         .unwrap()
         .unwrap();
-    std::fs::write(root.join("contract.json"),serde_json::to_vec_pretty(&json!({"rows":rows,"nativeCards":*cards.lock().unwrap(),"oracleCards":oracle["cards"],"nativeAudit":*audit.lock().unwrap(),"oracleAudit":oracle["audit"],"state":state,"oracleState":oracle["state"],"closed":closed,"oracleClosed":oracle["closed"]})).unwrap()).unwrap();
+    std::fs::write(root.join("contract.json"),serde_json::to_vec_pretty(&json!({"rows":rows,"targets":targets,"oracleTargets":oracle["targets"],"nativeCards":*cards.lock().unwrap(),"oracleCards":oracle["cards"],"nativeAudit":*audit.lock().unwrap(),"oracleAudit":oracle["audit"],"state":state,"oracleState":oracle["state"],"closed":closed,"oracleClosed":oracle["closed"]})).unwrap()).unwrap();
     assert_eq!(
         cards
             .lock()
@@ -165,8 +172,32 @@ async fn exact_contract() {
             .map(normalize)
             .collect::<Vec<_>>()
     );
+    if std::env::var("BROWSER_CONTRACT_MODE").as_deref() == Ok("locator") {
+        for inventory in [&targets, &oracle["targets"]] {
+            assert!(
+                inventory
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|v| v["type"] == "iframe"
+                        && v["url"].as_str().unwrap_or("").contains("frame.test")),
+                "Cross-origin iframe must have its own renderer target"
+            );
+        }
+    }
     assert_eq!(state, oracle["state"]);
-    assert_eq!(json!(audit.lock().unwrap().clone()), oracle["audit"]);
+    let mut oracle_audit = oracle["audit"].clone();
+    // Owner-approved exception: Node's raw action type can disclose a declared secret.
+    for entry in oracle_audit.as_array_mut().unwrap() {
+        if let Some(kind) = entry.get_mut("type") {
+            if let Some(text) = kind.as_str() {
+                *kind = json!(text.replace("synthetic-secret", "{{secret:fixture}}"));
+            }
+        }
+    }
+    let native_audit = json!(audit.lock().unwrap().clone());
+    assert!(!native_audit.to_string().contains("synthetic-secret"));
+    assert_eq!(native_audit, oracle_audit);
     assert_eq!(closed, oracle["closed"]);
     assert!(failures.is_empty(), "Exact errors differ: {failures:?}");
 }

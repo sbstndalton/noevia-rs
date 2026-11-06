@@ -10,6 +10,7 @@ anyhow = "1"
 base64 = "0.22"
 async-trait = "0.1"
 browser-policy = { path = "../browser-policy" }
+js-json = { path = "../js-json" }
 chromiumoxide = "=0.9.1"
 chromiumoxide_types = "=0.9.1"
 futures = "0.3"

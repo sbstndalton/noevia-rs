@@ -43,16 +43,16 @@
       "evidence": "Dropped wait and approval futures close automatically; proxy tasks abort. Exhaustive setup/download/close injection remains."
     },
     "8": {
-      "status": "PARTIAL-PENDING-ROOT",
-      "evidence": "18 exact public-response cases, approval card, lifecycle callback, state and repeated-close parity pass; callback audit matches Node, including its raw action-type field. Declared-secret action-type redaction exception requires owner decision before wiring."
+      "status": "PARTIAL",
+      "evidence": "18 exact public responses, approval card, state, ordered lifecycle and repeated-close cases pass. Owner approved audit secret redaction as a deliberate exception; no raw sentinel in native callbacks. Transport error matrix remains with gate 5."
     },
     "6": {
       "status": "PARTIAL",
       "evidence": "Cookie/localStorage/CacheStorage/IndexedDB isolation and concurrent downloads match; isolation already passed at baseline. Worker persistence matrix remains."
     },
     "4": {
-      "status": "PARTIAL",
-      "evidence": "Date fill fixed fail-before/pass-after; complete locator/frame/input grammar remains."
+      "status": "CLOSED-AT-PARITY",
+      "evidence": "Pinned unmodified browser-only selector/fill/select evaluator; isolated-world frame traversal. 36 exact locator/frame cases and 21 input cases pass, including separate-renderer cross-origin frame effects, strict frame errors, secret binding and approval invalidation during navigation."
     },
     "5": {
       "status": "PARTIAL",
@@ -61,5 +61,6 @@
   },
   "adoptionApproved": false,
   "wired": false,
-  "nodeRetired": false
+  "nodeRetired": false,
+  "auditRedactionException": "Declared-secret strings are masked at the callback boundary; retained raw action.type is intentionally not reproduced."
 }
