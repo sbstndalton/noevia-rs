@@ -51,98 +51,98 @@
     "case": "unsupported",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Unsupported backup manifest",
+    "exception": "ValueError: Unsupported backup manifest\n",
     "tree": null
   },
   {
     "case": "bad-files",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Invalid backup file list",
+    "exception": "ValueError: Invalid backup file list\n",
     "tree": null
   },
   {
     "case": "tenant",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: badly formed hexadecimal UUID string",
+    "exception": "ValueError: badly formed hexadecimal UUID string\n",
     "tree": null
   },
   {
     "case": "wrong-tenant",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Backup object has the wrong tenant",
+    "exception": "ValueError: Backup object has the wrong tenant\n",
     "tree": null
   },
   {
     "case": "duplicate",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Backup escaped its root or duplicated a path",
+    "exception": "ValueError: Backup escaped its root or duplicated a path\n",
     "tree": null
   },
   {
     "case": "overlap",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Backup has overlapping file and directory paths",
+    "exception": "ValueError: Backup has overlapping file and directory paths\n",
     "tree": null
   },
   {
     "case": "same-path",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Backup has overlapping file and directory paths",
+    "exception": "ValueError: Backup has overlapping file and directory paths\n",
     "tree": null
   },
   {
     "case": "bad-hash",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Backup object checksum mismatch or restore exceeds 1 GiB",
+    "exception": "ValueError: Backup object checksum mismatch or restore exceeds 1 GiB\n",
     "tree": null
   },
   {
     "case": "escape",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Invalid corpus path",
+    "exception": "ValueError: Invalid corpus path\n",
     "tree": null
   },
   {
     "case": "empty-key",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Invalid corpus path",
+    "exception": "ValueError: Invalid corpus path\n",
     "tree": null
   },
   {
     "case": "backslash",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Invalid corpus path",
+    "exception": "ValueError: Invalid corpus path\n",
     "tree": null
   },
   {
     "case": "dot",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Invalid corpus path",
+    "exception": "ValueError: Invalid corpus path\n",
     "tree": null
   },
   {
     "case": "null-key",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Invalid corpus path",
+    "exception": "ValueError: Invalid corpus path\n",
     "tree": null
   },
   {
     "case": "existing",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Restore requires a new directory; existing data will not be overwritten",
+    "exception": "ValueError: Restore requires a new directory; existing data will not be overwritten\n",
     "tree": {
       ".": {
         "mode": "0o775",
@@ -154,21 +154,21 @@
     "case": "checksum",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Manifest checksum does not match its immutable filename",
+    "exception": "ValueError: Manifest checksum does not match its immutable filename\n",
     "tree": null
   },
   {
     "case": "missing-object",
     "exit": 1,
     "stdout": "",
-    "exception": "FileNotFoundError: [Errno 2] No such file or directory: '$FIXTURE/backup/Notes/noevia-backups/00000000-0000-4000-8000-000000000123/objects/synthetic/payload-absent'",
+    "exception": "FileNotFoundError: [Errno 2] No such file or directory: '$FIXTURE/backup/Notes/noevia-backups/00000000-0000-4000-8000-000000000123/objects/synthetic/payload-absent'\n",
     "tree": null
   },
   {
     "case": "symlink-escape",
     "exit": 1,
     "stdout": "",
-    "exception": "ValueError: Backup escaped its root or duplicated a path",
+    "exception": "ValueError: Backup escaped its root or duplicated a path\n",
     "tree": null
   },
   {

@@ -64,6 +64,7 @@ def reference(path, env):
         output=json.dumps(data,indent=2)+'\n'; rc=0; error=''
     except Exception as e:
         output='';rc=1;error=''.join(traceback.format_exception_only(e))
+        (root/(path.stem+'.traceback')).write_text(''.join(traceback.format_exception(e)))
     finally: logging.getLogger().removeHandler(handler);os.environ.clear();os.environ.update(old)
     return rc,output,log.getvalue()+error
 results=[]

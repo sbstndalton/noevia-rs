@@ -12,7 +12,9 @@ try:
     if mode=='record':
         old=dict(os.environ);oldcwd=P.cwd();os.environ.clear();os.environ.update(env);os.chdir(root)
         try:out=json.dumps(load_config(args[0] if args else None).as_dict(),indent=2)+'\n';rc=0;err=''
-        except Exception as e:out='';rc=1;err=''.join(traceback.format_exception_only(e))
+        except Exception as e:
+            out='';rc=1;err=''.join(traceback.format_exception_only(e))
+            (root/(name+'.traceback')).write_text(''.join(traceback.format_exception(e)))
         finally:os.chdir(oldcwd);os.environ.clear();os.environ.update(old)
     else:
         p=subprocess.run([binary,*args],env=env,cwd=root,capture_output=True);rc,out,err=p.returncode,p.stdout.decode(),p.stderr.decode()

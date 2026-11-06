@@ -52,7 +52,14 @@ for name,manifest in cases:
     if name=='checksum': mp=fixture/'bad.json'; mp.write_bytes(body)
     env={**os.environ,'PYTHONDONTWRITEBYTECODE':'1','PYTHONPATH':str(evidence/'python')}
     p=subprocess.run(command+[str(root),str(mp),str(dest)],capture_output=True,env=env)
-    stderr=p.stderr.decode(); error=stderr.strip().split('\n')[-1] if stderr else ''
+    stderr=p.stderr.decode()
+    error=stderr
+    if stderr.startswith('Traceback (most recent call last):\n'):
+        # Remove only interpreter frames. Retain every exception-message line and
+        # note, including its final newline; never select only the last line.
+        lines=stderr.splitlines(keepends=True)
+        at=next((i for i,line in enumerate(lines[1:],1) if line and not line[0].isspace()),len(lines))
+        error=''.join(lines[at:])
     results.append({'case':name,'exit':p.returncode,'stdout':p.stdout.decode(),'exception':error.replace(str(fixture),'$FIXTURE'),'tree':snapshot(dest)})
     (evidence/(mode+'-'+name+'.stderr')).write_text(stderr)
 for name,args in [('help',['--help']),('short-help',['-h']),('abbrev-help',['--hel']),('missing',[]),('one',['a']),('two',['a','b']),('extra',['a','b','c','d']),('unknown',['--bad','a','b','c'])]:
