@@ -3284,6 +3284,7 @@ dependencies = [
  "model-stream",
  "prompt-framing",
  "rand_core 0.6.4",
+ "reqwest",
  "role-context",
  "rustix",
  "server-account",

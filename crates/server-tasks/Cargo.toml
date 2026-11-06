@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 engine-admission = { path = "../engine-admission" }
 model-stream = { path = "../model-stream" }
 prompt-framing = { path = "../prompt-framing" }
