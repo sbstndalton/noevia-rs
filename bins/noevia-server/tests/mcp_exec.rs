@@ -238,6 +238,25 @@ impl Fake {
                                 )
                             }
                         }
+                        "tools/list" => {
+                            let list = b.get("list");
+                            if let Some(h) = list.and_then(|l| l.get("http")) {
+                                http_reply(
+                                    h["status"].as_u64().unwrap() as u16,
+                                    &[],
+                                    h.get("body")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("")
+                                        .as_bytes(),
+                                )
+                            } else {
+                                http_reply(
+                                    200,
+                                    &[json_type],
+                                    rpc_reply(&id, &json!({"tools":[]})).as_bytes(),
+                                )
+                            }
+                        }
                         _ => http_reply(400, &[], b""),
                     };
                     let _ = socket.write_all(&out).await;
@@ -1000,30 +1019,82 @@ fn echo_behaviours(echo: &str) -> Vec<(&'static str, Value, Option<&'static str>
     ]
 }
 
+/// `text` holds `secret` as a whole token (not touching a letter, digit or underscore).
+fn has_token(text: &str, secret: &str) -> bool {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    text.match_indices(secret).any(|(at, m)| {
+        !text[..at].chars().next_back().is_some_and(word)
+            && !text[at + m.len()..].chars().next().is_some_and(word)
+    })
+}
+
 fn assert_clean(at: &str, text: &str, logs: &Mutex<Vec<String>>, secrets: &[&str]) {
     let log = logs.lock().unwrap().join("\n");
     for secret in secrets {
         assert!(
-            !text.contains(secret),
+            !has_token(text, secret),
             "{at}: the model text repeats {secret}: {text}"
         );
         assert!(
-            !log.contains(secret),
+            !has_token(&log, secret),
             "{at}: a log line repeats {secret}: {log}"
         );
     }
 }
 
-#[tokio::test]
-async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
+/// The credential values of one round of the echo matrix.
+struct Cred {
+    env: &'static str,
+    bearer: String,
+    api_key: String,
+    custom: String,
+    oauth_one: String,
+    oauth_two: String,
+    nc_user: String,
+    nc_secret: String,
+}
+
+impl Cred {
+    fn long() -> Cred {
+        Cred {
+            env: "SYNTH_ECHO_BEARER",
+            bearer: BEARER.into(),
+            api_key: API_KEY.into(),
+            custom: CUSTOM.into(),
+            oauth_one: OAUTH_ONE.into(),
+            oauth_two: OAUTH_TWO.into(),
+            nc_user: NC_USER.into(),
+            nc_secret: NC_SECRET.into(),
+        }
+    }
+
+    /// Every credential `n` bytes long (1..=8).
+    fn short(n: usize, env: &'static str) -> Cred {
+        let cut = |s: &str| s[..n].to_owned();
+        Cred {
+            env,
+            bearer: cut("q7Z!2xyz"),
+            api_key: cut("K5m$7def"),
+            custom: cut("c3W%8ghi"),
+            oauth_one: cut("A1b*4jkl"),
+            oauth_two: cut("B2c+5mno"),
+            nc_user: cut("u3Q%9pqr"),
+            nc_secret: cut("P9x#4abc"),
+        }
+    }
+}
+
+async fn echo_matrix(c: &Cred) {
     let basic = base64::Engine::encode(
         &base64::engine::general_purpose::STANDARD,
-        format!("{NC_USER}:{NC_SECRET}"),
+        format!("{}:{}", c.nc_user, c.nc_secret),
     );
+    // Each value stands as a token of its own in the server's text: that is how a short one is looked for.
     let all = format!(
-        "Authorization: Bearer {BEARER} / Bearer {OAUTH_ONE} / Bearer {OAUTH_TWO} / Basic {basic} / x-api-key: {API_KEY} / x-custom-auth: {CUSTOM} / user {NC_USER} secret {NC_SECRET}"
+        "Authorization: Bearer {} / Bearer {} / Bearer {} / Basic {basic} / x-api-key: {} / x-custom-auth: {} / user {} secret {}",
+        c.bearer, c.oauth_one, c.oauth_two, c.api_key, c.custom, c.nc_user, c.nc_secret
     );
-    std::env::set_var("SYNTH_ECHO_BEARER", BEARER);
+    std::env::set_var(c.env, &c.bearer);
     for kind in ["bearer", "personal key", "oauth retry", "nextcloud"] {
         for (what, behaviour, exact) in echo_behaviours(&all) {
             let fake = Fake::start().await;
@@ -1040,10 +1111,10 @@ async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
                 "bearer" => {
                     operators.push(Operator {
                         auth: Auth::Bearer,
-                        token_env: Some("SYNTH_ECHO_BEARER".into()),
+                        token_env: Some(c.env.into()),
                         ..plain(&fake)
                     });
-                    secrets.push(BEARER);
+                    secrets.push(&c.bearer);
                 }
                 "personal key" => {
                     offers = "dir-p".into();
@@ -1055,8 +1126,8 @@ async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
                         personal: true,
                         shared: vec![],
                     });
-                    keys = json!({"X-Api-Key": API_KEY, "X-Custom-Auth": CUSTOM});
-                    secrets.extend([API_KEY, CUSTOM]);
+                    keys = json!({"X-Api-Key": c.api_key, "X-Custom-Auth": c.custom});
+                    secrets.extend([c.api_key.as_str(), c.custom.as_str()]);
                 }
                 "oauth retry" => {
                     offers = "dir-o".into();
@@ -1069,8 +1140,8 @@ async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
                         shared: vec![],
                     });
                     oauth = json!([
-                        {"accessToken": OAUTH_ONE, "generation": "g1"},
-                        {"accessToken": OAUTH_TWO, "generation": "g2"}
+                        {"accessToken": c.oauth_one, "generation": "g1"},
+                        {"accessToken": c.oauth_two, "generation": "g2"}
                     ]);
                     // The first answer is the refusal that makes the call retry with the second token, and
                     // it echoes both; the behaviour under test is what the retry gets.
@@ -1079,7 +1150,7 @@ async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
                         with.extend(list);
                         behaviour["call"] = Value::Array(with);
                     }
-                    secrets.extend([OAUTH_ONE, OAUTH_TWO]);
+                    secrets.extend([c.oauth_one.as_str(), c.oauth_two.as_str()]);
                 }
                 _ => {
                     operators.push(Operator {
@@ -1087,8 +1158,8 @@ async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
                         ..plain(&fake)
                     });
                     origins.push(fake.origin.clone());
-                    storage = json!({"kind":"nextcloud","baseUrl":fake.origin,"username":NC_USER,"secret":NC_SECRET});
-                    secrets.extend([NC_SECRET, NC_USER, basic.as_str()]);
+                    storage = json!({"kind":"nextcloud","baseUrl":fake.origin,"username":c.nc_user,"secret":c.nc_secret});
+                    secrets.extend([c.nc_secret.as_str(), c.nc_user.as_str(), basic.as_str()]);
                 }
             }
             *fake.behaviour.lock().unwrap() = behaviour;
@@ -1106,7 +1177,7 @@ async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
             let mut call = simple_call();
             call.offers = vec![offers];
             let text = exec.run(&*creds, call).await;
-            let at = format!("{kind} / {what}");
+            let at = format!("{kind} / {what} / {} bytes", c.bearer.len());
             assert_clean(&at, &text, &logs, &secrets);
             if let Some(exact) = exact {
                 assert_eq!(text, exact, "{at}");
@@ -1120,6 +1191,147 @@ async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
                 );
             }
         }
+    }
+}
+
+#[tokio::test]
+async fn nothing_a_server_sends_back_repeats_a_credential_the_call_carried() {
+    echo_matrix(&Cred::long()).await;
+}
+
+/// Review round 2: a credential of any length is a credential. 1..=5 bytes (the bearer admission accepts any
+/// nonempty token), the six-byte boundary the old threshold sat on, and the eight-byte one where the scrub
+/// stops needing token boundaries.
+#[tokio::test]
+async fn a_short_credential_a_server_repeats_is_taken_out_whatever_its_length() {
+    for n in 1..=8 {
+        let env = [
+            "SYNTH_SHORT_1",
+            "SYNTH_SHORT_2",
+            "SYNTH_SHORT_3",
+            "SYNTH_SHORT_4",
+            "SYNTH_SHORT_5",
+            "SYNTH_SHORT_6",
+            "SYNTH_SHORT_7",
+            "SYNTH_SHORT_8",
+        ][n - 1];
+        echo_matrix(&Cred::short(n, env)).await;
+    }
+}
+
+/// A word that merely contains a short credential is not one: the tool's own text survives.
+#[tokio::test]
+async fn a_short_credential_does_not_blank_the_words_that_contain_it() {
+    let fake = Fake::start().await;
+    *fake.behaviour.lock().unwrap() =
+        json!({"call":[{"result":{"content":[{"type":"text","text":"cabin about ab ab."}]}}]});
+    std::env::set_var("SYNTH_WORDS", "ab");
+    let exec = executor(
+        &fake,
+        vec![Operator {
+            auth: Auth::Bearer,
+            token_env: Some("SYNTH_WORDS".into()),
+            ..plain(&fake)
+        }],
+    );
+    let creds = creds_for(json!({"kind":"local"}), Value::Null, Value::Null, vec![]);
+    let text = exec.run(&*creds, simple_call()).await;
+    assert_eq!(text, "cabin about [redacted] [redacted].");
+}
+
+// ── the key check and the listing (discovery) repeat no key either ──
+
+/// What `check_key` and `list_tools` say when the server refuses, for a server that repeats the key it was sent.
+#[tokio::test]
+async fn a_key_check_and_a_listing_that_fail_do_not_repeat_the_key() {
+    use noevia_server::mcp_egress::{check_key, list_tools};
+    let basic = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        "kc-user:kc-pass9",
+    );
+    // (headers sent, the values the server will repeat)
+    let rounds: Vec<(Vec<(String, String)>, Vec<String>)> = vec![
+        (
+            vec![("X-Api-Key".into(), "SYNTH-api-secret-1234".into())],
+            vec!["SYNTH-api-secret-1234".into()],
+        ),
+        (
+            vec![("X-Api-Key".into(), "q7Z!".into())],
+            vec!["q7Z!".into()],
+        ),
+        (vec![("X-Api-Key".into(), "k".into())], vec!["k".into()]),
+        (
+            vec![("Authorization".into(), "Bearer q7Z!2".into())],
+            vec!["q7Z!2".into(), "Bearer q7Z!2".into()],
+        ),
+        (
+            vec![("Authorization".into(), format!("Basic {basic}"))],
+            vec!["kc-pass9".into(), basic.clone()],
+        ),
+    ];
+    for (headers, repeated) in rounds {
+        let echo = format!("invalid key {} end", repeated.join(" and "));
+        for (stage, behaviour) in [
+            (
+                "initialize",
+                json!({"init":{"http":{"status":401,"body":echo}}}),
+            ),
+            (
+                "tools/list",
+                json!({"list":{"http":{"status":500,"body":echo}}}),
+            ),
+        ] {
+            let fake = Fake::start().await;
+            *fake.behaviour.lock().unwrap() = behaviour;
+            let egress = Egress::new(true).unwrap();
+            let counter = std::sync::atomic::AtomicI64::new(0);
+            let checked = check_key(&egress, &fake.url, &headers, &counter)
+                .await
+                .unwrap_err();
+            let listed = list_tools(&egress, &fake.url, &headers, &counter)
+                .await
+                .unwrap_err();
+            for (entry, why) in [("check_key", &checked), ("list_tools", &listed)] {
+                let at = format!("{entry} / {stage} / {headers:?}");
+                for secret in &repeated {
+                    assert!(!has_token(why, secret), "{at}: {why}");
+                }
+                // The format stays: `MCP <status>: <body>`, with the credential taken out.
+                let status = if stage == "initialize" { "401" } else { "500" };
+                assert!(
+                    why.starts_with(&format!("MCP {status}: invalid key ")),
+                    "{at}: {why}"
+                );
+                assert!(
+                    why.contains("[redacted]") && why.ends_with(" end"),
+                    "{at}: {why}"
+                );
+            }
+        }
+    }
+}
+
+/// The clip is taken after the scrub: a key that crosses the 200-character cutoff leaves no prefix of itself.
+#[tokio::test]
+async fn a_key_crossing_the_clip_leaves_no_prefix() {
+    use noevia_server::mcp_egress::check_key;
+    let key = "SYNTH-api-secret-1234";
+    for pad in [180, 190, 195, 199, 200] {
+        let body = format!("{}{key}", "x".repeat(pad));
+        let fake = Fake::start().await;
+        *fake.behaviour.lock().unwrap() = json!({"init":{"http":{"status":401,"body":body}}});
+        let counter = std::sync::atomic::AtomicI64::new(0);
+        let why = check_key(
+            &Egress::new(true).unwrap(),
+            &fake.url,
+            &[("X-Api-Key".into(), key.into())],
+            &counter,
+        )
+        .await
+        .unwrap_err();
+        assert!(!why.contains("SYNTH"), "pad {pad}: {why}");
+        assert!(why.starts_with("MCP 401: "), "{why}");
+        assert!(why.chars().count() <= "MCP 401: ".len() + 200, "{why}");
     }
 }
 
