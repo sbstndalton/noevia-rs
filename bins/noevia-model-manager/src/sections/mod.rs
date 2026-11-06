@@ -137,9 +137,16 @@ pub struct Model {
 }
 pub trait Read: Send + Sync {
     fn response(&self, name: Option<&str>, defaults: bool) -> Result<Vec<u8>, Error>;
+    #[cfg(feature = "native-section-writes")]
+    fn file_identity(
+        &self,
+        _identity: &crate::section_writes::FileIdentity,
+    ) -> Result<bool, Error> {
+        Err(Error::Refused)
+    }
 }
 pub struct Sections {
-    reader: Arc<dyn Read>,
+    pub(crate) reader: Arc<dyn Read>,
     permits: Arc<tokio::sync::Semaphore>,
 }
 impl Sections {
@@ -320,6 +327,22 @@ fn valid_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || b"._-+".contains(&c))
 }
 impl Read for Files {
+    #[cfg(feature = "native-section-writes")]
+    fn file_identity(&self, identity: &crate::section_writes::FileIdentity) -> Result<bool, Error> {
+        use std::os::unix::fs::MetadataExt;
+        let Some(file) = self
+            .models
+            .file(&identity.relative, false, &mut Budget::default())?
+        else {
+            return Ok(false);
+        };
+        let meta = file.metadata().map_err(|_| Error::Refused)?;
+        Ok(meta.dev() == identity.device
+            && meta.ino() == identity.inode
+            && meta.len() == identity.size
+            && i128::from(meta.mtime()) * 1_000_000_000 + i128::from(meta.mtime_nsec())
+                == identity.mtime_ns)
+    }
     fn response(&self, name: Option<&str>, defaults: bool) -> Result<Vec<u8>, Error> {
         let mut budget = Budget::default();
         if name.is_some_and(|n| !valid_name(n)) {

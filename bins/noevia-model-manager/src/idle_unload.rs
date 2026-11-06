@@ -363,6 +363,14 @@ impl Reconciler {
     pub fn writable(&self) -> bool {
         self.store.is_some()
     }
+    /// The caller already owns the shared publication transaction. No nested SQL or async lock.
+    #[cfg(feature = "native-section-writes")]
+    pub(crate) fn reconcile_in_publication(
+        &self,
+        _guard: &model_publication::Guard,
+    ) -> Result<Option<String>, &'static str> {
+        reconcile_guarded(&self.path, self.setting())
+    }
     /// noevia#1863: saves an admin choice (`Some`) or clears it (`None`, back to the
     /// environment), then rewrites the chat preset. Nothing changes when the save fails.
     ///

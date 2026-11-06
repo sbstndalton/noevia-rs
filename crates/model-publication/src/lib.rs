@@ -255,11 +255,21 @@ fn share_reader_files(path: &Path) -> std::io::Result<()> {
 fn io_error(_: rusqlite::Error) -> std::io::Error {
     std::io::Error::other("preset authority unavailable")
 }
+#[derive(Debug)]
+struct StaleOperation;
+impl std::fmt::Display for StaleOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("stale maintenance operation")
+    }
+}
+impl std::error::Error for StaleOperation {}
+pub fn is_conflict(error: &std::io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|cause| cause.is::<StaleOperation>())
+}
 fn conflict() -> std::io::Error {
-    std::io::Error::new(
-        std::io::ErrorKind::AlreadyExists,
-        "stale maintenance operation",
-    )
+    std::io::Error::new(std::io::ErrorKind::AlreadyExists, StaleOperation)
 }
 
 /// Admission-side read of the same authority. No database or schema is created here.

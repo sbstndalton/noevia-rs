@@ -14,6 +14,11 @@
 //! `GET /api/v1/internal/safe-defaults-plan` (read-only there), asked while this side holds
 //! the write lock, and the write itself is native.
 pub mod cfg;
+mod publication;
+pub use publication::{FileIdentity, PublicationCondition};
+pub fn publication_stale() -> Outcome {
+    publication::stale()
+}
 
 use crate::sections::role::{is_system_routing_role, LEGACY_SYSTEM_ROUTING_ROLE};
 use cfg::{Dict, ParseError, Parser};
@@ -57,6 +62,9 @@ pub type Clock = Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>;
 
 #[derive(Clone)]
 pub struct SectionWrites {
+    predicate: Option<Arc<publication::Predicate>>,
+    scope: Option<Arc<std::sync::Mutex<Option<model_publication::Guard>>>>,
+    published: Option<Arc<std::sync::atomic::AtomicBool>>,
     fence: Option<model_publication::Fence>,
     publication: PathBuf,
     pub ini: PathBuf,
@@ -439,6 +447,9 @@ impl SectionWrites {
     }
     pub fn with_clock(ini: &Path, cache: (i64, i64), clock: Clock) -> Self {
         Self {
+            predicate: None,
+            scope: None,
+            published: None,
             fence: None,
             publication: std::env::var_os("NOEVIA_PRESET_AUTHORITY_FILE")
                 .map(PathBuf::from)
@@ -470,6 +481,9 @@ impl SectionWrites {
     }
 
     pub fn native_defaults(&self, name: &str) -> Outcome {
+        if self.needs_transaction() {
+            return self.transaction(|writer| writer.native_defaults(name));
+        }
         #[cfg(feature = "native-safe-defaults")]
         if let Some(models) = self.safe_models.get() {
             return match crate::sections::safe_defaults::plan(models, &self.ini, name) {
@@ -556,121 +570,131 @@ impl SectionWrites {
             .parent()
             .ok_or_else(|| std::io::Error::other("no parent"))?;
         std::fs::create_dir_all(dir)?;
-        let _publication = model_publication::Guard::at(&self.publication)?;
-        if let Some(fence) = fence {
-            if fence.expected_revision.is_none() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::AlreadyExists,
-                    "expected preset revision required",
-                ));
-            }
-            _publication.running(fence)?;
-            _publication.no_other_publishers(fence)?;
-        }
-        if let Some(expected) = expected {
-            let (_, actual) =
-                current(path).map_err(|()| std::io::Error::other("preset read failed"))?;
+        self.with_publication(|_publication| {
             if let Some(fence) = fence {
-                _publication.expected(fence, &actual)?;
+                if fence.expected_revision.is_none() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        "expected preset revision required",
+                    ));
+                }
+                _publication.running(fence)?;
+                _publication.no_other_publishers(fence)?;
             }
-            if expected != actual {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::AlreadyExists,
-                    "preset revision conflict",
-                ));
-            }
-        }
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| std::io::Error::other("bad name"))?;
-        std::fs::create_dir_all(dir)?;
-        let mut mode = 0o644;
-        let mut prune: Vec<PathBuf> = Vec::new();
-        if let Ok(meta) = std::fs::metadata(path) {
-            mode = meta.permissions().mode() & 0o777;
-            let mut existing = Vec::new();
-            for entry in std::fs::read_dir(dir)? {
-                let entry = entry?;
-                let meta = entry.metadata()?;
-                if meta.file_type().is_file() {
-                    let Ok(n) = entry.file_name().into_string() else {
-                        continue;
-                    };
-                    let ns =
-                        i128::from(meta.mtime()) * 1_000_000_000 + i128::from(meta.mtime_nsec());
-                    existing.push(model_files::backups::Listed {
-                        name: n,
-                        mtime_ns: u128::try_from(ns.max(0)).unwrap_or(0),
-                    });
+            if let Some(expected) = expected {
+                let (_, actual) =
+                    current(path).map_err(|()| std::io::Error::other("preset read failed"))?;
+                if let Some(fence) = fence {
+                    _publication.expected(fence, &actual)?;
+                }
+                if expected != actual {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        "preset revision conflict",
+                    ));
                 }
             }
-            let request = model_files::backups::Request {
-                file: name.to_owned(),
-                base_revision: base.map(str::to_owned),
-                backup,
-                rotating_name: Some(self.rotating_name(dir, name)),
-                keep_revisions: BACKUPS_TO_KEEP,
-                existing,
-            };
-            let plan = model_files::backups::plan(&request);
-            if plan.revision.is_some() {
-                immutable_backup(path, base.unwrap_or_default())?;
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| std::io::Error::other("bad name"))?;
+            std::fs::create_dir_all(dir)?;
+            let mut mode = 0o644;
+            let mut prune: Vec<PathBuf> = Vec::new();
+            if let Ok(meta) = std::fs::metadata(path) {
+                mode = meta.permissions().mode() & 0o777;
+                let mut existing = Vec::new();
+                for entry in std::fs::read_dir(dir)? {
+                    let entry = entry?;
+                    let meta = entry.metadata()?;
+                    if meta.file_type().is_file() {
+                        let Ok(n) = entry.file_name().into_string() else {
+                            continue;
+                        };
+                        let ns = i128::from(meta.mtime()) * 1_000_000_000
+                            + i128::from(meta.mtime_nsec());
+                        existing.push(model_files::backups::Listed {
+                            name: n,
+                            mtime_ns: u128::try_from(ns.max(0)).unwrap_or(0),
+                        });
+                    }
+                }
+                let request = model_files::backups::Request {
+                    file: name.to_owned(),
+                    base_revision: base.map(str::to_owned),
+                    backup,
+                    rotating_name: Some(self.rotating_name(dir, name)),
+                    keep_revisions: BACKUPS_TO_KEEP,
+                    existing,
+                };
+                let plan = model_files::backups::plan(&request);
+                if plan.revision.is_some() {
+                    immutable_backup(path, base.unwrap_or_default())?;
+                }
+                if let Some(rot) = plan.rotating {
+                    copy(path, &dir.join(rot))?;
+                }
+                prune = plan
+                    .prune
+                    .iter()
+                    .filter(|n| own_copy(name, n))
+                    .map(|n| dir.join(n))
+                    .collect();
             }
-            if let Some(rot) = plan.rotating {
-                copy(path, &dir.join(rot))?;
+            let nanos = std::time::Instant::now().elapsed().as_nanos()
+                + std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_nanos());
+            let tmp = dir.join(format!("{name}.tmp-{}-{nanos}", std::process::id()));
+            let result = (|| {
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(mode)
+                    .open(&tmp)?;
+                file.write_all(text.as_bytes())?;
+                file.flush()?;
+                file.sync_all()?;
+                if let Some(predicate) = &self.predicate {
+                    predicate(_publication).map_err(|_| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::AlreadyExists,
+                            publication::ConditionChanged,
+                        )
+                    })?;
+                }
+                if let Some(fence) = fence {
+                    _publication.validate(fence)?;
+                }
+                std::fs::rename(&tmp, path)?;
+                std::fs::File::open(dir)?.sync_all()
+            })();
+            let _ = std::fs::remove_file(&tmp);
+            result?;
+            if let Some((old, new)) = roles {
+                forget_role(&self.ini, old, new)?;
             }
-            prune = plan
-                .prune
-                .iter()
-                .filter(|n| own_copy(name, n))
-                .map(|n| dir.join(n))
-                .collect();
-        }
-        let nanos = std::time::Instant::now().elapsed().as_nanos()
-            + std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_nanos());
-        let tmp = dir.join(format!("{name}.tmp-{}-{nanos}", std::process::id()));
-        let result = (|| {
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .mode(mode)
-                .open(&tmp)?;
-            file.write_all(text.as_bytes())?;
-            file.flush()?;
-            file.sync_all()?;
-            if let Some(fence) = fence {
-                _publication.validate(fence)?;
+            for old in prune {
+                if let Some(fence) = fence {
+                    _publication.validate(fence)?;
+                }
+                let _ = std::fs::remove_file(old);
             }
-            std::fs::rename(&tmp, path)?;
-            std::fs::File::open(dir)?.sync_all()
-        })();
-        let _ = std::fs::remove_file(&tmp);
-        result?;
-        if let Some((old, new)) = roles {
-            forget_role(&self.ini, old, new)?;
-        }
-        for old in prune {
-            if let Some(fence) = fence {
-                _publication.validate(fence)?;
+            // Publish the terminal receipt and observed revision before exclusion can be released.
+            if _publication.authority()?.is_some() {
+                _publication.observe_revision(&format!("{:x}", Sha256::digest(text.as_bytes())))?;
             }
-            let _ = std::fs::remove_file(old);
-        }
-        // Publish the terminal receipt and observed revision before exclusion can be released.
-        if _publication.authority()?.is_some() {
-            _publication.observe_revision(&format!("{:x}", Sha256::digest(text.as_bytes())))?;
-        }
-        if let Some(fence) = fence {
-            _publication.finish(
-                fence,
-                "settled",
-                Some(&format!("{:x}", Sha256::digest(text.as_bytes()))),
-            )?;
-        }
-        _publication.commit()?;
-        Ok(())
+            if let Some(published) = &self.published {
+                published.store(true, std::sync::atomic::Ordering::Release);
+            } else if let Some(fence) = fence {
+                _publication.finish(
+                    fence,
+                    "settled",
+                    Some(&format!("{:x}", Sha256::digest(text.as_bytes()))),
+                )?;
+            }
+            Ok(())
+        })
     }
 }
 
@@ -828,6 +852,9 @@ pub fn section_body(name: &str, body: &Json) -> Result<SectionBody, Outcome> {
 impl SectionWrites {
     /// `PUT /api/v1/sections/{name}` (the caller holds [`Self::lock`]).
     pub fn save_section(&self, name: &str, body: &Json, parsed: &SectionBody) -> Outcome {
+        if self.needs_transaction() {
+            return self.transaction(|writer| writer.save_section(name, body, parsed));
+        }
         let Ok((bytes, revision)) = current(&self.ini) else {
             return Outcome::Failed;
         };
@@ -866,6 +893,20 @@ impl SectionWrites {
         backup: bool,
         fence: Option<&model_publication::Fence>,
     ) -> Outcome {
+        if self.scope.is_none() {
+            if let Some(fence) = fence.or(self.fence.as_ref()) {
+                if self.fence.as_ref().is_some_and(|header| header != fence) {
+                    return self.refusal(publication::stale());
+                }
+                return self.for_operation(fence.clone()).transaction(|writer| {
+                    writer.replace_models_ini_fenced(text, base, backup, Some(fence))
+                });
+            }
+        }
+        if self.needs_transaction() {
+            return self
+                .transaction(|writer| writer.replace_models_ini_fenced(text, base, backup, fence));
+        }
         let Ok((_, revision)) = current(&self.ini) else {
             return Outcome::Failed;
         };
@@ -879,10 +920,7 @@ impl SectionWrites {
         if let Err(e) = self.replace_file_checked(text, base, backup, base, fence) {
             if e.kind() == std::io::ErrorKind::AlreadyExists {
                 if let Some(fence) = fence {
-                    if let Ok(guard) = model_publication::Guard::at(&self.publication) {
-                        let _ = guard.finish(fence, "conflict", None);
-                        let _ = guard.commit();
-                    }
+                    let _ = self.with_publication(|guard| guard.finish(fence, "conflict", None));
                 }
                 return publication_error(&e);
             }
@@ -899,6 +937,9 @@ impl SectionWrites {
 
     /// `POST /api/v1/sections/{name}/rename` (the caller holds the lock).
     pub fn rename(&self, old: &str, new: &str, base: Option<&Json>) -> Outcome {
+        if self.needs_transaction() {
+            return self.transaction(|writer| writer.rename(old, new, base));
+        }
         let Ok((bytes, revision)) = current(&self.ini) else {
             return Outcome::Failed;
         };
@@ -958,6 +999,9 @@ impl SectionWrites {
 
     /// `DELETE /api/v1/sections/{name}?baseRevision=` (the caller holds the lock).
     pub fn delete(&self, name: &str, base: &str) -> Outcome {
+        if self.needs_transaction() {
+            return self.transaction(|writer| writer.delete(name, base));
+        }
         let Ok((bytes, revision)) = current(&self.ini) else {
             return Outcome::Failed;
         };
@@ -991,6 +1035,9 @@ impl SectionWrites {
     /// `POST /api/v1/sections/{name}/safe-defaults`, given the child's plan (the caller holds
     /// the lock while asking for it).
     pub fn safe_defaults(&self, name: &str, plan: Plan) -> Outcome {
+        if self.needs_transaction() {
+            return self.transaction(|writer| writer.safe_defaults(name, plan));
+        }
         let (values, mtp) = match plan {
             Plan::Refused(status, message) => return detail(status, &message),
             Plan::Values(values, mtp) => (values, mtp),
@@ -1208,6 +1255,14 @@ pub fn parse_plan(bytes: &[u8]) -> Option<Plan> {
 mod tests;
 
 fn publication_error(e: &std::io::Error) -> Outcome {
+    if model_publication::is_conflict(e) {
+        return publication::stale();
+    }
+    if e.get_ref()
+        .is_some_and(|error| error.is::<publication::ConditionChanged>())
+    {
+        return Outcome::Json(409,br#"{"detail":"Publication condition changed.","code":"maintenance_precondition_changed"}"#.to_vec());
+    }
     if e.kind() == std::io::ErrorKind::AlreadyExists {
         detail(
             409,
@@ -1248,6 +1303,6 @@ pub fn publication_fence(
                 expected_revision: string("expectedRevision"),
             }))
         }
-        _ => Err(detail(409, "Stale maintenance operation.")),
+        _ => Err(publication::stale()),
     }
 }

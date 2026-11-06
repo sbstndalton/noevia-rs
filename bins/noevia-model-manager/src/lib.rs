@@ -670,6 +670,7 @@ fn native_badges_route(state: &StateData, method: &Method, path: &str) -> bool {
 pub enum SectionWrite {
     Save(String),
     Delete(String),
+    DeleteMissing(String),
     Rename(String),
     SafeDefaults(String),
     ModelsIni,
@@ -696,6 +697,7 @@ pub fn section_write_route(method: &Method, path: &str) -> Option<SectionWrite> 
     match (method, tail) {
         (&Method::PUT, None) => Some(SectionWrite::Save(name)),
         (&Method::DELETE, None) => Some(SectionWrite::Delete(name)),
+        (&Method::DELETE, Some("missing")) => Some(SectionWrite::DeleteMissing(name)),
         (&Method::POST, Some("rename")) => Some(SectionWrite::Rename(name)),
         (&Method::POST, Some("safe-defaults")) => Some(SectionWrite::SafeDefaults(name)),
         _ => None,
@@ -1901,6 +1903,28 @@ async fn maintenance_receipt(state: &StateData, req: Request, settle: bool) -> R
 }
 
 #[cfg(feature = "native-section-writes")]
+async fn finish_section_refusal(
+    writes: Arc<section_writes::SectionWrites>,
+    response: Response,
+) -> Response {
+    if writes.operation_fence().is_none() {
+        return response;
+    }
+    let status = response.status().as_u16();
+    match docker::spawn_blocking_admitted(move || {
+        writes.refusal(section_writes::Outcome::Json(status, Vec::new()))
+    })
+    .await
+    {
+        Ok(section_writes::Outcome::Json(code, body)) if code == status && body.is_empty() => {
+            response
+        }
+        Ok(outcome) => section_outcome(outcome),
+        Err(_) => internal_error(),
+    }
+}
+
+#[cfg(feature = "native-section-writes")]
 async fn native_section_write(
     state: &StateData,
     writes: Arc<section_writes::SectionWrites>,
@@ -1914,17 +1938,42 @@ async fn native_section_write(
             "Native models.ini writes are unavailable",
         )
     };
-    let writes = match req.headers().get("x-noevia-maintenance-fence") {
+    let mut writes = match req.headers().get("x-noevia-maintenance-fence") {
         Some(value) => match value
             .to_str()
             .ok()
             .and_then(|v| serde_json::from_str::<model_publication::Fence>(v).ok())
         {
             Some(fence) => Arc::new(writes.for_operation(fence)),
-            None => return detail(StatusCode::CONFLICT, "Stale maintenance operation."),
+            None => return section_outcome(section_writes::publication_stale()),
         },
         None => writes,
     };
+    if let Some(value) = req.headers().get("x-noevia-publication-condition") {
+        let condition = value
+            .to_str()
+            .ok()
+            .filter(|v| v.len() <= 8192)
+            .and_then(|v| serde_json::from_str::<section_writes::PublicationCondition>(v).ok());
+        let Some(condition) = condition else {
+            return finish_section_refusal(
+                writes,
+                detail(StatusCode::BAD_REQUEST, "Invalid publication condition."),
+            )
+            .await;
+        };
+        let Some(sections) = state.sections.as_ref() else {
+            return finish_section_refusal(
+                writes,
+                detail(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Model file presence is unavailable.",
+                ),
+            )
+            .await;
+        };
+        writes = Arc::new(writes.with_condition(condition, sections.reader.clone()));
+    }
     let query = req.uri().query().unwrap_or_default().to_owned();
     // Python reads the body only where the handler has one.
     let body = match route {
@@ -1945,15 +1994,38 @@ async fn native_section_write(
             .await
             {
                 Ok(body) => Some(body),
-                Err(response) => return response,
+                Err(response) => return finish_section_refusal(writes, response).await,
             }
         }
         SectionWrite::Save(_) | SectionWrite::Rename(_) => match fastapi_dict_body(req).await {
             Ok(body) => Some(body),
-            Err(response) => return response,
+            Err(response) => return finish_section_refusal(writes, response).await,
         },
         _ => None,
     };
+    if matches!(route, SectionWrite::ModelsIni) {
+        if let Some(body) = &body {
+            match section_writes::publication_fence(body.get("maintenance")) {
+                Ok(Some(fence)) => {
+                    if writes
+                        .operation_fence()
+                        .is_some_and(|header| header != &fence)
+                    {
+                        return finish_section_refusal(
+                            writes,
+                            section_outcome(section_writes::publication_stale()),
+                        )
+                        .await;
+                    }
+                    writes = Arc::new(writes.for_operation(fence));
+                }
+                Ok(None) => {}
+                Err(outcome) => {
+                    return finish_section_refusal(writes, section_outcome(outcome)).await
+                }
+            }
+        }
+    }
     let early = match (&route, &body) {
         (SectionWrite::Save(name), Some(body)) => {
             section_writes::section_body(name, body).map(|b| Some((Some(b), None, None)))
@@ -1971,7 +2043,7 @@ async fn native_section_write(
     };
     let early = match early {
         Ok(e) => e,
-        Err(outcome) => return section_outcome(outcome),
+        Err(outcome) => return finish_section_refusal(writes, section_outcome(outcome)).await,
     };
     let guard = writes.lock().await;
     let plan = if let SectionWrite::SafeDefaults(name) = &route {
@@ -1996,86 +2068,128 @@ async fn native_section_write(
     let job = {
         let writes = writes.clone();
         let route = route.clone();
+        let idle = state.idle_unload.clone();
+        let reader = state
+            .sections
+            .as_ref()
+            .map(|sections| sections.reader.clone());
         move || -> Outcome {
             let _guard = guard;
-            let (section, ini, new) = early.unwrap_or((None, None, None));
-            match route {
-                SectionWrite::Save(name) => match (body.as_ref(), section) {
-                    (Some(body), Some(parsed)) => writes.save_section(&name, body, &parsed),
-                    _ => Outcome::Failed,
-                },
-                SectionWrite::ModelsIni => match (body.as_ref(), ini) {
-                    (Some(body), Some((text, backup))) => {
-                        match section_writes::publication_fence(body.get("maintenance")) {
-                            Ok(fence) => writes.replace_models_ini_fenced(
-                                &text,
-                                body.get("baseRevision"),
-                                backup,
-                                fence.as_ref(),
+            writes.transaction(|writer| {
+                let writes = writer;
+                let (section, ini, new) = early.unwrap_or((None, None, None));
+                let outcome = match route {
+                    SectionWrite::Save(name) => match (body.as_ref(), section) {
+                        (Some(body), Some(parsed)) => writes.save_section(&name, body, &parsed),
+                        _ => Outcome::Failed,
+                    },
+                    SectionWrite::ModelsIni => match (body.as_ref(), ini) {
+                        (Some(body), Some((text, backup))) => {
+                            match section_writes::publication_fence(body.get("maintenance")) {
+                                Ok(fence) => writes.replace_models_ini_fenced(
+                                    &text,
+                                    body.get("baseRevision"),
+                                    backup,
+                                    fence.as_ref(),
+                                ),
+                                Err(o) => o,
+                            }
+                        }
+                        _ => Outcome::Failed,
+                    },
+                    SectionWrite::Rename(old) => match (body.as_ref(), new) {
+                        (Some(body), Some(new)) => {
+                            writes.rename(&old, &new, body.get("baseRevision"))
+                        }
+                        _ => Outcome::Failed,
+                    },
+                    SectionWrite::Delete(name) => {
+                        let base = form_urlencoded::parse(query.as_bytes())
+                            .filter(|(k, _)| k == "baseRevision")
+                            .last()
+                            .map(|(_, v)| v.into_owned())
+                            .unwrap_or_default();
+                        writes.delete(&name, &base)
+                    }
+                    SectionWrite::DeleteMissing(name) => {
+                        let base = form_urlencoded::parse(query.as_bytes())
+                            .filter(|(k, _)| k == "baseRevision")
+                            .last()
+                            .map(|(_, v)| v.into_owned())
+                            .unwrap_or_default();
+                        match reader.as_ref() {
+                            Some(reader) => writes.delete_missing(&name, &base, reader.as_ref()),
+                            None => section_writes::Outcome::Json(
+                                503,
+                                br#"{"detail":"Model file presence is unavailable."}"#.to_vec(),
                             ),
-                            Err(o) => o,
                         }
                     }
-                    _ => Outcome::Failed,
-                },
-                SectionWrite::Rename(old) => match (body.as_ref(), new) {
-                    (Some(body), Some(new)) => writes.rename(&old, &new, body.get("baseRevision")),
-                    _ => Outcome::Failed,
-                },
-                SectionWrite::Delete(name) => {
-                    let base = form_urlencoded::parse(query.as_bytes())
-                        .filter(|(k, _)| k == "baseRevision")
-                        .last()
-                        .map(|(_, v)| v.into_owned())
-                        .unwrap_or_default();
-                    writes.delete(&name, &base)
+                    SectionWrite::SafeDefaults(name) if writes.has_native_defaults() => {
+                        writes.native_defaults(&name)
+                    }
+                    SectionWrite::SafeDefaults(name) => match plan {
+                        Some(plan) => writes.safe_defaults(&name, plan),
+                        None => Outcome::Failed,
+                    },
+                };
+                match (outcome, idle.as_ref()) {
+                    (Outcome::Json(200, bytes), Some(reconciler)) => {
+                        after_native_preset_write_in_scope(writes, reconciler, bytes)
+                    }
+                    (other, _) => other,
                 }
-                SectionWrite::SafeDefaults(name) if writes.has_native_defaults() => {
-                    writes.native_defaults(&name)
-                }
-                SectionWrite::SafeDefaults(name) => match plan {
-                    Some(plan) => writes.safe_defaults(&name, plan),
-                    None => Outcome::Failed,
-                },
-            }
+            })
         }
     };
     // noevia#2006: admitted: a dropped request keeps its permit until the write returns.
     let outcome = docker::spawn_blocking_admitted(job)
         .await
         .unwrap_or(section_writes::Outcome::Failed);
-    // #1747: a saved preset may have lost the chat preset's idle key; the answer reports the
-    // revision of the file as it is after that is put back, as for the forwarded writers.
-    let outcome = match (outcome, state.idle_unload.as_ref()) {
-        (Outcome::Json(200, bytes), Some(reconciler)) => {
-            Outcome::Json(200, after_native_preset_write(reconciler, bytes).await)
-        }
-        (other, _) => other,
-    };
     section_outcome(outcome)
 }
 
 /// Replace the `"revision"` value of a native writer's answer after the idle-unload reconcile,
 /// keeping every other byte (its key order included).
 #[cfg(feature = "native-section-writes")]
-async fn after_native_preset_write(
+fn after_native_preset_write_in_scope(
+    writer: &section_writes::SectionWrites,
     reconciler: &idle_unload::Reconciler,
     bytes: Vec<u8>,
-) -> Vec<u8> {
-    let Ok(Some(revision)) = reconciler.reconcile().await else {
-        return bytes;
+) -> section_writes::Outcome {
+    let result = writer.with_publication(|guard| {
+        reconciler
+            .reconcile_in_publication(guard)
+            .map_err(std::io::Error::other)
+    });
+    let revision = match result {
+        Ok(Some(revision)) => {
+            writer.note_publication();
+            revision
+        }
+        Ok(None) => return section_writes::Outcome::Json(200, bytes),
+        Err(_) if writer.operation_fence().is_some() => {
+            return section_writes::Outcome::Json(
+                503,
+                br#"{"detail":"Preset reconciliation requires recovery."}"#.to_vec(),
+            )
+        }
+        Err(_) => return section_writes::Outcome::Json(200, bytes),
     };
     let Ok(text) = String::from_utf8(bytes.clone()) else {
-        return bytes;
+        return section_writes::Outcome::Json(200, bytes);
     };
     let Some(start) = text.find("\"revision\":\"") else {
-        return bytes;
+        return section_writes::Outcome::Json(200, bytes);
     };
     let from = start + "\"revision\":\"".len();
     let Some(len) = text[from..].find('"') else {
-        return bytes;
+        return section_writes::Outcome::Json(200, bytes);
     };
-    format!("{}{revision}{}", &text[..from], &text[from + len..]).into_bytes()
+    section_writes::Outcome::Json(
+        200,
+        format!("{}{revision}{}", &text[..from], &text[from + len..]).into_bytes(),
+    )
 }
 
 #[cfg(feature = "native-section-writes")]
