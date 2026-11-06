@@ -609,6 +609,17 @@ fn to_review_js(v: &JValue) -> review_verdict::Js {
     }
 }
 
+/// The existing native verdict policy, with the journal's lossless JS-value adapter.
+/// A model verdict is advice only; this function grants no lifecycle or approval authority.
+pub fn read_review_verdict(raw: &JValue) -> Result<JValue, &'static str> {
+    let verdict = review_verdict::read_verdict(&to_review_js(raw))
+        .map_err(|_| "The verdict could not be read.")?
+        .map_err(review_verdict::Invalid::message)?;
+    let mut out = Vec::new();
+    review_verdict::verdict_json(&mut out, &verdict);
+    wtf16::parse(&String::from_utf8_lossy(&out)).map_err(|_| "The verdict could not be read.")
+}
+
 /// core code-review-verdict.cjs `boundReviewEvent`; a fault keeps a failed review that names nothing.
 fn bound_review(kind: &str, data: &JValue) -> JValue {
     let tag = review_verdict::Js::Str(kind.encode_utf16().collect());
