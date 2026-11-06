@@ -17,6 +17,7 @@ provider-egress = { path = "../provider-egress" }
 provider-error = { path = "../provider-error" }
 tool-exchange = { path = "../tool-exchange" }
 tool-gate = { path = "../tool-gate" }
+toolboxes-permitted = { path = "../toolboxes-permitted" }
 regex = "1"
 sha2 = "=0.10.9"
 
