@@ -53,7 +53,10 @@ pub fn preload_target(
     if roles.get("creative").is_some_and(|c| c != model) {
         return None;
     }
-    if PRELOAD_ROLES.iter().any(|r| roles.get(r).is_some() && remote_role(r)) {
+    if PRELOAD_ROLES
+        .iter()
+        .any(|r| roles.get(r).is_some() && remote_role(r))
+    {
         return None;
     }
     if roles.get("code").is_some_and(|c| c != model) && likely_code() {
@@ -113,15 +116,23 @@ pub async fn start(engine: &impl Engine, model: &str) -> Option<Preload> {
     }
     if rows.iter().any(|m| {
         as_str(get(m, "id")) != Some(model)
-            && (get(m, "loaded").truthy() || matches!(status(m), Some("loaded" | "loading" | "sleeping")))
+            && (get(m, "loaded").truthy()
+                || matches!(status(m), Some("loaded" | "loading" | "sleeping")))
     }) {
         return None;
     }
     if engine.aborted() || engine.busy() {
         return None;
     }
-    engine.log(format!("[preload] {model}: loading beside the routing decision"));
-    Some(Preload { model: model.to_owned(), used: Cell::new(false), released: Cell::new(false), settled: Cell::new(None) })
+    engine.log(format!(
+        "[preload] {model}: loading beside the routing decision"
+    ));
+    Some(Preload {
+        model: model.to_owned(),
+        used: Cell::new(false),
+        released: Cell::new(false),
+        settled: Cell::new(None),
+    })
 }
 
 impl Preload {
@@ -131,7 +142,11 @@ impl Preload {
             return v;
         }
         let ok = engine.load(&self.model).await;
-        engine.log(format!("[preload] {}: {}", self.model, if ok { "ready" } else { "not loaded" }));
+        engine.log(format!(
+            "[preload] {}: {}",
+            self.model,
+            if ok { "ready" } else { "not loaded" }
+        ));
         self.settled.set(Some(ok));
         ok
     }
@@ -166,10 +181,11 @@ impl Preload {
             if self.used.get() {
                 return false;
             }
-            let st: Option<String> = engine
-                .list_models()
-                .await
-                .and_then(|rows| rows.iter().find(|m| as_str(get(m, "id")) == Some(&self.model)).and_then(|r| status(r).map(str::to_owned)));
+            let st: Option<String> = engine.list_models().await.and_then(|rows| {
+                rows.iter()
+                    .find(|m| as_str(get(m, "id")) == Some(&self.model))
+                    .and_then(|r| status(r).map(str::to_owned))
+            });
             if st.as_deref() != Some("loading") || engine.past_wait() {
                 break st;
             }
@@ -180,7 +196,11 @@ impl Preload {
         let Some(ok) = engine.unload(&self.model).await else {
             return false;
         };
-        engine.log(format!("[preload] {}: unused by its turn, {}", self.model, if ok { "unloaded" } else { "left loaded" }));
+        engine.log(format!(
+            "[preload] {}: unused by its turn, {}",
+            self.model,
+            if ok { "unloaded" } else { "left loaded" }
+        ));
         ok
     }
 }

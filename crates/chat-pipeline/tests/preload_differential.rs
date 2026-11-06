@@ -32,7 +32,12 @@ fn preload_targets_match_node() {
     let c = wtf16::parse(include_str!("fixtures/preload-cases.json")).expect("fixture");
     for (i, t) in arr(c.get("targets")).iter().enumerate() {
         let r = t.get("roles");
-        let roles = matches!(r, JValue::Obj(_)).then(|| Roles { fast: s(r.get("fast")), smart: s(r.get("smart")), code: s(r.get("code")), creative: s(r.get("creative")) });
+        let roles = matches!(r, JValue::Obj(_)).then(|| Roles {
+            fast: s(r.get("fast")),
+            smart: s(r.get("smart")),
+            code: s(r.get("code")),
+            creative: s(r.get("creative")),
+        });
         let remote: Vec<String> = arr(t.get("remote")).iter().filter_map(s).collect();
         let asked = Cell::new(0);
         let likely = t.get("likely") == &JValue::Bool(true);
@@ -47,7 +52,11 @@ fn preload_targets_match_node() {
             },
         );
         assert_eq!(got, s(t.get("target")), "target {i}: {t:?}");
-        assert_eq!(Some(f64::from(asked.get())), t.get("asked").as_num(), "likelyCode asked {i}");
+        assert_eq!(
+            Some(f64::from(asked.get())),
+            t.get("asked").as_num(),
+            "likelyCode asked {i}"
+        );
     }
 }
 
@@ -76,7 +85,9 @@ impl Engine for Fake<'_> {
     }
     async fn list_models(&self) -> Option<Vec<JValue>> {
         let l = self.lists.borrow_mut().remove(0);
-        self.calls.borrow_mut().push(JValue::obj([("list", l.clone())]));
+        self.calls
+            .borrow_mut()
+            .push(JValue::obj([("list", l.clone())]));
         match (l.get("ok"), l.get("body").get("data")) {
             (JValue::Bool(true), JValue::Arr(rows)) => Some(rows.clone()),
             _ => None,
@@ -109,13 +120,26 @@ impl Engine for Fake<'_> {
 fn preload_starts_and_releases_match_node() {
     let c = wtf16::parse(include_str!("fixtures/preload-cases.json")).expect("fixture");
     for (i, k) in arr(c.get("starts")).iter().enumerate() {
-        let lists: Vec<JValue> = arr(k.get("calls")).iter().filter_map(|c| match c.get("list") {
-            JValue::Undefined => None,
-            l => Some(l.clone()),
-        }).collect();
-        let e = Fake { k, calls: RefCell::new(Vec::new()), lists: RefCell::new(lists), busy_n: Cell::new(0), aborted: Cell::new(false) };
+        let lists: Vec<JValue> = arr(k.get("calls"))
+            .iter()
+            .filter_map(|c| match c.get("list") {
+                JValue::Undefined => None,
+                l => Some(l.clone()),
+            })
+            .collect();
+        let e = Fake {
+            k,
+            calls: RefCell::new(Vec::new()),
+            lists: RefCell::new(lists),
+            busy_n: Cell::new(0),
+            aborted: Cell::new(false),
+        };
         let pre = block(pl::start(&e, k.get("model").as_str().unwrap_or("")));
-        assert_eq!(pre.is_some(), k.get("started") == &JValue::Bool(true), "started {i}: {k:?}");
+        assert_eq!(
+            pre.is_some(),
+            k.get("started") == &JValue::Bool(true),
+            "started {i}: {k:?}"
+        );
         if let Some(pre) = pre {
             if k.get("used") == &JValue::Bool(true) {
                 pre.use_it();
@@ -125,10 +149,18 @@ fn preload_starts_and_releases_match_node() {
             if k.get("release") == &JValue::Bool(true) {
                 let idle = k.get("idle") == &JValue::Bool(true);
                 let released = block(pre.release_if_unused(&e, &|| idle));
-                assert_eq!(Some(released), k.get("released").as_bool(), "released {i}: {k:?}");
+                assert_eq!(
+                    Some(released),
+                    k.get("released").as_bool(),
+                    "released {i}: {k:?}"
+                );
             }
         }
-        assert_eq!(&JValue::Arr(e.calls.borrow().clone()), k.get("calls"), "calls {i}: {k:?}");
+        assert_eq!(
+            &JValue::Arr(e.calls.borrow().clone()),
+            k.get("calls"),
+            "calls {i}: {k:?}"
+        );
     }
 }
 
@@ -148,7 +180,9 @@ fn a_release_dropped_before_the_load_settled_unloads_nothing() {
         }
         async fn list_models(&self) -> Option<Vec<JValue>> {
             self.0.borrow_mut().push("list");
-            wtf16::parse(r#"[{"id":"m-a","status":{"value":"unloaded"}}]"#).ok().map(|v| arr(&v).to_vec())
+            wtf16::parse(r#"[{"id":"m-a","status":{"value":"unloaded"}}]"#)
+                .ok()
+                .map(|v| arr(&v).to_vec())
         }
         async fn load(&self, _: &str) -> bool {
             self.0.borrow_mut().push("load");
