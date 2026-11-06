@@ -32,7 +32,10 @@ const W: &str = r"(?-u:[0-9A-Za-z_])";
 const FILES_WORDS: &str = "files?|folders?|director(?:y|ies)|documents?|docs";
 const NEXTCLOUD_APPS: [(&str, &str); 5] = [
     ("nextcloud-notes", "notes?"),
-    ("nextcloud-calendar", "calendars?|appointments?|meetings?|events?|agenda|schedule"),
+    (
+        "nextcloud-calendar",
+        "calendars?|appointments?|meetings?|events?|agenda|schedule",
+    ),
     ("nextcloud-tasks", "tasks?|to-?dos?|reminders?"),
     ("nextcloud-contacts", r"contacts?|address\s*books?"),
     ("nextcloud-mail", "e-?mails?|mail|inbox"),
@@ -63,7 +66,9 @@ fn bare(words: &str) -> Option<Regex> {
 
 fn possessive(words: &str) -> Option<Regex> {
     // `[\w-]` as one ASCII class.
-    js(&format!(r"\b(?:my|our)\s+(?:(?-u:[0-9A-Za-z_-])+\s+){{0,2}}(?:{words})\b"))
+    js(&format!(
+        r"\b(?:my|our)\s+(?:(?-u:[0-9A-Za-z_-])+\s+){{0,2}}(?:{words})\b"
+    ))
 }
 
 fn res() -> Option<&'static Res> {

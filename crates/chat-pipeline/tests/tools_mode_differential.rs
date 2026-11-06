@@ -20,7 +20,10 @@ fn arr(v: &JValue) -> &[JValue] {
 }
 
 fn strs(v: &JValue) -> Vec<String> {
-    arr(v).iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()
+    arr(v)
+        .iter()
+        .filter_map(|x| x.as_str().map(str::to_owned))
+        .collect()
 }
 
 fn undef(v: &JValue) -> JValue {
@@ -62,20 +65,38 @@ fn tools_mode_matches_node() {
     for m in arr(c.get("modes")) {
         let p = undef(m.get("project"));
         assert_eq!(Some(tm::tools_mode_of(&p)), m.get("mode").as_str(), "{m:?}");
-        assert_eq!(Some(tm::initial_tools_mode(&p)), m.get("initial").as_str(), "{m:?}");
+        assert_eq!(
+            Some(tm::initial_tools_mode(&p)),
+            m.get("initial").as_str(),
+            "{m:?}"
+        );
     }
     for g in arr(c.get("gates")) {
-        assert_eq!(Some(tm::gate_says_tool_needed(g.get("gate"))), g.get("needed").as_bool(), "{g:?}");
+        assert_eq!(
+            Some(tm::gate_says_tool_needed(g.get("gate"))),
+            g.get("needed").as_bool(),
+            "{g:?}"
+        );
     }
     for (i, b) in arr(c.get("boxesFor")).iter().enumerate() {
         let m = b.get("message");
-        assert_eq!(Some(tm::wants_web(m)), b.get("wantsWeb").as_bool(), "wantsWeb {i}: {m:?}");
-        let got: Vec<String> = tm::automatic_boxes_for(m).into_iter().map(str::to_owned).collect();
+        assert_eq!(
+            Some(tm::wants_web(m)),
+            b.get("wantsWeb").as_bool(),
+            "wantsWeb {i}: {m:?}"
+        );
+        let got: Vec<String> = tm::automatic_boxes_for(m)
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
         assert_eq!(got, strs(b.get("boxes")), "boxesFor {i}: {m:?}");
     }
     for (i, a) in arr(c.get("additions")).iter().enumerate() {
         let connectors: HashSet<String> = strs(a.get("connectors")).into_iter().collect();
-        let answers: Vec<bool> = arr(a.get("answers")).iter().map(|x| x.as_bool() == Some(true)).collect();
+        let answers: Vec<bool> = arr(a.get("answers"))
+            .iter()
+            .map(|x| x.as_bool() == Some(true))
+            .collect();
         let at = Cell::new(0usize);
         let ready = |_: &JValue| {
             let k = at.get();
@@ -96,7 +117,11 @@ fn tools_mode_matches_node() {
             a.get("max").as_num().unwrap_or(0.0) as usize,
             &undef(a.get("carried")),
         );
-        let want = if a.get("result").as_str() == Some("__threw") { Err(Thrown) } else { Ok(strs(a.get("result"))) };
+        let want = if a.get("result").as_str() == Some("__threw") {
+            Err(Thrown)
+        } else {
+            Ok(strs(a.get("result")))
+        };
         assert_eq!(got, want, "additions {i}: {a:?}");
         assert_eq!(at.get(), answers.len(), "ready calls {i}");
     }
@@ -105,7 +130,11 @@ fn tools_mode_matches_node() {
         assert_eq!(got, Ok(strs(h.get("result"))), "carried {i}: {h:?}");
     }
     for o in arr(c.get("order")) {
-        let got = tm::order_with_additions(&strs(o.get("ids")), &strs(o.get("added")), &strs(o.get("head")));
+        let got = tm::order_with_additions(
+            &strs(o.get("ids")),
+            &strs(o.get("added")),
+            &strs(o.get("head")),
+        );
         assert_eq!(got, strs(o.get("result")), "{o:?}");
     }
     for (i, r) in arr(c.get("ready")).iter().enumerate() {
@@ -113,15 +142,33 @@ fn tools_mode_matches_node() {
         let reads = Cell::new(0);
         let get_storage = |_: &str| {
             reads.set(reads.get() + 1);
-            if storage.as_str() == Some("__throw") { Err(Thrown) } else { Ok(storage.clone()) }
+            if storage.as_str() == Some("__throw") {
+                Err(Thrown)
+            } else {
+                Ok(storage.clone())
+            }
         };
         let throws = r.get("originThrows").as_bool() == Some(true);
-        let origin = |u: &JValue| if throws { Err(Thrown) } else { Ok(u.as_str() == Some("https://nc.invalid")) };
+        let origin = |u: &JValue| {
+            if throws {
+                Err(Thrown)
+            } else {
+                Ok(u.as_str() == Some("https://nc.invalid"))
+            }
+        };
         let ready = ToolsReady::new(r.get("user"), &get_storage, &origin);
         for a in arr(r.get("asks")) {
-            assert_eq!(Some(ready.ready(a.get("box"))), a.get("ready").as_bool(), "ready {i}: {r:?}");
+            assert_eq!(
+                Some(ready.ready(a.get("box"))),
+                a.get("ready").as_bool(),
+                "ready {i}: {r:?}"
+            );
         }
-        assert_eq!(Some(f64::from(reads.get())), r.get("reads").as_num(), "storage reads {i}");
+        assert_eq!(
+            Some(f64::from(reads.get())),
+            r.get("reads").as_num(),
+            "storage reads {i}"
+        );
     }
     for (i, r) in arr(c.get("route")).iter().enumerate() {
         let capable = strs(r.get("capable"));
@@ -130,16 +177,34 @@ fn tools_mode_matches_node() {
         let roles_v = r.get("roles").clone();
         let roles = |role: &str| roles_v.get(role).as_str().map(str::to_owned);
         let hosts = r.get("hosts").clone();
-        let host_of = |role: Option<&str>| hosts.get(role.unwrap_or("null")).as_str().unwrap_or("").to_owned();
+        let host_of = |role: Option<&str>| {
+            hosts
+                .get(role.unwrap_or("null"))
+                .as_str()
+                .unwrap_or("")
+                .to_owned()
+        };
         let allows = |m: String, role: Option<String>| {
             let mut c = calls.borrow_mut();
             let k = c.len() as i64;
             let ok = capable.contains(&format!("{m}@{}", role.as_deref().unwrap_or("null")));
             c.push((m, role));
-            async move { if k == reject_at { Err(Thrown) } else { Ok(ok) } }
+            async move {
+                if k == reject_at {
+                    Err(Thrown)
+                } else {
+                    Ok(ok)
+                }
+            }
         };
         let routed = r.get("routedRole").as_str();
-        let got = block(tm::tool_capable_route(r.get("model").as_str().unwrap_or(""), routed, &roles, allows, &host_of));
+        let got = block(tm::tool_capable_route(
+            r.get("model").as_str().unwrap_or(""),
+            routed,
+            &roles,
+            allows,
+            &host_of,
+        ));
         let want = if r.get("result").as_str() == Some("__threw") {
             Err(Thrown)
         } else {
@@ -153,7 +218,12 @@ fn tools_mode_matches_node() {
         assert_eq!(got, want, "route {i}: {r:?}");
         let want_calls: Vec<(String, Option<String>)> = arr(r.get("calls"))
             .iter()
-            .map(|c| (arr(c)[0].as_str().unwrap_or("").to_owned(), arr(c)[1].as_str().map(str::to_owned)))
+            .map(|c| {
+                (
+                    arr(c)[0].as_str().unwrap_or("").to_owned(),
+                    arr(c)[1].as_str().map(str::to_owned),
+                )
+            })
             .collect();
         assert_eq!(*calls.borrow(), want_calls, "route calls {i}");
     }
@@ -180,9 +250,18 @@ fn dropping_the_tool_capable_route_at_each_probe_ends_it() {
         let roles = |r: &str| Some(format!("{r}-m"));
         let host = |_: Option<&str>| String::new();
         {
-            let mut f = pin!(tm::tool_capable_route("x-m", Some("fast"), &roles, allows, &host));
+            let mut f = pin!(tm::tool_capable_route(
+                "x-m",
+                Some("fast"),
+                &roles,
+                allows,
+                &host
+            ));
             let mut cx = Context::from_waker(Waker::noop());
-            assert!(f.as_mut().poll(&mut cx).is_pending(), "pends at probe {stop_at}");
+            assert!(
+                f.as_mut().poll(&mut cx).is_pending(),
+                "pends at probe {stop_at}"
+            );
         }
         assert_eq!(started.get(), stop_at + 1, "no probe starts after the drop");
     }

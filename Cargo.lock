@@ -405,6 +405,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tool-exchange",
+ "tool-gate",
 ]
 
 [[package]]
