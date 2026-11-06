@@ -1864,7 +1864,11 @@ mod finish_stage {
                 let ask = title::title_ask(&turn, &mut attempts, &mut auto_named, &mut busy);
                 // The attempt is recorded; the request goes out only with a message and an answer (generateTitle).
                 let body = ask.as_ref().and_then(|_| {
-                    title::title_request_body("answer-model", k.get("message").as_str().unwrap(), answer)
+                    title::title_request_body(
+                        "answer-model",
+                        k.get("message").as_str().unwrap(),
+                        answer,
+                    )
                 });
                 same(
                     &body.is_some(),
