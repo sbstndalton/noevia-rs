@@ -6,6 +6,7 @@
 
 use crate::jsx;
 use crate::note;
+use crate::root::{Leaf, UserRoot};
 use crate::{BoxFut, Completion};
 use js_json::{wtf16, JValue};
 use sha2::{Digest, Sha256};
@@ -275,11 +276,16 @@ pub fn clip_transcript(markdown: &str) -> String {
 
 // ── Store ───────────────────────────────────────────────────────────────────────────────────
 
-/// `chat-brains/<sha256(String(chatId))>.json` under the workspace directory.
-pub fn file_for(dir: &Path, chat_id: &str) -> PathBuf {
+/// The record's file name in `chat-brains/`: `<sha256(String(chatId))>.json`.
+pub fn file_name(chat_id: &str) -> String {
     let digest = Sha256::digest(jsx::utf8(chat_id));
     let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
-    dir.join(BRAIN_DIR).join(format!("{hex}.json"))
+    format!("{hex}.json")
+}
+
+/// `chat-brains/<sha256(String(chatId))>.json` under the workspace directory.
+pub fn file_for(dir: &Path, chat_id: &str) -> PathBuf {
+    dir.join(BRAIN_DIR).join(file_name(chat_id))
 }
 
 /// A stored record.
@@ -290,26 +296,19 @@ pub struct Record {
     pub built_at: f64,
 }
 
-/// `readBrain(dir, chatId)`: `None` for a missing, oversized, foreign or invalid record. A
-/// symlinked record or brain folder reads as none (core followed links; nothing writes one).
-pub fn read(dir: &Path, chat_id: &str) -> Option<Record> {
+/// `readBrain(dir, chatId)`: `None` for a missing, oversized, foreign or invalid record. Read
+/// through the held account folder; a linked record or brain folder (or a swapped account) reads
+/// as none (core followed links; nothing writes one).
+pub fn read(root: &UserRoot, chat_id: &str) -> Option<Record> {
     if chat_id.is_empty() {
         return None;
     }
-    let folder = dir.join(BRAIN_DIR);
-    if std::fs::symlink_metadata(&folder)
-        .ok()?
-        .file_type()
-        .is_symlink()
-    {
+    let Ok(Leaf::File { bytes, over: false }) =
+        root.read(Some(BRAIN_DIR), &file_name(chat_id), MAX_RECORD_BYTES)
+    else {
         return None;
-    }
-    let file = file_for(dir, chat_id);
-    let meta = std::fs::symlink_metadata(&file).ok()?;
-    if !meta.is_file() || meta.len() > MAX_RECORD_BYTES {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&std::fs::read(&file).ok()?).into_owned();
+    };
+    let text = String::from_utf8_lossy(&bytes).into_owned();
     let record = wtf16::parse(&text).ok()?;
     if !record.is_object() || record.get("chatId").as_str() != Some(chat_id) {
         return None;
@@ -331,9 +330,9 @@ pub fn read(dir: &Path, chat_id: &str) -> Option<Record> {
 }
 
 /// `writeBrain(dir, chatId, record)`: validated, bounded, temp file then rename, mode 0600 in a
-/// 0700 folder. Refuses a symlinked brain folder.
+/// 0700 folder, all within the held account folder. Refuses a linked brain folder.
 pub fn write(
-    dir: &Path,
+    root: &UserRoot,
     chat_id: &str,
     brain: &JValue,
     source_updated_at: f64,
@@ -350,19 +349,18 @@ pub fn write(
     if u64::try_from(jsx::byte_len(&text)).unwrap_or(u64::MAX) > MAX_RECORD_BYTES {
         return Err("brain record too large".into());
     }
-    let folder = dir.join(BRAIN_DIR);
-    crate::fsx::ensure_dir(&folder, 0o700)?;
-    crate::fsx::write_atomic(&file_for(dir, chat_id), &jsx::utf8(&text))?;
+    root.write(
+        Some(BRAIN_DIR),
+        0o700,
+        &file_name(chat_id),
+        &jsx::utf8(&text),
+    )?;
     Ok(checked)
 }
 
-/// `removeBrain(dir, chatId)`: best effort.
-pub fn remove(dir: &Path, chat_id: &str) {
-    let folder = dir.join(BRAIN_DIR);
-    if std::fs::symlink_metadata(&folder).is_ok_and(|m| m.file_type().is_symlink()) {
-        return;
-    }
-    let _ = std::fs::remove_file(file_for(dir, chat_id));
+/// `removeBrain(dir, chatId)`: best effort, within the held account folder.
+pub fn remove(root: &UserRoot, chat_id: &str) {
+    let _ = root.remove(Some(BRAIN_DIR), &file_name(chat_id));
 }
 
 // ── Build ───────────────────────────────────────────────────────────────────────────────────

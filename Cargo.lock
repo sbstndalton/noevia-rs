@@ -397,10 +397,13 @@ dependencies = [
 name = "chat-mirror-exec"
 version = "0.1.0"
 dependencies = [
+ "icu_collator",
+ "icu_locale",
  "icu_normalizer",
  "js-json",
  "mcp-frame",
  "prompt-framing",
+ "rustix",
  "sha2",
  "tokio",
 ]

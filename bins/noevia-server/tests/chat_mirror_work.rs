@@ -214,6 +214,10 @@ fn setup() -> (tempfile::TempDir, PathBuf) {
     (root, dir)
 }
 
+fn own(root: &Path) -> chat_mirror_exec::UserRoot {
+    chat_mirror_exec::UserRoot::open(root, USER).unwrap()
+}
+
 fn host(root: &Path, gates: Option<ExecGates>, diary: Option<Arc<FakeDiary>>) -> Arc<TestHost> {
     let g = Arc::new(Mutex::new(gates));
     Arc::new(TestHost {
@@ -337,7 +341,7 @@ async fn closed_gates_write_nothing_and_unreadable_gates_or_no_diary_fail_closed
 
 #[tokio::test]
 async fn a_brain_is_built_through_the_engine_seam_and_stored_in_the_accounts_workspace() {
-    let (root, dir) = setup();
+    let (root, _dir) = setup();
     let addr = store(root.path()).await;
     save(
         addr,
@@ -355,7 +359,7 @@ async fn a_brain_is_built_through_the_engine_seam_and_stored_in_the_accounts_wor
             "complete qa-reasoner"
         ]
     );
-    let stored = chat_mirror_exec::brain::read(&dir, "qa-free").unwrap();
+    let stored = chat_mirror_exec::brain::read(&own(root.path()), "qa-free").unwrap();
     assert_eq!(wtf16::stringify(&stored.brain).unwrap(), BRAIN);
     assert_eq!(stored.source_updated_at, 1_730_000_000_001.0);
     assert_eq!(work.run(USER, "qa-free").await, "current");
@@ -395,7 +399,7 @@ async fn a_brain_is_built_through_the_engine_seam_and_stored_in_the_accounts_wor
         NativeWork::new(Arc::clone(&h3)).run(USER, "qa-proj").await,
         "off"
     );
-    assert!(chat_mirror_exec::brain::read(&dir, "qa-proj").is_none());
+    assert!(chat_mirror_exec::brain::read(&own(root.path()), "qa-proj").is_none());
     // Gates unreadable: error. The reasoner switched off: off.
     assert_eq!(
         NativeWork::new(host(root.path(), None, None))
@@ -411,4 +415,43 @@ async fn a_brain_is_built_through_the_engine_seam_and_stored_in_the_accounts_wor
             .await,
         "off"
     );
+}
+
+/// Review 2026-11-05 P1: the account folder is a link to another account's folder. The pass and
+/// the build fail closed before any Diary call or local write; the other account is untouched.
+#[tokio::test]
+async fn an_account_folder_linked_to_another_account_is_refused() {
+    const OTHER: &str = "99999999-2222-4333-8444-555555555555";
+    let (root, dir) = setup();
+    let other = root.path().join("users").join(OTHER);
+    std::fs::rename(&dir, &other).unwrap();
+    let theirs = chat_mirror_exec::UserRoot::open(root.path(), OTHER).unwrap();
+    chat_mirror_exec::brain::write(&theirs, "qa-free", &wtf16::parse(BRAIN).unwrap(), 1.0, 2.0)
+        .unwrap();
+    std::os::unix::fs::symlink(&other, &dir).unwrap();
+    let snapshot = || {
+        let mut v: Vec<_> = walkdir(&other);
+        v.sort();
+        v
+    };
+    let before = snapshot();
+    let diary = Arc::new(FakeDiary::default());
+    let work = NativeWork::new(host(root.path(), Some(on()), Some(Arc::clone(&diary))));
+    assert_eq!(work.sync(USER, vec![]).await, MirrorOutcome::Failed);
+    assert_eq!(work.run(USER, "qa-free").await, "error");
+    assert!(diary.calls.lock().unwrap().is_empty(), "Diary called");
+    assert_eq!(snapshot(), before, "the other account changed");
+}
+
+fn walkdir(d: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(d).unwrap() {
+        let p = e.unwrap().path();
+        if std::fs::symlink_metadata(&p).unwrap().is_dir() {
+            out.extend(walkdir(&p));
+        } else {
+            out.push((p.clone(), std::fs::read(&p).unwrap_or_default()));
+        }
+    }
+    out
 }

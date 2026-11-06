@@ -204,7 +204,13 @@ pub fn read(dir: &Path) -> Result<Vec<JValue>, StoreError> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(StoreError::Io(e)),
     };
-    let text = String::from_utf8_lossy(&text);
+    parse_projects(&text)
+}
+
+/// [`read`] of bytes already read (by a caller that opened the file itself, e.g. relative to a
+/// held account folder).
+pub fn parse_projects(text: &[u8]) -> Result<Vec<JValue>, StoreError> {
+    let text = String::from_utf8_lossy(text);
     // Lossless: Node keeps lone surrogates (a chat preview cut mid-emoji) and writes them back.
     let parsed = js_json::wtf16::parse(&text).map_err(|_| StoreError::Corrupt)?;
     match parsed.get("projects") {
@@ -268,7 +274,12 @@ pub fn read_json(file: &Path) -> Result<Option<JValue>, StoreError> {
     let Ok(bytes) = std::fs::read(file) else {
         return Ok(None);
     };
-    match js_json::wtf16::parse(&String::from_utf8_lossy(&bytes)) {
+    parse_json(&bytes)
+}
+
+/// [`read_json`] of bytes already read.
+pub fn parse_json(bytes: &[u8]) -> Result<Option<JValue>, StoreError> {
+    match js_json::wtf16::parse(&String::from_utf8_lossy(bytes)) {
         Ok(v) => Ok(Some(v)),
         Err(js_json::wtf16::Refusal::Invalid) => Ok(None),
         Err(js_json::wtf16::Refusal::Unsupported) => Err(StoreError::Corrupt),

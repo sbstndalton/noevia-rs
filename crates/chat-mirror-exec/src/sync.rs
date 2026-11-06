@@ -95,8 +95,114 @@ fn keeps_name(current: &str, base: &str) -> bool {
         .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
 }
 
+/// The intent journal of one pass: per chat, the Diary mutations about to be made, saved durably
+/// before each one, so a pass that stops (a crash, a dropped future, a deadline that expired after
+/// the Diary committed) leaves a record the next pass reconciles instead of mistaking its own note
+/// for someone else's.
+struct Journal(Vec<(String, JValue)>);
+
+impl Journal {
+    fn push(
+        &mut self,
+        source: &dyn MirrorSource,
+        user: &str,
+        chat: &str,
+        intent: JValue,
+    ) -> Result<(), FileError> {
+        match self.0.iter_mut().find(|(k, _)| k == chat) {
+            Some((_, JValue::Arr(items))) => items.push(intent),
+            _ => self.0.push((chat.to_owned(), JValue::Arr(vec![intent]))),
+        }
+        source
+            .write_intents(user, &JValue::Obj(self.0.clone()))
+            .map_err(|message| FileError {
+                status: None,
+                message: format!("intent not saved: {message}"),
+            })
+    }
+    /// The chat's mutations are in the index about to be saved: no longer pending.
+    fn settle(&mut self, chat: &str) {
+        self.0.retain(|(k, _)| k != chat);
+    }
+}
+
+fn intent(op: &str, fields: Vec<(&str, JValue)>) -> JValue {
+    let mut items = vec![("op".to_owned(), JValue::from(op))];
+    items.extend(fields.into_iter().map(|(k, v)| (k.to_owned(), v)));
+    JValue::Obj(items)
+}
+
+/// What the previous pass may have done: each journalled mutation is checked against the Diary
+/// and adopted when it took effect. A write is ours when the note there holds exactly the text we
+/// sent; a move when the destination exists and the old path does not; a trash when the note is
+/// gone. A read the Diary does not answer fails the pass (the journal stays for the next one).
+async fn reconcile(
+    user: &str,
+    notes: &mut Notes,
+    journal: &JValue,
+    files: &dyn Diary,
+) -> Result<(), String> {
+    let JValue::Obj(chats) = journal else {
+        return Err("refused: the intent journal is misshapen".into());
+    };
+    for (chat, list) in chats {
+        let JValue::Arr(list) = list else {
+            return Err("refused: the intent journal is misshapen".into());
+        };
+        for i in list {
+            let path = i.get("path");
+            if !note::inside_mirror(path) {
+                return Err(format!(
+                    "refused: an intent of {chat} is outside the mirror"
+                ));
+            }
+            let p = path.as_str().unwrap_or("");
+            let read = |at: String| async move {
+                read_note(files, user, &at)
+                    .await
+                    .map_err(|e| format!("reconcile: {}", e.message))
+            };
+            match i.get("op").as_str() {
+                Some("write") => {
+                    let now = read(p.to_owned()).await?;
+                    let wanted = i.get("hash").as_str();
+                    if now.content.as_deref().map(hash).as_deref() == wanted && wanted.is_some() {
+                        let meta = i.get("meta").as_str().unwrap_or("");
+                        notes.set(chat, index_entry(p, now.version, meta));
+                    }
+                }
+                Some("move") => {
+                    let dest = i.get("destination");
+                    if !note::inside_mirror(dest) {
+                        return Err(format!(
+                            "refused: an intent of {chat} is outside the mirror"
+                        ));
+                    }
+                    let d = dest.as_str().unwrap_or("");
+                    let (old, new) = (read(p.to_owned()).await?, read(d.to_owned()).await?);
+                    if old.content.is_none() && new.content.is_some() {
+                        let meta = i.get("meta").as_str().unwrap_or("");
+                        notes.set(chat, index_entry(d, new.version, meta));
+                    }
+                }
+                Some("trash") => {
+                    if read(p.to_owned()).await?.content.is_none() {
+                        notes.delete(chat);
+                    }
+                }
+                _ => return Err("refused: the intent journal is misshapen".into()),
+            }
+        }
+    }
+    Ok(())
+}
+
 /// What one pass came to: `Ok(true)` every note went through, `Ok(false)` some failed (the rest
 /// ran, the index was saved), `Err` the pass threw before the index was saved (nothing saved).
+///
+/// Fail closed (review 2026-11-05): an unreadable, linked, corrupt or misshapen index or intent
+/// journal is an `Err` before any Diary call (core read such an index as `{}`, and its own notes
+/// then looked like someone else's).
 pub async fn sync(
     user: &str,
     dirty: &HashSet<String>,
@@ -104,18 +210,19 @@ pub async fn sync(
     files: &dyn Diary,
 ) -> Result<bool, String> {
     let log = |parts: &[&str]| source.log(&parts.join(" "));
-    let raw_state = source.read_index(user);
-    let state = if raw_state.truthy() {
-        raw_state
-    } else {
-        JValue::Obj(Vec::new())
-    };
-    let n = state.get("notes");
-    let mut notes = Notes(if n.truthy() && n.type_of() == "object" {
-        spread(n)
-    } else {
-        Vec::new()
-    });
+    let state = source.read_index(user)?;
+    crate::check_index(&state)?;
+    let mut notes = Notes(spread(state.get("notes")));
+    let pending = source.read_intents(user)?;
+    if matches!(&pending, JValue::Obj(items) if !items.is_empty()) {
+        reconcile(user, &mut notes, &pending, files).await?;
+        let mut out = spread(&state);
+        wtf16::set(&mut out, "notes", JValue::Obj(notes.0.clone()));
+        source.write_index(user, &JValue::Obj(out))?;
+        source.write_intents(user, &JValue::Obj(Vec::new()))?;
+        log(&["chat-vault-mirror: reconciled an interrupted pass"]);
+    }
+    let mut journal = Journal(Vec::new());
 
     // A name remembered as someone else's (#758) is freed once that note is gone from the vault.
     for key in notes.keys() {
@@ -299,12 +406,16 @@ pub async fn sync(
             brain.as_ref(),
             &meta,
             &mut made,
+            &mut journal,
             source,
             files,
         )
         .await
         {
-            Ok(saved) => notes.set(&id, saved),
+            Ok(saved) => {
+                notes.set(&id, saved);
+                journal.settle(&id);
+            }
             Err(e) => {
                 ok = false;
                 if let Some(t) = e.taken {
@@ -368,6 +479,12 @@ pub async fn sync(
                 Err(e) => return Err(e),
             };
             if stat.truthy() && !stat.get("isDir").truthy() {
+                journal.push(
+                    source,
+                    user,
+                    &id,
+                    intent("trash", vec![("path", JValue::Str(p.clone()))]),
+                )?;
                 files
                     .ops(
                         user,
@@ -383,7 +500,10 @@ pub async fn sync(
         }
         .await;
         match trashed {
-            Ok(()) => notes.delete(&id),
+            Ok(()) => {
+                notes.delete(&id);
+                journal.settle(&id);
+            }
             Err(e) => {
                 ok = false;
                 log(&["chat-vault-mirror: trash failed", &id, &e.message]);
@@ -394,6 +514,9 @@ pub async fn sync(
     let mut out = spread(&state);
     wtf16::set(&mut out, "notes", JValue::Obj(notes.0));
     source.write_index(user, &JValue::Obj(out))?;
+    // What failed may still have taken effect (a deadline after the Diary committed): those
+    // intents stay for the next pass to reconcile; the rest are in the index now.
+    source.write_intents(user, &JValue::Obj(journal.0))?;
     Ok(ok)
 }
 
@@ -461,6 +584,7 @@ async fn write_one(
     brain: Option<&JValue>,
     meta: &str,
     made: &mut HashSet<String>,
+    journal: &mut Journal,
     source: &dyn MirrorSource,
     files: &dyn Diary,
 ) -> Result<JValue, NoteError> {
@@ -495,6 +619,19 @@ async fn write_one(
             return Err(taken_error(target));
         }
         if current.content.is_some() && dest.content.is_none() {
+            journal.push(
+                source,
+                user,
+                id,
+                intent(
+                    "move",
+                    vec![
+                        ("path", JValue::Str(at.clone())),
+                        ("destination", JValue::Str(target.to_owned())),
+                        ("meta", entry.get("meta").clone()),
+                    ],
+                ),
+            )?;
             files
                 .ops(
                     user,
@@ -550,6 +687,19 @@ async fn write_one(
     if current.content.as_deref() == Some(content.as_str()) {
         return Ok(index_entry(target, current.version, meta));
     }
+    journal.push(
+        source,
+        user,
+        id,
+        intent(
+            "write",
+            vec![
+                ("path", JValue::Str(target.to_owned())),
+                ("hash", JValue::Str(hash(&content))),
+                ("meta", JValue::Str(meta.to_owned())),
+            ],
+        ),
+    )?;
     // Edited in the vault since noevia last wrote it: keep that copy in Trash first (#757).
     if current.content.is_some()
         && entry.truthy()

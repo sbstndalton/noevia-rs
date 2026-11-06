@@ -20,7 +20,9 @@
 //! data; core only forwards the call.
 use crate::research_routes::Research;
 use chat_mirror_exec::brain::{self, Reasoner};
-use chat_mirror_exec::{BoxFut, BrainSource, Completion, Diary, FileError, Lists, MirrorSource};
+use chat_mirror_exec::{
+    BoxFut, BrainSource, Completion, Diary, FileError, Leaf, Lists, MirrorSource, UserRoot,
+};
 use chat_mirror_sched::{BrainExecutor, MirrorExecutor, MirrorOutcome};
 use js_json::{wtf16, JValue};
 use server_account::vault_mirror::{exec_gates, ExecGates};
@@ -142,8 +144,17 @@ impl<H: Host> MirrorExecutor for NativeWork<H> {
                 host.log("chat-vault-mirror: sync failed: the Diary is not configured");
                 return MirrorOutcome::Failed;
             };
+            // Held open before any Diary call: a linked or missing account folder fails here.
+            let root = match open_root(host.data_dir(), &user) {
+                Ok(r) => r,
+                Err(e) => {
+                    host.log(&format!("chat-vault-mirror: sync failed {e}"));
+                    return MirrorOutcome::Failed;
+                }
+            };
             let source = Workspace {
                 host: Arc::clone(&host),
+                root,
             };
             let dirty: HashSet<String> = dirty.into_iter().collect();
             match chat_mirror_exec::sync::sync(&user, &dirty, &source, &*files).await {
@@ -168,6 +179,7 @@ impl<H: Host> BrainExecutor for NativeWork<H> {
                 return "error".to_owned();
             };
             let source = Brains {
+                root: open_root(host.data_dir(), &user),
                 host: Arc::clone(&host),
                 first: std::sync::Mutex::new(Some(g.clone())),
             };
@@ -181,20 +193,43 @@ impl<H: Host> BrainExecutor for NativeWork<H> {
 }
 
 // ── The account's workspace ─────────────────────────────────────────────────────────────────
+//
+// Everything local goes through the account folder held open ([`UserRoot`], review 2026-11-05
+// P1): `users/<id>` is opened without following a link and every file below it is opened
+// relative to that descriptor, never followed, and the folder is re-checked before each step. The
+// readers keep the store's parsing (`store::parse_projects`, `store::parse_json`); they differ
+// only in how the bytes are opened, and in that a link or a non-regular file there is an error.
 
-fn user_dir(data_dir: &Path, user: &str) -> Result<PathBuf, String> {
-    store::user_dir(data_dir, user).map_err(|e| format!("{e:?}"))
+/// Larger than any list or transcript the store writes.
+const MAX_FILE: u64 = 512 * 1024 * 1024;
+
+/// The account folder for `user` (a store id: 36 hex digits and dashes), held open.
+fn open_root(data_dir: &Path, user: &str) -> Result<UserRoot, String> {
+    store::user_dir(data_dir, user).map_err(|e| format!("{e:?}"))?;
+    UserRoot::open(data_dir, user)
 }
 
-fn lists(data_dir: &Path, user: &str) -> Result<Lists, String> {
-    let dir = user_dir(data_dir, user)?;
-    let free_chats =
-        match store::read_json(&dir.join(FREE_CHATS_FILE)).map_err(|e| format!("{e:?}"))? {
+fn bytes(root: &UserRoot, file: &str) -> Result<Option<Vec<u8>>, String> {
+    match root.read(None, file, MAX_FILE)? {
+        Leaf::Missing => Ok(None),
+        Leaf::File { over: true, .. } => Err(format!("refused: {file} is too large")),
+        Leaf::File { bytes, .. } => Ok(Some(bytes)),
+    }
+}
+
+fn lists(root: &UserRoot) -> Result<Lists, String> {
+    let free_chats = match bytes(root, FREE_CHATS_FILE)? {
+        Some(b) => match store::parse_json(&b).map_err(|e| format!("{e:?}"))? {
             Some(JValue::Arr(items)) => items,
             _ => Vec::new(),
-        };
-    let projects = store::read(&dir)
-        .map_err(|e| format!("{e:?}"))?
+        },
+        None => Vec::new(),
+    };
+    let projects = match bytes(root, store::PROJECTS_FILE)? {
+        Some(b) => store::parse_projects(&b).map_err(|e| format!("{e:?}"))?,
+        None => Vec::new(),
+    };
+    let projects = projects
         .into_iter()
         .filter(|p| !server_projects::source_reply::internal_project(p))
         .collect();
@@ -204,22 +239,50 @@ fn lists(data_dir: &Path, user: &str) -> Result<Lists, String> {
     })
 }
 
-/// chat-lists.cjs `readTombstones(dir)`: the strings of the list; nothing on any failure.
-fn tombstones(data_dir: &Path, user: &str) -> Result<HashSet<String>, String> {
-    let dir = user_dir(data_dir, user)?;
-    Ok(match store::read_json(&dir.join(TOMBSTONES_FILE)) {
-        Ok(Some(JValue::Arr(ids))) => ids
-            .iter()
-            .filter_map(|v| v.as_str().map(str::to_owned))
-            .collect(),
-        _ => HashSet::new(),
+/// chat-lists.cjs `readTombstones(dir)`: the strings of the list; nothing when it does not parse.
+/// A link or an unreadable file there is an error (never followed).
+fn tombstone_list(root: &UserRoot) -> Result<Vec<String>, String> {
+    Ok(match bytes(root, TOMBSTONES_FILE)? {
+        Some(b) => match store::parse_json(&b) {
+            Ok(Some(JValue::Arr(ids))) => ids
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect(),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
     })
 }
 
-fn history(data_dir: &Path, user: &str, chat: &str) -> Result<Vec<JValue>, String> {
-    let current =
-        server_projects::transcript::read(data_dir, user, chat).map_err(|e| format!("{e:?}"))?;
-    Ok(match current.history {
+fn tombstones(root: &UserRoot) -> Result<HashSet<String>, String> {
+    Ok(tombstone_list(root)?.into_iter().collect())
+}
+
+/// `transcript::read(...).history` through the held folder: a deleted chat has none; otherwise
+/// `.history || []` of `history-<safe id>.json`.
+fn history(root: &UserRoot, chat: &str) -> Result<Vec<JValue>, String> {
+    let safe = server_projects::history::safe_chat_id(chat);
+    if safe.is_empty() {
+        return Err("InvalidChat".into());
+    }
+    if tombstone_list(root)?.contains(&safe) {
+        return Ok(Vec::new());
+    }
+    let parsed = match bytes(root, &format!("history-{safe}.json"))? {
+        Some(b) => store::parse_json(&b).map_err(|e| format!("{e:?}"))?,
+        None => None,
+    };
+    let stored = match &parsed {
+        Some(v @ JValue::Obj(_)) => v.get("history").clone(),
+        _ => JValue::Undefined,
+    };
+    let history = if stored.truthy() {
+        stored
+    } else {
+        JValue::Arr(Vec::new())
+    };
+    server_projects::history::revision_of(&history).ok_or("Corrupt")?;
+    Ok(match history {
         JValue::Arr(items) => items,
         _ => Vec::new(),
     })
@@ -227,29 +290,33 @@ fn history(data_dir: &Path, user: &str, chat: &str) -> Result<Vec<JValue>, Strin
 
 struct Workspace<H: Host> {
     host: Arc<H>,
+    root: UserRoot,
 }
 
 impl<H: Host> MirrorSource for Workspace<H> {
-    fn lists(&self, user: &str) -> Result<Lists, String> {
-        lists(self.host.data_dir(), user)
+    fn lists(&self, _: &str) -> Result<Lists, String> {
+        lists(&self.root)
     }
-    fn deleted(&self, user: &str) -> Result<HashSet<String>, String> {
-        tombstones(self.host.data_dir(), user)
+    fn deleted(&self, _: &str) -> Result<HashSet<String>, String> {
+        tombstones(&self.root)
     }
-    fn history(&self, user: &str, chat: &str) -> Result<Vec<JValue>, String> {
-        history(self.host.data_dir(), user, chat)
+    fn history(&self, _: &str, chat: &str) -> Result<Vec<JValue>, String> {
+        history(&self.root, chat)
     }
-    fn brain(&self, user: &str, chat: &str) -> Option<JValue> {
-        brain::read(&user_dir(self.host.data_dir(), user).ok()?, chat).map(|r| r.brain)
+    fn brain(&self, _: &str, chat: &str) -> Option<JValue> {
+        brain::read(&self.root, chat).map(|r| r.brain)
     }
-    fn read_index(&self, user: &str) -> JValue {
-        match user_dir(self.host.data_dir(), user) {
-            Ok(dir) => chat_mirror_exec::read_index(&dir),
-            Err(_) => JValue::Obj(Vec::new()),
-        }
+    fn read_index(&self, _: &str) -> Result<JValue, String> {
+        chat_mirror_exec::read_index(&self.root)
     }
-    fn write_index(&self, user: &str, state: &JValue) -> Result<(), String> {
-        chat_mirror_exec::write_index(&user_dir(self.host.data_dir(), user)?, state)
+    fn write_index(&self, _: &str, state: &JValue) -> Result<(), String> {
+        chat_mirror_exec::write_index(&self.root, state)
+    }
+    fn read_intents(&self, _: &str) -> Result<JValue, String> {
+        chat_mirror_exec::read_intents(&self.root)
+    }
+    fn write_intents(&self, _: &str, intents: &JValue) -> Result<(), String> {
+        chat_mirror_exec::write_intents(&self.root, intents)
     }
     fn log(&self, line: &str) {
         self.host.log(line);
@@ -258,9 +325,17 @@ impl<H: Host> MirrorSource for Workspace<H> {
 
 struct Brains<H: Host> {
     host: Arc<H>,
+    /// The account folder, opened when the build started; `Err` fails each step that needs it.
+    root: Result<UserRoot, String>,
     /// The gates read when the build started (core read them on the first `enabled` call); later
     /// calls read them again.
     first: std::sync::Mutex<Option<ExecGates>>,
+}
+
+impl<H: Host> Brains<H> {
+    fn root(&self) -> Result<&UserRoot, String> {
+        self.root.as_ref().map_err(Clone::clone)
+    }
 }
 
 impl<H: Host> BrainSource for Brains<H> {
@@ -273,8 +348,8 @@ impl<H: Host> BrainSource for Brains<H> {
         let g = first.or_else(|| self.host.gates(user));
         g.is_some_and(|g| g.reasoner && g.available && g.opted_in)
     }
-    fn chat(&self, user: &str, chat: &str) -> Result<Option<JValue>, String> {
-        let l = lists(self.host.data_dir(), user)?;
+    fn chat(&self, _: &str, chat: &str) -> Result<Option<JValue>, String> {
+        let l = lists(self.root()?)?;
         let mut all = l.free_chats.into_iter();
         if let Some(c) = all.find(|c| c.truthy() && c.get("id").as_str() == Some(chat)) {
             return Ok(Some(c));
@@ -298,35 +373,28 @@ impl<H: Host> BrainSource for Brains<H> {
         }
         Ok(None)
     }
-    fn history(&self, user: &str, chat: &str) -> Result<Vec<JValue>, String> {
-        history(self.host.data_dir(), user, chat)
+    fn history(&self, _: &str, chat: &str) -> Result<Vec<JValue>, String> {
+        history(self.root()?, chat)
     }
-    fn deleted(&self, user: &str) -> Result<HashSet<String>, String> {
-        tombstones(self.host.data_dir(), user)
+    fn deleted(&self, _: &str) -> Result<HashSet<String>, String> {
+        tombstones(self.root()?)
     }
-    fn read(&self, user: &str, chat: &str) -> Option<brain::Record> {
-        brain::read(&user_dir(self.host.data_dir(), user).ok()?, chat)
+    fn read(&self, _: &str, chat: &str) -> Option<brain::Record> {
+        brain::read(self.root().ok()?, chat)
     }
     fn write(
         &self,
-        user: &str,
+        _: &str,
         chat: &str,
         b: &JValue,
         source_updated_at: f64,
         built_at: f64,
     ) -> Result<(), String> {
-        brain::write(
-            &user_dir(self.host.data_dir(), user)?,
-            chat,
-            b,
-            source_updated_at,
-            built_at,
-        )
-        .map(|_| ())
+        brain::write(self.root()?, chat, b, source_updated_at, built_at).map(|_| ())
     }
-    fn remove(&self, user: &str, chat: &str) {
-        if let Ok(dir) = user_dir(self.host.data_dir(), user) {
-            brain::remove(&dir, chat);
+    fn remove(&self, _: &str, chat: &str) {
+        if let Ok(root) = self.root() {
+            brain::remove(root, chat);
         }
     }
     #[allow(clippy::cast_precision_loss)]
@@ -438,11 +506,17 @@ pub struct NodeEngine {
 }
 
 impl NodeEngine {
-    fn ask(&self, body: JValue, deadline: Duration) -> BoxFut<Option<JValue>> {
+    fn post(&self, body: JValue, deadline: Duration) -> BoxFut<Option<(u16, Vec<u8>)>> {
         let research = Arc::clone(&self.research);
         Box::pin(async move {
             let text = wtf16::stringify(&body)?;
-            let (status, bytes) = research.node_call_text(ENGINE_PATH, text, deadline).await?;
+            research.node_call_text(ENGINE_PATH, text, deadline).await
+        })
+    }
+    fn ask(&self, body: JValue, deadline: Duration) -> BoxFut<Option<JValue>> {
+        let post = self.post(body, deadline);
+        Box::pin(async move {
+            let (status, bytes) = post.await?;
             if status != 200 {
                 return None;
             }
@@ -481,13 +555,16 @@ impl EngineSeam for NodeEngine {
         Box::pin(async move { ask.await.ok_or(()).and_then(|v| opt_str(v.get("refusal"))) })
     }
     fn record(&self, entry: JValue) {
-        let ask = self.ask(
+        // Core answers a recorded entry with 204 (no body); only that is delivered.
+        let post = self.post(
             JValue::obj([("op", JValue::from("record")), ("entry", entry)]),
             ENGINE_FACTS,
         );
         if let Ok(rt) = tokio::runtime::Handle::try_current() {
             rt.spawn(async move {
-                let _ = ask.await;
+                if !matches!(post.await, Some((204, _))) {
+                    eprintln!("noevia-server: chat-brain: a decision log entry was not recorded");
+                }
             });
         }
     }

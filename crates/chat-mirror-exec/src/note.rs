@@ -235,11 +235,13 @@ pub fn chat_markdown(
     };
     let mut lines: Vec<String> = vec![format!("# {title}"), String::new()];
     if updated_at.truthy() {
+        // `new Date(updatedAt)`: a number is the time; anything else goes through ToPrimitive
+        // and, as text, Date's parser.
         let ms = match updated_at {
             JValue::Num(n) => *n,
             JValue::Bool(true) => 1.0,
-            // A string would go through Date's parser in JS; chat lists hold numbers.
-            _ => return Err(RenderError("invalid time value")),
+            JValue::Str(text) => jsx::parse_date(text),
+            other => jsx::parse_date(&js_string(other)?),
         };
         let at = jsx::iso(ms).ok_or(RenderError("invalid time value"))?;
         lines.push(format!("_Last updated {at}_"));

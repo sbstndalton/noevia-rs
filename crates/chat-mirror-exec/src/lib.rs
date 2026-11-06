@@ -12,14 +12,15 @@
 use js_json::{wtf16, JValue};
 use std::collections::HashSet;
 use std::future::Future;
-use std::path::Path;
 use std::pin::Pin;
 
 pub mod brain;
-pub mod fsx;
 pub mod jsx;
 pub mod note;
+pub mod root;
 pub mod sync;
+
+pub use root::{Leaf, UserRoot};
 
 /// Grep marker for noevia deploy/tools/assemble-release.sh: this build runs the mirror pass and
 /// the brain build natively (the paired Core has no executor bridge).
@@ -63,9 +64,15 @@ pub trait MirrorSource: Send + Sync {
     fn history(&self, user: &str, chat: &str) -> Result<Vec<JValue>, String>;
     /// The chat's stored, validated brain, if any.
     fn brain(&self, user: &str, chat: &str) -> Option<JValue>;
-    /// `readIndex`: the parsed index, or `{}`.
-    fn read_index(&self, user: &str) -> JValue;
+    /// The parsed, checked index: `{}` only when there is none. Unreadable, linked, corrupt or
+    /// misshapen state is an `Err` (the pass fails before any Diary call; core read it as `{}`).
+    fn read_index(&self, user: &str) -> Result<JValue, String>;
     fn write_index(&self, user: &str, state: &JValue) -> Result<(), String>;
+    /// The intent journal: what the last pass was about to do to the Diary and may or may not
+    /// have done (`{chatId: [intent, ...]}`, `{}` when none). Fail closed like the index.
+    fn read_intents(&self, user: &str) -> Result<JValue, String>;
+    /// Saves the journal durably (an empty one removes the file) before the Diary call it covers.
+    fn write_intents(&self, user: &str, intents: &JValue) -> Result<(), String>;
     fn log(&self, _line: &str) {}
 }
 
@@ -81,28 +88,88 @@ pub struct Completion {
 
 pub const PREFERENCES_FILE: &str = "chat-vault-mirror.json";
 pub const INDEX_FILE: &str = "chat-vault-mirror-index.json";
+pub const INTENT_FILE: &str = "chat-vault-mirror-intent.json";
+/// Larger than any index a pass writes (one short entry per chat); a larger file is refused.
+pub const MAX_STATE_BYTES: u64 = 32 * 1024 * 1024;
 
-fn read_json(file: &Path) -> Option<JValue> {
-    let bytes = fsx::read_plain(file)?;
-    wtf16::parse(&String::from_utf8_lossy(&bytes)).ok()
+/// A state file of the held account folder: `None` when missing, `Err` when it cannot be read
+/// as JSON text (a link, not a regular file, too large, not UTF-8, not JSON).
+fn read_state(root: &UserRoot, file: &str) -> Result<Option<JValue>, String> {
+    match root.read(None, file, MAX_STATE_BYTES)? {
+        Leaf::Missing => Ok(None),
+        Leaf::File { over: true, .. } => Err(format!("refused: {file} is too large")),
+        Leaf::File { bytes, .. } => {
+            let text =
+                String::from_utf8(bytes).map_err(|_| format!("refused: {file} is not text"))?;
+            wtf16::parse(&text)
+                .map(Some)
+                .map_err(|_| format!("refused: {file} is not JSON"))
+        }
+    }
 }
 
-/// `readIndex(dir)`: `{}` when missing or unreadable.
-pub fn read_index(dir: &Path) -> JValue {
-    read_json(&dir.join(INDEX_FILE)).unwrap_or(JValue::Obj(Vec::new()))
+/// The index as a pass may act on it: an object whose `notes` (if present) is an object, every
+/// chat entry of which is an object with a text `path` inside the mirror folder. A `taken:` entry
+/// is only a name reservation (pruned by the pass when invalid, never read or moved).
+pub fn check_index(state: &JValue) -> Result<(), String> {
+    if !matches!(state, JValue::Obj(_)) {
+        return Err("refused: the index is not an object".into());
+    }
+    let notes = match state.get("notes") {
+        JValue::Undefined => return Ok(()),
+        JValue::Obj(items) => items,
+        _ => return Err("refused: the index notes are not an object".into()),
+    };
+    for (key, entry) in notes {
+        if key.starts_with("taken:") {
+            continue;
+        }
+        if !matches!(entry, JValue::Obj(_)) || !note::inside_mirror(entry.get("path")) {
+            return Err(format!(
+                "refused: the index entry of {key} is not a mirrored note"
+            ));
+        }
+    }
+    Ok(())
 }
 
-/// `writeIndex(dir, state)`: compact JSON, temp file then rename (a failed write leaves the old
-/// index whole).
-pub fn write_index(dir: &Path, state: &JValue) -> Result<(), String> {
-    fsx::ensure_dir(dir, 0o777)?;
-    let text = wtf16::stringify(state).unwrap_or_default();
-    fsx::write_atomic(&dir.join(INDEX_FILE), &jsx::utf8(&text))
+/// `readIndex(dir)`, fail closed: `{}` only when there is no index.
+pub fn read_index(root: &UserRoot) -> Result<JValue, String> {
+    let state = read_state(root, INDEX_FILE)?.unwrap_or(JValue::Obj(Vec::new()));
+    check_index(&state)?;
+    Ok(state)
 }
 
-/// `readPreferences(dir).enabled`.
-pub fn preference_enabled(dir: &Path) -> bool {
-    read_json(&dir.join(PREFERENCES_FILE))
+/// `writeIndex(dir, state)`: compact JSON, temp file then rename within the held folder (a failed
+/// write leaves the old index whole).
+pub fn write_index(root: &UserRoot, state: &JValue) -> Result<(), String> {
+    let text = wtf16::stringify(state).ok_or("index not serialisable")?;
+    root.write(None, 0o777, INDEX_FILE, &jsx::utf8(&text))
+}
+
+/// The intent journal, fail closed: `{}` only when there is none.
+pub fn read_intents(root: &UserRoot) -> Result<JValue, String> {
+    let state = read_state(root, INTENT_FILE)?.unwrap_or(JValue::Obj(Vec::new()));
+    match &state {
+        JValue::Obj(items) if items.iter().all(|(_, v)| matches!(v, JValue::Arr(_))) => Ok(state),
+        _ => Err("refused: the intent journal is misshapen".into()),
+    }
+}
+
+/// Saves the intent journal (fsynced); an empty journal removes the file.
+pub fn write_intents(root: &UserRoot, intents: &JValue) -> Result<(), String> {
+    if matches!(intents, JValue::Obj(items) if items.is_empty()) {
+        return root.remove(None, INTENT_FILE);
+    }
+    let text = wtf16::stringify(intents).ok_or("intents not serialisable")?;
+    root.write(None, 0o777, INTENT_FILE, &jsx::utf8(&text))
+}
+
+/// `readPreferences(dir).enabled` (off when unreadable).
+pub fn preference_enabled(root: &UserRoot) -> bool {
+    read_state(root, PREFERENCES_FILE)
+        .ok()
+        .flatten()
         .is_some_and(|v| matches!(v.get("enabled"), JValue::Bool(true)))
 }
 

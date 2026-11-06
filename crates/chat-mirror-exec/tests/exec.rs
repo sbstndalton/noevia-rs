@@ -8,7 +8,7 @@
 )]
 
 use chat_mirror_exec::brain::{self, Reasoner};
-use chat_mirror_exec::{BoxFut, BrainSource, Completion};
+use chat_mirror_exec::{BoxFut, BrainSource, Completion, UserRoot};
 use js_json::{wtf16, JValue};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -21,14 +21,18 @@ fn tmpdir(tag: &str) -> PathBuf {
         .unwrap()
         .as_nanos();
     let d = std::env::temp_dir().join(format!("chat-mirror-exec-{tag}-{}-{n}", std::process::id()));
-    std::fs::create_dir_all(&d).unwrap();
+    std::fs::create_dir_all(d.join("users/u")).unwrap();
     d
+}
+
+fn root(data: &std::path::Path) -> UserRoot {
+    UserRoot::open(data, "u").unwrap()
 }
 
 const BRAIN: &str = r#"{"brain_schema":1,"summary":"s","decisions":[],"facts":[],"open_questions":[],"entities":[]}"#;
 
 struct Src {
-    dir: PathBuf,
+    root: UserRoot,
     enabled: Mutex<Vec<bool>>, // popped per call; last one sticks
     chats: Mutex<Vec<Option<JValue>>>,
     tombstones: Mutex<HashSet<String>>,
@@ -37,9 +41,9 @@ struct Src {
 }
 
 impl Src {
-    fn new(dir: PathBuf) -> Self {
+    fn new(data: PathBuf) -> Self {
         Src {
-            dir,
+            root: root(&data),
             enabled: Mutex::new(vec![true]),
             chats: Mutex::new(vec![Some(
                 wtf16::parse(r#"{"id":"c","title":"T","updatedAt":5}"#).unwrap(),
@@ -79,13 +83,13 @@ impl BrainSource for Src {
         Ok(self.tombstones.lock().unwrap().clone())
     }
     fn read(&self, _: &str, chat: &str) -> Option<brain::Record> {
-        brain::read(&self.dir, chat)
+        brain::read(&self.root, chat)
     }
     fn write(&self, _: &str, chat: &str, b: &JValue, s: f64, t: f64) -> Result<(), String> {
-        brain::write(&self.dir, chat, b, s, t).map(|_| ())
+        brain::write(&self.root, chat, b, s, t).map(|_| ())
     }
     fn remove(&self, _: &str, chat: &str) {
-        brain::remove(&self.dir, chat);
+        brain::remove(&self.root, chat);
     }
     fn now_ms(&self) -> f64 {
         7.0
@@ -120,7 +124,7 @@ async fn runner_outcomes() {
         chat_mirror_exec::run_brain("u", "c", &src, &R(&src)).await,
         "built"
     );
-    let rec = brain::read(&dir, "c").unwrap();
+    let rec = brain::read(&root(&dir), "c").unwrap();
     assert_eq!((rec.source_updated_at, rec.built_at), (5.0, 7.0));
     // Same updatedAt: current, no model call.
     assert_eq!(
@@ -142,7 +146,7 @@ async fn runner_outcomes() {
         chat_mirror_exec::run_brain("u", "c", &src2, &R(&src2)).await,
         "off"
     );
-    assert!(brain::read(&dir2, "c").is_none());
+    assert!(brain::read(&root(&dir2), "c").is_none());
 
     // #811: tombstoned while the model ran: no write-back, the stored brain removed.
     let mut src3 = Src::new(dir.clone());
@@ -154,23 +158,23 @@ async fn runner_outcomes() {
         chat_mirror_exec::run_brain("u", "c", &src3, &R(&src3)).await,
         "gone"
     );
-    assert!(brain::read(&dir, "c").is_none());
+    assert!(brain::read(&root(&dir), "c").is_none());
 
     // Gone from the lists: an absent chat keeps its brain, a tombstoned one loses it.
-    brain::write(&dir, "c", &wtf16::parse(BRAIN).unwrap(), 1.0, 1.0).unwrap();
+    brain::write(&root(&dir), "c", &wtf16::parse(BRAIN).unwrap(), 1.0, 1.0).unwrap();
     let src4 = Src::new(dir.clone());
     *src4.chats.lock().unwrap() = vec![None];
     assert_eq!(
         chat_mirror_exec::run_brain("u", "c", &src4, &R(&src4)).await,
         "gone"
     );
-    assert!(brain::read(&dir, "c").is_some());
+    assert!(brain::read(&root(&dir), "c").is_some());
     src4.tombstones.lock().unwrap().insert("c".into());
     assert_eq!(
         chat_mirror_exec::run_brain("u", "c", &src4, &R(&src4)).await,
         "gone"
     );
-    assert!(brain::read(&dir, "c").is_none());
+    assert!(brain::read(&root(&dir), "c").is_none());
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&dir2);
 }
@@ -209,54 +213,147 @@ async fn deadline_is_a_fallback() {
 }
 
 #[test]
-fn index_write_is_atomic_and_never_follows_links() {
+fn index_write_is_atomic_and_links_fail_closed() {
     use std::os::unix::fs::symlink;
-    let dir = tmpdir("index");
+    let data = tmpdir("index");
+    let dir = data.join("users/u");
+    let r = root(&data);
     let outside = tmpdir("outside");
     let target = outside.join("victim.json");
     std::fs::write(&target, "untouched").unwrap();
-    // A link where the index goes: the rename replaces the link, the target stays as it was.
+    // A link where the index goes is not followed and not read as `{}`: the read fails closed
+    // (review 2026-11-05 P1; core, and this port before, read it as an empty index).
     symlink(&target, dir.join(chat_mirror_exec::INDEX_FILE)).unwrap();
-    // A linked index reads as none ({}), it is not followed.
-    assert_eq!(chat_mirror_exec::read_index(&dir), JValue::Obj(vec![]));
+    assert!(chat_mirror_exec::read_index(&r).is_err());
+    // A write replaces the link itself (rename), never its target.
     let state =
         wtf16::parse(r#"{"notes":{"a":{"path":"Chats/Inbox/A.md","version":"v1","meta":"m"}}}"#)
             .unwrap();
-    chat_mirror_exec::write_index(&dir, &state).unwrap();
+    chat_mirror_exec::write_index(&r, &state).unwrap();
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "untouched");
     let idx = dir.join(chat_mirror_exec::INDEX_FILE);
     assert!(!std::fs::symlink_metadata(&idx)
         .unwrap()
         .file_type()
         .is_symlink());
+    assert_eq!(chat_mirror_exec::read_index(&r).unwrap(), state);
+    // Corrupt or misshapen state fails closed too; only a missing index is `{}`.
+    for bad in [
+        "not json",
+        "null",
+        "[]",
+        r#"{"notes":[]}"#,
+        r#"{"notes":{"a":null}}"#,
+        r#"{"notes":{"a":{"path":"../../elsewhere.md"}}}"#,
+        r#"{"notes":{"a":{"path":7}}}"#,
+    ] {
+        std::fs::write(&idx, bad).unwrap();
+        assert!(chat_mirror_exec::read_index(&r).is_err(), "{bad}");
+    }
+    std::fs::remove_file(&idx).unwrap();
     assert_eq!(
-        std::fs::read_to_string(&idx).unwrap(),
-        wtf16::stringify(&state).unwrap()
+        chat_mirror_exec::read_index(&r).unwrap(),
+        JValue::Obj(vec![])
     );
 
-    // A failed write (the temp file cannot be made: a folder sits at its name) leaves the old index whole.
-    let tmp = dir.join(format!(
-        "{}.{}.tmp",
-        chat_mirror_exec::INDEX_FILE,
-        std::process::id()
-    ));
-    std::fs::create_dir(&tmp).unwrap();
-    std::fs::write(tmp.join("x"), "x").unwrap();
-    assert!(chat_mirror_exec::write_index(&dir, &JValue::Obj(vec![])).is_err());
-    assert_eq!(
-        std::fs::read_to_string(&idx).unwrap(),
-        wtf16::stringify(&state).unwrap()
-    );
+    // A failed write (the folder refuses new files) leaves the old index whole.
+    chat_mirror_exec::write_index(&r, &state).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let failed = chat_mirror_exec::write_index(&r, &JValue::Obj(vec![])).is_err();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    // (A superuser is not stopped by the mode; then there is nothing to show here.)
+    if failed {
+        assert_eq!(chat_mirror_exec::read_index(&r).unwrap(), state);
+    }
 
     // A linked brain folder is refused for writes and reads as none.
-    let bdir = tmpdir("brainlink");
-    symlink(&outside, bdir.join(brain::BRAIN_DIR)).unwrap();
-    assert!(brain::write(&bdir, "c", &wtf16::parse(BRAIN).unwrap(), 1.0, 1.0).is_err());
-    assert!(brain::read(&bdir, "c").is_none());
-    assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 1);
-    for d in [dir, outside, bdir] {
+    let bdata = tmpdir("brainlink");
+    symlink(&outside, bdata.join("users/u").join(brain::BRAIN_DIR)).unwrap();
+    let br = root(&bdata);
+    assert!(brain::write(&br, "c", &wtf16::parse(BRAIN).unwrap(), 1.0, 1.0).is_err());
+    assert!(brain::read(&br, "c").is_none());
+    assert!(!outside.join(brain::file_name("c")).exists());
+    for d in [data, outside, bdata] {
         let _ = std::fs::remove_dir_all(d);
     }
+}
+
+/// Review 2026-11-05 P1: the account folder is swapped for a link to another account's folder
+/// after it was opened (between the check and the use). Nothing reads, writes or removes there.
+#[test]
+fn swapped_account_folder_never_reaches_another_account() {
+    use std::os::unix::fs::symlink;
+    let data = tmpdir("swap");
+    let (a, b) = (data.join("users/u"), data.join("users/v"));
+    std::fs::create_dir_all(&b).unwrap();
+    let brain_json = wtf16::parse(BRAIN).unwrap();
+    let rb = UserRoot::open(&data, "v").unwrap();
+    brain::write(&rb, "c", &brain_json, 1.0, 2.0).unwrap();
+    std::fs::write(
+        b.join(chat_mirror_exec::INDEX_FILE),
+        r#"{"notes":{"c":{"path":"Chats/Inbox/B.md","version":"v1","meta":"m"}}}"#,
+    )
+    .unwrap();
+    let snapshot = |d: &std::path::Path| {
+        let mut v: Vec<(String, Vec<u8>)> = walk(d);
+        v.sort();
+        v
+    };
+    let before = snapshot(&b);
+
+    let ra = root(&data);
+    std::fs::rename(&a, data.join("users/u.old")).unwrap();
+    symlink(&b, &a).unwrap();
+
+    assert!(brain::read(&ra, "c").is_none(), "B's brain read through A");
+    assert!(brain::write(&ra, "c", &brain_json, 9.0, 9.0).is_err());
+    brain::remove(&ra, "c");
+    assert!(chat_mirror_exec::read_index(&ra).is_err());
+    assert!(chat_mirror_exec::write_index(&ra, &JValue::Obj(vec![])).is_err());
+    assert!(
+        chat_mirror_exec::write_intents(&ra, &JValue::obj([("c", JValue::Arr(vec![]))])).is_err()
+    );
+    assert!(ra.verify().is_err());
+    // Opening A afresh refuses the link.
+    assert!(UserRoot::open(&data, "u").is_err());
+    assert_eq!(snapshot(&b), before, "B's folder changed");
+    assert!(
+        walk(&data.join("users/u.old")).is_empty(),
+        "A's old folder written"
+    );
+
+    // A leaf swapped for a link to B's record (after A wrote its own) reads as none, never B's.
+    std::fs::remove_file(&a).unwrap();
+    std::fs::rename(data.join("users/u.old"), &a).unwrap();
+    let ra = root(&data);
+    brain::write(&ra, "c", &brain_json, 3.0, 4.0).unwrap();
+    let own = brain::file_for(&a, "c");
+    std::fs::remove_file(&own).unwrap();
+    symlink(brain::file_for(&b, "c"), &own).unwrap();
+    assert!(
+        brain::read(&ra, "c").is_none(),
+        "B's record read through a leaf link"
+    );
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+fn walk(d: &std::path::Path) -> Vec<(String, Vec<u8>)> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(d).unwrap() {
+        let e = e.unwrap();
+        let p = e.path();
+        let m = std::fs::symlink_metadata(&p).unwrap();
+        if m.is_dir() {
+            out.extend(walk(&p));
+        } else {
+            out.push((
+                p.display().to_string(),
+                std::fs::read(&p).unwrap_or_default(),
+            ));
+        }
+    }
+    out
 }
 
 #[test]

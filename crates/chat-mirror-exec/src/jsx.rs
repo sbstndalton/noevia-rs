@@ -201,42 +201,147 @@ pub fn loose_null(v: &JValue) -> bool {
     v.is_nullish()
 }
 
-/// `a.localeCompare(b)` (V8/ICU root collation, non-ignorable). Exact for ASCII text, which is
-/// what chat ids are made of: punctuation and symbols in the root order, then digits, then
-/// letters, case-insensitive at the first level and lowercase first at the third. Other characters
-/// sort after the letters by code point (an approximation of the full table).
+/// `a.localeCompare(b)` in the web container: Intl's default locale there is `en-US`, whose
+/// collation is CLDR root (tertiary strength, non-ignorable), here through the ICU4X collator with
+/// the same tables. (A lone surrogate is compared as its mapped character.)
 pub fn locale_compare(a: &str, b: &str) -> Ordering {
-    let pa: Vec<u32> = a.chars().map(primary).collect();
-    let pb: Vec<u32> = b.chars().map(primary).collect();
-    pa.cmp(&pb).then_with(|| {
-        let ta: Vec<u8> = a.chars().map(tertiary).collect();
-        let tb: Vec<u8> = b.chars().map(tertiary).collect();
-        ta.cmp(&tb)
-    })
+    use icu_collator::{options::CollatorOptions, Collator, CollatorBorrowed};
+    use std::sync::OnceLock;
+    static COLLATOR: OnceLock<Option<CollatorBorrowed<'static>>> = OnceLock::new();
+    let c = COLLATOR.get_or_init(|| {
+        Collator::try_new(
+            icu_locale::locale!("en-US").into(),
+            CollatorOptions::default(),
+        )
+        .ok()
+    });
+    match c {
+        Some(c) => c.compare(a, b),
+        // Compiled data is built in; this cannot fail. Code-point order keeps the sort total.
+        None => a.cmp(b),
+    }
 }
 
-/// CLDR root order of the ASCII punctuation and symbols (whitespace first).
-const ROOT_PUNCT: &str = "\t\n\u{b}\u{c}\r _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$";
-
-fn primary(c: char) -> u32 {
-    if let Some(i) = ROOT_PUNCT.chars().position(|p| p == c) {
-        return 1 + u32::try_from(i).unwrap_or(0);
-    }
-    if c.is_ascii_digit() {
-        return 100 + u32::from(c) - u32::from('0');
-    }
-    if c.is_ascii_alphabetic() {
-        return 200 + u32::from(c.to_ascii_lowercase()) - u32::from('a');
-    }
-    if u32::from(c) < 0x20 || c == '\u{7f}' {
-        // Controls are ignorable in ICU; weight them lowest here.
-        return 0;
-    }
-    0x1000 + u32::from(c)
+/// Days since 1970-01-01 of a proleptic Gregorian date (`day` may run past the month's end, as
+/// in JS `MakeDay`).
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468 + d - 1
 }
 
-fn tertiary(c: char) -> u8 {
-    u8::from(c.is_ascii_uppercase())
+/// `Date.parse(s)` for the date-time strings V8 reads (NaN otherwise): the ECMAScript Date Time
+/// String Format (`YYYY`, `YYYY-MM`, `YYYY-MM-DD`, `±YYYYYY`; `THH:mm`, `:ss`, `.s…`; `Z` or
+/// `±HH:mm`), and V8's lenient forms of it: surrounding whitespace, a lower-case `t`/`z`, a space
+/// for `T`, `±HHmm`; a day past the month's end rolls over and `24:00` is the next midnight. A time
+/// without an offset is local time, which in the web container is UTC (no TZ is set there), so it
+/// reads as UTC, like a date alone. V8's other legacy formats (`Nov 14 2023`, `2023/11/14`, ...)
+/// are not read: NaN, so the note fails and is retried, never written with another time.
+pub fn parse_date(s: &str) -> f64 {
+    parse_date_opt(trim(s)).unwrap_or(f64::NAN)
+}
+
+fn digits(b: &[u8], at: &mut usize, n: usize) -> Option<i64> {
+    let part = b.get(*at..*at + n)?;
+    if !part.iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    *at += n;
+    Some(part.iter().fold(0i64, |v, d| v * 10 + i64::from(d - b'0')))
+}
+
+fn parse_date_opt(s: &str) -> Option<f64> {
+    let b = s.as_bytes();
+    let mut i = 0usize;
+    let year = match b.first()? {
+        sign @ (b'+' | b'-') => {
+            i += 1;
+            let y = digits(b, &mut i, 6)?;
+            if *sign == b'-' {
+                if y == 0 {
+                    return None;
+                }
+                -y
+            } else {
+                y
+            }
+        }
+        _ => digits(b, &mut i, 4)?,
+    };
+    let (mut month, mut day) = (1, 1);
+    if b.get(i) == Some(&b'-') {
+        i += 1;
+        month = digits(b, &mut i, 2)?;
+        if b.get(i) == Some(&b'-') {
+            i += 1;
+            day = digits(b, &mut i, 2)?;
+        }
+    }
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    let (mut h, mut mi, mut sec, mut ms, mut offset) = (0, 0, 0, 0, 0i64);
+    if let Some(b'T' | b't' | b' ') = b.get(i) {
+        i += 1;
+        h = digits(b, &mut i, 2)?;
+        if b.get(i) != Some(&b':') {
+            return None;
+        }
+        i += 1;
+        mi = digits(b, &mut i, 2)?;
+        if b.get(i) == Some(&b':') {
+            i += 1;
+            sec = digits(b, &mut i, 2)?;
+            if b.get(i) == Some(&b'.') {
+                i += 1;
+                let start = i;
+                while b.get(i).is_some_and(u8::is_ascii_digit) {
+                    i += 1;
+                }
+                let frac = b.get(start..i)?;
+                if frac.is_empty() {
+                    return None;
+                }
+                let mut three = [b'0'; 3];
+                for (slot, d) in three.iter_mut().zip(frac) {
+                    *slot = *d;
+                }
+                ms = three.iter().fold(0i64, |v, d| v * 10 + i64::from(d - b'0'));
+            }
+        }
+        match b.get(i) {
+            Some(b'Z' | b'z') => i += 1,
+            Some(sign @ (b'+' | b'-')) => {
+                let neg = *sign == b'-';
+                i += 1;
+                let oh = digits(b, &mut i, 2)?;
+                if b.get(i) == Some(&b':') {
+                    i += 1;
+                }
+                let om = digits(b, &mut i, 2)?;
+                if oh > 23 || om > 59 {
+                    return None;
+                }
+                offset = (oh * 60 + om) * 60_000 * if neg { -1 } else { 1 };
+            }
+            _ => {}
+        }
+        let midnight = h == 24 && mi == 0 && sec == 0 && ms == 0;
+        if !(h < 24 || midnight) || mi > 59 || sec > 59 {
+            return None;
+        }
+    }
+    if i != b.len() {
+        return None;
+    }
+    let days = days_from_civil(year, month, day);
+    #[allow(clippy::cast_precision_loss)]
+    let t = (days * 86_400_000 + ((h * 60 + mi) * 60 + sec) * 1000 + ms - offset) as f64;
+    (t.abs() <= 8.64e15).then_some(t)
 }
 
 #[cfg(test)]
@@ -265,5 +370,58 @@ mod tests {
         let mut v = vec!["b", "B", "a", "_x", "-x", "1", "A", "a1", "a-"];
         v.sort_by(|a, b| locale_compare(a, b));
         assert_eq!(v, ["_x", "-x", "1", "a", "A", "a-", "a1", "b", "B"]);
+        // Node 22 (ICU 78.3, en-US): beyond ASCII (review 2026-11-05, P2).
+        let mut w = vec![
+            "é", "z", "E", "e", "ß", "ss", "中", "a", "Z", "_", "1", "ä", "b",
+        ];
+        w.sort_by(|a, b| locale_compare(a, b));
+        assert_eq!(
+            w,
+            ["_", "1", "a", "ä", "b", "e", "E", "é", "ss", "ß", "z", "Z", "中"]
+        );
+    }
+
+    #[test]
+    fn date_parse_matches_node() {
+        // Node 22, TZ=UTC: `new Date(s).toISOString()` or NaN.
+        let cases = [
+            ("2023-11-14", Some("2023-11-14T00:00:00.000Z")),
+            ("2023-11", Some("2023-11-01T00:00:00.000Z")),
+            ("2023", Some("2023-01-01T00:00:00.000Z")),
+            ("+002023-11-14T00:00:00Z", Some("2023-11-14T00:00:00.000Z")),
+            ("-000000-01-01T00:00:00Z", None),
+            ("2023-11-14T22:13", Some("2023-11-14T22:13:00.000Z")),
+            ("2023-11-14T22:13:20", Some("2023-11-14T22:13:20.000Z")),
+            ("2023-11-14T22:13:20.1Z", Some("2023-11-14T22:13:20.100Z")),
+            (
+                "2023-11-14T22:13:20.123456Z",
+                Some("2023-11-14T22:13:20.123Z"),
+            ),
+            (
+                "2023-11-14T22:13:20.123+02:00",
+                Some("2023-11-14T20:13:20.123Z"),
+            ),
+            ("2023-11-14T24:00:00Z", Some("2023-11-15T00:00:00.000Z")),
+            ("2023-11-14T24:00:01Z", None),
+            ("2023-11-14t22:13:20z", Some("2023-11-14T22:13:20.000Z")),
+            ("2023-11-14 22:13:20Z", Some("2023-11-14T22:13:20.000Z")),
+            ("2023-02-30T00:00:00Z", Some("2023-03-02T00:00:00.000Z")),
+            ("2023-11-14T22:13:20+0200", Some("2023-11-14T20:13:20.000Z")),
+            ("1700000000000", None),
+            ("2023-13-01", None),
+            ("2023-11-14T22:13:20.Z", None),
+            ("  2023-11-14", Some("2023-11-14T00:00:00.000Z")),
+            ("2023-11-14T22:13:60Z", None),
+            (
+                "2023-11-14T22:13:20.123-00:00",
+                Some("2023-11-14T22:13:20.123Z"),
+            ),
+            ("2023-11-14T22:13:20+02", None),
+            ("2024-02-29", Some("2024-02-29T00:00:00.000Z")),
+            ("1900-02-29", Some("1900-03-01T00:00:00.000Z")),
+        ];
+        for (s, want) in cases {
+            assert_eq!(iso(parse_date(s)).as_deref(), want, "{s}");
+        }
     }
 }

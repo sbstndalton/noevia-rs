@@ -10,7 +10,7 @@
 )]
 
 use chat_mirror_exec::brain::{self, Reasoner};
-use chat_mirror_exec::{jsx, BoxFut, Completion, Diary, FileError, Lists, MirrorSource};
+use chat_mirror_exec::{jsx, BoxFut, Completion, Diary, FileError, Lists, MirrorSource, UserRoot};
 use js_json::{wtf16, JValue};
 use std::collections::{BTreeSet, HashSet};
 use std::path::PathBuf;
@@ -35,9 +35,31 @@ fn tmpdir(tag: &str) -> PathBuf {
         std::process::id(),
         rand_tag()
     ));
-    std::fs::create_dir_all(&d).unwrap();
+    std::fs::create_dir_all(d.join("users/u1")).unwrap();
     d
 }
+
+/// The synthetic account folder `users/u1` under a fresh data folder, and it held open.
+fn account(tag: &str) -> (PathBuf, PathBuf, UserRoot) {
+    let data = tmpdir(tag);
+    let root = UserRoot::open(&data, "u1").unwrap();
+    (data.clone(), data.join("users/u1"), root)
+}
+
+/// Passes core ran over state this port refuses by design (review 2026-11-05 P1: an unreadable,
+/// corrupt or misshapen index fails closed). Each must throw with no Diary call and leave the
+/// index file as it was; core read such an index as `{}` and acted on it.
+/// Passes after a Diary mutation that failed in the pass before: a failed call may still have
+/// taken effect (a deadline after the Diary committed), so its intent stays and this pass first
+/// reads that path back to reconcile it (review 2026-11-05 P1). Core made no such read; every
+/// call after those reads must be core's, and the vault and the index must end as core's.
+const RECONCILED: [(&str, usize, usize); 1] = [("partial-failure", 1, 1)];
+
+const REFUSED: [(&str, usize); 3] = [
+    ("corrupt-index", 0),
+    ("corrupt-index", 1),
+    ("corrupt-index", 2),
+];
 
 fn rand_tag() -> u128 {
     std::time::SystemTime::now()
@@ -199,7 +221,7 @@ struct State {
 }
 
 struct Source {
-    dir: PathBuf,
+    root: UserRoot,
     st: Mutex<State>,
 }
 
@@ -219,13 +241,19 @@ impl MirrorSource for Source {
         }
     }
     fn brain(&self, _: &str, chat: &str) -> Option<JValue> {
-        brain::read(&self.dir, chat).map(|r| r.brain)
+        brain::read(&self.root, chat).map(|r| r.brain)
     }
-    fn read_index(&self, _: &str) -> JValue {
-        chat_mirror_exec::read_index(&self.dir)
+    fn read_index(&self, _: &str) -> Result<JValue, String> {
+        chat_mirror_exec::read_index(&self.root)
     }
     fn write_index(&self, _: &str, state: &JValue) -> Result<(), String> {
-        chat_mirror_exec::write_index(&self.dir, state)
+        chat_mirror_exec::write_index(&self.root, state)
+    }
+    fn read_intents(&self, _: &str) -> Result<JValue, String> {
+        chat_mirror_exec::read_intents(&self.root)
+    }
+    fn write_intents(&self, _: &str, intents: &JValue) -> Result<(), String> {
+        chat_mirror_exec::write_intents(&self.root, intents)
     }
 }
 
@@ -244,13 +272,14 @@ fn js_order(a: &str, b: &str) -> std::cmp::Ordering {
 async fn mirror_passes_match_node() {
     let fx = fixture();
     let mut compared = 0;
+    let mut refused = 0;
     for scenario in arr(fx.get("mirror")) {
         let name = scenario.get("name").as_str().unwrap().to_owned();
         let steps = wtf16::parse(scenario.get("steps").as_str().unwrap()).unwrap();
         let expected = arr(scenario.get("passes"));
-        let dir = tmpdir("mirror");
+        let (data, dir, root) = account("mirror");
         let source = Source {
-            dir: dir.clone(),
+            root,
             st: Mutex::new(State::default()),
         };
         let diary = FakeDiary::default();
@@ -279,7 +308,7 @@ async fn mirror_passes_match_node() {
             }
             if let JValue::Obj(b) = step.get("brains") {
                 for (id, v) in b {
-                    brain::write(&dir, id, v, 1.0, 2.0).unwrap();
+                    brain::write(&source.root, id, v, 1.0, 2.0).unwrap();
                 }
             }
             {
@@ -338,10 +367,35 @@ async fn mirror_passes_match_node() {
             };
             let want = &expected[pass_no];
             let at = format!("{name} pass {pass_no}");
+            if REFUSED.contains(&(name.as_str(), pass_no)) {
+                assert_eq!(result, "threw", "{at}: refused");
+                assert!(
+                    diary.0.lock().unwrap().calls.is_empty(),
+                    "{at}: no Diary call"
+                );
+                let index = std::fs::read_to_string(dir.join(chat_mirror_exec::INDEX_FILE)).ok();
+                assert_eq!(
+                    index.as_deref(),
+                    step.get("index").as_str(),
+                    "{at}: index left as it was"
+                );
+                pass_no += 1;
+                refused += 1;
+                continue;
+            }
             assert_eq!(result, want.get("result").as_str().unwrap(), "{at}: result");
             let d = diary.0.lock().unwrap();
+            let skip = RECONCILED
+                .iter()
+                .find(|(n, p, _)| *n == name && *p == pass_no)
+                .map_or(0, |(_, _, k)| *k);
+            let (reads, calls) = d.calls.split_at(skip.min(d.calls.len()));
+            assert!(
+                reads.iter().all(|c| matches!(c, JValue::Arr(x) if x.first().and_then(JValue::as_str) == Some("read"))),
+                "{at}: reconcile reads {reads:?}"
+            );
             assert_eq!(
-                s(&JValue::Arr(d.calls.clone())),
+                s(&JValue::Arr(calls.to_vec())),
                 s(want.get("calls")),
                 "{at}: Diary calls"
             );
@@ -375,9 +429,12 @@ async fn mirror_passes_match_node() {
             compared += 1;
         }
         assert_eq!(pass_no, expected.len(), "{name}: pass count");
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&data);
     }
-    assert!(compared == 32, "compared {compared} passes");
+    assert!(
+        compared == 31 && refused == 3,
+        "compared {compared} passes, refused {refused}"
+    );
 }
 
 #[test]
@@ -418,10 +475,10 @@ fn brain_parse_and_render_match_node() {
 fn brain_store_matches_node() {
     let fx = fixture();
     let a = wtf16::parse(r#"{"brain_schema":1,"summary":"  A plan <for> the trip & more.  ","decisions":["Go by train"],"facts":[],"open_questions":["Which day?"],"entities":["Lisbon","Ana"]}"#).unwrap();
-    let dir = tmpdir("store");
+    let (data, dir, root) = account("store");
     for rec in arr(fx.get("brain").get("stored")) {
         let id = rec.get("id").as_str().unwrap();
-        brain::write(&dir, id, &a, 1_730_000_000_000.0, 1_730_000_000_001.0).unwrap();
+        brain::write(&root, id, &a, 1_730_000_000_000.0, 1_730_000_000_001.0).unwrap();
         let file = dir.join(rec.get("file").as_str().unwrap());
         assert_eq!(brain::file_for(&dir, id), file, "{id}: file name");
         assert_eq!(
@@ -429,7 +486,7 @@ fn brain_store_matches_node() {
             rec.get("bytes").as_str().unwrap(),
             "{id}: bytes"
         );
-        let r = brain::read(&dir, id).unwrap();
+        let r = brain::read(&root, id).unwrap();
         let read = JValue::obj([
             ("brain", r.brain),
             ("chatId", JValue::from(id)),
@@ -442,10 +499,10 @@ fn brain_store_matches_node() {
             std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
             0o600
         );
-        brain::remove(&dir, id);
-        assert!(brain::read(&dir, id).is_none());
+        brain::remove(&root, id);
+        assert!(brain::read(&root, id).is_none());
     }
-    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&data);
 }
 
 struct FakeReasoner {

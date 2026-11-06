@@ -4,7 +4,9 @@
 // deterministic in-memory Diary and a fake reasoner, and writes every input, every Diary call, the
 // final vault tree, the Trash and the index file bytes after each pass.
 //
-//   node record.cjs <core-checkout>/server > ../fixtures/oracle.v1.json
+//   TZ=UTC node record.cjs <core-checkout>/server > ../fixtures/oracle.v1.json
+//
+// TZ=UTC: the web container sets no TZ, so Date's local time there is UTC.
 //
 // No real Diary, Nextcloud data or model is touched.
 const fs = require('node:fs');
@@ -171,6 +173,23 @@ const MIRROR = [
     { tombstones: ['r1', 'r3'], lists: { freeChats: [2, 4].map((i) => ({ id: `r${i}`, title: `R ${i}`, createdAt: ts + i })), projects: [] }, pass: { dirty: ['r3'] } },
     { pass: { dirty: ['r1', 'r3'] } },
   ] },
+  // Review 2026-11-05 P2: localeCompare beyond ASCII ids (same time, same title: the order picks
+  // who gets the unsuffixed name) and Date's parser for a string updatedAt (TZ=UTC).
+  { name: 'collation-unicode', steps: [
+    { lists: { freeChats: ['z', 'é', 'E', 'e', 'ß', 'ss', '中', 'ä', 'Z', 'a-1', 'a_1', 'A1'].map((id) => ({ id, title: 'Same', createdAt: ts })), projects: [] }, pass: {} },
+  ] },
+  { name: 'string-updated-at', steps: [
+    { lists: { freeChats: [
+      { id: 's1', title: 'Offset', createdAt: ts, updatedAt: '2023-11-14T22:13:20.123+02:00' },
+      { id: 's2', title: 'Date only', createdAt: ts + 1, updatedAt: '2023-11-14' },
+      { id: 's3', title: 'Space', createdAt: ts + 2, updatedAt: '2023-11-14 22:13:20Z' },
+      { id: 's4', title: 'Rollover', createdAt: ts + 3, updatedAt: '2023-02-30T00:00:00Z' },
+      { id: 's5', title: 'Local', createdAt: ts + 4, updatedAt: '2023-11-14T22:13' },
+      { id: 's6', title: 'Expanded', createdAt: ts + 5, updatedAt: '+002023-11-14T24:00:00Z' },
+      { id: 's7', title: 'Invalid', createdAt: ts + 6, updatedAt: '2023-13-01' },
+      { id: 's8', title: 'Created string', createdAt: '2023-11-14T00:00:00Z', updatedAt: '2023-11-15' },
+    ], projects: [] }, pass: {} },
+  ] },
 ];
 
 // ── Brain ───────────────────────────────────────────────────────────────────────────────────
@@ -226,5 +245,5 @@ async function runBrain() {
   const mirror = [];
   for (const s of MIRROR) mirror.push({ name: s.name, steps: JSON.stringify(s.steps), passes: await runMirror(s) });
   const brain = await runBrain();
-  process.stdout.write(JSON.stringify({ core: process.env.ORACLE_CORE || 'unknown', node: process.version, mirror, brain }, null, 1) + '\n');
+  process.stdout.write(JSON.stringify({ core: process.env.ORACLE_CORE || 'unknown', node: process.version, icu: process.versions.icu, locale: new Intl.Collator().resolvedOptions().locale, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, mirror, brain }, null, 1) + '\n');
 })();
