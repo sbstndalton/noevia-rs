@@ -141,6 +141,142 @@ pub fn navigation(url: &JValue, allowed_domains: &JValue) -> JValue {
         ])
     })
 }
+/// Secret material stays in native memory and is sent only to the private engine channel.
+/// No Debug/serialization implementation can expose it to cards, events, or logs.
+pub struct Secret {
+    pub name: String,
+    pub domains: Vec<String>,
+    value: zeroize::Zeroizing<String>,
+}
+impl Secret {
+    pub fn new(name: String, domains: Vec<String>, value: String) -> Self {
+        Self {
+            name,
+            domains,
+            value: zeroize::Zeroizing::new(value),
+        }
+    }
+}
+pub struct Typed {
+    value: zeroize::Zeroizing<String>,
+    pub used: Vec<String>,
+}
+impl Typed {
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+const UNCHECKED_SECRETS: &str =
+    "The secrets in this value could not be double-checked, so nothing was typed.";
+fn secret_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+}
+fn placeholders(source: &str) -> Vec<(usize, usize, &str)> {
+    let mut found = vec![];
+    let mut offset = 0;
+    while let Some(start) = source[offset..].find("{{secret:") {
+        let start = offset + start;
+        let name_start = start + 9;
+        if let Some(end) = source[name_start..].find("}}") {
+            let name_end = name_start + end;
+            let name = &source[name_start..name_end];
+            if secret_name(name) {
+                found.push((start, name_end + 2, name));
+                offset = name_end + 2;
+                continue;
+            }
+        }
+        offset = name_start;
+    }
+    found
+}
+/// Existing policy sees only names and domain bindings, never secret values. Replacement
+/// happens only after its ordered used-name list exactly matches the native parser.
+pub fn substitute(source: &str, secrets: &[Secret], origin: &str) -> Result<Typed, String> {
+    let bindings = JValue::Arr(
+        secrets
+            .iter()
+            .filter(|s| secret_name(&s.name))
+            .map(|s| {
+                JValue::Arr(vec![
+                    string(&s.name),
+                    JValue::Arr(s.domains.iter().map(|d| string(d)).collect()),
+                ])
+            })
+            .collect(),
+    );
+    let answer =
+        call(3, vec![string(source), bindings, string(origin)]).ok_or(UNCHECKED_SECRETS)?;
+    if answer.get("ok") != &JValue::Bool(true) {
+        return Err(answer
+            .get("reason")
+            .as_str()
+            .unwrap_or(UNCHECKED_SECRETS)
+            .into());
+    }
+    let names = placeholders(source);
+    let JValue::Arr(used) = answer.get("used") else {
+        return Err(UNCHECKED_SECRETS.into());
+    };
+    if used.len() != names.len()
+        || used
+            .iter()
+            .zip(&names)
+            .any(|(v, (_, _, name))| v.as_str() != Some(*name))
+    {
+        return Err(UNCHECKED_SECRETS.into());
+    }
+    let mut output = zeroize::Zeroizing::new(String::new());
+    let mut offset = 0;
+    let mut used_names = vec![];
+    for (start, end, name) in names {
+        let secret = secrets
+            .iter()
+            .find(|s| s.name == name)
+            .ok_or(UNCHECKED_SECRETS)?;
+        output.push_str(&source[offset..start]);
+        output.push_str(&secret.value);
+        offset = end;
+        used_names.push(name.to_owned());
+    }
+    output.push_str(&source[offset..]);
+    Ok(Typed {
+        value: output,
+        used: used_names,
+    })
+}
+fn component(value: &str) -> String {
+    let mut result = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
+            result.push(char::from(byte));
+        } else {
+            result.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    result
+}
+/// Node's longest-first raw/URL/form masking, applied before evidence or approval publication.
+pub fn mask(source: &str, secrets: &[Secret]) -> String {
+    let mut entries = secrets
+        .iter()
+        .filter(|s| wtf16::len(&s.value) >= 4)
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|s| std::cmp::Reverse(wtf16::len(&s.value)));
+    let mut output = source.to_owned();
+    for secret in entries {
+        let encoded = component(&secret.value);
+        let form = encoded.replace("%20", "+");
+        for value in [secret.value.as_str(), encoded.as_str(), form.as_str()] {
+            output = output.replace(value, &format!("{{{{secret:{}}}}}", secret.name));
+        }
+    }
+    output
+}
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
@@ -159,6 +295,55 @@ mod tests {
                 classify(row.get("action"), row.get("page"))
             };
             assert_eq!(actual, row.get("result").clone(), "case {n}");
+        }
+    }
+    #[test]
+    fn node_secret_binding_and_masking() {
+        let fixture =
+            wtf16::parse(include_str!("../tests/fixtures/browser-secrets-node.json")).unwrap();
+        let JValue::Arr(rows) = fixture else {
+            panic!("fixture");
+        };
+        for row in rows {
+            let JValue::Obj(items) = row.get("secrets") else {
+                panic!("secrets");
+            };
+            let secrets = items
+                .iter()
+                .map(|(name, v)| {
+                    Secret::new(
+                        name.clone(),
+                        match v.get("domains") {
+                            JValue::Arr(ds) => ds
+                                .iter()
+                                .filter_map(|d| d.as_str().map(str::to_owned))
+                                .collect(),
+                            _ => vec![],
+                        },
+                        v.get("value").as_str().unwrap().into(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let source = row.get("source").as_str().unwrap();
+            let actual = match substitute(source, &secrets, row.get("origin").as_str().unwrap()) {
+                Ok(typed) => object(vec![
+                    ("ok", JValue::Bool(true)),
+                    ("value", string(typed.value())),
+                    (
+                        "used",
+                        JValue::Arr(typed.used.iter().map(|n| string(n)).collect()),
+                    ),
+                ]),
+                Err(reason) => object(vec![
+                    ("ok", JValue::Bool(false)),
+                    ("reason", string(&reason)),
+                ]),
+            };
+            assert_eq!(&actual, row.get("result"));
+            assert_eq!(
+                mask(row.get("evidence").as_str().unwrap(), &secrets),
+                row.get("masked").as_str().unwrap()
+            );
         }
     }
 }
