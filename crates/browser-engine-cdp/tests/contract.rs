@@ -16,10 +16,14 @@ struct Decline(std::sync::Arc<std::sync::Mutex<Vec<Value>>>);
 #[async_trait::async_trait]
 impl Approval for Decline {
     async fn decide(&self, card: Value) -> anyhow::Result<bool> {
-        let approve = card.pointer("/element/text").and_then(Value::as_str)
+        let approve = card.get("action").and_then(Value::as_str) == Some("upload")
+            || card.pointer("/element/text").and_then(Value::as_str) == Some("Submit bad")
+            || card.pointer("/element/text").and_then(Value::as_str)
+                == Some("Delete after navigation");
+        let frame = card.pointer("/element/text").and_then(Value::as_str)
             == Some("Delete after navigation");
         self.0.lock().unwrap().push(card);
-        if approve {
+        if frame {
             tokio::time::sleep(Duration::from_millis(700)).await;
         }
         Ok(approve)
@@ -81,7 +85,7 @@ async fn exact_contract() {
         } else {
             vec!["fixture.test".into()]
         },
-        upload_files: vec![],
+        upload_files: vec![root.join("upload.txt")],
         secrets: BTreeMap::from([(
             "fixture".into(),
             Secret {

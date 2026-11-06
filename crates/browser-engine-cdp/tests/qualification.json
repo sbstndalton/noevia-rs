@@ -43,8 +43,8 @@
       "evidence": "Dropped wait and approval futures close automatically; proxy tasks abort. Exhaustive setup/download/close injection remains."
     },
     "8": {
-      "status": "PARTIAL",
-      "evidence": "18 exact response/card/state/lifecycle cases and transport errors pass, with approved declared-secret audit redaction exception. Final extract/submit/upload error-family matrix remains before closure."
+      "status": "CLOSED-AT-PARITY",
+      "evidence": "24 exact response/card/state/audit/lifecycle cases, 36 locator/frame cases, 21 input cases and 11 transport cases pass. Includes SVG extract, invalid form submit, invalid upload target/type and successful upload effects. Owner-approved exception redacts declared-secret audit strings instead of preserving the retained raw action.type leak."
     },
     "6": {
       "status": "PARTIAL",

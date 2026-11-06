@@ -132,6 +132,15 @@ async fn on_node(
 ) -> Result<Value> {
     let r = command(page,"Runtime.callFunctionOn",json!({"objectId":id,"functionDeclaration":function,"arguments":args.into_iter().map(|v|json!({"value":v})).collect::<Vec<_>>(),"returnByValue":true,"awaitPromise":true})).await?;
     if r.get("exceptionDetails").is_some() {
+        if r.pointer("/exceptionDetails/exception/description")
+            .and_then(Value::as_str)
+            .and_then(|v| v.lines().next())
+            == Some("TypeError: f.submit is not a function")
+        {
+            return Err(compatibility_error(
+                "elementHandle.evaluate: TypeError: f.submit is not a function".into(),
+            ));
+        }
         bail!("Target operation failed")
     }
     Ok(r.pointer("/result/value").cloned().unwrap_or(Value::Null))
@@ -824,12 +833,23 @@ impl CdpEngine {
                     on_node(
                         &action_page,
                         target,
-                        "function(){return this.innerText}".into(),
+                        "function(){return {html:this instanceof HTMLElement,text:this.innerText}}"
+                            .into(),
                         vec![],
                     )
                     .await?
                 } else {
                     evaluate(&self.page, "document.body.innerText".into()).await?
+                };
+                let text = if id.is_some() {
+                    if text.get("html").and_then(Value::as_bool) != Some(true) {
+                        return Err(compatibility_error(
+                            "locator.innerText: Error: Node is not an HTMLElement".into(),
+                        ));
+                    }
+                    text.get("text").cloned().unwrap_or(Value::Null)
+                } else {
+                    text
                 };
                 let text = String::from_utf16_lossy(
                     &text
@@ -891,19 +911,35 @@ impl CdpEngine {
             }
             "upload" => {
                 let file = std::fs::canonicalize(string(a, "file"))?;
-                if !self
-                    .config
-                    .upload_files
-                    .iter()
-                    .filter_map(|p| std::fs::canonicalize(p).ok())
-                    .any(|p| p == file)
-                {
-                    bail!("Only files given to this task can be uploaded.")
+                let field=on_node(&action_page,target,"function(){const el=globalThis.__browserLocator.retarget(this,'follow-label');return el?{tag:el.nodeName,type:el.type,same:el===this}:null}".into(),vec![]).await?;
+                if field.is_null() {
+                    return Err(compatibility_error(
+                        "elementHandle.setInputFiles: Element is not attached to the DOM".into(),
+                    ));
                 }
+                if string(&field, "tag") != "INPUT" {
+                    return Err(compatibility_error(
+                        "elementHandle.setInputFiles: Error: Node is not an HTMLInputElement"
+                            .into(),
+                    ));
+                }
+                if string(&field, "type") != "file" {
+                    return Err(compatibility_error("elementHandle.setInputFiles: Protocol error (DOM.setFileInputFiles): Node is not a file input element".into()));
+                }
+                let input = if field.get("same").and_then(Value::as_bool) == Some(true) {
+                    target.to_owned()
+                } else {
+                    let result=command(&action_page,"Runtime.callFunctionOn",json!({"objectId":target,"functionDeclaration":"function(){return globalThis.__browserLocator.retarget(this,'follow-label')}","objectGroup":"browser-action-temp","returnByValue":false})).await?;
+                    result
+                        .pointer("/result/objectId")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| anyhow!("Upload target unavailable"))?
+                        .to_owned()
+                };
                 command(
                     &action_page,
                     "DOM.setFileInputFiles",
-                    json!({"objectId":target,"files":[file]}),
+                    json!({"objectId":input,"files":[file]}),
                 )
                 .await?;
             }
@@ -1323,6 +1359,12 @@ impl CdpEngine {
                 &id.page,
                 "Runtime.releaseObject",
                 json!({"objectId":id.object_id}),
+            )
+            .await;
+            let _ = command(
+                &id.page,
+                "Runtime.releaseObjectGroup",
+                json!({"objectGroup":"browser-action-temp"}),
             )
             .await;
         }

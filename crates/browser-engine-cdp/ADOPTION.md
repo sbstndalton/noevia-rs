@@ -79,9 +79,8 @@ WebSocket denial audit, public secret redaction, wrong-password/origin/anonymous
 proxy cases, CacheStorage/IndexedDB isolation, concurrent same-name downloads,
 and cancellation during a timed wait in addition to approval cancellation.
 
-Exhaustive setup/action/download/close cancellation injection, shared-worker
-and storage coverage, remaining transport errors, and live TLS/SOCKS proxy
-qualification remain open. Existing
+Exhaustive setup/action/download/close cancellation injection and the remaining
+shared-worker/OOPIF and storage/permissions matrices remain open. Existing
 passing behavior is recorded as such; no artificial fail-before is invented for
 cache isolation or cancellation cases that already matched the retained driver.
 
@@ -107,8 +106,7 @@ actual same-origin and cross-origin fill/click effects, requires a positive
 iframe renderer target, checks secret binding and approval cards, and refuses
 the original node if its frame navigates during approval. The input suite
 covers label retargeting, contenteditable, color/range/number validation and
-selecting by label using the same browser-side algorithms. Transport negatives,
-remaining worker/isolation cases and exhaustive cancellation still gate wiring.
+selecting by label using the same browser-side algorithms. Remaining worker/isolation cases and exhaustive cancellation still gate wiring.
 
 The local-only transport suite now compares eleven exact outcomes across TLS
 CONNECT, encrypted HTTPS proxies and SOCKS. It covers wrong credentials, origin
@@ -119,3 +117,9 @@ The fixture uses a proper ephemeral CA and server leaf. Its additional native
 trust is limited to a literal-loopback HTTPS proxy with synthetic-direct enabled;
 admission tests reject that option for runtime/non-loopback use. Production trust
 and selector defaults remain unchanged.
+
+The completed audit/error gate additionally covers SVG extraction, submitting a
+nonform, upload target/type refusals and a successful upload with a DOM filename
+effect. Public errors use fixed compatibility classifications; arbitrary renderer
+exception details are never copied into public reasons. The 24-case contract
+compares approval cards, ordered audit entries, state and close confirmation.
