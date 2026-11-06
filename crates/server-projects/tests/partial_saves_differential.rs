@@ -1,6 +1,11 @@
 //! A running reply's partial saves (core chat-partial.cjs #1507, #2146) against the files core's own
 //! code wrote for the same synthetic replies (fixtures/record-partial-saves.cjs).
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 use js_json::{wtf16, JValue};
 use server_projects::partial::{self, Saves};
 use sha2::{Digest, Sha256};
