@@ -76,7 +76,10 @@ pub fn target(io: &impl MachinesIo, role: &str) -> Option<Target> {
 
 /// `remoteRoles()`, in role order.
 pub fn remote_roles(io: &impl MachinesIo) -> Vec<(String, Target)> {
-    CHAT_ROLES.iter().filter_map(|r| target(io, r).map(|t| ((*r).to_owned(), t))).collect()
+    CHAT_ROLES
+        .iter()
+        .filter_map(|r| target(io, r).map(|t| ((*r).to_owned(), t)))
+        .collect()
 }
 
 fn with_roles(roles: &JValue, f: impl Fn(&mut Vec<(String, JValue)>)) -> JValue {
@@ -115,7 +118,9 @@ pub fn local_roles(io: &impl MachinesIo, roles: &JValue) -> JValue {
     if remote.is_empty() {
         return roles.clone();
     }
-    with_roles(roles, |out| out.retain(|(k, _)| !remote.iter().any(|(r, _)| r == k)))
+    with_roles(roles, |out| {
+        out.retain(|(k, _)| !remote.iter().any(|(r, _)| r == k))
+    })
 }
 
 fn unreachable_text(t: &Target, detail: &str) -> String {
@@ -132,7 +137,11 @@ fn unreachable_text(t: &Target, detail: &str) -> String {
 fn wrong_model_text(t: &Target, served: &[String]) -> String {
     let l = role_label(&t.role);
     let first: Vec<&str> = served.iter().take(3).map(String::as_str).collect();
-    let list = if first.is_empty() { "no model".to_owned() } else { first.join(", ") };
+    let list = if first.is_empty() {
+        "no model".to_owned()
+    } else {
+        first.join(", ")
+    };
     format!(
         "The {l} machine ({}) serves {list}{}, not {}. Start {} on port {}, or choose the model it serves for the {l} role in Settings → Inference machines.",
         t.machine_name,
@@ -148,7 +157,11 @@ fn wrong_model_text(t: &Target, served: &[String]) -> String {
 pub enum Ready {
     Ok,
     /// `{ ok:false, state, code, error }`.
-    Not { state: String, code: &'static str, error: String },
+    Not {
+        state: String,
+        code: &'static str,
+        error: String,
+    },
 }
 
 /// `ready(t)` (#1851): the machine answers its health check and serves the assigned model.
@@ -157,13 +170,19 @@ pub async fn ready(io: &impl MachinesIo, t: Option<&Target>) -> Ready {
     if !io.has_health() {
         return Ready::Ok;
     }
-    let r = io.probe(&t.base_url).await.unwrap_or(Health { state: Some("unreachable".into()), reason: Some("network".into()) });
+    let r = io.probe(&t.base_url).await.unwrap_or(Health {
+        state: Some("unreachable".into()),
+        reason: Some("network".into()),
+    });
     if r.state.as_deref() != Some("up") {
         let reason = r.reason.clone().unwrap_or_default();
         let detail = if r.reason.as_deref() == Some("not-on-this-network") {
             "its address is not on this network".to_owned()
         } else if r.state.as_deref() == Some("down") {
-            let why = reason.strip_prefix("http-").map(|s| format!("HTTP {s}")).unwrap_or(reason);
+            let why = reason
+                .strip_prefix("http-")
+                .map(|s| format!("HTTP {s}"))
+                .unwrap_or(reason);
             format!("it answered {why}").trim().to_owned()
         } else if r.reason.as_deref() == Some("timeout") {
             "no answer in time".to_owned()
@@ -171,7 +190,10 @@ pub async fn ready(io: &impl MachinesIo, t: Option<&Target>) -> Ready {
             String::new()
         };
         return Ready::Not {
-            state: r.state.filter(|s| !s.is_empty()).unwrap_or_else(|| "unreachable".into()),
+            state: r
+                .state
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "unreachable".into()),
             code: "machineUnreachable",
             error: unreachable_text(t, &detail),
         };
@@ -179,7 +201,11 @@ pub async fn ready(io: &impl MachinesIo, t: Option<&Target>) -> Ready {
     let f = io.facts(t).await;
     if let Some(models) = &f.models {
         if !models.contains(&t.model) {
-            return Ready::Not { state: "wrongModel".into(), code: "machineWrongModel", error: wrong_model_text(t, models) };
+            return Ready::Not {
+                state: "wrongModel".into(),
+                code: "machineWrongModel",
+                error: wrong_model_text(t, models),
+            };
         }
     }
     Ready::Ok
@@ -187,7 +213,11 @@ pub async fn ready(io: &impl MachinesIo, t: Option<&Target>) -> Ready {
 
 /// `contextTokens(t)`.
 pub async fn context_tokens(io: &impl MachinesIo, t: &Target) -> f64 {
-    io.facts(t).await.context_tokens.filter(|c| *c != 0.0).unwrap_or(CONTEXT_FALLBACK)
+    io.facts(t)
+        .await
+        .context_tokens
+        .filter(|c| *c != 0.0)
+        .unwrap_or(CONTEXT_FALLBACK)
 }
 
 /// `provider(t, { contextTokens, thinking })`: the provider row a turn uses for the role on its machine.
@@ -195,7 +225,14 @@ pub fn provider(t: &Target, context_tokens: Option<f64>, thinking: Option<bool>)
     let s = |v: &str| JValue::Str(v.to_owned());
     let mut row = vec![
         ("id", JValue::Str(format!("machine:{}", t.machine_id))),
-        ("label", JValue::Str(format!("{} model’s machine ({})", role_label(&t.role), t.machine_name))),
+        (
+            "label",
+            JValue::Str(format!(
+                "{} model’s machine ({})",
+                role_label(&t.role),
+                t.machine_name
+            )),
+        ),
         ("baseUrl", JValue::Str(format!("{}/v1", t.base_url))),
         ("apiKey", s("")),
         ("shared", JValue::Bool(true)),
@@ -220,7 +257,15 @@ pub fn provider(t: &Target, context_tokens: Option<f64>, thinking: Option<bool>)
 /// `measuredProvider(t)` (#1854).
 pub async fn measured_provider(io: &impl MachinesIo, t: &Target) -> JValue {
     let f = io.facts(t).await;
-    provider(t, Some(f.context_tokens.filter(|c| *c != 0.0).unwrap_or(CONTEXT_FALLBACK)), f.thinking)
+    provider(
+        t,
+        Some(
+            f.context_tokens
+                .filter(|c| *c != 0.0)
+                .unwrap_or(CONTEXT_FALLBACK),
+        ),
+        f.thinking,
+    )
 }
 
 /// How a request to a machine failed at the socket.
@@ -249,16 +294,26 @@ pub fn connect_error(t: &Target, why: ConnectFailure) -> String {
 /// `manualTarget(model, catalogue)` (#1849, #1855): a Manual pick of a model a role's machine serves and this
 /// machine's catalogue does not list. `catalogue` is read only when some role's machine serves `model`;
 /// `Err` (unreadable) keeps it here.
-pub async fn manual_target<F, Fut>(io: &impl MachinesIo, model: &JValue, catalogue: F) -> Option<Target>
+pub async fn manual_target<F, Fut>(
+    io: &impl MachinesIo,
+    model: &JValue,
+    catalogue: F,
+) -> Option<Target>
 where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = Result<JValue, ()>>,
 {
     let model = as_str(model).filter(|m| !m.is_empty())?;
-    let matched = remote_roles(io).into_iter().map(|(_, t)| t).find(|t| t.model == model)?;
+    let matched = remote_roles(io)
+        .into_iter()
+        .map(|(_, t)| t)
+        .find(|t| t.model == model)?;
     let rows = catalogue().await.ok()?;
     if let JValue::Arr(rows) = &rows {
-        if rows.iter().any(|m| m.truthy() && as_str(get(m, "name")) == Some(model)) {
+        if rows
+            .iter()
+            .any(|m| m.truthy() && as_str(get(m, "name")) == Some(model))
+        {
             return None;
         }
     }
@@ -281,13 +336,27 @@ pub struct TurnGuard {
 impl Turns {
     /// `beginTurn(machineId)`.
     pub fn begin(&self, machine_id: &str) -> TurnGuard {
-        *self.counts.lock().unwrap_or_else(PoisonError::into_inner).entry(machine_id.to_owned()).or_default() += 1;
-        TurnGuard { counts: Arc::clone(&self.counts), id: machine_id.to_owned() }
+        *self
+            .counts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(machine_id.to_owned())
+            .or_default() += 1;
+        TurnGuard {
+            counts: Arc::clone(&self.counts),
+            id: machine_id.to_owned(),
+        }
     }
 
     /// `busy(machineId)`.
     pub fn busy(&self, machine_id: &str) -> bool {
-        self.counts.lock().unwrap_or_else(PoisonError::into_inner).get(machine_id).copied().unwrap_or(0) > 0
+        self.counts
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(machine_id)
+            .copied()
+            .unwrap_or(0)
+            > 0
     }
 }
 
@@ -313,11 +382,16 @@ pub fn props_facts_of(body: &JValue) -> Facts {
         context_tokens: (n.fract() == 0.0 && (2048.0..=2_000_000.0).contains(&n)).then_some(n),
         thinking: as_str(template).filter(|t| !t.is_empty()).map(|t| {
             t.match_indices("enable_thinking").any(|(at, m)| {
-                let word = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+                let word =
+                    |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
                 !word(t[..at].chars().next_back()) && !word(t[at + m.len()..].chars().next())
             })
         }),
-        vision: if modalities.truthy() { get(modalities, "vision").as_bool() } else { None },
+        vision: if modalities.truthy() {
+            get(modalities, "vision").as_bool()
+        } else {
+            None
+        },
     }
 }
 
@@ -331,7 +405,11 @@ pub fn model_ids(body: &JValue) -> Vec<String> {
     for r in rows {
         let id = match r {
             JValue::Str(s) => JValue::Str(s.clone()),
-            JValue::Obj(_) => [get(r, "id"), get(r, "model"), get(r, "name")].into_iter().find(|v| !v.is_nullish()).cloned().unwrap_or(JValue::Undefined),
+            JValue::Obj(_) => [get(r, "id"), get(r, "model"), get(r, "name")]
+                .into_iter()
+                .find(|v| !v.is_nullish())
+                .cloned()
+                .unwrap_or(JValue::Undefined),
             _ => JValue::Undefined,
         };
         if let JValue::Str(id) = id {
@@ -352,7 +430,11 @@ pub fn model_ids(body: &JValue) -> Vec<String> {
 
 /// `facts(t)`'s `load(prev)`: the models read (`Some` when `/v1/models` answered and parsed) and the
 /// `/props` facts (`Some` when it answered ok), over the last known ones.
-pub fn load_facts(prev: Option<&Facts>, models: Option<Vec<String>>, props: Option<Facts>) -> Facts {
+pub fn load_facts(
+    prev: Option<&Facts>,
+    models: Option<Vec<String>>,
+    props: Option<Facts>,
+) -> Facts {
     let mut out = prev.cloned().unwrap_or_default();
     if let Some(m) = models {
         out.models = Some(m);
