@@ -1,0 +1,590 @@
+[
+  {
+    "input": {},
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "artifact.created",
+        "data": {
+          "kind": "test-report",
+          "passed": true,
+          "exitCode": 0,
+          "signal": null,
+          "timedOut": false,
+          "tail": "ok\n",
+          "tailBytes": 3,
+          "totalBytes": 3,
+          "truncated": false,
+          "taskId": "22222222-2222-4222-8222-222222222222",
+          "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "repo": "repo",
+          "durationMs": 0,
+          "measuredBy": "verifier"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": false
+        }
+      }
+    ],
+    "outcome": {
+      "status": "passed",
+      "report": {
+        "kind": "test-report",
+        "passed": true,
+        "exitCode": 0,
+        "signal": null,
+        "timedOut": false,
+        "tail": "ok\n",
+        "tailBytes": 3,
+        "totalBytes": 3,
+        "truncated": false,
+        "taskId": "22222222-2222-4222-8222-222222222222",
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 1,
+        "repo": "repo",
+        "durationMs": 0,
+        "measuredBy": "verifier"
+      },
+      "error": null
+    }
+  },
+  {
+    "input": {
+      "exitCode": 1
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "artifact.created",
+        "data": {
+          "kind": "test-report",
+          "passed": false,
+          "exitCode": 1,
+          "signal": null,
+          "timedOut": false,
+          "tail": "ok\n",
+          "tailBytes": 3,
+          "totalBytes": 3,
+          "truncated": false,
+          "taskId": "22222222-2222-4222-8222-222222222222",
+          "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "repo": "repo",
+          "durationMs": 0,
+          "measuredBy": "verifier"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": true
+        }
+      }
+    ],
+    "outcome": {
+      "status": "failed",
+      "report": {
+        "kind": "test-report",
+        "passed": false,
+        "exitCode": 1,
+        "signal": null,
+        "timedOut": false,
+        "tail": "ok\n",
+        "tailBytes": 3,
+        "totalBytes": 3,
+        "truncated": false,
+        "taskId": "22222222-2222-4222-8222-222222222222",
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 1,
+        "repo": "repo",
+        "durationMs": 0,
+        "measuredBy": "verifier"
+      },
+      "error": null
+    }
+  },
+  {
+    "input": {
+      "signal": "SIGTERM"
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "artifact.created",
+        "data": {
+          "kind": "test-report",
+          "passed": false,
+          "exitCode": 0,
+          "signal": "SIGTERM",
+          "timedOut": false,
+          "tail": "ok\n",
+          "tailBytes": 3,
+          "totalBytes": 3,
+          "truncated": false,
+          "taskId": "22222222-2222-4222-8222-222222222222",
+          "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "repo": "repo",
+          "durationMs": 0,
+          "measuredBy": "verifier"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": true
+        }
+      }
+    ],
+    "outcome": {
+      "status": "failed",
+      "report": {
+        "kind": "test-report",
+        "passed": false,
+        "exitCode": 0,
+        "signal": "SIGTERM",
+        "timedOut": false,
+        "tail": "ok\n",
+        "tailBytes": 3,
+        "totalBytes": 3,
+        "truncated": false,
+        "taskId": "22222222-2222-4222-8222-222222222222",
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 1,
+        "repo": "repo",
+        "durationMs": 0,
+        "measuredBy": "verifier"
+      },
+      "error": null
+    }
+  },
+  {
+    "input": {
+      "timedOut": true
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "artifact.created",
+        "data": {
+          "kind": "test-report",
+          "passed": false,
+          "exitCode": 0,
+          "signal": null,
+          "timedOut": true,
+          "tail": "ok\n",
+          "tailBytes": 3,
+          "totalBytes": 3,
+          "truncated": false,
+          "taskId": "22222222-2222-4222-8222-222222222222",
+          "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "repo": "repo",
+          "durationMs": 0,
+          "measuredBy": "verifier"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": true
+        }
+      }
+    ],
+    "outcome": {
+      "status": "failed",
+      "report": {
+        "kind": "test-report",
+        "passed": false,
+        "exitCode": 0,
+        "signal": null,
+        "timedOut": true,
+        "tail": "ok\n",
+        "tailBytes": 3,
+        "totalBytes": 3,
+        "truncated": false,
+        "taskId": "22222222-2222-4222-8222-222222222222",
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 1,
+        "repo": "repo",
+        "durationMs": 0,
+        "measuredBy": "verifier"
+      },
+      "error": null
+    }
+  },
+  {
+    "input": {
+      "badShape": true
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": true,
+          "reason": "The verifier’s answer was not a verification result."
+        }
+      }
+    ],
+    "outcome": {
+      "status": "error",
+      "report": null,
+      "error": {
+        "code": "bad_answer",
+        "message": "The verifier’s answer was not a verification result."
+      }
+    }
+  },
+  {
+    "input": {
+      "badNonce": true
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": true,
+          "reason": "The verifier’s answer was not for this request."
+        }
+      }
+    ],
+    "outcome": {
+      "status": "error",
+      "report": null,
+      "error": {
+        "code": "bad_answer",
+        "message": "The verifier’s answer was not for this request."
+      }
+    }
+  },
+  {
+    "input": {
+      "badHead": true
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": true,
+          "reason": "The verifier answered for a different commit."
+        }
+      }
+    ],
+    "outcome": {
+      "status": "error",
+      "report": null,
+      "error": {
+        "code": "bad_answer",
+        "message": "The verifier answered for a different commit."
+      }
+    }
+  },
+  {
+    "input": {
+      "exitCode": "0",
+      "signal": "bad-signal",
+      "totalBytes": 3.5
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "artifact.created",
+        "data": {
+          "kind": "test-report",
+          "passed": false,
+          "exitCode": null,
+          "signal": null,
+          "timedOut": false,
+          "tail": "ok\n",
+          "tailBytes": 3,
+          "totalBytes": null,
+          "truncated": false,
+          "taskId": "22222222-2222-4222-8222-222222222222",
+          "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "repo": "repo",
+          "durationMs": 0,
+          "measuredBy": "verifier"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": true
+        }
+      }
+    ],
+    "outcome": {
+      "status": "failed",
+      "report": {
+        "kind": "test-report",
+        "passed": false,
+        "exitCode": null,
+        "signal": null,
+        "timedOut": false,
+        "tail": "ok\n",
+        "tailBytes": 3,
+        "totalBytes": null,
+        "truncated": false,
+        "taskId": "22222222-2222-4222-8222-222222222222",
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 1,
+        "repo": "repo",
+        "durationMs": 0,
+        "measuredBy": "verifier"
+      },
+      "error": null
+    }
+  },
+  {
+    "input": {
+      "tail": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\u0000\u001b\r\nend",
+      "totalBytes": 4000
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "artifact.created",
+        "data": {
+          "kind": "test-report",
+          "passed": true,
+          "exitCode": 0,
+          "signal": null,
+          "timedOut": false,
+          "tail": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\nend",
+          "tailBytes": 1024,
+          "totalBytes": 4000,
+          "truncated": true,
+          "taskId": "22222222-2222-4222-8222-222222222222",
+          "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "repo": "repo",
+          "durationMs": 0,
+          "measuredBy": "verifier"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": false
+        }
+      }
+    ],
+    "outcome": {
+      "status": "passed",
+      "report": {
+        "kind": "test-report",
+        "passed": true,
+        "exitCode": 0,
+        "signal": null,
+        "timedOut": false,
+        "tail": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\nend",
+        "tailBytes": 1024,
+        "totalBytes": 4000,
+        "truncated": true,
+        "taskId": "22222222-2222-4222-8222-222222222222",
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 1,
+        "repo": "repo",
+        "durationMs": 0,
+        "measuredBy": "verifier"
+      },
+      "error": null
+    }
+  },
+  {
+    "input": {
+      "signal": "SIG12345678901"
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "artifact.created",
+        "data": {
+          "kind": "test-report",
+          "passed": true,
+          "exitCode": 0,
+          "signal": null,
+          "timedOut": false,
+          "tail": "ok\n",
+          "tailBytes": 3,
+          "totalBytes": 3,
+          "truncated": false,
+          "taskId": "22222222-2222-4222-8222-222222222222",
+          "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "repo": "repo",
+          "durationMs": 0,
+          "measuredBy": "verifier"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": false
+        }
+      }
+    ],
+    "outcome": {
+      "status": "passed",
+      "report": {
+        "kind": "test-report",
+        "passed": true,
+        "exitCode": 0,
+        "signal": null,
+        "timedOut": false,
+        "tail": "ok\n",
+        "tailBytes": 3,
+        "totalBytes": 3,
+        "truncated": false,
+        "taskId": "22222222-2222-4222-8222-222222222222",
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 1,
+        "repo": "repo",
+        "durationMs": 0,
+        "measuredBy": "verifier"
+      },
+      "error": null
+    }
+  },
+  {
+    "input": {
+      "exitCode": null,
+      "totalBytes": -1
+    },
+    "events": [
+      {
+        "type": "step.started",
+        "data": {
+          "id": "tests",
+          "title": "Run the tests"
+        }
+      },
+      {
+        "type": "artifact.created",
+        "data": {
+          "kind": "test-report",
+          "passed": false,
+          "exitCode": null,
+          "signal": null,
+          "timedOut": false,
+          "tail": "ok\n",
+          "tailBytes": 3,
+          "totalBytes": null,
+          "truncated": false,
+          "taskId": "22222222-2222-4222-8222-222222222222",
+          "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision": 1,
+          "repo": "repo",
+          "durationMs": 0,
+          "measuredBy": "verifier"
+        }
+      },
+      {
+        "type": "step.completed",
+        "data": {
+          "id": "tests",
+          "failed": true
+        }
+      }
+    ],
+    "outcome": {
+      "status": "failed",
+      "report": {
+        "kind": "test-report",
+        "passed": false,
+        "exitCode": null,
+        "signal": null,
+        "timedOut": false,
+        "tail": "ok\n",
+        "tailBytes": 3,
+        "totalBytes": null,
+        "truncated": false,
+        "taskId": "22222222-2222-4222-8222-222222222222",
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "revision": 1,
+        "repo": "repo",
+        "durationMs": 0,
+        "measuredBy": "verifier"
+      },
+      "error": null
+    }
+  }
+]

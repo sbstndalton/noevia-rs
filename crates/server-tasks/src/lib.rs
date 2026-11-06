@@ -500,3 +500,5 @@ pub mod role_stream;
 mod spawn_channel;
 
 pub mod role_pin;
+
+pub mod verify;

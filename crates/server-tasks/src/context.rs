@@ -46,6 +46,24 @@ impl Drop for StageStop {
         self.cancel();
     }
 }
+/// Cancellation bridge for bounded synchronous Git/workspace work. The task lease stays owned
+/// by the bridge until its receiver settles; the synchronous caller retains the flag through Git reap.
+pub struct BlockingCancellation {
+    flag: Arc<std::sync::atomic::AtomicBool>,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+}
+impl BlockingCancellation {
+    pub fn flag(&self) -> &std::sync::atomic::AtomicBool {
+        &self.flag
+    }
+}
+impl Drop for BlockingCancellation {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+    }
+}
 fn unavailable() -> RpcError {
     RpcError {
         code: -32603,
@@ -132,6 +150,23 @@ impl JournalContext {
             drop(parent);
         });
         (child, StageStop(stop))
+    }
+    pub fn blocking_cancellation(self: &Arc<Self>) -> BlockingCancellation {
+        let flag = Arc::new(std::sync::atomic::AtomicBool::new(self.active().is_err()));
+        let watched = flag.clone();
+        let context = self.clone();
+        let mut cancel = self.cancellation();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(async move{if *cancel.borrow(){watched.store(true,std::sync::atomic::Ordering::Release);return;}tokio::select!{biased;_=cancel.changed()=>watched.store(true,std::sync::atomic::Ordering::Release),_=stopped=>{}}drop(context);});
+            }
+            Err(_) => flag.store(true, std::sync::atomic::Ordering::Release),
+        }
+        BlockingCancellation {
+            flag,
+            stop: Some(stop),
+        }
     }
     pub fn sync(&self) -> Result<(), RpcError> {
         self.account
