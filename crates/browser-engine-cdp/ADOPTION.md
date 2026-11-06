@@ -79,9 +79,9 @@ WebSocket denial audit, public secret redaction, wrong-password/origin/anonymous
 proxy cases, CacheStorage/IndexedDB isolation, concurrent same-name downloads,
 and cancellation during a timed wait in addition to approval cancellation.
 
-Exhaustive setup/action/download/close cancellation injection, complete locator
-language and frame targeting, shared-worker/storage coverage, every public error
-and audit shape, and live TLS/SOCKS proxy qualification remain open. Existing
+Exhaustive setup/action/download/close cancellation injection, shared-worker
+and storage coverage, remaining transport errors, and live TLS/SOCKS proxy
+qualification remain open. Existing
 passing behavior is recorded as such; no artificial fail-before is invented for
 cache isolation or cancellation cases that already matched the retained driver.
 
@@ -91,8 +91,8 @@ read-only timeout, invalid keys, absent targets, approval-card shape, ordered
 lifecycle callbacks, task state and repeated close. `launch_with_log` supplies
 an optional task-scoped audit callback; ordinary `launch` uses no callback.
 Transport denials from browser-background services remain diagnostics rather
-than task audit entries. The retained callback's raw action-type field has a
-pending declared-secret compatibility decision before wiring.
+than task audit entries. The owner-approved audit exception redacts the retained callback's raw
+action-type field when it contains a declared secret.
 
 The owner approved redacting declared secrets at the audit callback boundary.
 That deliberate exception replaces the retained raw action-type echo. The
