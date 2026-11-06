@@ -295,7 +295,10 @@ fn read_owner(file: &Path) -> Option<String> {
 fn remove_owner(file: &Path) {
     match std::fs::remove_file(file) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-            eprintln!("[chat] could not remove a partial's owner ({}): {e}", file.display());
+            eprintln!(
+                "[chat] could not remove a partial's owner ({}): {e}",
+                file.display()
+            );
         }
         _ => {}
     }

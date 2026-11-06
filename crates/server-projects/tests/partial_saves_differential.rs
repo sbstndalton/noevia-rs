@@ -214,7 +214,10 @@ fn concurrent_ticks_of_one_turn_never_share_or_leave_a_temporary_file() {
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     assert!(
-        names.iter().all(|n| n.ends_with(".json") || n.ends_with(".owner")) && names.len() == 2,
+        names
+            .iter()
+            .all(|n| n.ends_with(".json") || n.ends_with(".owner"))
+            && names.len() == 2,
         "no temporary file is left: {names:?}"
     );
     std::sync::Arc::try_unwrap(saves)
@@ -288,9 +291,16 @@ fn a_real_delete_fences_late_ticks_and_delayed_starts() {
     assert!(partial::read_partial(&user, "c").is_none());
     a.save(Some(&entry("late")), 2.0);
     drop(a);
-    assert!(partial::read_partial(&user, "c").is_none(), "no late partial");
+    assert!(
+        partial::read_partial(&user, "c").is_none(),
+        "no late partial"
+    );
     let late = Saves::start(&user, "c", START);
-    assert_eq!(late.err().map(|e| e.kind()), Some(std::io::ErrorKind::NotFound), "a delayed start is refused");
+    assert_eq!(
+        late.err().map(|e| e.kind()),
+        Some(std::io::ErrorKind::NotFound),
+        "a delayed start is refused"
+    );
     assert!(partial::read_partial(&user, "c").is_none());
     assert!(!partial::owner_file(&user, "c").exists());
 }
@@ -350,7 +360,11 @@ fn another_process_superseding_fences_this_ones_handle() {
     drop(a);
     let now = partial::read_partial(&user, "c").expect("the newer partial survives");
     assert_eq!(now.get("content").as_str(), Some("b1"));
-    assert_eq!(partial::state(&now, START), partial::State::Running, "its marker is untouched");
+    assert_eq!(
+        partial::state(&now, START),
+        partial::State::Running,
+        "its marker is untouched"
+    );
 }
 
 /// Another process deletes the chat: this process's handle resurrects nothing.
