@@ -231,6 +231,25 @@ impl Verify {
         head: &str,
         revision: f64,
     ) -> Result<Outcome, Failure> {
+        self.run_inner(context, repo, head, revision, false).await
+    }
+    pub async fn run_pipeline(
+        &self,
+        context: Arc<JournalContext>,
+        repo: &str,
+        head: &str,
+        revision: f64,
+    ) -> Result<Outcome, Failure> {
+        self.run_inner(context, repo, head, revision, true).await
+    }
+    async fn run_inner(
+        &self,
+        context: Arc<JournalContext>,
+        repo: &str,
+        head: &str,
+        revision: f64,
+        pipeline: bool,
+    ) -> Result<Outcome, Failure> {
         let started = self.clock.now();
         context
             .event(
@@ -447,8 +466,14 @@ impl Verify {
             ),
             ("measuredBy", text("verifier")),
         ]);
+        let mut artifact = report.clone();
+        if pipeline {
+            if let JValue::Obj(fields) = &mut artifact {
+                wtf16::set(fields, "name", text("test-report"));
+            }
+        }
         context
-            .event("artifact.created", report.clone())
+            .event("artifact.created", artifact)
             .map_err(|_| Failure::unavailable())?;
         context
             .event(

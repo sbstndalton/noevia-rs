@@ -509,3 +509,5 @@ pub mod planner_contract;
 pub mod role_steps;
 
 pub mod review;
+
+pub mod pipeline;

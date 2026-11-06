@@ -236,6 +236,18 @@ impl Account {
             .append(id, kind, data, now)
             .map_err(Error::Journal)
     }
+    pub(crate) fn authority(
+        &self,
+        id: &str,
+        kind: &str,
+        data: js_json::JValue,
+        now: i64,
+    ) -> Result<server_projects::task_journals::Job, Error> {
+        let _held = self.mutation()?;
+        self.journal(Surface::Code)?
+            .authority(id, kind, data, now)
+            .map_err(Error::Journal)
+    }
     pub fn sync(&self, surface: Surface, id: &str) -> Result<(), Error> {
         let _held = self.mutation()?;
         self.journal(surface)?.sync(id).map_err(Error::Journal)

@@ -78,7 +78,7 @@ impl From<Refusal> for Failure {
         Self::public(error.status, error.message)
     }
 }
-fn resource_error(error: resources::Error) -> Failure {
+pub(crate) fn resource_error(error: resources::Error) -> Failure {
     match error {
         resources::Error::Workspace(crate::workspace::Error::Refused { status, message }) => {
             Failure::public(status, message)

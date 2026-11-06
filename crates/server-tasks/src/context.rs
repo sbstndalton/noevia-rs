@@ -177,6 +177,21 @@ impl JournalContext {
             _ => Err(crate::code::Failure::unavailable()),
         }
     }
+    pub(crate) fn authority(&self, kind: &str, data: JValue) -> Result<(), crate::code::Failure> {
+        if self.scope().surface != server_projects::task_journals::Surface::Code {
+            return Err(crate::code::Failure::unavailable());
+        }
+        match self
+            .account
+            .authority(self.task(), kind, data, self.clock.now())
+        {
+            Ok(_) => Ok(()),
+            Err(crate::account::Error::Journal(
+                server_projects::task_journals::writer::Error::Authority { status, message },
+            )) => Err(crate::code::Failure::public(status, message)),
+            Err(_) => Err(crate::code::Failure::unavailable()),
+        }
+    }
     pub fn sync(&self) -> Result<(), RpcError> {
         self.account
             .sync(self.scope().surface, self.task())

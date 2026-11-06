@@ -43,6 +43,8 @@ pub type Open<'a> = Pin<Box<dyn Future<Output = Result<EngineLease, Failure>> + 
 pub trait Engine: Send + Sync {
     /// The issuer of a relay/model lease owns cleanup from acquisition onward, including when
     /// its opening future is dropped. A lost incarnation is refused, never silently reopened.
+    /// Machine expectation: None is an unpinned direct task; Some(null) pins this machine;
+    /// a string pins the remote target key. Never collapse pinned-local into unpinned.
     fn open<'a>(
         &'a self,
         context: Arc<JournalContext>,
