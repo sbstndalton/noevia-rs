@@ -44,7 +44,7 @@
     },
     "8": {
       "status": "PARTIAL",
-      "evidence": "18 exact public responses, approval card, state, ordered lifecycle and repeated-close cases pass. Owner approved audit secret redaction as a deliberate exception; no raw sentinel in native callbacks. Transport error matrix remains with gate 5."
+      "evidence": "18 exact response/card/state/lifecycle cases and transport errors pass, with approved declared-secret audit redaction exception. Final extract/submit/upload error-family matrix remains before closure."
     },
     "6": {
       "status": "PARTIAL",
@@ -55,8 +55,8 @@
       "evidence": "Pinned unmodified browser-only selector/fill/select evaluator; isolated-world frame traversal. 36 exact locator/frame cases and 21 input cases pass, including separate-renderer cross-origin frame effects, strict frame errors, secret binding and approval invalidation during navigation."
     },
     "5": {
-      "status": "PARTIAL",
-      "evidence": "Wrong-password classification fixed fail-before/pass-after; origin challenge sends no origin credentials; anonymous and two proxy identities pass. TLS/SOCKS live qualification remains."
+      "status": "CLOSED-AT-PARITY",
+      "evidence": "11 local-only exact outcomes over TLS CONNECT, encrypted HTTPS proxies and SOCKS: authenticated/anonymous success, wrong password, origin challenge with zero credential headers, untrusted origin/proxy certificates, SOCKS refusal and admission rejection of unsupported SOCKS authentication. Synthetic loopback CA trust is rejected for runtime/non-loopback proxies."
     }
   },
   "adoptionApproved": false,

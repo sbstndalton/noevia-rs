@@ -66,6 +66,8 @@ pub struct Launch {
     pub proxy: Option<String>,
     pub proxy_credentials: Option<ProxyCredentials>,
     pub synthetic_direct: bool,
+    /// Extra trust is limited to a literal-loopback HTTPS proxy in a synthetic fixture.
+    pub synthetic_proxy_ca: Option<PathBuf>,
     pub args: Vec<String>,
     pub timeout: Duration,
 }
@@ -150,6 +152,7 @@ fn public_error(kind: &str, error: &anyhow::Error, deadline: Duration) -> String
         return error.0.clone();
     }
     let method = match kind {
+        "navigate" => "goto",
         "type" => "fill",
         "select" => "selectOption",
         "upload" => "setInputFiles",
@@ -337,8 +340,33 @@ impl CdpEngine {
         }
         if let Some(proxy) = &config.proxy {
             validate_proxy(proxy)?;
+            if url::Url::parse(proxy)?.scheme() == "socks5"
+                && config
+                    .proxy_credentials
+                    .as_ref()
+                    .is_some_and(|v| !v.username.is_empty() || !v.password.is_empty())
+            {
+                bail!("browser.newContext: Browser does not support socks5 proxy authentication");
+            }
         } else if config.proxy_credentials.is_some() {
             bail!("Proxy credentials require a proxy grant");
+        }
+        if config.synthetic_proxy_ca.is_some() {
+            let fixture_proxy = config
+                .proxy
+                .as_deref()
+                .and_then(|v| url::Url::parse(v).ok())
+                .is_some_and(|v| {
+                    v.scheme() == "https"
+                        && match v.host() {
+                            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+                            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+                            _ => false,
+                        }
+                });
+            if !config.synthetic_direct || !fixture_proxy {
+                bail!("Fixture certificate trust requires a loopback synthetic HTTPS proxy")
+            }
         }
         // Exclusive profile creation prevents accidental session reuse.
         std::fs::create_dir(&config.profile_dir).context("Profile must be fresh")?;
@@ -654,6 +682,7 @@ impl CdpEngine {
         }
     }
     async fn navigate(&self, url: &str) -> Result<()> {
+        let generation = self._socket_proxy.next_navigation();
         // Use the library's raw connection: its high-level navigation watcher waits
         // beyond the requested action deadline on this browser revision.
         let mut endpoint = url::Url::parse(self.browser.websocket_address())?;
@@ -697,7 +726,27 @@ impl CdpEngine {
                         bail!("Navigation rejected")
                     }
                     let result = response.result.unwrap_or(Value::Null);
-                    if result.get("errorText").is_some() {
+                    if let Some(error) = result.get("errorText").and_then(Value::as_str) {
+                        let code = self
+                            ._socket_proxy
+                            .failure(generation, url)
+                            .await
+                            .map(str::to_owned)
+                            .or_else(|| {
+                                (error.starts_with("net::ERR_")
+                                    && error.chars().all(|c| {
+                                        c.is_ascii_uppercase()
+                                            || c.is_ascii_digit()
+                                            || "net:_".contains(c)
+                                    }))
+                                .then(|| error.to_owned())
+                            });
+                        if let Some(code) = code {
+                            let url = url::Url::parse(url)
+                                .map(|v| v.to_string())
+                                .unwrap_or_else(|_| url.to_owned());
+                            return Err(compatibility_error(format!("page.goto: {code} at {url}")));
+                        }
                         bail!("Navigation failed")
                     }
                     if result.get("loaderId").is_none() {
@@ -1284,6 +1333,32 @@ impl CdpEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn fixture_certificate_trust_cannot_enable_runtime_or_remote_proxy_trust() {
+        for (synthetic, server) in [
+            (false, "https://127.0.0.1:1"),
+            (true, "https://proxy.test:443"),
+        ] {
+            let config = Launch {
+                executable: PathBuf::new(),
+                profile_dir: std::env::temp_dir(),
+                downloads_dir: std::env::temp_dir(),
+                allowed_domains: vec!["fixture.test".into()],
+                upload_files: vec![],
+                secrets: BTreeMap::new(),
+                proxy: Some(server.into()),
+                proxy_credentials: None,
+                synthetic_direct: synthetic,
+                synthetic_proxy_ca: Some("fixture.der".into()),
+                args: vec![],
+                timeout: Duration::from_secs(1),
+            };
+            assert_eq!(
+                CdpEngine::launch(config).await.err().map(|e| e.to_string()),
+                Some("Fixture certificate trust requires a loopback synthetic HTTPS proxy".into())
+            );
+        }
+    }
     #[test]
     fn unsupported_proxy_credentials_fail_before_launch() {
         assert!(validate_proxy("http://proxy.test:3128").is_ok());

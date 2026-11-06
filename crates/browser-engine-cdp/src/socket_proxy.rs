@@ -10,13 +10,44 @@ use tokio::{
 trait Stream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> Stream for T {}
 type Socket = Box<dyn Stream>;
+#[derive(Debug)]
+struct TransportFailure(&'static str);
+impl std::fmt::Display for TransportFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+impl std::error::Error for TransportFailure {}
+struct FailureRecord {
+    generation: u64,
+    authority: String,
+    code: &'static str,
+}
+type Failures = Arc<tokio::sync::Mutex<Vec<FailureRecord>>>;
 pub(super) struct SocketProxy {
     pub address: String,
+    failures: Failures,
+    generation: Arc<std::sync::atomic::AtomicU64>,
     pub credentials: ProxyCredentials,
     task: JoinHandle<()>,
     pub blocked: Arc<tokio::sync::Mutex<Vec<Value>>>,
 }
 impl SocketProxy {
+    pub fn next_navigation(&self) -> u64 {
+        self.generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1)
+    }
+    pub async fn failure(&self, generation: u64, url: &str) -> Option<&'static str> {
+        let authority = origin(url);
+        self.failures
+            .lock()
+            .await
+            .iter()
+            .rev()
+            .find(|v| v.generation == generation && v.authority == authority)
+            .map(|v| v.code)
+    }
     pub fn stop(&self) {
         self.task.abort();
     }
@@ -46,18 +77,24 @@ impl SocketProxy {
         );
         let blocked = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let refused = blocked.clone();
+        let failures = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let failures_task = failures.clone();
+        let generation = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let generation_task = generation.clone();
         let config = config.clone();
         let task = tokio::spawn(async move {
             let mut connections = JoinSet::new();
             loop {
                 tokio::select! {
-                    incoming=listener.accept()=>{let Ok((socket,_))=incoming else {break};let config=config.clone();let authorization=authorization.clone();let refused=refused.clone();connections.spawn(async move {let _=serve(socket,&config,&authorization,&refused).await;});},
+                    incoming=listener.accept()=>{let Ok((socket,_))=incoming else {break};let config=config.clone();let authorization=authorization.clone();let refused=refused.clone();let failures=failures_task.clone();let generation=generation_task.clone();connections.spawn(async move {let _=serve(socket,&config,&authorization,&refused,&failures,&generation).await;});},
                     _=connections.join_next(), if !connections.is_empty()=>{}
                 }
             }
         });
         Ok(Self {
             address,
+            failures,
+            generation,
             credentials,
             blocked,
             task,
@@ -103,7 +140,9 @@ async fn upstream(config: &Launch, host: &str, port: u16) -> Result<(Socket, boo
         let mut reply = [0; 2];
         tcp.read_exact(&mut reply).await?;
         if reply != [5, 0] {
-            bail!("Proxy authentication refused")
+            return Err(anyhow!(TransportFailure(
+                "net::ERR_SOCKS_CONNECTION_FAILED"
+            )));
         }
         let length = u8::try_from(host.len())?;
         let mut request = vec![5, 1, 0, 3, length];
@@ -113,7 +152,9 @@ async fn upstream(config: &Launch, host: &str, port: u16) -> Result<(Socket, boo
         let mut reply = [0; 4];
         tcp.read_exact(&mut reply).await?;
         if reply.get(1) != Some(&0) {
-            bail!("Proxy refused tunnel")
+            return Err(anyhow!(TransportFailure(
+                "net::ERR_SOCKS_CONNECTION_FAILED"
+            )));
         }
         let length = match reply.get(3) {
             Some(1) => 4,
@@ -126,9 +167,22 @@ async fn upstream(config: &Launch, host: &str, port: u16) -> Result<(Socket, boo
         return Ok((Box::new(tcp), false));
     }
     let socket: Socket = if proxy.scheme() == "https" {
-        let roots = tokio_rustls::rustls::RootCertStore::from_iter(
+        let mut roots = tokio_rustls::rustls::RootCertStore::from_iter(
             webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
         );
+        if let Some(path) = &config.synthetic_proxy_ca {
+            let certificate = tokio::fs::read(path)
+                .await
+                .context("Fixture certificate unavailable")?;
+            if certificate.len() > 65536 {
+                bail!("Fixture certificate too large")
+            }
+            roots
+                .add(tokio_rustls::rustls::pki_types::CertificateDer::from(
+                    certificate,
+                ))
+                .map_err(|_| anyhow!("Fixture certificate invalid"))?;
+        }
         let tls = tokio_rustls::rustls::ClientConfig::builder()
             .with_root_certificates(roots)
             .with_no_client_auth();
@@ -148,6 +202,8 @@ async fn serve(
     config: &Launch,
     authorization: &str,
     refused: &tokio::sync::Mutex<Vec<Value>>,
+    failures: &Failures,
+    generation: &std::sync::atomic::AtomicU64,
 ) -> Result<()> {
     let request = timeout(LIMIT, headers(&mut client)).await??;
     if !request.lines().skip(1).any(|line| {
@@ -200,7 +256,36 @@ async fn serve(
     let port = url
         .port_or_known_default()
         .ok_or_else(|| anyhow!("Missing port"))?;
-    let (mut remote, proxy) = timeout(LIMIT, upstream(config, host, port)).await??;
+    let current = generation.load(Ordering::SeqCst);
+    let (mut remote, proxy) = match timeout(LIMIT, upstream(config, host, port)).await {
+        Ok(Ok(pair)) => pair,
+        failure => {
+            let code = match failure {
+                Ok(Err(error)) => error
+                    .downcast_ref::<TransportFailure>()
+                    .map(|v| v.0)
+                    .unwrap_or_else(|| {
+                        let certificate = error
+                            .downcast_ref::<std::io::Error>()
+                            .and_then(|v| v.get_ref())
+                            .and_then(|v| v.downcast_ref::<tokio_rustls::rustls::Error>())
+                            .is_some_and(|v| {
+                                matches!(v, tokio_rustls::rustls::Error::InvalidCertificate(_))
+                            });
+                        if certificate {
+                            "net::ERR_PROXY_CERTIFICATE_INVALID"
+                        } else if config.proxy.is_some() {
+                            "net::ERR_PROXY_CONNECTION_FAILED"
+                        } else {
+                            "net::ERR_CONNECTION_REFUSED"
+                        }
+                    }),
+                _ => "net::ERR_CONNECTION_TIMED_OUT",
+            };
+            record_failure(failures, current, &url, code).await;
+            return Ok(());
+        }
+    };
     let auth = if proxy {
         config
             .proxy_credentials
@@ -225,6 +310,15 @@ async fn serve(
                 .await?;
             let response = timeout(LIMIT, headers(&mut remote)).await??;
             if response.split_whitespace().nth(1) != Some("200") {
+                if response.split_whitespace().nth(1) == Some("407") {
+                    record_failure(
+                        failures,
+                        current,
+                        &url,
+                        "net::ERR_HTTP_RESPONSE_CODE_FAILURE",
+                    )
+                    .await;
+                }
                 client
                     .write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n")
                     .await?;
@@ -270,4 +364,16 @@ async fn serve(
     }
     tokio::io::copy_bidirectional(&mut client, &mut remote).await?;
     Ok(())
+}
+
+async fn record_failure(failures: &Failures, generation: u64, url: &url::Url, code: &'static str) {
+    let mut records = failures.lock().await;
+    if records.len() >= 100 {
+        records.remove(0);
+    }
+    records.push(FailureRecord {
+        generation,
+        authority: url.origin().ascii_serialization(),
+        code,
+    });
 }

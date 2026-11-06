@@ -67,6 +67,7 @@ async fn streaming_differential() {
         proxy: None,
         proxy_credentials: None,
         synthetic_direct: true,
+        synthetic_proxy_ca: None,
         args: vec![
             "--host-resolver-rules=MAP *.test 127.0.0.1".into(),
             "--no-proxy-server".into(),

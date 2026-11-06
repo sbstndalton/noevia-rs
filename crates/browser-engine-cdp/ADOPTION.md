@@ -109,3 +109,13 @@ the original node if its frame navigates during approval. The input suite
 covers label retargeting, contenteditable, color/range/number validation and
 selecting by label using the same browser-side algorithms. Transport negatives,
 remaining worker/isolation cases and exhaustive cancellation still gate wiring.
+
+The local-only transport suite now compares eleven exact outcomes across TLS
+CONNECT, encrypted HTTPS proxies and SOCKS. It covers wrong credentials, origin
+challenges, both certificate rejection layers, unsupported SOCKS authentication
+and refused tunnels. Proxy failure classifications are fixed and scoped to the
+navigation generation and authority; upstream bodies/messages are not copied.
+The fixture uses a proper ephemeral CA and server leaf. Its additional native
+trust is limited to a literal-loopback HTTPS proxy with synthetic-direct enabled;
+admission tests reject that option for runtime/non-loopback use. Production trust
+and selector defaults remain unchanged.
