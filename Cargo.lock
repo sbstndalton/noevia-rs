@@ -1863,6 +1863,7 @@ dependencies = [
  "diary-corpus-parse",
  "diary-corpus-write",
  "diary-workspace-export",
+ "diary-workspace-import-apply",
  "http-body-util",
  "regex",
  "reqwest",
@@ -1874,6 +1875,7 @@ dependencies = [
  "tempfile",
  "tenant-assertion",
  "tokio",
+ "workspace-restore-verify",
 ]
 
 [[package]]

@@ -62,6 +62,7 @@ pub struct App {
     /// the same native transforms ("rust").
     pub corpus_write_impl: String,
     pub writers: Writers,
+    pub workspace_import_native_errors: bool,
 }
 
 impl App {
@@ -86,6 +87,7 @@ impl App {
             export: cfg.workspace_export,
             corpus_write_impl: cfg.corpus_write_impl,
             writers: Writers::default(),
+            workspace_import_native_errors: cfg.workspace_import_native_errors,
         }
     }
 }
@@ -181,6 +183,7 @@ pub enum Route {
     Directory,
     Append,
     Edit,
+    WorkspaceImport,
 }
 
 impl Route {
@@ -193,13 +196,18 @@ impl Route {
                 | Route::WorkspaceExport
                 | Route::PutFile
                 | Route::Directory
+                | Route::WorkspaceImport
         )
     }
 
     pub fn write(self) -> bool {
         matches!(
             self,
-            Route::PutFile | Route::Directory | Route::Append | Route::Edit
+            Route::PutFile
+                | Route::Directory
+                | Route::Append
+                | Route::Edit
+                | Route::WorkspaceImport
         )
     }
 }
@@ -216,6 +224,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("POST", "/api/directory") => Some(Route::Directory),
         ("POST", "/api/entries/append") => Some(Route::Append),
         ("POST", "/api/entries/edit") => Some(Route::Edit),
+        ("POST", "/api/workspace-import") => Some(Route::WorkspaceImport),
         _ => None,
     }
 }
@@ -327,7 +336,8 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::PutFile
         | Route::Directory
         | Route::Append
-        | Route::Edit => {
+        | Route::Edit
+        | Route::WorkspaceImport => {
             if r.write() && header_uid.is_empty() {
                 // The legacy (header-less) tenant's writes stay with Python.
                 return Plan::Decline;
@@ -468,8 +478,9 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     // FastAPI validates a write's body against the handler's parameter (its 422) before the
     // handler runs `check_auth` (its 401): a body it would refuse is Python's to answer, whatever
     // the token.
-    let write = if r.write() {
-        match write_body(r, &headers, body).await {
+    let mut body = Some(body);
+    let write = if r.write() && r != Route::WorkspaceImport {
+        match write_body(r, &headers, body.take().unwrap_or_else(Body::empty)).await {
             Some(w) => Some(w),
             None => return decline(),
         }
@@ -485,6 +496,19 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
         Ok(false) if r.d4b() => return detail(401, "unauthorized"),
         Ok(false) => return error(401, "unauthorized"),
         Ok(true) => {}
+    }
+
+    if r == Route::WorkspaceImport {
+        return serve_import(
+            app,
+            &header_uid,
+            asserted,
+            &headers,
+            tenant,
+            query,
+            body.take().unwrap_or_else(Body::empty),
+        )
+        .await;
     }
 
     match r {
@@ -525,9 +549,82 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let task = tokio::task::spawn_blocking(move || serve_corpus(&app2, r, &query, &tenant));
             task.await.unwrap_or_else(|_| internal_error())
         }
-        Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
+        Route::PutFile
+        | Route::Directory
+        | Route::Append
+        | Route::Edit
+        | Route::WorkspaceImport => {
             serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
         }
+    }
+}
+
+/// Import is a raw streamed upload. Auth and query validation precede its bounded read.
+async fn serve_import(
+    app: Arc<App>,
+    uid: &str,
+    asserted: bool,
+    headers: &HeaderMap,
+    tenant: Option<Tenant>,
+    query: Vec<u8>,
+    body: Body,
+) -> Response<Body> {
+    let action = py::query_get(&query, "action").unwrap_or_default();
+    let name = py::query_get(&query, "name").unwrap_or_default();
+    let fingerprint = py::query_get(&query, "fingerprint").unwrap_or_default();
+    if !matches!(action.as_str(), "preview" | "apply")
+        || (action == "apply"
+            && (fingerprint.len() != 64
+                || !fingerprint
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))))
+    {
+        return detail(400, "Invalid import action or preview fingerprint");
+    }
+    let content = match axum::body::to_bytes(body, 32 * 1024 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return detail(413, "Browser imports support ZIP files up to 32 MiB"),
+    };
+    let tenant = match resolve_tenant(&app, uid, asserted, headers, tenant) {
+        Ok(t) => t,
+        Err(r) => return *r,
+    };
+    let uid = uid.to_ascii_lowercase();
+    // The blocking task owns the writer through settlement, even if this HTTP future is dropped.
+    let task = tokio::task::spawn_blocking(move || {
+        app.writers
+            .with_lock(&uid, || {
+                let root = app.data_root.join("users").join(&uid);
+                if !matches!(managed::ready_for_write(&root, &uid, true), Ok(Some(_))) {
+                    return Reply::Decline;
+                }
+                crate::workspace_import::perform(
+                    tenant.store.db_path(),
+                    &root.join("managed-index.db"),
+                    &uid,
+                    &content,
+                    crate::workspace_import::Options {
+                        action: &action,
+                        name: &name,
+                        reviewed: &fingerprint,
+                        native_errors: app.workspace_import_native_errors,
+                    },
+                )
+            })
+            .unwrap_or(Reply::Decline)
+    });
+    match task.await {
+        Ok(r) => {
+            let mut response = reply(r);
+            if response.status().is_success() {
+                response.headers_mut().insert(
+                    "cache-control",
+                    axum::http::HeaderValue::from_static("no-store"),
+                );
+            }
+            response
+        }
+        Err(_) => detail(503, crate::workspace_import::UNCERTAIN),
     }
 }
 

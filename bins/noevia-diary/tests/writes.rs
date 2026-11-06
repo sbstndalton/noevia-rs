@@ -788,3 +788,127 @@ async fn body_shape_refusals_precede_auth_on_every_write_route() {
     }
     assert!(file_row(dir.path(), "a.md").is_none());
 }
+
+fn import_archive() -> Vec<u8> {
+    let header = serde_json::json!({"settings": {}, "directories": ["empty"],
+        "files": [{"path": "note.md", "bytes": 4}]})
+    .to_string();
+    let mut frame = diary_workspace_export::MAGIC.to_vec();
+    frame.extend_from_slice(&(header.len() as u32).to_be_bytes());
+    frame.extend_from_slice(header.as_bytes());
+    frame.extend_from_slice(b"note");
+    diary_workspace_export::export(frame.as_slice()).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn import_cancel_keeps_writer_until_apply_settles() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let root = tenant_root(dir.path());
+    let body = import_archive();
+    let mut digest = sha2::Sha256::new();
+    use sha2::Digest;
+    digest.update(b"Imports/Copy\0");
+    digest.update(&body);
+    let fingerprint = format!("{:x}", digest.finalize());
+    let db = rusqlite::Connection::open(root.join("managed-diary.db")).unwrap();
+    db.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let writers = Arc::new(noevia_diary::write::Writers::default());
+    let w = writers.clone();
+    let r = root.clone();
+    let (entered, ready) = tokio::sync::oneshot::channel();
+    let outer = tokio::spawn(async move {
+        tokio::task::spawn_blocking(move || {
+            w.with_lock(UID, || {
+                entered.send(()).unwrap();
+                noevia_diary::workspace_import::perform(
+                    &r.join("managed-diary.db"),
+                    &r.join("managed-index.db"),
+                    UID,
+                    &body,
+                    noevia_diary::workspace_import::Options {
+                        action: "apply",
+                        name: "Copy",
+                        reviewed: &fingerprint,
+                        native_errors: false,
+                    },
+                )
+            })
+        })
+        .await
+        .unwrap()
+    });
+    ready.await.unwrap();
+    outer.abort();
+    let _ = outer.await;
+    let w = writers.clone();
+    let r = root.clone();
+    let mut second = tokio::task::spawn_blocking(move || {
+        w.with_lock(UID, || {
+            let db = rusqlite::Connection::open(r.join("managed-diary.db")).unwrap();
+            let count: i64 = db
+                .query_row("SELECT count(*) FROM workspace_imports", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(count, 1, "next writer must observe the settled receipt");
+        })
+    });
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut second)
+            .await
+            .is_err()
+    );
+    db.execute_batch("COMMIT").unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), second)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        file_row(dir.path(), "Imports/Copy/note.md").unwrap().0,
+        b"note"
+    );
+    assert_eq!(dirty(dir.path()), vec!["Imports/Copy/note.md"]);
+}
+
+#[test]
+fn import_failed_dirty_transfer_leaves_durable_outbox() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let root = tenant_root(dir.path());
+    let body = import_archive();
+    use sha2::Digest;
+    let mut hash = sha2::Sha256::new();
+    hash.update(b"Imports/Copy\0");
+    hash.update(&body);
+    let fingerprint = format!("{:x}", hash.finalize());
+    let idx = index(dir.path());
+    idx.execute_batch("CREATE TRIGGER synthetic_dirty_failure BEFORE INSERT ON dirty_documents BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;").unwrap();
+    let result = noevia_diary::workspace_import::perform(
+        &root.join("managed-diary.db"),
+        &root.join("managed-index.db"),
+        UID,
+        &body,
+        noevia_diary::workspace_import::Options {
+            action: "apply",
+            name: "Copy",
+            reviewed: &fingerprint,
+            native_errors: false,
+        },
+    );
+    assert!(matches!(
+        result,
+        noevia_diary::workspace::Reply::Json(200, _)
+    ));
+    let db = rusqlite::Connection::open(root.join("managed-diary.db")).unwrap();
+    let outbox: String = db
+        .query_row("SELECT path FROM workspace_index_outbox", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(outbox, "Imports/Copy/note.md");
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM workspace_imports", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert!(dirty(dir.path()).is_empty());
+}

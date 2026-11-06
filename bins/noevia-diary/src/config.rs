@@ -52,6 +52,8 @@ pub struct Config {
     /// Python's DIARY_CORPUS_WRITE_IMPL ("python" when absent).
     #[serde(default)]
     pub corpus_write_impl: String,
+    #[serde(default)]
+    pub workspace_import_native_errors: bool,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

@@ -10,6 +10,7 @@ pub mod managed;
 pub mod py;
 pub mod server;
 pub mod workspace;
+pub mod workspace_import;
 pub mod write;
 pub mod writes;
 
