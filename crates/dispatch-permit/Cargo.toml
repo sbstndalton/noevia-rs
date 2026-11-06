@@ -1,0 +1,11 @@
+[package]
+name = "dispatch-permit"
+version = "0.1.0"
+description = "The authoritative permit a write must hold at the moment it is sent: a grant's identity and the revocation generation it was redeemed at"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

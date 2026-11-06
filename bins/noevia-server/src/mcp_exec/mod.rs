@@ -22,11 +22,12 @@ use crate::App;
 use axum::body::Body;
 use axum::http::{Response, StatusCode};
 use base64::Engine;
+use dispatch_permit::{DispatchPermit, GrantAuthority};
 use js_json::JValue;
 use limit::ToolRateLimit;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::AtomicI64;
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use transport::{CloseGuard, RpcError, SessionId, Transport};
 
@@ -326,6 +327,49 @@ pub struct Call {
     /// The `Authorization` header of noevia's capability token for this call, minted by the process
     /// that owns the key; used only if this call resolves to the `internal` server.
     pub internal_auth: Option<String>,
+    /// The authoritative dispatch permit of a call under a chat write grant (sbstndalton/noevia-rs#425): asked at the
+    /// outbound `tools/call`, after every await that prepared it, and again before an OAuth retry. `None`: the call
+    /// carries no grant, and nothing is asked.
+    pub permit: Option<Arc<dyn DispatchPermit>>,
+}
+
+/// What a call came to, for a caller that must keep the grant's started/settlement semantics (the chat gate).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outcome {
+    /// The text the model is given.
+    pub text: String,
+    /// The permit refused the first `tools/call`: nothing was sent, nothing changed.
+    pub not_run: bool,
+    /// At least one `tools/call` went out (the permit was spent for it): the grant's `started()`. A retry the permit
+    /// then refused leaves this true: the first send happened, though the server refused it.
+    pub started: bool,
+    /// The text is an error for the model (`ERROR ...`).
+    pub failed: bool,
+}
+
+/// The text a call answers when the permit refused it: the same words the chat gate gives a permission it could not check.
+pub fn not_run_text(name: &str) -> String {
+    format!("ERROR: the permission for {name} could not be checked, so it was not run. Nothing was changed. Ask again.")
+}
+
+/// Wraps the call's permit to know what it was asked and answered.
+#[derive(Debug)]
+struct Counting {
+    inner: Option<Arc<dyn DispatchPermit>>,
+    sent: AtomicUsize,
+    denied: AtomicBool,
+}
+
+impl DispatchPermit for Counting {
+    fn authorize(&self) -> bool {
+        let ok = self.inner.as_ref().is_none_or(|p| p.authorize());
+        if ok {
+            self.sent.fetch_add(1, Ordering::SeqCst);
+        } else {
+            self.denied.store(true, Ordering::SeqCst);
+        }
+        ok
+    }
 }
 
 /// Where the executor's diagnostic lines go (stderr unless a test listens).
@@ -338,6 +382,9 @@ pub struct Executor {
     public: Transport,
     limit: ToolRateLimit,
     ids: AtomicI64,
+    /// The authority over chat write grants, for a call that arrives over the private bridge with a fence (none: such a
+    /// call is refused, fail closed).
+    grants: std::sync::RwLock<Option<Arc<dyn GrantAuthority>>>,
 }
 
 impl std::fmt::Debug for Executor {
@@ -360,7 +407,29 @@ impl Executor {
             public: Transport::public(egress),
             limit: ToolRateLimit::default(),
             ids: AtomicI64::new(0),
+            grants: std::sync::RwLock::new(None),
         }
+    }
+
+    /// Where a bridge call's fence is validated: set once by whatever owns the chat grants. Until then a call that
+    /// carries a fence is not run.
+    pub fn set_grants(&self, authority: Arc<dyn GrantAuthority>) {
+        *self.grants.write().unwrap_or_else(|e| e.into_inner()) = Some(authority);
+    }
+
+    fn grants(&self) -> Option<Arc<dyn GrantAuthority>> {
+        self.grants
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// This executor with its own lookup for "does this directory server still resolve only to public addresses" in
+    /// place of the egress's, on the transport that sends to directory servers (a test that holds the lookup open).
+    #[must_use]
+    pub fn with_address_check(mut self, check: transport::AddressCheck) -> Executor {
+        self.public = self.public.with_address_check(check);
+        self
     }
 
     /// The same executor writing its diagnostic lines to `sink` instead of stderr.
@@ -483,8 +552,40 @@ impl Executor {
         self.run(&Real(app), call).await
     }
 
+    /// [`Executor::execute`] with what the call came to ([`Outcome`]).
+    pub async fn execute_outcome(&self, app: &Arc<App>, call: Call) -> Outcome {
+        self.dispatch(&Real(app), call).await
+    }
+
     /// [`Executor::execute`] over any [`Credentials`].
     pub async fn run(&self, creds: &dyn Credentials, call: Call) -> String {
+        self.dispatch(creds, call).await.text
+    }
+
+    /// A call over any [`Credentials`], with its [`Outcome`]. If the call holds a permit it is asked immediately before each
+    /// outbound `tools/call` -- after the server lookup, the credentials, the address checks and the MCP handshake, and
+    /// again before an OAuth retry -- and a refusal means that request is never made.
+    pub async fn dispatch(&self, creds: &dyn Credentials, mut call: Call) -> Outcome {
+        let counting = Arc::new(Counting {
+            inner: call.permit.take(),
+            sent: AtomicUsize::new(0),
+            denied: AtomicBool::new(false),
+        });
+        let guarded = counting.inner.is_some();
+        call.permit = guarded.then(|| Arc::clone(&counting) as Arc<dyn DispatchPermit>);
+        let name = call.name.clone();
+        let text = self.run_text(creds, call).await;
+        let started = counting.sent.load(Ordering::SeqCst) > 0;
+        let not_run = guarded && counting.denied.load(Ordering::SeqCst) && !started;
+        Outcome {
+            failed: text.starts_with("ERROR"),
+            text: if not_run { not_run_text(&name) } else { text },
+            not_run,
+            started,
+        }
+    }
+
+    async fn run_text(&self, creds: &dyn Credentials, call: Call) -> String {
         let name = call.name.clone();
         let known = match Self::route(&call) {
             Ok(id) => id,
@@ -613,8 +714,16 @@ impl Executor {
         let args = call.args.clone().unwrap_or(JValue::Undefined);
         let mut secrets = Secrets::default();
         secrets.add_headers(&headers);
+        let permit = call.permit.clone();
         let mut result = self
-            .call_once(&transport, &server.url, &headers, &name, &args)
+            .call_once(
+                &transport,
+                &server.url,
+                &headers,
+                &name,
+                &args,
+                permit.as_deref(),
+            )
             .await;
         // A server that refuses the token it was just given: ask the broker for one past it and try once
         // more. A second refusal marks THAT sign-in as needing a new one.
@@ -631,6 +740,7 @@ impl Executor {
                         first.clone(),
                         session,
                         &mut secrets,
+                        permit.as_deref(),
                     )
                     .await;
             }
@@ -668,6 +778,7 @@ impl Executor {
         first: RpcError,
         session: (String, String),
         secrets: &mut Secrets,
+        permit: Option<&dyn DispatchPermit>,
     ) -> Result<JValue, RpcError> {
         let next = match Self::oauth_session(creds, user, &server.id, Some(&session.0)).await {
             Ok(Some(next)) => next,
@@ -682,8 +793,13 @@ impl Executor {
         let headers = vec![("Authorization".to_owned(), format!("Bearer {}", next.0))];
         secrets.add_headers(&headers);
         let again = self
-            .call_once(transport, &server.url, &headers, name, args)
+            .call_once(transport, &server.url, &headers, name, args, permit)
             .await;
+        // The grant closed while the retry's sign-in was fetched: the retry is not made, and the first answer (the
+        // server's refusal of the first send) stands.
+        if matches!(again, Err(RpcError::NotRun)) {
+            return Err(first);
+        }
         if let Err(e) = &again {
             if e.http_status() == Some(401) {
                 creds.reject(user, &server.id, &next.1).await;
@@ -700,12 +816,13 @@ impl Executor {
         headers: &[(String, String)],
         name: &str,
         args: &JValue,
+        permit: Option<&dyn DispatchPermit>,
     ) -> Result<JValue, RpcError> {
         let session = SessionId::default();
         let _guard = CloseGuard::new(transport, url, headers, &session);
         transport.connect(url, headers, &session, &self.ids).await?;
         let result = transport
-            .call_tool(url, headers, &session, &self.ids, name, args)
+            .call_tool(url, headers, &session, &self.ids, name, args, permit)
             .await;
         transport
             .disconnect(url, headers, &session, transport::DISCONNECT_TIMEOUT)
@@ -756,6 +873,7 @@ impl Executor {
                 format!("ERROR calling {name}: tool call failed (HTTP {status})")
             }
             RpcError::Msg(message) => format!("ERROR calling {name}: {}", cut(message)),
+            RpcError::NotRun => not_run_text(name),
         }
     }
 }
@@ -900,8 +1018,8 @@ fn text_of(body: &JValue, key: &str, max: usize) -> Option<String> {
 }
 
 /// `POST /v1/mcp/call` after the store secret was checked. The body is
-/// `{ name, args?, server?, offers[], caller?, workspace?, editTarget?, internalAuth? }`; the answer is
-/// `{ text }`. A caller that goes away drops this future, which drops the call and closes its session.
+/// `{ name, args?, server?, offers[], caller?, workspace?, editTarget?, internalAuth?, fence? }`; the answer is
+/// `{ text }` (and `notRun`, `started`, `failed` for a fenced call). A caller that goes away drops this future, which drops the call and closes its session.
 pub async fn internal_call(app: Option<Arc<App>>, raw: &[u8]) -> Response<Body> {
     let Some(app) = app else {
         return refuse(503, "unavailable");
@@ -942,7 +1060,53 @@ pub async fn internal_call(app: Option<Arc<App>>, raw: &[u8]) -> Response<Body> 
         offers,
         edit_target: body.get("editTarget").truthy(),
         internal_auth: text_of(&body, "internalAuth", 4096),
+        permit: None,
     };
-    let text = exec.execute(&app, call).await;
-    reply(200, &JValue::obj([("text", JValue::Str(text))]))
+    // A call under a chat write grant names it: `fence: { grant, generation }`, the grant's identity and the revocation
+    // generation it was redeemed at. It is validated here against the authority over grants, and the permit it yields is
+    // asked at the outbound `tools/call`. With no authority to ask, or a grant that is no longer at that generation, the
+    // call is not run (a fenced write fails closed); a malformed fence is a 400.
+    let permit = match body.get("fence") {
+        JValue::Undefined | JValue::Null => None,
+        fence @ JValue::Obj(_) => {
+            let generation = match fence.get("generation") {
+                JValue::Num(n) if n.fract() == 0.0 && (0.0..9.0e15).contains(n) => Some(*n as u64),
+                _ => None,
+            };
+            let (Some(grant), Some(generation)) = (text_of(fence, "grant", 256), generation) else {
+                return refuse(400, "invalid fence");
+            };
+            let name = call.name.clone();
+            match exec
+                .grants()
+                .and_then(|authority| dispatch_permit::permit_for(&authority, &grant, generation))
+            {
+                Some(p) => Some(p),
+                None => return not_run_reply(&name),
+            }
+        }
+        _ => return refuse(400, "invalid fence"),
+    };
+    let fenced = permit.is_some();
+    let outcome = exec.execute_outcome(&app, Call { permit, ..call }).await;
+    let mut fields = vec![("text", JValue::Str(outcome.text))];
+    if fenced {
+        fields.push(("notRun", JValue::Bool(outcome.not_run)));
+        fields.push(("started", JValue::Bool(outcome.started)));
+        fields.push(("failed", JValue::Bool(outcome.failed)));
+    }
+    reply(200, &JValue::obj(fields))
+}
+
+/// The answer to a fenced call that was not run, and could not have been.
+fn not_run_reply(name: &str) -> Response<Body> {
+    reply(
+        200,
+        &JValue::obj([
+            ("text", JValue::Str(not_run_text(name))),
+            ("notRun", JValue::Bool(true)),
+            ("started", JValue::Bool(false)),
+            ("failed", JValue::Bool(true)),
+        ]),
+    )
 }

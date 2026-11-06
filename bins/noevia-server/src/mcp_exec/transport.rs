@@ -15,6 +15,7 @@
 //! **Errors.** A server's text (an HTTP body, a JSON-RPC message) can echo the credential the call
 //! carried, so none of it is kept: an HTTP failure is its status, a JSON-RPC failure its code.
 use crate::mcp_egress::{rpc_result, Egress};
+use dispatch_permit::DispatchPermit;
 use js_json::JValue;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -31,6 +32,13 @@ pub(super) const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const ABORTED_DISCONNECT: Duration = Duration::from_millis(1000);
 const BODY_LIMIT: &str = "MCP: response body exceeded the 8 MB limit";
 
+/// A lookup of whether an address is still public (`true`: allowed); see [`Transport::with_address_check`].
+pub type AddressCheck = Arc<
+    dyn Fn(String) -> std::pin::Pin<Box<dyn std::future::Future<Output = bool> + Send>>
+        + Send
+        + Sync,
+>;
+
 /// A failed exchange. `Http` carries core's `httpStatus` (and the `Retry-After` a 429 may bring); its
 /// message is `MCP <status>` (core's added the server's body: dropped, it can echo a credential).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,18 +49,21 @@ pub enum RpcError {
         message: String,
     },
     Msg(String),
+    /// The dispatch permit refused the send: the `tools/call` was never made.
+    NotRun,
 }
 
 impl RpcError {
     pub fn message(&self) -> &str {
         match self {
             RpcError::Http { message, .. } | RpcError::Msg(message) => message,
+            RpcError::NotRun => "the call was not sent",
         }
     }
     pub fn http_status(&self) -> Option<u16> {
         match self {
             RpcError::Http { status, .. } => Some(*status),
-            RpcError::Msg(_) => None,
+            RpcError::Msg(_) | RpcError::NotRun => None,
         }
     }
 }
@@ -97,6 +108,8 @@ fn reserved(name: &str) -> bool {
 pub struct Transport {
     client: reqwest::Client,
     public: Option<Arc<Egress>>,
+    /// Replaces the public-address check (a test that holds the lookup open); the egress's own when unset.
+    address_check: Option<AddressCheck>,
     /// Tests only: stands in for an address lookup that has not answered yet.
     #[cfg(test)]
     lookup_gate: Option<Arc<tokio::sync::Semaphore>>,
@@ -113,6 +126,7 @@ impl Transport {
         Some(Transport {
             client,
             public: None,
+            address_check: None,
             #[cfg(test)]
             lookup_gate: None,
         })
@@ -123,8 +137,26 @@ impl Transport {
         Transport {
             client: egress.client().clone(),
             public: Some(Arc::clone(egress)),
+            address_check: None,
             #[cfg(test)]
             lookup_gate: None,
+        }
+    }
+
+    /// This transport with its own address check in place of the egress's (the lookup a request waits on before it is sent).
+    pub fn with_address_check(mut self, check: AddressCheck) -> Transport {
+        self.address_check = Some(check);
+        self
+    }
+
+    /// Whether `url` still resolves only to public addresses: the one await between a request being built and its send.
+    async fn address_allowed(&self, url: &str) -> bool {
+        if let Some(check) = &self.address_check {
+            return check(url.to_owned()).await;
+        }
+        match &self.public {
+            Some(egress) => egress.url_allowed(url).await,
+            None => true,
         }
     }
 
@@ -150,9 +182,10 @@ impl Transport {
         method: &str,
         params: JValue,
         timeout: Duration,
+        permit: Option<&dyn DispatchPermit>,
     ) -> Result<Option<JValue>, RpcError> {
-        if let Some(egress) = &self.public {
-            if !egress.url_allowed(url).await {
+        if self.public.is_some() || self.address_check.is_some() {
+            if !self.address_allowed(url).await {
                 return Err(fetch_failed());
             }
         }
@@ -173,6 +206,14 @@ impl Transport {
                 .header("mcp-protocol-version", PROTOCOL_VERSION);
             if let Some(s) = session.get() {
                 request = request.header("mcp-session-id", s);
+            }
+            // The outbound boundary: the permit is asked here, after every await that prepared this request (the
+            // address lookup above was the last) and with nothing between its answer and the send. A refusal means
+            // the request is never made.
+            if let Some(permit) = permit {
+                if !permit.authorize() {
+                    return Err(RpcError::NotRun);
+                }
             }
             let mut response = request
                 .body(body)
@@ -253,6 +294,7 @@ impl Transport {
                     ),
                 ]),
                 CONNECT_TIMEOUT,
+                None,
             )
             .await?;
             self.rpc(
@@ -263,6 +305,7 @@ impl Transport {
                 "notifications/initialized",
                 JValue::Undefined,
                 CONNECT_TIMEOUT,
+                None,
             )
             .await
             .map(|_| ())
@@ -285,6 +328,7 @@ impl Transport {
         ids: &AtomicI64,
         name: &str,
         args: &JValue,
+        permit: Option<&dyn DispatchPermit>,
     ) -> Result<JValue, RpcError> {
         let id = ids.fetch_add(1, Ordering::Relaxed) + 1;
         let arguments = if args.truthy() {
@@ -300,6 +344,7 @@ impl Transport {
             "tools/call",
             JValue::obj([("name", JValue::Str(name.into())), ("arguments", arguments)]),
             CALL_TIMEOUT,
+            permit,
         )
         .await
         .map(|r| r.unwrap_or(JValue::Undefined))
@@ -349,10 +394,10 @@ impl Transport {
                 permit.forget();
             }
         }
-        if let Some(egress) = &self.public {
-            if !egress.url_allowed(url).await {
-                return false;
-            }
+        if (self.public.is_some() || self.address_check.is_some())
+            && !self.address_allowed(url).await
+        {
+            return false;
         }
         let request = self
             .with_headers(self.client.delete(url), headers)

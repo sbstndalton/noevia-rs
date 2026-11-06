@@ -13,6 +13,7 @@ mod mcp_support;
 use base64::Engine as _;
 use mcp_support::*;
 use serde_json::{json, Value};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 
@@ -309,4 +310,102 @@ async fn a_caller_that_leaves_ends_the_call_and_closes_its_session() {
             .map(|r| (&r.method, &r.path))
             .collect::<Vec<_>>()
     );
+}
+
+// ── the bridge and a chat write grant's fence (sbstndalton/noevia-rs#425) ──
+
+struct Grants(std::sync::Mutex<Vec<(String, u64)>>);
+
+impl dispatch_permit::GrantAuthority for Grants {
+    fn generation(&self, grant: &str) -> Option<u64> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(g, _)| g == grant)
+            .map(|(_, n)| *n)
+    }
+}
+
+fn fenced(grant: &str, generation: u64) -> Value {
+    let mut r = request(A, "t", "plain", &["plain"]);
+    r["fence"] = json!({"grant": grant, "generation": generation});
+    r
+}
+
+#[tokio::test]
+async fn a_fenced_call_is_bound_to_a_validated_grant_and_fails_closed_without_one() {
+    let w = world().await;
+    let f = &w.front;
+    let not_run = "ERROR: the permission for t could not be checked, so it was not run. Nothing was changed. Ask again.";
+    // No authority over grants is wired: a call that names a fence is not run (a fenced write fails closed).
+    let (status, v) = call(f, fenced("g1", 1)).await;
+    assert_eq!(
+        (
+            status,
+            v["text"].as_str(),
+            v["notRun"].clone(),
+            v["started"].clone()
+        ),
+        (200, Some(not_run), json!(true), json!(false)),
+        "{v}"
+    );
+    assert_eq!(w.up.seen().len(), 0, "nothing reached the server");
+    // With the authority: the grant at the generation it was redeemed at runs, and says it started.
+    let grants = Arc::new(Grants(std::sync::Mutex::new(vec![("g1".into(), 4)])));
+    f.app.mcp_exec.as_ref().unwrap().set_grants(grants.clone());
+    let (status, v) = call(f, fenced("g1", 4)).await;
+    assert_eq!(status, 200, "{v}");
+    assert_eq!(
+        (
+            v["notRun"].clone(),
+            v["started"].clone(),
+            v["failed"].clone()
+        ),
+        (json!(false), json!(true), json!(false)),
+        "{v}"
+    );
+    assert!(v["text"].as_str().unwrap().contains("\"args\""), "{v}");
+    let sent =
+        w.up.seen()
+            .iter()
+            .filter(|r| r.body.contains("\"tools/call\""))
+            .count();
+    assert_eq!(sent, 1);
+    // Another generation (revoked since it was redeemed), an unknown grant: not run, nothing sent.
+    for (grant, generation) in [("g1", 3), ("g1", 5), ("nobody", 4)] {
+        let (status, v) = call(f, fenced(grant, generation)).await;
+        assert_eq!(
+            (status, v["text"].as_str(), v["notRun"].clone()),
+            (200, Some(not_run), json!(true)),
+            "{grant} {generation}: {v}"
+        );
+    }
+    assert_eq!(
+        w.up.seen()
+            .iter()
+            .filter(|r| r.body.contains("\"tools/call\""))
+            .count(),
+        sent,
+        "no further tools/call"
+    );
+    // Revoked after the check at the bridge but before the send is the executor's own test; here: closed grant.
+    grants.0.lock().unwrap().clear();
+    let (_, v) = call(f, fenced("g1", 4)).await;
+    assert_eq!(v["notRun"], json!(true), "{v}");
+    // A malformed fence is a bad request, not a call.
+    for bad in [
+        json!("g1"),
+        json!({"grant": "g1"}),
+        json!({"grant": "", "generation": 1}),
+        json!({"grant": "g1", "generation": -1}),
+        json!({"grant": "g1", "generation": 1.5}),
+    ] {
+        let mut r = request(A, "t", "plain", &["plain"]);
+        r["fence"] = bad.clone();
+        assert_eq!(call(f, r).await.0, 400, "{bad}");
+    }
+    // An ordinary call carries no fence and says nothing of one.
+    let (status, v) = call(f, request(A, "t", "plain", &["plain"])).await;
+    assert_eq!((status, v.get("notRun").is_none()), (200, true), "{v}");
 }

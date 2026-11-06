@@ -12,6 +12,7 @@
     clippy::indexing_slicing,
     clippy::panic
 )]
+use dispatch_permit::{permit_for, DispatchPermit, GrantAuthority};
 use noevia_server::mcp_broker::{auth_error, Fail};
 use noevia_server::mcp_egress::Egress;
 use noevia_server::mcp_exec::{
@@ -43,6 +44,8 @@ struct Fake {
     behaviour: Arc<Mutex<Value>>,
     calls: Arc<AtomicUsize>,
     log: Arc<Mutex<Vec<Value>>>,
+    /// Lets a stage held by `hold` answer (otherwise it waits out 30 seconds).
+    gate: Arc<tokio::sync::Notify>,
 }
 
 fn http_reply(status: u16, headers: &[(&str, String)], body: &[u8]) -> Vec<u8> {
@@ -94,16 +97,22 @@ impl Fake {
             behaviour: Arc::new(Mutex::new(json!({}))),
             calls: Arc::new(AtomicUsize::new(0)),
             log: Arc::new(Mutex::new(Vec::new())),
+            gate: Arc::new(tokio::sync::Notify::new()),
         };
-        let (behaviour, calls, log) = (
+        let (behaviour, calls, log, gate) = (
             Arc::clone(&fake.behaviour),
             Arc::clone(&fake.calls),
             Arc::clone(&fake.log),
+            Arc::clone(&fake.gate),
         );
         tokio::spawn(async move {
             while let Ok((mut socket, _)) = listener.accept().await {
-                let (behaviour, calls, log) =
-                    (Arc::clone(&behaviour), Arc::clone(&calls), Arc::clone(&log));
+                let (behaviour, calls, log, gate) = (
+                    Arc::clone(&behaviour),
+                    Arc::clone(&calls),
+                    Arc::clone(&log),
+                    Arc::clone(&gate),
+                );
                 tokio::spawn(async move {
                     let mut buf = Vec::new();
                     let mut chunk = [0u8; 8192];
@@ -158,7 +167,10 @@ impl Fake {
                     let id = msg.get("id").cloned().unwrap_or(Value::Null);
                     // A server that does not answer one stage for a long while (a call that is dropped meanwhile).
                     if b.get("hold").and_then(Value::as_str) == rpc.as_str() {
-                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                        tokio::select! {
+                            () = gate.notified() => {}
+                            () = tokio::time::sleep(std::time::Duration::from_secs(30)) => {}
+                        }
                     }
                     let json_type = ("content-type", "application/json".to_owned());
                     let out = match rpc.as_str().unwrap_or("") {
@@ -300,6 +312,9 @@ struct FakeCreds {
     hang: Mutex<Option<&'static str>>,
     /// How many sign-in questions were put (the retry's is the second).
     sessions: AtomicUsize,
+    /// Questions parked so far, and the release that lets them go on (a parked question that is never released is a hang).
+    parked: AtomicUsize,
+    release: tokio::sync::Notify,
     keys: Mutex<VecDeque<Value>>,
     oauth: Mutex<VecDeque<Value>>,
     log: Arc<Mutex<Vec<Value>>>,
@@ -314,8 +329,12 @@ impl FakeCreds {
     }
 }
 
-async fn forever() {
-    std::future::pending::<()>().await;
+impl FakeCreds {
+    /// A question that waits to be released (or forever, as the abort tests leave it).
+    async fn park(&self) {
+        self.parked.fetch_add(1, Ordering::SeqCst);
+        self.release.notified().await;
+    }
 }
 
 fn pop(queue: &Mutex<VecDeque<Value>>) -> Value {
@@ -331,7 +350,7 @@ impl Credentials for FakeCreds {
     fn directory(&self) -> Fut<'_, Vec<DirServer>> {
         Box::pin(async move {
             if self.hanging("directory") {
-                forever().await;
+                self.park().await;
             }
             self.dir.clone()
         })
@@ -343,7 +362,7 @@ impl Credentials for FakeCreds {
     ) -> Fut<'a, Result<Vec<(String, String)>, Fail>> {
         Box::pin(async move {
             if self.hanging("key") {
-                forever().await;
+                self.park().await;
             }
             self.log.lock().unwrap().push(json!(["key", user, server]));
             match pop(&self.keys) {
@@ -365,7 +384,7 @@ impl Credentials for FakeCreds {
         Box::pin(async move {
             let asked = self.sessions.fetch_add(1, Ordering::SeqCst);
             if self.hanging("session") || (self.hanging("session-retry") && asked >= 1) {
-                forever().await;
+                self.park().await;
             }
             self.log
                 .lock()
@@ -400,7 +419,7 @@ impl Credentials for FakeCreds {
     ) -> Fut<'a, Option<Vec<(String, String)>>> {
         Box::pin(async move {
             if self.hanging("nextcloud") {
-                forever().await;
+                self.park().await;
             }
             let s = &self.storage;
             nextcloud_headers_for(
@@ -416,7 +435,7 @@ impl Credentials for FakeCreds {
     fn url_allowed<'a>(&'a self, _url: &'a str) -> Fut<'a, bool> {
         Box::pin(async move {
             if self.hanging("url") {
-                forever().await;
+                self.park().await;
             }
             self.allowed
         })
@@ -474,6 +493,7 @@ fn call_of(c: &Value) -> Call {
             .and_then(Value::as_bool)
             .unwrap_or(false),
         internal_auth: s("internalAuth"),
+        permit: None,
     }
 }
 
@@ -568,6 +588,8 @@ async fn every_step_of_the_oracle_is_replayed() {
         let creds = FakeCreds {
             hang: Mutex::new(None),
             sessions: AtomicUsize::new(0),
+            parked: AtomicUsize::new(0),
+            release: tokio::sync::Notify::new(),
             keys: Mutex::new(queue(case.get("keys"), Value::Null)),
             oauth: Mutex::new(queue(case.get("oauth"), Value::Null)),
             log: Arc::clone(&broker_log),
@@ -648,6 +670,8 @@ fn creds_for(storage: Value, keys: Value, oauth: Value, dir: Vec<DirServer>) -> 
     Arc::new(FakeCreds {
         hang: Mutex::new(None),
         sessions: AtomicUsize::new(0),
+        parked: AtomicUsize::new(0),
+        release: tokio::sync::Notify::new(),
         keys: Mutex::new(queue(Some(&keys), Value::Null)),
         oauth: Mutex::new(queue(Some(&oauth), Value::Null)),
         log: Arc::new(Mutex::new(Vec::new())),
@@ -1489,4 +1513,289 @@ async fn an_executor_call_does_not_echo_a_credential_that_is_a_number_or_a_boole
         let text = exec.run(&*creds, simple_call()).await;
         assert!(!has_token(&text, "12345"), "{text}");
     }
+}
+
+// ── a write grant revoked while the call prepares (sbstndalton/noevia-rs#425) ──
+
+/// A grant authority whose generation the test moves.
+#[derive(Default)]
+struct Grants(Mutex<Vec<(String, u64)>>);
+
+impl Grants {
+    fn revoke(&self, grant: &str) {
+        for g in self
+            .0
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .filter(|(id, _)| id == grant)
+        {
+            g.1 += 1;
+        }
+    }
+}
+
+impl GrantAuthority for Grants {
+    fn generation(&self, grant: &str) -> Option<u64> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(id, _)| id == grant)
+            .map(|(_, n)| *n)
+    }
+}
+
+/// A permit that counts what it was asked.
+#[derive(Debug)]
+struct Asked {
+    inner: Arc<dyn DispatchPermit>,
+    asked: AtomicUsize,
+}
+
+impl DispatchPermit for Asked {
+    fn authorize(&self) -> bool {
+        self.asked.fetch_add(1, Ordering::SeqCst);
+        self.inner.authorize()
+    }
+}
+
+fn grant_permit() -> (Arc<Grants>, Arc<Asked>) {
+    let grants = Arc::new(Grants(Mutex::new(vec![("grant-1".into(), 1)])));
+    let authority: Arc<dyn GrantAuthority> = grants.clone();
+    let inner = permit_for(&authority, "grant-1", 1).unwrap();
+    (
+        grants,
+        Arc::new(Asked {
+            inner,
+            asked: AtomicUsize::new(0),
+        }),
+    )
+}
+
+/// Which await the grant is revoked in.
+#[derive(Clone, Copy, Debug)]
+enum Stage {
+    /// The directory lookup that resolves the server.
+    ServerLookup,
+    /// The account's key.
+    Credential,
+    /// The address check before the credentials' request is built.
+    CredsAddress,
+    /// The transport's own address check just before the request is sent.
+    TransportAddress,
+    /// The MCP `initialize`.
+    Initialize,
+    /// The `initialized` notification.
+    Initialized,
+}
+
+#[tokio::test]
+async fn a_grant_revoked_while_each_preparing_await_is_suspended_sends_no_tools_call() {
+    for stage in [
+        Stage::ServerLookup,
+        Stage::Credential,
+        Stage::CredsAddress,
+        Stage::TransportAddress,
+        Stage::Initialize,
+        Stage::Initialized,
+    ] {
+        for revoke in [true, false] {
+            let at = format!("{stage:?} / revoked {revoke}");
+            let fake = Fake::start().await;
+            *fake.behaviour.lock().unwrap() = match stage {
+                Stage::Initialize => json!({"sid": "S-1", "hold": "initialize"}),
+                Stage::Initialized => json!({"sid": "S-1", "hold": "notifications/initialized"}),
+                _ => json!({"sid": "S-1"}),
+            };
+            let parked = Arc::new(AtomicUsize::new(0));
+            let release = Arc::new(tokio::sync::Notify::new());
+            let mut exec = Executor::new(Settings::default(), &Egress::new(true).unwrap());
+            if matches!(stage, Stage::TransportAddress) {
+                let (parked, release) = (Arc::clone(&parked), Arc::clone(&release));
+                exec = exec.with_address_check(Arc::new(move |_url| {
+                    let (parked, release) = (Arc::clone(&parked), Arc::clone(&release));
+                    Box::pin(async move {
+                        // The lookups are initialize's, the notification's, then the `tools/call`'s: that last one waits.
+                        if parked.fetch_add(1, Ordering::SeqCst) == 2 {
+                            release.notified().await;
+                        }
+                        true
+                    })
+                }));
+            }
+            let exec = Arc::new(exec);
+            // Every case but the first two goes to a directory server: the credential and address awaits are its own.
+            let dir = DirServer {
+                id: "dir-p".into(),
+                url: fake.url.clone(),
+                title: "Dir P".into(),
+                oauth: false,
+                personal: matches!(stage, Stage::Credential),
+                shared: vec![],
+            };
+            let creds = creds_for(
+                json!({"kind":"local"}),
+                json!({"X-Api-Key": "k"}),
+                Value::Null,
+                vec![dir],
+            );
+            match stage {
+                Stage::ServerLookup => *creds.hang.lock().unwrap() = Some("directory"),
+                Stage::Credential => *creds.hang.lock().unwrap() = Some("key"),
+                Stage::CredsAddress => *creds.hang.lock().unwrap() = Some("url"),
+                _ => {}
+            }
+            let (grants, permit) = grant_permit();
+            let task = tokio::spawn({
+                let (exec, creds, permit) =
+                    (Arc::clone(&exec), Arc::clone(&creds), Arc::clone(&permit));
+                async move {
+                    let mut call = simple_call();
+                    call.offers = vec!["dir-p".into()];
+                    call.permit = Some(permit);
+                    exec.dispatch(&*creds, call).await
+                }
+            });
+            // Wait until the call is parked in the await under test.
+            let reached = match stage {
+                Stage::ServerLookup | Stage::Credential | Stage::CredsAddress => {
+                    until(|| creds.parked.load(Ordering::SeqCst) == 1).await
+                }
+                Stage::TransportAddress => until(|| parked.load(Ordering::SeqCst) == 3).await,
+                Stage::Initialize => until(|| requests_of(&fake, "initialize") == 1).await,
+                Stage::Initialized => {
+                    until(|| requests_of(&fake, "notifications/initialized") == 1).await
+                }
+            };
+            assert!(reached, "{at}: never reached the await");
+            assert_eq!(
+                permit.asked.load(Ordering::SeqCst),
+                0,
+                "{at}: the permit is not asked before the boundary"
+            );
+            if revoke {
+                grants.revoke("grant-1");
+            }
+            creds.release.notify_waiters();
+            release.notify_waiters();
+            fake.gate.notify_waiters();
+            let out = task.await.unwrap();
+            // The permit was asked once, at the send; and a revoked grant sent nothing.
+            assert_eq!(permit.asked.load(Ordering::SeqCst), 1, "{at}");
+            if revoke {
+                assert_eq!(
+                    requests_of(&fake, "tools/call"),
+                    0,
+                    "{at}: a tools/call went out"
+                );
+                assert!(out.not_run && !out.started, "{at}: {out:?}");
+                assert_eq!(
+                    out.text,
+                    noevia_server::mcp_exec::not_run_text("t1"),
+                    "{at}"
+                );
+                assert!(out.failed, "{at}");
+            } else {
+                assert_eq!(requests_of(&fake, "tools/call"), 1, "{at}");
+                assert!(!out.not_run && out.started && !out.failed, "{at}: {out:?}");
+            }
+            // Whatever session the handshake opened was closed.
+            assert!(
+                until(|| deletes_of(&fake) == requests_of(&fake, "initialize")).await,
+                "{at}: a session was left open"
+            );
+        }
+    }
+}
+
+/// The OAuth retry: the first send was authorised and the server refused its token; the grant is revoked while the broker
+/// is asked for a new one; the retry's permit is refused and no second `tools/call` is made.
+#[tokio::test]
+async fn a_grant_revoked_while_the_oauth_retry_waits_for_its_token_sends_no_second_tools_call() {
+    for revoke in [true, false] {
+        let fake = Fake::start().await;
+        *fake.behaviour.lock().unwrap() = json!({"sid": "S-1", "call": [{"http": {"status": 401, "body": "no"}}, {"result": {"content": [{"type": "text", "text": "ok"}]}}]});
+        let exec = executor(&fake, vec![]);
+        let dir = DirServer {
+            id: "dir-o".into(),
+            url: fake.url.clone(),
+            title: "Dir O".into(),
+            oauth: true,
+            personal: false,
+            shared: vec![],
+        };
+        let creds = creds_for(
+            json!({"kind":"local"}),
+            Value::Null,
+            json!([{"accessToken":"acc-1","generation":"g1"}, {"accessToken":"acc-2","generation":"g2"}]),
+            vec![dir],
+        );
+        *creds.hang.lock().unwrap() = Some("session-retry");
+        let (grants, permit) = grant_permit();
+        let task = tokio::spawn({
+            let (exec, creds, permit) =
+                (Arc::clone(&exec), Arc::clone(&creds), Arc::clone(&permit));
+            async move {
+                let mut call = simple_call();
+                call.offers = vec!["dir-o".into()];
+                call.permit = Some(permit);
+                exec.dispatch(&*creds, call).await
+            }
+        });
+        assert!(
+            until(|| creds.parked.load(Ordering::SeqCst) == 1).await,
+            "the retry never asked the broker"
+        );
+        assert_eq!(
+            permit.asked.load(Ordering::SeqCst),
+            1,
+            "the first send was authorised"
+        );
+        if revoke {
+            grants.revoke("grant-1");
+        }
+        creds.release.notify_waiters();
+        let out = task.await.unwrap();
+        if revoke {
+            assert_eq!(requests_of(&fake, "tools/call"), 1, "no second tools/call");
+            assert_eq!(
+                permit.asked.load(Ordering::SeqCst),
+                2,
+                "the retry asked again and was refused"
+            );
+            // The first send happened (and was refused by the server): started, not "not run", the server's refusal stands.
+            assert!(out.started && !out.not_run && out.failed, "{out:?}");
+            assert_eq!(out.text, "ERROR calling t1: tool call failed (HTTP 401)");
+        } else {
+            assert_eq!(requests_of(&fake, "tools/call"), 2);
+            assert_eq!(permit.asked.load(Ordering::SeqCst), 2);
+            assert!(out.started && !out.not_run && !out.failed, "{out:?}");
+        }
+        assert!(until(|| deletes_of(&fake) == requests_of(&fake, "initialize")).await);
+    }
+}
+
+#[tokio::test]
+async fn a_call_without_a_permit_asks_nothing_and_a_revoked_one_before_the_start_never_connects_more_than_it_must(
+) {
+    let fake = Fake::start().await;
+    let exec = executor(&fake, vec![plain(&fake)]);
+    let creds = creds_for(json!({"kind":"local"}), Value::Null, Value::Null, vec![]);
+    let out = exec.dispatch(&*creds, simple_call()).await;
+    assert!(
+        !out.not_run && !out.started,
+        "no permit: nothing was asked ({out:?})"
+    );
+    assert_eq!(requests_of(&fake, "tools/call"), 1);
+    // A permit already revoked when the call starts: the handshake may happen, the write never does.
+    let fake = Fake::start().await;
+    let exec = executor(&fake, vec![plain(&fake)]);
+    let (grants, permit) = grant_permit();
+    grants.revoke("grant-1");
+    let mut call = simple_call();
+    call.permit = Some(permit);
+    let out = exec.dispatch(&*creds, call).await;
+    assert!(out.not_run && !out.started);
+    assert_eq!(requests_of(&fake, "tools/call"), 0);
 }
