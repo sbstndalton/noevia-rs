@@ -89,7 +89,8 @@ async function run(sc) {
     const events = [], res = new EventEmitter();
     res.writeHead = () => {}; res.setHeader = () => {}; res.write = (line) => events.push(JSON.parse(line.slice(6))); res.end = () => { res.writableEnded = true; res.emit('finish'); };
     let answer = null, upstream = null, partialReads = [], autoPicked = [];
-    const fetch = async (url, init) => { const b = JSON.parse(init.body); upstream = { system: b.messages[0]?.role === 'system' ? b.messages[0].content : null, last: b.messages[b.messages.length - 1] }; throw DONE; };
+    const fetch = async (url, init) => { const b = JSON.parse(init.body); const m = b.messages.find((x) => x.role === 'system' && typeof x.content === 'string' && x.content.includes('Today is'));
+      upstream = { system: m ? m.content : null, systems: b.messages.filter((x) => x.role === 'system').length, last: b.messages[b.messages.length - 1] }; throw DONE; };
     const project = sc.project && { routing: 'manual', ...sc.project, files: sc.project.files.map((k) => FILES[k]), model: 'synth-70b', provider: sc.providerId, assets: [], chats: [{ id: 'fixture-chat' }] };
     const sources = S('chat-sources.cjs'), coverage = S('source-coverage.cjs');
     const rag = { filesContext: async (_id, readable, _m, _u, onSources) => {
@@ -102,7 +103,7 @@ async function run(sc) {
       sourceJobs: { settle: async () => ({ aborted: false, notReady: sc.notReady }) },
       codeTasksFor: () => { if (sc.tasks === 'throw') throw new Error('code off'); return sc.tasks; },
       getProject: (id) => (project && id === project.id ? project : null), getProvider: (id) => PROVIDERS[id] || null, providerHeaders: () => ({}),
-      autoRoles: () => (project ? null : { fast: 'synth-70b', smart: 'synth-70b' }), classifyFastOrSmart: async () => 'smart', // Smart: no low-effort hint (a later stage) servedCatalogue: async () => [{ name: 'synth-70b' }], modelsInstalled: async () => [{ name: 'synth-70b' }],
+      autoRoles: () => (project ? null : { fast: 'synth-70b', smart: 'synth-70b' }), classifyFastOrSmart: async () => 'smart', /* Smart: no low-effort hint (a later stage) */ servedCatalogue: async () => [{ name: 'synth-70b' }], modelsInstalled: async () => [{ name: 'synth-70b' }],
       missingRoles, staleRolesError, lastLoadedModel: () => 'synth-70b', skillsIndexFor: () => sc.skills.map((k) => SKILLS[k]), visionDescriptions: new Map(), visionProbe: createVisionProbe({ fetchImpl: fetch }),
       chatSkillRouter: { select: async (candidates) => { autoPicked = sc.autoSkill && candidates.length ? [candidates[0]] : []; autoPicked = autoPicked.map((c) => SKILLS.indexOf(c)); return { loaded: autoPicked.map((k) => SKILLS[k]) }; } },
       oauthServerIds: () => new Set(), accountReady: () => true, mcpOAuth: { connected: () => false },
@@ -139,7 +140,7 @@ async function run(sc) {
   for (const [k, sc] of scenarios.entries()) {
     const o = await run(sc);
     // The system text by hash (the first cases in full, for reading a difference).
-    if (o.upstream) o.upstream = { systemSha: o.upstream.system === null ? null : sha(o.upstream.system), ...(k < 40 ? { system: o.upstream.system } : {}), last: o.upstream.last };
+    if (o.upstream) o.upstream = { systemSha: o.upstream.system === null ? null : sha(o.upstream.system), systems: o.upstream.systems, ...(k < 40 ? { system: o.upstream.system } : {}), last: o.upstream.last };
     out.cases.push({ ...sc, out: o });
   }
   console.log = log; console.warn = warn;
