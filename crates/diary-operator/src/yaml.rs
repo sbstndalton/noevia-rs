@@ -432,6 +432,9 @@ impl Reader<'_> {
                 if !["map", "set", "seq", "omap", "pairs"].contains(&tag.as_str()) {
                     if let Some(value) = scalar_value {
                         self.at += 3;
+                        if tag == "binary" {
+                            self.binary(&value, mark)?;
+                        }
                         let node = scalar(&value, &tag)?;
                         if id > 0 {
                             self.anchors.insert(id, node.clone());

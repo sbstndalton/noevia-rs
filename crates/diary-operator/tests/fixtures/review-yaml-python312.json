@@ -1,5 +1,12 @@
 [
   {
+    "case": "binary-map-padding",
+    "input_hex": "783a20212162696e617279207b3d3a206162637d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: failed to decode base64 data: Incorrect padding\n  in \"<unicode string>\", line 1, column 4:\n    x: !!binary {=: abc}\n       ^\n"
+  },
+  {
     "case": "timezone-plus",
     "input_hex": "783a20212174696d657374616d7020323032362d30312d30325430333a30343a30352b32343a30300a",
     "exit": 1,
