@@ -24,7 +24,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub(super) type WriteAllowed = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
+pub(crate) type WriteAllowed = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
 
 /// llamacpp-presets.cjs `BACKUP_KEEP`.
 pub const BACKUP_KEEP: usize = 20;
