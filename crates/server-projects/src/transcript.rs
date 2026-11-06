@@ -1043,21 +1043,44 @@ mod tests {
     #[test]
     fn save_interrupted_turn_checks_as_core_does_then_appends_as_a_turn() {
         let (root, dir) = setup();
-        let entry = wtf16::parse(r#"{"role":"assistant","content":"kept","interrupted":true}"#).unwrap();
+        let entry =
+            wtf16::parse(r#"{"role":"assistant","content":"kept","interrupted":true}"#).unwrap();
         let save = |chat: &str, message: Option<&str>, entry: Option<&JValue>, active: bool| {
             save_interrupted_turn(root.path(), USER, chat, message, entry, active)
         };
         assert_eq!(save("", Some("q"), Some(&entry), true).unwrap(), "no-chat");
-        assert_eq!(save("!!", Some("q"), Some(&entry), true).unwrap(), "no-chat");
-        assert_eq!(save("c1", Some("q"), None, true).unwrap(), "nothing-to-keep");
+        assert_eq!(
+            save("!!", Some("q"), Some(&entry), true).unwrap(),
+            "no-chat"
+        );
+        assert_eq!(
+            save("c1", Some("q"), None, true).unwrap(),
+            "nothing-to-keep"
+        );
         assert_eq!(save("c1", None, Some(&entry), true).unwrap(), "not-last");
-        assert_eq!(save("c1", Some("q"), Some(&entry), true).unwrap(), "no-user-message");
-        std::fs::write(history_file(&dir, "c1"), r#"{"history":[{"role":"user","content":"q"}]}"#).unwrap();
-        assert!(save("c1", Some("q"), Some(&entry), false).is_err(), "a revoked workspace writes nothing");
+        assert_eq!(
+            save("c1", Some("q"), Some(&entry), true).unwrap(),
+            "no-user-message"
+        );
+        std::fs::write(
+            history_file(&dir, "c1"),
+            r#"{"history":[{"role":"user","content":"q"}]}"#,
+        )
+        .unwrap();
+        assert!(
+            save("c1", Some("q"), Some(&entry), false).is_err(),
+            "a revoked workspace writes nothing"
+        );
         assert_eq!(save("c1", Some("q"), Some(&entry), true).unwrap(), "saved");
-        assert_eq!(save("c1", Some("q"), Some(&entry), true).unwrap(), "not-last");
+        assert_eq!(
+            save("c1", Some("q"), Some(&entry), true).unwrap(),
+            "not-last"
+        );
         std::fs::write(dir.join(TOMBSTONES_FILE), r#"["c1"]"#).unwrap();
-        assert_eq!(save("c1", Some("q"), Some(&entry), true).unwrap(), "deleted");
+        assert_eq!(
+            save("c1", Some("q"), Some(&entry), true).unwrap(),
+            "deleted"
+        );
     }
 
     #[test]
