@@ -119,12 +119,7 @@ fn corrupt_journal_is_never_overwritten_or_recovered() {
 fn authority_events_cannot_be_injected_through_executor_append() {
     let (_dir, s) = setup(Surface::Code);
     s.create(ID, "p", vec![], 1).unwrap();
-    for kind in [
-        "task.stage",
-        "task.revision",
-        "job.created",
-        "unknown",
-    ] {
+    for kind in ["task.stage", "task.revision", "job.created", "unknown"] {
         assert!(matches!(
             s.append(ID, kind, empty(), 2),
             Err(Error::InvalidEvent)
@@ -264,4 +259,194 @@ fn valid_terminal_json_without_a_newline_still_refuses_an_append() {
     assert_eq!(fs::read(path(dir.path())).unwrap(), bytes);
     assert_eq!(s.recover(4).unwrap(), 0);
     assert_eq!(fs::read(path(dir.path())).unwrap(), bytes);
+}
+
+fn value(s: &str) -> JValue {
+    wtf16::parse(s).unwrap()
+}
+fn stage(from: &str, to: &str, revision: u32) -> JValue {
+    value(&format!(
+        r#"{{"from":"{from}","to":"{to}","revision":{revision}}}"#
+    ))
+}
+#[test]
+fn planner_authority_is_separate_and_validates_before_writing() {
+    let (dir, s) = setup(Surface::Code);
+    s.create(ID, "p", vec![], 1).unwrap();
+    let data = stage("planned", "implementing", 0);
+    assert!(matches!(
+        s.append(ID, "task.stage", data.clone(), 2),
+        Err(Error::InvalidEvent)
+    ));
+    s.authority(ID, "task.stage", data.clone(), 2).unwrap();
+    let before = fs::read(path(dir.path())).unwrap();
+    assert!(matches!(
+        s.authority(ID, "task.stage", data, 3),
+        Err(Error::Authority { status: 409, .. })
+    ));
+    assert_eq!(before, fs::read(path(dir.path())).unwrap());
+    let revision = value(&format!(
+        r#"{{"n":1,"headSha":"{}","planHash":null,"untrusted":true}}"#,
+        "a".repeat(40)
+    ));
+    let job = s
+        .authority(ID, "task.revision", revision.clone(), 4)
+        .unwrap();
+    assert_eq!(
+        job.authoritative.unwrap().revision.get("n"),
+        &JValue::Num(1.0)
+    );
+    assert!(matches!(
+        s.authority(ID, "task.revision", revision, 5),
+        Err(Error::Authority { status: 409, .. })
+    ));
+    assert!(matches!(
+        s.authority(ID, "task.stage", stage("implementing", "merged", 1), 6),
+        Err(Error::Authority { status: 409, .. })
+    ));
+    s.append(ID, "job.completed", empty(), 7).unwrap();
+    assert!(matches!(
+        s.authority(ID, "task.stage", stage("implementing", "verifying", 1), 8),
+        Err(Error::Finished)
+    ));
+}
+#[test]
+fn planner_review_uses_current_revision_evidence_and_ignores_forged_hash() {
+    let (_dir, s) = setup(Surface::Code);
+    s.create(ID, "p", vec![], 1).unwrap();
+    s.authority(ID, "task.stage", stage("planned", "implementing", 0), 2)
+        .unwrap();
+    let forged = value(&format!(
+        r#"{{"from":"implementing","to":"reviewing","revision":0,"reportHash":"{}","report":{{"overall":"pass"}}}}"#,
+        "f".repeat(64)
+    ));
+    assert!(matches!(
+        s.authority(ID, "task.stage", forged, 3),
+        Err(Error::Authority { status: 409, .. })
+    ));
+    s.append(
+        ID,
+        "step.started",
+        value(r#"{"id":"tests","title":"Tests"}"#),
+        4,
+    )
+    .unwrap();
+    s.append(ID, "step.completed", value(r#"{"id":"tests"}"#), 5)
+        .unwrap();
+    s.append(
+        ID,
+        "checkpoint.created",
+        value(&format!(r#"{{"headSha":"{}"}}"#, "a".repeat(40))),
+        6,
+    )
+    .unwrap();
+    let reviewing = value(
+        r#"{"from":"implementing","to":"reviewing","revision":0,"expectedArtifacts":[],"reason":"  ok\u0000\nnow  ","reportHash":"forged"}"#,
+    );
+    s.append(ID, "approval.requested", value(r#"{"id":"pending"}"#), 8)
+        .unwrap();
+    assert!(matches!(
+        s.authority(ID, "task.stage", reviewing.clone(), 9),
+        Err(Error::Authority { status: 409, .. })
+    ));
+    s.append(
+        ID,
+        "approval.decided",
+        value(r#"{"id":"pending","decision":"allow"}"#),
+        10,
+    )
+    .unwrap();
+    let job = s
+        .authority(ID, "task.stage", reviewing.clone(), 11)
+        .unwrap();
+    let authority = job.authoritative.unwrap();
+    let last = authority.stages.last().unwrap();
+    assert_eq!(last.get("reason").as_str(), Some("ok now"));
+    assert_eq!(last.get("reportHash").as_str().unwrap().len(), 64);
+    s.authority(ID, "task.stage", stage("reviewing", "implementing", 0), 12)
+        .unwrap();
+    // Passing tests from the previous implementing window cannot admit a new round to review.
+    assert!(matches!(
+        s.authority(ID, "task.stage", reviewing, 13),
+        Err(Error::Authority { status: 409, .. })
+    ));
+}
+
+#[test]
+fn planner_authority_replays_the_node_journal_hash_and_refusals() {
+    let fixture = value(include_str!("fixtures/task-journals/authority-node.json"));
+    let id = fixture.get("id").as_str().unwrap();
+    let (_dir, s) = setup(Surface::Code);
+    s.create(id, "p", vec![], 1234).unwrap();
+    let events = match fixture.get("events") {
+        JValue::Arr(events) => events,
+        _ => panic!(),
+    };
+    let outcomes = match fixture.get("result") {
+        JValue::Arr(outcomes) => outcomes,
+        _ => panic!(),
+    };
+    let check = |index: usize, kind: &str, data: JValue| {
+        let expected = &outcomes[index];
+        match s.authority(id, kind, data, 1234) {
+            Ok(job) => {
+                assert_eq!(expected.get("ok"), &JValue::Bool(true));
+                if kind == "task.stage" {
+                    let a = job.authoritative.unwrap();
+                    let actual = a.stages.last().unwrap();
+                    for key in ["from", "to", "revision", "reason", "reportHash"] {
+                        assert_eq!(
+                            actual.get(key),
+                            expected.get("data").get(key),
+                            "{index} {key}"
+                        );
+                    }
+                }
+            }
+            Err(Error::Authority { status, message }) => {
+                assert_eq!(expected.get("ok"), &JValue::Bool(false));
+                assert_eq!(expected.get("status").as_num(), Some(status as f64));
+                assert_eq!(expected.get("message").as_str(), Some(message.as_str()));
+            }
+            Err(error) => panic!("unexpected {error:?}"),
+        }
+    };
+    let implementing = stage("planned", "implementing", 0);
+    check(1, "task.stage", implementing.clone());
+    check(2, "task.stage", implementing);
+    let revision = value(&format!(
+        r#"{{"n":1,"headSha":"{}","planHash":null}}"#,
+        "a".repeat(40)
+    ));
+    check(3, "task.revision", revision.clone());
+    check(4, "task.revision", revision);
+    let reviewing = value(
+        r#"{"from":"implementing","to":"reviewing","revision":1,"expectedArtifacts":[],"reason":"  ok\u0000\nnow  ","reportHash":"forged"}"#,
+    );
+    check(5, "task.stage", reviewing.clone());
+    for event in events.iter().filter(|e| {
+        matches!(
+            e.get("type").as_str(),
+            Some("step.started" | "step.completed" | "checkpoint.created" | "approval.requested")
+        )
+    }) {
+        s.append(
+            id,
+            event.get("type").as_str().unwrap(),
+            event.get("data").clone(),
+            1234,
+        )
+        .unwrap();
+    }
+    check(6, "task.stage", reviewing.clone());
+    s.append(
+        id,
+        "approval.decided",
+        value(r#"{"id":"pending","decision":"allow"}"#),
+        1234,
+    )
+    .unwrap();
+    check(7, "task.stage", reviewing.clone());
+    check(8, "task.stage", stage("reviewing", "implementing", 1));
+    check(9, "task.stage", reviewing);
 }

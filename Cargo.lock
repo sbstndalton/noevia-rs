@@ -3151,6 +3151,7 @@ dependencies = [
 name = "server-projects"
 version = "0.1.0"
 dependencies = [
+ "completeness-report",
  "js-json",
  "libc",
  "prompt-framing",

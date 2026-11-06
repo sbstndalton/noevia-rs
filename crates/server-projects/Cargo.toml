@@ -22,6 +22,7 @@ ryu-js = "=1.0.3"
 serde_json = { version = "1", features = ["raw_value"] }
 prompt-framing = { path = "../prompt-framing" }
 review-verdict = { path = "../review-verdict" }
+completeness-report = { path = "../completeness-report" }
 task-lifecycle = { path = "../task-lifecycle" }
 upload-sniff = { path = "../upload-sniff" }
 storage-path = { path = "../storage-path" }

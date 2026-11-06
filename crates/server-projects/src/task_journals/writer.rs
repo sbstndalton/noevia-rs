@@ -1,5 +1,6 @@
 //! Native append/recovery primitive. Call from blocking task work only. The task runtime must
 //! acquire sole ownership from the legacy writer before opening this store.
+mod authority;
 use super::{
     bound_code_plan, bound_review, clip_utf8, derive, parse_rows, valid_id, Job, Parsed, Surface,
     MAX_JOURNAL_BYTES,
@@ -21,6 +22,7 @@ pub enum Error {
     Unreadable,
     WrongSurface,
     InvalidEvent,
+    Authority { status: u16, message: String },
     Busy,
     Io(std::io::Error),
 }
@@ -159,6 +161,18 @@ impl Store {
         let _held = self.hold()?;
         self.append_locked(id, kind, data, now)
     }
+    /// Trusted Planner entry point. ACP and ordinary event contexts must only use `append`.
+    /// Validation and publication share the cross-process writer transaction.
+    pub fn authority(&self, id: &str, kind: &str, data: JValue, now: i64) -> Result<Job, Error> {
+        if self.surface != Surface::Code {
+            return Err(Error::WrongSurface);
+        }
+        if !matches!(kind, "task.stage" | "task.revision") {
+            return Err(Error::InvalidEvent);
+        }
+        let _held = self.hold()?;
+        self.append_locked(id, kind, data, now)
+    }
     fn append_locked(&self, id: &str, kind: &str, data: JValue, now: i64) -> Result<Job, Error> {
         let mut file = self.open_file(id)?;
         let (mut rows, end) = read(&mut file, id)?;
@@ -174,7 +188,11 @@ impl Store {
         {
             return Err(Error::Finished);
         }
-        let data = bound_data(&rows, self.surface, kind, data)?;
+        let data = if matches!(kind, "task.stage" | "task.revision") {
+            authority::bound(id, kind, &data, &rows, &job)?
+        } else {
+            bound_data(&rows, self.surface, kind, data)?
+        };
         let mut next = event(id, rows.len() + 1, kind, data, now);
         let durable = rows.first().is_some_and(|r| r.get("hash").truthy());
         if durable {

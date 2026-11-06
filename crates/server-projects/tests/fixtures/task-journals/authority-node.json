@@ -1,0 +1,180 @@
+{
+  "id": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+  "result": [
+    {
+      "ok": false,
+      "status": 403,
+      "message": "Task lifecycle events are server-only"
+    },
+    {
+      "ok": true,
+      "data": {
+        "from": "planned",
+        "to": "implementing",
+        "revision": 0,
+        "reason": null
+      }
+    },
+    {
+      "ok": false,
+      "status": 409,
+      "message": "Stale task stage: the task is implementing"
+    },
+    {
+      "ok": true,
+      "data": {
+        "n": 1,
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "planHash": null
+      }
+    },
+    {
+      "ok": false,
+      "status": 409,
+      "message": "Stale task revision: expected 2"
+    },
+    {
+      "ok": false,
+      "status": 409,
+      "message": "The completeness report does not allow review (tests-run: unknown; plan-steps-closed: unknown; checkpoint-head-recorded: unknown)"
+    },
+    {
+      "ok": false,
+      "status": 409,
+      "message": "The completeness report does not allow review (no-unresolved-uncertainty: fail)"
+    },
+    {
+      "ok": true,
+      "data": {
+        "from": "implementing",
+        "to": "reviewing",
+        "revision": 1,
+        "reason": "ok now",
+        "reportHash": "17466a1abe2c8c3ec522b63bb76a2952e1b86d49f59c469a481008cdd32566f6"
+      }
+    },
+    {
+      "ok": true,
+      "data": {
+        "from": "reviewing",
+        "to": "implementing",
+        "revision": 1,
+        "reason": null
+      }
+    },
+    {
+      "ok": false,
+      "status": 409,
+      "message": "The completeness report does not allow review (tests-run: unknown; plan-steps-closed: unknown)"
+    }
+  ],
+  "events": [
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 1,
+      "type": "job.created",
+      "at": 1234,
+      "data": {
+        "kind": "code",
+        "projectId": "p",
+        "parentId": null,
+        "capabilities": []
+      }
+    },
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 2,
+      "type": "task.stage",
+      "at": 1234,
+      "data": {
+        "from": "planned",
+        "to": "implementing",
+        "revision": 0,
+        "reason": null
+      }
+    },
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 3,
+      "type": "task.revision",
+      "at": 1234,
+      "data": {
+        "n": 1,
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "planHash": null
+      }
+    },
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 4,
+      "type": "step.started",
+      "at": 1234,
+      "data": {
+        "id": "tests",
+        "title": "Tests"
+      }
+    },
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 5,
+      "type": "step.completed",
+      "at": 1234,
+      "data": {
+        "id": "tests"
+      }
+    },
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 6,
+      "type": "checkpoint.created",
+      "at": 1234,
+      "data": {
+        "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 7,
+      "type": "approval.requested",
+      "at": 1234,
+      "data": {
+        "id": "pending"
+      }
+    },
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 8,
+      "type": "approval.decided",
+      "at": 1234,
+      "data": {
+        "id": "pending",
+        "decision": "allow"
+      }
+    },
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 9,
+      "type": "task.stage",
+      "at": 1234,
+      "data": {
+        "from": "implementing",
+        "to": "reviewing",
+        "revision": 1,
+        "reason": "ok now",
+        "reportHash": "17466a1abe2c8c3ec522b63bb76a2952e1b86d49f59c469a481008cdd32566f6"
+      }
+    },
+    {
+      "job": "cf33d37c-f27d-4c38-b772-a1c79d7b1353",
+      "seq": 10,
+      "type": "task.stage",
+      "at": 1234,
+      "data": {
+        "from": "reviewing",
+        "to": "implementing",
+        "revision": 1,
+        "reason": null
+      }
+    }
+  ]
+}
