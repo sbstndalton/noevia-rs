@@ -28,10 +28,23 @@ impl Clock for SystemClock {
 }
 pub struct JournalContext {
     account: Arc<Account>,
-    guard: ExecutionGuard,
+    guard: Arc<ExecutionGuard>,
     clock: Arc<dyn Clock>,
     timeout: Duration,
-    permit: Mutex<Option<Arc<dyn Permit>>>,
+    permit: Arc<Mutex<Option<Arc<dyn Permit>>>>,
+    stage_cancel: Option<tokio::sync::watch::Receiver<bool>>,
+}
+/// Dropping the stage timer stops its operation; cleanup still owns the scoped context.
+pub struct StageStop(tokio::sync::watch::Sender<bool>);
+impl StageStop {
+    pub fn cancel(&self) {
+        self.0.send_replace(true);
+    }
+}
+impl Drop for StageStop {
+    fn drop(&mut self) {
+        self.cancel();
+    }
 }
 fn unavailable() -> RpcError {
     RpcError {
@@ -65,10 +78,11 @@ impl JournalContext {
         }
         Ok(Self {
             account,
-            guard,
+            guard: Arc::new(guard),
             clock,
             timeout,
-            permit: Mutex::new(None),
+            permit: Arc::new(Mutex::new(None)),
+            stage_cancel: None,
         })
     }
     pub(crate) fn bind_permit(&self, permit: Arc<dyn Permit>) -> Result<(), RpcError> {
@@ -89,7 +103,35 @@ impl JournalContext {
         &self.guard.task
     }
     pub fn cancellation(&self) -> tokio::sync::watch::Receiver<bool> {
-        self.guard.cancellation()
+        self.stage_cancel
+            .clone()
+            .unwrap_or_else(|| self.guard.cancellation())
+    }
+    /// A stage deadline cancels the current engine operation, while retaining the account,
+    /// inference permit and execution reservation until its callbacks and cleanup settle.
+    pub fn stage(self: &Arc<Self>) -> (Arc<Self>, StageStop) {
+        let (stop, cancel) = tokio::sync::watch::channel(false);
+        let child = Arc::new(Self {
+            account: self.account.clone(),
+            guard: self.guard.clone(),
+            clock: self.clock.clone(),
+            timeout: self.timeout,
+            permit: self.permit.clone(),
+            stage_cancel: Some(cancel.clone()),
+        });
+        let parent = self.clone();
+        let forward = stop.clone();
+        let mut parent_cancel = self.cancellation();
+        let mut child_cancel = cancel;
+        tokio::spawn(async move {
+            if *parent_cancel.borrow() {
+                forward.send_replace(true);
+                return;
+            }
+            tokio::select! {biased;_=parent_cancel.changed()=>{forward.send_replace(true);},_=child_cancel.changed()=>{}}
+            drop(parent);
+        });
+        (child, StageStop(stop))
     }
     pub fn sync(&self) -> Result<(), RpcError> {
         self.account
@@ -110,7 +152,12 @@ impl Context for JournalContext {
             let _ = self.account.control.cancel(self.scope(), self.task());
             return Err(unavailable());
         }
-        if *self.guard.execution.cancel.borrow() {
+        if *self.guard.execution.cancel.borrow()
+            || self
+                .stage_cancel
+                .as_ref()
+                .is_some_and(|cancel| *cancel.borrow())
+        {
             return Err(RpcError {
                 code: -32603,
                 message: "The task was cancelled.".into(),
@@ -140,9 +187,16 @@ impl Context for JournalContext {
             .control
             .ask(self.scope(), self.task(), request, self.timeout);
         let account = self.account.clone();
+        let mut cancelled = self.cancellation();
         Box::pin(async move {
             let answer = match wait {
-                Ok(wait) => wait.wait().await,
+                Ok(wait) => {
+                    if *cancelled.borrow() {
+                        Decision::Aborted
+                    } else {
+                        tokio::select! {biased;_=cancelled.changed()=>Decision::Aborted,answer=wait.wait()=>answer}
+                    }
+                }
                 Err(_) => Decision::Aborted,
             };
             if account.fence().is_err() {
@@ -188,6 +242,76 @@ mod tests {
     const TASK: &str = "22222222-2222-4222-8222-222222222222";
     fn text(s: &str) -> JValue {
         JValue::Str(s.into())
+    }
+    #[tokio::test]
+    async fn stage_timeout_stops_approval_but_retains_reservation_and_parent() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("users").join(USER)).unwrap();
+        let account = Arc::new(
+            Account::open(
+                root.path(),
+                USER,
+                &CodeConfig::from_env(|_| None),
+                "epoch".into(),
+                1,
+            )
+            .unwrap(),
+        );
+        let scope = Scope {
+            user: USER.into(),
+            project: "project".into(),
+            surface: Surface::Code,
+        };
+        let guard = account.control.begin(scope.clone(), TASK.into()).unwrap();
+        account
+            .create(Surface::Code, TASK, "project", vec![], 1)
+            .unwrap();
+        let parent = Arc::new(
+            JournalContext::new(
+                account.clone(),
+                guard,
+                Arc::new(SystemClock),
+                Duration::from_secs(60),
+            )
+            .unwrap(),
+        );
+        let (stage, stop) = parent.stage();
+        let answer = stage
+            .request_approval(JValue::Obj(vec![("action".into(), text("review_code"))]))
+            .unwrap();
+        drop(stop);
+        assert_eq!(answer.await, Decision::Aborted);
+        assert!(stage.active().is_err());
+        assert!(parent.active().is_ok());
+        drop(parent);
+        assert!(account
+            .control
+            .begin(scope.clone(), "successor".into())
+            .is_err());
+        let (nested, nested_stop) = stage.stage();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            let mut cancel = nested.cancellation();
+            while !*cancel.borrow() {
+                cancel.changed().await.unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        drop(nested_stop);
+        drop(nested);
+        drop(stage);
+        // The cancellation-forwarding tasks also own the reservation until they settle.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Ok(guard) = account.control.begin(scope.clone(), "successor".into()) {
+                    drop(guard);
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
     }
     #[tokio::test]
     async fn pending_callback_drop_and_cancel_keep_the_execution_reserved_until_teardown() {
