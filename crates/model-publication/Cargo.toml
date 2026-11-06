@@ -11,3 +11,4 @@ workspace = true
 
 [dependencies]
 rusqlite = { version = "0.40", features = ["bundled", "hooks"] }
+serde = { version = "1", features = ["derive"] }

@@ -274,14 +274,12 @@ async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() 
         )
     );
     assert!(h.contains("cache-control: no-store"));
-    // #2322: calibration owns the exact path; a dead facts bridge refuses natively.
+    // #2322, #2303: calibration owns the exact path; with no llama.cpp manager there is no native
+    // worker, and it refuses as Core's bridge did with no calibrator (the corpus's 000135).
     let (s, h, b) = call(addr, "GET", "/api/models/calibration", &csrf).await;
     assert_eq!(
         (s, b.as_str()),
-        (
-            503,
-            r#"{"error":"Calibration state is unavailable. Try again shortly."}"#
-        )
+        (404, r#"{"error":"Native calibration is unavailable"}"#)
     );
     assert!(h.contains("cache-control: no-store"));
     for (m, p) in [

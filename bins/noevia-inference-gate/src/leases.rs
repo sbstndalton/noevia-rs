@@ -510,6 +510,14 @@ async fn take_hold(gate: Arc<Gate>, request: Request) -> Response {
             None => return respond::refusal(Refusal::InvalidWait),
         },
     };
+    if let Some(path) = &gate.cfg.publication_authority {
+        let fence = value
+            .get("maintenance")
+            .and_then(|v| serde_json::from_value::<model_publication::Fence>(v.clone()).ok());
+        if !model_publication::allows(path, fence.as_ref()) {
+            return respond::refusal(Refusal::MaintenanceHeld);
+        }
+    }
     let default_idle = u64::try_from(gate.cfg.maintenance_idle.as_millis()).unwrap_or(u64::MAX);
     let idle_ms = match value.get("idle_ttl_ms") {
         None => default_idle,

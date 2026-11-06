@@ -598,7 +598,7 @@ impl Maint {
             let value = if free {
                 "0".to_owned()
             } else {
-                js_json::number_to_string(self.sizing.cache_ram_limits().1)
+                js_json::number_to_string(self.sizing.preset_cache_ram_limits().1)
             };
             match opts.iter_mut().find(|(k, _)| *k == "cache-ram") {
                 Some(slot) => slot.1 = value,
@@ -792,7 +792,7 @@ impl Maint {
     ) -> Outcome {
         let token = hold.token();
         let t = token.as_deref();
-        let limits = self.sizing.cache_ram_limits();
+        let limits = self.sizing.preset_cache_ram_limits();
         // The system model check.
         let first = match router.models(t).await {
             Ok(l) => l,
@@ -822,12 +822,13 @@ impl Maint {
                 Ok(None) => {}
             }
         }
-        self.apply_unlocked(router, hold, ini, body, limits).await
+        self.apply_preset_unlocked(router, hold, ini, body, limits)
+            .await
     }
 
     /// `applyUnlocked(body)`: the caller holds the maintenance gate.
     #[allow(clippy::too_many_lines)]
-    async fn apply_unlocked(
+    async fn apply_preset_unlocked(
         &self,
         router: &Router,
         hold: &Hold,
@@ -881,7 +882,10 @@ impl Maint {
         if !hold.may_start(WRITE_LIMIT) {
             return error(503, LEASE_LOST_BEFORE);
         }
-        if let Err(e) = ini.commit_reconciled(&candidate, true).await {
+        if let Err(e) = ini
+            .commit_reconciled_if(&candidate, true, hold.write_fence())
+            .await
+        {
             // A settled Model Loader outcome carries its own message; nothing was reloaded.
             return if e.status >= 500 {
                 // `error` first, then `retryable`: serde_json sorts keys alphabetically, which is
@@ -957,7 +961,10 @@ impl Maint {
             text: candidate.before.clone(),
             before: candidate.text.clone(),
         };
-        if let Err(e) = ini.commit_reconciled(&back, true).await {
+        if let Err(e) = ini
+            .commit_reconciled_if(&back, true, hold.write_fence())
+            .await
+        {
             let message = if e.status == 409 {
                 RESTORE_UNCERTAIN
             } else if e.retryable {
@@ -1038,7 +1045,7 @@ impl Maint {
                 "Confirm that other clients and Diary background inference are stopped before reloading.",
             );
         }
-        let hold = match self.acquire("", HOLD_FOR, false).await {
+        let mut hold = match self.acquire("", HOLD_FOR, false).await {
             Ok(h) => h,
             Err(HoldError::Busy) => return error(409, BUSY),
             Err(HoldError::Gate { status, message }) => return thrown(Some(status), &message),
@@ -1046,8 +1053,88 @@ impl Maint {
             Err(HoldError::NodeUnavailable) => return error(503, NO_ARBITER),
         };
         let outcome = self.apply_held(app, router, &hold, ini, &body).await;
+        let admission = self
+            .authority
+            .recovery_pending()
+            .then(|| hold.defer_local_release());
         hold.release().await;
+        if let Some(admission) = admission {
+            let maint = Arc::clone(&app.config.maint);
+            tokio::spawn(async move {
+                let _admission = admission;
+                maint.reconcile_preset_incident().await;
+            });
+        }
         outcome
+    }
+    pub fn spawn_preset_recovery(self: &Arc<Self>) -> Option<tokio::task::JoinHandle<()>> {
+        if !self.authority.recovery_pending() || self.ini.is_none() || self.router.is_none() {
+            return None;
+        }
+        let reserved = super::Reservation::take(&self.local)?;
+        let maint = Arc::clone(self);
+        Some(tokio::spawn(async move {
+            let _reserved = reserved;
+            maint.reconcile_preset_incident().await;
+        }))
+    }
+
+    async fn reconcile_preset_incident(&self) {
+        let mut delay = Duration::from_millis(100);
+        loop {
+            let ticket = self.authority.require_recovery();
+            if let Ok(hold) = self
+                .acquire_recovery("Reconciling interrupted native preset editing", HOLD_FOR)
+                .await
+            {
+                let mut reconciled = false;
+                if let Some(router) = &self.router {
+                    let token = hold.token();
+                    if let Ok(listing) = router.models(token.as_deref()).await {
+                        let mut empty = listing.ok && super::router::rows(&listing.body).is_some();
+                        if let Some(rows) = super::router::rows(&listing.body) {
+                            for model in super::reload::live_ids(rows) {
+                                if !hold.may_start(Duration::from_secs(60)) {
+                                    empty = false;
+                                    break;
+                                }
+                                let Some(mut operation) = hold.operation() else {
+                                    empty = false;
+                                    break;
+                                };
+                                let scoped = router.with_operation(&operation.fence);
+                                match scoped.unload(&model, token.as_deref()).await {
+                                    Ok(reply) if reply.ok && !reply.uncertain => {
+                                        operation.settled =
+                                            operation.authority.settle_operation(&operation.fence);
+                                    }
+                                    _ => {
+                                        empty = false;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if empty && hold.may_start(RELOAD_LIMIT) {
+                            reconciled = self
+                                .router_reload(router, &hold, None)
+                                .await
+                                .is_ok_and(|r| r.is_ok_and(|reply| reply.ok))
+                                && hold.excluded();
+                        }
+                    }
+                }
+                if reconciled && self.node.recovery_barrier(false, &ticket).await && hold.excluded()
+                {
+                    self.authority.complete_recovery();
+                    hold.release().await;
+                    return;
+                }
+                hold.release().await;
+            }
+            tokio::time::sleep(delay).await;
+            delay = (delay * 2).min(Duration::from_secs(5));
+        }
     }
 }
 

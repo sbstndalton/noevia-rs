@@ -56,6 +56,7 @@ pub enum Plan {
 pub type Clock = Arc<dyn Fn() -> std::time::SystemTime + Send + Sync>;
 
 pub struct SectionWrites {
+    publication: PathBuf,
     pub ini: PathBuf,
     /// `settings.cache_ram_limits`: (cap, hard maximum) in MiB.
     pub cache: (i64, i64),
@@ -428,6 +429,10 @@ impl SectionWrites {
     }
     pub fn with_clock(ini: &Path, cache: (i64, i64), clock: Clock) -> Self {
         Self {
+            publication: std::env::var_os("NOEVIA_PRESET_AUTHORITY_FILE")
+                .map(PathBuf::from)
+                .or_else(|| model_publication::lock_path(ini))
+                .unwrap_or_else(|| ini.to_owned()),
             ini: ini.to_owned(),
             cache,
             clock,
@@ -504,7 +509,7 @@ impl SectionWrites {
         base: Option<&str>,
         backup: bool,
     ) -> std::io::Result<()> {
-        self.replace_file_checked(text, base, backup, base)
+        self.replace_file_checked(text, base, backup, base, None)
     }
 
     fn replace_file_checked(
@@ -513,16 +518,23 @@ impl SectionWrites {
         base: Option<&str>,
         backup: bool,
         expected: Option<&str>,
+        fence: Option<&model_publication::Fence>,
     ) -> std::io::Result<()> {
         let path = &self.ini;
         let dir = path
             .parent()
             .ok_or_else(|| std::io::Error::other("no parent"))?;
         std::fs::create_dir_all(dir)?;
-        let _publication = model_publication::Guard::acquire(path)?;
+        let _publication = model_publication::Guard::at(&self.publication)?;
+        if let Some(fence) = fence {
+            _publication.running(fence)?;
+        }
         if let Some(expected) = expected {
             let (_, actual) =
                 current(path).map_err(|()| std::io::Error::other("preset read failed"))?;
+            if let Some(fence) = fence {
+                _publication.expected(fence, &actual)?;
+            }
             if expected != actual {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::AlreadyExists,
@@ -591,11 +603,22 @@ impl SectionWrites {
             file.write_all(text.as_bytes())?;
             file.flush()?;
             file.sync_all()?;
+            if let Some(fence) = fence {
+                _publication.validate(fence)?;
+            }
             std::fs::rename(&tmp, path)?;
             std::fs::File::open(dir)?.sync_all()
         })();
         let _ = std::fs::remove_file(&tmp);
         result?;
+        // Publish the terminal receipt and observed revision before exclusion can be released.
+        if _publication.authority()?.is_some() {
+            _publication.observe_revision(&hex(text.as_bytes()))?;
+        }
+        if let Some(fence) = fence {
+            _publication.finish(fence, "settled", Some(&hex(text.as_bytes())))?;
+        }
+        _publication.commit()?;
         for old in prune {
             let _ = std::fs::remove_file(old);
         }
@@ -770,7 +793,9 @@ impl SectionWrites {
         if !upsert(&mut cp, name, &parsed.values, &parsed.extras, self.cache) {
             return Outcome::Failed;
         }
-        if let Err(e) = self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision)) {
+        if let Err(e) =
+            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision), None)
+        {
             return publication_error(&e);
         }
         match after_write(&self.ini, Some(name)) {
@@ -783,6 +808,16 @@ impl SectionWrites {
 
     /// `PUT /api/v1/models-ini`, after the text checks (the caller holds the lock).
     pub fn replace_models_ini(&self, text: &str, base: Option<&Json>, backup: bool) -> Outcome {
+        self.replace_models_ini_fenced(text, base, backup, None)
+    }
+
+    pub fn replace_models_ini_fenced(
+        &self,
+        text: &str,
+        base: Option<&Json>,
+        backup: bool,
+        fence: Option<&model_publication::Fence>,
+    ) -> Outcome {
         let Ok((_, revision)) = current(&self.ini) else {
             return Outcome::Failed;
         };
@@ -793,8 +828,14 @@ impl SectionWrites {
             Some(Json::Str(s)) => Some(s.as_str()),
             _ => None,
         };
-        if let Err(e) = self.replace_file(text, base, backup) {
+        if let Err(e) = self.replace_file_checked(text, base, backup, base, fence) {
             if e.kind() == std::io::ErrorKind::AlreadyExists {
+                if let Some(fence) = fence {
+                    if let Ok(guard) = model_publication::Guard::at(&self.publication) {
+                        let _ = guard.finish(fence, "conflict", None);
+                        let _ = guard.commit();
+                    }
+                }
                 return publication_error(&e);
             }
             return detail(
@@ -851,7 +892,7 @@ impl SectionWrites {
                 cfg::render(&cp)
             }
         };
-        if let Err(e) = self.replace_file_checked(&text, None, true, Some(&revision)) {
+        if let Err(e) = self.replace_file_checked(&text, None, true, Some(&revision), None) {
             return publication_error(&e);
         }
         if forget_role(&self.ini, old, Some(new)).is_err() {
@@ -879,7 +920,9 @@ impl SectionWrites {
         if !cp.remove_section(name) {
             return detail(404, "section not found");
         }
-        if let Err(e) = self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision)) {
+        if let Err(e) =
+            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision), None)
+        {
             return publication_error(&e);
         }
         if forget_role(&self.ini, name, None).is_err() {
@@ -908,7 +951,9 @@ impl SectionWrites {
         if !upsert(&mut cp, name, &values, "", self.cache) {
             return Outcome::Failed;
         }
-        if let Err(e) = self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision)) {
+        if let Err(e) =
+            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision), None)
+        {
             return publication_error(&e);
         }
         match after_write(&self.ini, Some(name)) {
@@ -1004,7 +1049,7 @@ impl SectionWrites {
             }
         }
         if !changed.is_empty() {
-            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision))
+            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision), None)
                 .map_err(|_| "models.ini could not be written safely; nothing was changed")?;
         }
         Ok(changed)
@@ -1116,5 +1161,39 @@ fn publication_error(e: &std::io::Error) -> Outcome {
         )
     } else {
         Outcome::Failed
+    }
+}
+
+pub fn publication_fence(
+    value: Option<&Json>,
+) -> Result<Option<model_publication::Fence>, Outcome> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let string = |key| match value.get(key) {
+        Some(Json::Str(s)) if !s.is_empty() && s.len() <= 128 => Some(s.clone()),
+        _ => None,
+    };
+    let generation = match value.get("generation") {
+        Some(Json::Int(n)) => n.to_string().parse::<u64>().ok(),
+        _ => None,
+    };
+    match (
+        string("incarnation"),
+        string("lease"),
+        generation,
+        string("operation"),
+    ) {
+        (Some(incarnation), Some(lease), Some(generation), Some(operation)) => {
+            Ok(Some(model_publication::Fence {
+                incarnation,
+                lease,
+                generation,
+                operation,
+                kind: string("kind").unwrap_or_else(|| "legacy".into()),
+                expected_revision: string("expectedRevision"),
+            }))
+        }
+        _ => Err(detail(409, "Stale maintenance operation.")),
     }
 }

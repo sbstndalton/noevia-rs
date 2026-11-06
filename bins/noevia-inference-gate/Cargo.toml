@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+model-publication = { path = "../../crates/model-publication" }
 inference-admission = { path = "../../crates/inference-admission" }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 bytes = "1"

@@ -14,6 +14,7 @@
 
 use serde::de::{DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
+pub mod raw;
 pub mod wtf16;
 use std::fmt::{self, Write as _};
 

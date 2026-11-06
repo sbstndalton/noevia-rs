@@ -38,6 +38,7 @@ const HOP_BY_HOP: &[&str] = &[
 const GATE_HEADERS: &[&str] = &[
     "x-noevia-lease",
     "x-noevia-maintenance",
+    "x-noevia-maintenance-fence",
     "x-noevia-max-wait-ms",
     "x-noevia-client",
     "x-noevia-gate-admin",
@@ -81,6 +82,18 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
         }
         _ => None,
     };
+    if !matches!(class, Class::Invalid(_) | Class::Passthrough) {
+        if let Some(path) = &gate.cfg.publication_authority {
+            let fence = parts
+                .headers
+                .get("x-noevia-maintenance-fence")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| serde_json::from_str::<model_publication::Fence>(v).ok());
+            if !model_publication::allows(path, fence.as_ref()) {
+                return refuse(&gate, Refusal::MaintenanceHeld);
+            }
+        }
+    }
     match class {
         Class::Invalid(refusal) => refuse(&gate, refusal),
         Class::Passthrough => send(&gate, &parts, outgoing, None, permit).await,
@@ -217,22 +230,40 @@ pub(crate) async fn proxy(gate: Arc<Gate>, request: Request) -> Response {
             // models during the reload, so nothing new may be admitted meanwhile.
             let (tx, rx) = tokio::sync::oneshot::channel();
             let task_gate = Arc::clone(&gate);
+            let caller_limit = gate.cfg.reload_timeout;
             tokio::spawn(async move {
                 let maintenance = Maintenance {
                     gate: Arc::clone(&task_gate),
                 };
-                let timeout = task_gate.cfg.reload_timeout;
-                let response = match forward(&task_gate, &parts, outgoing, permit, timeout).await {
-                    Ok(upstream) => buffer_response(upstream, timeout).await,
-                    Err(refusal) => refuse(&task_gate, refusal),
-                };
+                // Caller deadlines do not cancel the engine-side effect. The task owns exclusion
+                // until the engine answers; any transport-unknown outcome retains the durable
+                // operation incident in the shared authority until a fresh covered recovery reread.
+                let settle_limit = Duration::from_secs(24 * 60 * 60);
+                let response =
+                    match forward(&task_gate, &parts, outgoing, permit, settle_limit).await {
+                        Ok(upstream) => buffer_response(upstream, settle_limit).await,
+                        Err(refusal) => refuse(&task_gate, refusal),
+                    };
                 drop(maintenance);
                 let _ = tx.send(response);
             });
-            rx.await
-                .unwrap_or_else(|_| respond::refusal(Refusal::EngineUnavailable))
+            match tokio::time::timeout(caller_limit, rx).await {
+                Ok(Ok(response)) => response,
+                _ => uncertain(respond::json(
+                    503,
+                    &serde_json::json!({"error":"Reload outcome is uncertain; recovery is required."}),
+                )),
+            }
         }
     }
+}
+
+fn uncertain(mut response: Response) -> Response {
+    response.headers_mut().insert(
+        "x-noevia-maintenance-uncertain",
+        axum::http::HeaderValue::from_static("1"),
+    );
+    response
 }
 
 /// The longest the router may take to answer an unload.

@@ -1911,7 +1911,15 @@ async fn native_section_write(
                 },
                 SectionWrite::ModelsIni => match (body.as_ref(), ini) {
                     (Some(body), Some((text, backup))) => {
-                        writes.replace_models_ini(&text, body.get("baseRevision"), backup)
+                        match section_writes::publication_fence(body.get("maintenance")) {
+                            Ok(fence) => writes.replace_models_ini_fenced(
+                                &text,
+                                body.get("baseRevision"),
+                                backup,
+                                fence.as_ref(),
+                            ),
+                            Err(o) => o,
+                        }
                     }
                     _ => Outcome::Failed,
                 },
