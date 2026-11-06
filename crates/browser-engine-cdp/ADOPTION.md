@@ -80,7 +80,7 @@ proxy cases, CacheStorage/IndexedDB isolation, concurrent same-name downloads,
 and cancellation during a timed wait in addition to approval cancellation.
 
 Exhaustive setup/action/download/close cancellation injection and the remaining
-shared-worker/OOPIF and storage/permissions matrices remain open. Existing
+shared-worker/OOPIF matrix remain open. Existing
 passing behavior is recorded as such; no artificial fail-before is invented for
 cache isolation or cancellation cases that already matched the retained driver.
 
@@ -106,7 +106,7 @@ actual same-origin and cross-origin fill/click effects, requires a positive
 iframe renderer target, checks secret binding and approval cards, and refuses
 the original node if its frame navigates during approval. The input suite
 covers label retargeting, contenteditable, color/range/number validation and
-selecting by label using the same browser-side algorithms. Remaining worker/isolation cases and exhaustive cancellation still gate wiring.
+selecting by label using the same browser-side algorithms. Remaining worker-network cases and exhaustive cancellation still gate wiring.
 
 The local-only transport suite now compares eleven exact outcomes across TLS
 CONNECT, encrypted HTTPS proxies and SOCKS. It covers wrong credentials, origin
@@ -123,3 +123,11 @@ nonform, upload target/type refusals and a successful upload with a DOM filename
 effect. Public errors use fixed compatibility classifications; arbitrary renderer
 exception details are never copied into public reasons. The 24-case contract
 compares approval cards, ordered audit entries, state and close confirmation.
+
+The storage isolation fixture seeds cookies, localStorage, sessionStorage,
+IndexedDB values, page CacheStorage and a real service worker that writes its own
+cache. A second live session sees none of that storage and receives no inherited
+geolocation grant, both before and after closing the first session. This matrix
+already passes on the native baseline; qualification records that result without
+claiming an isolation fix. The test-only permission connection remains alive
+through the first session, matching the retained debugger connection lifetime.

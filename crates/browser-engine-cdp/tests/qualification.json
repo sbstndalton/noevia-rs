@@ -47,8 +47,8 @@
       "evidence": "24 exact response/card/state/audit/lifecycle cases, 36 locator/frame cases, 21 input cases and 11 transport cases pass. Includes SVG extract, invalid form submit, invalid upload target/type and successful upload effects. Owner-approved exception redacts declared-secret audit strings instead of preserving the retained raw action.type leak."
     },
     "6": {
-      "status": "PARTIAL",
-      "evidence": "Cookie/localStorage/CacheStorage/IndexedDB isolation and concurrent downloads match; isolation already passed at baseline. Worker persistence matrix remains."
+      "status": "CLOSED-AT-PARITY",
+      "evidence": "Positive real service worker executes and writes CacheStorage; cookies, localStorage, sessionStorage, CacheStorage, IndexedDB values and geolocation permission are populated in first session and absent in a second live session, before and after first closes. Exact Node/native baseline already passes; no isolation defect invented."
     },
     "4": {
       "status": "CLOSED-AT-PARITY",
