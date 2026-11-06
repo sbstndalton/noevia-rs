@@ -240,6 +240,113 @@ fn canon(v: &Value) -> Value {
     }
 }
 
+/// Routes whose 200 body carries a rolling window (`json.days`, one entry per civil day) that ends
+/// on the server's current date. The stack recorded in the fixture ran on one day and the replay
+/// runs on another, so the window cannot be compared as literal dates (the replay broke at UTC
+/// midnight after the recording). Everything else in these bodies is still compared exactly.
+const DATED_ROUTES: [&str; 2] = ["/api/usage", "/api/usage/aggregate"];
+const MS_PER_DAY: i64 = 86_400_000;
+
+/// Days since 1970-01-01 of a proleptic Gregorian civil date.
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// The civil date `YYYY-MM-DD` of a day number from `days_from_civil`.
+fn civil_from_days(z: i64) -> String {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+fn parse_day(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+        return None;
+    }
+    let (y, m, d) = (
+        s[..4].parse::<i64>().ok()?,
+        s[5..7].parse::<i64>().ok()?,
+        s[8..].parse::<i64>().ok()?,
+    );
+    let day = days_from_civil(y, m, d);
+    // Rejects 2026-02-30 and the like: the date must survive the round trip.
+    (civil_from_days(day) == s).then_some(day)
+}
+
+/// Rewrites `json.days[*].day` of a dated-route body to its offset from the window's last day
+/// (`<day:-364>` ... `<day:0>`), after checking the window is consecutive ascending civil days.
+/// Returns the body and the window's last day number. A malformed window is an error, never
+/// passed through.
+fn rebase_days(body: &Value) -> Result<(Value, i64), String> {
+    let mut out = body.clone();
+    let days = out
+        .pointer_mut("/json/days")
+        .and_then(Value::as_array_mut)
+        .ok_or("dated route body has no json.days array")?;
+    let mut nums = Vec::with_capacity(days.len());
+    for (i, entry) in days.iter().enumerate() {
+        let n = entry["day"]
+            .as_str()
+            .and_then(parse_day)
+            .ok_or_else(|| format!("days[{i}].day is not a civil date: {}", entry["day"]))?;
+        if let Some(prev) = nums.last() {
+            if n != prev + 1 {
+                return Err(format!(
+                    "days[{i}].day is not the day after days[{}]",
+                    i - 1
+                ));
+            }
+        }
+        nums.push(n);
+    }
+    let last = *nums.last().ok_or("empty days window")?;
+    for (entry, n) in days.iter_mut().zip(&nums) {
+        entry["day"] = json!(format!("<day:{}>", n - last));
+    }
+    Ok((out, last))
+}
+
+/// UTC day number of "now".
+fn utc_today() -> i64 {
+    noevia_server::identity::now_ms().div_euclid(MS_PER_DAY)
+}
+
+/// A dated-route comparison: both bodies rebased onto their own last day, and the live window must
+/// end on today (UTC; the day before and after the request are both accepted, so a request that
+/// straddles midnight does not flake). The recorded body's window end is its recording date and
+/// needs no check beyond being a valid consecutive window.
+fn compare_dated(
+    actual: &Value,
+    recorded: &Value,
+    before: i64,
+    after: i64,
+) -> Result<bool, String> {
+    let (rebased_actual, last) = rebase_days(actual).map_err(|e| format!("front body: {e}"))?;
+    let (rebased_recorded, _) = rebase_days(recorded).map_err(|e| format!("fixture body: {e}"))?;
+    if last < before || last > after {
+        return Err(format!(
+            "front window ends {} but today (UTC) is {}..{}",
+            civil_from_days(last),
+            civil_from_days(before),
+            civil_from_days(after)
+        ));
+    }
+    Ok(canon(&rebased_actual) == canon(&rebased_recorded))
+}
+
 fn matches_pattern(pattern: &str, at: &str) -> bool {
     let (a, b): (Vec<_>, Vec<_>) = (pattern.split('/').collect(), at.split('/').collect());
     a.len() == b.len() && a.iter().zip(&b).all(|(p, s)| *p == "*" || p == s)
@@ -509,7 +616,9 @@ async fn replay(
             Some(d) if d.id == id => d.to,
             _ => addr,
         };
+        let today_before = utc_today();
         let got = call(target, id, method, path, &h, unsafe_method.then_some("{}")).await;
+        let today_after = utc_today();
         let expected = c["answeredBy"].as_str();
         // front-node-facts: native, but the answer needs facts Node publishes (policy.nodeFacts);
         // asserted native here, its body compared only in the real stack.
@@ -556,8 +665,22 @@ async fn replay(
             .unwrap_or_else(|| format!("{method} {}", c["route"].as_str().unwrap()));
         let patterns: Vec<String> = volatile.get(&key).map(strings).unwrap_or_default();
         let body = normalize(&shape(&got.text), &patterns, "");
-        let same = u64::from(got.status) == c["status"].as_u64().unwrap()
-            && canon(&body) == canon(&c["body"]);
+        let dated = got.status == 200
+            && c["status"] == 200
+            && method == "GET"
+            && DATED_ROUTES.contains(&c["route"].as_str().unwrap());
+        let body_same = if dated {
+            match compare_dated(&body, &c["body"], today_before, today_after) {
+                Ok(same) => same,
+                Err(e) => {
+                    out.failures.push(format!("{id}: {e}"));
+                    false
+                }
+            }
+        } else {
+            canon(&body) == canon(&c["body"])
+        };
+        let same = u64::from(got.status) == c["status"].as_u64().unwrap() && body_same;
         out.report
             .push(json!({"id": id, "answeredBy": "front", "front": got.status, "same": same}));
         if !same {
@@ -692,4 +815,126 @@ async fn negative_controls_fail_the_grid() {
         "{:?}",
         moved.failures
     );
+}
+
+fn dated_fixture_cases() -> Vec<Value> {
+    fixture()["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| {
+            c["status"] == 200
+                && c["method"] == "GET"
+                && DATED_ROUTES.contains(&c["route"].as_str().unwrap())
+        })
+        .cloned()
+        .collect()
+}
+
+/// The recorded body with its whole window moved `by` days (what the same stack would answer on
+/// another date: only the day labels move).
+fn shifted(body: &Value, by: i64) -> Value {
+    let mut out = body.clone();
+    for entry in out
+        .pointer_mut("/json/days")
+        .unwrap()
+        .as_array_mut()
+        .unwrap()
+    {
+        let n = parse_day(entry["day"].as_str().unwrap()).unwrap();
+        entry["day"] = json!(civil_from_days(n + by));
+    }
+    out
+}
+
+#[test]
+fn dated_window_civil_dates_round_trip() {
+    assert_eq!(days_from_civil(1970, 1, 1), 0);
+    assert_eq!(civil_from_days(0), "1970-01-01");
+    assert_eq!(civil_from_days(days_from_civil(2026, 11, 5)), "2026-11-05");
+    assert_eq!(
+        days_from_civil(2026, 11, 6) - days_from_civil(2026, 11, 5),
+        1
+    );
+    assert_eq!(
+        days_from_civil(2028, 3, 1) - days_from_civil(2028, 2, 28),
+        2
+    );
+    assert_eq!(parse_day("2026-02-30"), None);
+    assert_eq!(parse_day("2026-1-05"), None);
+}
+
+#[test]
+fn dated_routes_compare_by_offset_not_by_the_day_they_were_recorded() {
+    let cases = dated_fixture_cases();
+    // /api/usage member and admin, /api/usage/aggregate admin: if one is dropped the date
+    // handling is no longer exercised.
+    assert_eq!(
+        cases.len(),
+        3,
+        "{:?}",
+        cases.iter().map(|c| &c["id"]).collect::<Vec<_>>()
+    );
+    for c in &cases {
+        let recorded = &c["body"];
+        let (_, recorded_last) = rebase_days(recorded).unwrap();
+        // The recording's own day, the day after it (the 2026-11-06 failure), and far in the
+        // future (a leap day inside the window and a year boundary included).
+        for by in [0, 1, 400, 5_000, 365_000] {
+            let live = shifted(recorded, by);
+            assert_eq!(
+                compare_dated(&live, recorded, recorded_last + by, recorded_last + by),
+                Ok(true),
+                "{} shifted {by}",
+                c["id"]
+            );
+            // The window must end today (UTC): the recorded date is stale when by > 0.
+            if by > 0 {
+                assert!(
+                    compare_dated(&live, recorded, recorded_last, recorded_last).is_err(),
+                    "{} shifted {by} accepted as an old window",
+                    c["id"]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn dated_routes_still_compare_everything_else_exactly() {
+    let c = &dated_fixture_cases()[0];
+    let recorded = &c["body"];
+    let (_, last) = rebase_days(recorded).unwrap();
+    // A changed total, a changed per-day count and a changed offset all still differ.
+    let mut total = recorded.clone();
+    total["json"]["allTime"]["replies"] = json!(1);
+    assert_eq!(compare_dated(&total, recorded, last, last), Ok(false));
+    let mut per_day = recorded.clone();
+    per_day["json"]["days"][10]["replies"] = json!(1);
+    assert_eq!(compare_dated(&per_day, recorded, last, last), Ok(false));
+    let mut short = recorded.clone();
+    short["json"]["days"].as_array_mut().unwrap().remove(0);
+    assert_eq!(compare_dated(&short, recorded, last, last), Ok(false));
+}
+
+#[test]
+fn dated_routes_reject_a_malformed_window() {
+    let c = &dated_fixture_cases()[0];
+    let recorded = &c["body"];
+    let (_, last) = rebase_days(recorded).unwrap();
+    let mut gap = recorded.clone();
+    gap["json"]["days"].as_array_mut().unwrap().remove(100);
+    assert!(compare_dated(&gap, recorded, last, last).is_err());
+    let mut unordered = recorded.clone();
+    unordered["json"]["days"].as_array_mut().unwrap().swap(3, 4);
+    assert!(compare_dated(&unordered, recorded, last, last).is_err());
+    let mut text = recorded.clone();
+    text["json"]["days"][0]["day"] = json!("yesterday");
+    assert!(compare_dated(&text, recorded, last, last).is_err());
+    assert!(compare_dated(&json!({"kind": "empty"}), recorded, last, last).is_err());
+    // A live window ending a day off today fails in either direction.
+    assert!(compare_dated(recorded, recorded, last + 1, last + 1).is_err());
+    assert!(compare_dated(recorded, recorded, last - 1, last - 1).is_err());
+    // A request that straddles midnight may end on either day.
+    assert_eq!(compare_dated(recorded, recorded, last - 1, last), Ok(true));
 }

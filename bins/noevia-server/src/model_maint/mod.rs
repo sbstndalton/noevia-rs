@@ -30,6 +30,8 @@ pub mod ini;
 pub mod node_lease;
 pub mod reload;
 pub mod router;
+// #697 the memory watchdog (Core inference-budget-watch.cjs; `rust-budget-watch`).
+pub mod budget_watch;
 
 use crate::{identity, reply, App};
 use axum::body::Body;
@@ -186,7 +188,18 @@ impl Maint {
         );
         let llama = kind == server_stats::Kind::LlamaCpp;
         let router = if llama {
-            Some(router::Router::new(engine.base(), key.as_deref())?)
+            Some(
+                router::Router::new(engine.base(), key.as_deref())?.with_budget_fence(
+                    data_dir
+                        .as_ref()
+                        .map(|d| d.join(format!("budget-watch-{suffix}"))),
+                    first(get, &["LLAMACPP_PRESET_PATH"]).map(PathBuf::from),
+                    budget_watch::NodeBridge::new(
+                        first(get, &["NOEVIA_LEGACY_UPSTREAM"]).as_deref(),
+                        get("NOEVIA_PROJECT_STORE_TOKEN").as_deref(),
+                    )?,
+                ),
+            )
         } else {
             None
         };
