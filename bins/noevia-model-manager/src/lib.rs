@@ -1605,7 +1605,7 @@ async fn dispatch(state: Arc<StateData>, req: Request) -> Response {
     }
     if let Some(service) = state.embedding.clone() {
         if path == "/api/v1/embedding-service" {
-            return native_embedding(&service, req).await;
+            return native_embedding(&state, &service, req).await;
         }
         if path == "/api/v1/models/delete" && req.method() == Method::POST {
             return guarded_delete(state, service, req).await;
@@ -2557,18 +2557,69 @@ async fn native_idle_unload(reconciler: &idle_unload::Reconciler, req: Request) 
     }
 }
 
-async fn native_embedding(service: &Arc<embedding::EmbeddingService>, req: Request) -> Response {
+async fn native_embedding(
+    state: &StateData,
+    service: &Arc<embedding::EmbeddingService>,
+    req: Request,
+) -> Response {
     match *req.method() {
-        Method::GET => Json(service.status().await).into_response(),
+        Method::GET => {
+            let status = service.status().await;
+            #[cfg(feature = "native-section-writes")]
+            let status = {
+                let mut status = status;
+                if state.section_writes.is_some() {
+                    if let Some(status) = status.as_object_mut() {
+                        status.insert("maintenanceProtocol".into(), json!("embedding-service/1"));
+                    }
+                }
+                status
+            };
+            Json(status).into_response()
+        }
         Method::PUT => {
+            let operation = if let Some(header) = req.headers().get("x-noevia-maintenance-fence") {
+                let Some(fence) = header
+                    .to_str()
+                    .ok()
+                    .and_then(|v| serde_json::from_str::<model_publication::Fence>(v).ok())
+                else {
+                    return detail(StatusCode::CONFLICT, "Stale maintenance operation.");
+                };
+                #[cfg(feature = "native-section-writes")]
+                let path = state
+                    .section_writes
+                    .as_ref()
+                    .map(|w| w.publication_path().to_owned());
+                #[cfg(not(feature = "native-section-writes"))]
+                let path: Option<std::path::PathBuf> = {
+                    let _ = state;
+                    None
+                };
+                let Some(path) = path else {
+                    return detail(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Maintenance authority unavailable.",
+                    );
+                };
+                match embedding::Operation::new(path, fence) {
+                    Ok(operation) => Some(operation),
+                    Err(_) => return detail(StatusCode::CONFLICT, "Stale maintenance operation."),
+                }
+            } else {
+                None
+            };
             let Ok(raw) = to_bytes(req.into_body(), 16 * 1024).await else {
                 return detail(StatusCode::PAYLOAD_TOO_LARGE, "request body exceeded limit");
             };
             let Ok(desired) = serde_json::from_slice::<embedding::Desired>(&raw) else {
                 return detail(StatusCode::BAD_REQUEST, "invalid embedding service request");
             };
-            match service.apply(desired).await {
+            match service.apply_operation(desired, operation).await {
                 Ok(_) => (StatusCode::ACCEPTED, Json(service.status().await)).into_response(),
+                Err(embedding::Refusal::Stale) => {
+                    detail(StatusCode::CONFLICT, "Stale maintenance operation.")
+                }
                 Err(embedding::Refusal::Invalid(text)) => detail(StatusCode::BAD_REQUEST, text),
                 Err(embedding::Refusal::Unavailable(text)) => {
                     detail(StatusCode::SERVICE_UNAVAILABLE, text)

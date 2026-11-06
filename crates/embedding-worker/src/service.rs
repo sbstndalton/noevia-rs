@@ -18,10 +18,22 @@ pub trait Loader: Sync {
 #[derive(Default)]
 pub struct Service {
     last: Option<(u64, Value)>,
+    operations: bool,
     last_error: Option<String>,
     next_refresh_ms: Option<u64>,
 }
 impl Service {
+    pub fn supports_operations(&self) -> bool {
+        self.operations
+    }
+    fn observe(&mut self, now: u64, mut body: Value) {
+        self.operations =
+            body.get("maintenanceProtocol").and_then(Value::as_str) == Some("embedding-service/1");
+        if let Some(body) = body.as_object_mut() {
+            body.remove("maintenanceProtocol");
+        }
+        self.last = Some((now, body));
+    }
     pub fn observed_at_ms(&self) -> Option<u64> {
         self.last.as_ref().map(|(at, _)| *at)
     }
@@ -55,7 +67,7 @@ impl Service {
                 if (200..300).contains(&status)
                     && body.get("managed") == Some(&Value::Bool(true)) =>
             {
-                self.last = Some((now(), body));
+                self.observe(now(), body);
                 self.last_error = None;
             }
             Ok((404, _)) if self.last.is_none() => self.last_error = Some("notManaged".into()),
@@ -88,7 +100,7 @@ impl Service {
             });
         }
         if body.get("managed") == Some(&Value::Bool(true)) {
-            self.last = Some((now(), body));
+            self.observe(now(), body);
         }
         Ok(self.status(now()))
     }

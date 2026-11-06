@@ -28,6 +28,7 @@ pub struct Http {
     admission: Option<Arc<Admission>>,
     proof: Option<Arc<Proof>>,
     client: Client,
+    operation_header: Option<HeaderValue>,
     loader: Option<Url>,
     loader_token: Option<Zeroizing<String>>,
     inference: Url,
@@ -87,6 +88,31 @@ fn headers(token: Option<&str>, name: &str) -> Result<HeaderMap, String> {
     }
     Ok(headers)
 }
+fn redact(value: &mut Value, secrets: &[String]) {
+    match value {
+        Value::String(text) => {
+            for secret in secrets {
+                *text = text.replace(secret, "[redacted]");
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                redact(value, secrets);
+            }
+        }
+        Value::Object(values) => {
+            let old = std::mem::take(values);
+            for (mut key, mut value) in old {
+                for secret in secrets {
+                    key = key.replace(secret, "[redacted]");
+                }
+                redact(&mut value, secrets);
+                values.insert(key, value);
+            }
+        }
+        _ => {}
+    }
+}
 fn allowed(ip: IpAddr) -> bool {
     // Metadata endpoints can sit inside otherwise allowed private/CGNAT ranges.
     if ip == IpAddr::V4(std::net::Ipv4Addr::new(100, 100, 100, 200))
@@ -109,6 +135,79 @@ fn allowed(ip: IpAddr) -> bool {
     }
 }
 impl Http {
+    /// Same private-only DNS policy as the socket boundary, with bounded resolution.
+    pub async fn check_address(raw: &str) -> Result<(), String> {
+        let parsed = Url::parse(raw).map_err(|_| "not a URL".to_owned())?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return Err("not an http(s) URL".into());
+        }
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err("credentials in the URL".into());
+        }
+        if raw.contains(['?', '#']) {
+            return Err("a query string or fragment in the URL".into());
+        }
+        let host = parsed.host_str().ok_or("no host")?.trim_matches(['[', ']']);
+        let why = |ip: IpAddr| -> Option<&'static str> {
+            let ip = match ip {
+                IpAddr::V6(v) => v.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(ip),
+                _ => ip,
+            };
+            if allowed(ip) {
+                return None;
+            }
+            if ip == IpAddr::V4(std::net::Ipv4Addr::new(100, 100, 100, 200))
+                || ip == IpAddr::V4(std::net::Ipv4Addr::new(169, 254, 169, 254))
+                || ip == IpAddr::V6(std::net::Ipv6Addr::new(0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254))
+            {
+                return Some("a cloud metadata address");
+            }
+            if ip.is_unspecified() {
+                return Some("the unspecified address");
+            }
+            if ip.is_multicast() {
+                return Some("a multicast address");
+            }
+            match ip {
+                IpAddr::V4(v) if v.is_link_local() => Some("a link-local address"),
+                IpAddr::V6(v) if v.is_unicast_link_local() => Some("a link-local address"),
+                _ => Some("a public address"),
+            }
+        };
+        if let Ok(ip) = host.parse::<IpAddr>() {
+            return why(ip).map_or(Ok(()), |why| {
+                Err(format!("{host} is not on this network ({host} is {why})"))
+            });
+        }
+        if host.trim_end_matches('.').split('.').any(str::is_empty) {
+            return Err("not a valid host name".into());
+        }
+        let addresses = tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::net::lookup_host((host, parsed.port_or_known_default().unwrap_or(80))),
+        )
+        .await
+        .map_err(|_| "the name does not resolve (lookup timed out)".to_owned())?
+        .map_err(|_| "the name does not resolve (ENOTFOUND)".to_owned())?;
+        let mut count = 0;
+        for address in addresses.take(513) {
+            count += 1;
+            if count > 512 {
+                return Err("the name resolves to too many addresses".into());
+            }
+            if let Some(why) = why(address.ip()) {
+                return Err(format!(
+                    "{host} is not on this network ({} is {why})",
+                    address.ip()
+                ));
+            }
+        }
+        if count == 0 {
+            Err("the name does not resolve".into())
+        } else {
+            Ok(())
+        }
+    }
     pub fn new(
         loader: &str,
         loader_token: Option<String>,
@@ -116,6 +215,7 @@ impl Http {
         inference_token: Option<String>,
     ) -> Result<Self, String> {
         Ok(Self {
+            operation_header: None,
             admission: None,
             proof: None,
             client: Client::builder()
@@ -185,6 +285,28 @@ impl Http {
                     .build()
                     .map_err(|_| err())?
             };
+            let mut secrets: Vec<String> = headers
+                .iter()
+                .filter(|(k, _)| {
+                    matches!(
+                        k.as_str(),
+                        "authorization" | "x-model-loader-token" | "x-noevia-store-token"
+                    )
+                })
+                .filter_map(|(_, v)| v.to_str().ok())
+                .map(|v| v.strip_prefix("Bearer ").unwrap_or(v).to_owned())
+                .filter(|v| !v.is_empty())
+                .collect();
+            secrets.extend(
+                [
+                    self.loader_token.as_deref(),
+                    self.inference_token.as_deref(),
+                ]
+                .into_iter()
+                .flatten()
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty()),
+            );
             let mut request = client
                 .request(method, url)
                 .headers(headers)
@@ -204,7 +326,9 @@ impl Http {
                 }
                 bytes.extend_from_slice(&chunk);
             }
-            Ok((status, serde_json::from_slice(&bytes).map_err(|_| err())?))
+            let mut value = serde_json::from_slice(&bytes).map_err(|_| err())?;
+            redact(&mut value, &secrets);
+            Ok((status, value))
         };
         tokio::time::timeout(timeout, operation)
             .await
@@ -221,15 +345,28 @@ impl Http {
         self.request(
             url(&format!("{}{path}", base.as_str().trim_end_matches('/')))?,
             method,
-            headers(
-                self.loader_token.as_deref().map(|s| s.as_str()),
-                "x-model-loader-token",
-            )?,
+            {
+                let mut headers = headers(
+                    self.loader_token.as_deref().map(|s| s.as_str()),
+                    "x-model-loader-token",
+                )?;
+                if let Some(fence) = &self.operation_header {
+                    headers.insert("x-noevia-maintenance-fence", fence.clone());
+                }
+                headers
+            },
             body,
             timeout,
             1024 * 1024,
         )
         .await
+    }
+    pub fn with_operation(&self, fence: &Value) -> Result<Self, String> {
+        let mut client = self.clone();
+        let mut header = HeaderValue::from_str(&fence.to_string()).map_err(|_| err())?;
+        header.set_sensitive(true);
+        client.operation_header = Some(header);
+        Ok(client)
     }
     /// Native managed-service mutation; no browser-supplied URL or token.
     /// Callers must retain their serialization turn until this bounded request

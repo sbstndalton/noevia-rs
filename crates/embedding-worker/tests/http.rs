@@ -288,3 +288,31 @@ async fn diary_adapter_scopes_service_token_and_preserves_target_wire_shape() {
     }
     assert!(requests[1].contains(&serde_json::to_string(&body).unwrap()));
 }
+
+#[tokio::test]
+async fn reflected_credentials_never_enter_successful_status_payloads() {
+    let (base, _, task) = stub(vec![(
+        200,
+        r#"{"fixture-diary-token":"fixture-loader-token","nested":["fixture-inference-token"]}"#
+            .into(),
+    )])
+    .await;
+    let http = Http::new(
+        &base,
+        Some("fixture-loader-token".into()),
+        &base,
+        Some("fixture-inference-token".into()),
+    )
+    .unwrap();
+    let diary =
+        embedding_worker::http::Diary::new(&base, Some("fixture-diary-token".into())).unwrap();
+    let (_, body) = http.diary(&diary, None).await.unwrap();
+    for token in [
+        "fixture-loader-token",
+        "fixture-inference-token",
+        "fixture-diary-token",
+    ] {
+        assert!(!body.to_string().contains(token));
+    }
+    task.await.unwrap();
+}

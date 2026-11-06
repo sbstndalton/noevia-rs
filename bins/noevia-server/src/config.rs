@@ -63,6 +63,7 @@ pub struct Config {
     /// GET /api/models/capabilities and /api/models/hardware (sbstndalton/noevia#2187): the engine
     /// kind (the same one /api/stats reads), the preset file and the model management service.
     pub models: crate::model_routes::ModelReads,
+    pub embedding: std::sync::Arc<crate::embedding_routes::Settings>,
     /// GET /api/plugins/directory (sbstndalton/noevia#2190): the fixed directory hosts, or the
     /// synthetic ones a QA run names.
     pub plugin_directory: crate::plugin_directory_routes::Sources,
@@ -431,6 +432,7 @@ impl Config {
             model_manager_scan: crate::model_manager_scan::Loader::from_lookup(&get)?,
             maint,
             calibration,
+            embedding: std::sync::Arc::new(crate::embedding_routes::Settings::from_lookup(&get)),
             rust_export,
             project_store,
             start_id,

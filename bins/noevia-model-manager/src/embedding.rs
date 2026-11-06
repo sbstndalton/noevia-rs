@@ -86,6 +86,76 @@ pub trait Probe: Send + Sync {
     fn load<'a>(&'a self, model: &'a str) -> Job<'a, ()>;
 }
 
+/// Destination-side receipt for the shared maintenance protocol. Never a new lease.
+pub struct Operation {
+    path: PathBuf,
+    fence: model_publication::Fence,
+    terminal: bool,
+}
+impl Operation {
+    pub fn new(path: PathBuf, fence: model_publication::Fence) -> Result<Self, Refusal> {
+        if fence.kind != "embedding-service" || fence.expected_revision.is_some() {
+            return Err(Refusal::Stale);
+        }
+        let guard = model_publication::Guard::at(&path)
+            .map_err(|_| Refusal::Unavailable("Maintenance authority unavailable."))?;
+        if !guard
+            .status(&fence)
+            .map_err(|_| Refusal::Stale)?
+            .is_some_and(|r| r.state == "issued")
+        {
+            return Err(Refusal::Stale);
+        }
+        guard.running(&fence).map_err(|_| Refusal::Stale)?;
+        guard
+            .commit()
+            .map_err(|_| Refusal::Unavailable("Maintenance authority unavailable."))?;
+        Ok(Self {
+            path,
+            fence,
+            terminal: false,
+        })
+    }
+    fn run<T>(&self, effect: impl FnOnce() -> Result<T, Refusal>) -> Result<T, Refusal> {
+        let guard = model_publication::Guard::at(&self.path)
+            .map_err(|_| Refusal::Unavailable("Maintenance authority unavailable."))?;
+        guard.running(&self.fence).map_err(|_| Refusal::Stale)?;
+        let value = effect()?;
+        guard
+            .commit()
+            .map_err(|_| Refusal::Unavailable("Maintenance authority unavailable."))?;
+        Ok(value)
+    }
+    fn finish(&mut self, state: &str) -> Result<(), Refusal> {
+        let guard = model_publication::Guard::at(&self.path)
+            .map_err(|_| Refusal::Unavailable("Maintenance authority unavailable."))?;
+        guard
+            .finish(&self.fence, state, None)
+            .map_err(|_| Refusal::Stale)?;
+        guard
+            .commit()
+            .map_err(|_| Refusal::Unavailable("Maintenance authority unavailable."))?;
+        self.terminal = true;
+        Ok(())
+    }
+}
+impl Drop for Operation {
+    fn drop(&mut self) {
+        if !self.terminal {
+            let _ = self.finish("recovery");
+        }
+    }
+}
+fn covered<T>(
+    operation: &Option<Operation>,
+    effect: impl FnOnce() -> Result<T, Refusal>,
+) -> Result<T, Refusal> {
+    match operation {
+        Some(operation) => operation.run(effect),
+        None => effect(),
+    }
+}
+
 pub struct EmbeddingService {
     pub container: String,
     models_dir: PathBuf,
@@ -148,6 +218,7 @@ impl Drop for Running<'_> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refusal {
+    Stale,
     Invalid(&'static str),
     Unavailable(&'static str),
 }
@@ -550,16 +621,27 @@ impl EmbeddingService {
     /// The change runs in its own task, so a caller that gives up (request timeout, closed
     /// connection) can never leave it half done.
     pub async fn apply(self: &Arc<Self>, desired: Desired) -> Result<Saved, Refusal> {
+        self.apply_operation(desired, None).await
+    }
+    pub async fn apply_operation(
+        self: &Arc<Self>,
+        desired: Desired,
+        mut operation: Option<Operation>,
+    ) -> Result<Saved, Refusal> {
         // A cancelled acquisition has dispatched nothing. Once acquired, ownership
         // transfers to the detached task without an intervening cancellation point.
         let Ok(guard) = tokio::time::timeout(self.lock_wait, self.lock.clone().lock_owned()).await
         else {
+            if let Some(operation) = operation.as_mut() {
+                operation.finish("conflict")?;
+            }
             return Err(Refusal::Unavailable(
                 "another embedding change is still running; nothing was changed",
             ));
         };
         let this = self.clone();
-        let effect = crate::work::spawn(async move { this.apply_held(desired, guard).await });
+        let effect =
+            crate::work::spawn(async move { this.apply_held(desired, guard, operation).await });
         // Dropping a JoinHandle detaches; it does not cancel the guarded Docker
         // operation. Never time out control.act itself: Docker can act late.
         tokio::time::timeout(self.act_timeout, effect)
@@ -572,9 +654,15 @@ impl EmbeddingService {
         self: &Arc<Self>,
         desired: Desired,
         _guard: tokio::sync::OwnedMutexGuard<()>,
+        mut operation: Option<Operation>,
     ) -> Result<Saved, Refusal> {
         // Validate under the lock: a delete holding it may just have removed the file.
-        self.validate(&desired)?;
+        if let Err(error) = covered(&operation, || self.validate(&desired)) {
+            if let Some(operation) = operation.as_mut() {
+                operation.finish("conflict")?;
+            }
+            return Err(error);
+        }
         let current = self
             .saved()
             .map_err(Refusal::Unavailable)?
@@ -591,29 +679,47 @@ impl EmbeddingService {
             models: desired.models.clone(),
             previous,
         };
-        self.write_store(&saved).map_err(Refusal::Unavailable)?;
-        if let Err(e) = self.render(&saved.models) {
-            self.roll_back(&current, &saved);
-            return Err(Refusal::Unavailable(e));
-        }
+        covered(&operation, || {
+            self.write_store(&saved).map_err(Refusal::Unavailable)?;
+            if let Err(e) = self.render(&saved.models) {
+                self.roll_back(&current, &saved);
+                return Err(Refusal::Unavailable(e));
+            }
+            Ok(())
+        })?;
         let action = if saved.models.is_empty() {
             Action::Stop
         } else {
             Action::Restart
         };
+        // Recheck after all preceding awaits and immediately before Docker dispatch.
+        covered(&operation, || Ok(()))?;
         let acted = self.control.act(action).await;
         if let Err(e) = acted {
-            self.roll_back(&current, &saved);
+            // A transport error is not proof that Docker refused the effect. The
+            // shared receipt remains recovery-required; never restore on lost coverage.
+            if operation.is_none() {
+                self.roll_back(&current, &saved);
+            }
             return Err(Refusal::Unavailable(e));
         }
+        covered(&operation, || Ok(()))?;
         self.set_broken(None);
         if saved.models.is_empty() {
             // #1696: a warm-up of the set before the stop must not load anything later.
             self.next_warm_generation();
             // A stopped container holds no model file.
             let saved = Saved::default();
-            self.write_store(&saved).map_err(Refusal::Unavailable)?;
+            covered(&operation, || {
+                self.write_store(&saved).map_err(Refusal::Unavailable)
+            })?;
+            if let Some(operation) = operation.as_mut() {
+                operation.finish("settled")?;
+            }
             return Ok(saved);
+        }
+        if let Some(operation) = operation.as_mut() {
+            operation.finish("settled")?;
         }
         self.spawn_warm(saved.models.iter().map(|e| e.model.clone()).collect());
         Ok(saved)

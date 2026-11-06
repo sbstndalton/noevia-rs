@@ -405,7 +405,7 @@ owner = "rust"
 # The embedding role's settings (noevia-core routes/embedding.cjs), listed for the web client at web.ref.
 [[route]]
 path = "/api/embedding"
-owner = "node"
+owner = "rust"
 
 [[route]]
 # M4 (#1315): GET only (crates/server-export, read from the user's files on disk); every other

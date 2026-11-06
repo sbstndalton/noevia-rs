@@ -4,6 +4,8 @@
 
 use crate::js::{is_js_space, units};
 
+pub const PROFILE_NAMES: &[&str] = &["nomic-v1", "embeddinggemma-2"];
+
 pub const DEFAULT_PROFILE: Profile = Profile::NomicV1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

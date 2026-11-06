@@ -26,6 +26,7 @@ pub mod decision_settings_routes;
 pub mod diary_backup;
 pub mod diary_routes;
 pub mod embedding_background;
+pub mod embedding_routes;
 pub mod export_routes;
 pub mod extraction;
 pub mod feature_context;
@@ -400,6 +401,7 @@ use std::sync::Arc;
 pub const FEATURES: &[&str] = &[
     "rust-diary-backup-worker",
     "rust-embedding-background-v1",
+    "noevia-embedding-routes-authority/1",
     "rust-index-outbox-v3",
     "client-address-header",
     "code-net-guard",

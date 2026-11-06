@@ -146,6 +146,9 @@ pub async fn serve(
     if path == crate::autotune_clear_routes::PATH {
         return crate::autotune_clear_routes::serve(app, conn, req, path).await;
     }
+    if path == crate::embedding_routes::PATH {
+        return crate::embedding_routes::serve(app, req).await;
+    }
     if path == crate::calibration_routes::PATH {
         return crate::calibration_routes::serve(app, conn, req, path).await;
     }

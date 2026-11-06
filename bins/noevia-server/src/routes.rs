@@ -484,6 +484,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
                 || p == crate::autotune_untuned_routes::PATH
                 || p == crate::autotune_clear_routes::PATH
                 || p == crate::calibration_cancel_routes::PATH
+                || p == crate::embedding_routes::PATH
                 || p == crate::calibration_routes::PATH) =>
         {
             return Some(Native::Models)
