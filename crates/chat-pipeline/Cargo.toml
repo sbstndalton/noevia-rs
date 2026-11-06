@@ -15,6 +15,7 @@ js-json = { path = "../js-json" }
 prompt-framing = { path = "../prompt-framing" }
 provider-egress = { path = "../provider-egress" }
 provider-error = { path = "../provider-error" }
+tool-exchange = { path = "../tool-exchange" }
 regex = "1"
 sha2 = "=0.10.9"
 

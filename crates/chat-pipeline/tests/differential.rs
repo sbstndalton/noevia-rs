@@ -1256,3 +1256,300 @@ mod route_stage {
         );
     }
 }
+
+mod gate_stage {
+    //! One tool round's calls against core's own handleChat (fixtures/record-gate.cjs).
+    use chat_pipeline::gate::{self, Call, Decision, Executed, Mode, Redeemed, TurnTools, WriteTarget};
+    use js_json::{wtf16, JValue};
+    use std::cell::{Cell, RefCell};
+
+    fn s(v: &JValue) -> Option<String> {
+        v.as_str().map(str::to_owned)
+    }
+    fn arr(v: &JValue) -> &[JValue] {
+        match v {
+            JValue::Arr(a) => a,
+            _ => &[],
+        }
+    }
+    fn mode(v: &JValue) -> Mode {
+        match v.as_str() {
+            Some("allow") => Mode::Allow,
+            Some("ask") => Mode::Ask,
+            _ => Mode::Block,
+        }
+    }
+
+    struct Fence {
+        open: bool,
+        started: std::rc::Rc<Cell<usize>>,
+    }
+    impl gate::Fence for Fence {
+        fn open(&self) -> bool {
+            self.open
+        }
+        fn started(&self) {
+            self.started.set(self.started.get() + 1);
+        }
+    }
+
+    struct Io<'a> {
+        sc: &'a JValue,
+        writes: Vec<String>,
+        toolboxes: JValue,
+        decisions: Cell<usize>,
+        results: Cell<usize>,
+        targets: Cell<usize>,
+        grants: Cell<usize>,
+        applied: RefCell<Vec<String>>,
+        exec: RefCell<Vec<String>>,
+        audit: RefCell<Vec<String>>,
+        opened: Cell<usize>,
+        revoked: Cell<usize>,
+        fences: Cell<usize>,
+        started: std::rc::Rc<Cell<usize>>,
+    }
+
+    impl gate::GateIo for Io<'_> {
+        type Binding = usize;
+        type Fence = Fence;
+        fn user(&self) -> Option<String> {
+            Some("synthetic-user".into())
+        }
+        fn chat_id(&self) -> Option<String> {
+            s(self.sc.get("chatId"))
+        }
+        fn revoked_skill_refusal(&self, _: &str) -> Option<String> {
+            None
+        }
+        fn is_write(&self, name: &str) -> bool {
+            self.writes.iter().any(|w| w == name)
+        }
+        fn mode(&self, name: &str, _: bool) -> Mode {
+            let flip = self.sc.get("flip");
+            if matches!(flip, JValue::Obj(_))
+                && flip.get("tool").as_str() == Some(name)
+                && matches!(flip.get("afterDecisions"), JValue::Num(n) if self.decisions.get() as f64 >= *n)
+            {
+                return mode(flip.get("to"));
+            }
+            mode(self.sc.get("modes").get(name))
+        }
+        fn egress_refusal(&self, _: &str, _: &str) -> Option<String> {
+            None
+        }
+        fn edit_tool(&self, _: &str) -> bool {
+            false
+        }
+        fn resolve_edit(&self, _: &str) -> gate::EditTarget {
+            gate::EditTarget::default()
+        }
+        fn has_write_targets(&self) -> bool {
+            matches!(self.sc.get("target"), JValue::Obj(_))
+        }
+        async fn write_target(&self, _: &str, _: &str) -> Result<Option<WriteTarget>, ()> {
+            let t = self.sc.get("target");
+            let n = self.targets.get();
+            self.targets.set(n + 1);
+            let v = if n == 0 || t.get("again").as_str() == Some("same") { t.get("first") } else { t.get("again") };
+            match v {
+                JValue::Obj(_) if v.get("throws") == &JValue::Bool(true) => Err(()),
+                JValue::Obj(_) => Ok(Some(WriteTarget { target: s(v.get("target")), kind: s(v.get("kind")), error: s(v.get("error")) })),
+                _ => Ok(None),
+            }
+        }
+        fn provenance(&self, _: &str) -> Option<Result<Vec<JValue>, ()>> {
+            None
+        }
+        fn automatic_only(&self, _: &str) -> bool {
+            false
+        }
+        async fn permission_context(&self) -> Result<Option<usize>, ()> {
+            if self.chat_id().is_none() {
+                return Ok(None);
+            }
+            let n = self.grants.get() + 1;
+            self.grants.set(n);
+            match self.sc.get("grant").as_str() {
+                Some("tombstoned") => Err(()),
+                Some("moves") => Ok(Some(n)),
+                _ => Ok(Some(0)),
+            }
+        }
+        fn binding_matches(&self, a: &Option<usize>, b: &Option<usize>) -> bool {
+            a.is_some() && a == b
+        }
+        async fn chat_wide_approved(&self, _: &Option<usize>) -> bool {
+            self.sc.get("chatWide") == &JValue::Bool(true)
+        }
+        fn repeat(&self, fp: &str) -> bool {
+            self.applied.borrow().iter().any(|a| a == fp)
+        }
+        fn route(&self, name: &str) -> Option<String> {
+            match name {
+                "gdrive_update" => Some("gdrive".into()),
+                "delete_note" => Some("notes".into()),
+                _ => None,
+            }
+        }
+        fn new_approval_id(&self) -> String {
+            "ap-00000000-0000-0000-0000-000000000000".into()
+        }
+        async fn open_approval(&self, _: &str, _: &Option<usize>) -> bool {
+            self.opened.set(self.opened.get() + 1);
+            self.sc.get("open") == &JValue::Bool(true)
+        }
+        async fn await_approval(&self, _: &str, _: &Option<usize>) -> Decision {
+            let n = self.decisions.get();
+            self.decisions.set(n + 1);
+            Decision::from_js(arr(self.sc.get("decisions")).get(n).and_then(|d| d.as_str()).unwrap_or("deny"))
+        }
+        fn aborted(&self) -> bool {
+            false
+        }
+        fn workspace_ok(&self, _: &Option<String>) -> bool {
+            true
+        }
+        async fn revoke_grant(&self) {
+            self.revoked.set(self.revoked.get() + 1);
+        }
+        fn has_redeem(&self) -> bool {
+            self.sc.get("redeemWired") == &JValue::Bool(true)
+        }
+        async fn redeem(&self, _: &Option<usize>) -> Redeemed<Fence> {
+            match self.sc.get("redeem").as_str() {
+                Some("unavailable") => Redeemed::Unavailable,
+                Some("invalid") => Redeemed::Invalid,
+                r => {
+                    self.fences.set(self.fences.get() + 1);
+                    Redeemed::Fence(Fence { open: r == Some("fence-open"), started: self.started.clone() })
+                }
+            }
+        }
+        async fn execute(&self, name: &str, args: &str, fence: Option<&Fence>, _: Option<&(String, Option<String>)>) -> Result<Executed, String> {
+            let n = self.results.get();
+            self.results.set(n + 1);
+            self.exec.borrow_mut().push(format!("{name}|{args}|{}", fence.is_some()));
+            let r = arr(self.sc.get("results")).get(n).cloned().unwrap_or(JValue::Str("ok".into()));
+            match &r {
+                JValue::Str(t) => Ok(Executed { text: t.clone(), ..Executed::default() }),
+                _ if matches!(r.get("throws"), JValue::Str(_)) => Err(s(r.get("throws")).unwrap()),
+                _ if matches!(r.get("notRun"), JValue::Str(_)) => Ok(Executed { text: s(r.get("notRun")).unwrap(), not_run: true, failed: false }),
+                _ => Ok(Executed { text: s(r.get("failed")).unwrap(), not_run: false, failed: true }),
+            }
+        }
+        fn audit(&self, event: &str, tool: &str, reason: Option<&str>) {
+            self.audit.borrow_mut().push(format!("{event}|{tool}|{}", reason.unwrap_or("null")));
+        }
+        fn record_tool_use(&self, _: &str) {}
+        fn public_tool(&self, name: &str) -> bool {
+            chat_pipeline::replay::is_public_tool_name(&JValue::Str(name.into()), &self.toolboxes)
+        }
+    }
+
+    fn block<F: std::future::Future>(f: F) -> F::Output {
+        let mut f = std::pin::pin!(f);
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        match std::future::Future::poll(f.as_mut(), &mut cx) {
+            std::task::Poll::Ready(v) => v,
+            std::task::Poll::Pending => panic!("the oracle's io never waits"),
+        }
+    }
+
+    #[test]
+    fn tool_calls_through_the_gate_match_node() {
+        let c = wtf16::parse(include_str!("fixtures/gate-cases.json")).unwrap();
+        let writes: Vec<String> = arr(c.get("writes")).iter().filter_map(s).collect();
+        let tools: Vec<JValue> = ["web_search", "read_file", "write_file", "gdrive_update", "delete_note", "unknown_tool"]
+            .iter()
+            .map(|n| JValue::Obj(vec![("type".into(), JValue::Str("function".into())), ("function".into(), JValue::Obj(vec![("name".into(), JValue::Str((*n).into()))]))]))
+            .collect();
+        let toolboxes = JValue::Arr(vec![JValue::Obj(vec![("id".into(), JValue::Str("core".into())), ("tools".into(), JValue::Arr(tools))])]);
+        let mut paused = 0;
+        for k in arr(c.get("cases")) {
+            let what = wtf16::stringify(k).unwrap();
+            let io = Io {
+                sc: k,
+                writes: writes.clone(),
+                toolboxes: toolboxes.clone(),
+                decisions: Cell::new(0),
+                results: Cell::new(0),
+                targets: Cell::new(0),
+                grants: Cell::new(0),
+                applied: RefCell::new(Vec::new()),
+                exec: RefCell::new(Vec::new()),
+                audit: RefCell::new(Vec::new()),
+                opened: Cell::new(0),
+                revoked: Cell::new(0),
+                fences: Cell::new(0),
+                started: std::rc::Rc::new(Cell::new(0)),
+            };
+            let mut st = TurnTools { decline_ends_reply: true, ..TurnTools::default() };
+            let mut events = Vec::new();
+            let mut messages = Vec::new();
+            for (i, call) in arr(k.get("calls")).iter().enumerate() {
+                let name = s(call.get("name")).unwrap();
+                let raw = s(call.get("args")).unwrap();
+                let args = chat_pipeline::search::clean_search_args(&JValue::Str(name.clone()), &JValue::Str(raw));
+                let call = Call { index: i, id: format!("id-{i}"), name, args: s(&args).unwrap(), too_large: false };
+                let reduce = |t: &str| {
+                    let u: Vec<u16> = t.encode_utf16().collect();
+                    String::from_utf16_lossy(u.get(..120).unwrap_or(&u))
+                };
+                let done = block(gate::run_call(&io, &mut st, &call, true, &reduce, &mut |e| events.push(e)));
+                if let Some(fp) = done.applied.clone() {
+                    io.applied.borrow_mut().push(fp);
+                }
+                events.push(done.tool_result.clone());
+                messages.push(done.message);
+            }
+            if !st.declined_writes.is_empty() {
+                events.push(chat_pipeline::end::declined_pause(st.applied.len(), &st.declined_writes));
+                paused += 1;
+            }
+            let out = k.get("out");
+            let want: Vec<String> = arr(out.get("events"))
+                .iter()
+                .filter(|e| matches!(e.get("type").as_str(), Some("tool_pending" | "tool_result" | "paused")))
+                .map(|e| match e {
+                    JValue::Obj(o) => wtf16::stringify(&JValue::Obj(o.iter().filter(|(k, _)| k != "idShape").cloned().collect())).unwrap(),
+                    _ => unreachable!(),
+                })
+                .collect();
+            let got: Vec<String> = events
+                .iter()
+                .map(|e| match e {
+                    JValue::Obj(o) => wtf16::stringify(&JValue::Obj(o.iter().filter(|(k, _)| k != "id").cloned().collect())).unwrap(),
+                    _ => unreachable!(),
+                })
+                .collect();
+            assert_eq!(got, want, "events {what}");
+            let want_exec: Vec<String> = arr(out.get("exec"))
+                .iter()
+                .map(|e| format!("{}|{}|{}", s(e.get("name")).unwrap(), s(e.get("args")).unwrap(), e.get("fence") == &JValue::Bool(true)))
+                .collect();
+            assert_eq!(*io.exec.borrow(), want_exec, "exec {what}");
+            let want_audit: Vec<String> = arr(out.get("audit"))
+                .iter()
+                .map(|a| {
+                    let p = arr(a);
+                    format!("{}|{}|{}", s(&p[0]).unwrap(), s(&p[1]).unwrap_or_default(), s(&p[2]).unwrap_or_else(|| "null".into()))
+                })
+                .collect();
+            assert_eq!(*io.audit.borrow(), want_audit, "audit {what}");
+            assert_eq!(io.opened.get(), arr(out.get("opened")).len(), "opened {what}");
+            // Every fence redeemed for a call was closed exactly once, whatever the path.
+            assert_eq!(io.started.get(), io.fences.get(), "fences {what}");
+            assert_eq!(Some(io.revoked.get() as f64), match out.get("revoked") { JValue::Num(n) => Some(*n), _ => None }, "revoked {what}");
+            match out.get("toolMessages") {
+                JValue::Arr(want) => {
+                    let got: Vec<(String, String)> = messages.iter().map(|m| (s(m.get("tool_call_id")).unwrap(), s(m.get("content")).unwrap())).collect();
+                    let want: Vec<(String, String)> = want.iter().map(|m| (s(m.get("id")).unwrap(), s(m.get("content")).unwrap())).collect();
+                    assert_eq!(got, want, "messages {what}");
+                }
+                _ => assert!(!st.declined_writes.is_empty(), "Node sent no second round: {what}"),
+            }
+        }
+        assert!(paused > 50, "{paused}");
+    }
+}

@@ -13,6 +13,7 @@
 //! - [`title`]: the chat's generated title (#1785).
 //! - [`usage`]: the exchange's usage and first-token telemetry across tool rounds.
 //! - [`validate`]: what a turn refuses before anything is read or written.
+//! - [`gate`]: one tool call through the exchange, the permission gate, the card, the grant and the executor.
 //! - [`route`]: where a turn goes (routing modes, provider, Auto roles, model) or why it is refused.
 //! - [`end`]: how a turn ends (pauses, the last sources, the fallback text, telemetry).
 //! - [`failure`]: the words a failed engine reply shows.
@@ -22,6 +23,7 @@
 //! - [`notes`]: the system notes a turn adds or removes (`withSystemNote`, `withoutSystemNote`).
 pub mod end;
 pub mod failure;
+pub mod gate;
 pub mod notes;
 pub mod record;
 pub mod reduce;
