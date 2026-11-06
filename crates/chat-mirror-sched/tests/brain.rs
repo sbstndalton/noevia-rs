@@ -146,3 +146,27 @@ async fn dropping_the_scheduler_stops_its_timers() {
     advance(m(10)).await;
     assert!(exec.calls().is_empty());
 }
+
+/// Root ruling 2026-11-05 (stale brain publication): a build whose chat changed under it answers
+/// "stale"; nothing is nudged, and the chat is built again after the idle period, every time.
+#[tokio::test(start_paused = true)]
+async fn a_stale_build_is_rescheduled_after_the_idle_period() {
+    let (b, exec, built) = make();
+    exec.then("stale");
+    exec.then("stale");
+    exec.then("built");
+    b.schedule(U1, "c1");
+    advance(m(3)).await;
+    assert_eq!(exec.calls().len(), 1);
+    assert!(b.pending(U1, "c1"), "rescheduled");
+    advance(m(3)).await;
+    assert_eq!(exec.calls().len(), 2, "built again after idle");
+    advance(m(3)).await;
+    assert_eq!(exec.calls().len(), 3, "and again while it stays stale");
+    assert_eq!(
+        built.lock().unwrap().len(),
+        1,
+        "only the fresh build nudges the mirror"
+    );
+    assert!(!b.pending(U1, "c1"));
+}

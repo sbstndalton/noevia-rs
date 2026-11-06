@@ -185,23 +185,48 @@ pub trait BrainSource: Send + Sync {
     fn enabled(&self, user: &str) -> bool;
     /// The chat's entry in the account's own lists.
     fn chat(&self, user: &str, chat: &str) -> Result<Option<JValue>, String>;
-    fn history(&self, user: &str, chat: &str) -> Result<Vec<JValue>, String>;
+    /// The transcript the model will read and the store's revision of it, read together.
+    fn snapshot(&self, user: &str, chat: &str) -> Result<(Vec<JValue>, String), String>;
     fn deleted(&self, user: &str) -> Result<HashSet<String>, String>;
     fn read(&self, user: &str, chat: &str) -> Option<brain::Record>;
-    fn write(
+    /// Compare-and-swap at the store: under the locks every transcript save, chat delete and chat
+    /// list change holds, the chat is read again; the brain is written only when the chat is still
+    /// listed with `expected`'s `updatedAt` and transcript revision. A tombstoned chat loses its
+    /// stored brain there.
+    fn write_if(
         &self,
         user: &str,
         chat: &str,
+        expected: &Revision,
         brain: &JValue,
         source_updated_at: f64,
         built_at: f64,
-    ) -> Result<(), String>;
+    ) -> Result<Cas, String>;
     fn remove(&self, user: &str, chat: &str);
     fn now_ms(&self) -> f64;
     fn log(&self, _line: &str) {}
 }
 
-/// One chat's brain build: `built`, `current`, `off`, `gone`, `error` or a builder fallback.
+/// What the model's input was taken from: the chat's `updatedAt` in its list and the store's
+/// transcript revision.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Revision {
+    pub updated_at: JValue,
+    pub transcript: String,
+}
+
+/// What [`BrainSource::write_if`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cas {
+    Written,
+    /// The chat changed since the snapshot: nothing written.
+    Stale,
+    /// The chat is no longer listed (deleted, tombstoned or moved away): nothing written.
+    Gone,
+}
+
+/// One chat's brain build: `built`, `current`, `off`, `gone`, `stale` (the chat changed while the
+/// model ran: nothing written, built again later), `error` or a builder fallback.
 pub async fn run_brain(
     user: &str,
     chat_id: &str,
@@ -241,7 +266,11 @@ async fn run_brain_inner(
             return Ok("current".into());
         }
     }
-    let history = source.history(user, chat_id)?;
+    let (history, transcript) = source.snapshot(user, chat_id)?;
+    let expected = Revision {
+        updated_at: meta.get("updatedAt").clone(),
+        transcript,
+    };
     let brain = match brain::build(reasoner, &meta, &history).await {
         Ok(b) => b,
         Err(reason) => return Ok(reason),
@@ -250,14 +279,14 @@ async fn run_brain_inner(
     if !source.enabled(user) {
         return Ok("off".into());
     }
-    // #811: so is deletion while the model ran.
-    let tombstoned = source.deleted(user)?.contains(chat_id);
-    if tombstoned || source.chat(user, chat_id)?.is_none() {
-        if tombstoned {
-            source.remove(user, chat_id);
+    // #811 and the stale-publication fence (root ruling 2026-11-05; core checked deletion only,
+    // and outside any lock): the write is a compare-and-swap at the store.
+    Ok(
+        match source.write_if(user, chat_id, &expected, &brain, updated, source.now_ms())? {
+            Cas::Written => "built",
+            Cas::Stale => "stale",
+            Cas::Gone => "gone",
         }
-        return Ok("gone".into());
-    }
-    source.write(user, chat_id, &brain, updated, source.now_ms())?;
-    Ok("built".into())
+        .into(),
+    )
 }

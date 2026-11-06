@@ -35,6 +35,10 @@ impl Default for Timings {
 /// The reasons a failed build is worth one retry (a missing model or an empty chat is not).
 pub const RETRYABLE: [&str; 5] = ["deadline", "error", "budget", "invalid-json", "schema"];
 
+/// The executor's answer when the chat changed (or was deleted) between the model's snapshot and
+/// the write: the brain was discarded, and the chat is built again after `idle`.
+pub const STALE: &str = "stale";
+
 /// Called after a new brain was stored: the mirror is nudged for that chat.
 pub type Built = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
@@ -141,6 +145,10 @@ async fn fire(inner: Arc<Inner>, key: Key, generation: u64, retried: bool) {
     if reason == "built" || reason == "current" {
         // The mirror nudge never fails a build.
         (inner.built)(&key.0, &key.1);
+    } else if reason == STALE {
+        // The chat changed while its brain was built: nothing was written; build again once it has
+        // been quiet (a newer change has usually armed that timer already, which then stands).
+        arm(&inner, &key.0, &key.1, inner.timings.idle, false, false);
     } else if !retried && RETRYABLE.contains(&reason.as_str()) {
         arm(&inner, &key.0, &key.1, inner.timings.retry, true, false);
     }

@@ -22,7 +22,8 @@
 use crate::research_routes::Research;
 use chat_mirror_exec::brain::{self, Reasoner};
 use chat_mirror_exec::{
-    BoxFut, BrainSource, Completion, Diary, FileError, Leaf, Lists, MirrorSource, UserRoot,
+    BoxFut, BrainSource, Cas, Completion, Diary, FileError, Leaf, Lists, MirrorSource, Revision,
+    UserRoot,
 };
 use chat_mirror_sched::{BrainExecutor, MirrorExecutor, MirrorOutcome};
 use js_json::{wtf16, JValue};
@@ -181,6 +182,7 @@ impl<H: Host> BrainExecutor for NativeWork<H> {
             };
             let source = Brains {
                 root: open_root(host.data_dir(), &user),
+                user: user.clone(),
                 host: Arc::clone(&host),
                 first: std::sync::Mutex::new(Some(g.clone())),
             };
@@ -326,6 +328,7 @@ impl<H: Host> MirrorSource for Workspace<H> {
 
 struct Brains<H: Host> {
     host: Arc<H>,
+    user: String,
     /// The account folder, opened when the build started; `Err` fails each step that needs it.
     root: Result<UserRoot, String>,
     /// The gates read when the build started (core read them on the first `enabled` call); later
@@ -350,7 +353,79 @@ impl<H: Host> BrainSource for Brains<H> {
         g.is_some_and(|g| g.reasoner && g.available && g.opted_in)
     }
     fn chat(&self, _: &str, chat: &str) -> Result<Option<JValue>, String> {
-        let l = lists(self.root()?)?;
+        listed(self.root()?, chat)
+    }
+    fn snapshot(&self, _: &str, chat: &str) -> Result<(Vec<JValue>, String), String> {
+        let history = history(self.root()?, chat)?;
+        let revision = revision(&history)?;
+        Ok((history, revision))
+    }
+    fn deleted(&self, _: &str) -> Result<HashSet<String>, String> {
+        tombstones(self.root()?)
+    }
+    fn read(&self, _: &str, chat: &str) -> Option<brain::Record> {
+        brain::read(self.root().ok()?, chat)
+    }
+    fn write_if(
+        &self,
+        _: &str,
+        chat: &str,
+        expected: &Revision,
+        b: &JValue,
+        source_updated_at: f64,
+        built_at: f64,
+    ) -> Result<Cas, String> {
+        let root = self.root()?;
+        // The authority's locks, in chat_move's order: the transcript lock (every transcript save
+        // and chat delete), then projects.json and free-chats.json (every list change). Held across
+        // the re-read and the write, across processes (file locks), so nothing changes in between.
+        let dir = self.host.data_dir().join("users").join(&self.user);
+        let lock = |name: &str| {
+            server_projects::lock::acquire(&dir.join(name)).map_err(|e| format!("lock: {e:?}"))
+        };
+        let _transcripts = lock(server_projects::transcript::LOCK_NAME)?;
+        let _projects = lock(store::PROJECTS_FILE)?;
+        let _free = lock(FREE_CHATS_FILE)?;
+        root.verify()?;
+        let Some(meta) = listed(root, chat)? else {
+            if tombstones(root)?.contains(chat) {
+                brain::remove(root, chat);
+            }
+            return Ok(Cas::Gone);
+        };
+        let same_time =
+            wtf16::stringify(meta.get("updatedAt")) == wtf16::stringify(&expected.updated_at);
+        if !same_time || revision(&history(root, chat)?)? != expected.transcript {
+            return Ok(Cas::Stale);
+        }
+        brain::write(root, chat, b, source_updated_at, built_at)?;
+        Ok(Cas::Written)
+    }
+    fn remove(&self, _: &str, chat: &str) {
+        if let Ok(root) = self.root() {
+            brain::remove(root, chat);
+        }
+    }
+    #[allow(clippy::cast_precision_loss)]
+    fn now_ms(&self) -> f64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0.0, |d| d.as_millis() as f64)
+    }
+    fn log(&self, line: &str) {
+        self.host.log(line);
+    }
+}
+
+fn revision(history: &[JValue]) -> Result<String, String> {
+    server_projects::history::revision_of(&JValue::Arr(history.to_vec()))
+        .ok_or_else(|| "Corrupt".to_owned())
+}
+
+/// The chat's entry in the account's own lists (flatMap of the projects' chats, then free chats).
+fn listed(root: &UserRoot, chat: &str) -> Result<Option<JValue>, String> {
+    {
+        let l = lists(root)?;
         let mut all = l.free_chats.into_iter();
         if let Some(c) = all.find(|c| c.truthy() && c.get("id").as_str() == Some(chat)) {
             return Ok(Some(c));
@@ -373,39 +448,6 @@ impl<H: Host> BrainSource for Brains<H> {
             }
         }
         Ok(None)
-    }
-    fn history(&self, _: &str, chat: &str) -> Result<Vec<JValue>, String> {
-        history(self.root()?, chat)
-    }
-    fn deleted(&self, _: &str) -> Result<HashSet<String>, String> {
-        tombstones(self.root()?)
-    }
-    fn read(&self, _: &str, chat: &str) -> Option<brain::Record> {
-        brain::read(self.root().ok()?, chat)
-    }
-    fn write(
-        &self,
-        _: &str,
-        chat: &str,
-        b: &JValue,
-        source_updated_at: f64,
-        built_at: f64,
-    ) -> Result<(), String> {
-        brain::write(self.root()?, chat, b, source_updated_at, built_at).map(|_| ())
-    }
-    fn remove(&self, _: &str, chat: &str) {
-        if let Ok(root) = self.root() {
-            brain::remove(root, chat);
-        }
-    }
-    #[allow(clippy::cast_precision_loss)]
-    fn now_ms(&self) -> f64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0.0, |d| d.as_millis() as f64)
-    }
-    fn log(&self, line: &str) {
-        self.host.log(line);
     }
 }
 
@@ -503,16 +545,40 @@ impl Diary for DiaryAs {
 
 /// [`EngineSeam`] over core's loopback seam (see the module notes).
 pub struct NodeEngine {
-    pub research: Arc<Research>,
+    pub bridge: Arc<dyn NodeBridge>,
+    pub log: Arc<dyn Fn(&str) + Send + Sync>,
+}
+
+/// Core's loopback (the per-start secret): `POST ENGINE_PATH` with a JSON body.
+pub trait NodeBridge: Send + Sync + 'static {
+    fn post(&self, body: String, deadline: Duration) -> BoxFut<Option<(u16, Vec<u8>)>>;
+}
+
+/// The production bridge: the research layer's loopback client.
+pub(crate) struct ResearchBridge(pub Arc<Research>);
+
+impl NodeBridge for ResearchBridge {
+    fn post(&self, body: String, deadline: Duration) -> BoxFut<Option<(u16, Vec<u8>)>> {
+        let research = Arc::clone(&self.0);
+        Box::pin(async move { research.node_call_text(ENGINE_PATH, body, deadline).await })
+    }
+}
+
+impl NodeEngine {
+    pub(crate) fn over(research: Arc<Research>) -> Self {
+        NodeEngine {
+            bridge: Arc::new(ResearchBridge(research)),
+            log: Arc::new(|line: &str| eprintln!("noevia-server: {line}")),
+        }
+    }
 }
 
 impl NodeEngine {
     fn post(&self, body: JValue, deadline: Duration) -> BoxFut<Option<(u16, Vec<u8>)>> {
-        let research = Arc::clone(&self.research);
-        Box::pin(async move {
-            let text = wtf16::stringify(&body)?;
-            research.node_call_text(ENGINE_PATH, text, deadline).await
-        })
+        let Some(text) = wtf16::stringify(&body) else {
+            return Box::pin(async { None });
+        };
+        self.bridge.post(text, deadline)
     }
     fn ask(&self, body: JValue, deadline: Duration) -> BoxFut<Option<JValue>> {
         let post = self.post(body, deadline);
@@ -561,10 +627,15 @@ impl EngineSeam for NodeEngine {
             JValue::obj([("op", JValue::from("record")), ("entry", entry)]),
             ENGINE_FACTS,
         );
+        let log = Arc::clone(&self.log);
         if let Ok(rt) = tokio::runtime::Handle::try_current() {
             rt.spawn(async move {
-                if !matches!(post.await, Some((204, _))) {
-                    eprintln!("noevia-server: chat-brain: a decision log entry was not recorded");
+                match post.await {
+                    Some((204, _)) => {}
+                    Some((status, _)) => log(&format!(
+                        "chat-brain: a decision log entry was not recorded ({status})"
+                    )),
+                    None => log("chat-brain: a decision log entry was not recorded (no answer)"),
                 }
             });
         }

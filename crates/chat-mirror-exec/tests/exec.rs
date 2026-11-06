@@ -8,7 +8,7 @@
 )]
 
 use chat_mirror_exec::brain::{self, Reasoner};
-use chat_mirror_exec::{BoxFut, BrainSource, Completion, UserRoot};
+use chat_mirror_exec::{BoxFut, BrainSource, Cas, Completion, Revision, UserRoot};
 use js_json::{wtf16, JValue};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -38,6 +38,9 @@ struct Src {
     tombstones: Mutex<HashSet<String>>,
     tomb_after_build: bool,
     builds: AtomicUsize,
+    /// The store's transcript revision now; `change_during_build` replaces it while the model runs.
+    revision: Mutex<String>,
+    change_during_build: Mutex<Option<String>>,
 }
 
 impl Src {
@@ -51,6 +54,8 @@ impl Src {
             tombstones: Mutex::new(HashSet::new()),
             tomb_after_build: false,
             builds: AtomicUsize::new(0),
+            revision: Mutex::new("r1".into()),
+            change_during_build: Mutex::new(None),
         }
     }
 }
@@ -71,13 +76,14 @@ impl BrainSource for Src {
     fn chat(&self, _: &str, _: &str) -> Result<Option<JValue>, String> {
         Ok(pop(&self.chats))
     }
-    fn history(&self, _: &str, _: &str) -> Result<Vec<JValue>, String> {
+    fn snapshot(&self, _: &str, _: &str) -> Result<(Vec<JValue>, String), String> {
         if self.tomb_after_build {
             self.tombstones.lock().unwrap().insert("c".into());
         }
-        Ok(vec![
-            wtf16::parse(r#"{"role":"user","content":"hi"}"#).unwrap()
-        ])
+        Ok((
+            vec![wtf16::parse(r#"{"role":"user","content":"hi"}"#).unwrap()],
+            self.revision.lock().unwrap().clone(),
+        ))
     }
     fn deleted(&self, _: &str) -> Result<HashSet<String>, String> {
         Ok(self.tombstones.lock().unwrap().clone())
@@ -85,8 +91,30 @@ impl BrainSource for Src {
     fn read(&self, _: &str, chat: &str) -> Option<brain::Record> {
         brain::read(&self.root, chat)
     }
-    fn write(&self, _: &str, chat: &str, b: &JValue, s: f64, t: f64) -> Result<(), String> {
-        brain::write(&self.root, chat, b, s, t).map(|_| ())
+    /// The fake authority: the chat as listed now, the revision now.
+    fn write_if(
+        &self,
+        _: &str,
+        chat: &str,
+        expected: &Revision,
+        b: &JValue,
+        s: f64,
+        t: f64,
+    ) -> Result<Cas, String> {
+        let tombstoned = self.tombstones.lock().unwrap().contains(chat);
+        let Some(meta) = pop(&self.chats).filter(|_| !tombstoned) else {
+            if tombstoned {
+                brain::remove(&self.root, chat);
+            }
+            return Ok(Cas::Gone);
+        };
+        if *meta.get("updatedAt") != expected.updated_at
+            || *self.revision.lock().unwrap() != expected.transcript
+        {
+            return Ok(Cas::Stale);
+        }
+        brain::write(&self.root, chat, b, s, t)?;
+        Ok(Cas::Written)
     }
     fn remove(&self, _: &str, chat: &str) {
         brain::remove(&self.root, chat);
@@ -112,8 +140,49 @@ impl Reasoner for R<'_> {
     }
     fn complete(&self, _: Completion) -> BoxFut<Result<String, String>> {
         self.0.builds.fetch_add(1, Ordering::SeqCst);
+        // The chat changes while the model runs (the build is suspended here).
+        if let Some(r) = self.0.change_during_build.lock().unwrap().take() {
+            *self.0.revision.lock().unwrap() = r;
+        }
         Box::pin(async { Ok(BRAIN.to_owned()) })
     }
+}
+
+/// Root ruling 2026-11-05: a chat that changes while its build is suspended in the model call gets
+/// no brain from the old snapshot (core wrote it); the build answers "stale" (rescheduled by
+/// chat-mirror-sched). So does a change of the chat's listed updatedAt.
+#[tokio::test(flavor = "current_thread")]
+async fn a_chat_changed_during_the_build_gets_no_stale_brain() {
+    let dir = tmpdir("stale");
+    let src = Src::new(dir.clone());
+    *src.change_during_build.lock().unwrap() = Some("r2".into());
+    assert_eq!(
+        chat_mirror_exec::run_brain("u", "c", &src, &R(&src)).await,
+        "stale"
+    );
+    assert!(
+        brain::read(&root(&dir), "c").is_none(),
+        "stale brain written"
+    );
+    // The next build reads the new transcript and writes.
+    assert_eq!(
+        chat_mirror_exec::run_brain("u", "c", &src, &R(&src)).await,
+        "built"
+    );
+
+    let dir2 = tmpdir("stale-meta");
+    let src2 = Src::new(dir2.clone());
+    *src2.chats.lock().unwrap() = vec![
+        Some(wtf16::parse(r#"{"id":"c","updatedAt":5}"#).unwrap()),
+        Some(wtf16::parse(r#"{"id":"c","updatedAt":6}"#).unwrap()),
+    ];
+    assert_eq!(
+        chat_mirror_exec::run_brain("u", "c", &src2, &R(&src2)).await,
+        "stale"
+    );
+    assert!(brain::read(&root(&dir2), "c").is_none());
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&dir2);
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -72,9 +72,9 @@ impl ChatMirror {
             identity: Arc::clone(&app.identity),
             feature_context: app.feature_context.clone(),
             diary: app.diary.clone(),
-            engine: Arc::new(crate::chat_mirror_work::NodeEngine {
-                research: Arc::clone(&app.config.research),
-            }),
+            engine: Arc::new(crate::chat_mirror_work::NodeEngine::over(Arc::clone(
+                &app.config.research,
+            ))),
         });
         Self::start_with(
             crate::chat_mirror_work::NativeWork::new(host),

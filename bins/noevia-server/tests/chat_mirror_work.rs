@@ -101,6 +101,8 @@ struct Engine {
     /// Gates to switch to while the model runs.
     then: Mutex<Option<ExecGates>>,
     host_gates: Arc<Mutex<Option<ExecGates>>>,
+    /// Suspends the model call: signals the first, waits for the second.
+    hold: Mutex<Option<(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>)>>,
 }
 
 impl EngineSeam for Engine {
@@ -124,7 +126,14 @@ impl EngineSeam for Engine {
         if let Some(g) = self.then.lock().unwrap().take() {
             *self.host_gates.lock().unwrap() = Some(g);
         }
-        Box::pin(async { Ok(BRAIN.to_owned()) })
+        let hold = self.hold.lock().unwrap().take();
+        Box::pin(async move {
+            if let Some((entered, release)) = hold {
+                entered.notify_one();
+                release.notified().await;
+            }
+            Ok(BRAIN.to_owned())
+        })
     }
 }
 
@@ -229,6 +238,7 @@ fn host(root: &Path, gates: Option<ExecGates>, diary: Option<Arc<FakeDiary>>) ->
             calls: Mutex::default(),
             then: Mutex::new(None),
             host_gates: g,
+            hold: Mutex::new(None),
         }),
     })
 }
@@ -454,4 +464,134 @@ fn walkdir(d: &Path) -> Vec<(PathBuf, Vec<u8>)> {
         }
     }
     out
+}
+
+/// Suspends the next model call of `h`; returns (entered, release).
+fn suspend(h: &TestHost) -> (Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>) {
+    let pair = (
+        Arc::new(tokio::sync::Notify::new()),
+        Arc::new(tokio::sync::Notify::new()),
+    );
+    *h.engine.hold.lock().unwrap() = Some((Arc::clone(&pair.0), Arc::clone(&pair.1)));
+    pair
+}
+
+/// Root ruling 2026-11-05 (stale brain publication): the transcript is saved through the real store
+/// while the build is suspended in the model call. The write is a compare-and-swap under the
+/// store's locks: no brain from the old snapshot, the build answers "stale" (rescheduled), and the
+/// next build stores a brain of the new transcript.
+#[tokio::test]
+async fn a_transcript_saved_while_the_build_is_suspended_gets_no_stale_brain() {
+    let (root, _dir) = setup();
+    let addr = store(root.path()).await;
+    save(
+        addr,
+        "qa-free",
+        json!([{"role": "user", "content": "QA one"}]),
+    )
+    .await;
+    let h = host(root.path(), Some(on()), None);
+    let (entered, release) = suspend(&h);
+    let work = NativeWork::new(Arc::clone(&h));
+    let w = Arc::clone(&work);
+    let build = tokio::spawn(async move { w.run(USER, "qa-free").await });
+    entered.notified().await;
+    save(
+        addr,
+        "qa-free",
+        json!([{"role": "user", "content": "QA one"}, {"role": "assistant", "content": "QA two"}]),
+    )
+    .await;
+    release.notify_one();
+    assert_eq!(build.await.unwrap(), "stale");
+    assert!(
+        chat_mirror_exec::brain::read(&own(root.path()), "qa-free").is_none(),
+        "a brain of the old transcript was written"
+    );
+    assert_eq!(work.run(USER, "qa-free").await, "built");
+}
+
+/// Deleted (tombstoned, gone from the list) while the build is suspended: nothing written, and a
+/// brain stored earlier is removed.
+#[tokio::test]
+async fn a_chat_deleted_while_the_build_is_suspended_gets_no_brain() {
+    let (root, dir) = setup();
+    let addr = store(root.path()).await;
+    save(
+        addr,
+        "qa-free",
+        json!([{"role": "user", "content": "QA one"}]),
+    )
+    .await;
+    let h = host(root.path(), Some(on()), None);
+    let work = NativeWork::new(Arc::clone(&h));
+    assert_eq!(work.run(USER, "qa-free").await, "built");
+    // A newer edit, so the next build calls the model.
+    std::fs::write(
+        dir.join("free-chats.json"),
+        r#"[{"id":"qa-free","title":"QA free chat","createdAt":1730000000000,"updatedAt":1730000000009}]"#,
+    )
+    .unwrap();
+    let (entered, release) = suspend(&h);
+    let w = Arc::clone(&work);
+    let build = tokio::spawn(async move { w.run(USER, "qa-free").await });
+    entered.notified().await;
+    std::fs::write(dir.join("free-chats.json"), "[]").unwrap();
+    std::fs::write(dir.join("deleted-chats.json"), r#"["qa-free"]"#).unwrap();
+    release.notify_one();
+    assert_eq!(build.await.unwrap(), "gone");
+    assert!(
+        chat_mirror_exec::brain::read(&own(root.path()), "qa-free").is_none(),
+        "the tombstoned chat kept its brain"
+    );
+}
+
+struct Bridge {
+    answer: Option<u16>,
+    bodies: Mutex<Vec<String>>,
+}
+
+impl noevia_server::chat_mirror_work::NodeBridge for Bridge {
+    fn post(&self, body: String, _: std::time::Duration) -> BoxFut<Option<(u16, Vec<u8>)>> {
+        self.bodies.lock().unwrap().push(body);
+        let a = self.answer;
+        Box::pin(async move { a.map(|s| (s, Vec::new())) })
+    }
+}
+
+/// NodeEngine::record: core's 204 is a recorded entry; any other answer, or none, is logged.
+#[tokio::test]
+async fn a_recorded_decision_entry_is_core_204_and_anything_else_is_logged() {
+    use noevia_server::chat_mirror_work::NodeEngine;
+    for (answer, logged) in [
+        (Some(204), false),
+        (Some(200), true),
+        (Some(500), true),
+        (None, true),
+    ] {
+        let bridge = Arc::new(Bridge {
+            answer,
+            bodies: Mutex::default(),
+        });
+        let lines: Arc<Mutex<Vec<String>>> = Arc::default();
+        let l = Arc::clone(&lines);
+        let engine = NodeEngine {
+            bridge: Arc::clone(&bridge) as Arc<dyn noevia_server::chat_mirror_work::NodeBridge>,
+            log: Arc::new(move |line: &str| l.lock().unwrap().push(line.to_owned())),
+        };
+        engine.record(json_entry());
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            bridge.bodies.lock().unwrap().as_slice(),
+            [r#"{"op":"record","entry":{"event":"brain.built"}}"#],
+            "{answer:?}"
+        );
+        assert_eq!(!lines.lock().unwrap().is_empty(), logged, "{answer:?}");
+    }
+}
+
+fn json_entry() -> JValue {
+    wtf16::parse(r#"{"event":"brain.built"}"#).unwrap()
 }
