@@ -71,49 +71,46 @@ because the event can arrive on either side of an action response. Raw API
 responses are retained in the report. The server also counts denied fetch,
 WebSocket and popup requests, so a late refusal cannot look like enforcement.
 
-## Round 3 security qualification and remaining gates
+## Header-only response policy and current adoption blockers
 
-The 54-action synthetic matrix passes. Server counters for denied popup first
-requests, fetches, and WebSocket handshakes are zero, including iframe and
-worker probes. The unmodified retained driver leaks a dedicated-worker WebSocket;
-the oracle preserves that raw result while the native safety assertion requires
-zero handshakes. Counters reset between engines. This explicit security improvement
-is the only normalized outcome difference allowed by the differential.
+Response policy uses `Fetch.continueResponse` with the original status, status
+text and response headers plus the additional CSP header. It never requests,
+re-encodes, limits or replaces a response body. Chromium retains streaming and
+framing/compression ownership. `tests/streaming.rs` differentially exercises a
+parser-dependent streaming document and a 9 MiB document against the pinned
+retained executor, as well as declared-secret redaction in protocol diagnostics.
+Like the larger differential, this external test must be explicitly enabled.
 
-A dedicated browser connection enables browser-level Fetch before creating the
-first page. Auto-attachment pauses new page/worker targets before execution and
-recursively attaches descendants before resuming them. Loss of the policy
-connection closes the browser. Request interception judges the browser-policy
-crate's result. Chromium does not intercept WebSocket upgrades through Fetch;
-response fulfilment installs a native CSP connect-src header on documents and
-worker scripts. Original CSP headers are retained. Removing page JavaScript
-cannot remove this response policy. Scheme/host normalization uses the same policy
-verdict. Body framing/compression headers are removed when fulfilling decoded
-bodies. Documents and scripts over 8 MiB fail closed; this buffering/limit needs
-integration-owner acceptance before adoption. Streaming document parity is not
-claimed. Blob/data policy inheritance still needs adversarial qualification.
+**WebSocket enforcement fails on the qualified Chromium build.** Browser-level
+Fetch does not emit pause events for WebSocket upgrades. A focused Chromium
+157.0.8103.38 probe measured zero page/worker/subframe upgrades with an original
+server CSP header, but two upgrades (page and subframe) after modifying the CSP
+using `Fetch.continueResponse`; the worker remained blocked. The same failure
+occurred with page-level Fetch. Successful protocol acknowledgments do not prove
+CSP enforcement. No buffering fallback is accepted or implemented. This needs a
+verified header-only enforcement solution before integration.
 
-On this Chromium build, continueResponse acknowledges modified CSP headers but
-still sends denied WebSocket handshakes. Reproduction probes retain that failure.
-Fulfilled synthetic documents need explicit local-network permissions to contact
-the fake .test loopback fixture. Both engines receive those permissions only in
-disposable fixture browsers; the helper refuses non-synthetic/non-.test use.
-No host permissions or production settings change. The identical fixture action
-timeout is 1200 ms for both engines to allow shared build-host scheduling.
+The earlier 54-action qualification is superseded: its main-page network fixture
+referenced undefined driver variables inside page JavaScript and did not run its
+requests. The fixture is corrected. Previously measured zero handshake counters
+must not be used to qualify the current header-only implementation.
+
+Service-worker probes on fake HTTP `.test` origins also require positive proof
+that the service-worker API exists. On this build it remained unavailable despite
+the synthetic secure-origin switch; matching empty/pending results do not establish
+registration blocking. No worker/subframe adoption closure is claimed.
 
 | # | Area | Current result / remaining gate |
 | --- | --- | --- |
-| 1 | Popup | First denied request blocked before network; allowed selection/fallback passes. |
-| 2 | WebSockets | Page/iframe/worker denied handshake counters zero; allowed socket passes. CSP buffering/inheritance acceptance remains above. |
-| 3 | Workers/subframes | Dedicated-worker and iframe network probes pass. Pre-resume service-worker-registration parity on popups/subframes remains unqualified. |
-| 4 | Actionability | Trusted text input/clear, delayed option selection, and sampled pointer stability pass. Full locator language, frame targeting and all fill input types remain unqualified. |
-| 5 | Proxy auth | Structured credentials, real 407 challenge, redirect forwarding and two identities pass. Wrong-password/origin-challenge/anonymous-proxy negatives remain unqualified. |
-| 6 | Isolation | Independent cookie/localStorage sessions and proxy identities pass. Cache, worker storage and concurrent-download qualification remains. |
-| 7 | Cancellation | Dropped approval automatically closes browser and destroys remote objects; explicit close reaps it. Exhaustive setup/action/download/close cancellation injection remains. |
-| 8 | Audit/errors | Bounded masked Fetch-denial state and fixed connection-failure class implemented. CSP-denial audit completeness and full public-error parity remain. |
+| 1 | Popup | Earlier denied first-request regression retained; allowed selection/fallback requires the current full differential. |
+| 2 | WebSockets | BLOCKED: Fetch misses upgrades and continued CSP is not enforced equivalently on page/subframe documents. |
+| 3 | Workers/subframes | PARTIAL: earlier dedicated-worker/iframe HTTP coverage; positive service-worker capability and popup/subframe registration qualification remain. |
+| 4 | Actionability | PARTIAL: full locator language, frame targeting and all fill input types remain. |
+| 5 | Proxy auth | PARTIAL: wrong-password/origin-challenge/anonymous-proxy negatives remain. |
+| 6 | Isolation | PARTIAL: cache, worker storage and concurrent-download qualification remain. |
+| 7 | Cancellation | PARTIAL: exhaustive setup/action/download/close cancellation injection remains. |
+| 8 | Audit/errors | PARTIAL: protocol diagnostics no longer retain raw hosts, including secret-bearing hostnames. Complete denial audit/public-error parity remain. |
 
-Do not adopt or retire the retained driver until every remaining gate is closed.
-The external differential remains ignored in ordinary package checks. The recorded
-explicit run used identical source with only the ignore attribute removed in the
-owned scratch checkout, through the canonical build wrapper; restore the attribute
-for ordinary checks. No adapter/runtime ownership wiring is part of this change.
+Do not adopt or retire the retained driver until every gate is closed. No runtime
+ownership wiring is part of this change. Do not turn a failing external differential
+into a passing gate by excluding the failing network assertions.

@@ -1,24 +1,31 @@
 {
-  "gate": "INCOMPLETE",
-  "originalCases": {
-    "pass": 31,
-    "total": 31
-  },
+  "gate": "FAIL",
+  "priorQualificationSuperseded": true,
   "expandedCases": {
-    "pass": 54,
+    "pass": 52,
     "total": 54
   },
-  "networkEnforcementPass": true,
+  "networkEnforcementPass": false,
   "deniedRequestsReachedFixture": {
     "effect": 0,
     "popup": 0,
     "resource": 0,
-    "socket": 0
+    "socket": 2
   },
   "proxyPass": true,
   "automaticApprovalCancellationPass": true,
   "isolationPass": true,
-  "remaining": "Complete locator/actionability, exhaustive cancellation injection, audit parity and broader isolation qualification remain adoption gates.",
+  "streamingDifferentialPass": true,
+  "traceSecretRedactionPass": true,
+  "blockers": {
+    "2": "BLOCKED: browser Fetch misses upgrades; continued CSP does not enforce page/subframe policy on qualified Chromium",
+    "3": "PARTIAL: positive service-worker capability/registration proof required",
+    "7": "PARTIAL: exhaustive await cancellation injection required",
+    "8": "PARTIAL: full denial audit/errors required; trace secret redaction fixed",
+    "6": "PARTIAL: cache/worker storage/concurrent downloads required",
+    "4": "PARTIAL: locator/frame/input grammar required",
+    "5": "PARTIAL: auth negatives required"
+  },
   "actions": [
     {
       "name": "navigate",
@@ -174,7 +181,7 @@
     },
     {
       "name": "network-outcome",
-      "pass": true
+      "pass": false
     },
     {
       "name": "service-worker",
@@ -230,7 +237,7 @@
     },
     {
       "name": "subnetwork-outcome",
-      "pass": true
+      "pass": false
     },
     {
       "name": "wait-cap",

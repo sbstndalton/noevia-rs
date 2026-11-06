@@ -1,8 +1,7 @@
 //! A separate browser connection suspends new targets before their first request.
-//! Fetch does not intercept WebSocket upgrades on all Chromium versions. A native
-//! CSP response header enforces connect-src before the browser sends a handshake.
+//! Response policy only changes headers; bodies remain owned by Chromium.
+//! WebSocket enforcement remains an adoption blocker; see ADOPTION.md.
 use super::*;
-use base64::Engine;
 use chromiumoxide::{cdp::browser_protocol::target::SessionId, Connection};
 use chromiumoxide_types::{CallId, EventMessage, Message};
 use std::collections::{HashMap, VecDeque};
@@ -63,7 +62,6 @@ impl Guard {
             let mut authenticated = std::collections::HashSet::new();
             let mut pages = std::collections::HashSet::new();
             let mut closing = None;
-            let mut bodies: HashMap<CallId, (Option<SessionId>, Value)> = HashMap::new();
 
             let outcome: Result<()> = async {
                 loop {
@@ -87,14 +85,6 @@ impl Guard {
                         Message::Response(r) => {
                             if closing == Some(r.id) { return Ok(()); }
                             if r.error.is_some() { bail!("Browser policy command failed"); }
-                            if let Some((session, mut params)) = bodies.remove(&r.id) {
-                                let result = r.result.ok_or_else(||anyhow!("Missing response body"))?;
-                                let body = string(&result,"body");
-                                if body.len() > 8 * 1024 * 1024 { bail!("Response too large for policy enforcement"); }
-                                let encoded = if result.get("base64Encoded") == Some(&json!(true)) { body } else { base64::engine::general_purpose::STANDARD.encode(body) };
-                                params.as_object_mut().ok_or_else(||anyhow!("Invalid response projection"))?.insert("body".into(),json!(encoded));
-                                connection.submit_command("Fetch.fulfillRequest".into(),session,params)?;
-                            }
                             if r.id == initial {
                                 if let Some(ready) = ready.take() { let _ = ready.send(()); }
                             }
@@ -137,7 +127,7 @@ impl Guard {
                             let id = string(&e.params,"requestId");
                             let url = e.params.pointer("/request/url").and_then(Value::as_str).unwrap_or("");
                             let allowed = navigation(url,&domains) || url == "about:blank" || url.starts_with("data:") || url.starts_with("blob:");
-                            { let mut trace=events.lock().await; if trace.len()<300 {trace.push(json!({"allowed":allowed,"host":url::Url::parse(url).ok().and_then(|u|u.host_str().map(str::to_owned)),"resourceType":e.params.get("resourceType"),"scheme":url::Url::parse(url).ok().map(|u|u.scheme().to_owned()),"networkError":e.params.get("responseErrorReason")}));} }
+                            { let mut trace=events.lock().await; if trace.len()<300 {trace.push(json!({"allowed":allowed,"resourceType":e.params.get("resourceType"),"scheme":url::Url::parse(url).ok().map(|u|u.scheme().to_owned()),"networkError":e.params.get("responseErrorReason")}));} }
                             let (method, params) = if !allowed {
                                 let reason = policy(2,json!([url,domains])).ok().map(|v|string(&v,"reason")).filter(|s|!s.is_empty()).unwrap_or_else(||"Navigation refused".into());
                                 let mut denied = denied.lock().await;
@@ -149,13 +139,7 @@ impl Guard {
                             } else if let Some(status) = e.params.get("responseStatusCode") {
                                 let mut headers = e.params.get("responseHeaders").and_then(Value::as_array).cloned().unwrap_or_default();
                                 headers.push(json!({"name":"Content-Security-Policy","value":connect_policy(&domains)}));
-                                if (matches!(string(&e.params,"resourceType").as_str(), "Document" | "Script") || headers.iter().any(|h|string(h,"name").eq_ignore_ascii_case("content-type") && (string(h,"value").contains("javascript") || string(h,"value").contains("ecmascript")))) && !status.as_u64().is_some_and(|s|(300..400).contains(&s)) {
-                                    headers.retain(|h|!matches!(string(h,"name").to_ascii_lowercase().as_str(),"content-length"|"content-encoding"|"transfer-encoding"));
-                                    let call = connection.submit_command("Fetch.getResponseBody".into(),session.clone(),json!({"requestId":id}))?;
-                                    bodies.insert(call,(session,json!({"requestId":id,"responseCode":status,"responseHeaders":headers})));
-                                    continue;
-                                }
-                                ("Fetch.continueResponse",json!({"requestId":id}))
+                                ("Fetch.continueResponse",response_headers(&id,status,e.params.get("responseStatusText"),headers))
                             } else {
                                 ("Fetch.continueRequest",json!({"requestId":id,"interceptResponse":true}))
                             };
@@ -197,6 +181,21 @@ impl Guard {
     pub fn finished(&self) -> bool {
         self.task.is_finished()
     }
+}
+// All response fields must accompany modified headers. Never read or replace a body.
+fn response_headers(
+    id: &str,
+    status: &Value,
+    phrase: Option<&Value>,
+    headers: Vec<Value>,
+) -> Value {
+    let mut params = json!({"requestId":id,"responseCode":status,"responseHeaders":headers});
+    if let Some(phrase) = phrase {
+        if let Some(params) = params.as_object_mut() {
+            params.insert("responsePhrase".into(), phrase.clone());
+        }
+    }
+    params
 }
 fn attach() -> Value {
     json!({"autoAttach":true,"waitForDebuggerOnStart":true,"flatten":true,"filter":[{"type":"browser","exclude":true},{"type":"tab","exclude":true},{}]})
