@@ -155,6 +155,42 @@ pub(crate) fn lock_user(dir: &Path) -> Result<lock::FileLock, StoreError> {
 }
 
 // How many times this thread read the tombstone list through `tombstoned` (tests only).
+/// chat-interrupted-turn.cjs `saveInterruptedTurn` (#679): what happened to a reply whose client
+/// went away: `saved`, or why nothing was written (`no-chat`, `nothing-to-keep`, `deleted`,
+/// `not-last`, `no-user-message`). `message` is the request's own (`None`: not a string).
+/// `active`: the workspace was not revoked meanwhile (`assertActive`); a revoked one is an error,
+/// and the caller keeps the entry in the partial file.
+pub fn save_interrupted_turn(
+    data_dir: &Path,
+    user: &str,
+    chat_id: &str,
+    message: Option<&str>,
+    entry: Option<&JValue>,
+    active: bool,
+) -> Result<&'static str, TranscriptError> {
+    let safe = safe_chat_id(chat_id);
+    let Ok(dir) = store::user_dir(data_dir, user) else {
+        return Ok("no-chat");
+    };
+    if safe.is_empty() {
+        return Ok("no-chat");
+    }
+    let Some(entry) = entry else {
+        return Ok("nothing-to-keep");
+    };
+    // Checked again under the store's lock; this one only spares the call.
+    if tombstoned(&dir, &safe).unwrap_or(false) {
+        return Ok("deleted");
+    }
+    let Some(message) = message else {
+        return Ok("not-last");
+    };
+    if !active {
+        return Err(TranscriptError::Store(StoreError::Gone));
+    }
+    append_if_last_as(data_dir, user, chat_id, message, entry, Origin::Turn).map(|a| a.outcome())
+}
+
 #[cfg(test)]
 thread_local! {
     pub(crate) static TOMBSTONE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -1002,6 +1038,26 @@ mod tests {
         write(root.path(), USER, "c1", &list("[1]"), &Base::Any, Some(NOW)).unwrap();
         assert!(!pfile.exists());
         assert!(ofile.exists());
+    }
+
+    #[test]
+    fn save_interrupted_turn_checks_as_core_does_then_appends_as_a_turn() {
+        let (root, dir) = setup();
+        let entry = wtf16::parse(r#"{"role":"assistant","content":"kept","interrupted":true}"#).unwrap();
+        let save = |chat: &str, message: Option<&str>, entry: Option<&JValue>, active: bool| {
+            save_interrupted_turn(root.path(), USER, chat, message, entry, active)
+        };
+        assert_eq!(save("", Some("q"), Some(&entry), true).unwrap(), "no-chat");
+        assert_eq!(save("!!", Some("q"), Some(&entry), true).unwrap(), "no-chat");
+        assert_eq!(save("c1", Some("q"), None, true).unwrap(), "nothing-to-keep");
+        assert_eq!(save("c1", None, Some(&entry), true).unwrap(), "not-last");
+        assert_eq!(save("c1", Some("q"), Some(&entry), true).unwrap(), "no-user-message");
+        std::fs::write(history_file(&dir, "c1"), r#"{"history":[{"role":"user","content":"q"}]}"#).unwrap();
+        assert!(save("c1", Some("q"), Some(&entry), false).is_err(), "a revoked workspace writes nothing");
+        assert_eq!(save("c1", Some("q"), Some(&entry), true).unwrap(), "saved");
+        assert_eq!(save("c1", Some("q"), Some(&entry), true).unwrap(), "not-last");
+        std::fs::write(dir.join(TOMBSTONES_FILE), r#"["c1"]"#).unwrap();
+        assert_eq!(save("c1", Some("q"), Some(&entry), true).unwrap(), "deleted");
     }
 
     #[test]
