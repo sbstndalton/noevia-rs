@@ -158,6 +158,15 @@ fn rig(proxy_port: Option<u16>) -> Option<Rig> {
     })
 }
 
+/// Where the private issuer state lives by default: its own directory inside the key directory.
+fn state_file(r: &Rig) -> PathBuf {
+    r.key_file
+        .parent()
+        .unwrap()
+        .join("issuer")
+        .join("code-egress-issuer.json")
+}
+
 fn app_of(env: &HashMap<String, String>) -> Arc<App> {
     App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap())
 }
@@ -291,10 +300,7 @@ async fn grants_are_issued_revoked_and_forgotten_through_the_front_only() {
     let meta = std::fs::metadata(&r.key_file).unwrap();
     assert_eq!((meta.mode() & 0o7777, meta.nlink()), (0o440, 1));
     assert_eq!(
-        std::fs::metadata(r.data.join("code-egress-issuer.json"))
-            .unwrap()
-            .mode()
-            & 0o7777,
+        std::fs::metadata(state_file(&r)).unwrap().mode() & 0o7777,
         0o600
     );
     // A grant: bytes the proxy verifies, domains normalised, no key anywhere in the answer.
@@ -483,4 +489,64 @@ async fn an_unprepared_key_directory_is_never_created_or_repaired() {
         "not repaired"
     );
     assert!(!r.key_file.exists());
+    assert!(
+        !keydir.join("issuer").exists(),
+        "no state directory in an untrusted one"
+    );
+}
+
+/// The key the retired Node issuer left published (bytes written by the real Node code, see
+/// `egress-issuer/tests/fixtures/node-published-key.json`) is served unchanged on a first start with no
+/// Rust state: no rotation, no operator step, Node's file untouched, grants the proxy verifies.
+#[tokio::test]
+async fn a_key_node_left_published_is_served_unchanged_on_the_first_start() {
+    let Some(r) = rig(Some(1)) else { return };
+    let doc: Value = serde_json::from_str(include_str!(
+        "../../../crates/egress-issuer/tests/fixtures/node-published-key.json"
+    ))
+    .unwrap();
+    let key_hex = doc["keyHex"].as_str().unwrap().to_string();
+    let node_bytes = format!("{key_hex}\n");
+    std::fs::write(&r.key_file, &node_bytes).unwrap();
+    std::fs::set_permissions(&r.key_file, std::fs::Permissions::from_mode(0o440)).unwrap();
+    let before = std::fs::metadata(&r.key_file).unwrap();
+    let proxy = FakeProxy::new(r.key_file.clone());
+    let port = serve_proxy(Arc::clone(&proxy)).await;
+    let mut env = r.env.clone();
+    env.insert("CODE_EGRESS_PORT".into(), port.to_string());
+    let app = app_of(&env);
+    let router = router(&app, &r.data);
+    app.code_egress.as_ref().unwrap().start();
+    until_available(&router).await;
+    let after = std::fs::metadata(&r.key_file).unwrap();
+    assert_eq!(std::fs::read_to_string(&r.key_file).unwrap(), node_bytes);
+    assert_eq!(
+        (
+            after.ino(),
+            after.mode() & 0o7777,
+            after.mtime(),
+            after.ctime()
+        ),
+        (before.ino(), 0o440, before.mtime(), before.ctime())
+    );
+    assert_eq!(
+        std::fs::metadata(state_file(&r)).unwrap().mode() & 0o7777,
+        0o600,
+        "the state is kept in the issuer's own directory beside the key, not in UI_DATA_DIR"
+    );
+    assert!(!r.data.join("code-egress-issuer.json").exists());
+    let (st, g) = call(
+        &router,
+        "grant",
+        Some(TOKEN),
+        json!({ "taskId": "task:1", "domains": ["example.com"] }),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let session = proxy.session().unwrap();
+    assert!(proxy_accepts(
+        &r.key_file,
+        &session,
+        g["token"].as_str().unwrap()
+    ));
 }

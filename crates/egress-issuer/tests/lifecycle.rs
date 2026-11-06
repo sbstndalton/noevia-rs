@@ -238,17 +238,18 @@ async fn an_unsafe_key_directory_or_file_is_refused_and_never_repaired() {
         let _ = std::fs::remove_file(&r.state_file);
     }
     std::fs::set_permissions(&keydir, std::fs::Permissions::from_mode(0o750)).unwrap();
-    // A key file with the wrong mode, an extra link, or a symlink stays as it is.
+    // A key file with the wrong mode, an extra link, or a symlink stays as it is, refused by the name
+    // of the failed takeover check (tests/node_takeover.rs covers every check).
     std::fs::write(&r.key_file, "x\n").unwrap();
     std::fs::set_permissions(&r.key_file, std::fs::Permissions::from_mode(0o600)).unwrap();
-    assert_eq!(open(&r).unwrap_err().0, Reason::Publication);
+    assert_eq!(open(&r).unwrap_err().0, Reason::LegacyKeyMode);
     assert_eq!(mode(&r.key_file), 0o600);
     assert_eq!(std::fs::read_to_string(&r.key_file).unwrap(), "x\n");
     let _ = std::fs::remove_file(&r.state_file);
     std::fs::remove_file(&r.key_file).unwrap();
     std::fs::write(keydir.join("other"), "x").unwrap();
     std::os::unix::fs::symlink(keydir.join("other"), &r.key_file).unwrap();
-    assert_eq!(open(&r).unwrap_err().0, Reason::Publication);
+    assert_eq!(open(&r).unwrap_err().0, Reason::LegacyKeyFile);
     assert!(std::fs::symlink_metadata(&r.key_file)
         .unwrap()
         .file_type()
@@ -531,9 +532,14 @@ async fn private_state_in_an_untrusted_directory_chain_is_refused_without_repair
     );
     assert!(names(&wide.join("sub")).is_empty());
     assert!(!r.key_file.exists());
-    // A missing state directory is not created.
-    assert!(open_at(&r, root.join("absent").join("issuer.json")).is_err());
+    // A missing state directory is created (one level, 0700) only inside a trusted holder; a deeper
+    // missing chain is never created (no mkdir -p).
+    assert!(open_at(&r, root.join("absent").join("deeper").join("issuer.json")).is_err());
     assert!(!root.join("absent").exists());
+    let (_, how) = open_at(&r, root.join("single").join("issuer.json")).unwrap();
+    assert_eq!(how, Opened::Fresh);
+    assert_eq!(mode(&root.join("single")), 0o700);
+    let _ = std::fs::remove_file(&r.key_file);
     // The trusted case still works and is 0600.
     let good = root.join("good");
     std::fs::create_dir(&good).unwrap();
@@ -648,19 +654,28 @@ fn publish_foreign(r: &Rig, key: &[u8; 32]) -> Vec<u8> {
 async fn first_publication_never_overwrites_a_key_someone_else_published() {
     let Some(r) = rig() else { return };
     let keydir = r.key_file.parent().unwrap().to_path_buf();
-    // Absent private state (lost volume / new issuer path) and a valid-looking foreign key (right
-    // owner, group, 0440): refused, and nothing changes anywhere.
+    // Absent private state and a key published by someone else with the right owner, group and 0440
+    // (the retired Node issuer's key, or a lost-volume restart): taken over unchanged, never rewritten
+    // (see tests/node_takeover.rs); with a loosened mode it is refused by name and nothing changes.
     let foreign = publish_foreign(&r, &[0x99u8; 32]);
     let inode = std::fs::metadata(&r.key_file).unwrap().ino();
-    assert_eq!(open(&r).unwrap_err().0, Reason::Publication);
+    std::fs::set_permissions(&r.key_file, std::fs::Permissions::from_mode(0o640)).unwrap();
+    assert_eq!(open(&r).unwrap_err().0, Reason::LegacyKeyMode);
     assert_eq!(std::fs::read(&r.key_file).unwrap(), foreign);
     assert_eq!(std::fs::metadata(&r.key_file).unwrap().ino(), inode);
-    assert_eq!(mode(&r.key_file), 0o440);
+    assert_eq!(mode(&r.key_file), 0o640, "not repaired");
     assert!(
         !r.state_file.exists(),
         "no state is created for a refused publication"
     );
     assert_eq!(names(&keydir), vec!["current.key".to_string()]);
+    std::fs::set_permissions(&r.key_file, std::fs::Permissions::from_mode(0o440)).unwrap();
+    let (taken, how) = open(&r).unwrap();
+    assert_eq!((how, taken.key()), (Opened::Adopted, [0x99u8; 32]));
+    assert_eq!(std::fs::read(&r.key_file).unwrap(), foreign);
+    assert_eq!(std::fs::metadata(&r.key_file).unwrap().ino(), inode);
+    drop(taken);
+    std::fs::remove_file(&r.state_file).unwrap();
     // A persisted pending candidate and somebody else's key published before the retry: refused as
     // superseded; state bytes, key bytes and inode all unchanged.
     let pending = egress_issuer::files::PrivateState {

@@ -233,6 +233,148 @@ pub fn key_file_state(file: &Path, key: &[u8; 32]) -> KeyState {
     }
 }
 
+/// The key the retired Node issuer left published (`CODE_EGRESS_CONTROL_KEY_FILE`), taken over once.
+///
+/// Node never kept private issuer state: its key is `HMAC(master, random nonce)`, the nonce is not
+/// stored, and the session lives in memory. The published file is the only durable artifact, so the
+/// takeover reads exactly that, under the checks Node's own publisher applies before it will touch
+/// the file (and Node replaces that file on every start, so this is the stricter side): a trusted
+/// 0750-class directory owned by the web uid/gid, a regular single-link file of the same uid/gid with
+/// mode exactly 0440, content 64 lowercase hex digits and LF, and the process running as that uid.
+///
+/// `Ok(None)`: there is no such file (a first start). `Err(LegacyKey*)`: something is there that fails
+/// a check, named by the reason; nothing is written, repaired or removed in any case.
+pub fn read_legacy_key(files: &IssuerFiles) -> Result<Option<[u8; 32]>, ControlError> {
+    let file = files.key_file.as_path();
+    if !canonical_absolute(file) {
+        return err(Reason::LegacyKeyPath);
+    }
+    if files.gid == 0
+        || files.uid == u32::MAX
+        || files.gid == u32::MAX
+        || process_uid() != files.uid
+    {
+        return err(Reason::LegacyKeyUser);
+    }
+    let Some(dir) = file.parent() else {
+        return err(Reason::LegacyKeyPath);
+    };
+    let parent = match std::fs::symlink_metadata(dir) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return err(Reason::LegacyKeyRead),
+    };
+    match std::fs::symlink_metadata(file) {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return err(Reason::LegacyKeyRead),
+    }
+    if !parent.is_dir()
+        || parent.file_type().is_symlink()
+        || !std::fs::canonicalize(dir).is_ok_and(|real| real == dir)
+    {
+        return err(Reason::LegacyKeyDirectory);
+    }
+    if parent.uid() != files.uid || parent.gid() != files.gid {
+        return err(Reason::LegacyKeyDirOwner);
+    }
+    let dir_mode = parent.permissions().mode();
+    if dir_mode & 0o022 != 0 || dir_mode & 0o050 != 0o050 {
+        return err(Reason::LegacyKeyDirMode);
+    }
+    let mut handle = match OpenOptions::new()
+        .read(true)
+        .custom_flags(nofollow_nonblock())
+        .open(file)
+    {
+        Ok(h) => h,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return err(Reason::LegacyKeyFile),
+    };
+    let Ok(meta) = handle.metadata() else {
+        return err(Reason::LegacyKeyRead);
+    };
+    if !meta.is_file() {
+        return err(Reason::LegacyKeyFile);
+    }
+    if meta.nlink() != 1 {
+        return err(Reason::LegacyKeyLinks);
+    }
+    if meta.uid() != files.uid || meta.gid() != files.gid {
+        return err(Reason::LegacyKeyOwner);
+    }
+    if meta.mode() & 0o7777 != 0o440 {
+        return err(Reason::LegacyKeyMode);
+    }
+    // At most one byte more than the line, as the proxy's keyfile.rs reads it.
+    let mut buf = [0u8; 66];
+    let mut got = 0usize;
+    while got < buf.len() {
+        match handle.read(buf.get_mut(got..).unwrap_or(&mut [])) {
+            Ok(0) => break,
+            Ok(n) => got += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return err(Reason::LegacyKeyRead),
+        }
+    }
+    let line = buf.get(..got).unwrap_or(&[]);
+    let key = line
+        .strip_suffix(b"\n")
+        .and_then(|hex| std::str::from_utf8(hex).ok())
+        .and_then(unhex::<32>);
+    let Some(key) = key else {
+        return err(Reason::LegacyKeyContent);
+    };
+    // Still the same directory and the same file after the read.
+    let again_dir = std::fs::symlink_metadata(dir);
+    let again_file = std::fs::symlink_metadata(file);
+    match (again_dir, again_file) {
+        (Ok(d), Ok(f))
+            if d.dev() == parent.dev()
+                && d.ino() == parent.ino()
+                && f.dev() == meta.dev()
+                && f.ino() == meta.ino() =>
+        {
+            Ok(Some(key))
+        }
+        _ => err(Reason::LegacyKeyChanged),
+    }
+}
+
+/// Creates the (single-level) directory that will hold the private state when it is absent, mode
+/// 0700 and owned by the issuer. Nothing else is created; an existing path is left to
+/// [`StateDir::open`] to validate (or refuse).
+pub fn prepare_state_dir(state_file: &Path) -> Result<(), ControlError> {
+    let Some(dir) = state_file.parent() else {
+        return publication();
+    };
+    if !canonical_absolute(state_file) {
+        return publication();
+    }
+    match std::fs::symlink_metadata(dir) {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            use std::os::unix::fs::DirBuilderExt;
+            // Only into a real directory of the issuer's own that no one else can write to; the whole
+            // chain is validated again, without following links, when the state is opened.
+            let holder_ok = dir
+                .parent()
+                .and_then(|p| std::fs::symlink_metadata(p).ok())
+                .is_some_and(|m| m.is_dir() && m.uid() == process_uid() && m.mode() & 0o022 == 0);
+            if !holder_ok {
+                return publication();
+            }
+            match std::fs::DirBuilder::new().mode(0o700).create(dir) {
+                Ok(()) => Ok(()),
+                // Created by someone in between: validated like any existing directory.
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+                Err(_) => publication(),
+            }
+        }
+        Err(_) => publication(),
+    }
+}
+
 // ---- private issuer state ----
 
 /// The persisted private state. `key` is absent only before the first publication completed.
@@ -522,6 +664,9 @@ pub enum Opened {
     Restored,
     /// The published key is another web's: nothing is written, ever.
     Superseded,
+    /// The key the retired Node issuer had published was taken over unchanged (no rotation); only the
+    /// private state was written.
+    Adopted,
 }
 
 impl KeyKeeper {
@@ -543,7 +688,53 @@ impl KeyKeeper {
             .map(|k| *k.as_bytes())
             .map_err(|_| ControlError(Reason::Key))
         };
+        // With no state directory there is no state: check what is published before creating anything,
+        // so a refused takeover leaves the directories exactly as they were.
+        let state_dir_missing = files.state_file.parent().is_some_and(|d| {
+            matches!(std::fs::symlink_metadata(d), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+        });
+        let early = if state_dir_missing {
+            Some(read_legacy_key(&files)?)
+        } else {
+            None
+        };
+        prepare_state_dir(&files.state_file)?;
         let loaded = load_state(&files.state_file)?;
+        // A start with no private state of ours at all (not an interrupted publication of ours): a key
+        // already published is the retired Node issuer's, taken over once; a file that fails a check
+        // is refused by name. Adopting only writes our own state; the published file is not touched.
+        if matches!(
+            &loaded,
+            None | Some(PrivateState {
+                key: None,
+                next: None,
+                ..
+            })
+        ) {
+            let legacy = match early {
+                Some(found) => found,
+                None => read_legacy_key(&files)?,
+            };
+            if let Some(key) = legacy {
+                let state = PrivateState {
+                    key: Some(key),
+                    next: None,
+                    epoch: None,
+                };
+                save_state(&files.state_file, &state)?;
+                return Ok((
+                    Self {
+                        files,
+                        master,
+                        rng,
+                        current: key,
+                        superseded: false,
+                        state,
+                    },
+                    Opened::Adopted,
+                ));
+            }
+        }
         let (state, current, how) = match loaded {
             Some(PrivateState {
                 key: Some(key),
@@ -602,8 +793,8 @@ impl KeyKeeper {
                 // so a crash before the rename is retried with the same key. A key somebody else
                 // published is never touched: the file must be absent (created exclusively) or hold
                 // exactly this candidate (an interrupted publication); anything else is refused as
-                // superseded, before any state is written. Adopting or rotating a legacy key is an
-                // explicit operator migration (remove the old key file), never an automatic overwrite.
+                // superseded, before any state is written (a key from before our state existed is taken over
+                // above, not here).
                 let candidate = match other {
                     Some(PrivateState { next: Some(n), .. }) => n,
                     _ => fresh_key(&rng, &master)?,

@@ -36,6 +36,8 @@ const DEFAULT_GRANT_LIFETIME_MS: u64 = 2 * 60 * 60 * 1000;
 const OPEN_RETRY: std::time::Duration = std::time::Duration::from_secs(5);
 const GRANT_KEY_LABEL: &str = "code-egress-grant";
 const STATE_FILE: &str = "code-egress-issuer.json";
+/// The directory of the private state, inside the directory of the published key.
+const STATE_DIR: &str = "issuer";
 
 /// The deployment's egress profile (`CODE_EGRESS_*`), validated as Node's `startEgressFromEnv` did:
 /// anything wrong refuses to start.
@@ -142,9 +144,16 @@ impl Settings {
             .filter(|d| !d.is_empty())
             .map(PathBuf::from)
             .ok_or("CODE_EGRESS_PORT (the egress issuer) needs UI_DATA_DIR")?;
+        // The private state lives beside the published key, in a directory of its own inside the key
+        // directory (the issuer's uid, 0750, already required of it), not in UI_DATA_DIR: that mount
+        // is whatever the host made it (the live one is owned by a different uid), and a state
+        // directory the issuer does not own is refused. The key directory is the one place the issuer
+        // is known to own, on every deployment that runs this profile.
         let state_file = match get("CODE_EGRESS_ISSUER_STATE_FILE").filter(|v| !v.is_empty()) {
             Some(p) => PathBuf::from(p),
-            None => data_dir.join(STATE_FILE),
+            None => key_file
+                .parent()
+                .map_or_else(PathBuf::new, |d| d.join(STATE_DIR).join(STATE_FILE)),
         };
         if !canonical_absolute(&state_file) {
             return Err(bad());
@@ -280,6 +289,7 @@ impl Issuer {
                             Opened::Kept => "kept",
                             Opened::Restored => "restored",
                             Opened::Superseded => "superseded",
+                            Opened::Adopted => "adopted",
                         };
                         log(
                             "egress.issuer_started",
@@ -480,9 +490,17 @@ mod tests {
             (s.endpoint.as_str(), s.uid, s.gid, s.ttl_ms, s.lifetime_ms),
             ("egress-rs-code:8040", 0, 1006, 21_600_000, 7_200_000)
         );
+        // Beside the published key (the issuer owns that directory), not in UI_DATA_DIR.
         assert_eq!(
             s.state_file,
-            std::path::PathBuf::from("/data/code-egress-issuer.json")
+            std::path::PathBuf::from("/run/noevia-egress-control/issuer/code-egress-issuer.json")
+        );
+        assert_eq!(
+            with(&[("CODE_EGRESS_ISSUER_STATE_FILE", "/elsewhere/state.json")])
+                .unwrap()
+                .unwrap()
+                .state_file,
+            std::path::PathBuf::from("/elsewhere/state.json")
         );
         assert_eq!(
             with(&[

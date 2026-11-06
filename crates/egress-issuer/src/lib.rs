@@ -58,6 +58,19 @@ pub enum Reason {
     Forget,
     Publication,
     Report,
+    /// A key published by the retired Node issuer failed a takeover check (one reason per check).
+    LegacyKeyPath,
+    LegacyKeyUser,
+    LegacyKeyRead,
+    LegacyKeyDirectory,
+    LegacyKeyDirOwner,
+    LegacyKeyDirMode,
+    LegacyKeyFile,
+    LegacyKeyLinks,
+    LegacyKeyOwner,
+    LegacyKeyMode,
+    LegacyKeyContent,
+    LegacyKeyChanged,
 }
 
 impl Reason {
@@ -93,6 +106,18 @@ impl Reason {
             Self::Forget => "forget",
             Self::Publication => "publication",
             Self::Report => "report",
+            Self::LegacyKeyPath => "legacy_key_path_not_canonical_absolute",
+            Self::LegacyKeyUser => "legacy_key_process_uid_is_not_the_configured_web_uid",
+            Self::LegacyKeyRead => "legacy_key_unreadable",
+            Self::LegacyKeyDirectory => "legacy_key_directory_not_a_real_directory",
+            Self::LegacyKeyDirOwner => "legacy_key_directory_owner_is_not_the_web_uid_gid",
+            Self::LegacyKeyDirMode => "legacy_key_directory_mode_is_not_trusted_0750_class",
+            Self::LegacyKeyFile => "legacy_key_file_is_not_a_regular_file",
+            Self::LegacyKeyLinks => "legacy_key_file_has_extra_links",
+            Self::LegacyKeyOwner => "legacy_key_file_owner_is_not_the_web_uid_gid",
+            Self::LegacyKeyMode => "legacy_key_file_mode_is_not_0440",
+            Self::LegacyKeyContent => "legacy_key_content_is_not_64_hex_and_lf",
+            Self::LegacyKeyChanged => "legacy_key_changed_while_it_was_checked",
         }
     }
 }
