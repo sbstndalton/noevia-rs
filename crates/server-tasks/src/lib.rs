@@ -492,3 +492,5 @@ mod tests {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod journal_tests;
+
+pub mod role_prompt;
