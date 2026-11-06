@@ -811,6 +811,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dispatch-permit"
+version = "0.1.0"
+
+[[package]]
 name = "displaydoc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1982,6 +1986,7 @@ dependencies = [
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "dispatch-permit",
  "embedding-worker",
  "engine-admission",
  "flate2",

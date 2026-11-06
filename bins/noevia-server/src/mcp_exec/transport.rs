@@ -184,10 +184,10 @@ impl Transport {
         timeout: Duration,
         permit: Option<&dyn DispatchPermit>,
     ) -> Result<Option<JValue>, RpcError> {
-        if self.public.is_some() || self.address_check.is_some() {
-            if !self.address_allowed(url).await {
-                return Err(fetch_failed());
-            }
+        if (self.public.is_some() || self.address_check.is_some())
+            && !self.address_allowed(url).await
+        {
+            return Err(fetch_failed());
         }
         let mut pairs = vec![("jsonrpc", JValue::Str("2.0".into()))];
         if let Some(id) = id {
@@ -320,6 +320,7 @@ impl Transport {
     }
 
     /// core `callTool`: `tools/call`, whose `result` is returned as the server sent it.
+    #[allow(clippy::too_many_arguments)]
     pub async fn call_tool(
         &self,
         url: &str,
