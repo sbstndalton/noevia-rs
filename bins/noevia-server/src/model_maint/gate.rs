@@ -542,7 +542,7 @@ impl Shared {
 
 /// Local admission transferred to a durable finalization fence. Dropping a task must not
 /// clear it: only verified finalization/recovery explicitly releases this reservation.
-pub(super) struct AdmissionFence {
+pub(crate) struct AdmissionFence {
     local: Arc<AtomicBool>,
 }
 impl AdmissionFence {
@@ -552,7 +552,7 @@ impl AdmissionFence {
             .ok()?;
         Some(Self { local })
     }
-    pub(super) fn release(self) {
+    pub(crate) fn release(self) {
         self.local.store(false, Ordering::Release);
     }
 }
@@ -577,14 +577,14 @@ impl std::fmt::Debug for Hold {
 }
 
 impl Hold {
-    pub(super) fn recovery_proof(&self) -> Option<(&str, u64)> {
+    pub(crate) fn recovery_proof(&self) -> Option<(&str, u64)> {
         self.shared
             .lease_id
             .as_deref()
             .map(|id| (id, self.shared.node_generation))
     }
 
-    pub(super) fn defer_local_release(&mut self) -> AdmissionFence {
+    pub(crate) fn defer_local_release(&mut self) -> AdmissionFence {
         self.local_finished = true;
         AdmissionFence {
             local: Arc::clone(&self.local),
@@ -701,7 +701,7 @@ impl Hold {
     }
 
     /// Owned exact-hold fence for asynchronous CAS resolvers. It never follows a replacement lease.
-    pub(super) fn write_fence(&self) -> super::ini::WriteAllowed {
+    pub(crate) fn write_fence(&self) -> super::ini::WriteAllowed {
         let shared = Arc::clone(&self.shared);
         super::ini::WriteAllowed::held(
             Arc::new(move || {
