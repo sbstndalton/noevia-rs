@@ -26,6 +26,8 @@ use tokio::{
     time::{timeout, Instant},
 };
 
+pub type AuditLog = Arc<dyn Fn(Value) + Send + Sync>;
+
 mod guard;
 mod socket_proxy;
 
@@ -122,6 +124,57 @@ async fn on_node(page: &Page, id: &str, function: String, args: Vec<Value>) -> R
     }
     Ok(r.pointer("/result/value").cloned().unwrap_or(Value::Null))
 }
+#[derive(Debug)]
+struct CompatibilityError(String);
+impl std::fmt::Display for CompatibilityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl std::error::Error for CompatibilityError {}
+fn compatibility_error(text: String) -> anyhow::Error {
+    anyhow!(CompatibilityError(text))
+}
+fn public_error(kind: &str, error: &anyhow::Error, deadline: Duration) -> String {
+    if let Some(error) = error.downcast_ref::<CompatibilityError>() {
+        return error.0.clone();
+    }
+    let method = match kind {
+        "type" => "fill",
+        "select" => "selectOption",
+        "upload" => "setInputFiles",
+        other => other,
+    };
+    let owner = if kind == "navigate" {
+        "page"
+    } else {
+        "elementHandle"
+    };
+    let text = error.to_string();
+    if text == "Action timed out" {
+        return format!(
+            "{owner}.{method}: Timeout {}ms exceeded.",
+            deadline.as_millis()
+        );
+    }
+    if let Some(key) = text.strip_prefix("Key not found: ") {
+        return format!("elementHandle.press: Unknown key: {}", json!(key));
+    }
+    format!("{owner}.{method}: Browser operation failed")
+}
+fn js_string(value: Option<&Value>) -> String {
+    match value {
+        None | Some(Value::Null) => String::new(),
+        Some(Value::String(v)) => v.clone(),
+        Some(Value::Array(v)) => v
+            .iter()
+            .map(|v| js_string(Some(v)))
+            .collect::<Vec<_>>()
+            .join(","),
+        Some(Value::Object(_)) => "[object Object]".into(),
+        Some(v) => v.to_string(),
+    }
+}
 fn string(v: &Value, k: &str) -> String {
     v.get(k).and_then(Value::as_str).unwrap_or("").to_owned()
 }
@@ -204,8 +257,12 @@ pub struct CdpEngine {
     pump: JoinHandle<()>,
     event_error: Arc<tokio::sync::Mutex<Option<String>>>,
     config: Launch,
+    log: AuditLog,
+    job_id: String,
+    session_id: String,
     secret_used: bool,
     closed: bool,
+    close_confirmed: bool,
     interrupted: Arc<AtomicBool>,
     downloads: Arc<tokio::sync::Mutex<Vec<Value>>>,
     download_task: JoinHandle<()>,
@@ -223,6 +280,15 @@ impl Drop for CdpEngine {
 }
 impl CdpEngine {
     pub async fn launch(config: Launch) -> Result<Self> {
+        Self::launch_with_log(config, String::new(), Arc::new(|_| {})).await
+    }
+    pub async fn launch_with_log(config: Launch, job_id: String, log: AuditLog) -> Result<Self> {
+        let mut entropy = [0u8; 16];
+        std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom")?, &mut entropy)?;
+        let session_id = entropy
+            .iter()
+            .map(|v| format!("{v:02x}"))
+            .collect::<String>();
         if config.allowed_domains.is_empty() {
             bail!("A browser task needs at least one allowed domain.")
         }
@@ -300,6 +366,8 @@ impl CdpEngine {
             config.allowed_domains.clone(),
             event_error.clone(),
             config.secrets.clone(),
+            log.clone(),
+            job_id.clone(),
             Some((
                 origin(&socket_proxy.address),
                 socket_proxy.credentials.clone(),
@@ -378,8 +446,12 @@ impl CdpEngine {
             pump,
             event_error,
             config,
+            log,
+            job_id,
+            session_id,
             secret_used: false,
             closed: false,
+            close_confirmed: false,
             interrupted: Arc::new(AtomicBool::new(false)),
             downloads,
             download_task,
@@ -392,6 +464,9 @@ impl CdpEngine {
             engine.close().await;
             return Err(e);
         }
+        (engine.log)(
+            json!({"event":"browser.opened","jobId":engine.job_id,"session":engine.session_id,"allowedDomains":engine.config.allowed_domains}),
+        );
         Ok(engine)
     }
     async fn prepare(&mut self) -> Result<()> {
@@ -431,9 +506,12 @@ impl CdpEngine {
         Ok(())
     }
     pub async fn state(&self) -> Value {
-        let mut blocked = self.guard.blocked.lock().await.clone();
-        blocked.extend(self._socket_proxy.blocked.lock().await.clone());
+        let blocked = self.guard.blocked.lock().await.clone();
         json!({"origin":origin(&self.url().await.unwrap_or_default()),"blocked":blocked,"downloads":self.downloads.lock().await.clone(),"closed":self.closed || self.guard.finished()})
+    }
+    /// Transport diagnostics include browser-background traffic, not just task page events.
+    pub async fn proxy_denials(&self) -> Vec<Value> {
+        self._socket_proxy.blocked.lock().await.clone()
     }
     pub async fn policy_trace(&self) -> Vec<Value> {
         self.guard.trace.lock().await.clone()
@@ -483,6 +561,9 @@ impl CdpEngine {
                 json!({"expression":expr,"returnByValue":false}),
             )
             .await?;
+            if r.get("exceptionDetails").is_some() {
+                bail!("That element is not on the page.")
+            }
             if let Some(id) = r.pointer("/result/objectId").and_then(Value::as_str) {
                 return Ok(id.into());
             }
@@ -602,8 +683,21 @@ impl CdpEngine {
         id: Option<&str>,
         typed: Option<String>,
     ) -> Result<Option<Value>> {
-        let kind = string(a, "type");
+        let kind = js_string(a.get("type"));
         let target = id.unwrap_or("");
+        if id.is_none()
+            && ["click", "hover", "type", "select", "upload", "submit"].contains(&kind.as_str())
+        {
+            let method = match kind.as_str() {
+                "type" => "fill",
+                "select" => "selectOption",
+                "upload" => "setInputFiles",
+                other => other,
+            };
+            return Err(compatibility_error(format!(
+                "Cannot read properties of null (reading '{method}')"
+            )));
+        }
         match kind.as_str() {
             "navigate" => {
                 self.navigate(&string(a, "url")).await?;
@@ -657,6 +751,19 @@ impl CdpEngine {
                 on_node(&self.page,target,"function(){const f=this.form||this.closest('form')||this;f.requestSubmit?f.requestSubmit():f.submit()}".into(),vec![]).await?;
             }
             "select" => {
+                let tag = on_node(
+                    &self.page,
+                    target,
+                    "function(){return this.tagName}".into(),
+                    vec![],
+                )
+                .await?;
+                if tag != json!("SELECT") {
+                    return Err(compatibility_error(
+                        "elementHandle.selectOption: Error: Element is not a <select> element"
+                            .into(),
+                    ));
+                }
                 bounded(self.config.timeout, async {
                     loop {
                         let done = on_node(&self.page,target,"function(v){if(this.tagName!=='SELECT')throw Error('Not a select');if(this.disabled)return false;const opt=Array.from(this.options).find(o=>o.value===v);if(!opt)return false;this.value=opt.value;this.dispatchEvent(new Event('input',{bubbles:true}));this.dispatchEvent(new Event('change',{bubbles:true}));return true}".into(),vec![json!(typed)]).await?;
@@ -666,6 +773,37 @@ impl CdpEngine {
                 }).await?;
             }
             "type" => {
+                let field=on_node(&self.page,target,"function(){return {tag:this.tagName,type:this.type,editable:this.isContentEditable}}".into(),vec![]).await?;
+                if string(&field, "tag") == "INPUT"
+                    && ![
+                        "text",
+                        "email",
+                        "number",
+                        "password",
+                        "search",
+                        "tel",
+                        "url",
+                        "color",
+                        "date",
+                        "time",
+                        "datetime-local",
+                        "month",
+                        "range",
+                        "week",
+                    ]
+                    .contains(&string(&field, "type").as_str())
+                {
+                    return Err(compatibility_error(format!(
+                        "elementHandle.fill: Error: Input of type {} cannot be filled",
+                        json!(string(&field, "type"))
+                    )));
+                }
+                if string(&field, "tag") != "INPUT"
+                    && string(&field, "tag") != "TEXTAREA"
+                    && field.get("editable").and_then(Value::as_bool) != Some(true)
+                {
+                    return Err(compatibility_error("elementHandle.fill: Error: Element is not an <input>, <textarea> or [contenteditable] element".into()));
+                }
                 self.actionable(target, true).await?;
                 bounded(self.config.timeout, async {
                     loop {
@@ -750,7 +888,7 @@ impl CdpEngine {
         Ok(None)
     }
     async fn run(&mut self, a: &Value, approval: &dyn Approval, id: Option<&str>) -> Result<Value> {
-        let kind = string(a, "type");
+        let kind = js_string(a.get("type"));
         let before = origin(&self.url().await?);
         let result_secrets = self.config.secrets.clone();
         let result = |status: &str, reason: &str| json!({"status":status,"origin":before,"reason":mask(reason,&result_secrets)});
@@ -770,7 +908,18 @@ impl CdpEngine {
         ]
         .contains(&kind.as_str())
         {
-            return Ok(result("blocked", "Unknown action"));
+            return Ok(result(
+                "blocked",
+                &format!(
+                    "Unknown action “{}”.",
+                    String::from_utf16_lossy(
+                        &mask(&kind, &self.config.secrets)
+                            .encode_utf16()
+                            .take(40)
+                            .collect::<Vec<_>>()
+                    )
+                ),
+            ));
         }
         if kind == "navigate"
             && a.get("method")
@@ -844,12 +993,36 @@ impl CdpEngine {
             }
             typed = Some(text);
         }
+        if kind == "upload" {
+            let file = std::fs::canonicalize(js_string(a.get("file"))).ok();
+            if file.as_ref().is_none_or(|f| {
+                !self
+                    .config
+                    .upload_files
+                    .iter()
+                    .filter_map(|p| std::fs::canonicalize(p).ok())
+                    .any(|p| &p == f)
+            }) {
+                return Ok(result(
+                    "blocked",
+                    "Only files given to this task can be uploaded.",
+                ));
+            }
+        }
         if verdict.get("status").and_then(Value::as_str) != Some("allow") {
-            let card = json!({"origin":before,"action":kind,"reason":verdict.get("reason"),"element":serde_json::from_str::<Value>(&mask(&serde_json::to_string(&element)?,&self.config.secrets)).ok(),"typed":typed.as_ref().map(|t|mask(t,&self.config.secrets)),"evidence":self.evidence().await});
-            if !bounded(Duration::from_secs(300), approval.decide(card))
-                .await
-                .unwrap_or(false)
+            let mut card = json!({"jobId":self.job_id,"origin":before,"action":kind,"reason":verdict.get("reason"),"element":if id.is_some(){serde_json::from_str::<Value>(&mask(&serde_json::to_string(&element)?,&self.config.secrets)).ok()}else{None},"url":a.get("url").filter(|v|!v.is_null()).map(|v|mask(&js_string(Some(v)),&self.config.secrets)),"typed":typed.as_ref().map(|t|mask(t,&self.config.secrets)),"file":if kind=="upload"{std::path::Path::new(&js_string(a.get("file"))).file_name().map(|v|v.to_string_lossy().into_owned())}else{None}});
+            if let (Some(card), Value::Object(evidence)) =
+                (card.as_object_mut(), self.evidence().await)
             {
+                card.extend(evidence);
+            }
+            let answer = bounded(Duration::from_secs(300), approval.decide(card))
+                .await
+                .unwrap_or(false);
+            (self.log)(
+                json!({"event":"browser.decided","jobId":self.job_id,"type":kind,"origin":before,"decision":if answer{"approve"}else{"deny"}}),
+            );
+            if !answer {
                 return Ok(result("blocked", "Declined."));
             }
             let active_target = self.targets.lock().await.last().cloned();
@@ -958,7 +1131,7 @@ impl CdpEngine {
                 json!({"status":"done","origin":origin(&landed),"downloads":self.downloads.lock().await.iter().map(|v|json!({"name":v.get("name"),"from":v.get("from")})).collect::<Vec<_>>()}),
             ),
             Err(e) => Ok(
-                json!({"status":if effect{"uncertain"}else{"blocked"},"origin":origin(&landed),"reason":mask(&e.to_string(),&self.config.secrets)}),
+                json!({"status":if effect{"uncertain"}else{"blocked"},"origin":origin(&landed),"reason":mask(&public_error(&kind,&e,self.config.timeout),&self.config.secrets)}),
             ),
         }
     }
@@ -966,6 +1139,11 @@ impl CdpEngine {
 #[async_trait]
 impl BrowserEngine for CdpEngine {
     async fn act(&mut self, action: Value, approval: &dyn Approval) -> Result<Value> {
+        if self.closed {
+            return Ok(
+                json!({"status":"blocked","origin":"","reason":"The browser session is closed."}),
+            );
+        }
         if self.guard.finished() || self.interrupted.load(Ordering::SeqCst) {
             return Ok(
                 json!({"status":"blocked","origin":"","reason":"The browser session was interrupted; close it before starting another task."}),
@@ -977,11 +1155,23 @@ impl BrowserEngine for CdpEngine {
             proxy: self._socket_proxy.abort_handle(),
             complete: false,
         };
+        let kind = js_string(action.get("type"));
+        let log_action = !self.closed;
         let result = self.act_once(action, approval).await;
+        if log_action {
+            if let Ok(out) = &result {
+                (self.log)(
+                    json!({"event":"browser.act","jobId":self.job_id,"session":self.session_id,"type":kind,"status":out.get("status"),"origin":out.get("origin"),"reason":out.get("reason").and_then(Value::as_str).unwrap_or("")}),
+                );
+            }
+        }
         lease.complete = true;
         result
     }
     async fn close(&mut self) -> bool {
+        if self.close_confirmed {
+            return true;
+        }
         self.closed = true;
         self._socket_proxy.stop();
         let result = bounded(LIMIT, async {
@@ -995,6 +1185,10 @@ impl BrowserEngine for CdpEngine {
         self.download_task.abort();
         self.page_watch.abort();
         if result {
+            self.close_confirmed = true;
+            (self.log)(
+                json!({"event":"browser.closed","jobId":self.job_id,"session":self.session_id}),
+            );
             let _ = tokio::fs::remove_dir_all(&self.config.profile_dir).await;
         }
         result
@@ -1011,7 +1205,25 @@ impl CdpEngine {
         if let Err(error) = self.refresh_page().await {
             return Ok(json!({"status":"blocked","origin":"","reason":error.to_string()}));
         }
-        let kind = string(&action, "type");
+        let kind = js_string(action.get("type"));
+        if ![
+            "navigate",
+            "click",
+            "type",
+            "select",
+            "press",
+            "upload",
+            "submit",
+            "extract",
+            "screenshot",
+            "scroll",
+            "hover",
+            "wait",
+        ]
+        .contains(&kind.as_str())
+        {
+            return self.run(&action, approval, None).await;
+        }
         let id = if (action.get("selector").is_some() && kind != "navigate") || kind == "press" {
             match self
                 .target(action.get("selector").and_then(Value::as_str))

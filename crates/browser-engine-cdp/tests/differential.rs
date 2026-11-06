@@ -243,11 +243,11 @@ async fn synthetic_differential() {
         .unwrap()
         .iter()
         .any(|v| v["url"].as_str().is_some_and(|u| u.ends_with("/socket")));
-    let proxy_denial_pass = engine.state().await["blocked"]
-        .as_array()
-        .unwrap()
+    let proxy_denial_pass = engine
+        .proxy_denials()
+        .await
         .iter()
-        .any(|v| v["source"] == "proxy");
+        .any(|v| v.get("source") == Some(&json!("proxy")));
     let network_enforcement_pass = denied_requests
         == json!({"resource":0,"socket":0,"popup":0,"effect":0,"originCredentials":0});
     engine

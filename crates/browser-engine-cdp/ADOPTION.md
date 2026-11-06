@@ -84,3 +84,12 @@ language and frame targeting, shared-worker/storage coverage, every public error
 and audit shape, and live TLS/SOCKS proxy qualification remain open. Existing
 passing behavior is recorded as such; no artificial fail-before is invented for
 cache isolation or cancellation cases that already matched the retained driver.
+
+The exact contract fixture additionally compares public reason strings, typed
+unknown actions, invalid selectors, missing uploads, unsupported fill/select,
+read-only timeout, invalid keys, absent targets, approval-card shape, ordered
+lifecycle callbacks, task state and repeated close. `launch_with_log` supplies
+an optional task-scoped audit callback; ordinary `launch` uses no callback.
+Transport denials from browser-background services remain diagnostics rather
+than task audit entries. The retained callback's raw action-type field has a
+pending declared-secret compatibility decision before wiring.

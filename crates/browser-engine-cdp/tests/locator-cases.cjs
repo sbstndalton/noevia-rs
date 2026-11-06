@@ -1,0 +1,28 @@
+'use strict';
+module.exports={
+ html:port=>`<p id=text>fixture</p><button id=next type=button>Next</button><label>Name<input id=input></label><input data-testid=field placeholder=Prompt><section><span>nested</span></section><div id=shadow></div><iframe id=same src=/frame></iframe><iframe id=cross src="http://frame.test:${port}/frame"></iframe><script>document.querySelector('#shadow').attachShadow({mode:'open'}).innerHTML='<p id=shadow-text>shadow text</p><input id=shadow-input>'</script>`,
+ frame:'<p id=frame-text>frame text</p><input id=frame-input><button type=button>Next</button>',
+ actions:base=>[
+  ['navigate',{type:'navigate',url:base}],
+  ['css',{type:'extract',selector:'css=#text'}],['xpath',{type:'extract',selector:'xpath=//*[@id="text"]'}],
+  ['quoted-text',{type:'extract',selector:'text="fixture"'}],['regex-text',{type:'extract',selector:'text=/^fixture$/'}],
+  ['has-text',{type:'extract',selector:'p:has-text("fixture")'}],['internal-text',{type:'extract',selector:'internal:text="fixture"s'}],
+  ['role',{type:'hover',selector:'internal:role=button[name="Next"s]'}],
+  ['label',{type:'type',selector:'internal:label="Name"s',text:'label text'}],
+  ['placeholder',{type:'type',selector:'internal:attr=[placeholder="Prompt"s]',text:'placeholder text'}],
+  ['testid',{type:'hover',selector:'internal:testid=[data-testid="field"s]'}],
+  ['chain',{type:'extract',selector:'section >> text=nested'}],
+  ['has',{type:'extract',selector:'section:has(span)'}],
+  ['shadow',{type:'extract',selector:'#shadow-text'}],
+  ['light-shadow-missing',{type:'extract',selector:'css:light=#shadow-text'}],
+  ['same-frame',{type:'extract',selector:'#same >> internal:control=enter-frame >> #frame-text'}],
+  ['same-frame-fill',{type:'type',selector:'#same >> internal:control=enter-frame >> #frame-input',text:'same value'}],
+  ['cross-frame',{type:'extract',selector:'#cross >> internal:control=enter-frame >> #frame-text'}],
+  ['cross-frame-fill',{type:'type',selector:'#cross >> internal:control=enter-frame >> #frame-input',text:'cross value'}],
+  ['invalid-frame',{type:'extract',selector:'#text >> internal:control=enter-frame >> p'}],
+  ['multi-frame',{type:'extract',selector:'iframe >> internal:control=enter-frame >> p'}],
+  ['invalid-engine',{type:'extract',selector:'unknownengine=foo'}],
+  ['invalid-css',{type:'extract',selector:'css=div['}],
+  ['first',{type:'extract',selector:'p'}],
+ ],
+};

@@ -43,8 +43,8 @@
       "evidence": "Dropped wait and approval futures close automatically; proxy tasks abort. Exhaustive setup/download/close injection remains."
     },
     "8": {
-      "status": "PARTIAL",
-      "evidence": "Missing socket denial audit and public declared-secret reason fixed fail-before/pass-after. Complete error/audit-shape matrix remains."
+      "status": "PARTIAL-PENDING-ROOT",
+      "evidence": "18 exact public-response cases, approval card, lifecycle callback, state and repeated-close parity pass; callback audit matches Node, including its raw action-type field. Declared-secret action-type redaction exception requires owner decision before wiring."
     },
     "6": {
       "status": "PARTIAL",

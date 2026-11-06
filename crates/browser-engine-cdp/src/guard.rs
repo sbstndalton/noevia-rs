@@ -43,6 +43,8 @@ impl Guard {
         domains: Vec<String>,
         errors: Arc<tokio::sync::Mutex<Option<String>>>,
         secrets: BTreeMap<String, Secret>,
+        log: AuditLog,
+        job_id: String,
         proxy: Option<(String, ProxyCredentials)>,
     ) -> Result<Self> {
         let mut connection = Connection::<GuardEvent>::connect(endpoint).await?;
@@ -128,6 +130,7 @@ impl Guard {
                             let http=url.replacen("ws","http",1);
                             if !navigation(&http,&domains) {
                                 let reason=policy(2,json!([http,domains])).ok().map(|v|mask(&string(&v,"reason"),&secrets)).unwrap_or_else(||"Navigation refused".into());
+                                (log)(json!({"event":"browser.blocked","jobId":job_id,"url":mask(&url,&secrets).chars().take(300).collect::<String>(),"reason":reason}));
                                 let mut denied=denied.lock().await;
                                 if denied.len()<100 {denied.push(json!({"url":mask(&url,&secrets).chars().take(300).collect::<String>(),"reason":reason}));}
                             }
@@ -151,6 +154,7 @@ impl Guard {
                             let (method, params) = if !allowed {
                                 let reason = policy(2,json!([url,domains])).ok().map(|v|string(&v,"reason")).filter(|s|!s.is_empty()).unwrap_or_else(||"Navigation refused".into());
                                 let reason=mask(&reason,&secrets);
+                                (log)(json!({"event":"browser.blocked","jobId":job_id,"url":mask(url,&secrets).chars().take(300).collect::<String>(),"reason":reason}));
                                 let mut denied = denied.lock().await;
                                 if denied.len()<100 {denied.push(json!({"url":mask(url,&secrets).chars().take(300).collect::<String>(),"reason":reason}));}
                                 drop(denied);
