@@ -292,7 +292,10 @@ fn concurrent_runs_and_release_share_one_load() {
     let mut r = pin!(pre.release_if_unused(&|| true));
     assert!(poll(a.as_mut()).is_pending());
     assert!(poll(b.as_mut()).is_pending());
-    assert!(poll(r.as_mut()).is_pending(), "the cancel answered but the load is outstanding");
+    assert!(
+        poll(r.as_mut()).is_pending(),
+        "the cancel answered but the load is outstanding"
+    );
     assert!(poll(r.as_mut()).is_pending());
     assert_eq!(e.count("load"), 1);
     assert_eq!(e.count("unload"), 0);
@@ -323,12 +326,19 @@ fn a_release_dropped_at_any_await_is_finished_by_the_settle_owner() {
             assert!(poll(r.as_mut()).is_pending(), "{step}");
         }
         assert_eq!(e.adopted.borrow().len(), 1, "{step}: cleanup adopted");
-        assert!(!block(pre.release_if_unused(&|| true)), "{step}: retry defers to the owner");
+        assert!(
+            !block(pre.release_if_unused(&|| true)),
+            "{step}: retry defers to the owner"
+        );
         let orphan = e.adopted.borrow_mut().pop().expect("orphan");
         let mut o = pin!(pl::settle_orphan(&e, orphan, &|| true));
         if step == "settled" {
             assert!(poll(o.as_mut()).is_pending());
-            assert_eq!(e.count("unload"), 0, "nothing unloaded before the load settles");
+            assert_eq!(
+                e.count("unload"),
+                0,
+                "nothing unloaded before the load settles"
+            );
             e.settle();
         }
         e.hold.set(None);

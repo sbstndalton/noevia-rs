@@ -230,7 +230,10 @@ impl<E: Engine> Preload<'_, E> {
             return false;
         }
         self.release.set(Release::Running);
-        let mut guard = ReleaseGuard { pre: self, armed: true };
+        let mut guard = ReleaseGuard {
+            pre: self,
+            armed: true,
+        };
         self.load.cancel();
         self.run().await;
         let out = release_rest(self.engine, &self.model, &self.used, idle).await;
@@ -242,7 +245,11 @@ impl<E: Engine> Preload<'_, E> {
 
 /// The settle owner's half of a dropped release: waits for the one load, then unloads the model when it
 /// stayed unused and the engine is idle.
-pub async fn settle_orphan<E: Engine>(engine: &E, orphan: Orphan<E::Load>, idle: &dyn Fn() -> bool) -> bool {
+pub async fn settle_orphan<E: Engine>(
+    engine: &E,
+    orphan: Orphan<E::Load>,
+    idle: &dyn Fn() -> bool,
+) -> bool {
     if orphan.used.load(Ordering::SeqCst) {
         return false;
     }
@@ -251,7 +258,12 @@ pub async fn settle_orphan<E: Engine>(engine: &E, orphan: Orphan<E::Load>, idle:
     release_rest(engine, &orphan.model, &orphan.used, idle).await
 }
 
-async fn release_rest<E: Engine>(engine: &E, model: &str, used: &AtomicBool, idle: &dyn Fn() -> bool) -> bool {
+async fn release_rest<E: Engine>(
+    engine: &E,
+    model: &str,
+    used: &AtomicBool,
+    idle: &dyn Fn() -> bool,
+) -> bool {
     let st = loop {
         engine.sleep().await;
         if used.load(Ordering::SeqCst) {
