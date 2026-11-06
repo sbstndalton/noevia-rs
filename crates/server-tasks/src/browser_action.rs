@@ -51,6 +51,8 @@ pub enum Primitive {
 /// returned waiter is dropped. The lifecycle owner independently starts close on cancellation.
 pub trait BrowserEngine: Send + Sync {
     fn execute(&self, command: Primitive) -> Reply;
+    /// Real engine closure receipt; the lifecycle owner keeps polling after caller timeout.
+    fn close(&self) -> Reply;
 }
 #[derive(Default)]
 struct Navigation {
@@ -701,6 +703,9 @@ mod tests {
         disposed: Mutex<Vec<JValue>>,
     }
     impl BrowserEngine for FakeEngine {
+        fn close(&self) -> Reply {
+            Box::pin(async { Ok(object(vec![("confirmed", JValue::Bool(true))])) })
+        }
         fn execute(&self, command: Primitive) -> Reply {
             let result = match command {
                 Primitive::Current => {
