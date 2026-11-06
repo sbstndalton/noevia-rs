@@ -1921,7 +1921,8 @@ mod gate_stage {
             assert!(io.exec.borrow().is_empty(), "the executor was called");
             assert_eq!(io.started.get(), io.fences.get(), "fence left open");
             assert!(
-                done.result.contains("could not be checked, so it was not run"),
+                done.result
+                    .contains("could not be checked, so it was not run"),
                 "{:?}",
                 done.result
             );
