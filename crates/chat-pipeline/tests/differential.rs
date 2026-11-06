@@ -856,3 +856,224 @@ fn original_noncharacters_beside_kelvin_and_long_s_are_kept_as_node_keeps_them()
         );
     }
 }
+
+mod route_stage {
+    //! chat.cjs:900-1150 against core's own handleChat (fixtures/record-refusals.cjs).
+    use chat_pipeline::route::{self, Answer, Cloud, Entry, Outcome, ProviderRow, Roles, Settings, Turn, Verdict};
+    use js_json::{wtf16, JValue};
+
+    fn s(v: &JValue) -> Option<String> {
+        v.as_str().map(str::to_owned)
+    }
+    fn arr(v: &JValue) -> &[JValue] {
+        match v {
+            JValue::Arr(a) => a,
+            _ => &[],
+        }
+    }
+    fn has(v: &JValue, k: &str) -> bool {
+        matches!(v, JValue::Obj(o) if o.iter().any(|(key, _)| key == k))
+    }
+    fn roles(v: &JValue) -> Option<Roles> {
+        matches!(v, JValue::Obj(_)).then(|| Roles {
+            fast: s(v.get("fast")),
+            smart: s(v.get("smart")),
+            vision: s(v.get("vision")),
+            code: s(v.get("code")),
+            creative: s(v.get("creative")),
+        })
+    }
+    fn provider(v: &JValue) -> ProviderRow {
+        ProviderRow {
+            id: s(v.get("id")).unwrap(),
+            label: s(v.get("label")),
+            kind: s(v.get("kind")),
+            external: v.get("external") == &JValue::Bool(true),
+            shared: v.get("shared") == &JValue::Bool(true),
+            base_url: s(v.get("baseUrl")).unwrap_or_default(),
+        }
+    }
+
+    struct Io<'a> {
+        providers: &'a JValue,
+        catalogue: Option<Vec<Entry>>,
+        verdict: Option<Verdict>,
+        answer: Option<Answer>,
+    }
+
+    impl route::RouteIo for Io<'_> {
+        fn provider(&self, id: &str) -> Option<ProviderRow> {
+            match self.providers.get(id) {
+                JValue::Obj(_) => Some(provider(self.providers.get(id))),
+                _ => None,
+            }
+        }
+        async fn catalogue(&self) -> Option<Vec<Entry>> {
+            self.catalogue.clone()
+        }
+        async fn check(&self) -> Option<Verdict> {
+            self.verdict.clone()
+        }
+        async fn open_choice(&self) -> bool {
+            true
+        }
+        async fn await_choice(&self) -> Option<Answer> {
+            self.answer.clone()
+        }
+        fn aborted(&self) -> bool {
+            false
+        }
+    }
+
+    fn laya(name: &str) -> bool {
+        let n = name.trim().to_ascii_lowercase();
+        n.strip_prefix("laya")
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(['_', '.', '-']))
+    }
+
+    fn block<F: std::future::Future>(f: F) -> F::Output {
+        let mut f = std::pin::pin!(f);
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        match f.as_mut().poll(&mut cx) {
+            std::task::Poll::Ready(v) => v,
+            std::task::Poll::Pending => panic!("the oracle's io never waits"),
+        }
+    }
+
+    #[test]
+    fn routing_and_model_choice_match_node() {
+        let c = wtf16::parse(include_str!("fixtures/refusals-cases.json")).unwrap();
+        let providers = c.get("providers");
+        let diary = s(c.get("diaryProjectId")).unwrap();
+        let mut seen = std::collections::BTreeMap::<String, usize>::new();
+        for k in arr(c.get("cases")) {
+            let space = s(k.get("space")).unwrap();
+            let explicit = ["routing", "model", "providerId"].iter().any(|f| has(k, f));
+            let project = (space == "diaryProject" || space == "project" || explicit).then(|| route::Project {
+                id: if space == "diaryProject" { diary.clone() } else { "fixture-project".into() },
+                routing: s(k.get("routing")),
+                model: s(k.get("model")),
+                provider: s(k.get("providerId")),
+            });
+            let flags = k.get("chatFlags");
+            let rm = k.get("rm");
+            let settings = |v: &JValue| -> Option<Settings> {
+                matches!(v, JValue::Obj(_)).then(|| Settings {
+                    mode: s(v.get("mode")),
+                    when_sensitive: s(v.get("whenSensitive")),
+                    cloud: Cloud {
+                        provider_id: s(v.get("cloud").get("providerId")),
+                        fast: s(v.get("cloud").get("fast")),
+                        smart: s(v.get("cloud").get("smart")),
+                        code: s(v.get("cloud").get("code")),
+                    },
+                })
+            };
+            let chatgpt = k.get("chatgpt");
+            let creative = k.get("verdicts").get("creative");
+            let turn = Turn {
+                body_project: project.is_some(),
+                project,
+                chat_id: Some("fixture-chat".into()),
+                space_id: JValue::Undefined,
+                compact_only: false,
+                default_provider: "default".into(),
+                diary_project_id: diary.clone(),
+                roles_first: roles(k.get("roles")),
+                roles_later: if k.get("rolesGone") == &JValue::Bool(true) { None } else { roles(k.get("roles")) },
+                routing_modes: matches!(rm, JValue::Obj(_)).then(|| settings(rm.get("settings"))),
+                force_local: flags.get("forceLocal") == &JValue::Bool(true),
+                allow_cloud: flags.get("allowCloud") == &JValue::Bool(true),
+                pre_flag: s(k.get("verdicts").get("preFlag")),
+                router_role: s(k.get("role")).unwrap(),
+                creative_for: ["fast", "smart", "code"]
+                    .iter()
+                    .filter(|r| creative.get(r) == &JValue::Bool(true))
+                    .map(|r| (*r).to_owned())
+                    .collect(),
+                manager_enabled: k.get("managerOn") == &JValue::Bool(true),
+                last_loaded: s(k.get("loaded")),
+                route_user: s(k.get("workspaceUser")),
+                owner: s(k.get("owner")),
+                workspace_user: s(k.get("workspaceUser")),
+                chatgpt: matches!(chatgpt, JValue::Obj(_)).then(|| route::ChatGpt {
+                    enabled: chatgpt.get("enabled") == &JValue::Bool(true),
+                    state: s(chatgpt.get("state")).unwrap(),
+                }),
+                system_model: laya,
+            };
+            let catalogue = match k.get("catalogue") {
+                JValue::Arr(rows) => Some(
+                    rows.iter()
+                        .map(|r| Entry {
+                            name: s(r.get("name")).unwrap(),
+                            labels: arr(r.get("labels")).iter().filter_map(s).collect(),
+                            missing_file: r.get("missingFile") == &JValue::Bool(true),
+                            ..Entry::default()
+                        })
+                        .collect(),
+                ),
+                _ => None,
+            };
+            let v = rm.get("verdict");
+            let a = rm.get("answer");
+            let io = Io {
+                providers,
+                catalogue,
+                verdict: matches!(v, JValue::Obj(_)).then(|| Verdict {
+                    flagged: match v.get("flagged") {
+                        JValue::Bool(b) => Some(*b),
+                        _ => None,
+                    },
+                    flag: s(v.get("flag")),
+                    cause: s(v.get("cause")),
+                }),
+                answer: matches!(a, JValue::Obj(_)).then(|| Answer {
+                    choice: s(a.get("choice")),
+                    remember: a.get("remember") == &JValue::Bool(true),
+                }),
+            };
+            let got = block(route::decide(&turn, &io));
+            let out = k.get("out");
+            let what = wtf16::stringify(k).unwrap();
+            let want_events: Vec<String> = arr(out.get("events")).iter().map(|e| wtf16::stringify(e).unwrap()).collect();
+            let got_events: Vec<String> = got.events.iter().map(|e| wtf16::stringify(e).unwrap()).collect();
+            assert_eq!(got_events, want_events, "events {what}");
+            let kind = if let JValue::Obj(_) = out.get("refused") {
+                let r = out.get("refused");
+                assert_eq!(
+                    got.outcome,
+                    Outcome::Refused {
+                        status: match r.get("status") { JValue::Num(n) => *n as u16, _ => 0 },
+                        error: s(r.get("payload").get("error")).unwrap(),
+                        streamed: false
+                    },
+                    "{what}"
+                );
+                "refused"
+            } else if let Some(other) = s(out.get("other")) {
+                let text = other.split_once(",error::").or_else(|| other.split_once("error::")).map(|(_, t)| t.to_owned()).unwrap_or_else(|| panic!("unrecorded outcome {what}"));
+                assert!(other.starts_with("route_pending"), "{what}");
+                match &got.outcome {
+                    Outcome::Refused { error, streamed: true, .. } => assert_eq!(error, &text, "{what}"),
+                    o => panic!("got {o:?}, Node streamed {text:?}: {what}"),
+                }
+                "streamed"
+            } else {
+                let up = out.get("upstream");
+                let Outcome::Go(go) = &got.outcome else { panic!("got {:?}, Node went on: {what}", got.outcome) };
+                if let Some(m) = s(up.get("load")) {
+                    assert_eq!(go.model, m, "{what}");
+                    assert_eq!(go.provider.id, "default", "{what}");
+                } else {
+                    assert_eq!(Some(go.model.clone()), s(up.get("model")), "{what}");
+                    let url = s(up.get("url")).unwrap();
+                    assert!(url.starts_with(&go.provider.base_url), "{url} {:?}: {what}", go.provider);
+                }
+                "go"
+            };
+            *seen.entry(kind.into()).or_default() += 1;
+        }
+        assert!(seen["refused"] > 1500 && seen["go"] > 1000 && seen["streamed"] >= 10, "{seen:?}");
+    }
+}

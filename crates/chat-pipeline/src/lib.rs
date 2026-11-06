@@ -13,6 +13,7 @@
 //! - [`title`]: the chat's generated title (#1785).
 //! - [`usage`]: the exchange's usage and first-token telemetry across tool rounds.
 //! - [`validate`]: what a turn refuses before anything is read or written.
+//! - [`route`]: where a turn goes (routing modes, provider, Auto roles, model) or why it is refused.
 //! - [`end`]: how a turn ends (pauses, the last sources, the fallback text, telemetry).
 //! - [`failure`]: the words a failed engine reply shows.
 //! - [`writes`]: the writes already done in a chat (#658 repeat flag).
@@ -25,6 +26,7 @@ pub mod notes;
 pub mod record;
 pub mod reduce;
 pub mod replay;
+pub mod route;
 pub mod rounds;
 pub mod search;
 pub mod sources;
