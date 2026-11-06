@@ -3555,7 +3555,12 @@ mod tests {
         let blocked = std::thread::spawn(move || store.stall_writes(entered, resume));
         started.recv_timeout(WATCHDOG).unwrap();
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        review_wait_outcome(&w).await;
+        let observed = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| observed.decide_attempts() >= 1).await;
+        })
+        .await
+        .expect("old append dispatched to the blocked store boundary");
         w.post_expiry.notify_one();
         // Evidence is waiting on the actual store mutex after the successful search.
         let result = tokio::time::timeout(WATCHDOG, settled(&w)).await;
@@ -3576,6 +3581,11 @@ mod tests {
         release.send(()).unwrap();
         blocked.join().unwrap();
         result.expect("post-outcome evidence deadline must publish failure");
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| observed.decide_completions() >= 1).await;
+        })
+        .await
+        .expect("old blocked append completed after release");
         settled(&w).await;
         assert_eq!(
             evidence_count(&w).await,
@@ -3991,6 +4001,14 @@ mod tests {
             .await
             .is_err());
         // Cancellation interrupts the wait without releasing the retained local admission.
+        let timer = Arc::new(TestGate::default());
+        *w.fence_timer.lock().unwrap() = Some(Arc::clone(&timer));
+        // Let any already armed backoff finish, then acknowledge the controlled timer.
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| timer.entered.load(Ordering::Acquire)).await;
+        })
+        .await
+        .unwrap();
         let attempts = store.run_write_failures().len();
         w.cancel().unwrap();
         tokio::time::timeout(WATCHDOG, async {
@@ -3998,6 +4016,10 @@ mod tests {
         })
         .await
         .expect("cancellation interrupts the retry wait");
+        // The cancellation proof is complete. Recovery after task abort must use
+        // ordinary retry timers, including a cleanup already polling this gate.
+        *w.fence_timer.lock().unwrap() = None;
+        timer.release.notify_one();
         assert!(w.maint.local_held());
         // Task cancellation/shutdown drops Hold, but the worker still owns the local fence.
         w.run_abort.lock().unwrap().as_ref().unwrap().abort();
@@ -5164,25 +5186,38 @@ mod tests {
         let w = worker(d.path(), port);
         // Advance only after the response body is polled, while the long timer is armed.
         // Keep disk/network setup on the real clock so paused-time auto-advance cannot
-        // race spawn_blocking persistence. Count virtual elapsed time for the same bound.
-        let elapsed = Arc::new(std::sync::atomic::AtomicU64::new(0));
-        let clock = Arc::clone(&elapsed);
+        // race spawn_blocking persistence. Measure all elapsed time, including resumed time.
+        let started = tokio::time::Instant::now();
+        let observed = Arc::clone(&w);
         let driver = tokio::spawn(async move {
             loop {
                 tokio::time::timeout(WATCHDOG, polled.notified())
                     .await
                     .unwrap();
+                let before = observed.long_expirations.load(Ordering::Acquire);
                 tokio::time::pause();
                 tokio::time::advance(Duration::from_secs(2)).await;
+                // Stay runnable to prevent paused-clock auto-advance. The wall clock
+                // here is only a deadlock watchdog, not the prompt's timing oracle.
+                let watchdog = std::time::Instant::now();
+                while observed.long_expirations.load(Ordering::Acquire) == before
+                    && watchdog.elapsed() < WATCHDOG
+                {
+                    tokio::task::yield_now().await;
+                }
+                let expired = observed.long_expirations.load(Ordering::Acquire) > before;
                 tokio::time::resume();
-                clock.fetch_add(2, Ordering::AcqRel);
+                assert!(
+                    expired,
+                    "silent prompt must expire within its virtual budget"
+                );
             }
         });
         w.launch("synthetic", plan(16_384.0, 1.0)).await.unwrap();
         let job = settled(&w).await;
         driver.abort();
         assert!(driver.await.unwrap_err().is_cancelled());
-        let elapsed = Duration::from_secs(elapsed.load(Ordering::Acquire));
+        let elapsed = started.elapsed();
         assert!(elapsed < Duration::from_secs(25), "{elapsed:?}");
         assert_eq!(job.get("status").as_str(), Some("failed"), "{job:?}");
         assert!(job
