@@ -1,4 +1,5 @@
 //! chat-pipeline `tools_mode` against core tools-mode.cjs (tests/fixtures/record-tools-mode.cjs).
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 use chat_pipeline::tools_mode::{self as tm, Eligibility, Moved, ToolsReady};
 use chat_pipeline::Thrown;
 use js_json::{wtf16, JValue};
