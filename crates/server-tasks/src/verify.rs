@@ -468,7 +468,7 @@ impl Verify {
 }
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::{
         account::Account,
@@ -509,7 +509,7 @@ mod tests {
         );
         String::from_utf8(out.stdout).unwrap().trim().into()
     }
-    fn context() -> (tempfile::TempDir, Arc<JournalContext>, String) {
+    pub(crate) fn context() -> (tempfile::TempDir, Arc<JournalContext>, String) {
         let root = tempfile::tempdir().unwrap();
         let repo = root.path().join("repo");
         std::fs::create_dir_all(&repo).unwrap();

@@ -195,10 +195,34 @@ async fn consume(
     }
     Ok(Ok(from_units(&answer)))
 }
+pub struct Failed {
+    pub kind: Error,
+    pub constraint: Option<JValue>,
+}
 pub async fn call(
     transport: &dyn Transport,
     input: Call<'_>,
+    cancel: watch::Receiver<bool>,
+) -> Result<Answer, Error> {
+    call_detailed(transport, input, cancel)
+        .await
+        .map_err(|e| e.kind)
+}
+pub async fn call_detailed(
+    transport: &dyn Transport,
+    input: Call<'_>,
+    cancel: watch::Receiver<bool>,
+) -> Result<Answer, Failed> {
+    let mut constraint = None;
+    guarded(transport, input, cancel, &mut constraint)
+        .await
+        .map_err(|kind| Failed { kind, constraint })
+}
+async fn guarded(
+    transport: &dyn Transport,
+    input: Call<'_>,
     mut cancel: watch::Receiver<bool>,
+    published: &mut Option<JValue>,
 ) -> Result<Answer, Error> {
     if !input.roles.iter().any(|role| role == input.role) {
         return Err(Error::ContextInvalid);
@@ -269,6 +293,7 @@ pub async fn call(
                 ));
             }
         }
+        *published = Some(constraint.clone());
         let forwarded = cancel.clone();
         tokio::select! {biased;_=cancel.changed()=>return Err(Error::Aborted),ready=transport.begin_attempt(forwarded)=>ready?}
         let mut response = send(transport, effective, &mut cancel).await?;
@@ -277,6 +302,7 @@ pub async fn call(
             drop(response);
             constrained = false;
             constraint = outcome(false, Some(&format!("engine_rejected_{status}")), true);
+            *published = Some(constraint.clone());
             response = send(transport, payload, &mut cancel).await?;
         }
         if !(200..300).contains(&response.status) {

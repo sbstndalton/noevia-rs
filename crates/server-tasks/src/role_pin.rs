@@ -23,6 +23,7 @@ pub struct Endpoint {
 pub struct Fault {
     pub code: String,
     pub reason: String,
+    pub constraint: Option<JValue>,
 }
 impl std::fmt::Debug for Fault {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -35,6 +36,7 @@ fn fail(code: &str, reason: impl Into<String>) -> Fault {
     Fault {
         code: code.into(),
         reason: reason.into(),
+        constraint: None,
     }
 }
 fn aborted() -> Fault {
@@ -271,12 +273,12 @@ impl Session {
             endpoint,
             model: self.model.clone(),
         };
-        role_stream::call(&transport,input,cancel).await.map_err(|e|match e{
+        role_stream::call_detailed(&transport,input,cancel).await.map_err(|e|{let mut fault=match e.kind{
    Error::Aborted=>aborted(),Error::ModelMismatch=>fail("model_mismatch","A different model is loaded. This step was not sent, because switching models would unload it."),
    Error::RouterUnavailable=>fail("router_unavailable","The model router could not say which model is loaded, so this step was not sent."),Error::OverBudget(reason)=>fail("over_budget",reason),
    Error::ContextRefused=>fail("context_refused","The task was not sent because its context would have carried private data."),Error::TooLarge=>fail("too_large","The task is too large for this step."),
    Error::ContextInvalid=>fail("context_invalid","The task could not be prepared for this step."),Error::Invalid=>fail("invalid","The answer did not match the expected format, even after one correction."),Error::Transport=>fail("error","The model could not be reached.")
-  })
+  };fault.constraint=e.constraint;fault})
     }
 }
 #[cfg(test)]
