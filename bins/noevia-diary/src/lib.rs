@@ -7,6 +7,7 @@ pub mod backup;
 pub mod config;
 pub mod corpus;
 pub mod health;
+pub mod legacy;
 pub mod managed;
 pub mod py;
 pub mod server;

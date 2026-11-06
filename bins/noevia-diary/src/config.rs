@@ -52,6 +52,9 @@ pub struct Config {
     /// Python's DIARY_CORPUS_WRITE_IMPL ("python" when absent).
     #[serde(default)]
     pub corpus_write_impl: String,
+    /// Non-managed corpora (POST /api/storage-import): see legacy.rs.
+    #[serde(default)]
+    pub legacy: crate::legacy::LegacyConfig,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

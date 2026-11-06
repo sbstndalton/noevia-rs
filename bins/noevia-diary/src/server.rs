@@ -62,6 +62,7 @@ pub struct App {
     /// the same native transforms ("rust").
     pub corpus_write_impl: String,
     pub writers: Writers,
+    pub legacy: crate::legacy::LegacyConfig,
 }
 
 impl App {
@@ -86,6 +87,7 @@ impl App {
             export: cfg.workspace_export,
             corpus_write_impl: cfg.corpus_write_impl,
             writers: Writers::default(),
+            legacy: cfg.legacy,
         }
     }
 }
@@ -129,7 +131,7 @@ pub fn decline() -> Response<Body> {
 // ---------------------------------------------------------------- request view
 
 /// The first value of a header, latin-1 decoded (Starlette `headers.get`), or "".
-fn header(headers: &HeaderMap, name: &str) -> String {
+pub(crate) fn header(headers: &HeaderMap, name: &str) -> String {
     headers
         .get(name)
         .map(|v| py::latin1(v.as_bytes()))
@@ -158,7 +160,7 @@ fn decoded_path(raw: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn is_uuid(s: &str) -> bool {
+pub(crate) fn is_uuid(s: &str) -> bool {
     let b = s.as_bytes();
     b.len() == 36
         && b.iter().enumerate().all(|(i, c)| match i {
@@ -222,7 +224,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
 
 /// The X-Cowork-Storage descriptor, when it decodes strictly (unpadded base64url, a JSON
 /// object). Err(()) means "Python's lenient decoder might read it differently": decline.
-fn strict_descriptor(raw: &str) -> Result<Option<serde_json::Map<String, Value>>, ()> {
+pub(crate) fn strict_descriptor(raw: &str) -> Result<Option<serde_json::Map<String, Value>>, ()> {
     if raw.is_empty() || raw.len() > MAX_STORAGE_HEADER_LEN {
         return Ok(None);
     }
@@ -390,7 +392,7 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
 
 // ---------------------------------------------------------------- handling
 
-fn check_auth(app: &App, headers: &HeaderMap) -> Result<bool, ()> {
+pub(crate) fn check_auth(app: &App, headers: &HeaderMap) -> Result<bool, ()> {
     if app.auth_token.is_empty() {
         return Ok(true);
     }
@@ -413,7 +415,7 @@ fn check_auth(app: &App, headers: &HeaderMap) -> Result<bool, ()> {
 }
 
 /// Python's 401 for an unverifiable request (TenantAssertionMiddleware).
-fn unverified() -> Response<Body> {
+pub(crate) fn unverified() -> Response<Body> {
     detail(401, "invalid tenant assertion")
 }
 
@@ -448,6 +450,9 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     }
     let asserted = flag(&headers, ASSERTED_HEADER);
     let recovered = flag(&headers, RECOVERED_HEADER);
+    if parts.method == Method::POST && path == "/api/storage-import" {
+        return crate::legacy::import(app, headers, asserted, body).await;
+    }
     if parts.method == Method::POST && path == "/api/storage-backup" {
         if !flag(&headers, WRITER_HEADER) {
             return decline();
