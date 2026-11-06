@@ -43,6 +43,9 @@ pub const ENTER_TIMEOUT: Duration = Duration::from_secs(150);
 /// What to hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ask<'a> {
+    /// Task execution's maintenance exclusion only. Reserves no model memory, does not prepare
+    /// or load a model, and uses the same authority/renewal/coverage as Engine leases.
+    Maintenance,
     /// Embeddings need the maintenance guard, never a text-model load or router queue.
     /// PAIRED ONLY: callers MUST verify the boot-bound embedding-background-v1
     /// ownership capability. Older Core treats this request as a text-engine load.
@@ -157,6 +160,7 @@ impl Admission {
     /// every await: the ticket is given back (here and to Node) when this future is dropped.
     pub async fn enter(self: &Arc<Self>, ask: Ask<'_>, cancel: &Cancel) -> Result<Lease, Refused> {
         let body = match ask {
+            Ask::Maintenance => json!({ "maintenance": true }),
             Ask::Embedding { model } => json!({ "model": model, "embedding": true }),
             Ask::Engine { model } => json!({ "model": model }),
             Ask::Machine {
@@ -883,5 +887,65 @@ mod tests {
         assert_eq!(authority.held(), 0);
         settle().await;
         assert_eq!(deletes(&state), 1);
+    }
+    #[tokio::test]
+    async fn maintenance_shares_authority_without_a_model_and_settles_before_release() {
+        let (base, node) = node((201, GRANT.into())).await;
+        let authority = registered();
+        let admission = admission_with(&base, &authority);
+        let cancel = Cancel::new();
+        let task = admission.enter(Ask::Maintenance, &cancel).await.unwrap();
+        let chat = admission
+            .enter(
+                Ask::Engine {
+                    model: "synthetic-model",
+                },
+                &Cancel::new(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(authority.held(), 2);
+        let asks = node
+            .asks
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|s| serde_json::from_str::<Value>(s).ok())
+            .collect::<Vec<_>>();
+        assert!(asks.contains(&json!({"maintenance":true})));
+        assert!(asks.contains(&json!({"model":"synthetic-model"})));
+        cancel.cancel();
+        assert!(
+            task.covered(),
+            "a cancelled task retains exclusion until its engine settles"
+        );
+        chat.release().await;
+        assert_eq!(authority.held(), 1);
+        let (settled, wait) = tokio::sync::oneshot::channel::<()>();
+        let owner = tokio::spawn(async move {
+            let _ = wait.await;
+            task.release().await;
+        });
+        tokio::task::yield_now().await;
+        assert_eq!(authority.held(), 1);
+        settled.send(()).unwrap();
+        owner.await.unwrap();
+        assert_eq!(authority.held(), 0);
+    }
+    #[tokio::test]
+    async fn maintenance_loses_the_same_incarnation_coverage_as_chat() {
+        let (base, _) = node((201, GRANT.into())).await;
+        let authority = registered();
+        let admission = admission_with(&base, &authority);
+        let task = admission
+            .enter(Ask::Maintenance, &Cancel::new())
+            .await
+            .unwrap();
+        authority.node_session("boot-2", 2).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), task.lost().cancelled())
+            .await
+            .unwrap();
+        assert!(!task.covered());
+        task.release().await;
     }
 }
