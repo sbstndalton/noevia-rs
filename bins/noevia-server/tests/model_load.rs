@@ -41,14 +41,20 @@ struct World {
     _dir: tempfile::TempDir,
     router: Arc<Mutex<Vec<Req>>>,
     node: Arc<Mutex<Vec<Req>>>,
+    maint: Arc<noevia_server::model_maint::Maint>,
+    barrier: Arc<Mutex<bool>>,
 }
 
 type Script = Arc<Mutex<HashMap<String, Vec<Value>>>>;
 
 impl World {
     async fn new(s: &Value) -> World {
+        static START: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(10);
         engine_admission::authority::global()
-            .node_session("load-tests", 1)
+            .node_session(
+                "load-tests",
+                START.fetch_add(10, std::sync::atomic::Ordering::SeqCst),
+            )
             .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let _db = seed_database(dir.path());
@@ -82,14 +88,37 @@ impl World {
             }
         }
         let script: Script = Arc::new(Mutex::new(script));
+        let lose_renewal = s.get("loseRenewal") == Some(&Value::Bool(true));
+        let barrier = Arc::new(Mutex::new(false));
+        let node_barrier = Arc::clone(&barrier);
+        let delay_load_ack = s.get("delayLoadAck") == Some(&Value::Bool(true));
+        let verified_gate = s.get("verifiedGate") == Some(&Value::Bool(true));
+        let long_unload = s.get("longUnload") == Some(&Value::Bool(true));
         let long_load = s.get("longLoad") == Some(&Value::Bool(true));
         let launched = Mutex::new(None::<std::time::Instant>);
         let (port, router) = engine(Arc::new(move |req: &Req| {
             let key = format!("{} {}", req.method, req.target.split('?').next().unwrap());
+            if key == "GET /gate/v1/capabilities" && verified_gate {
+                return Answer::Reply(200, json!({"protocol":"noevia-gate-capabilities/1", "capabilities":["noevia-model-load-settlement/1"]}).to_string());
+            }
+            if long_unload {
+                if key == "POST /models/unload" {
+                    *launched.lock().unwrap() = Some(std::time::Instant::now());
+                    return Answer::After(Duration::from_millis(500), 200, "{}".into());
+                }
+                if key == "GET /models" {
+                    let state = match *launched.lock().unwrap() {
+                        None => "loaded",
+                        Some(t) if t.elapsed() < Duration::from_millis(1500) => "unloading",
+                        Some(_) => "unloaded",
+                    };
+                    return Answer::Reply(200, json!({"data":[{"id":"m", "status":{"value":state}}]}).to_string());
+                }
+            }
             if long_load {
                 if key == "POST /models/load" {
                     *launched.lock().unwrap() = Some(std::time::Instant::now());
-                    return Answer::Reply(200, "{}".into());
+                    return if delay_load_ack { Answer::After(Duration::from_millis(500), 200, "{}".into()) } else { Answer::Reply(200, "{}".into()) };
                 }
                 if key == "GET /models" {
                     let state = match *launched.lock().unwrap() {
@@ -139,22 +168,37 @@ impl World {
             if req.headers.get("x-noevia-store-token").map(String::as_str) != Some(SECRET) {
                 return Answer::Reply(404, "{}".into());
             }
+            let recovery_prefix = "/internal/model-maintenance/lease/recovery/";
+            if req.target.starts_with(recovery_prefix) {
+                if req.method == "POST" { *node_barrier.lock().unwrap() = true; }
+                if req.method == "DELETE" {
+                    let proof: Value = serde_json::from_str(&req.body).unwrap();
+                    assert!(proof["lease"].is_string());
+                    assert_eq!(proof["generation"], 1);
+                    *node_barrier.lock().unwrap() = false;
+                }
+                return Answer::Reply(204, String::new());
+            }
+            if req.method == "POST" && req.target == "/internal/model-maintenance/lease" {
+                return Answer::Reply(201, json!({"lease":"0123456789abcdef0123456789abcdef", "generation":1,"ttlMs":30000,"renewMs":10000,"hardMs":3600000}).to_string());
+            }
             match (req.method.as_str(), req.target.as_str()) {
                 ("DELETE", _) => Answer::Reply(204, String::new()),
-                (_, t) if t.ends_with("/renew") => Answer::Reply(200, "{}".into()),
+                (_, t) if t.ends_with("/renew") => Answer::Reply(if lose_renewal && t.contains("inference-admission") { 404 } else { 200 }, "{}".into()),
                 ("PUT", t) if t.starts_with("/internal/inference-admission/lease/") => match &lease
                 {
                     Some(l) => {
                         Answer::Reply(l["status"].as_u64().unwrap() as u16, l["body"].to_string())
                     }
                     None => {
+                        if *node_barrier.lock().unwrap() { return Answer::Reply(503, json!({"code":"maintenance_held","message":"busy","retryable":true}).to_string()); }
                         let ask: Value = serde_json::from_str(&req.body).unwrap();
                         let headers = if ask.get("embedding").is_some() {
                             json!(null)
                         } else {
                             json!({"x-noevia-lease":"syntheticLease1"})
                         };
-                        let mut b = json!({"lease":t.rsplit('/').next().unwrap(),"ttlMs":30000});
+                        let mut b = json!({"lease":t.rsplit('/').next().unwrap(),"ttlMs": if lose_renewal { 150 } else { 30000 }});
                         if !headers.is_null() {
                             b["headers"] = headers;
                         }
@@ -220,8 +264,15 @@ impl World {
                 "synthetic-admin".into(),
             ));
         }
-        let (addr, stop) = start(dir.path(), &env).await;
+        let (addr, stop, app) = start_with_app(dir.path(), &env).await;
+        app.config
+            .maint
+            .authority
+            .node_session("synthetic-start", 1)
+            .unwrap();
         World {
+            maint: Arc::clone(&app.config.maint),
+            barrier,
             addr,
             _stop: stop,
             _dir: dir,
@@ -272,7 +323,13 @@ impl World {
                         && r.method == "PUT"
                 })
                 .count();
-            let released = node.iter().filter(|r| r.method == "DELETE").count();
+            let released = node
+                .iter()
+                .filter(|r| {
+                    r.method == "DELETE"
+                        && r.target.starts_with("/internal/inference-admission/lease/")
+                })
+                .count();
             if released >= granted || tokio::time::Instant::now() >= end {
                 return;
             }
@@ -331,7 +388,12 @@ async fn every_recorded_node_answer_is_the_fronts() {
             })
             .collect();
         let calls = w.engine_calls(s["path"] == "/api/models/load");
-        if calls != want_calls {
+        if !calls.starts_with(&want_calls)
+            || calls
+                .iter()
+                .skip(want_calls.len())
+                .any(|c| c != "GET /models")
+        {
             failures.push(format!(
                 "{}: engine calls {:?}, want {:?}",
                 s["name"], calls, want_calls
@@ -345,7 +407,12 @@ async fn every_recorded_node_answer_is_the_fronts() {
                 r.target.starts_with("/internal/inference-admission/lease/") && r.method == "PUT"
             })
             .count();
-        let released = node.iter().filter(|r| r.method == "DELETE").count();
+        let released = node
+            .iter()
+            .filter(|r| {
+                r.method == "DELETE" && r.target.starts_with("/internal/inference-admission/lease/")
+            })
+            .count();
         if s.get("lease").is_none() && released != granted {
             failures.push(format!(
                 "{}: {granted} leases, {released} given back",
@@ -437,7 +504,13 @@ async fn a_load_takes_the_engine_lease_and_an_unload_only_the_maintenance_gate()
         .map(|r| serde_json::from_str(&r.body).unwrap())
         .collect();
     assert_eq!(asks, vec![json!({"model":"m","embedding":true})]);
-    assert_eq!(node.iter().filter(|r| r.method == "DELETE").count(), 1);
+    assert_eq!(
+        node.iter()
+            .filter(|r| r.method == "DELETE"
+                && r.target.starts_with("/internal/inference-admission/lease/"))
+            .count(),
+        1
+    );
     // Node's shared reads were dropped for the write.
     assert!(node
         .iter()
@@ -535,7 +608,9 @@ async fn a_caller_who_leaves_mid_load_retains_exclusion_until_settled() {
             .lock()
             .unwrap()
             .iter()
-            .filter(|r| r.method == "DELETE")
+            .filter(|r| {
+                r.method == "DELETE" && r.target.starts_with("/internal/inference-admission/lease/")
+            })
             .count();
         if released == 1 {
             break;
@@ -717,4 +792,213 @@ async fn an_old_startup_reply_cannot_restore_proof_after_a_newer_failed_probe() 
     assert!(!capability.refresh().await);
     tokio::time::sleep(Duration::from_millis(250)).await;
     assert!(!capability.is_verified());
+}
+
+#[tokio::test]
+async fn no_gate_renewal_loss_cannot_admit_a_second_load_before_settlement() {
+    let w = Arc::new(
+        World::new(&json!({"path":"/api/models/load", "longLoad":true,"loseRenewal":true})).await,
+    );
+    let first = Arc::clone(&w);
+    let pending = tokio::spawn(async move {
+        first
+            .post("/api/models/load", r#"{"name":"m"}"#, ADMIN)
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let second = w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await;
+    assert_eq!(
+        second.0, 503,
+        "lost renewal must not admit another operation while actual engine work runs"
+    );
+    assert_eq!(
+        w.router
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.target == "/models/load" && r.method == "POST")
+            .count(),
+        1
+    );
+    assert_eq!(pending.await.unwrap().0, 503);
+    tokio::time::sleep(Duration::from_millis(1600)).await;
+    let after = w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await;
+    // It reached the engine after covered reconciliation, rather than remaining incident-blocked.
+    assert!(
+        w.router
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.target == "/models/load" && r.method == "POST")
+            .count()
+            >= 2,
+        "{after:?}"
+    );
+    assert!(w
+        .node
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.method == "DELETE" && r.target.contains("/recovery/")));
+}
+
+#[tokio::test]
+async fn no_gate_node_restart_rebuilds_the_incident_before_new_admission() {
+    let w = Arc::new(World::new(&json!({"path":"/api/models/load", "longLoad":true})).await);
+    let first = Arc::clone(&w);
+    let pending = tokio::spawn(async move {
+        first
+            .post("/api/models/load", r#"{"name":"m"}"#, ADMIN)
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    // Model Core's startup handshake: volatile latches disappear, then the same J authority
+    // reconstructs front_held before the replacement process accepts ordinary requests.
+    let session = w
+        .maint
+        .authority
+        .node_session("synthetic-replacement", 2)
+        .unwrap();
+    *w.barrier.lock().unwrap() = session.front_held;
+    assert_eq!(
+        w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await.0,
+        503
+    );
+    assert_eq!(
+        w.router
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.target == "/models/load" && r.method == "POST")
+            .count(),
+        1
+    );
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(*w.barrier.lock().unwrap());
+    assert_eq!(pending.await.unwrap().0, 503);
+}
+
+#[tokio::test]
+async fn no_gate_unload_caller_drop_keeps_exclusion_after_http_ack_until_engine_settles() {
+    let w = Arc::new(World::new(&json!({"path":"/api/models/unload", "longUnload":true})).await);
+    let first = Arc::clone(&w);
+    let pending = tokio::spawn(async move {
+        first
+            .post("/api/models/unload", r#"{"name":"m"}"#, ADMIN)
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    pending.abort();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    // The router's HTTP acknowledgement has returned, but independently timed work still runs.
+    assert_eq!(
+        w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await.0,
+        503
+    );
+    assert!(w
+        .router
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|r| r.target != "/models/load"));
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let _ = w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await;
+    assert!(w
+        .router
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.target == "/models/load"));
+}
+
+#[tokio::test]
+async fn renewal_loss_during_http_post_keeps_its_future_and_exclusion_until_settled() {
+    let w = Arc::new(World::new(&json!({"path":"/api/models/load", "longLoad":true,"loseRenewal":true,"delayLoadAck":true})).await);
+    let first = Arc::clone(&w);
+    let pending = tokio::spawn(async move {
+        first
+            .post("/api/models/load", r#"{"name":"m"}"#, ADMIN)
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let second = w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await;
+    assert_eq!(
+        second.0, 503,
+        "lost renewal must not admit another operation while actual engine work runs"
+    );
+    assert_eq!(
+        w.router
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.target == "/models/load" && r.method == "POST")
+            .count(),
+        1
+    );
+    assert_eq!(pending.await.unwrap().0, 503);
+    tokio::time::sleep(Duration::from_millis(1600)).await;
+    let after = w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await;
+    // It reached the engine after covered reconciliation, rather than remaining incident-blocked.
+    assert!(
+        w.router
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.target == "/models/load" && r.method == "POST")
+            .count()
+            >= 2,
+        "{after:?}"
+    );
+    assert!(w
+        .node
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.method == "DELETE" && r.target.contains("/recovery/")));
+}
+
+#[tokio::test]
+async fn verified_gate_renewal_loss_still_requires_covered_incident_completion() {
+    let w = Arc::new(World::new(&json!({"path":"/api/models/load", "longLoad":true,"loseRenewal":true,"admin":true,"verifiedGate":true})).await);
+    let first = Arc::clone(&w);
+    let pending = tokio::spawn(async move {
+        first
+            .post("/api/models/load", r#"{"name":"m"}"#, ADMIN)
+            .await
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let second = w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await;
+    assert_eq!(
+        second.0, 503,
+        "lost renewal must not admit another operation while actual engine work runs"
+    );
+    assert_eq!(
+        w.router
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.target == "/models/load" && r.method == "POST")
+            .count(),
+        1
+    );
+    assert_eq!(pending.await.unwrap().0, 503);
+    tokio::time::sleep(Duration::from_millis(1600)).await;
+    let after = w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await;
+    // It reached the engine after covered reconciliation, rather than remaining incident-blocked.
+    assert!(
+        w.router
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.target == "/models/load" && r.method == "POST")
+            .count()
+            >= 2,
+        "{after:?}"
+    );
+    assert!(w
+        .node
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.method == "DELETE" && r.target.contains("/recovery/")));
 }

@@ -18,7 +18,7 @@
 //!
 //! **Cancellation.** A caller who leaves while the load waits in the queue starts no switch: the request's
 //! future is dropped, which gives back its pending ticket. Once admitted, a detached task owns
-//! the lease and settles the launched mutation. The inference gate independently fences engine work.
+//! a J recovery incident through engine settlement. A verified gate additionally counts engine work.
 //!
 //! **Reads.** As Node's handler did around itself, the shared model reads Node keeps (the installed list and
 //! the folder scan) are invalidated over `/internal/models/invalidate`. Decisions await the initial
@@ -43,6 +43,9 @@ use std::time::{Duration, Instant};
 pub const LOAD: &str = "/api/models/load";
 pub const UNLOAD: &str = "/api/models/unload";
 pub const ROUTES: &[&str] = &[LOAD, UNLOAD];
+
+#[path = "model_load_settle.rs"]
+mod settle;
 
 const INVALIDATE: &str = "/internal/models/invalidate";
 const INVALIDATE_DEADLINE: Duration = Duration::from_secs(5);
@@ -314,9 +317,9 @@ pub async fn serve(app: &Arc<App>, conn: crate::serve::Conn, req: Request<Body>)
         return internal(503);
     }
     // Refresh on every use, including pooled-connection replacement/reconnect. Absence is a
-    // supported direct-router observation, not a refusal. Shared settlement consumes this proof
-    // once the per-incident recovery interface is published.
-    app.model_load_capability.refresh().await;
+    // supported direct-router observation, not a refusal. Settlement uses counted gate custody
+    // only with explicit proof; otherwise the front retains J custody through terminal observation.
+    let gate_verified = app.model_load_capability.refresh().await;
     let entry = ArcEntry(Arc::clone(&maint.recheck.admission));
     if path == LOAD {
         if missing_file(app, &name).await {
@@ -325,7 +328,7 @@ pub async fn serve(app: &Arc<App>, conn: crate::serve::Conn, req: Request<Body>)
         if parsed.get("mtp").is_some() {
             return error(400, MTP_REFUSAL);
         }
-        return load(&entry, &router, &name).await;
+        return load(Arc::clone(&maint), &entry, &router, &name, gate_verified).await;
     }
     if parsed.get("force") == Some(&Value::Bool(true)) {
         let Some(admin) = maint.gate.as_ref().and_then(|g| g.admin_header()) else {
@@ -334,10 +337,28 @@ pub async fn serve(app: &Arc<App>, conn: crate::serve::Conn, req: Request<Body>)
                 json!({ "error": ADMIN_REQUIRED_UNLOAD, "code": "admin_required", "retryable": false }),
             );
         };
-        return unload(&entry, &router, &name, Some(admin), false).await;
+        return unload(
+            Arc::clone(&maint),
+            &entry,
+            &router,
+            &name,
+            Some(admin),
+            false,
+            gate_verified,
+        )
+        .await;
     }
     let can_force = maint.gate.as_ref().is_some_and(|g| g.has_admin());
-    unload(&entry, &router, &name, None, can_force).await
+    unload(
+        Arc::clone(&maint),
+        &entry,
+        &router,
+        &name,
+        None,
+        can_force,
+        gate_verified,
+    )
+    .await
 }
 
 /// Today's implementation: Node's admission lease (core inference-admission-lease.cjs), the client the
@@ -439,30 +460,35 @@ fn already_running(reply: &Reply) -> bool {
 
 /// llamacpp-manager.cjs `load`, then the route's answer for it.
 pub(crate) async fn load(
+    maint: Arc<crate::model_maint::Maint>,
     entry: &dyn EngineEntry,
     router: &router::Router,
     model: &str,
+    gate_verified: bool,
 ) -> Response<Body> {
     let cancel = Cancel::new();
     let lease = match entry.load(model, &cancel).await {
         Ok(l) => l,
         Err(r) => return load_refused(&r),
     };
-    let router = router.clone();
-    let model = model.to_owned();
-    tokio::spawn(async move {
-        if !lease.covered() {
-            return error(503, LEASE_LOST);
-        }
-        let outcome = load_steps(&router, &model, &lease).await;
-        lease.release().await;
-        outcome
-    })
+    settle::run(
+        maint,
+        router.clone(),
+        model.to_owned(),
+        lease,
+        settle::Operation::Load,
+        gate_verified,
+    )
     .await
-    .unwrap_or_else(|_| internal(503))
 }
 
-async fn load_steps(router: &router::Router, model: &str, lease: &Lease) -> Response<Body> {
+async fn load_steps(
+    router: &router::Router,
+    model: &str,
+    lease: &Lease,
+    launched: &std::sync::atomic::AtomicBool,
+    covered: &(dyn Fn() -> bool + Send + Sync),
+) -> Response<Body> {
     // #1758: never ask the router to load a sleeping model; the next request wakes it.
     let Ok(before) = router.models(None).await else {
         return internal(500);
@@ -477,9 +503,10 @@ async fn load_steps(router: &router::Router, model: &str, lease: &Lease) -> Resp
     {
         return answer(200, json!({ "ok": true }));
     }
-    if !lease.covered() {
+    if !covered() {
         return error(503, LEASE_LOST);
     }
+    launched.store(true, std::sync::atomic::Ordering::SeqCst);
     let Ok(started) = router
         .request_with(
             reqwest::Method::POST,
@@ -494,6 +521,9 @@ async fn load_steps(router: &router::Router, model: &str, lease: &Lease) -> Resp
         return internal(500);
     };
     if !started.ok && !already_running(&started) {
+        if (400..500).contains(&started.status) || refusal_of(&started, "").is_some() {
+            launched.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
         // A gate refusal goes through `failure()` first: its words default to the gate client's.
         return engine_failure("load", &started, "The inference gate refused the request.");
     }
@@ -510,7 +540,7 @@ async fn load_steps(router: &router::Router, model: &str, lease: &Lease) -> Resp
         let status = entry.and_then(|m| m.get("status"));
         let value = status.and_then(|s| s.get("value")).and_then(Value::as_str);
         if matches!(value, Some("loaded" | "sleeping")) {
-            return if !lease.covered() {
+            return if !covered() {
                 error(503, LEASE_LOST)
             } else if Instant::now() >= deadline {
                 error(502, "load failed: 504")
@@ -531,11 +561,13 @@ async fn load_steps(router: &router::Router, model: &str, lease: &Lease) -> Resp
 
 /// `mutate(() => post('/models/unload', ...))`, plain or forced, then the route's answer.
 pub(crate) async fn unload(
+    maint: Arc<crate::model_maint::Maint>,
     entry: &dyn EngineEntry,
     router: &router::Router,
     model: &str,
     admin: Option<(HeaderName, HeaderValue)>,
     can_force: bool,
+    gate_verified: bool,
 ) -> Response<Body> {
     let cancel = Cancel::new();
     let held = match entry.mutate(model, &cancel).await {
@@ -543,6 +575,29 @@ pub(crate) async fn unload(
         // `maintenance.enter()` threw: index.cjs errorResponse, and an unreachable Node refuses too.
         Err(_) => return internal(503),
     };
+    settle::run(
+        maint,
+        router.clone(),
+        model.to_owned(),
+        held,
+        settle::Operation::Unload { admin, can_force },
+        gate_verified,
+    )
+    .await
+}
+
+async fn unload_steps(
+    router: &router::Router,
+    model: &str,
+    admin: Option<(HeaderName, HeaderValue)>,
+    can_force: bool,
+    pending_unload: &std::sync::atomic::AtomicBool,
+    covered: &(dyn Fn() -> bool + Send + Sync),
+) -> Response<Body> {
+    if !covered() {
+        return error(503, LEASE_LOST);
+    }
+    pending_unload.store(true, std::sync::atomic::Ordering::SeqCst);
     let forced = admin.is_some();
     let mut body = json!({ "model": model });
     if forced {
@@ -551,48 +606,42 @@ pub(crate) async fn unload(
         }
     }
     let extra: Vec<(HeaderName, HeaderValue)> = admin.into_iter().collect();
-    let router = router.clone();
-    tokio::spawn(async move {
-        if !held.covered() {
-            return error(503, LEASE_LOST);
-        }
-        let sent = router
-            .request_with(
-                reqwest::Method::POST,
-                "/models/unload",
-                Some(&body),
-                None,
-                &extra,
-                if forced { FORCED_TIMEOUT } else { LOAD_TIMEOUT },
-            )
-            .await;
-        held.release().await;
-        let Ok(r) = sent else {
-            return internal(500);
-        };
-        if r.ok {
-            return answer(
-                200,
-                if forced {
-                    json!({ "ok": true, "forced": true })
-                } else {
-                    json!({ "ok": true })
-                },
-            );
-        }
-        match refusal_of(&r, "The model engine refused the request.") {
-            Some(refusal) => {
-                let mut b = refusal.body();
-                if !forced && refusal.code == "model_in_use" {
-                    b.insert("canForce".into(), Value::Bool(can_force));
-                }
-                answer(refusal.status, Value::Object(b))
+    let sent = router
+        .request_with(
+            reqwest::Method::POST,
+            "/models/unload",
+            Some(&body),
+            None,
+            &extra,
+            if forced { FORCED_TIMEOUT } else { LOAD_TIMEOUT },
+        )
+        .await;
+    let Ok(r) = sent else {
+        return internal(500);
+    };
+    if !r.ok && ((400..500).contains(&r.status) || refusal_of(&r, "").is_some()) {
+        pending_unload.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+    if r.ok {
+        return answer(
+            200,
+            if forced {
+                json!({ "ok": true, "forced": true })
+            } else {
+                json!({ "ok": true })
+            },
+        );
+    }
+    match refusal_of(&r, "The model engine refused the request.") {
+        Some(refusal) => {
+            let mut b = refusal.body();
+            if !forced && refusal.code == "model_in_use" {
+                b.insert("canForce".into(), Value::Bool(can_force));
             }
-            None => error(502, &format!("unload failed: {}", r.status)),
+            answer(refusal.status, Value::Object(b))
         }
-    })
-    .await
-    .unwrap_or_else(|_| internal(503))
+        None => error(502, &format!("unload failed: {}", r.status)),
+    }
 }
 
 #[cfg(test)]

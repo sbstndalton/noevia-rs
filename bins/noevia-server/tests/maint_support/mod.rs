@@ -104,10 +104,10 @@ pub fn seed_database(dir: &Path) -> Connection {
 
 /// The front over `dir` with the extra environment; the legacy upstream is dead, so a proxied
 /// request answers 502 and only the native handler can answer anything else.
-pub async fn start(
+pub async fn start_with_app(
     dir: &Path,
     extra: &[(String, String)],
-) -> (std::net::SocketAddr, oneshot::Sender<()>) {
+) -> (std::net::SocketAddr, oneshot::Sender<()>, Arc<App>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let mut env: HashMap<String, String> = HashMap::from([
@@ -132,6 +132,14 @@ pub async fn start(
             let _ = rx.await;
         },
     ));
+    (addr, stop, app)
+}
+
+pub async fn start(
+    dir: &Path,
+    extra: &[(String, String)],
+) -> (std::net::SocketAddr, oneshot::Sender<()>) {
+    let (addr, stop, _) = start_with_app(dir, extra).await;
     (addr, stop)
 }
 
