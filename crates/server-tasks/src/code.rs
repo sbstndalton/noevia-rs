@@ -97,9 +97,15 @@ pub(crate) fn resource_error(error: resources::Error) -> Failure {
     }
 }
 pub use crate::context::Permit;
+pub type Entering<'a> = Pin<Box<dyn Future<Output = Result<Arc<dyn Permit>, Failure>> + Send + 'a>>;
 pub trait Admission: Send + Sync {
     fn paused(&self) -> Result<bool, Failure>;
-    fn enter(&self) -> Result<Arc<dyn Permit>, Failure>;
+    fn enter(&self) -> Result<Arc<dyn Permit>, Failure> {
+        Err(Failure::unavailable())
+    }
+    fn enter_for<'a>(&'a self, _context: Arc<JournalContext>) -> Entering<'a> {
+        Box::pin(async move { self.enter() })
+    }
 }
 #[derive(Clone, Copy, Default)]
 pub struct Settings {
@@ -389,6 +395,9 @@ impl Code {
             }
             return;
         }
+        let admitted = self.admission.enter_for(prepared.context.clone()).await;
+        // An admission that arrives during cancellation still outlives resource settlement.
+        let _retained = admitted.as_ref().ok().cloned();
         let permit = {
             let Ok(mut state) = self.state.lock() else {
                 let _ = answer.send(Err(Failure::unavailable()));
@@ -397,7 +406,7 @@ impl Code {
             if !prepared.running.current_unlocked(&state) || prepared.context.active().is_err() {
                 None
             } else {
-                match self.admission.enter() {
+                match admitted {
                     Ok(permit) if permit.valid() => {
                         if prepared.context.bind_permit(permit.clone()).is_ok()
                             && prepared

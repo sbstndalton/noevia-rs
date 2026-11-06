@@ -11,6 +11,8 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+engine-admission = { path = "../engine-admission" }
+model-stream = { path = "../model-stream" }
 prompt-framing = { path = "../prompt-framing" }
 browser-policy = { path = "../browser-policy" }
 role-context = { path = "../role-context" }

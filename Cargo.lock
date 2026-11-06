@@ -3278,8 +3278,10 @@ version = "0.1.0"
 dependencies = [
  "browser-policy",
  "code-actions",
+ "engine-admission",
  "js-json",
  "libc",
+ "model-stream",
  "prompt-framing",
  "rand_core 0.6.4",
  "role-context",
