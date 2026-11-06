@@ -102,7 +102,7 @@ async function run(sc) {
       sourceJobs: { settle: async () => ({ aborted: false, notReady: sc.notReady }) },
       codeTasksFor: () => { if (sc.tasks === 'throw') throw new Error('code off'); return sc.tasks; },
       getProject: (id) => (project && id === project.id ? project : null), getProvider: (id) => PROVIDERS[id] || null, providerHeaders: () => ({}),
-      autoRoles: () => (project ? null : { fast: 'synth-70b', smart: 'synth-70b' }), classifyFastOrSmart: async () => 'fast', servedCatalogue: async () => [{ name: 'synth-70b' }], modelsInstalled: async () => [{ name: 'synth-70b' }],
+      autoRoles: () => (project ? null : { fast: 'synth-70b', smart: 'synth-70b' }), classifyFastOrSmart: async () => 'smart', // Smart: no low-effort hint (a later stage) servedCatalogue: async () => [{ name: 'synth-70b' }], modelsInstalled: async () => [{ name: 'synth-70b' }],
       missingRoles, staleRolesError, lastLoadedModel: () => 'synth-70b', skillsIndexFor: () => sc.skills.map((k) => SKILLS[k]), visionDescriptions: new Map(), visionProbe: createVisionProbe({ fetchImpl: fetch }),
       chatSkillRouter: { select: async (candidates) => { autoPicked = sc.autoSkill && candidates.length ? [candidates[0]] : []; autoPicked = autoPicked.map((c) => SKILLS.indexOf(c)); return { loaded: autoPicked.map((k) => SKILLS[k]) }; } },
       oauthServerIds: () => new Set(), accountReady: () => true, mcpOAuth: { connected: () => false },

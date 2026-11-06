@@ -168,7 +168,10 @@ fn the_system_message_matches_node() {
         };
         if let Some(full) = up.get("system").as_str() {
             if text != full {
-                let _ = std::fs::write(std::env::temp_dir().join("system-diff.txt"), format!("{i}\n--rust--\n{text}\n--node--\n{full}\n"));
+                let _ = std::fs::write(
+                    std::env::temp_dir().join("system-diff.txt"),
+                    format!("{i}\n--rust--\n{text}\n--node--\n{full}\n"),
+                );
             }
             assert_eq!(text, full, "system {i}");
         }
