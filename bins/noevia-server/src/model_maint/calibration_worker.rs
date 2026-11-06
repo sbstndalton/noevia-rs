@@ -270,6 +270,10 @@ pub struct Worker {
     #[cfg(test)]
     post_expiry: Notify,
     #[cfg(test)]
+    fence_timer: Mutex<Option<Arc<tests::TestGate>>>,
+    #[cfg(test)]
+    long_expirations: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
     finalize_gate: Mutex<Option<Arc<tests::TestGate>>>,
     #[cfg(test)]
     run_abort: Mutex<Option<tokio::task::AbortHandle>>,
@@ -605,6 +609,10 @@ impl Worker {
             #[cfg(test)]
             post_expiry: Notify::new(),
             #[cfg(test)]
+            fence_timer: Mutex::new(None),
+            #[cfg(test)]
+            long_expirations: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
             finalize_gate: Mutex::new(None),
             #[cfg(test)]
             run_abort: Mutex::new(None),
@@ -936,7 +944,23 @@ impl Worker {
                 Err(_) => eprintln!("[models] calibration fence persistence failed: Other"),
             }
             // Cancellation wakes a single wait; it never releases the retained local fence.
-            tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
+            let timer = tokio::time::sleep(wait);
+            #[cfg(test)]
+            let timer = async {
+                let gate = self
+                    .fence_timer
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .clone();
+                if let Some(gate) = gate {
+                    gate.entered.store(true, Ordering::Release);
+                    test_changed();
+                    gate.release.notified().await;
+                } else {
+                    timer.await;
+                }
+            };
+            tokio::select! { () = timer => {}, () = wake.notified() => {} }
             wait = (wait * 2).min(Duration::from_secs(60));
         }
     }
@@ -1986,6 +2010,8 @@ impl Worker {
         match tokio::time::timeout(allowance, read).await {
             Ok(read) => read,
             Err(_) => {
+                #[cfg(test)]
+                self.long_expirations.fetch_add(1, Ordering::Release);
                 self.show_progress(index, &Progress::default());
                 Ok(Long::Done(LongOutcome::OverBudget {
                     predicted: false,
@@ -2985,8 +3011,8 @@ mod tests {
 
     #[derive(Default)]
     pub(super) struct TestGate {
-        entered: AtomicBool,
-        release: Notify,
+        pub(super) entered: AtomicBool,
+        pub(super) release: Notify,
     }
     impl TestGate {
         pub(super) async fn wait(&self) {

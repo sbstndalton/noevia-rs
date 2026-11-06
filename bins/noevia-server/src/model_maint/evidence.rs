@@ -272,6 +272,11 @@ pub struct Store {
     #[cfg(test)]
     run_read_failures: std::sync::atomic::AtomicUsize,
     #[cfg(test)]
+    decide_observer: (
+        std::sync::atomic::AtomicUsize,
+        std::sync::atomic::AtomicUsize,
+    ),
+    #[cfg(test)]
     append_stall: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
     /// The only writer: appends and compactions of this process do not interleave.
     write: Mutex<Option<usize>>,
@@ -319,6 +324,8 @@ impl Store {
             #[cfg(test)]
             run_read_failures: std::sync::atomic::AtomicUsize::new(0),
             #[cfg(test)]
+            decide_observer: Default::default(),
+            #[cfg(test)]
             append_stall: Mutex::new(None),
             caps: Caps::default(),
             write: Mutex::new(None),
@@ -337,6 +344,8 @@ impl Store {
             run_write_failures: Mutex::new(Vec::new()),
             #[cfg(test)]
             run_read_failures: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            decide_observer: Default::default(),
             #[cfg(test)]
             append_stall: Mutex::new(None),
             caps,
@@ -736,6 +745,21 @@ impl Store {
         at_ms: i64,
         allowed: &dyn Fn() -> bool,
     ) -> Result<JValue, StoreError> {
+        #[cfg(test)]
+        let _completed = {
+            struct Completed<'a>(&'a std::sync::atomic::AtomicUsize);
+            impl Drop for Completed<'_> {
+                fn drop(&mut self) {
+                    self.0.fetch_add(1, std::sync::atomic::Ordering::Release);
+                    super::calibration_worker::test_changed();
+                }
+            }
+            self.decide_observer
+                .0
+                .fetch_add(1, std::sync::atomic::Ordering::Release);
+            super::calibration_worker::test_changed();
+            Completed(&self.decide_observer.1)
+        };
         let _deciding = self.decide.lock().map_err(|_| StoreError::Io)?;
         if !allowed() {
             return Err(StoreError::Io);
@@ -754,6 +778,20 @@ impl Store {
             }
         }
         self.append_if(record, at_ms, allowed)
+    }
+
+    #[cfg(test)]
+    pub(super) fn decide_attempts(&self) -> usize {
+        self.decide_observer
+            .0
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    #[cfg(test)]
+    pub(super) fn decide_completions(&self) -> usize {
+        self.decide_observer
+            .1
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 
     #[cfg(test)]
