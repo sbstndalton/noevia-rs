@@ -32,6 +32,7 @@ pub struct Router {
     client: reqwest::Client,
     base: String,
     authorization: Option<HeaderValue>,
+    settle_effects: bool,
 }
 
 impl std::fmt::Debug for Router {
@@ -58,7 +59,15 @@ impl Router {
             client,
             base: base.to_owned(),
             authorization,
+            settle_effects: false,
         })
+    }
+
+    /// Used only by a detached effect owner; the caller deadline lives outside it.
+    pub(crate) fn settling(&self) -> Self {
+        let mut router = self.clone();
+        router.settle_effects = true;
+        router
     }
 
     pub fn base(&self) -> &str {
@@ -103,15 +112,24 @@ impl Router {
         if let Some(h) = hold.and_then(|h| HeaderValue::from_str(h).ok()) {
             headers.insert(HeaderName::from_static("x-noevia-maintenance"), h);
         }
+        let effect =
+            self.settle_effects && (path == "/models?reload=1" || path == "/models/unload");
         let mut req = self
             .client
             .request(method, format!("{}{path}", self.base))
-            .headers(headers)
-            .timeout(timeout);
+            .headers(headers);
+        if !effect {
+            req = req.timeout(timeout);
+        }
         if let Some(b) = body {
             req = req.body(b.to_string());
         }
-        let res = req.send().await.map_err(|_| Fault)?;
+        let res = match req.send().await {
+            Ok(res) => res,
+            // No terminal response means unknown settlement, never permission to release.
+            Err(e) if effect && !e.is_connect() => return std::future::pending().await,
+            Err(_) => return Err(Fault),
+        };
         let status = res.status().as_u16();
         let ok = res.status().is_success();
         let bytes = match read_capped(res).await {
@@ -123,6 +141,7 @@ impl Router {
                     body: None,
                 })
             }
+            Err(()) if effect => return std::future::pending().await,
             Err(()) => return Err(Fault),
         };
         let body = match serde_json::from_slice::<Value>(&bytes) {

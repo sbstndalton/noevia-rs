@@ -87,6 +87,30 @@ impl Loader {
         timeout: Duration,
         body: Option<String>,
     ) -> Option<(StatusCode, Option<JValue>)> {
+        self.call(method, path, query, Some(timeout), body).await
+    }
+
+    // The HTTP waiter has its own deadline. This transport belongs to a detached
+    // settlement task: a request timeout must not be mistaken for effect cancellation.
+    pub(crate) async fn idle_settling(&self, body: String) -> Option<(StatusCode, Option<JValue>)> {
+        self.call(
+            reqwest::Method::PUT,
+            "/api/v1/idle-unload",
+            "",
+            None,
+            Some(body),
+        )
+        .await
+    }
+
+    async fn call(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: &str,
+        timeout: Option<Duration>,
+        body: Option<String>,
+    ) -> Option<(StatusCode, Option<JValue>)> {
         let base = self.base.as_ref()?;
         let endpoint = if query.is_empty() {
             format!("{base}{path}")
@@ -101,8 +125,10 @@ impl Loader {
         let mut request = self
             .client
             .request(method, url)
-            .header(header::CONTENT_TYPE, "application/json")
-            .timeout(timeout);
+            .header(header::CONTENT_TYPE, "application/json");
+        if let Some(timeout) = timeout {
+            request = request.timeout(timeout);
+        }
         if let Some(token) = &self.token {
             let mut value = HeaderValue::from_str(token).ok()?;
             value.set_sensitive(true);
@@ -111,7 +137,15 @@ impl Loader {
         if let Some(body) = body {
             request = request.body(body);
         }
-        let mut res = request.send().await.ok()?;
+        let mut res = match request.send().await {
+            Ok(res) => res,
+            Err(e) if timeout.is_none() && !e.is_connect() => {
+                // The write may already be admitted. Do not turn a lost response
+                // into a terminal receipt; the detached owner retains its hold.
+                return std::future::pending().await;
+            }
+            Err(_) => return None,
+        };
         let status = res.status();
         if [301, 302, 303, 307, 308].contains(&status.as_u16())
             && res.headers().contains_key(header::LOCATION)
@@ -119,7 +153,13 @@ impl Loader {
             return None;
         }
         let mut bytes = Vec::new();
-        while let Some(chunk) = res.chunk().await.ok()? {
+        loop {
+            let chunk = match res.chunk().await {
+                Ok(Some(chunk)) => chunk,
+                Ok(None) => break,
+                Err(_) if timeout.is_none() => return std::future::pending().await,
+                Err(_) => return None,
+            };
             if chunk.len() > CAP.saturating_sub(bytes.len()) {
                 return Some((status, None));
             }

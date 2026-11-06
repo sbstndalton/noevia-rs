@@ -1,6 +1,6 @@
 //! Native idle timer writes and conservative missing-preset cleanup.
 //! Jobs own the maintenance reservation from acquisition through the last side effect. A
-//! disconnected requester hands the bounded job over, as for the existing native reload.
+//! disconnected requester hands the settlement job over, as for the existing native reload.
 use crate::{identity, model_maint::HoldError, reply, App};
 use axum::{
     body::Body,
@@ -79,11 +79,17 @@ async fn idle_call(
     method: reqwest::Method,
     body: Option<String>,
 ) -> Result<(Value, Option<String>), IdleFault> {
-    let response = app
-        .config
-        .model_manager_scan
-        .write_call(method, "/api/v1/idle-unload", body)
-        .await;
+    let response = if method == reqwest::Method::PUT {
+        app.config
+            .model_manager_scan
+            .idle_settling(body.unwrap_or_default())
+            .await
+    } else {
+        app.config
+            .model_manager_scan
+            .write_call(method, "/api/v1/idle-unload", body)
+            .await
+    };
     let (status, body) = response
         .map(|(s, b)| (s.as_u16(), b))
         .unwrap_or((502, None));
@@ -173,34 +179,97 @@ async fn idle(app: Arc<App>, seconds: JValue, actor: String) -> Response<Body> {
     } else {
         None
     };
-    let out = async {
-        if let Some(h) = hold.as_ref() { if !h.confirm(STEP).await { return unavailable(); } }
-        let Some(seconds) = wtf16::stringify(&seconds) else { return unavailable(); };
-        let (mut next, preset) = match idle_call(&app, reqwest::Method::PUT, Some(format!("{{\"seconds\":{seconds}}}"))).await {
-            Ok(v) => v, Err((status,message,id)) => return idle_error(status,message,id),
+    let out = {
+        let work = async {
+            if let Some(h) = hold.as_ref() {
+                if !h.confirm(STEP).await {
+                    return unavailable();
+                }
+            }
+            let Some(seconds) = wtf16::stringify(&seconds) else {
+                return unavailable();
+            };
+            let (mut next, preset) = match idle_call(
+                &app,
+                reqwest::Method::PUT,
+                Some(format!("{{\"seconds\":{seconds}}}")),
+            )
+            .await
+            {
+                Ok(v) => v,
+                Err((status, message, id)) => return idle_error(status, message, id),
+            };
+            if let Some(h) = hold.as_ref() {
+                if !h.confirm(Duration::from_secs(135)).await {
+                    return unavailable();
+                }
+            }
+            let reload = if preset.as_deref() != Some("failed") {
+                if let (Some(router), Some(hold)) = (maint.router.as_ref(), hold.as_ref()) {
+                    Some(maint.reload_inner(&router.settling(), hold, false).await)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let applied_reload = reload
+                .as_ref()
+                .is_some_and(|r| (200..300).contains(&r.status));
+            let reload_body = reload
+                .as_ref()
+                .and_then(|r| serde_json::from_str::<Value>(&r.body).ok());
+            let apply = if preset.as_deref() == Some("failed") {
+                json!({"state":"failed"})
+            } else if applied_reload {
+                json!({"state":"applied"})
+            } else if let Some(loaded) = reload_body
+                .as_ref()
+                .and_then(|b| b.get("loaded"))
+                .and_then(Value::as_array)
+            {
+                json!({"state":"pending","loaded":loaded.iter().filter(|v| v.is_string()).collect::<Vec<_>>()})
+            } else {
+                json!({"state":"pending"})
+            };
+            let effective = if applied_reload {
+                app.config
+                    .research
+                    .node_call(
+                        "/internal/idle-unload-read/facts",
+                        &json!({}),
+                        Duration::from_secs(10),
+                    )
+                    .await
+                    .filter(|(s, _)| *s == 200)
+                    .and_then(|(_, bytes)| serde_json::from_slice::<Value>(&bytes).ok())
+                    .and_then(|v| v.get("seconds").cloned())
+            } else {
+                None
+            };
+            if !audit(Arc::clone(&app), actor, json!({"seconds":next.get("seconds"),"source":next.get("source"),"previous":previous})).await { return unavailable(); }
+            let applied = applied_reload
+                && effective.as_ref().and_then(Value::as_f64)
+                    == next.get("seconds").and_then(Value::as_f64);
+            let Some(fields) = next.as_object_mut() else {
+                return unavailable();
+            };
+            fields.insert("apply".into(), apply);
+            fields.insert("applied".into(), json!(applied));
+            answer(200, next)
         };
-        if let Some(h) = hold.as_ref() { if !h.confirm(Duration::from_secs(135)).await { return unavailable(); } }
-        let reload = if preset.as_deref() != Some("failed") {
-            if let (Some(router), Some(hold)) = (maint.router.as_ref(), hold.as_ref()) { Some(maint.reload_inner(router, hold, false).await) } else { None }
-        } else { None };
-        let applied_reload = reload.as_ref().is_some_and(|r| (200..300).contains(&r.status));
-        let reload_body = reload.as_ref().and_then(|r| serde_json::from_str::<Value>(&r.body).ok());
-        let apply = if preset.as_deref() == Some("failed") { json!({"state":"failed"}) }
-        else if applied_reload { json!({"state":"applied"}) }
-        else if let Some(loaded) = reload_body.as_ref().and_then(|b| b.get("loaded")).and_then(Value::as_array) {
-            json!({"state":"pending","loaded":loaded.iter().filter(|v| v.is_string()).collect::<Vec<_>>()})
-        } else { json!({"state":"pending"}) };
-        let effective = if applied_reload {
-            app.config.research.node_call("/internal/idle-unload-read/facts", &json!({}), Duration::from_secs(10)).await
-                .filter(|(s,_)| *s == 200).and_then(|(_,bytes)| serde_json::from_slice::<Value>(&bytes).ok())
-                .and_then(|v| v.get("seconds").cloned())
-        } else { None };
-        if !audit(Arc::clone(&app), actor, json!({"seconds":next.get("seconds"),"source":next.get("source"),"previous":previous})).await { return unavailable(); }
-        let applied = applied_reload && effective.as_ref().and_then(Value::as_f64) == next.get("seconds").and_then(Value::as_f64);
-        let Some(fields) = next.as_object_mut() else { return unavailable(); };
-        fields.insert("apply".into(), apply); fields.insert("applied".into(), json!(applied));
-        answer(200, next)
-    }.await;
+        tokio::pin!(work);
+        loop {
+            tokio::select! {
+                result = &mut work => break result,
+                _ = tokio::time::sleep(Duration::from_secs(1)) => {
+                    // Keep the existing grant's renewer alive through settlement. Never
+                    // acquire a replacement or authorize a next effect after coverage loss.
+                    if let Some(h) = hold.as_ref() { h.cover(Duration::from_secs(300)); }
+                }
+            }
+        }
+    };
     if let Some(hold) = hold {
         hold.release().await;
     }
@@ -429,9 +498,13 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>, path: String) -> Response
         let app = Arc::clone(app);
         // No request cancellation can strand Maint's acquisition reservation. The job, including
         // acquisition, is transferred to this bounded task before taking any permit.
-        tokio::spawn(async move { idle(app, seconds, id.user.id).await })
-            .await
-            .unwrap_or_else(|_| unavailable())
+        let job = tokio::spawn(async move { idle(app, seconds, id.user.id).await });
+        // Dropping a JoinHandle detaches, whereas timing out the effect future
+        // would drop its hold while the authority's blocking write survives.
+        match tokio::time::timeout(STEP, job).await {
+            Ok(Ok(response)) => response,
+            _ => unavailable(),
+        }
     } else {
         let app = Arc::clone(app);
         tokio::spawn(async move { prune(app, id.user.id).await })

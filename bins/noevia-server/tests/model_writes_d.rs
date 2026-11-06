@@ -600,3 +600,49 @@ async fn refused_authority_never_reports_uncertain_deletion_as_kept() {
         .iter()
         .any(|c| c.path == "/internal/model-writes/effects" && j(&c.body)["op"] == "removed"));
 }
+
+/// A caller's deadline cannot cancel an admitted PUT or reload. Exercise the real
+/// front deadline, then keep the destination barrier closed while a competitor tries.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn idle_deadline_transfers_custody_through_put_and_reload_settlement() {
+    for stage in ["put", "reload"] {
+        let r = rig(json!({"delayStage":stage}), false, false).await;
+        let addr = r.f.addr;
+        let request = tokio::spawn(async move {
+            raw(addr, "PUT", IDLE, ADMIN, CSRF, br#"{"seconds":900}"#).await
+        });
+        if stage == "put" {
+            r.loader.wait_for("/api/v1/idle-unload", 2).await;
+        } else {
+            r.engine.wait_for("/models?reload=1", 1).await;
+        }
+        let (status, body) = request.await.unwrap();
+        assert_eq!(status, 503, "{stage}: {body}");
+        assert!(r.f.app.config.maint.local_held(), "{stage}: custody lost");
+        assert_eq!(
+            r.owner.count(&format!("{LEASE}/")),
+            0,
+            "{stage}: early release"
+        );
+        assert_eq!(
+            raw(addr, "PUT", IDLE, ADMIN, CSRF, br#"{"seconds":300}"#)
+                .await
+                .0,
+            409
+        );
+        assert_eq!(
+            r.loader.seen().iter().filter(|c| c.method == "PUT").count(),
+            1
+        );
+        r.resume.as_ref().unwrap().add_permits(1);
+        r.owner.wait_for(&format!("{LEASE}/"), 1).await;
+        assert!(!r.f.app.config.maint.local_held());
+        assert_eq!(r.engine.count("/models?reload=1"), 1);
+        assert_eq!(
+            raw(addr, "PUT", IDLE, ADMIN, CSRF, br#"{"seconds":300}"#)
+                .await
+                .0,
+            200
+        );
+    }
+}
