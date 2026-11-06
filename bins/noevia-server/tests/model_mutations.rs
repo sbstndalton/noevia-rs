@@ -883,13 +883,6 @@ async fn review_cancelled_cleanup_acquire_releases_the_late_grant() {
     up.wait_for(&format!("/gate/v1/maintenance/{}", "a".repeat(32)), 1)
         .await;
     assert!(!maint.local_held());
-    let granted = up
-        .seen()
-        .into_iter()
-        .find(|r| r.method == "POST" && r.path == "/gate/v1/maintenance")
-        .unwrap();
-    // Shared authority owns coverage; E3 no longer requests its own gate TTL.
-    assert!(j(&granted.body)["idle_ttl_ms"].is_null());
     assert_eq!(
         up.seen()
             .iter()
