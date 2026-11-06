@@ -25,10 +25,12 @@
 //! - [`toolbox`]: which tools a turn offers (requestToolboxes, resolveTools, more_tools).
 //! - [`tools_mode`]: Automatic or Manual tools, and what Automatic adds for one message (#1550).
 //! - [`preload`]: the #1863 pre-load of the shared Fast/Smart model beside the routing decision.
+//! - [`machines`]: chat roles on an Inference machine (target, ready, provider row, turn counts).
 //! - [`notes`]: the system notes a turn adds or removes (`withSystemNote`, `withoutSystemNote`).
 pub mod end;
 pub mod failure;
 pub mod gate;
+pub mod machines;
 pub mod notes;
 pub mod preload;
 pub mod record;
