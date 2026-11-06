@@ -168,6 +168,15 @@ impl JournalContext {
             stop: Some(stop),
         }
     }
+    pub(crate) fn job(&self) -> Result<server_projects::task_journals::Job, crate::code::Failure> {
+        match self
+            .account
+            .owned(self.scope().surface, &self.scope().project, self.task())
+        {
+            Ok(server_projects::task_journals::Found::Task(job)) => Ok(*job),
+            _ => Err(crate::code::Failure::unavailable()),
+        }
+    }
     pub fn sync(&self) -> Result<(), RpcError> {
         self.account
             .sync(self.scope().surface, self.task())

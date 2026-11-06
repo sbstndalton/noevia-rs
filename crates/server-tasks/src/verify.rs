@@ -486,7 +486,7 @@ pub(crate) mod tests {
             1234
         }
     }
-    fn git(cwd: &Path, args: &[&str]) -> String {
+    pub(crate) fn git(cwd: &Path, args: &[&str]) -> String {
         let out = std::process::Command::new("git")
             .args([
                 "-c",
@@ -510,6 +510,11 @@ pub(crate) mod tests {
         String::from_utf8(out.stdout).unwrap().trim().into()
     }
     pub(crate) fn context() -> (tempfile::TempDir, Arc<JournalContext>, String) {
+        context_with_timeout(Duration::from_secs(60))
+    }
+    pub(crate) fn context_with_timeout(
+        timeout: Duration,
+    ) -> (tempfile::TempDir, Arc<JournalContext>, String) {
         let root = tempfile::tempdir().unwrap();
         let repo = root.path().join("repo");
         std::fs::create_dir_all(&repo).unwrap();
@@ -541,13 +546,7 @@ pub(crate) mod tests {
             )
             .unwrap();
         let context = Arc::new(
-            JournalContext::new(
-                account.clone(),
-                guard,
-                Arc::new(Fixed),
-                Duration::from_secs(60),
-            )
-            .unwrap(),
+            JournalContext::new(account.clone(), guard, Arc::new(Fixed), timeout).unwrap(),
         );
         account
             .workspaces

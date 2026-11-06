@@ -1,0 +1,531 @@
+[
+  {
+    "input": {
+      "decision": "approve"
+    },
+    "result": {
+      "reviewed": true,
+      "verdict": "approve",
+      "accepted": true,
+      "decision": "approve",
+      "headSha": "HEAD"
+    },
+    "events": [
+      {
+        "type": "review.requested",
+        "data": {
+          "status": "pending",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "files": 1
+        }
+      },
+      {
+        "type": "review.completed",
+        "data": {
+          "status": "completed",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "verdict": "approve",
+          "summary": "Fine",
+          "findings": [],
+          "corrected": false
+        }
+      },
+      {
+        "type": "approval.requested",
+        "data": {
+          "taskId": "TASK",
+          "action": "review_change",
+          "title": "Accept this change",
+          "kind": "review",
+          "command": "",
+          "paths": [
+            "median.js"
+          ],
+          "reason": "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.",
+          "arguments": {
+            "branch": "noevia/task-TASK",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "files": [
+              "median.js"
+            ]
+          },
+          "diff": null,
+          "review": {
+            "status": "completed",
+            "reviewer": "planner",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "verdict": "approve",
+            "summary": "Fine",
+            "findings": [],
+            "corrected": false
+          }
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "approve",
+          "action": "review_change"
+        }
+      }
+    ]
+  },
+  {
+    "input": {
+      "decision": "approve_all"
+    },
+    "result": {
+      "reviewed": true,
+      "verdict": "approve",
+      "accepted": true,
+      "decision": "approve_all",
+      "headSha": "HEAD"
+    },
+    "events": [
+      {
+        "type": "review.requested",
+        "data": {
+          "status": "pending",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "files": 1
+        }
+      },
+      {
+        "type": "review.completed",
+        "data": {
+          "status": "completed",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "verdict": "approve",
+          "summary": "Fine",
+          "findings": [],
+          "corrected": false
+        }
+      },
+      {
+        "type": "approval.requested",
+        "data": {
+          "taskId": "TASK",
+          "action": "review_change",
+          "title": "Accept this change",
+          "kind": "review",
+          "command": "",
+          "paths": [
+            "median.js"
+          ],
+          "reason": "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.",
+          "arguments": {
+            "branch": "noevia/task-TASK",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "files": [
+              "median.js"
+            ]
+          },
+          "diff": null,
+          "review": {
+            "status": "completed",
+            "reviewer": "planner",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "verdict": "approve",
+            "summary": "Fine",
+            "findings": [],
+            "corrected": false
+          }
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "approve_all",
+          "action": "review_change"
+        }
+      }
+    ]
+  },
+  {
+    "input": {
+      "decision": "deny"
+    },
+    "result": {
+      "reviewed": true,
+      "verdict": "approve",
+      "accepted": false,
+      "decision": "deny",
+      "headSha": "HEAD"
+    },
+    "events": [
+      {
+        "type": "review.requested",
+        "data": {
+          "status": "pending",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "files": 1
+        }
+      },
+      {
+        "type": "review.completed",
+        "data": {
+          "status": "completed",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "verdict": "approve",
+          "summary": "Fine",
+          "findings": [],
+          "corrected": false
+        }
+      },
+      {
+        "type": "approval.requested",
+        "data": {
+          "taskId": "TASK",
+          "action": "review_change",
+          "title": "Accept this change",
+          "kind": "review",
+          "command": "",
+          "paths": [
+            "median.js"
+          ],
+          "reason": "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.",
+          "arguments": {
+            "branch": "noevia/task-TASK",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "files": [
+              "median.js"
+            ]
+          },
+          "diff": null,
+          "review": {
+            "status": "completed",
+            "reviewer": "planner",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "verdict": "approve",
+            "summary": "Fine",
+            "findings": [],
+            "corrected": false
+          }
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "deny",
+          "action": "review_change"
+        }
+      }
+    ]
+  },
+  {
+    "input": {
+      "decision": "timeout"
+    },
+    "result": {
+      "reviewed": true,
+      "verdict": "approve",
+      "accepted": false,
+      "decision": "timeout",
+      "headSha": "HEAD"
+    },
+    "events": [
+      {
+        "type": "review.requested",
+        "data": {
+          "status": "pending",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "files": 1
+        }
+      },
+      {
+        "type": "review.completed",
+        "data": {
+          "status": "completed",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "verdict": "approve",
+          "summary": "Fine",
+          "findings": [],
+          "corrected": false
+        }
+      },
+      {
+        "type": "approval.requested",
+        "data": {
+          "taskId": "TASK",
+          "action": "review_change",
+          "title": "Accept this change",
+          "kind": "review",
+          "command": "",
+          "paths": [
+            "median.js"
+          ],
+          "reason": "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.",
+          "arguments": {
+            "branch": "noevia/task-TASK",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "files": [
+              "median.js"
+            ]
+          },
+          "diff": null,
+          "review": {
+            "status": "completed",
+            "reviewer": "planner",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "verdict": "approve",
+            "summary": "Fine",
+            "findings": [],
+            "corrected": false
+          }
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "timeout",
+          "action": "review_change"
+        }
+      }
+    ]
+  },
+  {
+    "input": {
+      "decision": "aborted"
+    },
+    "result": {
+      "reviewed": true,
+      "verdict": "approve",
+      "accepted": false,
+      "decision": "aborted",
+      "headSha": "HEAD"
+    },
+    "events": [
+      {
+        "type": "review.requested",
+        "data": {
+          "status": "pending",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "files": 1
+        }
+      },
+      {
+        "type": "review.completed",
+        "data": {
+          "status": "completed",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "verdict": "approve",
+          "summary": "Fine",
+          "findings": [],
+          "corrected": false
+        }
+      },
+      {
+        "type": "approval.requested",
+        "data": {
+          "taskId": "TASK",
+          "action": "review_change",
+          "title": "Accept this change",
+          "kind": "review",
+          "command": "",
+          "paths": [
+            "median.js"
+          ],
+          "reason": "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.",
+          "arguments": {
+            "branch": "noevia/task-TASK",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "files": [
+              "median.js"
+            ]
+          },
+          "diff": null,
+          "review": {
+            "status": "completed",
+            "reviewer": "planner",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "verdict": "approve",
+            "summary": "Fine",
+            "findings": [],
+            "corrected": false
+          }
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "aborted",
+          "action": "review_change"
+        }
+      }
+    ]
+  },
+  {
+    "input": {
+      "decision": "approve",
+      "unavailable": true
+    },
+    "result": {
+      "reviewed": false,
+      "verdict": null,
+      "accepted": true,
+      "decision": "approve",
+      "headSha": "HEAD"
+    },
+    "events": [
+      {
+        "type": "review.requested",
+        "data": {
+          "status": "pending",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "files": 1
+        }
+      },
+      {
+        "type": "review.failed",
+        "data": {
+          "status": "failed",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "HEAD",
+          "code": "unavailable",
+          "reason": "No reviewer model is configured on this server."
+        }
+      },
+      {
+        "type": "approval.requested",
+        "data": {
+          "taskId": "TASK",
+          "action": "review_change",
+          "title": "Accept this change",
+          "kind": "review",
+          "command": "",
+          "paths": [
+            "median.js"
+          ],
+          "reason": "Not reviewed: No reviewer model is configured on this server. Review the change on its branch yourself before accepting it.",
+          "arguments": {
+            "branch": "noevia/task-TASK",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "files": [
+              "median.js"
+            ]
+          },
+          "diff": null,
+          "review": {
+            "status": "failed",
+            "reviewer": "planner",
+            "baseSha": "BASE",
+            "headSha": "HEAD",
+            "code": "unavailable",
+            "reason": "No reviewer model is configured on this server."
+          }
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "approve",
+          "action": "review_change"
+        }
+      }
+    ]
+  },
+  {
+    "input": {
+      "decision": "deny",
+      "unchanged": true
+    },
+    "result": {
+      "reviewed": false,
+      "verdict": null,
+      "accepted": false,
+      "decision": "deny",
+      "headSha": "BASE"
+    },
+    "events": [
+      {
+        "type": "review.requested",
+        "data": {
+          "status": "pending",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "BASE",
+          "files": null
+        }
+      },
+      {
+        "type": "review.failed",
+        "data": {
+          "status": "failed",
+          "reviewer": "planner",
+          "baseSha": "BASE",
+          "headSha": "BASE",
+          "code": "no_change",
+          "reason": "The task made no commits, so there is nothing to review."
+        }
+      },
+      {
+        "type": "approval.requested",
+        "data": {
+          "taskId": "TASK",
+          "action": "review_change",
+          "title": "Accept this change",
+          "kind": "review",
+          "command": "",
+          "paths": [],
+          "reason": "Not reviewed: The task made no commits, so there is nothing to review. Review the change on its branch yourself before accepting it.",
+          "arguments": {
+            "branch": "noevia/task-TASK",
+            "baseSha": "BASE",
+            "headSha": "BASE",
+            "files": []
+          },
+          "diff": null,
+          "review": {
+            "status": "failed",
+            "reviewer": "planner",
+            "baseSha": "BASE",
+            "headSha": "BASE",
+            "code": "no_change",
+            "reason": "The task made no commits, so there is nothing to review."
+          }
+        }
+      },
+      {
+        "type": "approval.decided",
+        "data": {
+          "decision": "deny",
+          "action": "review_change"
+        }
+      }
+    ]
+  }
+]

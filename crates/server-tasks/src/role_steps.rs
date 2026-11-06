@@ -202,6 +202,51 @@ pub async fn review(
         Err(reason) => fail("invalid", reason),
     }
 }
+/// Ordinary reviewed tasks pin within the same bounded deadline as their review call.
+pub async fn review_start(
+    authority: Arc<dyn crate::role_pin::Authority>,
+    context: Arc<JournalContext>,
+    state: &JValue,
+    limit: Duration,
+) -> JValue {
+    if *context.cancellation().borrow() {
+        return fail("aborted", "The task was cancelled before it was reviewed.");
+    }
+    let (staged, stop) = context.stage();
+    let work = async {
+        let pinned = crate::role_pin::pin(
+            authority,
+            context.task(),
+            None,
+            false,
+            role_prompt::ROLES.map(str::to_owned).into(),
+            staged.cancellation(),
+        )
+        .await;
+        match pinned {
+            Ok(session) => review(&session, staged.clone(), state, limit).await,
+            Err(error) => fail(
+                if error.code == "external" {
+                    "unavailable"
+                } else {
+                    &error.code
+                },
+                error.reason,
+            ),
+        }
+    };
+    match within(&stop, limit, work).await {
+        Some(answer) => answer,
+        None => fail(
+            "timeout",
+            format!(
+                "The review did not finish within {} seconds.",
+                seconds(limit)
+            ),
+        ),
+    }
+}
+
 /// The Auditor's optional prose is returned separately from the deterministic measured report.
 pub async fn audit(
     session: &Session,
@@ -228,7 +273,7 @@ pub async fn audit(
 }
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::role_pin::{Authority, Endpoint, Fault};
     use crate::role_stream::{Body, Error, Response, Wait};
@@ -263,6 +308,9 @@ mod tests {
         }
     }
     impl Authority for Host {
+        fn credentials(&self) -> Vec<zeroize::Zeroizing<String>> {
+            vec![]
+        }
         fn endpoint(&self) -> Result<Endpoint, Fault> {
             Ok(Endpoint {
                 configured: true,
@@ -331,6 +379,9 @@ mod tests {
             entered: AtomicUsize::new(0),
             dropped: Arc::new(AtomicUsize::new(0)),
         })
+    }
+    pub(crate) fn authority(output: String) -> Arc<dyn Authority> {
+        host(output, false)
     }
     #[tokio::test]
     async fn exact_node_planner_and_review_hooks_use_native_model_streams() {

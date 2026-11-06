@@ -49,7 +49,17 @@ fn unavailable() -> Fault {
     )
 }
 /// Account-scoped model facts and inference-engine I/O. Never invokes a Planner or task executor.
+/// Bind a fresh model authority to this account/task. Implementations must never use an ambient
+/// or globally selected user when resolving role, provider, machine or credential configuration.
+pub trait Models: Send + Sync {
+    fn bind(
+        &self,
+        context: Arc<crate::context::JournalContext>,
+    ) -> Result<Arc<dyn Authority>, crate::code::Failure>;
+}
 pub trait Authority: Send + Sync {
+    fn credentials(&self) -> Vec<zeroize::Zeroizing<String>>;
+
     fn endpoint(&self) -> Result<Endpoint, Fault>;
     /// Only chat rows reported loaded/loading, after the sidecar keep list is excluded.
     fn loaded(
@@ -298,6 +308,9 @@ mod tests {
         requests: AtomicUsize,
     }
     impl Authority for Fake {
+        fn credentials(&self) -> Vec<zeroize::Zeroizing<String>> {
+            vec![]
+        }
         fn endpoint(&self) -> Result<Endpoint, Fault> {
             Ok(self.endpoint.lock().unwrap().clone())
         }
