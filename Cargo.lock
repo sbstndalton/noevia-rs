@@ -406,6 +406,7 @@ dependencies = [
  "sha2",
  "tool-exchange",
  "tool-gate",
+ "toolboxes-permitted",
 ]
 
 [[package]]

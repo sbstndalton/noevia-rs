@@ -19,7 +19,10 @@ fn arr(v: &JValue) -> &[JValue] {
 }
 
 fn strs(v: &JValue) -> Vec<String> {
-    arr(v).iter().filter_map(|x| x.as_str().map(str::to_owned)).collect()
+    arr(v)
+        .iter()
+        .filter_map(|x| x.as_str().map(str::to_owned))
+        .collect()
 }
 
 fn block<F: Future>(f: F) -> F::Output {
@@ -53,7 +56,10 @@ impl Router for Recorded {
 fn sha(v: &JValue) -> String {
     let text = wtf16::stringify(v).expect("tools");
     // JSON.stringify's text, hashed as UTF-8 (the fixture has no lone surrogates).
-    Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 #[test]
@@ -61,11 +67,27 @@ fn units_match_node() {
     let c = wtf16::parse(include_str!("fixtures/select-cases.json")).expect("fixture");
     for u in arr(c.get("units")) {
         if let Some(m) = u.get("model").as_str() {
-            assert_eq!(Some(tb::tool_cap_for(m) as f64), u.get("cap").as_num(), "cap {m}");
-            assert_eq!(Some(tb::tool_token_budget_for(m, None)), u.get("budget").as_num(), "budget {m}");
-            assert_eq!(Some(tb::tool_token_budget_for(m, Some(777.0))), u.get("measured777").as_num(), "measured {m}");
+            assert_eq!(
+                Some(tb::tool_cap_for(m) as f64),
+                u.get("cap").as_num(),
+                "cap {m}"
+            );
+            assert_eq!(
+                Some(tb::tool_token_budget_for(m, None)),
+                u.get("budget").as_num(),
+                "budget {m}"
+            );
+            assert_eq!(
+                Some(tb::tool_token_budget_for(m, Some(777.0))),
+                u.get("measured777").as_num(),
+                "measured {m}"
+            );
         } else {
-            assert_eq!(Some(tb::estimate_tool_tokens(arr(u.get("tools")))), u.get("est").as_num(), "{u:?}");
+            assert_eq!(
+                Some(tb::estimate_tool_tokens(arr(u.get("tools")))),
+                u.get("est").as_num(),
+                "{u:?}"
+            );
         }
     }
 }
@@ -82,7 +104,12 @@ fn tool_selection_matches_node() {
         let ids = strs(out.get("boxes"));
         let boxes: Vec<JValue> = ids
             .iter()
-            .map(|id| all.iter().find(|b| b.get("id").as_str() == Some(id)).expect("box").clone())
+            .map(|id| {
+                all.iter()
+                    .find(|b| b.get("id").as_str() == Some(id))
+                    .expect("box")
+                    .clone()
+            })
             .collect();
         let project = match k.get("project") {
             JValue::Undefined => JValue::Null,
@@ -96,7 +123,11 @@ fn tool_selection_matches_node() {
         let writes = strs(out.get("writes"));
         let account_ready = |id: &str| !not_signed.iter().any(|n| n == id);
         let is_write = |n: &str| writes.iter().any(|w| w == n);
-        let ready = |b: &JValue| !b.get("id").as_str().is_some_and(|id| not_ready.iter().any(|n| n == id));
+        let ready = |b: &JValue| {
+            !b.get("id")
+                .as_str()
+                .is_some_and(|id| not_ready.iter().any(|n| n == id))
+        };
         let policy = |n: &JValue| n.as_str().is_some_and(|n| blocked.iter().any(|b| b == n));
         let history = JValue::Arr(map_history(k.get("history"), 20));
         let provider = k.get("providerId").as_str().unwrap_or("default");
@@ -125,10 +156,21 @@ fn tool_selection_matches_node() {
             ready: &ready,
             policy_blocked: &policy,
         };
-        let router = Recorded { call: out.get("routerCall").clone(), seen: RefCell::new(None) };
+        let router = Recorded {
+            call: out.get("routerCall").clone(),
+            seen: RefCell::new(None),
+        };
         let s = block(tb::select(&t, &router)).expect("select");
-        assert_eq!(router.seen.borrow().clone(), Some(strs(out.get("routerCall").get("ids"))), "router ids {i}: {k:?}");
-        assert_eq!(&tb::tools_scope_event(&t, &s), out.get("scope"), "scope {i}: {k:?}");
+        assert_eq!(
+            router.seen.borrow().clone(),
+            Some(strs(out.get("routerCall").get("ids"))),
+            "router ids {i}: {k:?}"
+        );
+        assert_eq!(
+            &tb::tools_scope_event(&t, &s),
+            out.get("scope"),
+            "scope {i}: {k:?}"
+        );
         let up = out.get("upstream");
         if up.is_object() {
             let measured = k.get("measured").as_num();
@@ -137,10 +179,31 @@ fn tool_selection_matches_node() {
             let active = JValue::Arr(tb::active_tools(&s, &r));
             let names: Vec<String> = arr(&active)
                 .iter()
-                .map(|x| x.get("function").get("name").as_str().unwrap_or("").to_owned())
+                .map(|x| {
+                    x.get("function")
+                        .get("name")
+                        .as_str()
+                        .unwrap_or("")
+                        .to_owned()
+                })
                 .collect();
-            assert_eq!(names, strs(up.get("names")), "tools {i}: {k:?} {:?}", r.dropped);
-            assert_eq!(Some(sha(&active).as_str()), up.get("toolsSha").as_str(), "tool JSON {i}");
+            assert_eq!(
+                names,
+                strs(up.get("names")),
+                "tools {i}: {k:?} {:?}",
+                r.dropped
+            );
+            if Some(sha(&active).as_str()) != up.get("toolsSha").as_str() {
+                let _ = std::fs::write(
+                    std::env::temp_dir().join("select-diff.txt"),
+                    format!("{i}\n{}\n", wtf16::stringify(&active).unwrap_or_default()),
+                );
+            }
+            assert_eq!(
+                Some(sha(&active).as_str()),
+                up.get("toolsSha").as_str(),
+                "tool JSON {i}"
+            );
             checked.0 += 1;
         }
         checked.1 += 1;
@@ -163,7 +226,10 @@ fn dropping_the_selection_at_the_router_await_ends_it() {
     let none: HashSet<String> = HashSet::new();
     let defaults = vec!["core".to_owned()];
     let msg = JValue::Str("search the web for cats".into());
-    let core = JValue::obj([("id", JValue::Str("core".into())), ("tools", JValue::Arr(vec![]))]);
+    let core = JValue::obj([
+        ("id", JValue::Str("core".into())),
+        ("tools", JValue::Arr(vec![])),
+    ]);
     let boxes = vec![core];
     let ids = vec!["core".to_owned()];
     let resolved = Cell::new(0u32);
@@ -203,5 +269,9 @@ fn dropping_the_selection_at_the_router_await_ends_it() {
         assert!(f.as_mut().poll(&mut cx).is_pending());
     }
     assert_eq!(calls.get(), 1, "the router is asked once");
-    assert_eq!(resolved.get(), 0, "nothing is resolved after a dropped selection");
+    assert_eq!(
+        resolved.get(),
+        0,
+        "nothing is resolved after a dropped selection"
+    );
 }

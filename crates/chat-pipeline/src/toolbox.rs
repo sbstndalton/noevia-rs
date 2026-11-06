@@ -126,7 +126,11 @@ pub fn resolve_tools(
         };
         for tool in tools {
             let f = get(tool, "function");
-            let name = if tool.truthy() && f.truthy() { get(f, "name") } else { &JValue::Undefined };
+            let name = if tool.truthy() && f.truthy() {
+                get(f, "name")
+            } else {
+                &JValue::Undefined
+            };
             if !name.truthy() || seen.iter().any(|s| same(s, name)) || skip(name) {
                 continue;
             }
@@ -144,7 +148,11 @@ pub fn resolve_tools(
     let budget = tool_token_budget_for(model, measured);
     let mut tools = Vec::new();
     let mut dropped = Vec::new();
-    let mut spent = if candidates.is_empty() { 0.0 } else { TOOL_PREAMBLE_TOKENS };
+    let mut spent = if candidates.is_empty() {
+        0.0
+    } else {
+        TOOL_PREAMBLE_TOKENS
+    };
     for tool in candidates {
         let cost = estimate_tool_tokens(std::slice::from_ref(tool));
         let name = js_string(get(get(tool, "function"), "name"));
@@ -174,7 +182,15 @@ pub fn resolve_tools(
             }
         }
     }
-    Ok(Resolved { tools, dropped, boxes, cap, budget, est_tokens: spent, routes })
+    Ok(Resolved {
+        tools,
+        dropped,
+        boxes,
+        cap,
+        budget,
+        est_tokens: spent,
+        routes,
+    })
 }
 
 /// SameValueZero for the names a `Set` or `Map` holds.
@@ -248,11 +264,20 @@ pub fn selected_toolbox_ids(r: &Request<'_>) -> Vec<String> {
     } else {
         None
     };
-    let defaults: Vec<toolboxes_permitted::Id> = r.defaults.iter().map(|d| Some(units(d))).collect();
+    let defaults: Vec<toolboxes_permitted::Id> =
+        r.defaults.iter().map(|d| Some(units(d))).collect();
     let connector: HashSet<Vec<u16>> = r.connectors.iter().map(|c| units(c)).collect();
-    let connected: Vec<toolboxes_permitted::Id> = r.connected.iter().map(|c| Some(units(c))).collect();
+    let connected: Vec<toolboxes_permitted::Id> =
+        r.connected.iter().map(|c| Some(units(c))).collect();
     let mut work = toolboxes_permitted::Work::new(1 << 40);
-    match toolboxes_permitted::selected_ids(project.as_ref(), &defaults, &units(DOCS_BOX), &connector, &connected, &mut work) {
+    match toolboxes_permitted::selected_ids(
+        project.as_ref(),
+        &defaults,
+        &units(DOCS_BOX),
+        &connector,
+        &connected,
+        &mut work,
+    ) {
         Ok(ids) => ids
             .into_iter()
             .filter_map(|id| id.map(|u| crate::text::from_units(&u)))
@@ -272,7 +297,11 @@ pub fn automatic_head(defaults: &[String]) -> Vec<String> {
 /// after the head, the turn's own picks, then the Diary add-on and sign-in filters.
 pub fn request_toolboxes(r: &Request<'_>, automatic_added: &[String]) -> Vec<String> {
     let base = selected_toolbox_ids(r);
-    let added: Vec<String> = automatic_added.iter().filter(|id| !base.contains(id)).cloned().collect();
+    let added: Vec<String> = automatic_added
+        .iter()
+        .filter(|id| !base.contains(id))
+        .cloned()
+        .collect();
     let mut selected = if added.is_empty() {
         base
     } else {
@@ -282,7 +311,10 @@ pub fn request_toolboxes(r: &Request<'_>, automatic_added: &[String]) -> Vec<Str
     };
     if let JValue::Arr(turn) = r.turn_toolboxes {
         for id in turn.iter().filter_map(as_str) {
-            if r.offered.iter().any(|o| o == id) && !r.connectors.contains(id) && !selected.iter().any(|s| s == id) {
+            if r.offered.iter().any(|o| o == id)
+                && !r.connectors.contains(id)
+                && !selected.iter().any(|s| s == id)
+            {
                 selected.push(id.to_owned());
             }
         }
@@ -334,7 +366,9 @@ pub fn automatic_only_writes(
         Ok(names)
     };
     let elsewhere: HashSet<String> =
-        names_of(&|id| selected.iter().any(|s| s == id) && !added.iter().any(|a| a == id))?.into_iter().collect();
+        names_of(&|id| selected.iter().any(|s| s == id) && !added.iter().any(|a| a == id))?
+            .into_iter()
+            .collect();
     for name in names_of(&|id| added.iter().any(|a| a == id))? {
         if !elsewhere.contains(&name) && is_write_tool(&name) {
             out.insert(name);
@@ -353,7 +387,12 @@ pub struct Routing {
 
 /// chat.cjs after `chatToolRouter.select`: routing never drops a box this message asked for, and the
 /// default boxes stay ahead of the additions.
-pub fn keep_additions(routing: Routing, added: &[String], selected: &[String], head: &[String]) -> Routing {
+pub fn keep_additions(
+    routing: Routing,
+    added: &[String],
+    selected: &[String],
+    head: &[String],
+) -> Routing {
     if !routing.routed || added.is_empty() {
         return routing;
     }
@@ -361,7 +400,11 @@ pub fn keep_additions(routing: Routing, added: &[String], selected: &[String], h
     all.extend(added.iter().filter(|id| !routing.ids.contains(id)).cloned());
     let ids = order_with_additions(&all, added, head);
     let narrowed = ids.len() < selected.len();
-    Routing { ids, narrowed, ..routing }
+    Routing {
+        ids,
+        narrowed,
+        ..routing
+    }
 }
 
 /// The `more_tools` tool a narrowed turn offers (chat.cjs: all of the project's other tools next step).
@@ -448,7 +491,10 @@ pub async fn select(t: &Turn<'_>, router: &impl Router) -> Result<Selected, Thro
     let mut added: Vec<String> = Vec::new();
     if t.automatic_tools && !t.compact_only {
         let carried = crate::tools_mode::carried_public_boxes(t.history, &boxes)?;
-        let base: Vec<JValue> = request_toolboxes(&t.request, &[]).into_iter().map(JValue::Str).collect();
+        let base: Vec<JValue> = request_toolboxes(&t.request, &[])
+            .into_iter()
+            .map(JValue::Str)
+            .collect();
         let e = crate::tools_mode::Eligibility {
             connector_boxes: t.request.connectors,
             is_write_tool: t.is_write_tool,
@@ -456,7 +502,14 @@ pub async fn select(t: &Turn<'_>, router: &impl Router) -> Result<Selected, Thro
             private_data: t.automatic_local,
         };
         let carried = JValue::Arr(carried.into_iter().map(JValue::Str).collect());
-        added = crate::tools_mode::automatic_additions(t.message, &base, &boxes, &e, crate::tools_mode::MAX_ADDED, &carried)?;
+        added = crate::tools_mode::automatic_additions(
+            t.message,
+            &base,
+            &boxes,
+            &e,
+            crate::tools_mode::MAX_ADDED,
+            &carried,
+        )?;
     }
     let mut selected = request_toolboxes(&t.request, &added);
     if t.external_strict {
@@ -473,13 +526,29 @@ pub async fn select(t: &Turn<'_>, router: &impl Router) -> Result<Selected, Thro
     }
     added.retain(|id| selected.contains(id));
     let routing = router.select(&selected, t.message).await;
-    let routing = keep_additions(routing, &added, &selected, &automatic_head(t.request.defaults));
+    let routing = keep_additions(
+        routing,
+        &added,
+        &selected,
+        &automatic_head(t.request.defaults),
+    );
     let automatic_only_writes = automatic_only_writes(t.boxes, &selected, &added, t.is_write_tool)?;
-    Ok(Selected { selected, added, routing, automatic_only_writes, private_stripped })
+    Ok(Selected {
+        selected,
+        added,
+        routing,
+        automatic_only_writes,
+        private_stripped,
+    })
 }
 
 /// chat.cjs `resolveFor(model)`.
-pub fn resolve_for(t: &Turn<'_>, s: &Selected, model: &str, measured: Option<f64>) -> Result<Resolved, Thrown> {
+pub fn resolve_for(
+    t: &Turn<'_>,
+    s: &Selected,
+    model: &str,
+    measured: Option<f64>,
+) -> Result<Resolved, Thrown> {
     resolve_tools(s.ids(), t.boxes, model, &|n| blocked(t, n), measured)
 }
 
@@ -510,16 +579,26 @@ pub fn tools_scope_event(t: &Turn<'_>, s: &Selected) -> JValue {
     let mut ev = vec![("type", s_("tools_scope"))];
     match scope {
         Some(ids) => {
-            let text = ids.iter().map(|id| js_string(&label(id))).collect::<Vec<_>>().join(", ");
+            let text = ids
+                .iter()
+                .map(|id| js_string(&label(id)))
+                .collect::<Vec<_>>()
+                .join(", ");
             ev.push(("text", JValue::Str(text)));
             let boxes = ids
                 .iter()
                 .map(|id| {
                     let b = find(id);
                     let in_app = b.is_some_and(|b| {
-                        b.truthy() && (as_str(get(b, "source")) == Some("builtin") || get(b, "inApp") == &JValue::Bool(true))
+                        b.truthy()
+                            && (as_str(get(b, "source")) == Some("builtin")
+                                || get(b, "inApp") == &JValue::Bool(true))
                     });
-                    JValue::obj([("id", s_(id)), ("label", label(id)), ("inApp", JValue::Bool(in_app))])
+                    JValue::obj([
+                        ("id", s_(id)),
+                        ("label", label(id)),
+                        ("inApp", JValue::Bool(in_app)),
+                    ])
                 })
                 .collect();
             ev.push(("boxes", JValue::Arr(boxes)));
@@ -530,7 +609,12 @@ pub fn tools_scope_event(t: &Turn<'_>, s: &Selected) -> JValue {
 }
 
 /// The `more_tools` call (#865 routes): the project's whole selection resolved, its reply text, and its routes.
-pub fn widen(t: &Turn<'_>, s: &Selected, model: &str, measured: Option<f64>) -> Result<(Resolved, String), Thrown> {
+pub fn widen(
+    t: &Turn<'_>,
+    s: &Selected,
+    model: &str,
+    measured: Option<f64>,
+) -> Result<(Resolved, String), Thrown> {
     let full = resolve_tools(&s.selected, t.boxes, model, &|n| blocked(t, n), measured)?;
     let names = full
         .tools
