@@ -296,10 +296,10 @@ use std::sync::Arc;
 /// /v1/inference-admission/session` on the project-store listener; Core's latch
 /// (`noevia-inference-admission-latch/1`) takes its holds only for leases issued here.
 ///
-/// `noevia-maintenance-lease-authority/1` (model_maint/lease.rs `AUTHORITY_MARKER`, port contract row J):
+/// `noevia-maintenance-lease-authority/2` (model_maint/lease.rs `AUTHORITY_MARKER`, port contract row J):
 /// this build is the one model-maintenance lease authority and answers `POST
 /// /v1/maintenance-lease/{acquire,renew,release,held,session}` on the project-store listener. Core's
-/// `noevia-maintenance-lease-client/1` takes every maintenance hold there; the release assembly pairs the
+/// `noevia-maintenance-lease-client/2` takes every maintenance hold there; the release assembly pairs the
 /// two markers in both directions.
 ///
 /// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
@@ -448,7 +448,7 @@ pub const FEATURES: &[&str] = &[
     "noevia-inference-admission-authority/1",
     // Port contract row J: the maintenance lease authority (model_maint/lease.rs AUTHORITY_MARKER; the
     // release assembly reads this exact literal and pairs it with core's lease client).
-    "noevia-maintenance-lease-authority/1",
+    "noevia-maintenance-lease-authority/2",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
@@ -552,6 +552,8 @@ pub(crate) fn account_row_exists(writes: &upkeep::WriterLayer, id: &str) -> bool
 }
 
 pub struct App {
+    /// Engine capability observation; refreshed on startup and before model mutations.
+    pub model_load_capability: model_load_capability::Capability,
     /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
     pub demand: Arc<snapshot::Demand>,
     /// Google Drive's token authority (sbstndalton/noevia#2190 round 7); `None` without UI_DATA_DIR.
@@ -672,7 +674,16 @@ impl App {
             (Some(o), Some(d)) => Some(Arc::new(offsite_routes::Service::new(o, Arc::clone(d)))),
             _ => None,
         };
+        let model_load_capability = model_load_capability::Capability::start(
+            config.maint.router.clone(),
+            config
+                .maint
+                .gate
+                .as_ref()
+                .and_then(|gate| gate.admin_header()),
+        );
         Arc::new(App {
+            model_load_capability,
             demand: Arc::new(snapshot::Demand::default()),
             drive,
             offsite,

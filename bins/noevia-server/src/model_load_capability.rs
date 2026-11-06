@@ -35,3 +35,62 @@ pub async fn verified(router: &Router, admin: Option<(HeaderName, HeaderValue)>)
                     == 1
             })
 }
+
+/// Latest authenticated observation for this configured engine. Each use probes again, so a
+/// reconnect or replacement at the same address cannot inherit an earlier gate proof.
+#[derive(Clone)]
+pub struct Capability(std::sync::Arc<Observation>);
+
+struct Observation {
+    router: Option<Router>,
+    admin: Option<(HeaderName, HeaderValue)>,
+    // Low bit is proof; upper bits order concurrent probes (including the startup probe).
+    state: std::sync::atomic::AtomicU64,
+}
+
+impl Capability {
+    pub fn start(router: Option<Router>, admin: Option<(HeaderName, HeaderValue)>) -> Self {
+        let this = Self(std::sync::Arc::new(Observation {
+            router,
+            admin,
+            state: std::sync::atomic::AtomicU64::new(0),
+        }));
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            let probe = this.clone();
+            rt.spawn(async move {
+                probe.refresh().await;
+            });
+        }
+        this
+    }
+
+    pub fn is_verified(&self) -> bool {
+        self.0.state.load(std::sync::atomic::Ordering::SeqCst) & 1 != 0
+    }
+
+    pub async fn refresh(&self) -> bool {
+        use std::sync::atomic::Ordering::SeqCst;
+        let mut previous = self.0.state.load(SeqCst);
+        let ticket = loop {
+            let ticket = (previous & !1).wrapping_add(2);
+            match self
+                .0
+                .state
+                .compare_exchange(previous, ticket, SeqCst, SeqCst)
+            {
+                Ok(_) => break ticket,
+                Err(current) => previous = current,
+            }
+        };
+        let proof = match self.0.router.as_ref() {
+            Some(router) => verified(router, self.0.admin.clone()).await,
+            None => false,
+        };
+        // A late reply from an earlier connection cannot overwrite a newer observation.
+        self.0
+            .state
+            .compare_exchange(ticket, ticket | u64::from(proof), SeqCst, SeqCst)
+            .is_ok()
+            && proof
+    }
+}

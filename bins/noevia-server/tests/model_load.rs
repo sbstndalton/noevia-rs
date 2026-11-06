@@ -245,6 +245,10 @@ impl World {
                 skipped = true;
                 continue;
             }
+            // The authenticated capability handshake is separate from Node's engine oracle.
+            if key == "GET /gate/v1/capabilities" {
+                continue;
+            }
             let lease = r.headers.contains_key("x-noevia-lease");
             let admin = r.headers.contains_key("x-noevia-gate-admin");
             out.push(format!(
@@ -618,4 +622,99 @@ async fn a_fake_gate_health_or_token_is_not_a_settlement_capability() {
     let (port, _) = engine(Arc::new(|_| Answer::Reply(200, json!({"protocol":"noevia-gate-capabilities/1", "capabilities":["noevia-model-load-settlement/1"]}).to_string()))).await;
     let router = Router::new(&format!("http://127.0.0.1:{port}"), None).unwrap();
     assert!(verified(&router, admin()).await);
+}
+
+#[tokio::test]
+async fn capability_startup_and_reconnect_never_reuse_an_old_gate_proof() {
+    use noevia_server::{model_load_capability::Capability, model_maint::router::Router};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let capable = Arc::new(AtomicBool::new(true));
+    let answers = Arc::clone(&capable);
+    let (port, seen) = engine(Arc::new(move |_| Answer::Reply(200,
+        if answers.load(Ordering::SeqCst) {
+            json!({"protocol":"noevia-gate-capabilities/1", "capabilities":["noevia-model-load-settlement/1"]})
+        } else { json!({"ok":true}) }.to_string()))).await;
+    let router = Router::new(&format!("http://127.0.0.1:{port}"), None).unwrap();
+    let capability = Capability::start(
+        Some(router),
+        Some((
+            reqwest::header::HeaderName::from_static("x-noevia-gate-admin"),
+            reqwest::header::HeaderValue::from_static("synthetic-token"),
+        )),
+    );
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while !capability.is_verified() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(seen.lock().unwrap()[0].target, "/gate/v1/capabilities");
+    capable.store(false, Ordering::SeqCst);
+    assert!(!capability.refresh().await);
+    assert!(!capability.is_verified());
+    capable.store(true, Ordering::SeqCst);
+    assert!(capability.refresh().await);
+    assert!(capability.is_verified());
+    assert_eq!(seen.lock().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn application_probes_at_startup_and_before_the_next_mutation() {
+    let w = World::new(&json!({"path":"/api/models/load", "admin":true})).await;
+    let probes = || {
+        w.router
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.target == "/gate/v1/capabilities")
+            .count()
+    };
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while probes() == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("application startup must probe the configured engine");
+    let initial = probes();
+    assert_eq!(
+        w.post("/api/models/load", r#"{"name":"m"}"#, ADMIN).await.0,
+        200
+    );
+    assert!(
+        probes() > initial,
+        "next mutation must refresh after possible reconnect"
+    );
+}
+
+#[tokio::test]
+async fn an_old_startup_reply_cannot_restore_proof_after_a_newer_failed_probe() {
+    use noevia_server::{model_load_capability::Capability, model_maint::router::Router};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&calls);
+    let (port, _) = engine(Arc::new(move |_| {
+        if count.fetch_add(1, Ordering::SeqCst) == 0 {
+            Answer::After(Duration::from_millis(200), 200, json!({"protocol":"noevia-gate-capabilities/1", "capabilities":["noevia-model-load-settlement/1"]}).to_string())
+        } else { Answer::Reply(200, json!({"ok":true}).to_string()) }
+    })).await;
+    let router = Router::new(&format!("http://127.0.0.1:{port}"), None).unwrap();
+    let capability = Capability::start(
+        Some(router),
+        Some((
+            reqwest::header::HeaderName::from_static("x-noevia-gate-admin"),
+            reqwest::header::HeaderValue::from_static("synthetic-token"),
+        )),
+    );
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while calls.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(!capability.refresh().await);
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert!(!capability.is_verified());
 }

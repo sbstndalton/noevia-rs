@@ -313,6 +313,10 @@ pub async fn serve(app: &Arc<App>, conn: crate::serve::Conn, req: Request<Body>)
     if !Fence::fresh(app).await {
         return internal(503);
     }
+    // Refresh on every use, including pooled-connection replacement/reconnect. Absence is a
+    // supported direct-router observation, not a refusal. Shared settlement consumes this proof
+    // once the per-incident recovery interface is published.
+    app.model_load_capability.refresh().await;
     let entry = ArcEntry(Arc::clone(&maint.recheck.admission));
     if path == LOAD {
         if missing_file(app, &name).await {

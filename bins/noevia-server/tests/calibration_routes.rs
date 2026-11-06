@@ -207,7 +207,9 @@ async fn get_selects_the_history_the_state_file_holds() {
     assert_eq!(v, json!({"job": null, "history": []}));
     let (_, v) = get(f.addr, PATH, ADMIN).await;
     assert_eq!(v, json!({"job": null}));
-    assert!(e.seen().is_empty());
+    // Startup's authenticated capability GET is independent of calibration policy; every
+    // model/status read and engine mutation must still remain absent here.
+    assert!(e.seen().iter().all(|r| r == "GET /gate/v1/capabilities"));
     core_untouched(&up);
 }
 
@@ -219,7 +221,9 @@ async fn auth_role_account_and_csrf_precede_every_fact_operation() {
     assert_eq!(write(f.addr, "POST", PATH, MEMBER, ASK).await.0, 403);
     assert_eq!(raw(f.addr, "POST", PATH, ADMIN, "", b"").await.0, 403);
     assert!(up.seen().is_empty());
-    assert!(e.seen().is_empty());
+    // Startup's authenticated capability GET is independent of calibration policy; every
+    // model/status read and engine mutation must still remain absent here.
+    assert!(e.seen().iter().all(|r| r == "GET /gate/v1/capabilities"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -239,7 +243,9 @@ async fn method_confirmation_and_budget_order_skip_all_metadata_and_launches() {
         assert_eq!(s, 400, "{case}");
         assert_eq!(v["error"], case["result"]["body"]["error"], "{case}");
     }
-    assert!(e.seen().is_empty());
+    // Startup's authenticated capability GET is independent of calibration policy; every
+    // model/status read and engine mutation must still remain absent here.
+    assert!(e.seen().iter().all(|r| r == "GET /gate/v1/capabilities"));
     core_untouched(&up);
 }
 

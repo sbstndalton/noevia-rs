@@ -188,6 +188,28 @@ impl StateFile {
         state
     }
 
+    /// Boot inspection must distinguish verified absence from an unknown durable obligation.
+    pub(super) fn load_checked(&self) -> std::io::Result<State> {
+        let Some(path) = &self.path else {
+            return Ok(State::empty());
+        };
+        let bytes = match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(State::empty()),
+            Err(e) => return Err(e),
+        };
+        let text = std::str::from_utf8(&bytes)
+            .map_err(|_| std::io::Error::other("invalid calibration state"))?;
+        let mut state = match wtf16::parse(text) {
+            Ok(JValue::Obj(fields)) => State(fields),
+            _ => return Err(std::io::Error::other("invalid calibration state")),
+        };
+        if !matches!(state.get("history"), JValue::Obj(_) | JValue::Arr(_)) {
+            wtf16::set(&mut state.0, "history", JValue::Obj(Vec::new()));
+        }
+        Ok(state)
+    }
+
     /// `save()`: a temp file beside it (mode 0600), then a rename over it.
     #[cfg(test)]
     pub fn save(&self, state: &State) -> std::io::Result<()> {
@@ -326,13 +348,10 @@ impl Maint {
     /// retains the admission fence while any earlier blocking commit remains unresolved.
     pub(super) async fn prepare_calibration_recovery(
         &self,
+        mut state: State,
         wake: Option<std::sync::Arc<tokio::sync::Notify>>,
     ) -> Option<PreparedRecovery> {
         self.ini.as_ref()?;
-        let loader = self.calibration_state();
-        let mut state = tokio::task::spawn_blocking(move || loader.load())
-            .await
-            .ok()?;
         let decided = matches!(
             state.job().get("terminalDecision").as_str(),
             Some("passed" | "fenced")
