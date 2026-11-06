@@ -54,6 +54,20 @@ pub const REGISTER_LIMIT: Duration = Duration::from_secs(120);
 pub struct Fault {
     pub status: Option<u16>,
     pub message: String,
+    /// The effect may have happened and its original receipt could not be read as settled: the
+    /// permit stays unsettled (the authority holds a recovery incident), the hold no longer
+    /// covers anything, and the worker stops. Never retried under a new permit.
+    pub uncertain: bool,
+}
+
+impl Fault {
+    pub fn refused(status: Option<u16>, message: impl Into<String>) -> Fault {
+        Fault {
+            status,
+            message: message.into(),
+            uncertain: false,
+        }
+    }
 }
 
 /// What a registration answered.
@@ -108,9 +122,16 @@ pub trait Env: Send + Sync + 'static {
     /// Stems with no settings, sorted, as the manager lists them.
     fn list_unregistered(&self) -> impl Future<Output = Result<Vec<String>, Fault>> + Send;
     fn settled(&self, stem: &str) -> impl Future<Output = Settled> + Send;
-    fn register(&self, stem: &str) -> impl Future<Output = Result<Registered, Fault>> + Send;
-    /// The revision of `models.ini` on disk now.
-    fn revision(&self) -> impl Future<Output = Option<String>> + Send;
+    /// One shared conditional operation (`register`): covered snapshot, permit, fenced loader call,
+    /// settlement. See docs/model-folder-sync.md.
+    fn register(
+        &self,
+        hold: &Self::Hold,
+        stem: &str,
+    ) -> impl Future<Output = Result<Registered, Fault>> + Send;
+    /// The revision of `models.ini` now, read under the shared publication transaction while `hold`
+    /// still covers it (None when coverage is gone or the file cannot be read).
+    fn revision(&self, hold: &Self::Hold) -> impl Future<Output = Option<String>> + Send;
     /// The guarded reload, under `hold` (nothing is unloaded).
     fn reload(&self, hold: &Self::Hold, revision: &str) -> impl Future<Output = Reloaded> + Send;
 }
@@ -378,34 +399,43 @@ impl<E: Env> Worker<E> {
                 out.deferred = true;
                 break;
             }
-            match self.env.register(stem).await {
+            match self.env.register(hold, stem).await {
                 Ok(done) => {
                     out.added.push(stem.clone());
                     // The final success owns provenance; never retain an older registration's fence.
                     revision = done.revision;
                 }
-                Err(f) if f.status.is_some_and(|s| RETRY_NEVER.contains(&s)) => {
+                Err(f) if !f.uncertain && f.status.is_some_and(|s| RETRY_NEVER.contains(&s)) => {
                     self.remember(stem);
                 }
-                Err(f) => failed.push(format!(
-                    "{stem} ({})",
-                    if f.message.is_empty() {
-                        "error"
-                    } else {
-                        &f.message
+                Err(f) => {
+                    failed.push(format!(
+                        "{stem} ({})",
+                        if f.message.is_empty() {
+                            "error"
+                        } else {
+                            &f.message
+                        }
+                    ));
+                    if f.uncertain {
+                        // The original effect has no settled receipt: nothing more under this run.
+                        revision = None;
+                        out.lost = true;
+                        out.deferred = true;
+                        break;
                     }
-                )),
+                }
             }
         }
         let mut reload: Option<Reloaded> = None;
         let mut note = String::new();
         if !out.added.is_empty() {
-            if !hold.excluded() {
+            if out.lost || !hold.excluded() {
                 out.lost = true;
                 out.deferred = true;
                 note = " The exclusion ended first, so the presets were not reloaded; the engine will offer them after its next reload.".into();
             } else {
-                let on_disk = self.env.revision().await;
+                let on_disk = self.env.revision(hold).await;
                 let fenced = match (&revision, &on_disk) {
                     (Some(wrote), Some(now)) => wrote != now,
                     (Some(_), None) => true,

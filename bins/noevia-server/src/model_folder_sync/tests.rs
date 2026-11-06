@@ -52,6 +52,8 @@ impl Hold for FakeHold {
 enum Out {
     Ok,
     MissingRevision,
+    Uncertain,
+    Stale,
     Status(u16),
 }
 
@@ -133,10 +135,7 @@ impl Env for Arc<Fake> {
         self.sh.push("list");
         let n = self.list_calls.fetch_add(1, Ordering::SeqCst);
         if let Some(status) = self.list_status {
-            return Err(Fault {
-                status: Some(status),
-                message: "models folder unreadable".into(),
-            });
+            return Err(Fault::refused(Some(status), "models folder unreadable"));
         }
         let reg = self.registered.lock().unwrap();
         let gone = self.vanish_on_second_list.lock().unwrap();
@@ -157,7 +156,7 @@ impl Env for Arc<Fake> {
             Settled::Yes
         }
     }
-    async fn register(&self, stem: &str) -> Result<Registered, Fault> {
+    async fn register(&self, _: &FakeHold, stem: &str) -> Result<Registered, Fault> {
         self.tick().await;
         self.sh.push(format!("register:{stem}"));
         let n = {
@@ -183,13 +182,16 @@ impl Env for Arc<Fake> {
                 })
             }
             Out::MissingRevision => Ok(Registered { revision: None }),
-            Out::Status(s) => Err(Fault {
-                status: Some(s),
-                message: format!("scripted {s}"),
+            Out::Status(s) => Err(Fault::refused(Some(s), format!("scripted {s}"))),
+            Out::Uncertain => Err(Fault {
+                status: None,
+                message: "timed out".into(),
+                uncertain: true,
             }),
+            Out::Stale => Err(Fault::refused(None, "Stale maintenance operation.")),
         }
     }
-    async fn revision(&self) -> Option<String> {
+    async fn revision(&self, _: &FakeHold) -> Option<String> {
         self.tick().await;
         Some(self.on_disk.lock().unwrap().clone())
     }
@@ -793,4 +795,54 @@ async fn a_final_registration_without_revision_must_not_reuse_an_earlier_revisio
     let (w, _) = worker(&f, None);
     w.run().await;
     assert!(!f.sh.events().contains(&"reload".to_owned()));
+}
+
+// --- the shared conditional-operation protocol ----------------------------------------------------
+
+#[tokio::test]
+async fn an_uncertain_registration_stops_the_batch_without_retry_or_reload() {
+    let mut f = Fake::new(&["a", "b", "c"]);
+    f.outcomes.insert("b".into(), vec![Out::Uncertain]);
+    let f = Arc::new(f);
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("s.json");
+    let (w, logs) = worker(&f, Some(state.clone()));
+    let r = w.run().await;
+    assert_eq!(r.added, vec!["a"]);
+    assert!(r.lost && r.deferred, "{r:?}");
+    let ev = f.sh.events();
+    assert!(!ev.contains(&"register:c".to_string()), "{ev:?}");
+    assert_eq!(
+        ev.iter().filter(|e| *e == "register:b").count(),
+        1,
+        "never repeated under a new permit"
+    );
+    assert!(!ev.iter().any(|e| e == "reload"), "{ev:?}");
+    assert!(
+        w.skipped().is_empty() && !state.exists(),
+        "an unknown outcome is never a verdict on the file"
+    );
+    assert!(logs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|l| l.contains("could not set up: b (timed out)")));
+    assert_eq!(
+        f.sh.taken.load(Ordering::SeqCst),
+        f.sh.dropped.load(Ordering::SeqCst)
+    );
+}
+
+#[tokio::test]
+async fn a_stale_permit_is_not_a_verdict_on_the_file_and_the_next_file_gets_a_fresh_permit() {
+    let mut f = Fake::new(&["a", "b"]);
+    f.outcomes.insert("a".into(), vec![Out::Stale, Out::Ok]);
+    let f = Arc::new(f);
+    let (w, _) = worker(&f, None);
+    let r = w.run().await;
+    assert_eq!(r.added, vec!["b"], "{r:?}");
+    assert!(w.skipped().is_empty());
+    assert_eq!(r.failed.as_ref().unwrap().len(), 1);
+    let r2 = w.run().await;
+    assert_eq!(r2.added, vec!["a"], "retried next tick");
 }

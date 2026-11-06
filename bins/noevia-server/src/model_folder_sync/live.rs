@@ -8,7 +8,7 @@
 //!   exclusion being unavailable (`local_held`, or the gate / Node lease being taken).
 use super::{files, Env, Fault, Hold, Refusal, Registered, Reloaded, Settled};
 use crate::model_maint::{self, HoldError, Maint};
-use crate::model_manager_scan::Loader;
+use crate::model_manager_scan::{Loader, Sent};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -17,6 +17,10 @@ use std::time::{Duration, SystemTime};
 const HOLD_MAX: Duration = Duration::from_secs(600);
 /// A file younger than this, by its modification time, may still be written.
 pub const SETTLE: Duration = Duration::from_secs(120);
+/// The most the original receipt of a registration is waited for (the loader call times out at 120 s).
+const SETTLE_WAIT: Duration = Duration::from_secs(130);
+/// The loader's answer to a permit it no longer honours.
+const STALE: &str = "Stale maintenance operation.";
 /// The wait between the two looks at a file.
 pub const PROBE: Duration = Duration::from_secs(2);
 
@@ -38,6 +42,7 @@ pub struct Live {
     root: PathBuf,
     settle: Duration,
     probe: Duration,
+    settle_wait: Duration,
 }
 
 impl Live {
@@ -59,6 +64,7 @@ impl Live {
             root,
             settle: SETTLE,
             probe: PROBE,
+            settle_wait: SETTLE_WAIT,
         })
     }
 
@@ -67,6 +73,16 @@ impl Live {
         self.probe = probe;
         self
     }
+
+    /// How long a registration's original receipt is waited for (tests shorten it).
+    pub fn with_settle_wait(mut self, wait: Duration) -> Live {
+        self.settle_wait = wait;
+        self
+    }
+}
+
+fn is_revision(r: &str) -> bool {
+    r.len() == 64 && r.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// JavaScript `encodeURIComponent`.
@@ -86,21 +102,18 @@ type Answer = Option<(axum::http::StatusCode, Option<js_json::JValue>)>;
 
 fn fault(answer: Answer) -> Fault {
     match answer {
-        None => Fault {
-            status: None,
-            message: "model manager HTTP unreachable".into(),
-        },
+        None => Fault::refused(None, "model manager HTTP unreachable"),
         Some((status, body)) => {
             let text = body
                 .as_ref()
                 .and_then(|b| b.get("error").as_str().filter(|s| !s.is_empty()));
-            Fault {
-                status: Some(status.as_u16()),
-                message: text.map_or_else(
+            Fault::refused(
+                Some(status.as_u16()),
+                text.map_or_else(
                     || format!("model manager HTTP {}", status.as_u16()),
                     str::to_owned,
                 ),
-            }
+            )
         }
     }
 }
@@ -159,27 +172,135 @@ impl Env for Live {
         files::stable(&first, &second)
     }
 
-    async fn register(&self, stem: &str) -> Result<Registered, Fault> {
+    async fn register(&self, hold: &model_maint::Hold, stem: &str) -> Result<Registered, Fault> {
+        let Some(store) = self.maint.ini.clone() else {
+            return Err(Fault::refused(None, "no preset file"));
+        };
+        // R: the revision this registration is allowed to replace, read under the shared
+        // publication transaction while this exact hold still covers it.
+        let snapshot = store
+            .snapshot_covered(hold.write_fence())
+            .await
+            .map_err(|_| Fault::refused(None, "maintenance coverage was lost"))?;
+        let Some(mut operation) = hold.begin_operation("register", Some(&snapshot.revision)) else {
+            return Err(Fault::refused(None, "maintenance coverage was lost"));
+        };
         let rest = format!("sections/{}/safe-defaults", encode_component(stem));
-        match self.loader.manager_post(&rest).await {
-            Some((status, body)) if status.is_success() => Ok(Registered {
-                revision: body.as_ref().and_then(|b| {
+        let answer = self
+            .loader
+            .manager_post_fenced(&rest, &operation.fence)
+            .await;
+        if matches!(answer, Err(Sent::NotSent)) {
+            // The call provably never left: nothing was done, nothing is owed. Bookkeeping only.
+            operation.settled = operation.authority.settle_operation(&operation.fence);
+            return Err(Fault::refused(None, "model manager HTTP unreachable"));
+        }
+        let answer = answer.ok();
+        let authority = operation.authority.clone();
+        let fence = operation.fence.clone();
+        match answer {
+            Some((status, body)) if status.is_success() => {
+                // The loader recorded the terminal state in its publication transaction; this
+                // reads the ORIGINAL receipt (never a new permit) and takes the revision from it.
+                let Some(receipt) = authority
+                    .wait_for_settlement(&fence, self.settle_wait)
+                    .await
+                else {
+                    return Err(Fault {
+                        status: Some(status.as_u16()),
+                        message: "registration receipt is not settled".into(),
+                        uncertain: true,
+                    });
+                };
+                operation.settled = true;
+                let valid = is_revision;
+                let from_receipt = receipt.revision.filter(|r| valid(r));
+                let from_body = body.as_ref().and_then(|b| {
                     b.get("revision")
                         .as_str()
-                        .filter(|r| r.len() == 64 && r.bytes().all(|b| b.is_ascii_hexdigit()))
+                        .filter(|r| valid(r))
                         .map(str::to_owned)
-                }),
-            }),
-            other => Err(fault(other)),
+                });
+                if receipt.state != "settled" || from_receipt.is_none() {
+                    // A conflict receipt on a 2xx, or no revision: unproven, fail closed.
+                    return Err(Fault {
+                        status: Some(status.as_u16()),
+                        message: "registration receipt has no settled revision".into(),
+                        uncertain: true,
+                    });
+                }
+                if from_body.is_some() && from_body != from_receipt {
+                    return Err(Fault {
+                        status: Some(status.as_u16()),
+                        message: "registration receipt and answer disagree".into(),
+                        uncertain: true,
+                    });
+                }
+                Ok(Registered {
+                    revision: from_receipt,
+                })
+            }
+            // The loader answered and did not publish: a refusal of the file (400/404/409) or of
+            // the permit (409 "Stale maintenance operation."). Bookkeeping only.
+            Some((status, body)) if matches!(status.as_u16(), 400 | 404 | 409) => {
+                operation.settled = authority.settle_operation(&fence);
+                let stale = status.as_u16() == 409
+                    && body
+                        .as_ref()
+                        .is_some_and(|b| b.get("detail").as_str() == Some(STALE));
+                if stale {
+                    // Not a verdict on the file: models.ini moved or the permit is no longer ours.
+                    return Err(Fault::refused(None, STALE));
+                }
+                Err(fault(Some((status, body))))
+            }
+            // Anything else (a 5xx, a dropped or timed-out call, a cut body) may have happened
+            // inside the loader: wait for the ORIGINAL receipt; never repeat the effect.
+            other => {
+                let message = fault(other).message;
+                match authority
+                    .wait_for_settlement(&fence, self.settle_wait)
+                    .await
+                {
+                    Some(receipt) if receipt.state == "conflict" => {
+                        operation.settled = true;
+                        Err(Fault::refused(
+                            None,
+                            "registration conflicted with a newer write",
+                        ))
+                    }
+                    Some(receipt) => {
+                        // Settled after all: the loader's own transaction recorded it, and its
+                        // receipt (never this caller's bookkeeping) names the revision it wrote.
+                        operation.settled = true;
+                        match receipt.revision.filter(|r| is_revision(r)) {
+                            Some(revision) if receipt.state == "settled" => Ok(Registered {
+                                revision: Some(revision),
+                            }),
+                            _ => Err(Fault {
+                                status: None,
+                                message: format!("{message}; settled without a proven revision"),
+                                uncertain: true,
+                            }),
+                        }
+                    }
+                    None => Err(Fault {
+                        status: None,
+                        message,
+                        uncertain: true,
+                    }),
+                }
+            }
         }
     }
 
-    async fn revision(&self) -> Option<String> {
+    async fn revision(&self, hold: &model_maint::Hold) -> Option<String> {
         let store = self.maint.ini.clone()?;
-        tokio::task::spawn_blocking(move || store.snapshot().ok().map(|s| s.revision))
+        store
+            .snapshot_covered(hold.write_fence())
             .await
             .ok()
-            .flatten()
+            .map(|s| s.revision)
     }
 
     async fn reload(&self, hold: &model_maint::Hold, revision: &str) -> Reloaded {
@@ -189,24 +310,19 @@ impl Env for Live {
         let Some(store) = self.maint.ini.clone() else {
             return Reloaded::No;
         };
-        let expected = revision.to_owned();
-        let text = tokio::task::spawn_blocking(move || {
-            store
-                .snapshot()
-                .ok()
-                .filter(|s| s.revision == expected)
-                .map(|s| s.text)
-        })
-        .await
-        .ok()
-        .flatten();
-        let Some(text) = text else {
+        // A new permit with the NEW revision under the same continuously covered hold: the covered
+        // read here, and the reload's own covered read + permit (router_reload), both refuse a file
+        // that is not the registration's.
+        let Ok(snapshot) = store.snapshot_covered(hold.write_fence()).await else {
             return Reloaded::No;
         };
+        if snapshot.revision != revision {
+            return Reloaded::No;
+        }
         // Guarded, nothing unloaded: a loaded model whose preset the reload would change refuses.
         let outcome = self
             .maint
-            .reload_expected(router, hold, false, Some(&text))
+            .reload_expected(router, hold, false, Some(&snapshot.text))
             .await;
         if outcome.status == 200 {
             Reloaded::Yes

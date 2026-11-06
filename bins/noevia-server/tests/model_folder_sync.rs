@@ -25,7 +25,20 @@ const GRANT: &str =
 
 type Order = Arc<Mutex<Vec<String>>>;
 
+/// What the fake loader does with a registration.
+#[derive(Clone, Copy)]
+enum Mode {
+    Normal,
+    /// Answers 503 at once and commits later (the answer is lost, the effect is real).
+    ErrorThenCommit(Duration),
+    /// Answers 503 and never commits (the request did not take effect, or the effect is unknown).
+    ErrorNever,
+}
+
 struct Rig {
+    mode: Arc<Mutex<Mode>>,
+    fences: Arc<Mutex<Vec<model_publication::Fence>>>,
+    authority_file: std::path::PathBuf,
     dir: tempfile::TempDir,
     order: Order,
     app: Arc<App>,
@@ -141,6 +154,12 @@ async fn rig_full(
     // The model management service: the scan and the safe-defaults registration (it writes models.ini).
     let o = Arc::clone(&order);
     let ini2 = ini.clone();
+    let authority_file = dir.path().join("authority.sqlite");
+    let authority2 = authority_file.clone();
+    let mode: Arc<Mutex<Mode>> = Arc::new(Mutex::new(Mode::Normal));
+    let mode2 = Arc::clone(&mode);
+    let fences: Arc<Mutex<Vec<model_publication::Fence>>> = Arc::default();
+    let fences2 = Arc::clone(&fences);
     let (loader, _) = engine(Arc::new(move |req: &Req| {
         o.lock()
             .unwrap()
@@ -165,17 +184,31 @@ async fn rig_full(
             let delay = loader_delay(stem);
             let stem = stem.to_owned();
             let ini = ini2.clone();
+            let authority = authority2.clone();
+            let fence = req
+                .headers
+                .get("x-noevia-maintenance-fence")
+                .and_then(|h| serde_json::from_str::<model_publication::Fence>(h).ok());
+            if let Some(f) = &fence {
+                fences2.lock().unwrap().push(f.clone());
+            }
+            let mode = *mode2.lock().unwrap();
+            match mode {
+                Mode::Normal => {}
+                Mode::ErrorThenCommit(after) => {
+                    std::thread::spawn(move || {
+                        std::thread::sleep(after);
+                        publish(&authority, &ini, fence.as_ref(), &stem);
+                    });
+                    return Answer::Reply(503, r#"{"detail":"unavailable"}"#.into());
+                }
+                Mode::ErrorNever => {
+                    return Answer::Reply(503, r#"{"detail":"unavailable"}"#.into())
+                }
+            }
             return Answer::CommitAfter(
                 delay,
-                Box::new(move || {
-                    let mut text = std::fs::read_to_string(&ini).unwrap();
-                    text.push_str(&format!("[{stem}]\nmodel = /models/{stem}.gguf\n"));
-                    std::fs::write(&ini, &text).unwrap();
-                    (
-                        200,
-                        serde_json::json!({"ok": true, "revision": hex(&text)}).to_string(),
-                    )
-                }),
+                Box::new(move || publish(&authority, &ini, fence.as_ref(), &stem)),
             );
         }
         Answer::Reply(404, "{}".into())
@@ -202,15 +235,61 @@ async fn rig_full(
         ("NOEVIA_PROJECT_STORE_TOKEN", SECRET.to_owned()),
         ("NOEVIA_PROJECT_STORE_PORT", String::new()),
         ("UI_DATA_DIR", dir.path().display().to_string()),
+        (
+            "NOEVIA_PRESET_AUTHORITY_FILE",
+            authority_file.display().to_string(),
+        ),
     ];
     let get = move |k: &str| env.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone());
     let app = App::new(Config::from_lookup(get).unwrap());
     Rig {
+        mode,
+        fences,
+        authority_file,
         dir,
         order,
         app,
         ini,
     }
+}
+
+const STALE_BODY: &str = r#"{"detail":"Stale maintenance operation."}"#;
+
+/// The loader's safe-defaults publication, as the real one does it (section_writes): inside the
+/// publication transaction it validates the permit against the live authority, takes the running
+/// state, refuses another pending publisher, checks the expected revision, writes, and records the
+/// terminal state and revision in the same critical section.
+fn publish(
+    authority: &Path,
+    ini: &Path,
+    fence: Option<&model_publication::Fence>,
+    stem: &str,
+) -> (u16, String) {
+    let Some(fence) = fence else {
+        return (409, STALE_BODY.into());
+    };
+    let Ok(guard) = model_publication::Guard::at(authority) else {
+        return (503, r#"{"detail":"unavailable"}"#.into());
+    };
+    if guard.running(fence).is_err() || guard.no_other_publishers(fence).is_err() {
+        return (409, STALE_BODY.into());
+    }
+    let mut text = std::fs::read_to_string(ini).unwrap();
+    if guard.expected(fence, &hex(&text)).is_err() {
+        let _ = guard.finish(fence, "conflict", None);
+        let _ = guard.commit();
+        return (409, STALE_BODY.into());
+    }
+    text.push_str(&format!("[{stem}]\nmodel = /models/{stem}.gguf\n"));
+    std::fs::write(ini, &text).unwrap();
+    let revision = hex(&text);
+    guard.observe_revision(&revision).unwrap();
+    guard.finish(fence, "settled", Some(&revision)).unwrap();
+    guard.commit().unwrap();
+    (
+        200,
+        serde_json::json!({"ok": true, "revision": revision}).to_string(),
+    )
 }
 
 fn live(r: &Rig) -> Live {
@@ -578,4 +657,76 @@ async fn a_revision_change_during_router_listing_refuses_reload() {
         .unwrap()
         .iter()
         .any(|e| e == "router GET /models?reload=1"));
+}
+
+fn live_waiting(r: &Rig, wait: Duration) -> Worker<Live> {
+    Worker::new(live(r).with_settle_wait(wait), None, Arc::new(|_| {}))
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_registration_answered_503_but_committed_later_is_taken_from_its_original_receipt() {
+    let r = rig(&["fresh"], ok, instant).await;
+    gguf(
+        &r.dir.path().join("models/fresh.gguf"),
+        Duration::from_secs(3600),
+    );
+    *r.mode.lock().unwrap() = Mode::ErrorThenCommit(Duration::from_millis(400));
+    let w = live_waiting(&r, Duration::from_secs(20));
+    let out = w.run().await;
+    // The hold was kept until the original receipt settled; the registration is real and proven by it.
+    assert_eq!(out.added, vec!["fresh"], "{out:?}");
+    assert!(std::fs::read_to_string(&r.ini).unwrap().contains("[fresh]"));
+    let seen = r.order.lock().unwrap().clone();
+    let register = seen
+        .iter()
+        .position(|e| e.contains("safe-defaults"))
+        .unwrap();
+    let release = seen
+        .iter()
+        .position(|e| e.starts_with("node DELETE"))
+        .unwrap();
+    assert!(register < release, "{seen:?}");
+    assert_eq!(
+        seen.iter().filter(|e| e.contains("safe-defaults")).count(),
+        1,
+        "never repeated under a new permit: {seen:?}"
+    );
+    assert_eq!(r.fences.lock().unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unsettled_registration_is_fenced_and_stops_the_run_without_reload() {
+    let r = rig(&["first", "second"], ok, instant).await;
+    for s in ["first", "second"] {
+        gguf(
+            &r.dir.path().join(format!("models/{s}.gguf")),
+            Duration::from_secs(3600),
+        );
+    }
+    *r.mode.lock().unwrap() = Mode::ErrorNever;
+    let before = std::fs::read_to_string(&r.ini).unwrap();
+    let w = live_waiting(&r, Duration::from_millis(300));
+    let out = w.run().await;
+    assert!(out.lost && out.deferred && out.added.is_empty(), "{out:?}");
+    let seen = r.order.lock().unwrap().clone();
+    assert_eq!(
+        seen.iter().filter(|e| e.contains("safe-defaults")).count(),
+        1,
+        "no second file, no retry: {seen:?}"
+    );
+    assert!(!seen.iter().any(|e| e.contains("reload=1")), "{seen:?}");
+    assert!(
+        w.skipped().is_empty(),
+        "an unknown outcome is no verdict on the file"
+    );
+    // The hold is gone and the permit can no longer publish: a late commit is refused by the authority.
+    let fence = r.fences.lock().unwrap()[0].clone();
+    let (status, _) = publish_for_test(&r, &fence, "first");
+    assert_eq!(status, 409, "no write after the exclusion was released");
+    assert_eq!(std::fs::read_to_string(&r.ini).unwrap(), before);
+    assert!(!live(&r).busy(), "the local reservation was given back");
+}
+
+fn publish_for_test(r: &Rig, fence: &model_publication::Fence, stem: &str) -> (u16, String) {
+    publish(&r.authority_file, &r.ini, Some(fence), stem)
 }

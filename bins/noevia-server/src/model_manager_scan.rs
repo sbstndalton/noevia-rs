@@ -60,7 +60,8 @@ impl Loader {
         query: &str,
         timeout: Duration,
     ) -> Option<(StatusCode, Option<JValue>)> {
-        self.send_bounded(Method::GET, path, query, timeout).await
+        self.send_bounded(Method::GET, path, query, timeout, None)
+            .await
     }
 
     /// Node `managerFetch(rest, 'GET')`: the model management service's `/api/v1/{rest}`, 120 s.
@@ -70,17 +71,26 @@ impl Loader {
             &format!("/api/v1/{rest}"),
             "",
             Duration::from_secs(120),
+            None,
         )
         .await
     }
 
-    /// Node `managerFetch(rest, 'POST')`: an empty JSON object body, 120 s.
-    pub(crate) async fn manager_post(&self, rest: &str) -> Option<(StatusCode, Option<JValue>)> {
-        self.send_bounded(
+    /// Node `managerFetch(rest, 'POST')` (an empty JSON object body, 120 s) carrying a shared conditional-operation permit as `X-Noevia-Maintenance-Fence`
+    /// (docs/loader-cas.md): the loader validates identity, operation and the expected `models.ini`
+    /// revision inside its publication transaction and records the terminal state there.
+    pub(crate) async fn manager_post_fenced(
+        &self,
+        rest: &str,
+        fence: &model_publication::Fence,
+    ) -> Result<(StatusCode, Option<JValue>), Sent> {
+        let fence = serde_json::to_string(fence).map_err(|_| Sent::NotSent)?;
+        self.send_detailed(
             Method::POST,
             &format!("/api/v1/{rest}"),
             "",
             Duration::from_secs(120),
+            Some(fence),
         )
         .await
     }
@@ -91,17 +101,33 @@ impl Loader {
         path: &str,
         query: &str,
         timeout: Duration,
+        fence: Option<String>,
     ) -> Option<(StatusCode, Option<JValue>)> {
-        let base = self.base.as_ref()?;
+        self.send_detailed(method, path, query, timeout, fence)
+            .await
+            .ok()
+    }
+
+    /// As `send_bounded`, telling a call that provably never reached the service
+    /// ([`NotSent`]: no URL, no connection) from one whose outcome is unknown.
+    async fn send_detailed(
+        &self,
+        method: Method,
+        path: &str,
+        query: &str,
+        timeout: Duration,
+        fence: Option<String>,
+    ) -> Result<(StatusCode, Option<JValue>), Sent> {
+        let base = self.base.as_ref().ok_or(Sent::NotSent)?;
         let endpoint = if query.is_empty() {
             format!("{base}{path}")
         } else {
             format!("{base}{path}?{query}")
         };
-        let url = reqwest::Url::parse(&endpoint).ok()?;
+        let url = reqwest::Url::parse(&endpoint).map_err(|_| Sent::NotSent)?;
         // Node fetch refuses userinfo; never silently turn a URL into Basic credentials.
         if !url.username().is_empty() || url.password().is_some() {
-            return None;
+            return Err(Sent::NotSent);
         }
         let post = method == Method::POST;
         let mut request = self
@@ -112,29 +138,49 @@ impl Loader {
         if post {
             request = request.body("{}");
         }
+        if let Some(fence) = fence {
+            request = request.header(
+                "x-noevia-maintenance-fence",
+                HeaderValue::from_str(&fence).map_err(|_| Sent::NotSent)?,
+            );
+        }
         if let Some(token) = &self.token {
-            let mut value = HeaderValue::from_str(token).ok()?;
+            let mut value = HeaderValue::from_str(token).map_err(|_| Sent::NotSent)?;
             value.set_sensitive(true);
             request = request.header("x-model-loader-token", value);
         }
-        let mut res = request.send().await.ok()?;
+        let mut res = request.send().await.map_err(|e| {
+            if e.is_connect() || e.is_builder() {
+                Sent::NotSent
+            } else {
+                Sent::Unknown
+            }
+        })?;
         let status = res.status();
         if [301, 302, 303, 307, 308].contains(&status.as_u16())
             && res.headers().contains_key(header::LOCATION)
         {
-            return None;
+            return Err(Sent::Unknown);
         }
         let mut bytes = Vec::new();
-        while let Some(chunk) = res.chunk().await.ok()? {
+        while let Some(chunk) = res.chunk().await.map_err(|_| Sent::Unknown)? {
             if chunk.len() > CAP.saturating_sub(bytes.len()) {
-                return Some((status, None));
+                return Ok((status, None));
             }
             bytes.extend_from_slice(&chunk);
         }
         let text = String::from_utf8_lossy(&bytes);
         let value = wtf16::parse(&text).unwrap_or_else(|_| JValue::Str(text.into_owned()));
-        Some((status, Some(value)))
+        Ok((status, Some(value)))
     }
+}
+
+/// A call that gave no answer: it provably never left (`NotSent`: nothing was changed), or it may
+/// have reached the service (`Unknown`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Sent {
+    NotSent,
+    Unknown,
 }
 fn error(status: StatusCode, message: &str) -> Response<Body> {
     reply::error(status, message, true)
@@ -313,5 +359,52 @@ mod tests {
         assert!(!diagnostic.contains("synthetic-password"));
         assert!(!diagnostic.contains("private-target"));
         assert!(!diagnostic.contains("must-stay-private"));
+    }
+
+    fn fence() -> model_publication::Fence {
+        model_publication::Fence {
+            incarnation: "i".into(),
+            lease: "l".into(),
+            generation: 1,
+            operation: "o".into(),
+            kind: "register".into(),
+            expected_revision: Some("0".repeat(64)),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_fenced_post_tells_a_call_that_never_left_from_one_with_an_unknown_outcome() {
+        // Nothing listens: the connection is refused before anything is written.
+        let closed =
+            Loader::from_lookup(|k| (k == "MODEL_LOADER_URL").then(|| "http://127.0.0.1:1".into()))
+                .expect("loader");
+        assert!(matches!(
+            closed
+                .manager_post_fenced("sections/x/safe-defaults", &fence())
+                .await,
+            Err(Sent::NotSent)
+        ));
+        // A service that takes the request and hangs up: the outcome is unknown.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            if let Ok((mut s, _)) = listener.accept().await {
+                let mut buf = [0u8; 4096];
+                let _ = s.read(&mut buf).await;
+            }
+        });
+        let hangs = Loader::from_lookup(|k| {
+            (k == "MODEL_LOADER_URL").then(|| format!("http://127.0.0.1:{port}"))
+        })
+        .expect("loader");
+        assert!(matches!(
+            hangs
+                .manager_post_fenced("sections/x/safe-defaults", &fence())
+                .await,
+            Err(Sent::Unknown)
+        ));
     }
 }
