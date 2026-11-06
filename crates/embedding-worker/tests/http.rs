@@ -218,3 +218,73 @@ async fn source_notification_carries_tenant_project_and_file_identity() {
     assert_eq!(body["project"], "p");
     assert_eq!(body["user"], "11111111-1111-4111-8111-111111111111");
 }
+
+#[tokio::test]
+async fn native_loader_mutation_and_installed_file_resolution_use_loader_token_only() {
+    let (base, captured, task) = stub(vec![
+        (200, r#"{"managed":true,"enabled":true,"models":[{"model":"alias","file":"embed.gguf"}]}"#.into()),
+        (200, r#"{"models":[{"modelId":"alias","file":"bad.gguf","companion":true},{"sections":["alias"],"file":"folder/embed.GGUF"}]}"#.into()),
+    ]).await;
+    let http = Http::new(
+        &base,
+        Some("synthetic-loader-token".into()),
+        &base,
+        Some("synthetic-inference-key".into()),
+    )
+    .unwrap();
+    assert_eq!(
+        http.serve(&serde_json::json!([{"model":"alias","file":"embed.gguf"}]))
+            .await
+            .unwrap()
+            .0,
+        200
+    );
+    assert_eq!(
+        http.resolve_file("alias").await.unwrap().as_deref(),
+        Some("folder/embed.GGUF")
+    );
+    task.await.unwrap();
+    let requests = captured.lock().unwrap();
+    assert!(requests[0].starts_with("PUT /api/v1/embedding-service "));
+    assert!(requests[0].contains(r#"{"models":[{"file":"embed.gguf","model":"alias"}]}"#));
+    assert!(requests[1].starts_with("GET /api/v1/models "));
+    for request in requests.iter() {
+        assert!(request
+            .to_lowercase()
+            .contains("x-model-loader-token: synthetic-loader-token"));
+        assert!(!request.contains("synthetic-inference-key"));
+    }
+}
+
+#[tokio::test]
+async fn diary_adapter_scopes_service_token_and_preserves_target_wire_shape() {
+    let (base, captured, task) = stub(vec![
+        (200, r#"{"active":{"model":"synthetic"}}"#.into()),
+        (200, r#"{"ok":true}"#.into()),
+    ])
+    .await;
+    let http = Http::new("", None, &base, Some("synthetic-inference-key".into())).unwrap();
+    let diary =
+        embedding_worker::http::Diary::new(&base, Some("synthetic-diary-token".into())).unwrap();
+    assert!(http
+        .diary(&diary, None)
+        .await
+        .unwrap()
+        .1
+        .get("active")
+        .is_some());
+    let body = serde_json::json!({"action":"set-next","target":{"base_url":base,"model":"synthetic","profile":"nomic-v1"},"force":true});
+    assert_eq!(http.diary(&diary, Some(&body)).await.unwrap().0, 200);
+    task.await.unwrap();
+    let requests = captured.lock().unwrap();
+    assert!(requests[0].starts_with("GET /api/internal/embedding "));
+    assert!(requests[1].starts_with("POST /api/internal/embedding "));
+    for request in requests.iter() {
+        assert!(request
+            .to_lowercase()
+            .contains("authorization: bearer synthetic-diary-token"));
+        assert!(!request.to_lowercase().contains("tenant"));
+        assert!(!request.contains("synthetic-inference-key"));
+    }
+    assert!(requests[1].contains(&serde_json::to_string(&body).unwrap()));
+}

@@ -336,7 +336,10 @@ async fn service_refresh_is_sticky_stale_and_read_only() {
     s.tick(&loader, || 20_000).await;
     assert_eq!(s.status(25_000).unwrap()["stale"], false);
     assert_eq!(s.status(25_001).unwrap()["stale"], true);
-    assert_eq!(s.status(30_000).unwrap()["lastError"], "offline");
+    assert_eq!(
+        s.status(30_000).unwrap()["lastError"],
+        "embedding HTTP unavailable"
+    );
     s.tick(&loader, || 30_000).await;
     assert!(s.enabled());
     assert_eq!(s.status(30_000).unwrap()["lastError"], "HTTP 200");

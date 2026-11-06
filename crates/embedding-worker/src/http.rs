@@ -33,6 +33,23 @@ pub struct Http {
     inference: Url,
     inference_token: Option<Zeroizing<String>>,
 }
+/// Service-wide Diary endpoint. It carries only the service bearer token;
+/// tenant assertions and inference/loader credentials never cross this boundary.
+pub struct Diary {
+    endpoint: Url,
+    token: Option<Zeroizing<String>>,
+}
+impl Diary {
+    pub fn new(base: &str, token: Option<String>) -> Result<Self, String> {
+        Ok(Self {
+            endpoint: url(&format!(
+                "{}/api/internal/embedding",
+                base.trim_end_matches('/')
+            ))?,
+            token: token.map(Zeroizing::new),
+        })
+    }
+}
 fn err() -> String {
     "embedding HTTP unavailable".into()
 }
@@ -192,6 +209,65 @@ impl Http {
         tokio::time::timeout(timeout, operation)
             .await
             .map_err(|_| err())?
+    }
+    async fn loader_request(
+        &self,
+        path: &str,
+        method: Method,
+        body: Option<String>,
+        timeout: Duration,
+    ) -> Result<(u16, Value), String> {
+        let base = self.loader.as_ref().ok_or_else(err)?;
+        self.request(
+            url(&format!("{}{path}", base.as_str().trim_end_matches('/')))?,
+            method,
+            headers(
+                self.loader_token.as_deref().map(|s| s.as_str()),
+                "x-model-loader-token",
+            )?,
+            body,
+            timeout,
+            1024 * 1024,
+        )
+        .await
+    }
+    /// Native managed-service mutation; no browser-supplied URL or token.
+    /// Callers must retain their serialization turn until this bounded request
+    /// and any required restoration have settled, including on disconnect.
+    pub async fn serve(&self, models: &Value) -> Result<(u16, Value), String> {
+        self.loader_request(
+            "/api/v1/embedding-service",
+            Method::PUT,
+            Some(serde_json::json!({"models":models}).to_string()),
+            Duration::from_secs(60),
+        )
+        .await
+    }
+    /// Resolve an installed GGUF using the loader's own inventory, never a
+    /// browser path. Keep the Node resolver's first matching row semantics.
+    pub async fn resolve_file(&self, model: &str) -> Result<Option<String>, String> {
+        if self.loader.is_none() || model.trim().is_empty() {
+            return Ok(None);
+        }
+        let (_, body) = self
+            .loader_request("/api/v1/models", Method::GET, None, Duration::from_secs(8))
+            .await?;
+        Ok(crate::service::installed_file(&body, model.trim()))
+    }
+    pub async fn diary(&self, diary: &Diary, body: Option<&Value>) -> Result<(u16, Value), String> {
+        self.request(
+            diary.endpoint.clone(),
+            if body.is_some() {
+                Method::POST
+            } else {
+                Method::GET
+            },
+            headers(diary.token.as_deref().map(|s| s.as_str()), "authorization")?,
+            body.map(Value::to_string),
+            Duration::from_secs(15),
+            1024 * 1024,
+        )
+        .await
     }
     fn target(&self, target: &Target) -> Result<(Url, HeaderMap), String> {
         match &target.base_url {
@@ -375,27 +451,16 @@ fn quote_units(text: &[u16], out: &mut String) {
     out.push('"');
 }
 impl Loader for Http {
+    fn put<'a>(&'a self, models: &'a Value) -> Task<'a, Result<(u16, Value), String>> {
+        Box::pin(self.serve(models))
+    }
     fn get(&self) -> Task<'_, Result<(u16, Value), String>> {
         Box::pin(async move {
-            // Keep the configured loader path; unlike embedding endpoints, do not strip /v1.
-            let endpoint = url(&format!(
-                "{}/api/v1/embedding-service",
-                self.loader
-                    .as_ref()
-                    .ok_or_else(err)?
-                    .as_str()
-                    .trim_end_matches('/')
-            ))?;
-            self.request(
-                endpoint,
+            self.loader_request(
+                "/api/v1/embedding-service",
                 Method::GET,
-                headers(
-                    self.loader_token.as_deref().map(|s| s.as_str()),
-                    "x-model-loader-token",
-                )?,
                 None,
                 Duration::from_secs(6),
-                1024 * 1024,
             )
             .await
         })

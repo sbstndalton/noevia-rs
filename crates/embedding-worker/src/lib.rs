@@ -21,6 +21,7 @@ pub mod migration;
 pub mod outbox;
 pub mod runtime;
 pub mod service;
+pub mod service_owner;
 pub mod sqlite;
 pub use sqlite_vec_loader;
 pub type Task<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
