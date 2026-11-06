@@ -101,6 +101,16 @@ pub(crate) fn evaluate(
         boot,
     ))
 }
+/// Read the effective flag through the front's existing controller and producer fence.
+/// A missing/stale runtime is an error, never a second default-only flag authority.
+pub fn enabled(
+    reader: &Reader<'_>,
+    controller: &crate::feature_context::Controller,
+    feature: Feature,
+) -> Result<bool, StoreError> {
+    let view = controller.view(reader)?;
+    Ok(evaluate(reader, &view, feature)?.enabled)
+}
 fn describe(reader: &Reader<'_>, view: &View, feature: Feature) -> Result<JValue, StoreError> {
     let spec = server_features::spec(feature);
     let evaluation = evaluate(reader, view, feature)?;
@@ -832,6 +842,28 @@ mod tests {
             .execute("UPDATE sessions SET expires_at=?1", [T0 + 60_000])?;
         f.acct.feature_context = None;
         assert_eq!(call(&f)?.status, 503);
+        Ok(())
+    }
+    #[test]
+    fn native_consumers_read_effective_flags_from_the_shared_controller() -> Result<(), Error> {
+        let f = fixture()?;
+        let controller = f.acct.feature_context.as_ref().ok_or("context")?;
+        f.acct.writer.read(|reader| {
+            let view = controller.view(reader)?;
+            for feature in Feature::ALL {
+                assert_eq!(
+                    enabled(reader, controller, feature)?,
+                    evaluate(reader, &view, feature)?.enabled
+                );
+            }
+            Ok(())
+        })?;
+        let unregistered = Controller::new(Arc::new(FeatureRuntime::new()?), [None; 23]);
+        assert!(f
+            .acct
+            .writer
+            .read(|reader| enabled(reader, &unregistered, Feature::CodeHarness))
+            .is_err());
         Ok(())
     }
 }
