@@ -3221,7 +3221,7 @@
     "answers": [
      {
       "status": 400,
-      "body": "{\"error\":\"System routing model — not tuned\"}"
+      "body": "{\"error\":\"System routing model \u2014 not tuned\"}"
      }
     ],
     "router": [
@@ -3279,7 +3279,7 @@
     "answers": [
      {
       "status": 400,
-      "body": "{\"error\":\"System routing model — not tuned\"}"
+      "body": "{\"error\":\"System routing model \u2014 not tuned\"}"
      }
     ],
     "router": [
@@ -3349,7 +3349,7 @@
     "answers": [
      {
       "status": 400,
-      "body": "{\"error\":\"System routing model — not tuned\"}"
+      "body": "{\"error\":\"System routing model \u2014 not tuned\"}"
      }
     ],
     "router": [
@@ -7618,6 +7618,292 @@
      "models.ini.noevia-backup-37047fd43577f74ca22374874ab58c42566b8d18c3895980bf6ba82405808409": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\n\n[other]\nmodel = /models/o.gguf\nparallel = 2\n"
     },
     "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[m]\\nmodel = /models/q.gguf\\n\\nctx-size = 8192\\n[other]\\nmodel = /models/o.gguf\\nparallel = 2\\n\",\"view\":\"[[\\\"m\\\",\\\"p-m\\\"],[\\\"other\\\",\\\"p-other\\\"]]\"}"
+   }
+  },
+  {
+   "name": "lone surrogate in an ignored field",
+   "ini": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\n\n[other]\nmodel = /models/o.gguf\nparallel = 2\n",
+   "kind": "llamacpp",
+   "presetPath": true,
+   "mount": false,
+   "gguf": false,
+   "budget": null,
+   "writer": "web",
+   "gate": "grant",
+   "gateToken": true,
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "m",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-m",
+         "args": [
+          "--model",
+          "/models/q.gguf"
+         ]
+        }
+       },
+       {
+        "id": "other",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-other",
+         "args": [
+          "--model",
+          "/models/o.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"m\",\"baseRevision\":\"$REV\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"},\"ignored\":\"\\ud800\"}"
+   },
+   "state": null,
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"m\",\"revision\":\"17822fee5386f5a57789693824a95e106e250333ca7ef1cb139e8eaf7b6e5285\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}"
+     }
+    ],
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "GET /gate/v1/status",
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "loader": [],
+    "files": {
+     "models.ini": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\n\nctx-size = 8192\n[other]\nmodel = /models/o.gguf\nparallel = 2\n",
+     "models.ini.noevia-backup-37047fd43577f74ca22374874ab58c42566b8d18c3895980bf6ba82405808409": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\n\n[other]\nmodel = /models/o.gguf\nparallel = 2\n"
+    },
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[m]\\nmodel = /models/q.gguf\\n\\nctx-size = 8192\\n[other]\\nmodel = /models/o.gguf\\nparallel = 2\\n\",\"view\":\"[[\\\"m\\\",\\\"p-m\\\"],[\\\"other\\\",\\\"p-other\\\"]]\"}"
+   }
+  },
+  {
+   "name": "low lone surrogate in an ignored field",
+   "ini": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\n\n[other]\nmodel = /models/o.gguf\nparallel = 2\n",
+   "kind": "llamacpp",
+   "presetPath": true,
+   "mount": false,
+   "gguf": false,
+   "budget": null,
+   "writer": "web",
+   "gate": "grant",
+   "gateToken": true,
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "m",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-m",
+         "args": [
+          "--model",
+          "/models/q.gguf"
+         ]
+        }
+       },
+       {
+        "id": "other",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-other",
+         "args": [
+          "--model",
+          "/models/o.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"m\",\"baseRevision\":\"$REV\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"},\"ignored\":\"\\udfff\"}"
+   },
+   "state": null,
+   "expect": {
+    "answers": [
+     {
+      "status": 200,
+      "body": "{\"model\":\"m\",\"revision\":\"17822fee5386f5a57789693824a95e106e250333ca7ef1cb139e8eaf7b6e5285\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}"
+     }
+    ],
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "GET /gate/v1/status",
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "loader": [],
+    "files": {
+     "models.ini": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\n\nctx-size = 8192\n[other]\nmodel = /models/o.gguf\nparallel = 2\n",
+     "models.ini.noevia-backup-37047fd43577f74ca22374874ab58c42566b8d18c3895980bf6ba82405808409": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\n\n[other]\nmodel = /models/o.gguf\nparallel = 2\n"
+    },
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[m]\\nmodel = /models/q.gguf\\n\\nctx-size = 8192\\n[other]\\nmodel = /models/o.gguf\\nparallel = 2\\n\",\"view\":\"[[\\\"m\\\",\\\"p-m\\\"],[\\\"other\\\",\\\"p-other\\\"]]\"}"
+   }
+  },
+  {
+   "name": "lone surrogate in an invalid option value",
+   "ini": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\n\n[other]\nmodel = /models/o.gguf\nparallel = 2\n",
+   "kind": "llamacpp",
+   "presetPath": true,
+   "mount": false,
+   "gguf": false,
+   "budget": null,
+   "writer": "web",
+   "gate": "grant",
+   "gateToken": true,
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "m",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-m",
+         "args": [
+          "--model",
+          "/models/q.gguf"
+         ]
+        }
+       },
+       {
+        "id": "other",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-other",
+         "args": [
+          "--model",
+          "/models/o.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"m\",\"baseRevision\":\"$REV\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"\\ud800\"}}"
+   },
+   "state": null,
+   "expect": {
+    "answers": [
+     {
+      "status": 400,
+      "body": "{\"error\":\"Invalid preset option: ctx-size\"}"
+     }
+    ],
+    "router": [
+     "GET /models hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "GET /gate/v1/status",
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "loader": [],
+    "files": {
+     "models.ini": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\n\n[other]\nmodel = /models/o.gguf\nparallel = 2\n"
+    },
+    "state": null
+   }
+  },
+  {
+   "name": "lone surrogate in an invalid model string",
+   "ini": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\n\n[other]\nmodel = /models/o.gguf\nparallel = 2\n",
+   "kind": "llamacpp",
+   "presetPath": true,
+   "mount": false,
+   "gguf": false,
+   "budget": null,
+   "writer": "web",
+   "gate": "grant",
+   "gateToken": true,
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "m",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-m",
+         "args": [
+          "--model",
+          "/models/q.gguf"
+         ]
+        }
+       },
+       {
+        "id": "other",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-other",
+         "args": [
+          "--model",
+          "/models/o.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"\\ud800\",\"baseRevision\":\"$REV\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "state": null,
+   "expect": {
+    "answers": [
+     {
+      "status": 404,
+      "body": "{\"error\":\"Choose an installed model\"}"
+     }
+    ],
+    "router": [
+     "GET /models hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "GET /gate/v1/status",
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "loader": [],
+    "files": {
+     "models.ini": "[*]\ncache-ram = 512\n\n[m]\nmodel = /models/q.gguf\nctx-size = 4096\n\n[other]\nmodel = /models/o.gguf\nparallel = 2\n"
+    },
+    "state": null
    }
   }
  ]

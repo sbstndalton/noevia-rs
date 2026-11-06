@@ -57,6 +57,11 @@ add('a null body asks for the confirmation', { request: { role: 'admin', body: '
 add('an array body asks for the confirmation', { request: { role: 'admin', body: '[1]' } });
 add('confirmReload missing', { request: { role: 'admin', body: JSON.stringify({ model: 'm', baseRevision: '$REV', options: { 'ctx-size': '8192' } }) } });
 add('confirmReload as a string is not true', { request: { role: 'admin', body: BODY({ 'ctx-size': '8192' }, { confirmReload: 'true' }) } });
+// Escaped lone UTF-16 units remain JSON strings; unused fields are ignored by Core.
+add('lone surrogate in an ignored field', { request: { role: 'admin', body: BODY({ 'ctx-size': '8192' }, { ignored: '\ud800' }) } });
+add('low lone surrogate in an ignored field', { request: { role: 'admin', body: BODY({ 'ctx-size': '8192' }, { ignored: '\udfff' }) } });
+add('lone surrogate in an invalid option value', { request: { role: 'admin', body: BODY({ 'ctx-size': '\ud800' }) } });
+add('lone surrogate in an invalid model string', { request: { role: 'admin', body: BODY({ 'ctx-size': '8192' }, { model: '\ud800' }) } });
 // ── the apply that works ─────────────────────────────────────────────────────────────────────
 add('one option changes and the router reloads', {});
 add('the router reloaded: its listing after it is read', { router: { listings: [listing(rowsM()), listing(rowsM()), listing(rowsM())] } });
@@ -300,6 +305,6 @@ async function runOne(c) {
 
 (async () => {
   const cases = [];
-  for (const c of S) cases.push({ ...c, expect: await runOne(c) });
+  for (const c of S.filter(c => !process.env.CASE_FILTER || new RegExp(process.env.CASE_FILTER).test(c.name))) cases.push({ ...c, expect: await runOne(c) });
   process.stdout.write(JSON.stringify({ core: process.env.CORE_REF || null, cases }, null, 1) + '\n');
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -215,10 +215,9 @@ impl Store {
 
     /// `commit(candidate, { backup })`.
     ///
-    /// The web writer reads the revision and renames the new file in one blocking section under a process
-    /// wide lock, so two commits of this front on the same base cannot both pass the check (D2 review P1);
-    /// what no lock here can order is another process that writes without the model-loader, which is why a
-    /// writer that lost its maintenance exclusion must not start a write at all (preset_edit.rs).
+    /// The web writer checks the revision and publishes under the same cross-process transaction
+    /// lock as Core and the native loader. This serializes file publication; maintenance coverage
+    /// is a separate requirement of the caller.
     pub async fn commit(&self, c: &Candidate, backup: bool) -> Result<(), IniError> {
         let store = self.clone();
         let c = c.clone();
@@ -238,10 +237,12 @@ impl Store {
             }
         }
         tokio::task::spawn_blocking(move || {
-            static WEB_WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
-            let _one_at_a_time = WEB_WRITE
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let _publication = model_publication::Guard::acquire(&store.file).map_err(|_| {
+                IniError::new(
+                    503,
+                    "Preset publication is busy or unavailable. Try again shortly.",
+                )
+            })?;
             let current = store.read()?;
             if current.revision != c.base_revision {
                 return Err(IniError::new(
@@ -542,6 +543,60 @@ mod tests {
             assert_eq!(loser.unwrap_err().status, 409);
             assert!(std::fs::read_to_string(&file).unwrap().contains("ctx-size"));
         }
+    }
+
+    #[tokio::test]
+    async fn a_foreign_publication_transaction_excludes_the_web_writer() {
+        use std::io::{BufRead, BufReader, Write};
+        use std::process::{Command, Stdio};
+        let d = tempfile::tempdir().unwrap();
+        let (s, file) = store(d.path(), "[a]\nmodel = /models/a.gguf\n");
+        let snap = s.snapshot().unwrap();
+        let c = Candidate {
+            base_revision: snap.revision,
+            text: "[a]\nctx-size = 8192\n".into(),
+            before: snap.text.clone(),
+        };
+        // A different process holds the very same authority as Node and the loader.
+        // This intentionally bypasses any Rust process-local mutex.
+        let mut peer = Command::new("python3")
+            .args(["-u", "-c", r#"
+import os, sqlite3, sys
+file = sys.argv[1]
+lock = os.path.join(os.path.dirname(file), '.' + os.path.basename(file) + '.noevia-publication.sqlite')
+db = sqlite3.connect(lock)
+db.execute('BEGIN EXCLUSIVE')
+print('held', flush=True)
+sys.stdin.readline()
+with open(file + '.peer', 'w') as f:
+    f.write('[other]\nmodel = /models/other.gguf\n')
+    f.flush()
+    os.fsync(f.fileno())
+os.replace(file + '.peer', file)
+db.close()
+"#])
+            .arg(&file)
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        let mut ready = String::new();
+        BufReader::new(peer.stdout.take().unwrap())
+            .read_line(&mut ready)
+            .unwrap();
+        assert_eq!(ready.trim(), "held");
+        let result = s.commit(&c, true).await;
+        let during = std::fs::read_to_string(&file).unwrap();
+        peer.stdin.take().unwrap().write_all(b"settle\n").unwrap();
+        assert!(peer.wait().unwrap().success());
+        assert_eq!(
+            result.unwrap_err().status,
+            503,
+            "foreign publication excludes execution"
+        );
+        assert_eq!(during, snap.text, "no write before the authority releases");
+        assert_eq!(s.commit(&c, true).await.unwrap_err().status, 409);
+        assert_eq!(
+            std::fs::read_to_string(file).unwrap(),
+            "[other]\nmodel = /models/other.gguf\n"
+        );
     }
 
     #[test]

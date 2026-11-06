@@ -55,7 +55,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 output.write_all(b"native-bench-runs\n")?;
             }
             if cfg!(feature = "native-section-writes") {
-                output.write_all(b"native-section-writes\n")?;
+                output
+                    .write_all(b"native-section-writes\nnoevia-preset-publication-authority/1\n")?;
             }
             if cfg!(feature = "native-settings-write") {
                 output.write_all(b"native-settings-write\n")?;

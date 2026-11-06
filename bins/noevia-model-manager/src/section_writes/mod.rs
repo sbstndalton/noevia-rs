@@ -504,10 +504,32 @@ impl SectionWrites {
         base: Option<&str>,
         backup: bool,
     ) -> std::io::Result<()> {
+        self.replace_file_checked(text, base, backup, base)
+    }
+
+    fn replace_file_checked(
+        &self,
+        text: &str,
+        base: Option<&str>,
+        backup: bool,
+        expected: Option<&str>,
+    ) -> std::io::Result<()> {
         let path = &self.ini;
         let dir = path
             .parent()
             .ok_or_else(|| std::io::Error::other("no parent"))?;
+        std::fs::create_dir_all(dir)?;
+        let _publication = model_publication::Guard::acquire(path)?;
+        if let Some(expected) = expected {
+            let (_, actual) =
+                current(path).map_err(|()| std::io::Error::other("preset read failed"))?;
+            if expected != actual {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    "preset revision conflict",
+                ));
+            }
+        }
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
@@ -748,8 +770,8 @@ impl SectionWrites {
         if !upsert(&mut cp, name, &parsed.values, &parsed.extras, self.cache) {
             return Outcome::Failed;
         }
-        if self.replace_file(&cfg::render(&cp), None, true).is_err() {
-            return Outcome::Failed;
+        if let Err(e) = self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision)) {
+            return publication_error(&e);
         }
         match after_write(&self.ini, Some(name)) {
             Ok((rev, section)) => {
@@ -771,7 +793,10 @@ impl SectionWrites {
             Some(Json::Str(s)) => Some(s.as_str()),
             _ => None,
         };
-        if self.replace_file(text, base, backup).is_err() {
+        if let Err(e) = self.replace_file(text, base, backup) {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                return publication_error(&e);
+            }
             return detail(
                 500,
                 "models.ini could not be written safely; nothing was changed",
@@ -826,8 +851,8 @@ impl SectionWrites {
                 cfg::render(&cp)
             }
         };
-        if self.replace_file(&text, None, true).is_err() {
-            return Outcome::Failed;
+        if let Err(e) = self.replace_file_checked(&text, None, true, Some(&revision)) {
+            return publication_error(&e);
         }
         if forget_role(&self.ini, old, Some(new)).is_err() {
             return Outcome::Failed;
@@ -854,8 +879,8 @@ impl SectionWrites {
         if !cp.remove_section(name) {
             return detail(404, "section not found");
         }
-        if self.replace_file(&cfg::render(&cp), None, true).is_err() {
-            return Outcome::Failed;
+        if let Err(e) = self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision)) {
+            return publication_error(&e);
         }
         if forget_role(&self.ini, name, None).is_err() {
             return Outcome::Failed;
@@ -873,7 +898,7 @@ impl SectionWrites {
             Plan::Refused(status, message) => return detail(status, &message),
             Plan::Values(values, mtp) => (values, mtp),
         };
-        let Ok((bytes, _)) = current(&self.ini) else {
+        let Ok((bytes, revision)) = current(&self.ini) else {
             return Outcome::Failed;
         };
         let mut cp = match read_ini(bytes.as_deref(), true) {
@@ -883,8 +908,8 @@ impl SectionWrites {
         if !upsert(&mut cp, name, &values, "", self.cache) {
             return Outcome::Failed;
         }
-        if self.replace_file(&cfg::render(&cp), None, true).is_err() {
-            return Outcome::Failed;
+        if let Err(e) = self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision)) {
+            return publication_error(&e);
         }
         match after_write(&self.ini, Some(name)) {
             Ok((rev, section)) => Outcome::Json(
@@ -958,7 +983,7 @@ impl SectionWrites {
         if !self.ini.exists() {
             return Ok(Vec::new());
         }
-        let (bytes, _) = current(&self.ini).map_err(|()| "models.ini could not be read")?;
+        let (bytes, revision) = current(&self.ini).map_err(|()| "models.ini could not be read")?;
         let mut cp = read_ini(bytes.as_deref(), true).map_err(|o| match o {
             Outcome::Json(409, _) => "models.ini has repeated sections",
             _ => "models.ini could not be parsed",
@@ -979,7 +1004,7 @@ impl SectionWrites {
             }
         }
         if !changed.is_empty() {
-            self.replace_file(&cfg::render(&cp), None, true)
+            self.replace_file_checked(&cfg::render(&cp), None, true, Some(&revision))
                 .map_err(|_| "models.ini could not be written safely; nothing was changed")?;
         }
         Ok(changed)
@@ -1082,3 +1107,14 @@ pub fn parse_plan(bytes: &[u8]) -> Option<Plan> {
 
 #[cfg(test)]
 mod tests;
+
+fn publication_error(e: &std::io::Error) -> Outcome {
+    if e.kind() == std::io::ErrorKind::AlreadyExists {
+        detail(
+            409,
+            "models.ini changed since you loaded it. Reload, review, then save again.",
+        )
+    } else {
+        Outcome::Failed
+    }
+}
