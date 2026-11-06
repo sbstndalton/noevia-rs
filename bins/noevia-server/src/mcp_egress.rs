@@ -548,7 +548,10 @@ async fn rpc(
     let text = reply
         .text
         .ok_or_else(|| "MCP: response body exceeded the 8 MB limit".to_string())?;
+    // Every protocol failure -- a JSON-RPC error's code, a reply id that does not match -- is a number or a fixed phrase
+    // the server chose, and a number can be a credential (a key of digits): the one scrub covers these as it does the body.
     rpc_result(id, reply.content_type.contains("text/event-stream"), &text)
+        .map_err(|why| Secrets::from_headers(headers).scrub(&why))
 }
 
 /// A JSON-RPC error code that is safe to show: a number with no fraction and no exponent.

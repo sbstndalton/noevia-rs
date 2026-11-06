@@ -59,6 +59,27 @@ fn http_reply(status: u16, headers: &[(&str, String)], body: &[u8]) -> Vec<u8> {
     bytes
 }
 
+/// A stage answered with HTTP 200 and a JSON-RPC `error` (its code a number the server chose), or with a reply whose
+/// id is a number the server chose: `{"rpcError":{..}}` / `{"replyId":n}` in the stage's behaviour.
+fn protocol_reply(stage: Option<&Value>, id: &Value) -> Option<Vec<u8>> {
+    let st = stage?;
+    if let Some(e) = st.get("rpcError") {
+        return Some(http_reply(
+            200,
+            &[("content-type", "application/json".to_owned())],
+            json!({"jsonrpc":"2.0","id":id,"error":e})
+                .to_string()
+                .as_bytes(),
+        ));
+    }
+    let wrong = st.get("replyId")?;
+    Some(http_reply(
+        200,
+        &[("content-type", "application/json".to_owned())],
+        rpc_reply(wrong, &json!({})).as_bytes(),
+    ))
+}
+
 fn rpc_reply(id: &Value, result: &Value) -> String {
     json!({"jsonrpc":"2.0","id":id,"result":result}).to_string()
 }
@@ -142,7 +163,9 @@ impl Fake {
                     let json_type = ("content-type", "application/json".to_owned());
                     let out = match rpc.as_str().unwrap_or("") {
                         "initialize" => {
-                            if let Some(h) = b.get("init").and_then(|i| i.get("http")) {
+                            if let Some(out) = protocol_reply(b.get("init"), &id) {
+                                out
+                            } else if let Some(h) = b.get("init").and_then(|i| i.get("http")) {
                                 http_reply(
                                     h["status"].as_u64().unwrap_or(500) as u16,
                                     &[],
@@ -174,7 +197,9 @@ impl Fake {
                             };
                             let at = calls.fetch_add(1, Ordering::SeqCst).min(list.len() - 1);
                             let c = &list[at];
-                            if let Some(h) = c.get("http") {
+                            if let Some(out) = protocol_reply(Some(c), &id) {
+                                out
+                            } else if let Some(h) = c.get("http") {
                                 let mut hs = vec![];
                                 if let Some(r) = h.get("retryAfter").and_then(Value::as_str) {
                                     hs.push(("retry-after", r.to_owned()));
@@ -240,7 +265,9 @@ impl Fake {
                         }
                         "tools/list" => {
                             let list = b.get("list");
-                            if let Some(h) = list.and_then(|l| l.get("http")) {
+                            if let Some(out) = protocol_reply(list, &id) {
+                                out
+                            } else if let Some(h) = list.and_then(|l| l.get("http")) {
                                 http_reply(
                                     h["status"].as_u64().unwrap() as u16,
                                     &[],
@@ -1354,4 +1381,112 @@ async fn the_failure_log_line_is_the_status_and_nothing_the_server_said() {
     assert_eq!(text, "ERROR calling t1: tool call failed (HTTP 502)");
     let log = logs.lock().unwrap().clone();
     assert_eq!(log, ["[mcp] t1 failed: HTTP 502"]);
+}
+
+// ── a number the server chooses is as much an echo as a sentence (review r3: numeric upstream error paths) ──
+
+/// A key of digits, or a word like `true`, repeated by the server as a JSON-RPC error code, a reply id or a malformed
+/// `content`: the key check, the listing and the executor all take it out.
+#[tokio::test]
+async fn a_credential_that_is_a_number_is_not_echoed_by_a_protocol_error() {
+    use noevia_server::mcp_egress::{check_key, list_tools};
+    for key in ["12345", "7", "424242424242"] {
+        let headers = [("X-Api-Key".to_owned(), key.to_owned())];
+        for (stage, behaviour) in [
+            (
+                "initialize code",
+                json!({"init":{"rpcError":{"code":key.parse::<i64>().unwrap(),"message":"no"}}}),
+            ),
+            (
+                "initialize reply id",
+                json!({"init":{"replyId":key.parse::<i64>().unwrap()}}),
+            ),
+            (
+                "tools/list code",
+                json!({"list":{"rpcError":{"code":key.parse::<i64>().unwrap(),"message":"no"}}}),
+            ),
+            (
+                "tools/list reply id",
+                json!({"list":{"replyId":key.parse::<i64>().unwrap()}}),
+            ),
+        ] {
+            let fake = Fake::start().await;
+            *fake.behaviour.lock().unwrap() = behaviour;
+            let egress = Egress::new(true).unwrap();
+            let counter = std::sync::atomic::AtomicI64::new(0);
+            let checked = check_key(&egress, &fake.url, &headers, &counter)
+                .await
+                .unwrap_err();
+            let listed = list_tools(&egress, &fake.url, &headers, &counter)
+                .await
+                .unwrap_err();
+            for (entry, why) in [("check_key", &checked), ("list_tools", &listed)] {
+                let at = format!("{entry} / {stage} / {key}: {why}");
+                assert!(!has_token(why, key), "{at}");
+                // The accepted shape stays, with the number redacted.
+                assert!(
+                    why.starts_with("MCP error [redacted]")
+                        || why.starts_with("MCP: reply id [redacted] does not match request"),
+                    "{at}"
+                );
+            }
+        }
+    }
+}
+
+/// The same for a call: a numeric or boolean credential the server repeats as `content`, as an error code or as a reply id.
+#[tokio::test]
+async fn an_executor_call_does_not_echo_a_credential_that_is_a_number_or_a_boolean() {
+    for (token, env, content) in [
+        ("12345", "SYNTH_NUM_TOKEN", json!(12345)),
+        ("true", "SYNTH_BOOL_TOKEN", json!(true)),
+        ("7", "SYNTH_ONE_TOKEN", json!(7)),
+    ] {
+        std::env::set_var(env, token);
+        for (what, behaviour) in [
+            ("content", json!({"call":[{"result":{"content":content}}]})),
+            (
+                "error code",
+                json!({"call":[{"rpcError":{"code":content,"message":"no"}}]}),
+            ),
+        ] {
+            let fake = Fake::start().await;
+            *fake.behaviour.lock().unwrap() = behaviour;
+            let (sink, logs) = lines();
+            let exec = Executor::new(
+                Settings {
+                    servers: vec![Operator {
+                        auth: Auth::Bearer,
+                        token_env: Some(env.into()),
+                        ..plain(&fake)
+                    }],
+                    ..Settings::default()
+                },
+                &Egress::new(true).unwrap(),
+            )
+            .with_log(sink);
+            let creds = creds_for(json!({"kind":"local"}), Value::Null, Value::Null, vec![]);
+            let text = exec.run(&*creds, simple_call()).await;
+            assert!(text.starts_with("ERROR calling t1: "), "{what}: {text}");
+            assert_clean(&format!("{what} / {token}"), &text, &logs, &[token]);
+        }
+        // A reply whose id is the credential.
+        let fake = Fake::start().await;
+        *fake.behaviour.lock().unwrap() = json!({"call":[{"replyId":12345}]});
+        std::env::set_var("SYNTH_NUM_TOKEN", "12345");
+        let exec = Executor::new(
+            Settings {
+                servers: vec![Operator {
+                    auth: Auth::Bearer,
+                    token_env: Some("SYNTH_NUM_TOKEN".into()),
+                    ..plain(&fake)
+                }],
+                ..Settings::default()
+            },
+            &Egress::new(true).unwrap(),
+        );
+        let creds = creds_for(json!({"kind":"local"}), Value::Null, Value::Null, vec![]);
+        let text = exec.run(&*creds, simple_call()).await;
+        assert!(!has_token(&text, "12345"), "{text}");
+    }
 }

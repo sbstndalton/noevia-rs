@@ -291,6 +291,9 @@ async fn describe(ctx: &Ctx, own: &[(String, Found)]) -> Result<JValue, Fail> {
         .unwrap_or_else(|_| "/api/mcp-oauth/callback".to_owned());
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
+        // What Node published of a server's last discovery is that server's own text; Node scrubs it with the headers
+        // it sent, and the key this front holds for the row is taken out again here (defence in depth).
+        let secrets = crate::mcp_scrub::Secrets::from_headers(&ctx.mcp.shared_headers(&row));
         let (count, tools, truncated, err) = match own.iter().find(|(id, _)| *id == row.id) {
             Some((_, found)) => {
                 let (tools, truncated) = mcp_tools::shown(&found.tools);
@@ -308,11 +311,18 @@ async fn describe(ctx: &Ctx, own: &[(String, Found)]) -> Result<JValue, Fail> {
                     JValue::Arr(
                         info.tools
                             .iter()
-                            .map(|(n, d)| JValue::obj([("name", s(n)), ("description", s(d))]))
+                            .map(|(n, d)| {
+                                JValue::obj([
+                                    ("name", s(&secrets.scrub(n))),
+                                    ("description", s(&secrets.scrub(d))),
+                                ])
+                            })
                             .collect(),
                     ),
                     info.tools_truncated,
-                    info.error.as_deref().map_or(JValue::Null, s),
+                    info.error
+                        .as_deref()
+                        .map_or(JValue::Null, |e| s(&secrets.scrub(e))),
                 ),
                 None => (JValue::Null, JValue::Arr(Vec::new()), false, JValue::Null),
             },

@@ -717,7 +717,11 @@ impl Executor {
     fn finish(&self, name: &str, rate_key: &str, result: &JValue, secrets: &Secrets) -> String {
         let text = match result_to_text(result) {
             Ok(t) => secrets.scrub(&t),
-            Err(message) => return format!("ERROR calling {name}: {}", cut(&message)),
+            // The runtime's own complaint about a malformed `content` names the value the server sent (a number, a
+            // boolean): through the same scrub as everything else, before it is cut.
+            Err(message) => {
+                return secrets.scrub(&format!("ERROR calling {name}: {}", cut(&message)))
+            }
         };
         let is_error = result.get("isError").truthy();
         if is_error && limit::is_rate_limited_text(&text) {

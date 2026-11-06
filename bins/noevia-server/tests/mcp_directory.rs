@@ -826,6 +826,47 @@ fn client_row(db: &server_store::rusqlite::Connection, server: &str) -> Option<S
     .ok()
 }
 
+/// What Node published of a server's last discovery is that server's own text. Node scrubs it with the headers it sent
+/// (core mcp-scrub.cjs); the key this front holds for the row is taken out again before the listing is answered.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_listing_takes_the_rows_shared_key_out_of_what_a_server_said() {
+    let (d, db, up, _s, f) = rig("", false, ECHO).await;
+    let key = "SYNTH-listing-key-5521";
+    add_server(
+        &db,
+        "dir-keyed",
+        &format!("{}/mcp", up.base()),
+        false,
+        false,
+        DECLARED,
+    );
+    db.execute(
+        "UPDATE directory_mcp_servers SET headers_enc=?1 WHERE id='dir-keyed'",
+        [seal(&format!(r#"{{"X-Api-Key":"{key}"}}"#), None, 7)],
+    )
+    .unwrap();
+    write_snapshot(
+        d.path(),
+        serde_json::json!({"servers": [
+            {"id": "dir-keyed", "auth": "directory", "directory": true,
+             "error": format!("MCP 401: invalid key {key} end"), "toolCount": 1,
+             "tools": [{"name": "t", "description": format!("use {key} to search")}], "toolsTruncated": false},
+        ]}),
+    );
+    let (st, body) = get(f.addr, LIST, ADMIN).await;
+    assert_eq!(st, 200, "{body}");
+    let text = body.to_string();
+    assert!(!text.contains(key), "{text}");
+    let row = body["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "dir-keyed")
+        .unwrap();
+    assert_eq!(row["error"], "MCP 401: invalid key [redacted] end");
+    assert_eq!(row["tools"][0]["description"], "use [redacted] to search");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_listing_shows_what_nodes_published_discovery_found_and_only_while_it_is_current() {
     let (d, db, up, _s, f) = rig("", false, ECHO).await;
