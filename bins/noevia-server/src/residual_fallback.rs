@@ -62,10 +62,10 @@ pub(crate) fn classify(method: &str, path: &str) -> Option<Kind> {
     {
         return Some(Kind::Missing);
     }
-    // The single-segment model wildcard also covers two substantive Node handlers.
+    // The single-segment model wildcard also covers three substantive Node handlers.
     // All other paths and methods that land on it reach the static fallback.
     if routes::route_for(path).is_some_and(|r| r.path == "/api/models/{*}")
-        && !((path == "/api/models/pull" && method == "POST")
+        && !((["/api/models/pull", "/api/models/unload"].contains(&path) && method == "POST")
             || (path == "/api/models/mtp-artifact" && method == "GET"))
     {
         return Some(Kind::Missing);
@@ -269,4 +269,20 @@ fn provider(_method: &str, _path: &str) -> Option<Kind> {
 #[cfg(feature = "rust-storage-reads")]
 fn credential_bypass() -> Response<Body> {
     reply::json_text(StatusCode::SERVICE_UNAVAILABLE, r#"{"error":"MCP server keys and sign-ins are owned by the Rust front.","code":"RUST_MCP_CREDENTIALS_OWNED"}"#.to_string(), true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify;
+
+    #[test]
+    fn substantive_model_wildcard_handlers_keep_their_owner() {
+        for (method, path) in [
+            ("POST", "/api/models/pull"),
+            ("POST", "/api/models/unload"),
+            ("GET", "/api/models/mtp-artifact"),
+        ] {
+            assert!(classify(method, path).is_none(), "{method} {path}");
+        }
+    }
 }
