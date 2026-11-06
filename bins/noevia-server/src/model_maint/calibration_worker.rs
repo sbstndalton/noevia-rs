@@ -3422,8 +3422,7 @@ mod tests {
     }
 
     async fn released(log: &Mutex<Vec<String>>, prefix: &str) {
-        // Bounded at 30 s: a run's state saves on the way here can wait out a slow fsync.
-        for _ in 0..3000 {
+        for _ in 0..600 {
             if log.lock().unwrap().iter().any(|r| r.starts_with(prefix)) {
                 return;
             }
@@ -3921,14 +3920,10 @@ mod tests {
                     .unwrap(),
             ),
         ));
-        // `finalize` also bounds every launch, restore-intent and recovery state save, each of
-        // which refuses fail-closed when it lapses (an unsaved launch is Unavailable). A loaded
-        // shared runner's fsync can take seconds, so these tests must not race it: they wait on
-        // published state, and only the unreachable-restore case waits out this deadline.
         let w = with_limits(
             &w,
             Limits {
-                finalize: Duration::from_secs(10),
+                finalize: Duration::from_millis(150),
                 save_retry: Duration::from_millis(20),
                 ..w.limits
             },
@@ -3936,7 +3931,7 @@ mod tests {
         (d, w, available, calls, seen)
     }
     async fn wait_restoration(w: &Worker) {
-        tokio::time::timeout(Duration::from_secs(15), async {
+        tokio::time::timeout(Duration::from_secs(3), async {
             while w.restoring.load(Ordering::Acquire) {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
@@ -3996,7 +3991,7 @@ mod tests {
     async fn an_unreachable_restore_retains_admission_until_settlement() {
         let (_d, w, available, calls, seen) = restore_rig("down").await;
         begin_restore_run(&w, &seen).await;
-        tokio::time::timeout(Duration::from_secs(15), async {
+        tokio::time::timeout(Duration::from_secs(2), async {
             while calls.load(Ordering::Acquire) == 0 {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
@@ -4053,7 +4048,7 @@ mod tests {
         w.file.save(&state).unwrap();
         let worker = Arc::clone(&w);
         let recovery = tokio::spawn(async move { worker.recover().await });
-        tokio::time::timeout(Duration::from_secs(15), async {
+        tokio::time::timeout(Duration::from_secs(3), async {
             while calls.load(Ordering::Acquire) < 2 {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
@@ -4062,8 +4057,7 @@ mod tests {
         .expect("boot recovery retains and retries the unsettled CAS");
         available.store(true, Ordering::Release);
         assert_eq!(
-            // Recovery's own CAS retry backs off 1 s, 2 s, ...: allow several rounds.
-            tokio::time::timeout(Duration::from_secs(15), recovery)
+            tokio::time::timeout(Duration::from_secs(3), recovery)
                 .await
                 .unwrap()
                 .unwrap(),
