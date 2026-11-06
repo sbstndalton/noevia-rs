@@ -1319,7 +1319,8 @@ mod gate_stage {
             Some("synthetic-user".into())
         }
         fn chat_id(&self) -> Option<String> {
-            s(self.sc.get("chatId"))
+            // A body without one gets a new chat id from the handler before the tools run.
+            Some(s(self.sc.get("chatId")).unwrap_or_else(|| "new-chat".into()))
         }
         fn revoked_skill_refusal(&self, _: &str) -> Option<String> {
             None
