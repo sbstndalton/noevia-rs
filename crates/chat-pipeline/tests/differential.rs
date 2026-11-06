@@ -1862,8 +1862,12 @@ mod finish_stage {
                 };
                 let mut busy = || t.get("busy") == &JValue::Bool(true);
                 let ask = title::title_ask(&turn, &mut attempts, &mut auto_named, &mut busy);
+                // The attempt is recorded; the request goes out only with a message and an answer (generateTitle).
+                let body = ask.as_ref().and_then(|_| {
+                    title::title_request_body("answer-model", k.get("message").as_str().unwrap(), answer)
+                });
                 same(
-                    &ask.is_some(),
+                    &body.is_some(),
                     &matches!(got.get("titleAsked"), JValue::Obj(_)),
                     &format!("asked {what} got {}", wtf16::stringify(got).unwrap()),
                 );
@@ -1872,11 +1876,11 @@ mod finish_stage {
                     &matches!(got.get("autoNamedAsked"), JValue::Arr(_)),
                     &format!("autoNamed {what} got {}", wtf16::stringify(got).unwrap()),
                 );
-                let made = ask.as_ref().and_then(|_| match t.get("title") {
+                let made = body.as_ref().and_then(|_| match t.get("title") {
                     JValue::Str(e) if e == "error" => None,
                     v => title::clean_title(v),
                 });
-                asked += usize::from(ask.is_some());
+                asked += usize::from(body.is_some());
                 titled += usize::from(made.is_some());
                 let events = title::finish_events(
                     "answer-model",
@@ -1906,6 +1910,6 @@ mod finish_stage {
                 }
             }
         }
-        assert!(asked > 400 && titled > 40, "{asked} {titled}");
+        assert!(asked > 80 && titled > 30, "{asked} {titled}");
     }
 }
