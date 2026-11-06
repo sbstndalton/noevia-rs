@@ -699,7 +699,7 @@ impl ServiceControl for Hang {
 }
 
 #[tokio::test]
-async fn a_docker_timeout_rolls_back_and_keeps_both_models_protected() {
+async fn a_docker_timeout_retains_the_effect_and_both_models_protected() {
     let dir = tempfile::tempdir().unwrap();
     let base = fixture();
     let models = base.dir.path().join("models");
@@ -721,18 +721,17 @@ async fn a_docker_timeout_rolls_back_and_keeps_both_models_protected() {
     let result = service.apply(serve(&[(EMBED_ALT, EMBED_ALT_FILE)])).await;
     assert!(matches!(result, Err(Refusal::Unavailable(_))));
     let saved = service.saved().unwrap().unwrap();
-    assert_eq!(saved.models, vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]);
-    assert_eq!(saved.previous, vec![entry(EMBED_ALT, EMBED_ALT_FILE)]);
+    assert_eq!(saved.models, vec![entry(EMBED_ALT, EMBED_ALT_FILE)]);
+    assert_eq!(saved.previous, vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]);
     let ini = std::fs::read_to_string(dir.path().join("config/embedding.ini")).unwrap();
-    assert!(ini.contains(EMBED_MAIN) && !ini.contains(EMBED_ALT));
-    // Docker may still restart onto either preset: both stay protected.
+    assert!(ini.contains(EMBED_ALT));
+    // The effect still owns the lock and the attempted preset: both stay protected.
     assert!(service.protects(EMBED_MAIN_FILE).await);
     assert!(service.protects(EMBED_ALT_FILE).await);
-    // Turning off from the same state also rolls back instead of claiming it is off.
-    assert!(service.apply(Desired::default()).await.is_err());
-    assert_eq!(
-        service.saved().unwrap().unwrap().models,
-        vec![entry(EMBED_MAIN, EMBED_MAIN_FILE)]
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), service.hold())
+            .await
+            .is_err()
     );
 }
 
@@ -890,7 +889,10 @@ struct HangLater {
 impl ServiceControl for HangLater {
     fn act(&self, _: Action) -> Job<'_, ()> {
         if *self.hang.lock().unwrap() {
-            Box::pin(std::future::pending())
+            Box::pin(async {
+                tokio::time::sleep(Duration::from_millis(80)).await;
+                Err("Docker refused the embedding container action")
+            })
         } else {
             Box::pin(async { Ok(()) })
         }
@@ -950,6 +952,11 @@ async fn a_roll_back_warms_the_restored_set_again() {
         service.apply(serve(&[(EMBED_ALT, EMBED_ALT_FILE)])).await,
         Err(Refusal::Unavailable(_))
     ));
+    // Caller timeout precedes settlement; restoration belongs to the same owner.
+    let guard = tokio::time::timeout(Duration::from_secs(1), service.hold())
+        .await
+        .unwrap();
+    drop(guard);
     assert_eq!(
         service.saved().unwrap().unwrap().models,
         vec![

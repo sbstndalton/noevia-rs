@@ -73,13 +73,16 @@ impl Service {
         now: impl Fn() -> u64,
     ) -> Result<Option<Value>, MutationError> {
         let (status, body) = loader.put(models).await.map_err(|_| MutationError {
-            status: 502,
+            status: 503,
             code: "serviceRefused",
             message: "The embedding service could not be changed.".into(),
         })?;
         if !(200..300).contains(&status) {
             return Err(MutationError {
-                status: if status == 400 { 400 } else { 502 },
+                status: match status {
+                    400 | 503 => status,
+                    _ => 502,
+                },
                 code: "serviceRefused",
                 message: format!("The embedding service could not be changed: HTTP {status}"),
             });

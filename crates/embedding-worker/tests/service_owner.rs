@@ -204,3 +204,30 @@ async fn preserve_diary_default_and_refuse_required_overflow_before_shrinking() 
         ])
     );
 }
+
+struct Unsettled(bool);
+impl Loader for Unsettled {
+    fn get(&self) -> Task<'_, Result<(u16, Value), String>> {
+        Box::pin(async { Err("synthetic-reflected-secret".into()) })
+    }
+    fn put<'a>(&'a self, _: &'a Value) -> Task<'a, Result<(u16, Value), String>> {
+        Box::pin(async move {
+            if self.0 {
+                Ok((503, json!({"detail":"synthetic-reflected-secret"})))
+            } else {
+                Err("synthetic-reflected-secret".into())
+            }
+        })
+    }
+}
+#[tokio::test]
+async fn an_unsettled_loader_timeout_is_unavailable_not_bad_gateway() {
+    for refused in [false, true] {
+        let error = Service::default()
+            .serve(&Unsettled(refused), &json!([]), || 1)
+            .await
+            .unwrap_err();
+        assert_eq!(error.status, 503);
+        assert!(!error.message.contains("synthetic-reflected-secret"));
+    }
+}

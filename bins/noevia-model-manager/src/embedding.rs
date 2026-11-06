@@ -26,7 +26,7 @@ use std::{
 /// Most models one service serves at once: the active one and the one a switch is building.
 pub const MAX_MODELS: usize = 2;
 
-/// Longest a restart or stop of the embedding container may take before the change is rolled back.
+/// Caller deadline for a restart or stop. The effect owner keeps settling after this deadline.
 pub const ACT_TIMEOUT: Duration = Duration::from_secs(30);
 /// #1677: how long a change waits for another change (or a delete check) to finish. The request
 /// budget is ACT_TIMEOUT + LOCK_WAIT plus a margin, so a change that waited too long gives up
@@ -550,18 +550,29 @@ impl EmbeddingService {
     /// The change runs in its own task, so a caller that gives up (request timeout, closed
     /// connection) can never leave it half done.
     pub async fn apply(self: &Arc<Self>, desired: Desired) -> Result<Saved, Refusal> {
-        let this = self.clone();
-        crate::work::spawn(async move { this.apply_held(desired).await })
-            .await
-            .map_err(|_| Refusal::Unavailable("embedding service change failed"))?
-    }
-
-    async fn apply_held(self: &Arc<Self>, desired: Desired) -> Result<Saved, Refusal> {
-        let Ok(_guard) = tokio::time::timeout(self.lock_wait, self.lock.lock()).await else {
+        // A cancelled acquisition has dispatched nothing. Once acquired, ownership
+        // transfers to the detached task without an intervening cancellation point.
+        let Ok(guard) = tokio::time::timeout(self.lock_wait, self.lock.clone().lock_owned()).await
+        else {
             return Err(Refusal::Unavailable(
                 "another embedding change is still running; nothing was changed",
             ));
         };
+        let this = self.clone();
+        let effect = crate::work::spawn(async move { this.apply_held(desired, guard).await });
+        // Dropping a JoinHandle detaches; it does not cancel the guarded Docker
+        // operation. Never time out control.act itself: Docker can act late.
+        tokio::time::timeout(self.act_timeout, effect)
+            .await
+            .map_err(|_| Refusal::Unavailable("embedding container did not answer in time"))?
+            .map_err(|_| Refusal::Unavailable("embedding service change failed"))?
+    }
+
+    async fn apply_held(
+        self: &Arc<Self>,
+        desired: Desired,
+        _guard: tokio::sync::OwnedMutexGuard<()>,
+    ) -> Result<Saved, Refusal> {
         // Validate under the lock: a delete holding it may just have removed the file.
         self.validate(&desired)?;
         let current = self
@@ -590,10 +601,7 @@ impl EmbeddingService {
         } else {
             Action::Restart
         };
-        let acted = match tokio::time::timeout(self.act_timeout, self.control.act(action)).await {
-            Ok(result) => result,
-            Err(_) => Err("embedding container did not answer in time"),
-        };
+        let acted = self.control.act(action).await;
         if let Err(e) = acted {
             self.roll_back(&current, &saved);
             return Err(Refusal::Unavailable(e));
@@ -611,7 +619,7 @@ impl EmbeddingService {
         Ok(saved)
     }
 
-    /// A failed or timed-out Docker action: go back to the models that were set, but keep every
+    /// A failed Docker action: go back to the models that were set, but keep every
     /// model either set may have loaded protected, because Docker may still carry the action out.
     fn roll_back(self: &Arc<Self>, current: &Saved, attempted: &Saved) {
         // #1696: stop any running warm-up first, also when the restored set is empty (off): a
