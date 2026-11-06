@@ -550,7 +550,7 @@ impl Hold {
     }
 
     /// A lease on Node's gate, renewed until `deadline`.
-    pub(super) fn leased(
+    pub(crate) fn leased(
         local: Arc<AtomicBool>,
         node: Arc<NodeLeases>,
         grant: LeaseGrant,

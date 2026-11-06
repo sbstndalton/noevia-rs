@@ -126,7 +126,7 @@ impl NodeLeases {
         self.acquire_kind(max, ticket, false).await
     }
 
-    pub(super) async fn acquire_kind(
+    pub(crate) async fn acquire_kind(
         &self,
         max: Option<Duration>,
         ticket: Option<&str>,
