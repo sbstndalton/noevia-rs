@@ -1,4 +1,4 @@
-//! The vault note: names, folders, the path guard, the frontmatter and the body, byte for byte as
+//! The vault note: names, folders, the path guard, the frontmatter and the body, the same bytes as
 //! noevia-core `chat-vault-mirror.cjs` (safeName, folderFor, insideMirror, frontmatter,
 //! renderNote) and `chat-export.cjs` (chatMarkdown) write them.
 

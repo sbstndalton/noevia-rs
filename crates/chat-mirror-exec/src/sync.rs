@@ -1,7 +1,8 @@
 //! One mirror pass for one account (core `createChatVaultMirror(...).sync`): write what changed,
 //! move what was renamed, trash what was positively deleted, then save the per-user index. The
-//! calls to the Diary, their order and their bodies are core's, so the vault ends byte for byte
-//! where core would have left it.
+//! calls to the Diary, their order and their bodies are core's, so the vault ends where core would
+//! have left it, except for the fail-closed refusals and the intent reconciliation described on
+//! [`sync`] (review 2026-11-05).
 
 use crate::jsx;
 use crate::note::{self, ROOT};

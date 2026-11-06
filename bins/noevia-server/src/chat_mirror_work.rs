@@ -1,7 +1,8 @@
 //! The chat mirror's work, native (sbstndalton/noevia#741, #742, #2153; crate `chat-mirror-exec`):
 //! one Diary mirror pass for one account and one chat's brain build. They replace Node's executors
 //! (core `chat-vault-mirror.cjs` sync and `chat-brain.cjs` createBrainRunner/createBrainBuilder),
-//! with core's output byte for byte (crates/chat-mirror-exec/tests/oracle.rs).
+//! with core's output over the inputs core accepted (crates/chat-mirror-exec/tests/oracle.rs; the
+//! deviations are listed in that crate's lib.rs).
 //!
 //! What a pass reads is the account's own: its lists (`projects.json` without the internal
 //! projects, `free-chats.json`), its tombstones (`deleted-chats.json`), its transcripts (the

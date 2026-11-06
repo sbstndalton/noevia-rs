@@ -1,7 +1,7 @@
 [package]
 name = "chat-mirror-exec"
 version = "0.1.0"
-description = "The Diary mirror pass and the per-chat brain build (the work executors behind chat-mirror-sched), ported byte for byte from noevia-core chat-vault-mirror.cjs, chat-brain.cjs and chat-export.cjs"
+description = "The Diary mirror pass and the per-chat brain build (the work executors behind chat-mirror-sched), ported from noevia-core chat-vault-mirror.cjs, chat-brain.cjs and chat-export.cjs"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

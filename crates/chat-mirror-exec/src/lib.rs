@@ -2,8 +2,12 @@
 //! mirror pass for one account and one chat's brain build, ported from noevia-core
 //! `chat-vault-mirror.cjs` (sync, renderNote and the per-user index), `chat-brain.cjs`
 //! (validate/parse/render, the brain store, the builder and the runner) and `chat-export.cjs`
-//! (chatMarkdown). The output is core's byte for byte: the same note names, the same note text and
-//! frontmatter, the same Diary calls in the same order with the same bodies, the same index file.
+//! (chatMarkdown). Over the inputs core accepted, the output is core's (tests/oracle.rs): the same
+//! note names, note text and frontmatter, the same Diary calls in the same order with the same
+//! bodies, the same index file. Recorded deviations (review 2026-11-05): links, swapped account
+//! folders and unreadable, corrupt or misshapen index state fail closed instead of reading as
+//! empty; a Diary mutation is journalled, and after a failed one the next pass first reads that
+//! path back; V8's non-ISO legacy date strings fail the note (see [`jsx::parse_date`]).
 //!
 //! The host supplies what lives elsewhere: the account's lists, tombstones and transcripts and its
 //! workspace directory ([`MirrorSource`]), the Diary file API as that account ([`Diary`]) and the
