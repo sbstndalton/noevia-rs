@@ -332,7 +332,7 @@ impl Authority {
     pub(super) fn recovery_ticket(&self) -> Option<String> {
         self.lock().recovery_ticket.clone()
     }
-    pub(super) fn require_recovery(&self) -> String {
+    pub(crate) fn require_recovery(&self) -> String {
         let mut state = self.lock();
         state.recovery_required = true;
         if state.recovery_ticket.is_none() {
