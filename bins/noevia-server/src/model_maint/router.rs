@@ -327,6 +327,12 @@ impl Router {
         if let Some(auth) = &self.authorization {
             request = request.header(AUTHORIZATION, auth.clone());
         }
+        if let Some(fence) = &self.operation {
+            request = request.header(
+                "x-noevia-maintenance-fence",
+                serde_json::to_string(fence).map_err(|_| Fault)?,
+            );
+        }
         let response = request.send().await.map_err(|_| Fault)?;
         let status = response.status().as_u16();
         let ok = response.status().is_success();
@@ -376,16 +382,26 @@ mod operation_tests {
         let app = axum::Router::new().fallback(move |req: Request<Body>| {
             let sent = sent.clone();
             async move {
-                let proof = req.headers().get("x-noevia-maintenance-fence")
-                    .and_then(|v| v.to_str().ok()).map(str::to_owned);
-                if let Some(sent) = sent.lock().unwrap().take() { let _ = sent.send(proof); }
+                let proof = req
+                    .headers()
+                    .get("x-noevia-maintenance-fence")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_owned);
+                if let Some(sent) = sent.lock().unwrap().take() {
+                    let _ = sent.send(proof);
+                }
                 "{}"
             }
         });
-        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
         let fence = model_publication::Fence {
-            incarnation: "synthetic-front".into(), lease: "synthetic-hold".into(),
-            generation: 7, operation: "synthetic-operation".into(), kind: "pull".into(),
+            incarnation: "synthetic-front".into(),
+            lease: "synthetic-hold".into(),
+            generation: 7,
+            operation: "synthetic-operation".into(),
+            kind: "pull".into(),
             expected_revision: None,
         };
         let router = Router::new(&base, None).unwrap().with_operation(&fence);
