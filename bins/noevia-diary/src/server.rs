@@ -25,8 +25,9 @@ use axum::body::Body;
 use axum::http::{HeaderMap, Method, Request, Response, StatusCode};
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use subtle::ConstantTimeEq;
 
 pub const DECLINE_HEADER: &str = "x-noevia-diary-decline";
@@ -62,6 +63,8 @@ pub struct App {
     /// the same native transforms ("rust").
     pub corpus_write_impl: String,
     pub writers: Writers,
+    /// Native replay state; retrieval indexing has a separate Python lifecycle.
+    pub recovered: Mutex<HashMap<String, Arc<Mutex<crate::recovery::State>>>>,
 }
 
 impl App {
@@ -86,6 +89,7 @@ impl App {
             export: cfg.workspace_export,
             corpus_write_impl: cfg.corpus_write_impl,
             writers: Writers::default(),
+            recovered: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -352,7 +356,7 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
             let Ok(descriptor) = strict_descriptor(&storage) else {
                 return Plan::Decline;
             };
-            if !recovered {
+            if !recovered && !r.write() {
                 // Python recovers a tenant's state on its first request (journal replay, dirty
                 // reindex, outbox): let it serve until it has.
                 return Plan::Decline;
@@ -624,7 +628,7 @@ async fn serve_write(
             .with_lock(&uid, || {
                 // Re-checked under the lock: an earlier write may have left work pending.
                 let root = app2.data_root.join("users").join(&uid);
-                match managed::ready_for_write(&root, &uid, true) {
+                match managed::ready_for_write(&root, &uid, false) {
                     Ok(Some(_)) => {}
                     _ => return Reply::Decline,
                 }
@@ -632,12 +636,28 @@ async fn serve_write(
                 else {
                     return Reply::Decline;
                 };
+                let recovery = app2
+                    .recovered
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .entry(uid.clone())
+                    .or_default()
+                    .clone();
                 let ctx = writes::Ctx {
+                    recovery: &recovery,
                     reader: &tenant.store,
                     store: crate::write::Store::new(tenant.store.db_path()),
                     journal,
                     layout: &tenant.layout,
                 };
+                if !crate::recovery::supported(&ctx) {
+                    return Reply::Decline;
+                }
+                // The forwarder's writer token covers this blocking task until its effect
+                // settles (including caller cancellation / lost child barriers).
+                if crate::recovery::recover(&ctx).is_err() {
+                    return writes::internal();
+                }
                 match &op {
                     Op::File => writes::file_write(&ctx, &json),
                     Op::Dir => writes::directory_create(&ctx, &json),

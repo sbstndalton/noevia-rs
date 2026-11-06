@@ -29,6 +29,7 @@ const MALFORMED: &str = "The entry cannot be edited safely: malformed or missing
 
 /// What a write route needs of the tenant.
 pub struct Ctx<'a> {
+    pub recovery: &'a std::sync::Mutex<crate::recovery::State>,
     pub reader: &'a Managed,
     pub store: Store,
     pub journal: Journal,
@@ -195,6 +196,14 @@ fn apply_entry(
     id: &str,
     apply: impl FnOnce() -> Result<(), WriteFailure>,
 ) -> Result<bool, write::Error> {
+    if c.journal
+        .unapplied(1)?
+        .first()
+        .is_some_and(|entry| entry.id != id)
+    {
+        crate::recovery::apply_pending(c, 100)?;
+        return c.journal.is_applied(id);
+    }
     match apply() {
         Ok(()) => {
             c.journal.mark_applied(id)?;
@@ -207,7 +216,7 @@ fn apply_entry(
             c.journal.quarantine(id, &format!("quarantined: {msg}"))?;
             Ok(true)
         }
-        Err(WriteFailure::Infra(e)) => {
+        Err(WriteFailure::Infra(e) | WriteFailure::Transient(e)) => {
             c.journal.mark_failed(id, &e.0)?;
             Ok(false)
         }
@@ -538,7 +547,7 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
 }
 
 /// CorpusStore._scaffold: create-only seed files.
-fn seed(c: &Ctx<'_>) -> Result<(), WriteFailure> {
+pub(crate) fn seed(c: &Ctx<'_>) -> Result<(), WriteFailure> {
     let seeds = [
         (
             c.layout.entries_prefix.as_str(),
@@ -674,7 +683,7 @@ fn documents_for_month(c: &Ctx<'_>, year: i32, month: u32) -> Result<Vec<(String
 }
 
 /// CorpusStore._find_document_with_xid. `errors` is set when a listing or read failed.
-fn find_document(
+pub(crate) fn find_document(
     c: &Ctx<'_>,
     xid: &str,
     month: Option<&str>,
@@ -770,7 +779,40 @@ pub fn edit(c: &Ctx<'_>, req: &EditReq) -> Reply {
                 },
             );
         }
-        // An earlier queued edit for this exchange cannot exist: the tenant had nothing pending.
+        let pending = match c.journal.unapplied(-1) {
+            Ok(entries) => entries,
+            Err(_) => return error(502, "edit failed"),
+        };
+        for entry in pending.iter().rev().filter(|e| e.kind == "exchange_edit") {
+            let Ok(p) = serde_json::from_str::<Value>(&entry.payload) else {
+                return error(502, "edit failed");
+            };
+            if p.get("xid").and_then(Value::as_str) != Some(&xid) {
+                continue;
+            }
+            let queued_hash = p
+                .get("new_me")
+                .and_then(Value::as_str)
+                .zip(p.get("new_claude").and_then(Value::as_str))
+                .and_then(|(me, assistant)| {
+                    original
+                        .as_deref()
+                        .and_then(|t| cw::replace_exchange_text(t, &xid, me, assistant))
+                })
+                .and_then(|t| cw::exchange_hash(Some(&t), &xid));
+            if queued_hash.as_deref() != Some(py::strip(base).to_lowercase().as_str()) {
+                return json_reply(
+                    409,
+                    &Conflict {
+                        error: "An edit for this exchange is still queued; reload and retry",
+                        conflict: true,
+                        current_hash,
+                        current_text: cw::exchange_text(original.as_deref(), &xid),
+                    },
+                );
+            }
+            break;
+        }
     }
     let mut pairs = vec![
         ("xid", PyVal::Str(&xid)),

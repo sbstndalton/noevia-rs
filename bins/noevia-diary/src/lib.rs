@@ -8,6 +8,7 @@ pub mod corpus;
 pub mod health;
 pub mod managed;
 pub mod py;
+pub mod recovery;
 pub mod server;
 pub mod workspace;
 pub mod write;

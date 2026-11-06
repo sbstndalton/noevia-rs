@@ -1862,6 +1862,7 @@ dependencies = [
  "chrono",
  "diary-corpus-parse",
  "diary-corpus-write",
+ "diary-index-transform",
  "diary-workspace-export",
  "http-body-util",
  "regex",

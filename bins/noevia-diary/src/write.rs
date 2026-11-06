@@ -158,7 +158,7 @@ pub fn py_json(pairs: &[(&str, PyVal<'_>)]) -> String {
 
 // ------------------------------------------------------------------ connections
 
-fn open_rw(path: &Path) -> Result<Connection, Error> {
+pub(crate) fn open_rw(path: &Path) -> Result<Connection, Error> {
     let conn = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -382,7 +382,7 @@ impl Store {
             match self.put(path, new_text.as_bytes(), etag) {
                 Ok(Put::Ok(..)) => return Ok(()),
                 Ok(Put::Precondition) => continue,
-                Ok(Put::PathConflict(at)) => return Err(WriteFailure::Infra(Error(at))),
+                Ok(Put::PathConflict(at)) => return Err(WriteFailure::Transient(Error(at))),
                 Err(e) => return Err(WriteFailure::Infra(e)),
             }
         }
@@ -394,6 +394,8 @@ impl Store {
 
 #[derive(Debug)]
 pub enum WriteFailure {
+    /// OSError: storage outages never count towards quarantine.
+    Transient(Error),
     /// PermanentApplyError: the entry can never apply (quarantined).
     Permanent(String),
     /// Anything else: the entry stays pending (attempts + 1).
@@ -410,6 +412,8 @@ pub struct Entry {
     pub id: String,
     pub kind: String,
     pub payload: String,
+    pub rowid: i64,
+    pub attempts: i64,
 }
 
 impl Journal {
@@ -478,13 +482,15 @@ impl Journal {
     /// Unapplied entries in insertion (rowid) order, as journal.unapplied.
     pub fn unapplied(&self, limit: i64) -> Result<Vec<Entry>, Error> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, kind, payload FROM journal WHERE applied = 0 ORDER BY rowid LIMIT ?",
+            "SELECT id, kind, payload, rowid, attempts FROM journal WHERE applied = 0 ORDER BY rowid LIMIT ?",
         )?;
         let rows = stmt.query_map([limit], |r| {
             Ok(Entry {
                 id: r.get(0)?,
                 kind: r.get(1)?,
                 payload: r.get(2)?,
+                rowid: r.get(3)?,
+                attempts: r.get(4)?,
             })
         })?;
         Ok(rows.collect::<Result<_, _>>()?)

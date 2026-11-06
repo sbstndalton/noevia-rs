@@ -603,14 +603,13 @@ async fn edit_rewrites_one_exchange_with_conflict_checks() {
 }
 
 #[tokio::test]
-async fn declines_without_writer_role_recovery_or_with_pending_work() {
+async fn declines_without_writer_role_but_recovers_pending_work() {
     let dir = tempfile::tempdir().unwrap();
     managed_tenant(dir.path(), &[]);
     let addr = start(dir.path(), "rust").await;
     let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
     for h in [
         without(writer(), "x-noevia-diary-writer"),
-        without(writer(), "x-noevia-diary-recovered"),
         without(writer(), "x-cowork-user-id"),
     ] {
         let (s, d, _) = send(addr, "PUT", "/api/file", &h, &b).await;
@@ -624,16 +623,22 @@ async fn declines_without_writer_role_recovery_or_with_pending_work() {
         )
         .unwrap();
     let (s, d, _) = send(addr, "PUT", "/api/file", &writer(), &b).await;
-    assert_eq!((s, d), (421, true));
+    assert_eq!((s, d), (200, false));
+    rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db"))
+        .unwrap()
+        .execute("DELETE FROM files WHERE path='a.md'", [])
+        .unwrap();
     index(dir.path())
         .execute("UPDATE journal SET applied=1", [])
         .unwrap();
-    // Index outbox: Python drains it.
+    // Native replay quarantines the malformed entry and drains the index outbox.
     let db = rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db")).unwrap();
     db.execute("INSERT INTO workspace_index_outbox VALUES ('x.md')", [])
         .unwrap();
     let (s, d, _) = send(addr, "PUT", "/api/file", &writer(), &b).await;
-    assert_eq!((s, d), (421, true));
+    assert_eq!((s, d), (200, false));
+    db.execute("DELETE FROM files WHERE path='a.md'", [])
+        .unwrap();
     db.execute("DELETE FROM workspace_index_outbox", [])
         .unwrap();
     // Dirty documents alone do not stop a write (the index only lags).
@@ -787,4 +792,121 @@ async fn body_shape_refusals_precede_auth_on_every_write_route() {
         }
     }
     assert!(file_row(dir.path(), "a.md").is_none());
+}
+
+#[tokio::test]
+async fn native_replay_without_handshake_quarantines_dependents_and_preserves_row_order() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let idx = index(dir.path());
+    for (id, kind, payload) in [
+        ("bad", "unknown", serde_json::json!({"xid":"bad-xid"})),
+        (
+            "dependent",
+            "exchange_edit",
+            serde_json::json!({"xid":"bad-xid"}),
+        ),
+        (
+            "first",
+            "exchange",
+            serde_json::json!({"day":"2030-01-06","xid":"abcdef12","sub_header":"12:00 | Synthetic","body":diary_corpus_write::render_exchange("first", "", "abcdef12")}),
+        ),
+        (
+            "second",
+            "exchange_edit",
+            serde_json::json!({"xid":"abcdef12","new_me":"newest","new_claude":""}),
+        ),
+    ] {
+        idx.execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES (?,'reverse-clock',?,?)",
+            rusqlite::params![id, kind, payload.to_string()],
+        )
+        .unwrap();
+    }
+    let addr = start(dir.path(), "rust").await;
+    let body = serde_json::json!({"path":"incoming.md","content":"incoming","version":null});
+    let (s, d, b) = send(
+        addr,
+        "PUT",
+        "/api/file",
+        &without(writer(), "x-noevia-diary-recovered"),
+        &body,
+    )
+    .await;
+    assert_eq!((s, d), (200, false), "{b}");
+    let errors: Vec<(String,i64,String)> = idx.prepare("SELECT id,attempts,last_error FROM journal WHERE last_error IS NOT NULL ORDER BY rowid").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap().map(Result::unwrap).collect();
+    assert_eq!(
+        errors,
+        vec![
+            (
+                "bad".into(),
+                1,
+                "quarantined: unknown journal kind: unknown".into()
+            ),
+            (
+                "dependent".into(),
+                1,
+                "quarantined: depends on quarantined bad".into()
+            )
+        ]
+    );
+    let data = file_row(dir.path(), "Entries/2030/January/06 Sunday.md");
+    // Discover the configured daily name rather than assuming a filename presentation.
+    let db = rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db")).unwrap();
+    let text: Vec<u8> = db
+        .query_row(
+            "SELECT data FROM files WHERE path LIKE 'Entries/%'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let text = String::from_utf8(text).unwrap();
+    assert!(text.contains("newest"), "{text}");
+    assert_eq!(text.matches("<!-- xid:abcdef12 -->").count(), 1);
+    drop(data);
+    // A simulated crash after corpus commit but before mark_applied replays idempotently.
+    idx.execute("UPDATE journal SET applied=0 WHERE id='second'", [])
+        .unwrap();
+    let generation = meta(dir.path(), "generation");
+    let (s,d,b) = send(addr,"PUT","/api/file", &writer(),&serde_json::json!({"path":"incoming.md","content":"incoming","version":sha256(b"incoming")})).await;
+    assert_eq!((s, d), (200, false), "{b}");
+    assert_eq!(meta(dir.path(), "generation"), generation);
+}
+
+#[tokio::test]
+async fn replay_outage_never_quarantines_and_retries_observe_cooldown() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let db = rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db")).unwrap();
+    db.execute(
+        "INSERT INTO directories VALUES ('Entries/2030/January/January 6, 2030.md')",
+        [],
+    )
+    .unwrap();
+    let idx = index(dir.path());
+    let payload = serde_json::json!({"day":"2030-01-06","xid":"abcdef12","sub_header":"12:00 | Synthetic","body":"Synthetic"});
+    idx.execute("INSERT INTO journal(id,created_at,kind,payload,attempts) VALUES ('outage','t','exchange',?,30)",[payload.to_string()]).unwrap();
+    let addr = start(dir.path(), "rust").await;
+    for n in 0..2 {
+        let (s, d, b) = send(
+            addr,
+            "POST",
+            "/api/directory",
+            &writer(),
+            &serde_json::json!({"path":format!("Synthetic {n}")}),
+        )
+        .await;
+        assert_eq!((s, d), (200, false), "{b}");
+    }
+    let row: (i64, i64, String) = idx
+        .query_row(
+            "SELECT applied,attempts,last_error FROM journal WHERE id='outage'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        row,
+        (0, 31, "Entries/2030/January/January 6, 2030.md".into())
+    );
 }

@@ -123,7 +123,7 @@ fn ready_with(
     {
         return Ok(None);
     }
-    if count(&conn, "SELECT COUNT(*) FROM workspace_index_outbox")? != 0 {
+    if !allow_dirty && count(&conn, "SELECT COUNT(*) FROM workspace_index_outbox")? != 0 {
         return Ok(None);
     }
     let settings = match meta(&conn, "settings")? {
