@@ -359,6 +359,11 @@ impl Owner {
             return Err(Fault::State);
         }
         let mut guard = self.lock();
+        self.attach_locked(&mut guard, base, available)
+    }
+
+    fn attach_locked(&self, guard: &mut Option<Bound>, base: &str, available: bool) -> Result<JValue, Fault> {
+        if !is_base(base) { return Err(Fault::State); }
         let path = self.dir.join(base);
         let rebinding = guard.as_ref().is_some_and(|b| b.path != path);
         if rebinding {
@@ -444,7 +449,7 @@ impl Owner {
         let Some(available) = body.get("available").as_bool() else {
             return bad("Invalid attach.");
         };
-        let guard = self.lock();
+        let mut guard = self.lock();
         if let Some(b) = guard.as_ref() {
             if b.actor.as_deref() == Some(actor) {
                 return ok(snapshot(b, b.writer.as_deref()));
@@ -458,10 +463,9 @@ impl Owner {
                 return Self::fenced("busy", None);
             }
         }
-        drop(guard);
-        match self.attach(base, available) {
+        match self.attach_locked(&mut guard, base, available) {
             Ok(snapshot) => {
-                if let Some(b) = self.lock().as_mut() {
+                if let Some(b) = guard.as_mut() {
                     b.actor = Some(actor.to_owned());
                 }
                 ok(snapshot)

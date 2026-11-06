@@ -539,7 +539,7 @@ async fn a_launch_the_actor_does_not_take_leaves_no_running_job_without_a_runner
     let a = r.attach().await;
     let w = a["writer"].as_str().unwrap().to_owned();
     r.commit(&w, 1, &interrupted(), &json!({})).await;
-    for mode in [Mode::Down, Mode::Refuse] {
+    for mode in [Mode::Refuse] {
         r.actor.lock().unwrap().launch = mode;
         let (s, _) = r.post(RESUME, r#"{"confirmPause":true}"#).await;
         assert_eq!(s, 503);
@@ -571,7 +571,7 @@ async fn resume_of_system_models_only_filters_the_queue_without_a_launch() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_resume_whose_caller_goes_away_mid_preparation_releases_the_hold() {
+async fn a_resume_whose_caller_goes_away_retains_hold_until_settlement() {
     let r = rig(None).await;
     let a = r.attach().await;
     let w = a["writer"].as_str().unwrap().to_owned();
@@ -582,7 +582,7 @@ async fn a_resume_whose_caller_goes_away_mid_preparation_releases_the_hold() {
     up.set(move |req| {
         if req.path.ends_with("/listing") {
             (
-                Duration::from_secs(30),
+                Duration::from_millis(500),
                 reply("200 OK", r#"{"models":[]}"#).1,
             )
         } else {
@@ -621,7 +621,7 @@ async fn a_resume_whose_caller_goes_away_mid_preparation_releases_the_hold() {
     assert_eq!((s, v["busy"].as_bool()), (409, Some(true)));
     call.abort();
     let _ = call.await;
-    // The front notices the dropped future (its guard): the hold is free again.
+    // Remote settlement, rather than caller lifetime, releases the hold.
     let mut free = false;
     for _ in 0..100 {
         let (s, _) = store_at(
@@ -636,7 +636,7 @@ async fn a_resume_whose_caller_goes_away_mid_preparation_releases_the_hold() {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    assert!(free, "the preparation hold must not outlive its caller");
+    assert!(free, "terminal preparation did not release its hold");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -785,4 +785,42 @@ async fn dropped_cancel_caller_still_undoes_refused_abort() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     panic!("cancelled caller abandoned its abort request");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unknown_launch_retains_running_owner_and_shared_incident() {
+    let r = rig(None).await;
+    let a = r.attach().await;
+    let w = a["writer"].as_str().unwrap();
+    r.commit(w, 1, &interrupted(), &json!({})).await;
+    r.actor.lock().unwrap().launch = Mode::Down;
+    assert_eq!(r.post(RESUME, r#"{"confirmPause":true}"#).await.0, 503);
+    assert_eq!(r.disk()["job"]["status"], "running", "unknown is not refusal");
+    assert_eq!(store_at(r.f.store, "attach", &json!({"base":BASE,"available":true}).to_string()).await.0, 409);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cancelled_preparation_keeps_exclusion_until_remote_terminal_receipt() {
+    for stage in ["listing", "identities"] {
+        let r = rig(None).await;
+        let a = r.attach().await;
+        let w = a["writer"].as_str().unwrap();
+        r.commit(w, 1, &interrupted(), &json!({})).await;
+        let auto = Arc::clone(&r.f.app.config.autotune);
+        let facts = auto.call("resume/facts", &json!({})).await.unwrap();
+        let token = facts.1.get("token").as_str().unwrap().to_owned();
+        r.up.set(move |req| {
+            if req.path.ends_with("/outside") {
+                reply("200 OK", r#"{"revision":"r1","allowBelowQ5Kv":false,"models":{"m":{"configured":true,"system":false}}}"#)
+            } else { (Duration::from_millis(500), reply("200 OK", "{}").1) }
+        });
+        let worker = Arc::clone(&auto);
+        let caller = tokio::spawn(async move { worker.call("resume/prepare", &json!({"token":token,"stage":stage,"selectors":[]})).await });
+        r.up.wait_for(&format!("/internal/autotune-actor/{stage}"), 1).await;
+        caller.abort(); let _ = caller.await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(store_at(r.f.store, "start", &json!({"writer":w,"op":"begin"}).to_string()).await.0, 409, "caller drop released unsettled effect");
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        assert_eq!(store_at(r.f.store, "start", &json!({"writer":w,"op":"begin"}).to_string()).await.0, 200, "terminal receipt did not settle");
+    }
 }

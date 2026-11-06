@@ -29,6 +29,7 @@ const MAX_REPLY: usize = 8 * 1024 * 1024;
 pub struct Autotune {
     owner: Owner,
     research: Arc<Research>,
+    authority: crate::model_maint::lease::Authority,
 }
 
 impl std::fmt::Debug for Autotune {
@@ -78,10 +79,11 @@ impl Drop for PrepGuard {
 }
 
 impl Autotune {
-    pub fn new(dir: &Path, research: Arc<Research>) -> Self {
+    pub fn new(dir: &Path, research: Arc<Research>, authority: crate::model_maint::lease::Authority) -> Self {
         Self {
             owner: Owner::new(dir),
             research,
+            authority,
         }
     }
 
@@ -254,6 +256,14 @@ impl Autotune {
     }
 
     async fn resume_prepare(self: &Arc<Self>, ask: &JValue) -> Answer {
+        let me = Arc::clone(self);
+        let ask = ask.clone();
+        // Dropping the public caller never drops custody of an issued actor effect.
+        let task = tokio::spawn(async move { me.resume_prepare_owned(&ask).await });
+        tokio::time::timeout(PREPARE, task).await.ok().and_then(Result::ok).unwrap_or_else(unavailable)
+    }
+
+    async fn resume_prepare_owned(self: &Arc<Self>, ask: &JValue) -> Answer {
         if let Some(a) = self.gate() {
             return a;
         }
@@ -326,6 +336,13 @@ impl Autotune {
             }
         })
         .await;
+        // No authenticated terminal receipt: preserve the preparation hold and J's incident.
+        // A request deadline is not evidence that the remote reload stopped.
+        if !matches!(&gathered, Ok(Some((200, r))) if r.get("recoveryRequired").as_bool() != Some(true)) {
+            self.authority.require_recovery();
+            guard.disarm();
+            return unavailable();
+        }
         // `Err(true)`: the actor says the restored settings were not re-read yet; `Err(false)`: the
         // preparation went stale (timeout, or the actor saw its caller go away).
         let result = match gathered {
@@ -395,16 +412,18 @@ impl Autotune {
                 ("job", launch.job.clone()),
                 ("history", launch.history.clone()),
             ]);
-            let started = matches!(
-                self.actor("launch", body, LAUNCH).await,
-                Some((200, r)) if r.get("launched").as_bool() == Some(true)
-            );
-            if !started {
-                // No running job without a runner: the job stops, and the caller is told.
-                let _ = self
-                    .blocking(move |me| me.owner.launch_failed(&launch))
-                    .await;
-                return unavailable();
+            match self.actor("launch", body, LAUNCH).await {
+                Some((200, r)) if r.get("launched").as_bool() == Some(true) => {},
+                Some((200, r)) if r.get("launched").as_bool() == Some(false) => {
+                    let _ = self.blocking(move |me| me.owner.launch_failed(&launch)).await;
+                    return unavailable();
+                }
+                _ => {
+                    // Accepted but lost response is indistinguishable from undelivered. Keep the
+                    // running generation (which prevents actor replacement) and shared exclusion.
+                    self.authority.require_recovery();
+                    return unavailable();
+                }
             }
         } else {
             // A queue filter: the scan cache the old bridge cleared after any applied commit.
@@ -542,7 +561,7 @@ mod cancellation_tests {
                 ..Default::default()
             })
             .unwrap();
-            let auto = Arc::new(Autotune::new(d.path(), Arc::new(research)));
+            let auto = Arc::new(Autotune::new(d.path(), Arc::new(research), crate::model_maint::lease::Authority::new()));
             let attached = auto
                 .owner
                 .attach("native-autotune-0123456789abcdef.json", true)
