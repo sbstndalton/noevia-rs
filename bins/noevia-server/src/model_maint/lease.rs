@@ -514,7 +514,7 @@ impl Authority {
             .is_some_and(|e| now >= e.renewed_until || now >= e.hard_at);
         if gone {
             if let Some(e) = state.holder.take() {
-                if e.origin == Origin::Front {
+                if e.origin == Origin::Front || state.pending_operations {
                     state.recovery_required = true;
                     state.recovery_ticket.get_or_insert_with(|| e.id.clone());
                 }
@@ -524,7 +524,7 @@ impl Authority {
                     "was not renewed"
                 };
                 eprintln!(
-                    "[models] a maintenance lease ({}) {why}; chat and tuning may run again",
+                    "[models] a maintenance lease ({}) {why}; its execution coverage has ended",
                     e.reason
                 );
             }
@@ -577,6 +577,10 @@ impl Authority {
                 }
                 if freed {
                     state.holder = None;
+                    if state.pending_operations {
+                        state.recovery_required = true;
+                        state.recovery_ticket.get_or_insert_with(random_hex);
+                    }
                     eprintln!("[models] Node restarted; the maintenance lease its previous start held has ended");
                     let front_held = state.recovery_required;
                     drop(state);
@@ -1242,6 +1246,56 @@ mod tests {
             restarted.try_acquire(Origin::Front, None, "new work"),
             Err(Refusal::Busy)
         );
+    }
+
+    #[tokio::test]
+    async fn an_expired_node_publisher_cannot_admit_a_successor_before_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = Authority::with_timing(
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+            Duration::from_secs(2),
+        )
+        .with_publication(dir.path().join("authority.sqlite"))
+        .unwrap();
+        let origin = node(&a, "node", 1);
+        let grant = a.try_acquire(origin, None, "stream").unwrap();
+        let proof = a.begin_operation(&grant, "control", None).unwrap();
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert_eq!(
+            a.try_acquire(Origin::Front, None, "successor"),
+            Err(Refusal::Busy),
+            "expired publisher intent must become recovery before a new grant"
+        );
+        assert!(a.recovery_pending());
+        assert!(a.node_session("node", 1).unwrap().front_held);
+        assert_eq!(a.operation_status(&proof).unwrap().unwrap().state, "issued");
+    }
+    #[test]
+    fn a_restarted_node_publisher_registers_recovery_before_its_session_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = Authority::new()
+            .with_publication(dir.path().join("authority.sqlite"))
+            .unwrap();
+        let grant = a
+            .try_acquire(node(&a, "old", 1), None, "publisher")
+            .unwrap();
+        a.begin_operation(&grant, "pull", Some("revision")).unwrap();
+        let next = a.node_session("new", 2).unwrap();
+        assert!(
+            next.front_held,
+            "new Node must see the existing publication obligation immediately"
+        );
+        assert!(a
+            .try_acquire(
+                Origin::Node {
+                    incarnation: next.incarnation
+                },
+                None,
+                "successor"
+            )
+            .is_err());
+        assert!(a.recovery_pending());
     }
 
     #[test]

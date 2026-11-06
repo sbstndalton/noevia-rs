@@ -4286,6 +4286,15 @@ mod tests {
         released(&seen, "POST /v1/chat/completions").await;
         store.inject_run_write_error(true);
         w.cancel().unwrap();
+        // Cancellation first settles the actual engine stream. Start the retry observation
+        // only once terminal persistence is attempted; its backoff is a different phase.
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while store.run_write_failures().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("cancelled engine work reaches terminal persistence");
         tokio::time::timeout(Duration::from_secs(4), async {
             while store.run_write_failures().len() < 2 {
                 tokio::time::sleep(Duration::from_millis(5)).await;
@@ -4464,6 +4473,39 @@ mod tests {
         let job = settled(&w).await;
         assert_eq!(job.get("status").as_str(),Some("passed"),"every destructive request, including streamed generations, carries a current exact permit: {job:?}");
         delta_wait(|| !w.maint.local_held()).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_older_publication_journal_is_reconciled_under_a_fresh_covered_hold() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let publication = model_publication::lock_path(&ini).unwrap();
+        let old = rusqlite::Connection::open(&publication).unwrap();
+        old.execute_batch("CREATE TABLE preset_operations(id TEXT PRIMARY KEY,incarnation TEXT NOT NULL,lease TEXT NOT NULL,generation TEXT NOT NULL); INSERT INTO preset_operations VALUES('old-operation','old-front','old-grant','1')").unwrap();
+        drop(old);
+        let (port, _) = synthetic_engine_with(
+            ini.clone(),
+            Synth {
+                publication: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        let w = worker(d.path(), port);
+        assert!(w.maint.authority.recovery_pending());
+        let job = w
+            .maint
+            .spawn_preset_recovery()
+            .expect("older intent is a recovery obligation");
+        tokio::time::timeout(Duration::from_secs(10), job)
+            .await
+            .expect("fresh covered reread reconciles the migrated journal")
+            .unwrap();
+        assert!(!w.maint.authority.recovery_pending());
+        assert_eq!(std::fs::read_to_string(ini).unwrap(), INI);
+        let guard = model_publication::Guard::at(&publication).unwrap();
+        assert!(!guard.pending().unwrap());
     }
 
     #[tokio::test(flavor = "current_thread")]

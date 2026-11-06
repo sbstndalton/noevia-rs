@@ -373,6 +373,29 @@ async fn conditional_publication_checks_generation_at_loader_and_retains_a_query
         .await
         .unwrap();
     assert_eq!(response.status().as_u16(), 401);
+    let mut current = after;
+    for explicit_null in [false, true] {
+        let next = format!("{current}# legacy client\n");
+        let mut body = serde_json::json!({"baseRevision":format!("{:x}",Sha256::digest(current.as_bytes())),"text":next});
+        if explicit_null {
+            body["maintenance"] = Value::Null;
+        }
+        let response = reqwest::Client::new()
+            .put(format!("{url}/api/v1/models-ini"))
+            .header("x-model-loader-token", TOKEN)
+            .header("content-type", "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status().as_u16(),
+            200,
+            "legacy clients need no new metadata"
+        );
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), next);
+        current = next;
+    }
     server.abort();
     let _ = server.await;
 }

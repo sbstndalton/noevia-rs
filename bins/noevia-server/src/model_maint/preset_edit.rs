@@ -1088,7 +1088,8 @@ impl Maint {
                 kinds.iter().any(|k| {
                     !matches!(
                         k.as_str(),
-                        "preset-write"
+                        "legacy"
+                            | "preset-write"
                             | "restore"
                             | "reload"
                             | "reread"

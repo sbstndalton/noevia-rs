@@ -2025,6 +2025,7 @@ dependencies = [
  "regex",
  "reqwest",
  "research-core",
+ "rusqlite",
  "rustls",
  "s3-sign",
  "secret-envelope",
