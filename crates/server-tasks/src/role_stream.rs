@@ -5,7 +5,7 @@ use js_json::{wtf16, JValue};
 use std::{future::Future, pin::Pin};
 use tokio::sync::watch;
 pub type Wait<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     Aborted,
     Transport,
@@ -13,6 +13,9 @@ pub enum Error {
     ContextRefused,
     TooLarge,
     ContextInvalid,
+    ModelMismatch,
+    RouterUnavailable,
+    OverBudget(String),
 }
 pub trait Body: Send {
     fn next(&mut self) -> Wait<'_, Result<Option<Vec<u8>>, Error>>;
@@ -22,6 +25,9 @@ pub struct Response {
     pub body: Option<Box<dyn Body>>,
 }
 pub trait Transport: Send + Sync {
+    fn begin_attempt(&self, _cancel: watch::Receiver<bool>) -> Wait<'_, Result<(), Error>> {
+        Box::pin(async { Ok(()) })
+    }
     /// Dropping a send future or its body stops the engine request, including header waits.
     /// Residency/budget/machine identity must be confirmed continuously by the pinned transport.
     fn send(
@@ -263,6 +269,8 @@ pub async fn call(
                 ));
             }
         }
+        let forwarded = cancel.clone();
+        tokio::select! {biased;_=cancel.changed()=>return Err(Error::Aborted),ready=transport.begin_attempt(forwarded)=>ready?}
         let mut response = send(transport, effective, &mut cancel).await?;
         if constrained && matches!(response.status, 400 | 422 | 501) {
             let status = response.status;

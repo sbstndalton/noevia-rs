@@ -1,0 +1,133 @@
+[
+  {
+    "input": {},
+    "result": {
+      "ok": true,
+      "model": "synthetic",
+      "thinking": false,
+      "machine": null,
+      "roles": [
+        "planner"
+      ]
+    }
+  },
+  {
+    "input": {
+      "external": true
+    },
+    "result": {
+      "ok": false,
+      "code": "external",
+      "reason": "The task pipeline runs only on a local model."
+    }
+  },
+  {
+    "input": {
+      "configured": false
+    },
+    "result": {
+      "ok": false,
+      "code": "unavailable",
+      "reason": "No model is configured for the task pipeline."
+    }
+  },
+  {
+    "input": {
+      "loaded": [
+        "other"
+      ]
+    },
+    "result": {
+      "ok": false,
+      "code": "model_mismatch",
+      "reason": "A different model is loaded. The task was not started, because switching models would unload it."
+    }
+  },
+  {
+    "input": {
+      "model": null
+    },
+    "result": {
+      "ok": false,
+      "code": "no_model",
+      "reason": "No model is configured for the task pipeline."
+    }
+  },
+  {
+    "input": {
+      "model": null,
+      "loaded": [
+        "resident"
+      ]
+    },
+    "result": {
+      "ok": true,
+      "model": "resident",
+      "thinking": false,
+      "machine": null,
+      "roles": [
+        "planner"
+      ]
+    }
+  },
+  {
+    "input": {
+      "budget": "The model does not fit the inference memory budget."
+    },
+    "result": {
+      "ok": false,
+      "code": "over_budget",
+      "reason": "The model does not fit the inference memory budget."
+    }
+  },
+  {
+    "input": {
+      "machine": true,
+      "loaded": [
+        "other"
+      ],
+      "budget": "ignored local budget"
+    },
+    "result": {
+      "ok": true,
+      "model": "served",
+      "thinking": false,
+      "machine": "m|http://engine.invalid/v1|served",
+      "roles": [
+        "planner"
+      ]
+    }
+  },
+  {
+    "input": {
+      "machine": true,
+      "wanted": "other"
+    },
+    "result": {
+      "ok": false,
+      "code": "model_mismatch",
+      "reason": "This task names other, but the Code role runs served on Synthetic machine. One task runs on one model."
+    }
+  },
+  {
+    "input": {
+      "machine": true,
+      "ready": false
+    },
+    "result": {
+      "ok": false,
+      "code": "machineUnreachable",
+      "reason": "The Code role’s machine is unreachable."
+    }
+  },
+  {
+    "input": {
+      "task": ""
+    },
+    "result": {
+      "ok": false,
+      "code": "invalid",
+      "reason": "A task id is required to pin a model."
+    }
+  }
+]

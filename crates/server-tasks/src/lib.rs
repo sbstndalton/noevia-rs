@@ -498,3 +498,5 @@ pub mod role_prompt;
 pub mod role_stream;
 
 mod spawn_channel;
+
+pub mod role_pin;
