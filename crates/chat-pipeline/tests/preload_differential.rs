@@ -1,10 +1,11 @@
 //! chat-pipeline `preload` against core route-preload.cjs (#1863; tests/fixtures/record-preload.cjs).
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-use chat_pipeline::preload::{self as pl, Engine, Roles};
+use chat_pipeline::preload::{self as pl, Engine, LoadTask, Orphan, Roles};
 use js_json::{wtf16, JValue};
 use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::pin::pin;
+use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 fn arr(v: &JValue) -> &[JValue] {
@@ -60,6 +61,16 @@ fn preload_targets_match_node() {
     }
 }
 
+#[derive(Clone)]
+struct Done(bool);
+
+impl LoadTask for Done {
+    fn cancel(&self) {}
+    async fn settled(&self) -> bool {
+        self.0
+    }
+}
+
 struct Fake<'a> {
     k: &'a JValue,
     calls: RefCell<Vec<JValue>>,
@@ -69,6 +80,7 @@ struct Fake<'a> {
 }
 
 impl Engine for Fake<'_> {
+    type Load = Done;
     fn can_preload(&self) -> bool {
         self.k.get("kind").as_str() == Some("llamacpp")
     }
@@ -93,11 +105,10 @@ impl Engine for Fake<'_> {
             _ => None,
         }
     }
-    async fn load(&self, _: &str) -> bool {
+    fn begin_load(&self, _: &str) -> Done {
         self.calls.borrow_mut().push(JValue::Str("load".into()));
-        self.k.get("load").as_str() == Some("ok")
+        Done(self.k.get("load").as_str() == Some("ok"))
     }
-    fn cancel_load(&self) {}
     async fn unload(&self, _: &str) -> Option<bool> {
         match self.k.get("unload").as_str() {
             Some("none") => None,
@@ -114,6 +125,9 @@ impl Engine for Fake<'_> {
         false
     }
     fn log(&self, _: String) {}
+    fn adopt(&self, _: Orphan<Done>) {
+        panic!("the oracle never drops a release");
+    }
 }
 
 #[test]
@@ -144,11 +158,11 @@ fn preload_starts_and_releases_match_node() {
             if k.get("used") == &JValue::Bool(true) {
                 pre.use_it();
             }
-            let settled = block(pre.run(&e));
+            let settled = block(pre.run());
             assert_eq!(Some(settled), k.get("settled").as_bool(), "settled {i}");
             if k.get("release") == &JValue::Bool(true) {
                 let idle = k.get("idle") == &JValue::Bool(true);
-                let released = block(pre.release_if_unused(&e, &|| idle));
+                let released = block(pre.release_if_unused(&|| idle));
                 assert_eq!(
                     Some(released),
                     k.get("released").as_bool(),
@@ -164,51 +178,179 @@ fn preload_starts_and_releases_match_node() {
     }
 }
 
-/// Exclusion-settle: a release dropped while it waits for the cancelled load reads nothing and unloads nothing.
-#[test]
-fn a_release_dropped_before_the_load_settled_unloads_nothing() {
-    struct Pending(RefCell<Vec<&'static str>>);
-    impl Engine for Pending {
-        fn can_preload(&self) -> bool {
-            true
-        }
-        fn busy(&self) -> bool {
-            false
-        }
-        fn aborted(&self) -> bool {
-            false
-        }
-        async fn list_models(&self) -> Option<Vec<JValue>> {
-            self.0.borrow_mut().push("list");
-            wtf16::parse(r#"[{"id":"m-a","status":{"value":"unloaded"}}]"#)
-                .ok()
-                .map(|v| arr(&v).to_vec())
-        }
-        async fn load(&self, _: &str) -> bool {
-            self.0.borrow_mut().push("load");
-            std::future::pending::<()>().await;
-            true
-        }
-        fn cancel_load(&self) {
-            self.0.borrow_mut().push("cancel");
-        }
-        async fn unload(&self, _: &str) -> Option<bool> {
-            self.0.borrow_mut().push("unload");
-            Some(true)
-        }
-        async fn sleep(&self) {}
-        fn past_wait(&self) -> bool {
-            false
-        }
-        fn log(&self, _: String) {}
+/// A load the test settles by hand; its cancel answers at once but the load stays outstanding.
+#[derive(Clone)]
+struct Held(Rc<Cell<Option<bool>>>, Rc<RefCell<Vec<&'static str>>>);
+
+impl LoadTask for Held {
+    fn cancel(&self) {
+        self.1.borrow_mut().push("cancel");
     }
-    let e = Pending(RefCell::new(Vec::new()));
+    async fn settled(&self) -> bool {
+        std::future::poll_fn(|_| match self.0.get() {
+            Some(v) => Poll::Ready(v),
+            None => Poll::Pending,
+        })
+        .await
+    }
+}
+
+struct Ctl {
+    ev: Rc<RefCell<Vec<&'static str>>>,
+    outcome: Rc<Cell<Option<bool>>>,
+    hold: Cell<Option<&'static str>>,
+    adopted: RefCell<Vec<Orphan<Held>>>,
+    listed: Cell<u32>,
+}
+
+impl Ctl {
+    fn new() -> Self {
+        Ctl {
+            ev: Rc::default(),
+            outcome: Rc::default(),
+            hold: Cell::new(None),
+            adopted: RefCell::default(),
+            listed: Cell::new(0),
+        }
+    }
+    async fn at(&self, step: &'static str) {
+        std::future::poll_fn(|_| {
+            if self.hold.get() == Some(step) {
+                Poll::Pending
+            } else {
+                Poll::Ready(())
+            }
+        })
+        .await;
+        self.ev.borrow_mut().push(step);
+    }
+    fn settle(&self) {
+        self.ev.borrow_mut().push("settled");
+        self.outcome.set(Some(true));
+    }
+    fn count(&self, e: &str) -> usize {
+        self.ev.borrow().iter().filter(|x| **x == e).count()
+    }
+    fn index(&self, e: &str) -> Option<usize> {
+        self.ev.borrow().iter().position(|x| *x == e)
+    }
+}
+
+impl Engine for Ctl {
+    type Load = Held;
+    fn can_preload(&self) -> bool {
+        true
+    }
+    fn busy(&self) -> bool {
+        false
+    }
+    fn aborted(&self) -> bool {
+        false
+    }
+    async fn list_models(&self) -> Option<Vec<JValue>> {
+        let first = self.listed.get() == 0;
+        self.listed.set(self.listed.get() + 1);
+        if !first {
+            self.at("list").await;
+        }
+        let st = if first { "unloaded" } else { "loaded" };
+        wtf16::parse(&format!(r#"[{{"id":"m-a","status":{{"value":"{st}"}}}}]"#))
+            .ok()
+            .map(|v| arr(&v).to_vec())
+    }
+    fn begin_load(&self, _: &str) -> Held {
+        self.ev.borrow_mut().push("load");
+        Held(Rc::clone(&self.outcome), Rc::clone(&self.ev))
+    }
+    async fn unload(&self, _: &str) -> Option<bool> {
+        self.at("unload").await;
+        Some(true)
+    }
+    async fn sleep(&self) {
+        self.at("sleep").await;
+    }
+    fn past_wait(&self) -> bool {
+        false
+    }
+    fn log(&self, _: String) {}
+    fn adopt(&self, orphan: Orphan<Held>) {
+        self.adopted.borrow_mut().push(orphan);
+    }
+}
+
+fn poll<F: Future + ?Sized>(f: std::pin::Pin<&mut F>) -> Poll<F::Output> {
+    f.poll(&mut Context::from_waker(Waker::noop()))
+}
+
+/// Two `run` waiters and a release at once share the one load; nothing is unloaded before it settles.
+#[test]
+fn concurrent_runs_and_release_share_one_load() {
+    let e = Ctl::new();
+    let pre = block(pl::start(&e, "m-a")).expect("started");
+    let mut a = pin!(pre.run());
+    let mut b = pin!(pre.run());
+    let mut r = pin!(pre.release_if_unused(&|| true));
+    assert!(poll(a.as_mut()).is_pending());
+    assert!(poll(b.as_mut()).is_pending());
+    assert!(poll(r.as_mut()).is_pending(), "the cancel answered but the load is outstanding");
+    assert!(poll(r.as_mut()).is_pending());
+    assert_eq!(e.count("load"), 1);
+    assert_eq!(e.count("unload"), 0);
+    assert_eq!(e.count("list"), 0, "nothing read before settlement");
+    e.settle();
+    assert_eq!(poll(r.as_mut()), Poll::Ready(true));
+    assert_eq!(poll(a.as_mut()), Poll::Ready(true));
+    assert_eq!(poll(b.as_mut()), Poll::Ready(true));
+    assert_eq!(e.count("load"), 1);
+    assert_eq!(e.count("unload"), 1);
+    assert!(e.index("settled") < e.index("unload"));
+    assert!(e.adopted.borrow().is_empty());
+}
+
+/// A release dropped at each of its awaits hands its cleanup to the settle owner, which finishes it after the
+/// one load settles: no second load, no unload before settlement.
+#[test]
+fn a_release_dropped_at_any_await_is_finished_by_the_settle_owner() {
+    for step in ["settled", "sleep", "list", "unload"] {
+        let e = Ctl::new();
+        let pre = block(pl::start(&e, "m-a")).expect("started");
+        if step != "settled" {
+            e.settle();
+            e.hold.set(Some(step));
+        }
+        {
+            let mut r = pin!(pre.release_if_unused(&|| true));
+            assert!(poll(r.as_mut()).is_pending(), "{step}");
+        }
+        assert_eq!(e.adopted.borrow().len(), 1, "{step}: cleanup adopted");
+        assert!(!block(pre.release_if_unused(&|| true)), "{step}: retry defers to the owner");
+        let orphan = e.adopted.borrow_mut().pop().expect("orphan");
+        let mut o = pin!(pl::settle_orphan(&e, orphan, &|| true));
+        if step == "settled" {
+            assert!(poll(o.as_mut()).is_pending());
+            assert_eq!(e.count("unload"), 0, "nothing unloaded before the load settles");
+            e.settle();
+        }
+        e.hold.set(None);
+        assert_eq!(poll(o.as_mut()), Poll::Ready(true), "{step}");
+        assert_eq!(e.count("load"), 1, "{step}: one load");
+        assert_eq!(e.count("unload"), 1, "{step}: cleaned up");
+        assert!(e.index("settled") < e.index("unload"), "{step}");
+    }
+}
+
+/// A pre-load the turn used is never unloaded by an adopted release.
+#[test]
+fn an_orphan_of_a_used_preload_unloads_nothing() {
+    let e = Ctl::new();
     let pre = block(pl::start(&e, "m-a")).expect("started");
     {
-        let mut f = pin!(pre.release_if_unused(&e, &|| true));
-        let mut cx = Context::from_waker(Waker::noop());
-        assert!(f.as_mut().poll(&mut cx).is_pending());
+        let mut r = pin!(pre.release_if_unused(&|| true));
+        assert!(poll(r.as_mut()).is_pending());
     }
-    assert_eq!(*e.0.borrow(), vec!["list", "cancel", "load"]);
-    assert!(pre.pending(), "the load never settled");
+    pre.use_it();
+    e.settle();
+    let orphan = e.adopted.borrow_mut().pop().expect("orphan");
+    assert!(!block(pl::settle_orphan(&e, orphan, &|| true)));
+    assert_eq!(e.count("unload"), 0);
 }
