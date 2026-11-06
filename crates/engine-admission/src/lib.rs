@@ -136,6 +136,48 @@ impl Admission {
         &self.authority
     }
 
+    /// Code's early pause check, through the same producer fence. This creates no lease,
+    /// loads nothing, and cannot substitute for the late maintenance permit at execution.
+    pub async fn maintenance_paused(&self, cancel: &Cancel) -> Result<bool, Refused> {
+        let session = self
+            .authority
+            .current_session()
+            .ok_or_else(Refused::unavailable)?;
+        let token = self.token.clone().ok_or_else(Refused::unavailable)?;
+        let request = self
+            .client
+            .get(format!("{}{PATH}/maintenance", self.base))
+            .header(HeaderName::from_static(TOKEN_HEADER), token)
+            .header(HeaderName::from_static(EPOCH_HEADER), &session.epoch)
+            .header(
+                HeaderName::from_static(INCARNATION_HEADER),
+                session.incarnation.to_string(),
+            )
+            .timeout(CALL_TIMEOUT);
+        let mut response = tokio::select! {biased;_=cancel.cancelled()=>return Err(cancelled()),result=request.send()=>result.map_err(|_|Refused::unavailable())?};
+        if response.status().as_u16() != 200 {
+            return Err(Refused::unavailable());
+        }
+        let mut bytes = vec![];
+        loop {
+            let chunk = tokio::select! {biased;_=cancel.cancelled()=>return Err(cancelled()),result=response.chunk()=>result.map_err(|_|Refused::unavailable())?};
+            let Some(chunk) = chunk else {
+                break;
+            };
+            if bytes.len() + chunk.len() > 4096 {
+                return Err(Refused::unavailable());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        if self.authority.current_session().as_ref() != Some(&session) {
+            return Err(Refused::unavailable());
+        }
+        let body: Value = serde_json::from_slice(&bytes).map_err(|_| Refused::unavailable())?;
+        body.get("paused")
+            .and_then(Value::as_bool)
+            .ok_or_else(Refused::unavailable)
+    }
+
     fn request(
         &self,
         method: reqwest::Method,
@@ -478,6 +520,7 @@ mod tests {
         seen: Mutex<Vec<String>>,
         renew_status: Mutex<u16>,
         asks: Mutex<Vec<String>>,
+        paused: Mutex<Option<bool>>,
         /// `None`: echo the ticket id; `Some`: this lease id instead.
         echo: Mutex<Option<String>>,
         /// Never answer a PUT (a wait that does not end).
@@ -501,6 +544,7 @@ mod tests {
             seen: Mutex::default(),
             renew_status: Mutex::new(200),
             asks: Mutex::default(),
+            paused: Mutex::new(Some(false)),
             echo: Mutex::new(None),
             stall,
         });
@@ -536,7 +580,17 @@ mod tests {
                         .find(|p| p.len() == 32)
                         .unwrap_or("")
                         .to_owned();
-                    let (status, body) = if first.starts_with("POST") && first.contains("/renew") {
+                    let (status, body) = if first.starts_with("GET")
+                        && path.ends_with("/maintenance")
+                    {
+                        (
+                            200,
+                            match *st.paused.lock().unwrap() {
+                                Some(paused) => json!({"paused":paused}).to_string(),
+                                None => json!({"error":"reflected synthetic-token"}).to_string(),
+                            },
+                        )
+                    } else if first.starts_with("POST") && first.contains("/renew") {
                         (*st.renew_status.lock().unwrap(), "{}".to_owned())
                     } else if first.starts_with("PUT") {
                         if st.stall {
@@ -947,5 +1001,26 @@ mod tests {
             .unwrap();
         assert!(!task.covered());
         task.release().await;
+    }
+    #[tokio::test]
+    async fn pause_snapshot_is_fenced_read_only_and_strictly_typed() {
+        let (base, node) = node((201, GRANT.into())).await;
+        let authority = registered();
+        let admission = admission_with(&base, &authority);
+        assert!(!admission.maintenance_paused(&Cancel::new()).await.unwrap());
+        assert_eq!(authority.held(), 0);
+        *node.paused.lock().unwrap() = Some(true);
+        assert!(admission.maintenance_paused(&Cancel::new()).await.unwrap());
+        assert_eq!(authority.held(), 0);
+        *node.paused.lock().unwrap() = None;
+        assert_eq!(
+            admission.maintenance_paused(&Cancel::new()).await.err(),
+            Some(Refused::unavailable())
+        );
+        let unregistered = admission_with(&base, &Authority::new());
+        assert!(unregistered
+            .maintenance_paused(&Cancel::new())
+            .await
+            .is_err());
     }
 }

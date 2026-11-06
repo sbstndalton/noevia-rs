@@ -190,6 +190,15 @@ impl Authority {
         })
     }
 
+    /// Current producer fence for read-only admission snapshots; issuing a ticket is unnecessary.
+    pub fn current_session(&self) -> Option<Session> {
+        let state = self.lock();
+        Some(Session {
+            epoch: self.inner.epoch.clone(),
+            incarnation: state.node.as_ref()?.incarnation,
+        })
+    }
+
     /// Issues a lease id bound to the active Node start. `None` without one: admission fails closed.
     pub fn issue(&self) -> Option<Ticket> {
         let now = Instant::now();
