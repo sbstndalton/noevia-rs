@@ -65,7 +65,7 @@ pub fn tool_cap_for(model: &str) -> usize {
 /// `toolTokenBudgetFor(model, scope)`: `measured` is `prefill.budgetFor(...)` (falsy: not measured yet).
 pub fn tool_token_budget_for(model: &str, measured: Option<f64>) -> f64 {
     match measured {
-        Some(m) if m != 0.0 && !m.is_nan() => m.min(16000.0).max(1500.0),
+        Some(m) if m != 0.0 && !m.is_nan() => m.clamp(1500.0, 16000.0),
         _ if small_model(model) => TOOL_TOKEN_BUDGET_SMALL,
         _ => TOOL_TOKEN_BUDGET_DEFAULT,
     }
@@ -324,13 +324,8 @@ pub fn request_toolboxes(r: &Request<'_>, automatic_added: &[String]) -> Vec<Str
             selected.remove(k);
         }
     }
-    let mut k = selected.len();
-    while k > 0 {
-        k -= 1;
-        if r.oauth.contains(&selected[k]) && !(r.account_ready)(&selected[k]) {
-            selected.remove(k);
-        }
-    }
+    // Node asks back to front; `accountReady` is a pure read, so the order does not show.
+    selected.retain(|id| !r.oauth.contains(id) || (r.account_ready)(id));
     selected
 }
 

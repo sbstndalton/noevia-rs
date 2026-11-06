@@ -193,6 +193,13 @@ fn tool_selection_matches_node() {
                 "tools {i}: {k:?} {:?}",
                 r.dropped
             );
+            if up.get("names") == &JValue::Null {
+                // No tools: the request carries no `tools` key.
+                assert!(names.is_empty(), "tools {i}");
+                checked.0 += 1;
+                checked.1 += 1;
+                continue;
+            }
             if Some(sha(&active).as_str()) != up.get("toolsSha").as_str() {
                 let _ = std::fs::write(
                     std::env::temp_dir().join("select-diff.txt"),
