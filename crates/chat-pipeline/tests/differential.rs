@@ -1862,8 +1862,16 @@ mod finish_stage {
                 };
                 let mut busy = || t.get("busy") == &JValue::Bool(true);
                 let ask = title::title_ask(&turn, &mut attempts, &mut auto_named, &mut busy);
-                same(&ask.is_some(), &matches!(got.get("titleAsked"), JValue::Obj(_)), &format!("asked {what} got {}", wtf16::stringify(got).unwrap()));
-                same(&named_asked, &matches!(got.get("autoNamedAsked"), JValue::Arr(_)), &format!("autoNamed {what} got {}", wtf16::stringify(got).unwrap()));
+                same(
+                    &ask.is_some(),
+                    &matches!(got.get("titleAsked"), JValue::Obj(_)),
+                    &format!("asked {what} got {}", wtf16::stringify(got).unwrap()),
+                );
+                same(
+                    &named_asked,
+                    &matches!(got.get("autoNamedAsked"), JValue::Arr(_)),
+                    &format!("autoNamed {what} got {}", wtf16::stringify(got).unwrap()),
+                );
                 let made = ask.as_ref().and_then(|_| match t.get("title") {
                     JValue::Str(e) if e == "error" => None,
                     v => title::clean_title(v),

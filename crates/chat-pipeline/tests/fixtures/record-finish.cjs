@@ -13,6 +13,7 @@ const S = (m) => require(path.join(core, 'server', m));
 const { createChatHandler } = S('chat.cjs');
 const { createToolExchange } = S('tool-exchange.cjs');
 const { createVisionProbe } = S('vision.cjs');
+const { TITLE_SYSTEM } = S('chat-title.cjs');
 let seed = 59;
 const rnd = (n) => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return (seed >>> 16) % n; };
 const pick = (xs) => xs[rnd(xs.length)];
@@ -35,6 +36,12 @@ async function run(sc) {
     const sse = (objs) => ({ ok: true, status: 200, headers: new Map(), body: (async function* () { for (const o of objs) yield Buffer.from(`data: ${JSON.stringify(o)}\n\n`); yield Buffer.from('data: [DONE]\n\n'); })() });
     const fetch = async (url, init) => {
       const body = JSON.parse(init.body);
+      if (!body.stream && body.messages?.[0]?.content !== TITLE_SYSTEM) {
+        // The round's non-streamed retry (an empty answer): it answers nothing either.
+        turn.retried = true;
+        return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: cur.answer } }] }), headers: new Map([['content-type', 'application/json']]),
+          text: async () => JSON.stringify({ choices: [{ message: { content: cur.answer } }] }) };
+      }
       if (!body.stream) {
         turn.titleAsked = { url: String(url), model: body.model, temperature: body.temperature };
         if (cur.title === 'error') return { ok: false, status: 500, json: async () => ({}) };
