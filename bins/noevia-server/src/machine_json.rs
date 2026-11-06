@@ -15,15 +15,15 @@ use serde_json::{Map, Value};
 const ESC: char = '\u{e000}';
 /// Container levels built as real `Value` nodes; deeper subtrees collapse to a stand-in.
 const BUILD_DEPTH: usize = 32;
-/// Nested arrays `String()` follows before V8 throws RangeError. V8's limit is a stack budget,
-/// not a constant: measured on the production web image's Node (v22.23.3, V8 12.4, linux x64,
-/// default stack, no flags) through the reference route, the largest nesting that still saves
-/// is 3141 when the route is called directly, 3085 behind a real HTTP request, and 3142 for a
-/// bare coercion in a fresh callback; every context throws at 3143. The cutoff is the most
-/// permissive of those contexts, so nothing Node saves is refused here; between 3086 and 3142
-/// the answer is context dependent in Node and accepted here. (The same search on an arm64 Mac
-/// gives 2520..2626: frame sizes are architecture specific, so the web image decides.)
-pub(super) const NODE_ARRAY_NESTING: usize = 3142;
+/// Explicit compatibility exception: deterministic first-refused array-coercion depth.
+/// V8's recursion budget depends on stack context; no single number faithfully models it.
+/// Pinned Linux x64 web-image qualification (Node v22.23.3, V8 12.4.254.21-node.57,
+/// default stack/flags) uses the preserved add route behind real loopback HTTP and production
+/// `server/http.cjs` async-iterator readJson. Two cold and two warm searches all first refused
+/// depth 3086. Rust deliberately refuses at or above the lowest observed boundary, with the
+/// Node 500 body and no registry write, even if another V8 stack context would accept it.
+/// See contracts/http/README.md and deploy/tools/qualify-machines-depth.sh in the release repo.
+pub(super) const ARRAY_COERCION_REFUSAL_DEPTH: usize = 3086;
 // Keys start with the escape character, which an external key can never do (string() doubles it).
 const STAND_ARRAY: &str = "\u{e000}C";
 const STAND_HEIGHT: &str = "\u{e000}H";

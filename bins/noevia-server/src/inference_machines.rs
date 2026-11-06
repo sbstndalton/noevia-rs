@@ -545,15 +545,15 @@ pub fn encode_json(value: &Value) -> String {
     crate::machine_json::encode(value)
 }
 /// `String(value)` for a decoded request or saved field, with JavaScript's failures: an object
-/// with an own (non-callable) `toString` has no primitive form (TypeError), and V8 gives up on
-/// arrays nested more than `NODE_ARRAY_NESTING` deep (RangeError). Both are a 500 refusal, as the
+/// with an own (non-callable) `toString` has no primitive form (TypeError), and the explicit compatibility exception
+/// refuses arrays at or above `ARRAY_COERCION_REFUSAL_DEPTH` (Node RangeError classification). Both are a 500 refusal, as the
 /// route's catch-all gives them. Recursion only follows the built part of the tree (a few dozen
 /// levels); deeper subtrees were reduced to their coercion result when the JSON was read.
 pub fn coerce(v: &Value) -> Result<String, Refusal> {
     coerce_level(v, 1)
 }
 fn coerce_level(v: &Value, level: usize) -> Result<String, Refusal> {
-    use crate::machine_json::{stand_in, StandIn, NODE_ARRAY_NESTING};
+    use crate::machine_json::{stand_in, StandIn, ARRAY_COERCION_REFUSAL_DEPTH};
     let refused = || {
         Refusal(
             500,
@@ -574,7 +574,7 @@ fn coerce_level(v: &Value, level: usize) -> Result<String, Refusal> {
             height,
             throws,
         }) => {
-            return if throws || level - 1 + height > NODE_ARRAY_NESTING {
+            return if throws || level - 1 + height >= ARRAY_COERCION_REFUSAL_DEPTH {
                 Err(refused())
             } else {
                 Ok(text.into())
@@ -596,7 +596,9 @@ fn coerce_level(v: &Value, level: usize) -> Result<String, Refusal> {
         Value::Bool(b) => b.to_string(),
         Value::Object(o) if o.contains_key("toString") => return Err(refused()),
         Value::Object(_) => "[object Object]".into(),
-        Value::Array(_) if level > crate::machine_json::NODE_ARRAY_NESTING => return Err(refused()),
+        Value::Array(_) if level >= crate::machine_json::ARRAY_COERCION_REFUSAL_DEPTH => {
+            return Err(refused())
+        }
         Value::Array(a) => a
             .iter()
             .map(|item| match item {

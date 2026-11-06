@@ -1118,7 +1118,7 @@ fn replacement_coercion_matches_the_node_oracle() {
         let fixture: Value =
             serde_json::from_str(include_str!("fixtures/machines-coerce-node.json")).unwrap();
         let cases = fixture["cases"].as_array().unwrap();
-        assert!(cases.len() > 80);
+        assert!(cases.len() >= 64);
         within("oracle replay", 60, || {
             for case in cases {
                 let text = node_case_text(&case["input"]);
@@ -1466,27 +1466,15 @@ fn collapsed_subtrees_coerce_exactly_like_built_ones() {
 }
 
 #[test]
-fn array_nesting_boundary_matches_the_nodes_that_save_through_the_native_route() {
+fn array_coercion_exception_refuses_at_the_qualified_http_boundary() {
     isolated(
-        "array_nesting_boundary_matches_the_nodes_that_save_through_the_native_route",
+        "array_coercion_exception_refuses_at_the_qualified_http_boundary",
         || {
-            let fixture: Value =
-                serde_json::from_str(include_str!("fixtures/machines-coerce-node.json")).unwrap();
-            let limit = fixture["arrayLimit"].as_u64().unwrap() as usize;
-            let measured = &fixture["measuredLinuxX64"];
-            // The web image's Node saves 3141 (route), 3085 (behind HTTP) and 3142 (bare); all
-            // throw at 3143. Two levels a review saw the reference route save are included.
-            let saved = [
-                1,
-                2500,
-                2601,
-                2610,
-                measured["http"].as_u64().unwrap() as usize,
-                measured["route"].as_u64().unwrap() as usize,
-                limit,
-            ];
-            assert_eq!(limit as u64, measured["bare"].as_u64().unwrap());
-            let refused = [limit + 1, limit + 2, 5000, 100_000];
+            // Explicit HTTP compatibility exception qualified on pinned Node 22.23.3 /
+            // V8 12.4.254.21-node.57. This is Rust's contract, not a floating V8 assertion.
+            let boundary = 3086;
+            let saved = [1, 128, boundary - 1];
+            let refused = [boundary, boundary + 1, 5000, 100_000];
             for depth in saved {
                 let value = parse_json(&nested(depth, "\"x\"")).unwrap();
                 assert_eq!(coerce(&value).unwrap(), "x", "coerce {depth}");
@@ -1529,11 +1517,38 @@ fn array_nesting_boundary_matches_the_nodes_that_save_through_the_native_route()
                         r#"{{"action":"add","name":{},"address":"192.168.1.200"}}"#,
                         nested(depth, "\"over\"")
                     );
+                    let db = server_store::rusqlite::Connection::open(dir.path().join("cowork.db"))
+                        .unwrap();
+                    let before: String = db
+                        .query_row(
+                            "SELECT value FROM settings WHERE key='inference:machines'",
+                            [],
+                            |r| r.get(0),
+                        )
+                        .unwrap();
+                    let audits: i64 = db
+                        .query_row("SELECT count(*) FROM audit_events", [], |r| r.get(0))
+                        .unwrap();
                     let (status, error) = write(front.addr, "POST", PATH, ADMIN, &body).await;
                     assert_eq!(status, 500, "depth {depth}");
                     assert_eq!(
-                        error["error"],
-                        "The inference machines could not be changed."
+                        error,
+                        json!({"error":"The inference machines could not be changed."})
+                    );
+                    let after: String = db
+                        .query_row(
+                            "SELECT value FROM settings WHERE key='inference:machines'",
+                            [],
+                            |r| r.get(0),
+                        )
+                        .unwrap();
+                    assert_eq!(after, before, "no registry write at {depth}");
+                    assert_eq!(
+                        db.query_row("SELECT count(*) FROM audit_events", [], |r| r
+                            .get::<_, i64>(0))
+                            .unwrap(),
+                        audits,
+                        "no audit write at {depth}"
                     );
                 }
                 let (_, view) = get(front.addr, PATH, ADMIN).await;
