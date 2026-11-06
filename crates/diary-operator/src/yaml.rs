@@ -33,7 +33,7 @@ fn implicit(s: &str) -> &'static str {
         "int"
     } else if matches(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$", s)
         || matches(
-            r"^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:[Tt]|[ \t]+)[0-9]{1,2}:[0-9]{2}:[0-9]{2}",
+            r"^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}(?:[Tt]|[ \t]+)[0-9]{1,2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]*)?(?:[ \t]*(?:Z|[-+][0-9]{1,2}(?::[0-9]{2})?))?$",
             s,
         )
     {
@@ -70,8 +70,21 @@ fn scalar(s: &str, tag: &str) -> Result<Value> {
             if digits.contains(':') {
                 let mut total = BigInt::from(0);
                 for part in digits.split(':') {
-                    let value = BigInt::parse_bytes(part.as_bytes(), 10)
-                        .ok_or("ValueError: invalid integer")?;
+                    let parsed = integer(part.trim(), 10).map_err(|e| {
+                        if e.starts_with("ValueError: Exceeds") {
+                            e
+                        } else {
+                            format!(
+                                "ValueError: invalid literal for int() with base 10: {}",
+                                repr(part)
+                            )
+                        }
+                    })?;
+                    let Kind::Int(parsed) = parsed.kind() else {
+                        return Err("integer construction failed".into());
+                    };
+                    let value = BigInt::parse_bytes(parsed.as_bytes(), 10)
+                        .ok_or("integer construction failed")?;
                     total = total * 60 + value;
                 }
                 if sign == "-" {
@@ -100,9 +113,12 @@ fn scalar(s: &str, tag: &str) -> Result<Value> {
                         let minus = s.starts_with('-');
                         for part in s.trim_start_matches(['-', '+']).split(':') {
                             n = n * 60.0
-                                + part
-                                    .parse::<f64>()
-                                    .map_err(|_| "ValueError: invalid float")?;
+                                + part.trim().parse::<f64>().map_err(|_| {
+                                    format!(
+                                        "ValueError: could not convert string to float: {}",
+                                        repr(part)
+                                    )
+                                })?;
                         }
                         if minus {
                             -n
@@ -127,7 +143,7 @@ fn scalar(s: &str, tag: &str) -> Result<Value> {
     })
 }
 fn timestamp(s: &str) -> Result<Value> {
-    let regex=Regex::new(r"^(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})(?:(?:[Tt]|[ \t]+)(?P<hour>[0-9]{1,2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})(?:\.[0-9]*)?(?:[ \t]*(?:Z|[-+][0-9]{1,2}(?::[0-9]{2})?))?)?$").map_err(|_|"timestamp schema")?;
+    let regex=Regex::new(r"^(?P<year>[0-9]{4})-(?P<month>[0-9]{1,2})-(?P<day>[0-9]{1,2})(?:(?:[Tt]|[ \t]+)(?P<hour>[0-9]{1,2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})(?:\.[0-9]*)?(?:[ \t]*(?:Z|(?P<tzsign>[-+])(?P<tzhour>[0-9]{1,2})(?::(?P<tzminute>[0-9]{2}))?))?)?$").map_err(|_|"timestamp schema")?;
     let parts = regex
         .captures(s)
         .ok_or("AttributeError: 'NoneType' object has no attribute 'groupdict'")?;
@@ -163,6 +179,24 @@ fn timestamp(s: &str) -> Result<Value> {
     for (key, max) in [("hour", 23), ("minute", 59), ("second", 59)] {
         if n(key) > max {
             return Err(format!("ValueError: {key} must be in 0..{max}"));
+        }
+    }
+    if parts.name("tzsign").is_some() {
+        let sign = if parts.name("tzsign").is_some_and(|m| m.as_str() == "-") {
+            -1i64
+        } else {
+            1
+        };
+        let minutes = sign * (i64::from(n("tzhour")) * 60 + i64::from(n("tzminute")));
+        if minutes.abs() >= 1440 {
+            let days = minutes.div_euclid(1440);
+            let seconds = minutes.rem_euclid(1440) * 60;
+            let detail = if seconds == 0 {
+                format!("days={days}")
+            } else {
+                format!("days={days}, seconds={seconds}")
+            };
+            return Err(format!("ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not datetime.timedelta({detail})."));
         }
     }
     Ok(Value::new(Kind::Unsupported(
@@ -257,14 +291,30 @@ impl Reader<'_> {
             .bytes()
             .filter(|c| c.is_ascii_alphanumeric() || b"+/=".contains(c))
             .collect::<Vec<_>>();
-        let n = data.iter().take_while(|c| **c != b'=').count();
-        let pads = data.iter().skip(n).take_while(|c| **c == b'=').count();
-        let error = if n % 4 == 1 {
-            Some(format!("Invalid base64-encoded string: number of data characters ({n}) cannot be 1 more than a multiple of 4"))
-        } else if (n % 4 == 2 && pads < 2) || (n % 4 == 3 && pads < 1) {
-            Some("Incorrect padding".into())
-        } else {
+        // Match binascii's non-strict quantum and padding validation.
+        let mut position = 0usize;
+        let mut pads = 0usize;
+        let mut count = 0usize;
+        let mut complete = false;
+        for c in data {
+            if c == b'=' {
+                pads += 1;
+                if position >= 2 && position + pads >= 4 {
+                    complete = true;
+                    break;
+                }
+            } else {
+                pads = 0;
+                count += 1;
+                position = (position + 1) % 4;
+            }
+        }
+        let error = if complete || position == 0 {
             None
+        } else if position == 1 {
+            Some(format!("Invalid base64-encoded string: number of data characters ({count}) cannot be 1 more than a multiple of 4"))
+        } else {
+            Some("Incorrect padding".into())
         };
         if let Some(e) = error {
             return Err(format!(

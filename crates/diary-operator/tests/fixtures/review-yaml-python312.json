@@ -1,5 +1,61 @@
 [
   {
+    "case": "timezone-plus",
+    "input_hex": "783a20212174696d657374616d7020323032362d30312d30325430333a30343a30352b32343a30300a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not datetime.timedelta(days=1).\n"
+  },
+  {
+    "case": "timezone-minus",
+    "input_hex": "783a20212174696d657374616d7020323032362d30312d30325430333a30343a30352d32353a30300a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not datetime.timedelta(days=-2, seconds=82800).\n"
+  },
+  {
+    "case": "timestamp-trailing",
+    "input_hex": "783a20323032362d30312d30325430333a30343a3035676172626167650a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"2026-01-02T03:04:05garbage\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "binary-stray-padding",
+    "input_hex": "783a20212162696e61727920593d574a6a0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "TypeError: Object of type bytes is not JSON serializable\n"
+  },
+  {
+    "case": "int-part-invalid",
+    "input_hex": "783a202121696e7420313a6f6f70730a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: invalid literal for int() with base 10: 'oops'\n"
+  },
+  {
+    "case": "float-part-invalid",
+    "input_hex": "783a202121666c6f617420313a6f6f70730a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: could not convert string to float: 'oops'\n"
+  },
+  {
+    "case": "int-part-spaces",
+    "input_hex": "783a202121696e742022313a2032220a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": 62\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "float-part-spaces",
+    "input_hex": "783a202121666c6f61742022313a20322e35220a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": 62.5\n}\n",
+    "stderr": ""
+  },
+  {
     "case": "bool-bad",
     "input_hex": "783a202121626f6f6c20676172626167650a",
     "exit": 1,
