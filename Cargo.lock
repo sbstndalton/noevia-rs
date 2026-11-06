@@ -968,6 +968,7 @@ version = "0.1.0"
 dependencies = [
  "js-json",
  "model-stream",
+ "rand_core 0.6.4",
  "reqwest",
  "serde_json",
  "tokio",
