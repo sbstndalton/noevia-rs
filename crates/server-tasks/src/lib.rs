@@ -19,6 +19,7 @@ pub mod meta;
 pub mod output;
 pub mod pin;
 pub mod policy;
+pub mod registry;
 pub mod resources;
 pub mod session;
 pub mod shared_context;
