@@ -256,3 +256,100 @@ fn native_lifecycle_guard_refuses_commit_and_receipt_replay() {
         1
     );
 }
+
+#[test]
+fn admitted_import_checks_late_backup_intent_inside_its_write_transaction() {
+    let (_dir, request) = database();
+    let path = request.db_path.clone();
+    let (admitted_tx, admitted_rx) = std::sync::mpsc::channel();
+    let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let visits = std::cell::Cell::new(0);
+        diary_workspace_import_apply::apply_guarded(
+            &request,
+            include_bytes!("workspace.zip"),
+            || Ok(1700000000.0),
+            || {
+                visits.set(visits.get() + 1);
+                if visits.get() == 2 {
+                    admitted_tx.send(()).unwrap();
+                    resume_rx
+                        .recv_timeout(std::time::Duration::from_secs(5))
+                        .unwrap();
+                }
+                Ok(())
+            },
+        )
+    });
+    admitted_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    let db = Connection::open(&path).unwrap();
+    db.execute(
+        "INSERT INTO meta VALUES ('backup_effect_pending','synthetic-late-intent')",
+        [],
+    )
+    .unwrap();
+    resume_tx.send(()).unwrap();
+    assert_eq!(
+        worker.join().unwrap().map_err(|e| e.code()),
+        Err("backup_pending")
+    );
+    for table in ["files", "workspace_imports", "workspace_index_outbox"] {
+        assert_eq!(
+            db.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+    assert_eq!(
+        db.query_row("SELECT value FROM meta WHERE key='generation'", [], |r| {
+            r.get::<_, String>(0)
+        })
+        .unwrap(),
+        "1"
+    );
+}
+
+#[test]
+fn import_transaction_wins_before_next_backup_intent_can_publish() {
+    let (_dir, request) = database();
+    let path = request.db_path.clone();
+    let (held_tx, held_rx) = std::sync::mpsc::channel();
+    let (resume_tx, resume_rx) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        apply_with_clock(&request, include_bytes!("workspace.zip"), || {
+            held_tx.send(()).unwrap();
+            resume_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            Ok(1700000000.0)
+        })
+    });
+    held_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    let db = Connection::open(&path).unwrap();
+    db.busy_timeout(std::time::Duration::from_millis(30))
+        .unwrap();
+    assert!(db
+        .execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending','synthetic-next-intent')",
+            []
+        )
+        .is_err());
+    resume_tx.send(()).unwrap();
+    assert!(worker.join().unwrap().is_ok());
+    db.execute(
+        "INSERT INTO meta VALUES ('backup_effect_pending','synthetic-next-intent')",
+        [],
+    )
+    .unwrap();
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM workspace_imports", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+}

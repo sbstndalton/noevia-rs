@@ -29,9 +29,10 @@ const MALFORMED: &str = "The entry cannot be edited safely: malformed or missing
 
 /// What a write route needs of the tenant.
 pub struct Ctx<'a> {
+    pub recovery: &'a std::sync::Mutex<crate::recovery::State>,
     pub reader: &'a Managed,
     pub store: Store,
-    pub journal: Journal,
+    pub journal: Journal<'a>,
     pub layout: &'a Layout,
 }
 
@@ -53,6 +54,18 @@ fn error(status: u16, text: &str) -> Reply {
 /// An unhandled exception in Python: Starlette's plain 500.
 pub fn internal() -> Reply {
     Reply::Text(500, "Internal Server Error".into())
+}
+
+/// `internal()`, except for the known pending-intent refusal of a publication transaction, which
+/// app.py answers through `writer_busy` (503 BUSY, Retry-After 1). BUSY is the public error
+/// classification, not a no-effect proof: nothing is declined, cleared or acknowledged, and a
+/// journal row already queued stays pending for replay. Every other error keeps its class.
+fn refused_or(e: &write::Error, otherwise: Reply) -> Reply {
+    if e.is_settlement_refusal() {
+        Reply::Busy
+    } else {
+        otherwise
+    }
 }
 
 fn sha256_hex(data: &[u8]) -> String {
@@ -134,14 +147,19 @@ pub fn file_write(c: &Ctx<'_>, body: &Map<String, Value>) -> Reply {
     let Ok(was_dirty) = c.journal.is_dirty(&full) else {
         return internal();
     };
-    if c.journal.mark_dirty(&full).is_err() {
-        return internal();
+    if let Err(e) = c.journal.mark_dirty(&full) {
+        return refused_or(&e, internal());
     }
     match c.store.put(&full, content.as_bytes(), etag.as_deref()) {
         Ok(Put::Ok(..)) => saved(content),
         Ok(Put::PathConflict(_)) => {
-            if !was_dirty && c.journal.clear_dirty(&full).is_err() {
-                return internal();
+            let cleared = if was_dirty {
+                Ok(())
+            } else {
+                c.journal.clear_dirty(&full)
+            };
+            if let Err(e) = cleared {
+                return refused_or(&e, internal());
             }
             detail(
                 409,
@@ -152,7 +170,8 @@ pub fn file_write(c: &Ctx<'_>, body: &Map<String, Value>) -> Reply {
             409,
             "Storage write failed or conflicted; your draft has been kept",
         ),
-        Err(_) => internal(),
+        // The put's own transaction refused before writing: nothing committed.
+        Err(e) => refused_or(&e, internal()),
     }
 }
 
@@ -182,7 +201,7 @@ pub fn directory_create(c: &Ctx<'_>, body: &Map<String, Value>) -> Reply {
         Ok(Mkdir::Ok) => json_reply(200, &Dir { path, is_dir: true }),
         Ok(Mkdir::Exists) => detail(405, "A file or directory already exists at this path"),
         Ok(Mkdir::NoParent) => detail(409, "Parent directory does not exist"),
-        Err(_) => internal(),
+        Err(e) => refused_or(&e, internal()),
     }
 }
 
@@ -195,6 +214,14 @@ fn apply_entry(
     id: &str,
     apply: impl FnOnce() -> Result<(), WriteFailure>,
 ) -> Result<bool, write::Error> {
+    if c.journal
+        .unapplied(1)?
+        .first()
+        .is_some_and(|entry| entry.id != id)
+    {
+        crate::recovery::apply_pending(c, 100)?;
+        return c.journal.is_applied(id);
+    }
     match apply() {
         Ok(()) => {
             c.journal.mark_applied(id)?;
@@ -207,8 +234,8 @@ fn apply_entry(
             c.journal.quarantine(id, &format!("quarantined: {msg}"))?;
             Ok(true)
         }
-        Err(WriteFailure::Infra(e)) => {
-            c.journal.mark_failed(id, &e.0)?;
+        Err(WriteFailure::Infra(e) | WriteFailure::Transient(e)) => {
+            c.journal.mark_failed(id, e.message())?;
             Ok(false)
         }
     }
@@ -504,11 +531,13 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
     // process lost at any later point (after the corpus commit, or after the journal row is marked
     // applied) still leaves its retrieval invalidation behind. A failed write leaves one extra
     // reindex, which is harmless.
-    if c.journal.mark_dirty(&document).is_err() {
-        return internal();
+    if let Err(e) = c.journal.mark_dirty(&document) {
+        return refused_or(&e, internal());
     }
-    let Ok(id) = c.journal.enqueue("exchange", &payload) else {
-        return internal();
+    // A refused enqueue inserted no row; a refusal after it leaves the row queued (below).
+    let id = match c.journal.enqueue("exchange", &payload) {
+        Ok(id) => id,
+        Err(e) => return refused_or(&e, internal()),
     };
     let applied = apply_entry(c, &id, || {
         c.store.guarded_write(&document, |current| {
@@ -529,7 +558,10 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
         Ok(true) => {}
         // NativeWriteUnavailable: 503 {"error": ...}.
         Ok(false) => return error(503, PENDING_NATIVE),
-        Err(_) => return internal(),
+        // Row durable, its put/mark refused by the known intent: Python's log_exchange answers
+        // writer_busy after the same journal commit. The row is not marked failed and replays
+        // once after settlement; other failures stay 500.
+        Err(e) => return refused_or(&e, internal()),
     }
     match has(&document) {
         Ok(true) => ok(false),
@@ -538,7 +570,7 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
 }
 
 /// CorpusStore._scaffold: create-only seed files.
-fn seed(c: &Ctx<'_>) -> Result<(), WriteFailure> {
+pub(crate) fn seed(c: &Ctx<'_>) -> Result<(), WriteFailure> {
     let seeds = [
         (
             c.layout.entries_prefix.as_str(),
@@ -605,15 +637,18 @@ fn month_id_ok(m: &str) -> Option<bool> {
         return None;
     }
     let b = m.as_bytes();
-    Some(
-        b.len() == 7
-            && b.iter().take(4).all(u8::is_ascii_digit)
-            && b.get(4) == Some(&b'-')
-            && matches!(
-                (b.get(5), b.get(6)),
-                (Some(b'0'), Some(b'1'..=b'9')) | (Some(b'1'), Some(b'0'..=b'2'))
-            ),
-    )
+    let shaped = b.len() == 7
+        && b.iter().take(4).all(u8::is_ascii_digit)
+        && b.get(4) == Some(&b'-')
+        && matches!(
+            (b.get(5), b.get(6)),
+            (Some(b'0'), Some(b'1'..=b'9')) | (Some(b'1'), Some(b'0'..=b'2'))
+        );
+    // "0000-MM" matches the pattern, but the reference date(0, M, 1) raises (502, not 404).
+    if shaped && b.starts_with(b"0000") {
+        return None;
+    }
+    Some(shaped)
 }
 
 /// api_entries_edit's checks before tenant resolution.
@@ -674,7 +709,7 @@ fn documents_for_month(c: &Ctx<'_>, year: i32, month: u32) -> Result<Vec<(String
 }
 
 /// CorpusStore._find_document_with_xid. `errors` is set when a listing or read failed.
-fn find_document(
+pub(crate) fn find_document(
     c: &Ctx<'_>,
     xid: &str,
     month: Option<&str>,
@@ -770,7 +805,40 @@ pub fn edit(c: &Ctx<'_>, req: &EditReq) -> Reply {
                 },
             );
         }
-        // An earlier queued edit for this exchange cannot exist: the tenant had nothing pending.
+        let pending = match c.journal.unapplied(-1) {
+            Ok(entries) => entries,
+            Err(_) => return error(502, "edit failed"),
+        };
+        for entry in pending.iter().rev().filter(|e| e.kind == "exchange_edit") {
+            let Ok(p) = serde_json::from_str::<Value>(&entry.payload) else {
+                return error(502, "edit failed");
+            };
+            if p.get("xid").and_then(Value::as_str) != Some(&xid) {
+                continue;
+            }
+            let queued_hash = p
+                .get("new_me")
+                .and_then(Value::as_str)
+                .zip(p.get("new_claude").and_then(Value::as_str))
+                .and_then(|(me, assistant)| {
+                    original
+                        .as_deref()
+                        .and_then(|t| cw::replace_exchange_text(t, &xid, me, assistant))
+                })
+                .and_then(|t| cw::exchange_hash(Some(&t), &xid));
+            if queued_hash.as_deref() != Some(py::strip(base).to_lowercase().as_str()) {
+                return json_reply(
+                    409,
+                    &Conflict {
+                        error: "An edit for this exchange is still queued; reload and retry",
+                        conflict: true,
+                        current_hash,
+                        current_text: cw::exchange_text(original.as_deref(), &xid),
+                    },
+                );
+            }
+            break;
+        }
     }
     let mut pairs = vec![
         ("xid", PyVal::Str(&xid)),
@@ -789,7 +857,7 @@ pub fn edit(c: &Ctx<'_>, req: &EditReq) -> Reply {
         let target = match find_document(c, &xid, month, &mut errors) {
             Ok(Some((path, _))) => path,
             Ok(None) if errors => {
-                return Err(WriteFailure::Infra(write::Error(format!(
+                return Err(WriteFailure::Infra(write::Error::other(format!(
                     "no corpus document contains exchange {xid} (scan incomplete)"
                 ))))
             }
@@ -798,7 +866,7 @@ pub fn edit(c: &Ctx<'_>, req: &EditReq) -> Reply {
                     "no corpus document contains exchange {xid}"
                 )))
             }
-            Err(()) => return Err(WriteFailure::Infra(write::Error("scan failed".into()))),
+            Err(()) => return Err(WriteFailure::Infra(write::Error::other("scan failed"))),
         };
         c.journal.mark_dirty(&target).map_err(WriteFailure::Infra)?;
         c.store.guarded_write(&target, |current| {
@@ -881,6 +949,10 @@ mod tests {
         assert_eq!(month_id_ok("2026-11"), Some(true));
         assert_eq!(month_id_ok("2026-13"), Some(false));
         assert_eq!(month_id_ok("2026-11\n"), None);
+        assert_eq!(month_id_ok("0000-05"), None);
+        assert_eq!(month_id_ok("0000-13"), Some(false));
+        assert_eq!(month_id_ok("0001-01"), Some(true));
+        assert_eq!(month_id_ok("9999-12"), Some(true));
         assert_eq!(month_id_ok("٢٠٢٦-11"), None);
     }
 }

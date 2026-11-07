@@ -603,14 +603,13 @@ async fn edit_rewrites_one_exchange_with_conflict_checks() {
 }
 
 #[tokio::test]
-async fn declines_without_writer_role_recovery_or_with_pending_work() {
+async fn declines_without_writer_role_but_recovers_pending_work() {
     let dir = tempfile::tempdir().unwrap();
     managed_tenant(dir.path(), &[]);
     let addr = start(dir.path(), "rust").await;
     let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
     for h in [
         without(writer(), "x-noevia-diary-writer"),
-        without(writer(), "x-noevia-diary-recovered"),
         without(writer(), "x-cowork-user-id"),
     ] {
         let (s, d, _) = send(addr, "PUT", "/api/file", &h, &b).await;
@@ -624,16 +623,22 @@ async fn declines_without_writer_role_recovery_or_with_pending_work() {
         )
         .unwrap();
     let (s, d, _) = send(addr, "PUT", "/api/file", &writer(), &b).await;
-    assert_eq!((s, d), (421, true));
+    assert_eq!((s, d), (200, false));
+    rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db"))
+        .unwrap()
+        .execute("DELETE FROM files WHERE path='a.md'", [])
+        .unwrap();
     index(dir.path())
         .execute("UPDATE journal SET applied=1", [])
         .unwrap();
-    // Index outbox: Python drains it.
+    // Native replay quarantines the malformed entry and drains the index outbox.
     let db = rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db")).unwrap();
     db.execute("INSERT INTO workspace_index_outbox VALUES ('x.md')", [])
         .unwrap();
     let (s, d, _) = send(addr, "PUT", "/api/file", &writer(), &b).await;
-    assert_eq!((s, d), (421, true));
+    assert_eq!((s, d), (200, false));
+    db.execute("DELETE FROM files WHERE path='a.md'", [])
+        .unwrap();
     db.execute("DELETE FROM workspace_index_outbox", [])
         .unwrap();
     // Dirty documents alone do not stop a write (the index only lags).
@@ -787,4 +792,1033 @@ async fn body_shape_refusals_precede_auth_on_every_write_route() {
         }
     }
     assert!(file_row(dir.path(), "a.md").is_none());
+}
+
+#[tokio::test]
+async fn native_replay_without_handshake_quarantines_dependents_and_preserves_row_order() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let idx = index(dir.path());
+    for (id, kind, payload) in [
+        ("bad", "unknown", serde_json::json!({"xid":"bad-xid"})),
+        (
+            "dependent",
+            "exchange_edit",
+            serde_json::json!({"xid":"bad-xid"}),
+        ),
+        (
+            "first",
+            "exchange",
+            serde_json::json!({"day":"2030-01-06","xid":"abcdef12","sub_header":"12:00 | Synthetic","body":diary_corpus_write::render_exchange("first", "", "abcdef12")}),
+        ),
+        (
+            "second",
+            "exchange_edit",
+            serde_json::json!({"xid":"abcdef12","new_me":"newest","new_claude":""}),
+        ),
+    ] {
+        idx.execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES (?,'reverse-clock',?,?)",
+            rusqlite::params![id, kind, payload.to_string()],
+        )
+        .unwrap();
+    }
+    let addr = start(dir.path(), "rust").await;
+    let body = serde_json::json!({"path":"incoming.md","content":"incoming","version":null});
+    let (s, d, b) = send(
+        addr,
+        "PUT",
+        "/api/file",
+        &without(writer(), "x-noevia-diary-recovered"),
+        &body,
+    )
+    .await;
+    assert_eq!((s, d), (200, false), "{b}");
+    let errors: Vec<(String,i64,String)> = idx.prepare("SELECT id,attempts,last_error FROM journal WHERE last_error IS NOT NULL ORDER BY rowid").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap().map(Result::unwrap).collect();
+    assert_eq!(
+        errors,
+        vec![
+            (
+                "bad".into(),
+                1,
+                "quarantined: unknown journal kind: unknown".into()
+            ),
+            (
+                "dependent".into(),
+                1,
+                "quarantined: depends on quarantined bad".into()
+            )
+        ]
+    );
+    let data = file_row(dir.path(), "Entries/2030/January/06 Sunday.md");
+    // Discover the configured daily name rather than assuming a filename presentation.
+    let db = rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db")).unwrap();
+    let text: Vec<u8> = db
+        .query_row(
+            "SELECT data FROM files WHERE path LIKE 'Entries/%'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let text = String::from_utf8(text).unwrap();
+    assert!(text.contains("newest"), "{text}");
+    assert_eq!(text.matches("<!-- xid:abcdef12 -->").count(), 1);
+    drop(data);
+    // A simulated crash after corpus commit but before mark_applied replays idempotently.
+    idx.execute("UPDATE journal SET applied=0 WHERE id='second'", [])
+        .unwrap();
+    let generation = meta(dir.path(), "generation");
+    let (s,d,b) = send(addr,"PUT","/api/file", &writer(),&serde_json::json!({"path":"incoming.md","content":"incoming","version":sha256(b"incoming")})).await;
+    assert_eq!((s, d), (200, false), "{b}");
+    assert_eq!(meta(dir.path(), "generation"), generation);
+}
+
+#[tokio::test]
+async fn replay_outage_never_quarantines_and_retries_observe_cooldown() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let db = rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db")).unwrap();
+    db.execute(
+        "INSERT INTO directories VALUES ('Entries/2030/January/January 6, 2030.md')",
+        [],
+    )
+    .unwrap();
+    let idx = index(dir.path());
+    let payload = serde_json::json!({"day":"2030-01-06","xid":"abcdef12","sub_header":"12:00 | Synthetic","body":"Synthetic"});
+    idx.execute("INSERT INTO journal(id,created_at,kind,payload,attempts) VALUES ('outage','t','exchange',?,30)",[payload.to_string()]).unwrap();
+    let addr = start(dir.path(), "rust").await;
+    for n in 0..2 {
+        let (s, d, b) = send(
+            addr,
+            "POST",
+            "/api/directory",
+            &writer(),
+            &serde_json::json!({"path":format!("Synthetic {n}")}),
+        )
+        .await;
+        assert_eq!((s, d), (200, false), "{b}");
+    }
+    let row: (i64, i64, String) = idx
+        .query_row(
+            "SELECT applied,attempts,last_error FROM journal WHERE id='outage'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        row,
+        (0, 31, "Entries/2030/January/January 6, 2030.md".into())
+    );
+}
+
+/// Y0-1/2/3: the reference date() / fromisoformat() refuse year 0, so a year-zero hint is left
+/// with the reference applier before any native effect, while neighbouring valid years stay native.
+#[tokio::test]
+async fn year_zero_hints_decline_before_effects_and_adjacent_years_stay_native() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let addr = start(dir.path(), "rust").await;
+    let xid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    // Incoming edit (Y0-2): "0000-01" is declined (reference answers 502); the shape rule still
+    // refuses "0000-13" itself, and years 1 and 9999 are decided natively (no such document).
+    let (s, d, _) = send(
+        addr,
+        "POST",
+        "/api/entries/edit",
+        &writer(),
+        &serde_json::json!({"xid": xid, "me": "x", "month": "0000-01"}),
+    )
+    .await;
+    assert_eq!((s, d), (421, true));
+    let not_found = format!(r#"{{"error":"no corpus document contains exchange {xid}"}}"#);
+    for (month, status, expected) in [
+        ("0000-13", 400, r#"{"error":"month must be YYYY-MM"}"#),
+        ("0001-01", 404, not_found.as_str()),
+        ("9999-12", 404, not_found.as_str()),
+    ] {
+        let (s, _, body) = send(
+            addr,
+            "POST",
+            "/api/entries/edit",
+            &writer(),
+            &serde_json::json!({"xid": xid, "me": "x", "month": month}),
+        )
+        .await;
+        assert_eq!((s, body.as_str()), (status, expected), "{month}");
+    }
+    // Queued legacy rows (Y0-1, Y0-3): any year-zero hint declines the whole request before replay.
+    let idx = index(dir.path());
+    for (id, kind, payload) in [
+        (
+            "edit0",
+            "exchange_edit",
+            serde_json::json!({"xid":"abcdef12","new_me":"x","new_claude":"","month":"0000-01"}),
+        ),
+        (
+            "day0",
+            "exchange",
+            serde_json::json!({"day":"0000-01-01","xid":"abcdef34","sub_header":"12:00 | Synthetic","body":diary_corpus_write::render_exchange("zero", "", "abcdef34")}),
+        ),
+    ] {
+        idx.execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES (?,'2030',?,?)",
+            rusqlite::params![id, kind, payload.to_string()],
+        )
+        .unwrap();
+        let put = serde_json::json!({"path":"a.md","content":"x","version":null});
+        let (s, d, _) = send(addr, "PUT", "/api/file", &writer(), &put).await;
+        assert_eq!((s, d), (421, true), "{id}");
+        let row: (i64, i64, Option<String>) = idx
+            .query_row(
+                "SELECT applied, attempts, last_error FROM journal WHERE id=?",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(row, (0, 0, None), "{id} must be untouched");
+        assert!(file_row(dir.path(), "a.md").is_none(), "{id}");
+        // The reference applier retires the row; native admission resumes afterwards.
+        idx.execute("UPDATE journal SET applied=1 WHERE id=?", [id])
+            .unwrap();
+    }
+    // Adjacent valid years are not declined (month hints 0001-01 and 9999-12, day 0001-01-01).
+    for (id, kind, payload) in [
+        (
+            "edit1",
+            "exchange_edit",
+            serde_json::json!({"xid":"abcdef12","new_me":"x","new_claude":"","month":"0001-01"}),
+        ),
+        (
+            "edit9999",
+            "exchange_edit",
+            serde_json::json!({"xid":"abcdef12","new_me":"x","new_claude":"","month":"9999-12"}),
+        ),
+        (
+            "day1",
+            "exchange",
+            serde_json::json!({"day":"0001-01-01","xid":"abcdef56","sub_header":"12:00 | Synthetic","body":diary_corpus_write::render_exchange("one", "", "abcdef56")}),
+        ),
+    ] {
+        idx.execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES (?,'2030',?,?)",
+            rusqlite::params![id, kind, payload.to_string()],
+        )
+        .unwrap();
+        let put = serde_json::json!({"path":format!("{id}.md"),"content":"x","version":null});
+        let (_, d, _) = send(addr, "PUT", "/api/file", &writer(), &put).await;
+        assert!(!d, "{id} must stay native");
+    }
+}
+
+// ------------------------------------------------- D6 recovery x R4 backup authority (union)
+
+const INTENT: &str = r#"{"id":"synthetic-intent","method":"PUT","path":"/synthetic"}"#;
+/// rust_forward.BUSY as app.py's writer_busy renders it (JSONResponse, compact).
+const BUSY: &str = r#"{"detail":"Diary is saving another change. Try again in a moment."}"#;
+
+/// (status, retry-after, content-type, body) of one request.
+async fn send_wire(
+    addr: std::net::SocketAddr,
+    method: &str,
+    target: &str,
+    headers: &[(&str, String)],
+    body: &serde_json::Value,
+) -> (u16, Option<String>, Option<String>, String) {
+    let mut req = reqwest::Client::new()
+        .request(method.parse().unwrap(), format!("http://{addr}{target}"))
+        .body(body.to_string());
+    for (k, v) in headers {
+        req = req.header(*k, v);
+    }
+    let resp = req.send().await.unwrap();
+    let get = |name: &str| {
+        resp.headers()
+            .get(name)
+            .map(|v| v.to_str().unwrap().to_string())
+    };
+    let (retry, content_type) = (get("retry-after"), get("content-type"));
+    (
+        resp.status().as_u16(),
+        retry,
+        content_type,
+        resp.text().await.unwrap(),
+    )
+}
+
+fn primary(root: &Path) -> rusqlite::Connection {
+    rusqlite::Connection::open(tenant_root(root).join("managed-diary.db")).unwrap()
+}
+
+fn outbox(root: &Path) -> Vec<String> {
+    let db = primary(root);
+    let mut stmt = db
+        .prepare("SELECT path FROM workspace_index_outbox ORDER BY path")
+        .unwrap();
+    stmt.query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+fn journal_rows(root: &Path) -> Vec<(String, i64, i64)> {
+    let idx = index(root);
+    let mut stmt = idx
+        .prepare("SELECT id, applied, attempts FROM journal ORDER BY rowid")
+        .unwrap();
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+/// Imported Markdown queued for indexing (not yet marked dirty), plus one pending index entry.
+fn queued_import(root: &Path) {
+    managed_tenant(
+        root,
+        &[
+            ("Imports/x.md", "# x\n"),
+            ("Imports/y.md", "# y\n"),
+            ("Imports/n.txt", "n"),
+        ],
+    );
+    primary(root)
+        .execute_batch(
+            "INSERT INTO workspace_index_outbox VALUES ('Imports/x.md');
+             INSERT INTO workspace_index_outbox VALUES ('Imports/y.md');",
+        )
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn recovery_drain_borrows_its_held_primary_reservation_for_journal_marks() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    let addr = start(dir.path(), "rust").await;
+    let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
+    // A drain that opened a second primary reservation for each dirty mark waited for its own
+    // (the 30 s busy timeout) and then failed the write with a 500.
+    let (s, d, body) = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        send(addr, "PUT", "/api/file", &writer(), &b),
+    )
+    .await
+    .expect("the outbox drain contended with its own primary reservation");
+    assert_eq!((s, d), (200, false), "{body}");
+    assert!(outbox(dir.path()).is_empty());
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md", "a.md"]);
+    // The next write recovers again: nothing is transferred twice, every mark stays single.
+    let b2 = serde_json::json!({"path": "b.md", "content": "y", "version": null});
+    let (s, _, body) = send(addr, "PUT", "/api/file", &writer(), &b2).await;
+    assert_eq!(s, 200, "{body}");
+    assert!(outbox(dir.path()).is_empty());
+    assert_eq!(
+        dirty(dir.path()),
+        ["Imports/x.md", "Imports/y.md", "a.md", "b.md"]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pending_backup_intent_stops_recovery_before_any_effect() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    index(dir.path())
+        .execute(
+            "INSERT INTO journal (id, created_at, kind, payload) VALUES ('m','2030','index_month',?)",
+            [r#"{"label":"January 2030","month":"2030-01.md"}"#],
+        )
+        .unwrap();
+    primary(dir.path())
+        .execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
+        .unwrap();
+    let addr = start(dir.path(), "rust").await;
+    let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
+    let (s, d, body) = send(addr, "PUT", "/api/file", &writer(), &b).await;
+    assert_eq!((s, d), (503, false));
+    assert!(body.contains("backup settlement is uncertain"), "{body}");
+    // No replay, transfer, dirty mark or write while the intent is unsettled.
+    assert_eq!(outbox(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert!(dirty(dir.path()).is_empty());
+    assert_eq!(journal_rows(dir.path()), [("m".to_string(), 0, 0)]);
+    assert!(file_row(dir.path(), "a.md").is_none());
+    assert!(file_row(dir.path(), "INDEX.md").is_none());
+    // Synthetic settlement (test-only removal): the next write recovers exactly once.
+    primary(dir.path())
+        .execute("DELETE FROM meta WHERE key='backup_effect_pending'", [])
+        .unwrap();
+    let (s, _, body) = send(addr, "PUT", "/api/file", &writer(), &b).await;
+    assert_eq!(s, 200, "{body}");
+    assert!(outbox(dir.path()).is_empty());
+    assert_eq!(journal_rows(dir.path()), [("m".to_string(), 1, 0)]);
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md", "a.md"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_intent_committed_while_the_drain_waits_refuses_every_transfer() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    let addr = start(dir.path(), "rust").await;
+    // Another holder of the one primary reservation (as native backup intent insertion is).
+    let path = tenant_root(dir.path()).join("managed-diary.db");
+    let (held_tx, held) = std::sync::mpsc::channel();
+    let (go, go_rx) = std::sync::mpsc::channel::<()>();
+    let holder = std::thread::spawn(move || {
+        let mut c = rusqlite::Connection::open(&path).unwrap();
+        let t = c
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        held_tx.send(()).unwrap();
+        go_rx.recv().unwrap();
+        t.execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
+        .unwrap();
+        t.commit().unwrap();
+    });
+    held.recv().unwrap();
+    let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
+    let request =
+        tokio::spawn(async move { send_wire(addr, "PUT", "/api/file", &writer(), &b).await });
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(
+        !request.is_finished(),
+        "the drain must wait for the held reservation"
+    );
+    go.send(()).unwrap();
+    holder.join().unwrap();
+    let (s, retry, content_type, body) =
+        tokio::time::timeout(std::time::Duration::from_secs(10), request)
+            .await
+            .unwrap()
+            .unwrap();
+    // The drain got the reservation only after the intent committed: it refuses inside it,
+    // rolls back and transfers nothing (the write itself is not attempted). The definite
+    // refusal is app.py's writer_busy reply.
+    assert_eq!(
+        (s, retry.as_deref(), content_type.as_deref(), body.as_str()),
+        (503, Some("1"), Some("application/json"), BUSY)
+    );
+    assert_eq!(outbox(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert!(dirty(dir.path()).is_empty());
+    assert!(file_row(dir.path(), "a.md").is_none());
+    // The intent stays the exclusion: the next write is refused at admission (R4's reply).
+    assert_eq!(meta(dir.path(), "backup_effect_pending"), INTENT);
+    let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
+    let (s, retry, _, body) = send_wire(addr, "PUT", "/api/file", &writer(), &b).await;
+    assert_eq!((s, retry), (503, None));
+    assert!(body.contains("backup settlement is uncertain"), "{body}");
+    assert_eq!(outbox(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert!(file_row(dir.path(), "a.md").is_none());
+}
+
+/// Run `f` on the tenant's journal under its held writer slot (as serve_write does).
+fn with_journal<T>(root: &Path, f: impl FnOnce(&noevia_diary::write::Journal<'_>) -> T) -> T {
+    let writers = noevia_diary::write::Writers::default();
+    writers
+        .with_lock(UID, |held| {
+            let journal = noevia_diary::write::Journal::open(
+                &tenant_root(root).join("managed-index.db"),
+                held,
+            )
+            .unwrap();
+            f(&journal)
+        })
+        .unwrap()
+}
+
+/// An intent-free copy of the primary with its own outbox and generation, to replace it with.
+fn replacement_primary(root: &Path) -> PathBuf {
+    let fresh = tenant_root(root).join("fresh.db");
+    std::fs::copy(tenant_root(root).join("managed-diary.db"), &fresh).unwrap();
+    rusqlite::Connection::open(&fresh)
+        .unwrap()
+        .execute_batch(
+            "DELETE FROM workspace_index_outbox;
+             INSERT INTO workspace_index_outbox VALUES ('Fresh/z.md');
+             UPDATE meta SET value='7' WHERE key='generation';",
+        )
+        .unwrap();
+    fresh
+}
+
+#[test]
+fn the_journal_reservation_holds_the_primary_through_its_effects_and_refuses_a_pending_intent() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    let other = primary(dir.path());
+    other
+        .busy_timeout(std::time::Duration::from_millis(100))
+        .unwrap();
+    with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                assert_eq!(r.outbox()?, ["Imports/x.md", "Imports/y.md"]);
+                r.mark_dirty("Imports/x.md")?;
+                // Still reserved through the effect: no intent can commit beside it.
+                assert!(other
+                    .execute(
+                        "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+                        [INTENT]
+                    )
+                    .is_err());
+                r.transferred("Imports/x.md")
+            })
+            .unwrap();
+    });
+    assert_eq!(outbox(dir.path()), ["Imports/y.md"]);
+    assert_eq!(dirty(dir.path()), ["Imports/x.md"]);
+    // Current pending intent: refused (typed) before the body runs; nothing changes.
+    other
+        .execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
+        .unwrap();
+    let mut ran = false;
+    let e = with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                ran = true;
+                r.mark_dirty("Imports/y.md")
+            })
+            .unwrap_err()
+    });
+    assert!(!ran && e.is_settlement_refusal() && !e.is_primary_replaced());
+    assert_eq!(e.message(), "backup settlement uncertain");
+    assert_eq!(outbox(dir.path()), ["Imports/y.md"]);
+    assert_eq!(dirty(dir.path()), ["Imports/x.md"]);
+}
+
+#[test]
+fn a_primary_renamed_over_after_acquisition_is_refused_before_any_journal_effect() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    let fresh = replacement_primary(dir.path());
+    let path = tenant_root(dir.path()).join("managed-diary.db");
+    let e = with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                let paths = r.outbox()?;
+                // Raw replacement after the reservation is acquired, before its first effect.
+                std::fs::rename(&fresh, &path).unwrap();
+                for p in paths {
+                    r.mark_dirty(&p)?;
+                    r.transferred(&p)?;
+                }
+                Ok(())
+            })
+            .unwrap_err()
+    });
+    // Fail closed and never BUSY: no mark, no transfer, the new file untouched.
+    assert!(e.is_primary_replaced() && !e.is_settlement_refusal());
+    assert!(dirty(dir.path()).is_empty());
+    assert_eq!(outbox(dir.path()), ["Fresh/z.md"]);
+    assert_eq!(meta(dir.path(), "generation"), "7");
+}
+
+#[test]
+fn a_primary_unlinked_and_recreated_or_removed_is_refused_and_never_recreated() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    let path = tenant_root(dir.path()).join("managed-diary.db");
+    // Unlink + recreate at the same path inside the reservation.
+    let e = with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                std::fs::remove_file(&path).unwrap();
+                rusqlite::Connection::open(&path)
+                    .unwrap()
+                    .execute_batch(
+                        "CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                         CREATE TABLE workspace_index_outbox(path TEXT PRIMARY KEY);",
+                    )
+                    .unwrap();
+                r.mark_dirty("Imports/x.md")
+            })
+            .unwrap_err()
+    });
+    assert!(e.is_primary_replaced() && !e.is_settlement_refusal());
+    assert!(dirty(dir.path()).is_empty() && outbox(dir.path()).is_empty());
+    // Removal without a successor: refused, and the retired primary is not recreated, neither
+    // by this reservation's rollback nor by the next publication (no SQLite CREATE anywhere).
+    std::fs::remove_file(&path).unwrap();
+    let e = with_journal(dir.path(), |journal| {
+        let e = journal
+            .primary_reservation(|r| r.mark_dirty("Imports/x.md"))
+            .unwrap_err();
+        assert!(!e.is_settlement_refusal());
+        assert!(journal.mark_dirty("Imports/y.md").is_err());
+        e
+    });
+    assert!(
+        !e.is_primary_replaced(),
+        "nothing was bound: a plain open failure"
+    );
+    assert!(!path.exists());
+    assert!(dirty(dir.path()).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn an_aliased_tenant_root_is_the_same_primary_and_a_foreign_tenant_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    // Alias: the data root through a symlink names the same files.
+    let alias = dir.path().join("alias");
+    std::fs::create_dir(&alias).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("users"), alias.join("users")).unwrap();
+    with_journal(&alias, |journal| {
+        journal
+            .primary_reservation(|r| {
+                for p in r.outbox()? {
+                    r.mark_dirty(&p)?;
+                    r.transferred(&p)?;
+                }
+                Ok(())
+            })
+            .unwrap();
+    });
+    assert!(outbox(dir.path()).is_empty());
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    // Foreign: another tenant's journal is never opened under this tenant's writer slot, and a
+    // reservation of that tenant reads only that tenant's authority.
+    let other_uid = "1b5f6c1e-3a2d-4c8e-9f10-1a2b3c4d5e6f";
+    let other = dir.path().join("users").join(other_uid);
+    std::fs::create_dir_all(&other).unwrap();
+    for f in ["managed-diary.db", "managed-index.db"] {
+        std::fs::copy(tenant_root(dir.path()).join(f), other.join(f)).unwrap();
+    }
+    primary(dir.path())
+        .execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
+        .unwrap();
+    let writers = noevia_diary::write::Writers::default();
+    writers
+        .with_lock(UID, |held| {
+            let e = noevia_diary::write::Journal::open(&other.join("managed-index.db"), held)
+                .err()
+                .unwrap();
+            assert!(!e.is_settlement_refusal() && !e.is_primary_replaced());
+        })
+        .unwrap();
+    writers
+        .with_lock(other_uid, |held| {
+            let journal =
+                noevia_diary::write::Journal::open(&other.join("managed-index.db"), held).unwrap();
+            journal
+                .primary_reservation(|r| r.mark_dirty("o.md"))
+                .unwrap();
+        })
+        .unwrap();
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+}
+
+#[test]
+fn a_rolled_back_reservation_keeps_the_outbox_and_a_deferred_holder_cannot_upgrade_into_it() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    // Rollback: the body fails after a mark and a transfer.
+    let e = with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                r.mark_dirty("Imports/x.md")?;
+                r.transferred("Imports/x.md")?;
+                Err::<(), _>(noevia_diary::write::Error::other("synthetic"))
+            })
+            .unwrap_err()
+    });
+    assert!(!e.is_settlement_refusal() && !e.is_primary_replaced());
+    assert_eq!(e.message(), "synthetic");
+    // The primary rolled back (the row is transferred again later); the index mark made inside
+    // the reservation stays, which is harmless (an idempotent repeat, Python's same order).
+    assert_eq!(outbox(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert_eq!(dirty(dir.path()), ["Imports/x.md"]);
+    // Deferred upgrade: a read transaction that saw no intent cannot commit one while the
+    // reservation is held, so its check stays true through the effect.
+    let mut reader = primary(dir.path());
+    reader
+        .busy_timeout(std::time::Duration::from_millis(100))
+        .unwrap();
+    let deferred = reader
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Deferred)
+        .unwrap();
+    assert!(deferred
+        .query_row(
+            "SELECT 1 FROM meta WHERE key='backup_effect_pending'",
+            [],
+            |_| Ok(())
+        )
+        .is_err());
+    let mut deferred = Some(deferred);
+    with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                let tx = deferred.take().unwrap();
+                assert!(tx
+                    .execute(
+                        "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+                        [INTENT]
+                    )
+                    .is_err());
+                tx.rollback().unwrap();
+                r.mark_dirty("Imports/y.md")
+            })
+            .unwrap();
+    });
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert!(primary(dir.path())
+        .query_row(
+            "SELECT 1 FROM meta WHERE key='backup_effect_pending'",
+            [],
+            |_| Ok(())
+        )
+        .is_err());
+}
+
+#[test]
+fn a_fence_cannot_pass_while_a_journal_effect_is_reserved() {
+    use std::sync::mpsc::channel;
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let writers = Arc::new(noevia_diary::write::Writers::default());
+    let (inside_tx, inside) = channel();
+    let (go, go_rx) = channel::<()>();
+    let root = dir.path().to_path_buf();
+    let w = writers.clone();
+    let writing = std::thread::spawn(move || {
+        w.with_lock(UID, |held| {
+            let journal = noevia_diary::write::Journal::open(
+                &tenant_root(&root).join("managed-index.db"),
+                held,
+            )
+            .unwrap();
+            journal
+                .primary_reservation(|r| {
+                    r.mark_dirty("a.md")?;
+                    inside_tx.send(()).unwrap();
+                    go_rx.recv().unwrap();
+                    r.mark_dirty("b.md")
+                })
+                .unwrap();
+        })
+    });
+    inside.recv().unwrap();
+    // Python's tenant deletion: fence (prepare_delete), then tombstone, then rmtree.
+    let (fenced_tx, fenced) = channel();
+    let w = writers.clone();
+    let fence = std::thread::spawn(move || {
+        w.fence(UID);
+        fenced_tx.send(()).unwrap();
+    });
+    assert!(
+        fenced
+            .recv_timeout(std::time::Duration::from_millis(500))
+            .is_err(),
+        "the fence must wait while the journal effect is reserved"
+    );
+    go.send(()).unwrap();
+    assert_eq!(writing.join().unwrap(), Some(()));
+    fenced
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap();
+    fence.join().unwrap();
+    assert_eq!(dirty(dir.path()), ["a.md", "b.md"]);
+    // From here no writer slot (and so no Journal or reservation) is granted for the tenant.
+    assert!(writers.with_lock(UID, |_| ()).is_none());
+}
+
+/// A route's reply as (status, retry-after, body).
+fn wire(r: noevia_diary::workspace::Reply) -> (u16, Option<&'static str>, Vec<u8>) {
+    use noevia_diary::workspace::Reply;
+    match r {
+        Reply::Json(s, b) => (s, None, b),
+        Reply::Text(s, t) => (s, None, t.into_bytes()),
+        Reply::Busy => (503, Some("1"), BUSY.as_bytes().to_vec()),
+        Reply::Zip(_) | Reply::Decline => (0, None, vec![]),
+    }
+}
+
+#[test]
+fn in_transaction_intent_refusals_of_writes_are_busy_and_write_nothing() {
+    let writers = noevia_diary::write::Writers::default();
+    writers
+        .with_lock(UID, in_transaction_intent_refusals)
+        .unwrap();
+}
+
+fn in_transaction_intent_refusals(held: &noevia_diary::write::WriteGuard<'_>) {
+    use noevia_diary::{corpus::Layout, recovery::State, write, writes};
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let t = tenant_root(dir.path());
+    let state = std::sync::Mutex::new(State::default());
+    let reader = noevia_diary::managed::backup_store(&t, UID).unwrap();
+    let layout = Layout {
+        daily: true,
+        monthly_prefix: String::new(),
+        entries_prefix: "Entries".into(),
+        index_file: "INDEX.md".into(),
+        month_file_template: "{year}-{month02}.md".into(),
+    };
+    let ctx = || writes::Ctx {
+        recovery: &state,
+        reader: &reader,
+        store: write::Store::new(&t.join("managed-diary.db")),
+        journal: write::Journal::open(&t.join("managed-index.db"), held).unwrap(),
+        layout: &layout,
+    };
+    let file = serde_json::json!({"path": "a.md", "content": "x", "version": null});
+    let file = file.as_object().unwrap();
+    let path = t.join("managed-diary.db");
+    // Admitted with no intent; the intent commits while the write waits for the held primary.
+    let (held_tx, held) = std::sync::mpsc::channel();
+    let holder = std::thread::spawn(move || {
+        let mut c = rusqlite::Connection::open(&path).unwrap();
+        let tx = c
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        held_tx.send(()).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        tx.execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
+        .unwrap();
+        tx.commit().unwrap();
+    });
+    held.recv().unwrap();
+    let started = std::time::Instant::now();
+    let r = writes::file_write(&ctx(), file);
+    holder.join().unwrap();
+    assert!(started.elapsed() >= std::time::Duration::from_millis(400));
+    assert_eq!(wire(r), (503, Some("1"), BUSY.as_bytes().to_vec()));
+    assert!(file_row(dir.path(), "a.md").is_none());
+    assert!(dirty(dir.path()).is_empty());
+    // Every other step that refuses before anything durable of the request exists.
+    let dirb = serde_json::json!({"path": "D"});
+    assert_eq!(
+        wire(writes::directory_create(&ctx(), dirb.as_object().unwrap())).0,
+        503
+    );
+    let append = serde_json::json!({"text": "Synthetic note.", "title": "t",
+        "requestId": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "entryTime": now_iso()});
+    let Ok(req) = writes::append_validate(append.as_object().unwrap()) else {
+        panic!("valid append");
+    };
+    assert_eq!(wire(writes::append(&ctx(), &req)).0, 503);
+    let db = primary(dir.path());
+    let dirs: i64 = db
+        .query_row("SELECT COUNT(*) FROM directories", [], |r| r.get(0))
+        .unwrap();
+    let files: i64 = db
+        .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!((dirs, files), (0, 0));
+    assert!(journal_rows(dir.path()).is_empty() && dirty(dir.path()).is_empty());
+    assert_eq!(meta(dir.path(), "generation"), "1");
+    assert_eq!(meta(dir.path(), "backup_effect_pending"), INTENT);
+    // An unrelated failure of the same step keeps its classification (500): without an intent,
+    // the publication's own SQLite effect fails (a read-only view in place of the table).
+    db.execute("DELETE FROM meta WHERE key='backup_effect_pending'", [])
+        .unwrap();
+    index(dir.path())
+        .execute_batch(
+            "DROP TABLE dirty_documents;
+             CREATE VIEW dirty_documents AS SELECT 'none' AS document WHERE 0;",
+        )
+        .unwrap();
+    assert_eq!(
+        wire(writes::file_write(&ctx(), file)),
+        (500, None, b"Internal Server Error".to_vec())
+    );
+    assert!(file_row(dir.path(), "a.md").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_wrong_assertion_is_refused_before_any_backup_state_is_answered() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    primary(dir.path())
+        .execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
+        .unwrap();
+    let addr = start(dir.path(), "rust").await;
+    let mut h = without(writer(), "x-noevia-diary-asserted");
+    h.push(("x-noevia-diary-verify", "1".to_string()));
+    h.push((
+        "x-cowork-tenant-assertion",
+        "v1.synthetic.invalid".to_string(),
+    ));
+    let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
+    let (s, retry, _, body) = send_wire(addr, "PUT", "/api/file", &h, &b).await;
+    assert_eq!(
+        (s, retry, body.as_str()),
+        (401, None, r#"{"detail":"invalid tenant assertion"}"#)
+    );
+    assert_eq!(outbox(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert!(dirty(dir.path()).is_empty() && file_row(dir.path(), "a.md").is_none());
+    assert_eq!(meta(dir.path(), "backup_effect_pending"), INTENT);
+}
+
+const APPEND_RID: &str = "cccccccc-dddd-4eee-8fff-000000000001";
+
+fn append_body() -> serde_json::Value {
+    serde_json::json!({"text": "Synthetic union note.", "title": "t", "requestId": APPEND_RID,
+                       "entryTime": now_iso()})
+}
+
+/// Occurrences of the append's xid marker across the corpus.
+fn markers(root: &Path) -> usize {
+    let db = primary(root);
+    let mut stmt = db.prepare("SELECT data FROM files").unwrap();
+    let marker = format!("xid:{APPEND_RID}");
+    stmt.query_map([], |r| r.get::<_, Vec<u8>>(0))
+        .unwrap()
+        .map(|d| {
+            String::from_utf8_lossy(&d.unwrap())
+                .matches(&marker)
+                .count()
+        })
+        .sum()
+}
+
+/// (applied, attempts, last_error) of the append's journal row.
+fn append_row(root: &Path) -> (i64, i64, Option<String>) {
+    index(root)
+        .query_row(
+            "SELECT applied, attempts, last_error FROM journal WHERE kind='exchange' AND id<>'old'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap()
+}
+
+/// A diary that already has an exchange (no first-entry scaffold), plus one applied old row.
+fn diary_with_history(root: &Path) {
+    managed_tenant(root, &[]);
+    index(root)
+        .execute(
+            "INSERT INTO journal (id, created_at, kind, payload, applied) VALUES ('old','2030','exchange','{}',1)",
+            [],
+        )
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_intent_after_the_append_row_commits_is_busy_and_the_row_replays_once() {
+    let dir = tempfile::tempdir().unwrap();
+    diary_with_history(dir.path());
+    // Test-only: the intent commits together with the append's own corpus write, i.e. after its
+    // journal row is durable and before the row is marked applied. It would fire again on any
+    // second write of that exchange.
+    primary(dir.path())
+        .execute_batch(&format!(
+            "CREATE TRIGGER synthetic_intent_i AFTER INSERT ON files WHEN instr(NEW.data, 'xid:{APPEND_RID}') > 0
+             BEGIN INSERT OR IGNORE INTO meta VALUES ('backup_effect_pending', 'synthetic'); END;
+             CREATE TRIGGER synthetic_intent_u AFTER UPDATE ON files WHEN instr(NEW.data, 'xid:{APPEND_RID}') > 0
+             BEGIN INSERT OR IGNORE INTO meta VALUES ('backup_effect_pending', 'synthetic'); END;"
+        ))
+        .unwrap();
+    let addr = start(dir.path(), "rust").await;
+    let (s, retry, content_type, body) = send_wire(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append_body(),
+    )
+    .await;
+    // app.py: log_exchange -> apply_pending -> mark_failed -> WriterBusy -> writer_busy.
+    assert_eq!(
+        (s, retry.as_deref(), content_type.as_deref(), body.as_str()),
+        (503, Some("1"), Some("application/json"), BUSY)
+    );
+    // Not a no-effect: the row stays durably pending (never marked failed) and the corpus write
+    // that preceded the refusal is there once. The intent is retained.
+    assert_eq!(append_row(dir.path()), (0, 0, None));
+    assert_eq!(markers(dir.path()), 1);
+    assert_eq!(meta(dir.path(), "backup_effect_pending"), "synthetic");
+    // While it is unsettled every write is refused at admission, and nothing changes.
+    let (s, retry, _, body) = send_wire(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append_body(),
+    )
+    .await;
+    assert_eq!((s, retry), (503, None));
+    assert!(body.contains("backup settlement is uncertain"), "{body}");
+    assert_eq!(journal_rows(dir.path()).len(), 2);
+    // Synthetic settlement (test-only removal): the next write's recovery applies the row once,
+    // without writing the exchange again (the trigger would re-create the intent).
+    primary(dir.path())
+        .execute("DELETE FROM meta WHERE key='backup_effect_pending'", [])
+        .unwrap();
+    for (n, path) in ["b.md", "c.md"].iter().enumerate() {
+        let b = serde_json::json!({"path": path, "content": "x", "version": null});
+        let (s, _, _, body) = send_wire(addr, "PUT", "/api/file", &writer(), &b).await;
+        assert_eq!(s, 200, "{n}: {body}");
+        assert_eq!(append_row(dir.path()), (1, 0, None));
+        assert_eq!(markers(dir.path()), 1);
+        assert!(primary(dir.path())
+            .query_row(
+                "SELECT 1 FROM meta WHERE key='backup_effect_pending'",
+                [],
+                |_| Ok(())
+            )
+            .is_err());
+    }
+    // Repeating the same append is idempotent: no new row, no second exchange.
+    let (s, _, _, body) = send_wire(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append_body(),
+    )
+    .await;
+    assert_eq!(s, 200, "{body}");
+    assert_eq!(journal_rows(dir.path()).len(), 2);
+    assert_eq!(markers(dir.path()), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unrelated_failure_after_the_append_row_commits_stays_500() {
+    let dir = tempfile::tempdir().unwrap();
+    diary_with_history(dir.path());
+    // Test-only: marking the row applied fails with an ordinary SQLite error (no intent).
+    index(dir.path())
+        .execute_batch(
+            "CREATE TRIGGER synthetic_failure BEFORE UPDATE OF applied ON journal WHEN NEW.applied = 1
+             BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;",
+        )
+        .unwrap();
+    let addr = start(dir.path(), "rust").await;
+    let (s, retry, content_type, body) = send_wire(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append_body(),
+    )
+    .await;
+    assert_eq!(
+        (s, retry, content_type.as_deref(), body.as_str()),
+        (
+            500,
+            None,
+            Some("text/plain; charset=utf-8"),
+            "Internal Server Error"
+        )
+    );
+    assert_eq!(append_row(dir.path()), (0, 0, None));
+    assert_eq!(markers(dir.path()), 1);
 }

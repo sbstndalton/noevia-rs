@@ -770,6 +770,7 @@ dependencies = [
 name = "diary-workspace-import-apply"
 version = "0.1.0"
 dependencies = [
+ "diary-backup-run",
  "rusqlite",
  "ryu",
  "serde",
@@ -795,6 +796,7 @@ name = "diary-workspace-transaction"
 version = "0.1.0"
 dependencies = [
  "diary-backup-format",
+ "diary-backup-run",
  "diary-entity-focus",
  "diary-workspace-rules",
  "rusqlite",
@@ -1883,13 +1885,17 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "diary-backup-run",
  "diary-corpus-parse",
  "diary-corpus-write",
+ "diary-index-transform",
+ "diary-storage-backoff",
  "diary-workspace-export",
  "http-body-util",
  "regex",
  "reqwest",
  "rusqlite",
+ "s3-sign",
  "serde",
  "serde_json",
  "sha2",
