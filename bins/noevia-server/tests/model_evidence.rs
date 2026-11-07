@@ -48,6 +48,39 @@ fn normalise(text: &str) -> String {
     }
 }
 
+/// Keep every legacy byte of the Core oracle comparison. New native records additionally
+/// require explicit run attribution; only the random run id is normalised, like the record id.
+/// These cases admit no calibration, so their exact expected generation is zero.
+fn normalise_log(text: &str, native: bool) -> String {
+    text.lines()
+        .map(|line| {
+            let prefix = if native {
+                let row: Value = serde_json::from_str(line).unwrap();
+                let run = row["runId"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .expect("run attribution");
+                assert_eq!(row["runGeneration"], "0");
+                let suffix = format!(
+                    ",\"runId\":{},\"runGeneration\":\"0\"}}",
+                    serde_json::to_string(run).unwrap()
+                );
+                assert!(
+                    line.ends_with(&suffix),
+                    "run attribution is the required record suffix: {line}"
+                );
+                &line[..line.len() - suffix.len()]
+            } else {
+                line.strip_suffix('}').unwrap()
+            };
+            format!(
+                "{},\"runId\":\"run_X\",\"runGeneration\":\"0\"}}\n",
+                normalise(prefix)
+            )
+        })
+        .collect()
+}
+
 /// The text around the first place `a` differs from `b` (all of it when they are equal), so a failure
 /// shows the difference and not two whole answers.
 fn around_first_difference(a: &str, b: &str) -> String {
@@ -330,11 +363,14 @@ async fn every_recorded_core_answer_and_evidence_log_is_the_fronts() {
         }
         let log = std::fs::read_to_string(evidence_dir.join("evidence.jsonl")).ok();
         assert_eq!(
-            log.as_deref().map(|l| normalise(&l.replace(
-                &format!("http://127.0.0.1:{hf_port}"),
-                "https://huggingface.co"
-            ))),
-            expect["log"].as_str().map(normalise),
+            log.as_deref().map(|l| normalise_log(
+                &l.replace(
+                    &format!("http://127.0.0.1:{hf_port}"),
+                    "https://huggingface.co"
+                ),
+                true
+            )),
+            expect["log"].as_str().map(|l| normalise_log(l, false)),
             "{name}: the evidence log"
         );
         // The scripted router saw only the reads the work needs.

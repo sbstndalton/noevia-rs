@@ -1,6 +1,5 @@
 //! Read-only access to an app-managed Diary (`users/<uid>/managed-diary.db`), byte-compatible with
-//! managed_storage.py. This process never writes a tenant's files (D4 is read routes only; the
-//! single-writer rule keeps every write in Python until D5).
+//! managed_storage.py. Writes (D5) are in write.rs.
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::Value;
@@ -75,6 +74,30 @@ pub type Settings = serde_json::Map<String, Value>;
 /// means "let Python serve it" (Python then builds, recovers or refuses exactly as today).
 /// Nothing here writes, and nothing depends on the request's credentials.
 pub fn ready(tenant_root: &Path, uid: &str) -> Result<Option<(Managed, Settings)>, Error> {
+    ready_with(tenant_root, uid, false, true)
+}
+
+/// `ready` for a D5 write: the same checks, except that dirty documents are allowed. They only
+/// mean "the retrieval index is behind"; a write never reads the index, and Python's next
+/// `_reindex_dirty` catches up (the reply of a Python write does not depend on it either).
+/// Pending journal entries and a non-empty index outbox still decline.
+///
+/// `under_lock`: the journal is checked only while the caller holds the tenant's writer lock;
+/// before that, a pending row may be the in-flight write of another request of this process.
+pub fn ready_for_write(
+    tenant_root: &Path,
+    uid: &str,
+    under_lock: bool,
+) -> Result<Option<(Managed, Settings)>, Error> {
+    ready_with(tenant_root, uid, true, under_lock)
+}
+
+fn ready_with(
+    tenant_root: &Path,
+    uid: &str,
+    allow_dirty: bool,
+    check_journal: bool,
+) -> Result<Option<(Managed, Settings)>, Error> {
     let marker = tenant_root.join("managed-diary.active");
     let db_path = tenant_root.join("managed-diary.db");
     let Ok(identity) = std::fs::read(&marker) else {
@@ -115,14 +138,25 @@ pub fn ready(tenant_root: &Path, uid: &str) -> Result<Option<(Managed, Settings)
     // documents when it recovers a tenant's state; whenever any of that is outstanding, Python
     // serves (and recovers) instead.
     let index = tenant_root.join("managed-index.db");
+    if allow_dirty && !index.is_file() {
+        // A write journals into the index db; Python creates it when it builds the state.
+        return Ok(None);
+    }
     if index.is_file() {
         let idx = open_ro(&index)?;
-        if table_exists(&idx, "journal")?
+        if allow_dirty
+            && !(table_exists(&idx, "journal")? && table_exists(&idx, "dirty_documents")?)
+        {
+            return Ok(None);
+        }
+        if check_journal
+            && table_exists(&idx, "journal")?
             && count(&idx, "SELECT COUNT(*) FROM journal WHERE applied = 0")? != 0
         {
             return Ok(None);
         }
-        if table_exists(&idx, "dirty_documents")?
+        if !allow_dirty
+            && table_exists(&idx, "dirty_documents")?
             && count(&idx, "SELECT COUNT(*) FROM dirty_documents")? != 0
         {
             return Ok(None);
