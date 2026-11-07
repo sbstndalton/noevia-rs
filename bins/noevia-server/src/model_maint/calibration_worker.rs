@@ -917,6 +917,8 @@ impl Worker {
             .take();
         if let Some(fence) = fence {
             fence.release();
+            #[cfg(test)]
+            test_changed();
         }
     }
 
