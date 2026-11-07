@@ -357,11 +357,11 @@ fn target(
     let suffix = path.strip_prefix(source).ok_or(Fault::Schema)?;
     let relative = format!("{destination}{suffix}");
     let full = rules::join(&c.remote_root, &[&relative]);
-    // A transfer must not create children outside either client path admission
-    // or the stored/read key domain. Refuse the complete plan, never truncate.
-    if relative.chars().count() > 500
-        || i64::try_from(full.len()).map_err(|_| Fault::Capacity)? > reads::MAX_KEY_BYTES
-    {
+    // workspace_ops.py commits every derived child, however long (only the client's source and
+    // destination are bounded to 500 code points). Same here: no derived-path refusal. The
+    // stored-key resource bound (reads::MAX_KEY_BYTES) is far above anything a chain of
+    // Python-accepted moves produces in practice.
+    if i64::try_from(full.len()).map_err(|_| Fault::Capacity)? > reads::MAX_KEY_BYTES {
         return Err(Fault::Capacity);
     }
     Ok(full)

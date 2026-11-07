@@ -81,6 +81,10 @@ server-usage = { path = "../../crates/server-usage" }
 server-routing-default = { path = "../../crates/server-routing-default" }
 server-stats = { path = "../../crates/server-stats" }
 llamacpp-autoconfig = { path = "../../crates/llamacpp-autoconfig" }
+# The preset value, model-name and micro-batch policy calibration's profile writes apply (model_maint/ini.rs `prepare`).
+llamacpp-presets = { path = "../../crates/llamacpp-presets" }
+# tuneIdentity's quantisation pattern over the model file name (model_maint/calibration_facts.rs).
+regex = "1"
 long-profile = { path = "../../crates/long-profile" }
 preset-reload = { path = "../../crates/preset-reload" }
 gguf = { path = "../../crates/gguf" }
@@ -132,4 +136,4 @@ tenant-assertion = { path = "../../crates/tenant-assertion" }
 tempfile = "3"
 http-body-util = { version = "0.1", features = ["channel"] }
 hyper = { version = "1", features = ["http1", "client", "server"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync", "test-util"] }

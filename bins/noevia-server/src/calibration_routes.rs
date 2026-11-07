@@ -1,4 +1,7 @@
-//! #2303: public calibration policy. The existing worker owns its hold, controller and restore CAS.
+//! #2303: public calibration policy over the native worker (model_maint::calibration_facts), which
+//! owns the job, its hold, controller and restore CAS. The facts it answers have the shape Core's
+//! internal bridge (rust-calibration-routes-bridge.cjs) answered before the worker moved.
+use crate::model_maint::calibration_worker::{Worker, OVER_LIMIT};
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
@@ -9,7 +12,10 @@ use http_body_util::BodyExt;
 use js_json::{wtf16, JValue};
 use std::{sync::Arc, time::Duration};
 pub const PATH: &str = "/api/models/calibration";
-const PREFIX: &str = "/internal/calibration-routes/";
+/// Core's bridge stopped every state operation after 14 s and answered 503; so does the front.
+const DEADLINE: Duration = Duration::from_secs(14);
+/// Core's bridge refused an answer over 8 MiB.
+const MAX_BYTES: usize = 8 * 1024 * 1024;
 const CONFIRM: &str =
     "Confirm that chat can pause and that Diary background jobs and other clients are stopped.";
 const BUDGET: &str = "Choose a prompt time limit between 15 and 1800 seconds.";
@@ -45,16 +51,105 @@ fn opaque<'a>(facts: &'a JValue, key: &str) -> Option<&'a str> {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     })
 }
-async fn call(app: &App, op: &str, body: &serde_json::Value) -> Option<JValue> {
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(&format!("{PREFIX}{op}"), body, Duration::from_secs(15))
-        .await?;
-    if status != 200 || bytes.len() > 8 * 1024 * 1024 {
-        return None;
+/// One state operation of the worker.
+enum Op<'a> {
+    Facts,
+    Listing {
+        model: &'a str,
+        token: &'a str,
+    },
+    Prepare {
+        model: &'a str,
+        token: &'a str,
+        row_token: &'a str,
+    },
+    Launch {
+        model: &'a str,
+        token: &'a str,
+        row_token: &'a str,
+        prepared_token: &'a str,
+        plan: &'a JValue,
+    },
+}
+/// The bridge's answer: `{ available: false }` without a worker, `{ available: true, ...facts }`
+/// otherwise; `None` where it answered 503 (the worker threw, or the deadline passed).
+async fn call(app: &App, op: Op<'_>) -> Option<JValue> {
+    let Some(worker) = app.config.calibration.clone() else {
+        return Some(JValue::obj([("available", JValue::Bool(false))]));
+    };
+    let facts = match op {
+        Op::Facts => worker.state_facts(),
+        Op::Listing { model, token } => {
+            tokio::time::timeout(DEADLINE, worker.listing_facts(model, token))
+                .await
+                .ok()?
+        }
+        Op::Prepare {
+            model,
+            token,
+            row_token,
+        } => {
+            let inference = inference(app).await;
+            tokio::time::timeout(
+                DEADLINE,
+                worker.preparation_facts(model, token, row_token, inference),
+            )
+            .await
+            .ok()?
+            .ok()?
+        }
+        Op::Launch {
+            model,
+            token,
+            row_token,
+            prepared_token,
+            plan,
+        } => {
+            let inference = inference(app).await;
+            // A launch runs to its end even if the client leaves: the hold and the job's first save
+            // are never cut in half. Past the deadline the client is told it is unavailable.
+            let task = launch(
+                worker,
+                [model, token, row_token, prepared_token].map(str::to_owned),
+                plan.clone(),
+                inference,
+            );
+            tokio::time::timeout(DEADLINE, tokio::spawn(task))
+                .await
+                .ok()?
+                .ok()?
+                .ok()?
+        }
+    };
+    let mut answer = vec![("available".into(), JValue::Bool(true))];
+    if let JValue::Obj(fields) = facts {
+        answer.extend(fields);
     }
-    wtf16::parse(std::str::from_utf8(&bytes).ok()?).ok()
+    let answer = JValue::Obj(answer);
+    (wtf16::stringify(&answer)?.len() <= MAX_BYTES).then_some(answer)
+}
+async fn launch(
+    worker: Arc<Worker>,
+    [model, token, row_token, prepared_token]: [String; 4],
+    plan: JValue,
+    inference: f64,
+) -> Result<JValue, crate::model_maint::calibration_facts::Unavailable> {
+    worker
+        .compare_and_launch(
+            &model,
+            &token,
+            &row_token,
+            &prepared_token,
+            &plan,
+            inference,
+        )
+        .await
+}
+/// Core's inference budget for `conservativeFor` (0 when it cannot be read: the autoconfig budget).
+async fn inference(app: &App) -> f64 {
+    crate::model_state_routes::sizing_budget(app)
+        .await
+        .unwrap_or(0.0)
 }
 async fn body(mut body: Body) -> Result<JValue, Box<Response<Body>>> {
     let read = async {
@@ -304,7 +399,7 @@ pub async fn serve(
             },
         );
     }
-    let Some(facts) = call(app, "facts", &serde_json::json!({})).await else {
+    let Some(facts) = call(app, Op::Facts).await else {
         return unavailable();
     };
     match facts.get("available").as_bool() {
@@ -345,7 +440,7 @@ pub async fn serve(
         Ok(v) => v,
         Err(message) => return error(400, message),
     };
-    let Some(facts) = call(app, "facts", &serde_json::json!({})).await else {
+    let Some(facts) = call(app, Op::Facts).await else {
         return unavailable();
     };
     if facts.get("available").as_bool() != Some(true) {
@@ -362,8 +457,15 @@ pub async fn serve(
     let Some(token) = opaque(&facts, "token") else {
         return unavailable();
     };
-    let ask = serde_json::json!({"model": model, "token": token});
-    let Some(listing) = call(app, "listing", &ask).await else {
+    let Some(listing) = call(
+        app,
+        Op::Listing {
+            model: &model,
+            token,
+        },
+    )
+    .await
+    else {
         return unavailable();
     };
     if listing.get("stale").as_bool() == Some(true) {
@@ -391,8 +493,16 @@ pub async fn serve(
     let Some(row_token) = opaque(&listing, "rowToken") else {
         return unavailable();
     };
-    let ask = serde_json::json!({"model": model, "token": token, "rowToken": row_token});
-    let Some(prepared) = call(app, "prepare", &ask).await else {
+    let Some(prepared) = call(
+        app,
+        Op::Prepare {
+            model: &model,
+            token,
+            row_token,
+        },
+    )
+    .await
+    else {
         return unavailable();
     };
     if prepared.get("stale").as_bool() == Some(true) {
@@ -420,21 +530,30 @@ pub async fn serve(
     let Some(prepared_token) = opaque(&prepared, "preparedToken") else {
         return unavailable();
     };
-    let Some(plan_text) = wtf16::stringify(&plan) else {
+    let Some(result) = call(
+        app,
+        Op::Launch {
+            model: &model,
+            token,
+            row_token,
+            prepared_token,
+            plan: &plan,
+        },
+    )
+    .await
+    else {
         return unavailable();
     };
-    let Ok(plan) = serde_json::from_str::<serde_json::Value>(&plan_text) else {
-        return unavailable();
-    };
-    let Some(result) = call(app, "launch", &serde_json::json!({"model":model,"token":token,"rowToken":row_token,"preparedToken":prepared_token,"plan":plan})).await else { return unavailable(); };
     match result.get("applied").as_bool() {
         Some(true) => {}
         Some(false) => {
             return match result.get("reason").as_str() {
                 Some("hold") => hold_failure(result.get("hold")),
                 Some("stale") => changed(),
+                // No gate hold, and the run could outlast the longest maintenance lease.
+                Some("limit") => error(400, OVER_LIMIT),
                 _ => unavailable(),
-            }
+            };
         }
         None => return unavailable(),
     }
