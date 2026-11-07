@@ -55,6 +55,62 @@ pub fn gguf() -> Vec<u8> {
     out
 }
 
+/// A single synthetic reload's entry and release, independent of scheduling delays.
+#[derive(Default)]
+struct ReloadBarrier {
+    entered: AtomicBool,
+    released: AtomicBool,
+    entry: tokio::sync::Notify,
+    release: tokio::sync::Notify,
+}
+
+impl ReloadBarrier {
+    async fn wait(&self) {
+        self.entered.store(true, Ordering::Release);
+        self.entry.notify_waiters();
+        loop {
+            let released = self.release.notified();
+            if self.released.load(Ordering::Acquire) {
+                return;
+            }
+            released.await;
+        }
+    }
+}
+
+/// Owns only the next synthetic reload hold. Unwind/drop must never strand its handler.
+pub struct HeldReload {
+    barrier: Arc<ReloadBarrier>,
+}
+
+impl HeldReload {
+    pub async fn entered(&self) {
+        loop {
+            let entered = self.barrier.entry.notified();
+            if self.barrier.entered.load(Ordering::Acquire) {
+                return;
+            }
+            entered.await;
+        }
+    }
+
+    pub fn is_held(&self) -> bool {
+        self.barrier.entered.load(Ordering::Acquire)
+            && !self.barrier.released.load(Ordering::Acquire)
+    }
+
+    pub fn release(&self) {
+        self.barrier.released.store(true, Ordering::Release);
+        self.barrier.release.notify_waiters();
+    }
+}
+
+impl Drop for HeldReload {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
 /// What the engine answers, and what it was asked.
 #[derive(Default)]
 pub struct Engine {
@@ -71,12 +127,25 @@ pub struct Engine {
     pub props_delay_ms: AtomicU64,
     /// `GET /models?reload=1` answers this late (ms).
     pub reload_delay_ms: AtomicU64,
+    /// Optional event hold, consumed by one reload; all other fixture users are unchanged.
+    reload_hold: Mutex<Option<Arc<ReloadBarrier>>>,
     /// Other models live besides the two the profile names (`extra-<n>`, loaded).
     pub extra_live: AtomicU64,
     pub seen: Mutex<Vec<String>>,
 }
 
 impl Engine {
+    pub fn hold_next_reload(&self) -> HeldReload {
+        let mut pending = self.reload_hold.lock().unwrap();
+        assert!(
+            pending.is_none(),
+            "a synthetic reload hold is already armed"
+        );
+        let barrier = Arc::new(ReloadBarrier::default());
+        *pending = Some(Arc::clone(&barrier));
+        HeldReload { barrier }
+    }
+
     pub fn base(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
     }
@@ -143,6 +212,10 @@ pub async fn engine(ini: PathBuf) -> Arc<Engine> {
                 (_, p) if p.starts_with("/gate/") => reply(200, json!({})),
                 ("GET", "/models") => {
                     if parts.uri.query() == Some("reload=1") {
+                        let held = { e.reload_hold.lock().unwrap().take() };
+                        if let Some(held) = held {
+                            held.wait().await;
+                        }
                         let delay = e.reload_delay_ms.load(Ordering::Acquire);
                         if delay > 0 {
                             tokio::time::sleep(Duration::from_millis(delay)).await;
