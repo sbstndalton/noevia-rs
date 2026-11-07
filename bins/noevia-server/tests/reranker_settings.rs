@@ -487,11 +487,39 @@ async fn original_public_reranker_auth_methods_and_address_redaction() {
 async fn original_public_reranker_save_errors_put_reset_and_delete() {
     let dir = tempfile::tempdir().unwrap();
     let db = seed(dir.path());
+    // Existing mcp_support real-front/upstream harness, using the same engine
+    // listing + authenticated installed-facts protocol as model_state_reads.
+    // These are catalogue facts only; the native handler still owns all settings.
+    let engine = upstream().await;
+    engine.set(|request| {
+        if request.path == "/models" {
+            reply("200 OK", r#"{"data":[{"id":"synthetic-chat","source":"preset","status":{"value":"unloaded"}},{"id":"synthetic-reranker-q8","source":"preset","status":{"value":"unloaded","args":["--reranking"]}},{"id":"synthetic-gone-reranker","source":"preset","status":{"value":"unloaded","args":["--reranking"]}}]}"#)
+        } else { reply("404 Not Found", "{}") }
+    });
+    let facts = upstream().await;
+    facts.set(|request| {
+        if request.path == "/internal/models/facts"
+            && request.header("x-noevia-store-token").as_deref() == Some(STORE_TOKEN)
+            && j(&request.body)["want"] == "installed"
+        {
+            reply("200 OK", r#"{"sidecarNames":[],"sidecarLoaded":[],"scan":[{"modelId":"synthetic-chat","sections":["synthetic-chat"],"bytes":1},{"modelId":"synthetic-reranker-q8","sections":["synthetic-reranker-q8"],"bytes":1}]}"#)
+        } else { reply("404 Not Found", "{}") }
+    });
     let env = [
         ("RERANK_BACKEND", "tei".into()),
         ("NOEVIA_FEATURE_RAG_RERANK", "true".into()),
+        ("MODEL_MANAGER_KIND", "llamacpp".into()),
+        ("MODEL_MANAGER_BASE_URL", engine.base()),
+        ("NOEVIA_LEGACY_UPSTREAM", facts.base()),
+        ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
     ];
     let front = front_env(dir.path(), true, &env).await;
+    let (catalogue_status, _, catalogue_text) = get(front.addr, "/api/models/installed", ADMIN).await;
+    assert_eq!(catalogue_status, 200, "original available-catalogue precondition: {catalogue_text}");
+    let catalogue = j(&catalogue_text);
+    let rows = catalogue.as_array().unwrap();
+    assert!(rows.iter().any(|row| row["name"] == "synthetic-reranker-q8" && row["missingFile"] == false));
+    assert!(rows.iter().any(|row| row["name"] == "synthetic-gone-reranker" && row["missingFile"] == true));
     let before = snapshot(front.store).await;
     let (status, _, text) = raw(front.addr, "PUT", PATH, ADMIN, br#"{"enabled":false}"#).await;
     let off = j(&text);
@@ -541,6 +569,14 @@ async fn original_public_reranker_save_errors_put_reset_and_delete() {
         assert_eq!(snapshot(front.store).await, saved);
         assert_eq!(audits(&db, "rerank.%"), ["rerank.configure"]);
     }
+    let unreadable = front_env(dir.path(), true, &[
+        ("RERANK_BACKEND", "tei".into()),
+        ("NOEVIA_FEATURE_RAG_RERANK", "true".into()),
+    ]).await;
+    let (status, _, text) = raw(unreadable.addr, "PUT", PATH, ADMIN, br#"{"enabled":true,"choice":"llamacpp:x"}"#).await;
+    assert_eq!((status, j(&text)["errorId"].as_str()), (503, Some("catalogueUnavailable")));
+    assert_eq!(snapshot(front.store).await, saved);
+    assert_eq!(audits(&db, "rerank.%"), ["rerank.configure"]);
     let (status, _, text) = raw(front.addr, "PUT", PATH, ADMIN, br#"{"reset":true}"#).await;
     assert_eq!(
         (status, j(&text)["source"].as_str()),
