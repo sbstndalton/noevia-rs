@@ -194,6 +194,20 @@ fn frozen_review_constructors() {
     }
 }
 #[test]
+fn frozen_recursive_scalar_wrappers() {
+    let rows: Value =
+        serde_json::from_str(include_str!("fixtures/wrapper-python312.json")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    for row in rows.as_array().unwrap() {
+        let path = dir.path().join("config.yaml");
+        fs::write(&path, bytes(row["input_hex"].as_str().unwrap())).unwrap();
+        compare_raw(
+            row,
+            raw_output(Some(&path), &std::collections::BTreeMap::new()),
+        );
+    }
+}
+#[test]
 fn prompt_rejects_truthy_non_paths() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir_all(dir.path().join("prompts")).unwrap();
@@ -207,6 +221,11 @@ fn prompt_rejects_truthy_non_paths() {
         let data =
             diary_operator::yaml::load(format!("prompts: {{system_path: {body}}}").as_bytes())
                 .unwrap();
-        assert_eq!(diary_operator::config::system_prompt(&data,dir.path()).unwrap_err(),format!("TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not '{kind}'"));
+        assert_eq!(
+            diary_operator::config::system_prompt(&data, dir.path()).unwrap_err(),
+            format!(
+                "TypeError: argument should be a str or an os.PathLike object where __fspath__ returns a str, not '{kind}'"
+            )
+        );
     }
 }

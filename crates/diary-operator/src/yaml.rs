@@ -3,7 +3,7 @@
 use crate::value::{decode_utf8, integer, repr, Kind, Result, Value};
 use num_bigint_dig::BigInt;
 use regex::Regex;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use yaml_rust2::{
     parser::{Event, Parser, Tag},
     scanner::{Marker, TScalarStyle},
@@ -204,7 +204,9 @@ fn timestamp(s: &str) -> Result<Value> {
             } else {
                 format!("days={days}, seconds={seconds}")
             };
-            return Err(format!("ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not datetime.timedelta({detail})."));
+            return Err(format!(
+                "ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not datetime.timedelta({detail})."
+            ));
         }
     }
     Ok(Value::new(Kind::Unsupported(
@@ -220,8 +222,119 @@ struct Reader<'a> {
     events: Vec<(Event, Marker)>,
     at: usize,
     anchors: BTreeMap<usize, Value>,
+    anchor_positions: BTreeMap<usize, usize>,
+    ends: Vec<usize>,
+    string_keys: BTreeSet<usize>,
+    pending: VecDeque<(usize, usize, Value)>,
+    filling: Option<Value>,
 }
 impl Reader<'_> {
+    fn complete(&mut self, value: &Value) -> Result<()> {
+        if let Some(index) = self
+            .pending
+            .iter()
+            .position(|(_, _, node)| std::rc::Rc::ptr_eq(&node.0, &value.0))
+        {
+            let (at, depth, node) = self
+                .pending
+                .remove(index)
+                .ok_or("YAML pending node missing")?;
+            let resume = self.at;
+            self.at = at;
+            self.filling = Some(node);
+            let result = self.node(depth);
+            self.at = resume;
+            result?;
+        }
+        Ok(())
+    }
+    fn defer(&mut self, start: usize, depth: usize, id: usize, node: Value) -> Result<Value> {
+        if id > 0 {
+            self.anchors.insert(id, node.clone());
+        }
+        self.pending.push_back((start, depth, node.clone()));
+        self.at = self.end(start)?;
+        Ok(node)
+    }
+    fn end(&self, at: usize) -> Result<usize> {
+        self.ends
+            .get(at)
+            .copied()
+            .filter(|end| *end > at)
+            .ok_or("YAML node missing".into())
+    }
+    fn original(&self, at: usize, depth: usize) -> Result<usize> {
+        if depth > 500 {
+            return Err("RecursionError: maximum recursion depth exceeded".into());
+        }
+        if let Some((Event::Alias(id), _)) = self.events.get(at) {
+            let original = self
+                .anchor_positions
+                .get(id)
+                .copied()
+                .ok_or("yaml.composer.ComposerError: found undefined alias")?;
+            self.original(original, depth + 1)
+        } else {
+            Ok(at)
+        }
+    }
+    fn value_key(&self, at: usize) -> Result<Option<usize>> {
+        let at = self.original(at, 0)?;
+        if self.string_keys.contains(&at) {
+            return Ok(None);
+        }
+        let value = match self.events.get(at) {
+            Some((Event::Scalar(s, style, _, None), _)) => {
+                *style == TScalarStyle::Plain && s == "="
+            }
+            Some((
+                Event::Scalar(_, _, _, Some(tag))
+                | Event::MappingStart(_, Some(tag))
+                | Event::SequenceStart(_, Some(tag)),
+                _,
+            )) => {
+                ((tag.handle == "!!" || tag.handle == "tag:yaml.org,2002:")
+                    && tag.suffix == "value")
+                    || (tag.handle.is_empty() && tag.suffix == "tag:yaml.org,2002:value")
+            }
+            _ => false,
+        };
+        Ok(value.then_some(at))
+    }
+    // SafeConstructor reads the selected node's *lexeme*, recursively, without
+    // constructing its tag or the other mapping entries. Aliases point to the
+    // composed node, even when its anchor was in an ignored entry.
+    fn scalar_text(&self, at: usize, depth: usize) -> Result<String> {
+        if depth > 500 {
+            return Err("RecursionError: maximum recursion depth exceeded".into());
+        }
+        let at = self.original(at, depth)?;
+        let (event, mark) = self.events.get(at).ok_or("YAML node missing")?;
+        let (actual, tagged) = match event {
+            Event::Scalar(s, ..) => return Ok(s.clone()),
+            Event::MappingStart(_, tag) => {
+                let mut key = at + 1;
+                while !matches!(self.events.get(key), Some((Event::MappingEnd, _))) {
+                    let value = self.end(key)?;
+                    if self.value_key(key)?.is_some() {
+                        return self.scalar_text(value, depth + 1);
+                    }
+                    key = self.end(value)?;
+                }
+                ("mapping", tag.is_some())
+            }
+            Event::SequenceStart(_, tag) => ("sequence", tag.is_some()),
+            _ => return Err("YAML node missing".into()),
+        };
+        let mark = if tagged {
+            self.tag_mark(*mark)
+        } else {
+            self.node_mark(*mark)
+        };
+        Err(format!(
+            "yaml.constructor.ConstructorError: expected a scalar node, but found {actual}{mark}"
+        ))
+    }
     fn next(&mut self) -> Result<(Event, Marker)> {
         let event = self
             .events
@@ -239,11 +352,51 @@ impl Reader<'_> {
         if snippet.is_empty() {
             return String::new();
         }
+        let chars = snippet.chars().collect::<Vec<_>>();
+        let (start, head) = if col > 36 {
+            (col - 32, " ... ")
+        } else {
+            (0, "")
+        };
+        let (end, tail) = if chars.len().saturating_sub(col) > 36 {
+            (col + 32, " ... ")
+        } else {
+            (chars.len(), "")
+        };
+        let snippet = chars
+            .iter()
+            .skip(start)
+            .take(end.saturating_sub(start))
+            .collect::<String>();
         format!(
-            "\n  in \"<unicode string>\", line {line}, column {}:\n    {snippet}\n    {}^",
+            "\n  in \"<unicode string>\", line {line}, column {}:\n    {head}{snippet}{tail}\n    {}^",
             col + 1,
-            " ".repeat(col)
+            " ".repeat(col.saturating_sub(start) + head.len())
         )
+    }
+    fn node_mark(&self, mark: Marker) -> String {
+        let prefix = self
+            .text
+            .lines()
+            .nth(mark.line().saturating_sub(1))
+            .unwrap_or("")
+            .chars()
+            .take(mark.col())
+            .collect::<String>();
+        let col = prefix
+            .rfind('&')
+            .filter(|at| {
+                prefix.get(at + 1..).is_some_and(|s| {
+                    !s.trim_end().is_empty()
+                        && !s
+                            .trim_end()
+                            .chars()
+                            .any(|c| c.is_whitespace() || "[]{},:".contains(c))
+                })
+            })
+            .map(|at| prefix.get(..at).unwrap_or("").chars().count())
+            .unwrap_or(mark.col());
+        self.mark_at(mark.line(), col)
     }
     fn tag_mark(&self, mark: Marker) -> String {
         let line = self
@@ -272,7 +425,10 @@ impl Reader<'_> {
             _ => "scalar",
         };
         if actual != expected {
-            return Err(format!("yaml.constructor.ConstructorError: expected a {expected} node, but found {actual}{}",self.tag_mark(mark)));
+            return Err(format!(
+                "yaml.constructor.ConstructorError: expected a {expected} node, but found {actual}{}",
+                self.tag_mark(mark)
+            ));
         }
         Ok(())
     }
@@ -293,7 +449,10 @@ impl Reader<'_> {
             } else {
                 format!("characters in position {at}-{}", at + len - 1)
             };
-            return Err(format!("yaml.constructor.ConstructorError: failed to convert base64 data into ascii: 'ascii' codec can't encode {detail}: ordinal not in range(128){}",self.tag_mark(mark)));
+            return Err(format!(
+                "yaml.constructor.ConstructorError: failed to convert base64 data into ascii: 'ascii' codec can't encode {detail}: ordinal not in range(128){}",
+                self.tag_mark(mark)
+            ));
         }
         let data = s
             .bytes()
@@ -320,7 +479,9 @@ impl Reader<'_> {
         let error = if complete || position == 0 {
             None
         } else if position == 1 {
-            Some(format!("Invalid base64-encoded string: number of data characters ({count}) cannot be 1 more than a multiple of 4"))
+            Some(format!(
+                "Invalid base64-encoded string: number of data characters ({count}) cannot be 1 more than a multiple of 4"
+            ))
         } else {
             Some("Incorrect padding".into())
         };
@@ -375,14 +536,24 @@ impl Reader<'_> {
         if depth > 500 {
             return Err("RecursionError: maximum recursion depth exceeded".into());
         }
+        let start = self.at;
         let (event, mark) = self.next()?;
+        let filling = self.filling.take();
         let (id, node) = match event {
             Event::Alias(id) => {
-                return self
-                    .anchors
+                if let Some(value) = self.anchors.get(&id) {
+                    return Ok(value.clone());
+                }
+                let at = self
+                    .anchor_positions
                     .get(&id)
-                    .cloned()
-                    .ok_or("yaml.composer.ComposerError: found undefined alias".into());
+                    .copied()
+                    .ok_or("yaml.composer.ComposerError: found undefined alias")?;
+                let resume = self.at;
+                self.at = at;
+                let value = self.node(depth + 1);
+                self.at = resume;
+                return value;
             }
             Event::Scalar(s, style, id, tag) => {
                 let default = if style == TScalarStyle::Plain {
@@ -390,7 +561,11 @@ impl Reader<'_> {
                 } else {
                     "str"
                 };
-                let tag = self.tag(tag, default, mark)?;
+                let tag = if self.string_keys.contains(&start) {
+                    "str".into()
+                } else {
+                    self.tag(tag, default, mark)?
+                };
                 self.shape(&tag, "scalar", mark)?;
                 if tag == "binary" {
                     self.binary(&s, mark)?;
@@ -398,60 +573,92 @@ impl Reader<'_> {
                 (id, scalar(&s, &tag)?)
             }
             Event::SequenceStart(id, tag) => {
-                let tag = self.tag(tag, "seq", mark)?;
+                let tag = if self.string_keys.contains(&start) {
+                    "str".into()
+                } else {
+                    self.tag(tag, "seq", mark)?
+                };
                 self.shape(&tag, "sequence", mark)?;
-                let node = Value::new(Kind::Seq(Vec::new()));
+                let Some(node) = filling else {
+                    return self.defer(start, depth, id, Value::new(Kind::Seq(Vec::new())));
+                };
                 if id > 0 {
                     self.anchors.insert(id, node.clone());
                 }
                 let mut values = Vec::new();
                 while !matches!(self.events.get(self.at), Some((Event::SequenceEnd, _))) {
-                    values.push(self.node(depth + 1)?);
+                    if tag == "omap" || tag == "pairs" {
+                        let resume = self.end(self.at)?;
+                        let at = self.original(self.at, depth + 1)?;
+                        if !matches!(self.events.get(at), Some((Event::MappingStart(..), _))) {
+                            return Err(
+                                "yaml.constructor.ConstructorError: expected a mapping of length 1"
+                                    .into(),
+                            );
+                        }
+                        self.at = at + 1;
+                        if matches!(self.events.get(self.at), Some((Event::MappingEnd, _))) {
+                            return Err(
+                                "yaml.constructor.ConstructorError: expected a single mapping item"
+                                    .into(),
+                            );
+                        }
+                        let key = self.node(depth + 1)?;
+                        let value = self.node(depth + 1)?;
+                        if !matches!(self.events.get(self.at), Some((Event::MappingEnd, _))) {
+                            return Err(
+                                "yaml.constructor.ConstructorError: expected a single mapping item"
+                                    .into(),
+                            );
+                        }
+                        values.push(Value::new(Kind::Seq(vec![key, value])));
+                        self.at = resume;
+                    } else {
+                        values.push(self.node(depth + 1)?);
+                    }
                 }
                 self.next()?;
-                let values = if tag == "omap" || tag == "pairs" {
-                    values.into_iter().map(|value|{let rows=value.entries().ok_or("yaml.constructor.ConstructorError: expected a mapping of length 1")?;
-                        if rows.len()!=1{return Err("yaml.constructor.ConstructorError: expected a single mapping item".into());}
-                        let Some((key,value))=rows.into_iter().next()else{return Err("yaml.constructor.ConstructorError: expected a single mapping item".into());};
-                        Ok(Value::new(Kind::Seq(vec![key,value])))
-                    }).collect::<Result<Vec<_>>>()?
-                } else {
-                    values
-                };
                 *node.0.borrow_mut() = Kind::Seq(values);
                 (id, node)
             }
             Event::MappingStart(id, tag) => {
-                let tag = self.tag(tag, "map", mark)?;
-                // SafeConstructor's scalar exception: an unquoted '=' entry in
-                // a mapping supplies its raw scalar value (for !!str, !!int, ...).
-                let scalar_value = match (
-                    self.events.get(self.at),
-                    self.events.get(self.at + 1),
-                    self.events.get(self.at + 2),
-                ) {
-                    (
-                        Some((Event::Scalar(k, TScalarStyle::Plain, _, None), _)),
-                        Some((Event::Scalar(v, _, _, _), _)),
-                        Some((Event::MappingEnd, _)),
-                    ) if k == "=" => Some(v.clone()),
-                    _ => None,
+                let tag = if self.string_keys.contains(&start) {
+                    "str".into()
+                } else {
+                    self.tag(tag, "map", mark)?
                 };
                 if !["map", "set", "seq", "omap", "pairs"].contains(&tag.as_str()) {
-                    if let Some(value) = scalar_value {
-                        self.at += 3;
-                        if tag == "binary" {
-                            self.binary(&value, mark)?;
-                        }
-                        let node = scalar(&value, &tag)?;
-                        if id > 0 {
-                            self.anchors.insert(id, node.clone());
-                        }
-                        return Ok(node);
+                    // PyYAML's timestamp constructor reads node.value directly;
+                    // unlike the other scalar constructors, it never unwraps '='.
+                    if tag == "timestamp" {
+                        return Err(
+                            "TypeError: expected string or bytes-like object, got 'list'".into(),
+                        );
                     }
+                    let value = self.scalar_text(start, depth + 1)?;
+                    self.at = self.end(start)?;
+                    if tag == "binary" {
+                        self.binary(&value, mark)?;
+                    }
+                    let node = scalar(&value, &tag)?;
+                    if id > 0 {
+                        self.anchors.insert(id, node.clone());
+                    }
+                    return Ok(node);
                 }
                 self.shape(&tag, "mapping", mark)?;
-                let node = Value::map();
+                let Some(node) = filling else {
+                    return self.defer(start, depth, id, Value::map());
+                };
+                // flatten_mapping retags every value-key before constructing
+                // any child. Aliases must observe that same node-tag mutation.
+                let mut key = self.at;
+                while !matches!(self.events.get(key), Some((Event::MappingEnd, _))) {
+                    if let Some(at) = self.value_key(key)? {
+                        self.string_keys.insert(at);
+                    }
+                    key = self.end(self.end(key)?)?;
+                }
                 if id > 0 {
                     self.anchors.insert(id, node.clone());
                 }
@@ -467,10 +674,12 @@ impl Reader<'_> {
                     let key = self.node(depth + 1)?;
                     let value = self.node(depth + 1)?;
                     if merge {
+                        self.complete(&value)?;
                         if let Some(pairs) = value.entries() {
                             merged.extend(pairs);
                         } else if let Some(seq) = value.as_array() {
                             for value in seq.into_iter().rev() {
+                                self.complete(&value)?;
                                 merged.extend(value.entries().ok_or("yaml.constructor.ConstructorError: expected a mapping for merging")?);
                             }
                         } else {
@@ -550,7 +759,10 @@ fn syntax_error(
     {
         let line = text.split('\n').count();
         let col = text.rsplit('\n').next().unwrap_or("").chars().count();
-        return format!("yaml.scanner.ScannerError: while scanning a quoted scalar{at}\nfound unexpected end of stream{}",source_mark(text,line,col));
+        return format!(
+            "yaml.scanner.ScannerError: while scanning a quoted scalar{at}\nfound unexpected end of stream{}",
+            source_mark(text, line, col)
+        );
     }
     if info.contains("while parsing a flow sequence") {
         let context = events
@@ -570,7 +782,9 @@ fn syntax_error(
             .and_then(|s| s.chars().nth(m.col()))
             .map(|c| c.to_string())
             .unwrap_or("<stream end>".into());
-        return format!("yaml.parser.ParserError: while parsing a flow sequence{context}\nexpected ',' or ']', but got '{token}'{at}");
+        return format!(
+            "yaml.parser.ParserError: while parsing a flow sequence{context}\nexpected ',' or ']', but got '{token}'{at}"
+        );
     }
     if info.contains("did not find expected node content") {
         let token = text
@@ -579,7 +793,9 @@ fn syntax_error(
             .and_then(|s| s.chars().nth(m.col()))
             .map(|c| c.to_string())
             .unwrap_or("<stream end>".into());
-        return format!("yaml.parser.ParserError: while parsing a flow node\nexpected the node content, but found '{token}'{at}");
+        return format!(
+            "yaml.parser.ParserError: while parsing a flow node\nexpected the node content, but found '{token}'{at}"
+        );
     }
     format!("yaml.scanner.ScannerError: {error}")
 }
@@ -600,11 +816,52 @@ pub fn load(bytes: &[u8]) -> Result<Value> {
             break;
         }
     }
+    // Index composed node spans/anchors once. Skipping unused wrapper entries
+    // must consume the complete collection without losing anchor definitions.
+    let mut ends = vec![0; events.len()];
+    let mut stack = Vec::new();
+    let mut anchor_positions = BTreeMap::new();
+    for (at, (event, _)) in events.iter().enumerate() {
+        let id = match event {
+            Event::Scalar(_, _, id, _) => {
+                if let Some(end) = ends.get_mut(at) {
+                    *end = at + 1;
+                }
+                *id
+            }
+            Event::Alias(_) => {
+                if let Some(end) = ends.get_mut(at) {
+                    *end = at + 1;
+                }
+                0
+            }
+            Event::SequenceStart(id, _) | Event::MappingStart(id, _) => {
+                stack.push(at);
+                *id
+            }
+            Event::SequenceEnd | Event::MappingEnd => {
+                let start = stack.pop().ok_or("YAML collection start missing")?;
+                if let Some(end) = ends.get_mut(start) {
+                    *end = at + 1;
+                }
+                0
+            }
+            _ => 0,
+        };
+        if id > 0 {
+            anchor_positions.insert(id, at);
+        }
+    }
     let mut r = Reader {
         text,
         events,
         at: 0,
         anchors: BTreeMap::new(),
+        anchor_positions,
+        ends,
+        string_keys: BTreeSet::new(),
+        pending: VecDeque::new(),
+        filling: None,
     };
     r.next()?;
     if matches!(r.events.get(r.at), Some((Event::StreamEnd, _))) {
@@ -622,9 +879,29 @@ pub fn load(bytes: &[u8]) -> Result<Value> {
     if let Some((Event::DocumentStart, m)) = r.events.get(r.at) {
         return Err(format!(
             "yaml.composer.ComposerError: expected a single document in the stream{}\nbut found another document{}",
-            if first_empty {String::new()}else{let line=r.text.lines().nth(first.line().saturating_sub(1)).unwrap_or(""); r.mark_at(first.line(),line.chars().take_while(|c|c.is_whitespace()).count())},
+            if first_empty {
+                String::new()
+            } else {
+                let line = r
+                    .text
+                    .lines()
+                    .nth(first.line().saturating_sub(1))
+                    .unwrap_or("");
+                r.mark_at(
+                    first.line(),
+                    line.chars().take_while(|c| c.is_whitespace()).count(),
+                )
+            },
             r.mark(*m)
         ));
+    }
+    // SafeLoader's collection constructors yield their containers first and
+    // fill them in FIFO rounds. Scalar wrappers must see tags before a later
+    // collection's flatten_mapping mutates its '=' keys to string keys.
+    while let Some((at, depth, node)) = r.pending.pop_front() {
+        r.at = at;
+        r.filling = Some(node);
+        r.node(depth)?;
     }
     Ok(value)
 }
