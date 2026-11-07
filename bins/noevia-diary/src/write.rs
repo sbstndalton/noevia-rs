@@ -25,6 +25,22 @@ const FENCE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 #[derive(Debug)]
 pub struct Error(pub String);
 
+/// The one definite refusal of a publication: it found an unsettled backup intent inside its own
+/// (or its borrowed) primary transaction, before any effect of that transaction.
+const SETTLEMENT_UNCERTAIN: &str = "backup settlement uncertain";
+
+impl Error {
+    fn settlement_uncertain() -> Self {
+        Error(SETTLEMENT_UNCERTAIN.into())
+    }
+
+    /// True only for that refusal, never for SQLite, I/O or any other failure (Python's
+    /// `WriterBusy(uid, 'backup settlement uncertain')` from tenant_writer.index_publication).
+    pub fn is_settlement_refusal(&self) -> bool {
+        self.0 == SETTLEMENT_UNCERTAIN
+    }
+}
+
 impl<E: std::fmt::Display> From<E> for Error {
     fn from(e: E) -> Self {
         Error(e.to_string())
@@ -265,7 +281,7 @@ impl Store {
         conn.execute_batch("PRAGMA synchronous=FULL")?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if diary_backup_run::pending_effect(&tx)? {
-            return Err(Error("backup settlement uncertain".into()));
+            return Err(Error::settlement_uncertain());
         }
         let row: Option<String> = tx
             .query_row("SELECT version FROM files WHERE path=?", [path], |r| {
@@ -328,7 +344,7 @@ impl Store {
         conn.execute_batch("PRAGMA synchronous=FULL")?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if diary_backup_run::pending_effect(&tx)? {
-            return Err(Error("backup settlement uncertain".into()));
+            return Err(Error::settlement_uncertain());
         }
         let parent = path.rsplit_once('/').map(|(p, _)| p).unwrap_or("");
         let all: Vec<String> = {
@@ -442,7 +458,7 @@ impl Journal {
         let mut primary = open_rw(&self.primary)?;
         let tx = primary.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if diary_backup_run::pending_effect(&tx)? {
-            return Err(Error("backup settlement uncertain".into()));
+            return Err(Error::settlement_uncertain());
         }
         let result = effect()?;
         tx.commit()?;
@@ -469,7 +485,7 @@ impl Journal {
         // Upgrade a read transaction before checking, as Python does (a no-op when immediate).
         primary.execute("UPDATE meta SET value=value WHERE 0", [])?;
         if diary_backup_run::pending_effect(primary)? {
-            return Err(Error("backup settlement uncertain".into()));
+            return Err(Error::settlement_uncertain());
         }
         effect()
     }

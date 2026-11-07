@@ -41,6 +41,8 @@ use std::sync::{Arc, Mutex};
 use subtle::ConstantTimeEq;
 
 pub const DECLINE_HEADER: &str = "x-noevia-diary-decline";
+/// rust_forward.BUSY, the body of app.py's `writer_busy` 503 (WriterBusy other than "restarting").
+pub const BUSY: &[u8] = br#"{"detail":"Diary is saving another change. Try again in a moment."}"#;
 pub const CONTROL_HEADER: &str = "x-noevia-diary-control";
 /// Set by Python on every forwarded request: the per-process forward secret.
 pub const FORWARD_HEADER: &str = "x-noevia-diary-forward";
@@ -726,6 +728,12 @@ pub(crate) fn reply(r: Reply) -> Response<Body> {
             .header("content-type", "text/plain; charset=utf-8")
             .body(Body::from(text))
             .unwrap_or_default(),
+        Reply::Busy => Response::builder()
+            .status(503)
+            .header("retry-after", "1")
+            .header("content-type", "application/json")
+            .body(Body::from(BUSY))
+            .unwrap_or_default(),
         Reply::Decline => decline(),
     }
 }
@@ -834,8 +842,12 @@ async fn serve_write(
                 }
                 // The forwarder's writer token covers this blocking task until its effect
                 // settles (including caller cancellation / lost child barriers).
-                if crate::recovery::recover(&ctx).is_err() {
-                    return writes::internal();
+                match crate::recovery::recover(&ctx) {
+                    Ok(()) => {}
+                    // A definite refusal inside a publication transaction: nothing of this
+                    // request ran (Python's _recover_state raises WriterBusy: 503 BUSY).
+                    Err(e) if e.is_settlement_refusal() => return Reply::Busy,
+                    Err(_) => return writes::internal(),
                 }
                 match &op {
                     Op::File => writes::file_write(&ctx, &json),

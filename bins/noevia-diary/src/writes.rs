@@ -56,6 +56,17 @@ pub fn internal() -> Reply {
     Reply::Text(500, "Internal Server Error".into())
 }
 
+/// `internal()`, except for the definite pending-intent refusal of a publication transaction,
+/// which app.py answers through `writer_busy` (503 BUSY, Retry-After 1). Only for a step after
+/// which nothing of this request is durable yet; every other error keeps its classification.
+fn refused_or(e: &write::Error, otherwise: Reply) -> Reply {
+    if e.is_settlement_refusal() {
+        Reply::Busy
+    } else {
+        otherwise
+    }
+}
+
 fn sha256_hex(data: &[u8]) -> String {
     Sha256::digest(data)
         .iter()
@@ -135,14 +146,19 @@ pub fn file_write(c: &Ctx<'_>, body: &Map<String, Value>) -> Reply {
     let Ok(was_dirty) = c.journal.is_dirty(&full) else {
         return internal();
     };
-    if c.journal.mark_dirty(&full).is_err() {
-        return internal();
+    if let Err(e) = c.journal.mark_dirty(&full) {
+        return refused_or(&e, internal());
     }
     match c.store.put(&full, content.as_bytes(), etag.as_deref()) {
         Ok(Put::Ok(..)) => saved(content),
         Ok(Put::PathConflict(_)) => {
-            if !was_dirty && c.journal.clear_dirty(&full).is_err() {
-                return internal();
+            let cleared = if was_dirty {
+                Ok(())
+            } else {
+                c.journal.clear_dirty(&full)
+            };
+            if let Err(e) = cleared {
+                return refused_or(&e, internal());
             }
             detail(
                 409,
@@ -153,7 +169,8 @@ pub fn file_write(c: &Ctx<'_>, body: &Map<String, Value>) -> Reply {
             409,
             "Storage write failed or conflicted; your draft has been kept",
         ),
-        Err(_) => internal(),
+        // The put's own transaction refused before writing: nothing committed.
+        Err(e) => refused_or(&e, internal()),
     }
 }
 
@@ -183,7 +200,7 @@ pub fn directory_create(c: &Ctx<'_>, body: &Map<String, Value>) -> Reply {
         Ok(Mkdir::Ok) => json_reply(200, &Dir { path, is_dir: true }),
         Ok(Mkdir::Exists) => detail(405, "A file or directory already exists at this path"),
         Ok(Mkdir::NoParent) => detail(409, "Parent directory does not exist"),
-        Err(_) => internal(),
+        Err(e) => refused_or(&e, internal()),
     }
 }
 
@@ -513,11 +530,14 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
     // process lost at any later point (after the corpus commit, or after the journal row is marked
     // applied) still leaves its retrieval invalidation behind. A failed write leaves one extra
     // reindex, which is harmless.
-    if c.journal.mark_dirty(&document).is_err() {
-        return internal();
+    if let Err(e) = c.journal.mark_dirty(&document) {
+        return refused_or(&e, internal());
     }
-    let Ok(id) = c.journal.enqueue("exchange", &payload) else {
-        return internal();
+    // A refused enqueue inserted no row. Once the row is durable, a later refusal is NOT a
+    // definite no-effect (the exchange replays): apply_entry keeps its own classification.
+    let id = match c.journal.enqueue("exchange", &payload) {
+        Ok(id) => id,
+        Err(e) => return refused_or(&e, internal()),
     };
     let applied = apply_entry(c, &id, || {
         c.store.guarded_write(&document, |current| {
