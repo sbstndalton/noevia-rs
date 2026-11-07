@@ -630,6 +630,7 @@ pub fn router_with_app(
     context: Option<Arc<crate::feature_context::Layer>>,
     app: Option<Arc<crate::App>>,
 ) -> Router {
+    let roles_route = crate::auto_roles_routes::store_route(store.clone(), app.clone());
     let storage_store = store.clone();
     let storage_app = app.clone();
     let mut router = router_with_context(store.clone(), context).route(
@@ -640,6 +641,7 @@ pub fn router_with_app(
             async move { legacy_webdav(store, app, headers, raw).await }
         }),
     );
+    router = router.merge(roles_route);
     // Port contract 2026-11-04 RS-1: the preset reload baseline's authority.
     router = router.merge(preset_baseline_routes(
         store.clone(),

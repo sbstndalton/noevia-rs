@@ -233,8 +233,8 @@ use std::sync::Arc;
 /// `rust-health`: this build answers `GET /api/health` (health_routes.rs, sbstndalton/noevia#2190
 /// close-out): the default provider and the Diary sidecar it probes itself, retrieval from the
 /// `rag-status.json` snapshot Node publishes. `rust-auto-roles`: `GET /api/auto-roles`
-/// (auto_roles_routes.rs; the PUT stays Node's) from `auto-roles.json` and the
-/// `auto-roles-snapshot.json` Node publishes. `rust-workspace`: `GET /api/workspace`
+/// (auto_roles_routes.rs; persistence is native) from `auto-roles.json` and the
+/// `auto-roles-snapshot.json` Node publishes. `rust-auto-roles-write` adds PUT and native deletion cleanup. `rust-workspace`: `GET /api/workspace`
 /// (sbstndalton/noevia#2191 close-out), with the delete-old-chats sweep and the orphan chat-context
 /// cleanup it runs. The paired core refuses each (rust-health.cjs `RUST_HEALTH_OWNED`,
 /// rust-auto-roles.cjs `RUST_AUTO_ROLES_OWNED`, rust-workspace.cjs `RUST_WORKSPACE_OWNED`) and
@@ -503,6 +503,7 @@ pub const FEATURES: &[&str] = &[
     "rust-vault-mirror-preferences",
     "rust-health",
     "rust-auto-roles",
+    "rust-auto-roles-write",
     "rust-workspace",
     "rust-chat-framing-suggest",
     "chat-activity",
@@ -543,6 +544,7 @@ pub(crate) fn account_row_exists(writes: &upkeep::WriterLayer, id: &str) -> bool
 }
 
 pub struct App {
+    pub auto_roles: auto_roles_routes::Writer,
     /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
     pub demand: Arc<snapshot::Demand>,
     /// Google Drive's token authority (sbstndalton/noevia#2190 round 7); `None` without UI_DATA_DIR.
@@ -719,6 +721,7 @@ impl App {
             plugin_directory: plugin_directory_routes::Directory::new(
                 config.plugin_directory.clone(),
             ),
+            auto_roles: auto_roles_routes::Writer::default(),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,

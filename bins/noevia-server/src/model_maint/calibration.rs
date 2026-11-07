@@ -264,6 +264,7 @@ impl StateFile {
                     .take();
                 if let Some((entered, release, done)) = pause {
                     let _ = entered.send(());
+                    super::calibration_worker::test_changed();
                     let _ = release.recv_timeout(Duration::from_secs(30));
                     completion = Some(done);
                 }
@@ -289,6 +290,7 @@ impl StateFile {
         #[cfg(test)]
         if let Some(done) = completion {
             let _ = done.send(());
+            super::calibration_worker::test_changed();
         }
         written
     }
