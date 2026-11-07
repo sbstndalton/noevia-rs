@@ -16,8 +16,15 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
 const [core, dataDir, startId] = process.argv.slice(2);
-const server = path.join(core, 'server', 'index.cjs');
-const { startProjectStore } = require(path.join(core, 'tests', 'server', 'project-store-server.cjs'));
+// Exported only for bounded fixture tests; this observes the real client's HTTP
+// registration/read barrier, never public readiness or a replacement authority.
+async function observeNativeReadiness(client, onReady) {
+  await client.ready();
+  if (await client.maintenanceHeld() !== false) throw Error('native maintenance barrier is not open');
+  onReady();
+}
+
+
 
 function gguf(kv) {
   const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
@@ -31,6 +38,8 @@ const HEADER = { 'general.architecture': [8, 'llama'], 'llama.context_length': [
 const listen = (handler) => new Promise((resolve) => { const s = http.createServer(handler); s.listen(0, '127.0.0.1', () => resolve({ server: s, port: s.address().port })); });
 
 async function main() {
+  const server = path.join(core, 'server', 'index.cjs');
+  const { startProjectStore } = require(path.join(core, 'tests', 'server', 'project-store-server.cjs'));
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'research-core-live-'));
   const modelsDir = path.join(root, 'models');
   fs.mkdirSync(modelsDir);
@@ -50,7 +59,7 @@ async function main() {
     });
   });
   const diary = await listen((req, res) => { req.resume(); res.writeHead(503, { 'content-type': 'application/json' }); res.end('{"detail":"synthetic diary"}'); });
-  const store = await startProjectStore(dataDir);
+  const store = await startProjectStore(dataDir, { maintenance: true, reranker: true });
   const probe = await listen(() => {}); // a free port for Core's listener: held only to learn it
   const uiPort = probe.port;
   await new Promise((r) => probe.server.close(r));
@@ -67,7 +76,23 @@ async function main() {
     // The real front build the test runs, which the paired Core's embedding owner verifies at boot.
     ...(process.env.NOEVIA_SERVER_BIN ? { NOEVIA_SERVER_BIN: process.env.NOEVIA_SERVER_BIN } : {}),
   };
-  const child = spawn(process.execPath, [server], { env, cwd: path.dirname(server), stdio: ['ignore', 'pipe', 'pipe'] });
+  // Instrument the actual client's ready promise in the child. The Core gate's
+  // own ready continuation runs before setImmediate delivers the IPC witness.
+  // No grant or admission request is used as a readiness probe.
+  const preload = path.join(root, 'observe-native-ready.cjs');
+  fs.writeFileSync(preload, [
+    "const owner = require(" + JSON.stringify(path.join(core, 'server', 'model-maintenance-lease.cjs')) + ");",
+    "const observe = require(" + JSON.stringify(__filename) + ").observeNativeReadiness;",
+    "const original = owner.createNativeLeaseClient;",
+    "owner.createNativeLeaseClient = function(options) {",
+    " const client = original(options), ready = client.ready.bind(client); let observed;",
+    " client.ready = () => observed ||= observe({...client,ready}, () => setImmediate(() => process.send({nativeMaintenanceReady:true})));",
+    " return client;",
+    "};",
+  ].join('\n'));
+  const child = spawn(process.execPath, ['--require', preload, server], { env, cwd: path.dirname(server), stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  let nativeMaintenanceReady = false;
+  child.on('message', (message) => { if (message?.nativeMaintenanceReady === true) nativeMaintenanceReady = true; });
   const log = [];
   child.stdout.on('data', (d) => log.push(String(d)));
   child.stderr.on('data', (d) => log.push(String(d)));
@@ -89,15 +114,17 @@ async function main() {
   for (;;) {
     if (child.exitCode !== null) { process.stderr.write(`core exited during boot:\n${log.join('').slice(-1500)}\n`); await stop(); process.exit(3); }
     if (Date.now() - started > 80000) { process.stderr.write(`core not ready in 80 s:\n${log.join('').slice(-1500)}\n`); await stop(); process.exit(4); }
-    if (await ready()) break;
+    if (await ready() && nativeMaintenanceReady) break;
     await new Promise((r) => setTimeout(r, 200));
   }
   // First-run setup is Core's own to hand out on an empty data directory; the account is seeded as Core's tests do.
   const { seedAccount } = require(path.join(core, 'tests', 'server', 'seed-account.cjs'));
   const admin = seedAccount(dataDir, { username: 'synthetic-admin', publicOrigin: 'http://127.0.0.1:18021' });
-  process.stdout.write(`${JSON.stringify({ port: uiPort, token: store.token, user: admin.id, cookie: admin.cookie, csrf: admin.csrf })}\n`);
+  process.stdout.write(`${JSON.stringify({ port: uiPort, token: store.token, user: admin.id, cookie: admin.cookie, csrf: admin.csrf, nativeMaintenanceReady })}\n`);
   process.stdin.resume();
   process.stdin.on('end', async () => { await stop(); process.exit(0); });
   process.on('SIGTERM', async () => { await stop(); process.exit(0); });
 }
-main().catch((e) => { process.stderr.write(`${e?.stack || e}\n`); process.exit(5); });
+if (require.main === module) main().catch((e) => { process.stderr.write(`${e?.stack || e}\n`); process.exit(5); });
+
+module.exports = { observeNativeReadiness };

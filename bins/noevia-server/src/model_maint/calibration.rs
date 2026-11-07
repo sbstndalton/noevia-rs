@@ -188,6 +188,28 @@ impl StateFile {
         state
     }
 
+    /// Boot inspection must distinguish verified absence from an unknown durable obligation.
+    pub(super) fn load_checked(&self) -> std::io::Result<State> {
+        let Some(path) = &self.path else {
+            return Ok(State::empty());
+        };
+        let bytes = match std::fs::read(path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(State::empty()),
+            Err(e) => return Err(e),
+        };
+        let text = std::str::from_utf8(&bytes)
+            .map_err(|_| std::io::Error::other("invalid calibration state"))?;
+        let mut state = match wtf16::parse(text) {
+            Ok(JValue::Obj(fields)) => State(fields),
+            _ => return Err(std::io::Error::other("invalid calibration state")),
+        };
+        if !matches!(state.get("history"), JValue::Obj(_) | JValue::Arr(_)) {
+            wtf16::set(&mut state.0, "history", JValue::Obj(Vec::new()));
+        }
+        Ok(state)
+    }
+
     /// `save()`: a temp file beside it (mode 0600), then a rename over it.
     #[cfg(test)]
     pub fn save(&self, state: &State) -> std::io::Result<()> {
@@ -328,13 +350,10 @@ impl Maint {
     /// retains the admission fence while any earlier blocking commit remains unresolved.
     pub(super) async fn prepare_calibration_recovery(
         &self,
+        mut state: State,
         wake: Option<std::sync::Arc<tokio::sync::Notify>>,
     ) -> Option<PreparedRecovery> {
-        let ini = self.ini.clone()?;
-        let loader = self.calibration_state();
-        let mut state = tokio::task::spawn_blocking(move || loader.load())
-            .await
-            .ok()?;
+        self.ini.as_ref()?;
         let decided = matches!(
             state.job().get("terminalDecision").as_str(),
             Some("passed" | "fenced")
@@ -402,15 +421,20 @@ impl Maint {
                     text,
                     before: String::new(),
                 };
-                let restored = ini.settle_restore(&c, Duration::from_secs(1)).await;
-                if restored {
-                    if let Some(router) = self.router.as_ref() {
-                        let _ = router.get("/models?reload=1", None, RELOAD_TIMEOUT).await;
-                    }
-                }
-                Some(restored)
+                // The Worker owns one recovery path for both restart and live loss. Preparation
+                // records intent only; it never writes presets or dispatches to the router.
+                wtf16::set(
+                    job,
+                    "pendingRestore",
+                    JValue::obj([
+                        ("baseRevision", JValue::Str(c.base_revision)),
+                        ("text", JValue::Str(c.text)),
+                    ]),
+                );
+                Some(false)
             }
         };
+        let needs_restore = state.job().get("pendingRestore").truthy();
         if let Some(job) = state.job_mut() {
             if running {
                 settle_interrupted(job, restored);
@@ -428,7 +452,9 @@ impl Maint {
                 wtf16::set(job, "finishedAt", JValue::Num(now_ms()));
             }
             job.retain(|(k, _)| {
-                k != "pendingRestore" && k != "pendingTombstone" && k != "terminalDecision"
+                (k != "pendingRestore" || needs_restore)
+                    && k != "pendingTombstone"
+                    && k != "terminalDecision"
             });
         }
         Some(PreparedRecovery {
