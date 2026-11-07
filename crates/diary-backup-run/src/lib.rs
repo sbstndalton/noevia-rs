@@ -127,3 +127,14 @@ pub fn backup(v: &Value, mut verify: impl FnMut(&str, &[u8]) -> R<bool>) -> R<Va
         }
     }
 }
+
+/// The caller holds the managed database's BEGIN IMMEDIATE through its publication.
+/// A check outside that transaction is only admission, never permission to commit.
+/// Uses the existing meta authority shared with native backup intent insertion.
+pub fn pending_effect(db: &Connection) -> rusqlite::Result<bool> {
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM meta WHERE key='backup_effect_pending')",
+        [],
+        |r| r.get(0),
+    )
+}
