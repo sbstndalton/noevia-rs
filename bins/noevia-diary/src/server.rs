@@ -1,18 +1,28 @@
-//! Request handling. Python (agent/rust_forward.py) verifies the tenant assertion with its own
-//! verifier and nonce cache (the only ones while both processes exist), then forwards the request
-//! here with its raw path, query and headers plus three loopback-only headers: the per-process
-//! forward secret (sent to this process on stdin), whether the tenant was asserted, and whether
-//! Python has already recovered the tenant's state. Anything without the matching secret is refused
-//! with Python's own 401 bytes. This side serves the request exactly as app.py would, or DECLINES it
-//! (421 + `x-noevia-diary-decline: 1`) and Python serves it without verifying it again, so every
-//! nonce is consumed exactly once. (assertion::Verifier is kept for D8, when this process becomes
-//! the only verifier; it is not wired in.)
+//! Request handling. Python (agent/rust_forward.py) forwards the request here with its raw path,
+//! query, headers and body plus loopback-only headers: the per-process forward secret (sent to this
+//! process on stdin), `x-noevia-diary-verify: 1`, and whether Python has already recovered the
+//! tenant's state. Anything without the matching secret is refused with Python's own 401 bytes.
+//!
+//! Tenant assertion (D8 verifier move): this process is the ONLY verifier of every request Python
+//! forwards with `x-noevia-diary-verify: 1`. It checks the assertion here (assertion::Verifier:
+//! shape, restart guard, signature, clock window, bounded nonce cache) BEFORE anything else, with
+//! TenantAssertionMiddleware's exact refusals (401 `invalid tenant assertion`, 413 `request body
+//! too large` above 64 MiB). Every reply to a request it verified carries
+//! `x-noevia-diary-verified: 1`: Python then records the nonce in its own cache and, for a decline,
+//! serves the request without verifying it again. Python verifies everything else itself (a
+//! request it does not forward, or one this side declined without that header or never answered).
+//! A request forwarded without the verify header (an older forwarder) keeps the D4 rule: it is
+//! served only when `x-noevia-diary-asserted: 1` says Python verified it.
+//!
+//! This side serves the request exactly as app.py would, or DECLINES it (421 +
+//! `x-noevia-diary-decline: 1`).
 //!
 //! D5 writes (PUT /api/file, POST /api/directory, POST /api/entries/{append,edit}) are served only
 //! for a request Python marks with `x-noevia-diary-writer: 1`: the tenant's writer is this
 //! process (rust_forward.py, DIARY_RUST_WRITES). They run under the tenant's write lock
 //! (write::Writers) and decline only before writing anything.
 
+use crate::assertion::{self, Signed, Verifier};
 use crate::config::Config;
 use crate::corpus::{self, BaseCorpus, Layout};
 use crate::health::{self, Models};
@@ -36,6 +46,10 @@ pub const CONTROL_HEADER: &str = "x-noevia-diary-control";
 pub const FORWARD_HEADER: &str = "x-noevia-diary-forward";
 /// "1" when Python's middleware verified the tenant assertion of this request.
 pub const ASSERTED_HEADER: &str = "x-noevia-diary-asserted";
+/// "1": this process verifies the tenant assertion of this request (Python did not).
+pub const VERIFY_HEADER: &str = "x-noevia-diary-verify";
+/// "1" on every reply to a request whose assertion this process verified and accepted.
+pub const VERIFIED_HEADER: &str = "x-noevia-diary-verified";
 /// "1" when Python holds a recovered managed state for this tenant (journal replayed, dirty
 /// documents reindexed once), so a read here skips nothing Python would have done.
 pub const RECOVERED_HEADER: &str = "x-noevia-diary-recovered";
@@ -53,8 +67,11 @@ pub struct App {
     pub data_root: PathBuf,
     pub legacy_user_id: String,
     pub forward_secret: String,
-    /// DIARY_TENANT_KEY (for the secretRef check only; assertions are Python's).
+    /// DIARY_TENANT_KEY: the secretRef check and the tenant assertion (`verifier`).
     pub tenant_key: String,
+    /// The tenant assertion verifier and nonce cache for the requests forwarded with
+    /// `x-noevia-diary-verify: 1`.
+    pub verifier: Verifier,
     pub corpus: BaseCorpus,
     pub models: Option<Models>,
     pub http: reqwest::Client,
@@ -82,6 +99,7 @@ impl App {
             data_root: PathBuf::from(cfg.data_root),
             legacy_user_id: cfg.legacy_user_id,
             forward_secret: cfg.forward_secret,
+            verifier: Verifier::new(key.clone(), now()),
             tenant_key: key,
             corpus: cfg.corpus,
             models,
@@ -92,6 +110,14 @@ impl App {
             recovered: Mutex::new(HashMap::new()),
         }
     }
+}
+
+/// Seconds since the Unix epoch (Python `time.time()`).
+pub fn now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
 }
 
 // ---------------------------------------------------------------- responses
@@ -450,9 +476,104 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     if app.forward_secret.is_empty() || !bool::from(supplied.ct_eq(app.forward_secret.as_bytes())) {
         return unverified();
     }
-    let asserted = flag(&headers, ASSERTED_HEADER);
+    let verify = flag(&headers, VERIFY_HEADER);
+    let r = route(&parts.method, &path);
+    // The body is read once, bounded by Python's MAX_SIGNED_BODY: for a write, and for any request
+    // this side verifies (its hash is signed).
+    let bytes = if verify || r.is_some_and(Route::write) {
+        match axum::body::to_bytes(body, MAX_BODY).await {
+            Ok(b) => Some(b),
+            // TenantAssertionMiddleware's 413; without verification, Python's to answer.
+            Err(_) if verify => return detail(413, "request body too large"),
+            Err(_) => return decline(),
+        }
+    } else {
+        None
+    };
+    let verified = if verify {
+        match verify_assertion(
+            &app,
+            &headers,
+            parts.method.as_str(),
+            &raw_path,
+            &query,
+            bytes.as_deref().unwrap_or_default(),
+            now(),
+        ) {
+            Ok(v) => v,
+            Err(reason) => {
+                // Reason codes only (never the header or any request value).
+                eprintln!("noevia-diary: tenant assertion rejected: {reason}");
+                return unverified();
+            }
+        }
+    } else {
+        false
+    };
+    let asserted = if verify {
+        verified
+    } else {
+        flag(&headers, ASSERTED_HEADER)
+    };
+    let mut resp = serve(app, r, query, headers, bytes, asserted).await;
+    if verified {
+        resp.headers_mut()
+            .insert(VERIFIED_HEADER, axum::http::HeaderValue::from_static("1"));
+    }
+    resp
+}
+
+/// TenantAssertionMiddleware for a request forwarded with the verify header: Ok(true) when it
+/// names a tenant and its assertion is valid and unseen, Ok(false) when nothing is to be verified
+/// (no tenant header, or no tenant key: Python's middleware lets those through unverified), Err
+/// with a log reason otherwise.
+fn verify_assertion(
+    app: &App,
+    headers: &HeaderMap,
+    method: &str,
+    raw_path: &str,
+    query: &[u8],
+    body: &[u8],
+    now: f64,
+) -> Result<bool, &'static str> {
+    let user_id = header(headers, "x-cowork-user-id");
+    if user_id.is_empty() || app.tenant_key.is_empty() {
+        return Ok(false);
+    }
+    let content_type = header(headers, "content-type");
+    let body_hash = if assertion::body_is_hashed(&content_type) {
+        assertion::sha256_hex(body)
+    } else {
+        assertion::STREAM.to_string()
+    };
+    app.verifier
+        .verify(
+            &Signed {
+                user_id: &user_id,
+                assertion: &header(headers, "x-cowork-tenant-assertion"),
+                method,
+                path: raw_path,
+                query,
+                body_hash: &body_hash,
+                storage: &header(headers, "x-cowork-storage"),
+                legacy_owner: &header(headers, "x-cowork-legacy-owner"),
+                blocked: &header(headers, "x-cowork-storage-blocked"),
+            },
+            now,
+        )
+        .map(|()| true)
+}
+
+async fn serve(
+    app: Arc<App>,
+    r: Option<Route>,
+    query: Vec<u8>,
+    headers: HeaderMap,
+    bytes: Option<axum::body::Bytes>,
+    asserted: bool,
+) -> Response<Body> {
     let recovered = flag(&headers, RECOVERED_HEADER);
-    let Some(r) = route(&parts.method, &path) else {
+    let Some(r) = r else {
         return decline();
     };
     if r.write() && !flag(&headers, WRITER_HEADER) {
@@ -473,7 +594,7 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     // handler runs `check_auth` (its 401): a body it would refuse is Python's to answer, whatever
     // the token.
     let write = if r.write() {
-        match write_body(r, &headers, body).await {
+        match write_body(r, &headers, bytes.as_deref().unwrap_or_default()) {
             Some(w) => Some(w),
             None => return decline(),
         }
@@ -555,10 +676,9 @@ fn reply(r: Reply) -> Response<Body> {
 
 /// The body of a forwarded write: a JSON object Python's FastAPI would read the same way, else
 /// None (decline; Python answers 422 or reads it its own way).
-async fn json_body(headers: &HeaderMap, body: Body) -> Option<serde_json::Map<String, Value>> {
-    let bytes = axum::body::to_bytes(body, MAX_BODY).await.ok()?;
+fn json_body(headers: &HeaderMap, bytes: &[u8]) -> Option<serde_json::Map<String, Value>> {
     let content_type = headers.get("content-type").map(|v| v.as_bytes());
-    workspace::file_body(content_type, &bytes)
+    workspace::file_body(content_type, bytes)
 }
 
 /// A write's body as FastAPI's handler parameter reads it: `body: dict` for the file, directory
@@ -568,8 +688,8 @@ struct WriteBody {
     edit: Option<writes::EditReq>,
 }
 
-async fn write_body(r: Route, headers: &HeaderMap, body: Body) -> Option<WriteBody> {
-    let json = json_body(headers, body).await?;
+fn write_body(r: Route, headers: &HeaderMap, body: &[u8]) -> Option<WriteBody> {
+    let json = json_body(headers, body)?;
     let edit = if matches!(r, Route::Edit) {
         Some(writes::edit_model(&json)?)
     } else {

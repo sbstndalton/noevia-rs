@@ -238,6 +238,65 @@ impl Http {
         }
         Ok(())
     }
+    pub async fn outbox_ready(&self, base: &str, token: &str, start: &str) -> Result<bool, String> {
+        let (status, body) = self
+            .request(
+                api(&url(base)?, "/internal/embedding-worker-owner")?,
+                Method::GET,
+                headers(Some(token), "x-noevia-store-token")?,
+                None,
+                Duration::from_secs(3),
+                8192,
+            )
+            .await?;
+        Ok(status == 200
+            && body.get("protocol").and_then(Value::as_str) == Some("rust-embedding-worker-v1")
+            && body.get("nodeWorkersStopped") == Some(&Value::Bool(true))
+            && body.get("start").and_then(Value::as_str) == Some(start)
+            && body.get("indexOutboxStopped") == Some(&Value::Bool(true))
+            && body.get("foregroundBusy") == Some(&Value::Bool(false)))
+    }
+    /// Notify the still-owned media scheduler without delegating any outbox work.
+    pub async fn source_changed(
+        &self,
+        base: &str,
+        token: &str,
+        start: &str,
+        user: &str,
+        project: &str,
+        file: &str,
+    ) -> Result<(), String> {
+        let (status, body) = self
+            .request(
+                api(
+                    &url(base)?,
+                    "/internal/embedding-worker-owner/source-changed",
+                )?,
+                Method::POST,
+                headers(Some(token), "x-noevia-store-token")?,
+                Some(
+                    js_json::wtf16::stringify(&js_json::JValue::obj([
+                        ("start", js_json::JValue::from(start)),
+                        ("user", js_json::JValue::from(user)),
+                        ("project", js_json::JValue::from(project)),
+                        ("file", js_json::JValue::from(file)),
+                    ]))
+                    .ok_or_else(err)?,
+                ),
+                Duration::from_secs(3),
+                8192,
+            )
+            .await?;
+        if status == 200
+            && body.get("start").and_then(Value::as_str) == Some(start)
+            && body.get("protocol").and_then(Value::as_str) == Some("rust-embedding-worker-v1")
+            && body.get("notified") == Some(&Value::Bool(true))
+        {
+            Ok(())
+        } else {
+            Err("media notification unavailable".into())
+        }
+    }
     async fn once(&self, target: &Target, input: &[Vec<u16>]) -> Result<Vec<Vec<f32>>, String> {
         let (base, headers) = self.target(target)?;
         let mut body = format!(

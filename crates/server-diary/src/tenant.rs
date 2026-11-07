@@ -39,6 +39,7 @@ pub enum TenantError {
 /// What `diaryHeaders()` reads: the person, their saved storage connection (the secret already
 /// opened) and whether their workspace holds `migration.json`.
 pub struct Tenant {
+    pub(crate) storage_retry: bool,
     user_id: String,
     admin: bool,
     legacy_owner: bool,
@@ -72,6 +73,7 @@ impl Tenant {
         let legacy_owner = workspace_dir(data_dir, &identity.user.id)
             .is_some_and(|dir| dir.join("migration.json").exists());
         Ok(Self {
+            storage_retry: false,
             user_id: identity.user.id.clone(),
             admin: identity.user.role == Role::Admin,
             legacy_owner,
@@ -84,6 +86,7 @@ impl Tenant {
     /// account no longer exists to read a storage connection from).
     pub fn bare(user_id: &str) -> Self {
         Self {
+            storage_retry: false,
             user_id: user_id.to_owned(),
             admin: false,
             legacy_owner: false,

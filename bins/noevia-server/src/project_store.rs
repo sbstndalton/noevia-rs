@@ -630,6 +630,7 @@ pub fn router_with_app(
     context: Option<Arc<crate::feature_context::Layer>>,
     app: Option<Arc<crate::App>>,
 ) -> Router {
+    let roles_route = crate::auto_roles_routes::store_route(store.clone(), app.clone());
     let storage_store = store.clone();
     let storage_app = app.clone();
     let mut router = router_with_context(store.clone(), context).route(
@@ -640,10 +641,16 @@ pub fn router_with_app(
             async move { legacy_webdav(store, app, headers, raw).await }
         }),
     );
+    router = router.merge(roles_route);
     // Port contract 2026-11-04 RS-1: the preset reload baseline's authority.
     router = router.merge(preset_baseline_routes(
         store.clone(),
         app.as_ref().map(|a| a.config.maint.guard.clone()),
+    ));
+    // Port contract row J: the maintenance lease authority, for Node's maintenance gate.
+    router = router.merge(maintenance_lease_routes(
+        store.clone(),
+        app.as_ref().map(|a| a.config.maint.authority.clone()),
     ));
     // sbstndalton/noevia#2190 round 6: the provider keys' re-seal (provider_reseal.rs).
     let reseal_store = store.clone();
@@ -704,6 +711,46 @@ pub fn router_with_app(
 /// The bodies of the preset baseline bridge: two preset texts and the router's rows.
 pub const PRESET_BASELINE_LIMIT: usize =
     2 * preset_reload::MAX_INPUT_BYTES + 16 * 1024 * 1024 + 64 * 1024;
+
+/// `POST /v1/maintenance-lease/{op}` (model_maint/lease.rs), answered by `authority` (`None`: 503,
+/// so Node's holds fail closed).
+pub fn maintenance_lease_routes(
+    store: Store,
+    authority: Option<crate::model_maint::lease::Authority>,
+) -> Router {
+    use crate::model_maint::lease;
+    let mut router = Router::new();
+    for op in lease::OPS {
+        let (store, authority) = (store.clone(), authority.clone());
+        router = router.route(
+            &format!("{}/{op}", lease::ROUTE_PREFIX),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, authority) = (store.clone(), authority.clone());
+                async move {
+                    if !authorised(&store, &headers) {
+                        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                    }
+                    let Some(authority) = authority else {
+                        return error(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "The maintenance lease authority is unavailable.",
+                        );
+                    };
+                    let body = if raw.iter().all(u8::is_ascii_whitespace) {
+                        json!({})
+                    } else {
+                        match serde_json::from_slice::<Value>(&raw) {
+                            Ok(b @ Value::Object(_)) => b,
+                            _ => return error(StatusCode::BAD_REQUEST, "invalid JSON"),
+                        }
+                    };
+                    lease::answer_node(&authority, op, &body).await
+                }
+            }),
+        );
+    }
+    router.layer(DefaultBodyLimit::max(lease::BODY_LIMIT))
+}
 
 /// `POST /v1/preset-baseline/{op}` (see the header), answered by `guard` (`None`: 503).
 pub fn preset_baseline_routes(
