@@ -9,6 +9,7 @@ publish.workspace = true
 [lints]
 workspace = true
 [dependencies]
+js-json = { path = "../js-json" }
 engine-admission = { path = "../engine-admission" }
 model-stream = { path = "../model-stream" }
 sqlite-vec-loader = { path = "../sqlite-vec-loader" }
