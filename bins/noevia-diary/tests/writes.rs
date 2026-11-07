@@ -910,3 +910,102 @@ async fn replay_outage_never_quarantines_and_retries_observe_cooldown() {
         (0, 31, "Entries/2030/January/January 6, 2030.md".into())
     );
 }
+
+/// Y0-1/2/3: the reference date() / fromisoformat() refuse year 0, so a year-zero hint is left
+/// with the reference applier before any native effect, while neighbouring valid years stay native.
+#[tokio::test]
+async fn year_zero_hints_decline_before_effects_and_adjacent_years_stay_native() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let addr = start(dir.path(), "rust").await;
+    let xid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    // Incoming edit (Y0-2): "0000-01" is declined (reference answers 502); the shape rule still
+    // refuses "0000-13" itself, and years 1 and 9999 are decided natively (no such document).
+    let (s, d, _) = send(
+        addr,
+        "POST",
+        "/api/entries/edit",
+        &writer(),
+        &serde_json::json!({"xid": xid, "me": "x", "month": "0000-01"}),
+    )
+    .await;
+    assert_eq!((s, d), (421, true));
+    let not_found = format!(r#"{{"error":"no corpus document contains exchange {xid}"}}"#);
+    for (month, status, expected) in [
+        ("0000-13", 400, r#"{"error":"month must be YYYY-MM"}"#),
+        ("0001-01", 404, not_found.as_str()),
+        ("9999-12", 404, not_found.as_str()),
+    ] {
+        let (s, _, body) = send(
+            addr,
+            "POST",
+            "/api/entries/edit",
+            &writer(),
+            &serde_json::json!({"xid": xid, "me": "x", "month": month}),
+        )
+        .await;
+        assert_eq!((s, body.as_str()), (status, expected), "{month}");
+    }
+    // Queued legacy rows (Y0-1, Y0-3): any year-zero hint declines the whole request before replay.
+    let idx = index(dir.path());
+    for (id, kind, payload) in [
+        (
+            "edit0",
+            "exchange_edit",
+            serde_json::json!({"xid":"abcdef12","new_me":"x","new_claude":"","month":"0000-01"}),
+        ),
+        (
+            "day0",
+            "exchange",
+            serde_json::json!({"day":"0000-01-01","xid":"abcdef34","sub_header":"12:00 | Synthetic","body":diary_corpus_write::render_exchange("zero", "", "abcdef34")}),
+        ),
+    ] {
+        idx.execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES (?,'2030',?,?)",
+            rusqlite::params![id, kind, payload.to_string()],
+        )
+        .unwrap();
+        let put = serde_json::json!({"path":"a.md","content":"x","version":null});
+        let (s, d, _) = send(addr, "PUT", "/api/file", &writer(), &put).await;
+        assert_eq!((s, d), (421, true), "{id}");
+        let row: (i64, i64, Option<String>) = idx
+            .query_row(
+                "SELECT applied, attempts, last_error FROM journal WHERE id=?",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(row, (0, 0, None), "{id} must be untouched");
+        assert!(file_row(dir.path(), "a.md").is_none(), "{id}");
+        // The reference applier retires the row; native admission resumes afterwards.
+        idx.execute("UPDATE journal SET applied=1 WHERE id=?", [id])
+            .unwrap();
+    }
+    // Adjacent valid years are not declined (month hints 0001-01 and 9999-12, day 0001-01-01).
+    for (id, kind, payload) in [
+        (
+            "edit1",
+            "exchange_edit",
+            serde_json::json!({"xid":"abcdef12","new_me":"x","new_claude":"","month":"0001-01"}),
+        ),
+        (
+            "edit9999",
+            "exchange_edit",
+            serde_json::json!({"xid":"abcdef12","new_me":"x","new_claude":"","month":"9999-12"}),
+        ),
+        (
+            "day1",
+            "exchange",
+            serde_json::json!({"day":"0001-01-01","xid":"abcdef56","sub_header":"12:00 | Synthetic","body":diary_corpus_write::render_exchange("one", "", "abcdef56")}),
+        ),
+    ] {
+        idx.execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES (?,'2030',?,?)",
+            rusqlite::params![id, kind, payload.to_string()],
+        )
+        .unwrap();
+        let put = serde_json::json!({"path":format!("{id}.md"),"content":"x","version":null});
+        let (_, d, _) = send(addr, "PUT", "/api/file", &writer(), &put).await;
+        assert!(!d, "{id} must stay native");
+    }
+}

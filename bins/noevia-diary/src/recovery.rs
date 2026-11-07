@@ -3,7 +3,7 @@
 //! journal completion; xid transforms make a restart in between idempotent.
 use crate::write::{self, Entry, WriteFailure};
 use crate::writes::Ctx;
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use diary_corpus_write as cw;
 use diary_index_transform as ix;
 use serde_json::Value;
@@ -325,7 +325,8 @@ pub fn supported(c: &Ctx<'_>) -> bool {
                     let first = format!("{month}-01");
                     if NaiveDate::parse_from_str(&first, "%Y-%m-%d")
                         .ok()
-                        .is_none_or(|d| d.format("%Y-%m").to_string() != month)
+                        // Year 0 formats back unchanged, but the reference date() raises.
+                        .is_none_or(|d| d.year() < 1 || d.format("%Y-%m").to_string() != month)
                     {
                         return false;
                     }
@@ -336,7 +337,7 @@ pub fn supported(c: &Ctx<'_>) -> bool {
             if let Some(day) = p.get("day").and_then(Value::as_str) {
                 if NaiveDate::parse_from_str(day, "%Y-%m-%d")
                     .ok()
-                    .is_none_or(|d| d.format("%Y-%m-%d").to_string() != day)
+                    .is_none_or(|d| d.year() < 1 || d.format("%Y-%m-%d").to_string() != day)
                 {
                     return false;
                 }

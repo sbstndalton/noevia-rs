@@ -614,15 +614,18 @@ fn month_id_ok(m: &str) -> Option<bool> {
         return None;
     }
     let b = m.as_bytes();
-    Some(
-        b.len() == 7
-            && b.iter().take(4).all(u8::is_ascii_digit)
-            && b.get(4) == Some(&b'-')
-            && matches!(
-                (b.get(5), b.get(6)),
-                (Some(b'0'), Some(b'1'..=b'9')) | (Some(b'1'), Some(b'0'..=b'2'))
-            ),
-    )
+    let shaped = b.len() == 7
+        && b.iter().take(4).all(u8::is_ascii_digit)
+        && b.get(4) == Some(&b'-')
+        && matches!(
+            (b.get(5), b.get(6)),
+            (Some(b'0'), Some(b'1'..=b'9')) | (Some(b'1'), Some(b'0'..=b'2'))
+        );
+    // "0000-MM" matches the pattern, but the reference date(0, M, 1) raises (502, not 404).
+    if shaped && b.starts_with(b"0000") {
+        return None;
+    }
+    Some(shaped)
 }
 
 /// api_entries_edit's checks before tenant resolution.
@@ -923,6 +926,10 @@ mod tests {
         assert_eq!(month_id_ok("2026-11"), Some(true));
         assert_eq!(month_id_ok("2026-13"), Some(false));
         assert_eq!(month_id_ok("2026-11\n"), None);
+        assert_eq!(month_id_ok("0000-05"), None);
+        assert_eq!(month_id_ok("0000-13"), Some(false));
+        assert_eq!(month_id_ok("0001-01"), Some(true));
+        assert_eq!(month_id_ok("9999-12"), Some(true));
         assert_eq!(month_id_ok("٢٠٢٦-11"), None);
     }
 }
