@@ -4,13 +4,13 @@
 
 pub mod assertion;
 pub mod backup;
-pub mod storage_gate;
 pub mod config;
 pub mod corpus;
 pub mod health;
 pub mod managed;
 pub mod py;
 pub mod server;
+pub mod storage_gate;
 pub mod workspace;
 pub mod write;
 pub mod writes;
