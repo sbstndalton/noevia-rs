@@ -427,10 +427,13 @@ async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
     let (dir, store) = seed();
     let embedding = Arc::new(AtomicBool::new(false));
     let observed = embedding.clone();
+    let (release, pending) = std::sync::mpsc::channel();
+    let pending = std::sync::Mutex::new(pending);
     let stub = server(move |path, _| {
-        if path == "/v1/embeddings" {
-            observed.store(true, Ordering::Release);
-            std::thread::sleep(std::time::Duration::from_secs(30));
+        if path == "/v1/embeddings" && !observed.swap(true, Ordering::AcqRel) {
+            // Keep the actual HTTP request pending until every heartbeat assertion
+            // finishes. Scheduler delays must not silently finish the pass first.
+            let _ = pending.lock().unwrap().recv_timeout(std::time::Duration::from_secs(55));
         }
         default_reply(path)
     })
@@ -456,7 +459,7 @@ async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
     signal(dir.path(), 1);
     wait_until(|| embedding.load(Ordering::Acquire)).await;
     let mut previous = snapshot()["at"].as_u64().unwrap();
-    for _ in 0..7 {
+    for _ in 0..8 {
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
         let status = snapshot();
         let at = status["at"].as_u64().unwrap();
@@ -465,6 +468,8 @@ async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
         assert!(status["service"].is_null());
         previous = at;
     }
+    release.send(()).unwrap();
+    wait_until(|| !snapshot()["lastPass"].is_null()).await;
     worker.shutdown().await;
 }
 

@@ -415,6 +415,31 @@ impl Shared {
 }
 
 impl Shared {
+    // Serialize renewal/loss decisions with the transition to intentional release.
+    // None means release has started; it must not turn a completed run into a loss.
+    fn renew_authority(&self) -> Option<bool> {
+        let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
+        if *state != ReleaseState::Idle {
+            return None;
+        }
+        let live = Instant::now() < self.deadline()
+            && self
+                .auth
+                .as_ref()
+                .is_none_or(|(a, g)| a.renew(&g.id, Some(g.generation)));
+        if !live {
+            self.lost.store(true, Ordering::Release);
+        }
+        Some(live)
+    }
+
+    fn node_renewal_refused(&self) {
+        let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
+        if *state == ReleaseState::Idle {
+            self.lost.store(true, Ordering::Release);
+        }
+    }
+
     fn start_release(self: &Arc<Self>, node: Arc<NodeLeases>) {
         let Ok(rt) = tokio::runtime::Handle::try_current() else {
             return;
@@ -836,19 +861,14 @@ async fn lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration)
         if !shared.pause(every).await {
             return;
         }
-        if Instant::now() >= shared.deadline() {
-            break;
+        match shared.renew_authority() {
+            None => return,
+            Some(false) => break,
+            Some(true) => {}
         }
         let Some(id) = shared.token.lock().ok().and_then(|t| t.clone()) else {
             return;
         };
-        if let Some((a, g)) = shared.auth.as_ref() {
-            if !a.renew(&g.id, Some(g.generation)) {
-                shared.lost.store(true, Ordering::Release);
-                eprintln!("[models] the maintenance lease authority ended this front's lease; the work stops before its next step");
-                break;
-            }
-        }
         let asked = Instant::now();
         match node.renew(&id).await {
             Some(true) => {
@@ -857,15 +877,13 @@ async fn lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration)
                 }
             }
             Some(false) => {
-                shared.lost.store(true, Ordering::Release);
-                eprintln!("[models] Node ended this front's maintenance lease; the work stops before its next step");
+                shared.node_renewal_refused();
                 return;
             }
             // Not answered: `Hold::may_start` refuses once the last confirmation cannot cover a step.
             None => {}
         }
     }
-    shared.lost.store(true, Ordering::Release);
     shared.start_release(node);
 }
 
@@ -968,6 +986,63 @@ mod tests {
         assert!(started.elapsed() >= Duration::from_millis(30));
         assert!(!ack.load(Ordering::Acquire));
     }
+    #[tokio::test]
+    async fn intentional_release_cannot_be_reclassified_by_a_late_renewal() {
+        let (mut hold, seen, proceed, ack) =
+            review_release_hold(Duration::from_secs(5), Duration::from_secs(2)).await;
+        let shared = Arc::clone(&hold.shared);
+        let join = tokio::spawn(async move {
+            hold.release_node_lease().await;
+            hold
+        });
+        tokio::time::timeout(Duration::from_secs(1), seen.notified())
+            .await
+            .unwrap();
+        // DELETE is pending: neither an authority renewal nor an in-flight Node
+        // renewal's 404 may classify this intentional release as a lost lease.
+        assert_eq!(shared.renew_authority(), None);
+        shared.node_renewal_refused();
+        assert!(!shared.lost.load(Ordering::Acquire));
+        assert!(!ack.load(Ordering::Acquire));
+        assert!(*shared.release.lock().unwrap() == ReleaseState::Pending);
+        proceed.notify_one();
+        let hold = tokio::time::timeout(Duration::from_secs(1), join)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(hold.node_release_confirmed());
+        assert!(!hold.lost());
+    }
+
+    #[test]
+    fn an_active_lease_still_records_authority_and_node_loss() {
+        let authority = lease::Authority::default();
+        let grant = authority
+            .try_acquire(lease::Origin::Front, None, "synthetic")
+            .unwrap();
+        let mut shared = Shared::new(
+            None,
+            Instant::now() + Duration::from_secs(5),
+            None,
+            None,
+            None,
+        );
+        Arc::get_mut(&mut shared).unwrap().auth = Some((authority.clone(), grant.clone()));
+        assert_eq!(shared.renew_authority(), Some(true));
+        authority.release(&grant.id, Some(grant.generation));
+        assert_eq!(shared.renew_authority(), Some(false));
+        assert!(shared.lost.load(Ordering::Acquire));
+        let shared = Shared::new(
+            None,
+            Instant::now() + Duration::from_secs(5),
+            None,
+            None,
+            None,
+        );
+        shared.node_renewal_refused();
+        assert!(shared.lost.load(Ordering::Acquire));
+    }
+
     // REVIEW_RELEASE_TESTS_END
 
     #[test]
