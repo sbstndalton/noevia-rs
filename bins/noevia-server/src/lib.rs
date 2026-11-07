@@ -400,6 +400,7 @@ use std::sync::Arc;
 pub const FEATURES: &[&str] = &[
     "rust-diary-backup-worker",
     "rust-embedding-background-v1",
+    "rust-index-outbox-v3",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",

@@ -75,6 +75,8 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "--state-ignore",
             "*rag-status.json",
             "--state-ignore",
+            "*/rag/",
+            "--state-ignore",
             "*auto-roles-snapshot.json",
             "--state-ignore",
             "*mcp-discovery.json",

@@ -949,6 +949,7 @@ name = "embedding-worker"
 version = "0.1.0"
 dependencies = [
  "engine-admission",
+ "js-json",
  "model-stream",
  "proc-macro2",
  "prompt-framing",
