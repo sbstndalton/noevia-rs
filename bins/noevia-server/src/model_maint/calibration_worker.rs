@@ -4501,6 +4501,32 @@ mod tests {
         .expect("synthetic transition completed");
     }
     #[tokio::test(flavor = "current_thread")]
+    async fn local_custody_release_wakes_an_already_pending_observer() {
+        use std::future::Future;
+        use std::task::Poll;
+
+        let d = tempfile::tempdir().unwrap();
+        let w = worker(d.path(), 9);
+        *w.local_fence.lock().unwrap() =
+            super::super::gate::AdmissionFence::reserve(Arc::clone(&w.maint.local));
+        assert!(w.maint.local_held());
+        let released = delta_wait(|| !w.maint.local_held());
+        tokio::pin!(released);
+        std::future::poll_fn(|cx| {
+            assert!(released.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        // No fixture transition or executor yield intervenes between registration and release.
+        w.release_local_fence();
+        assert!(!w.maint.local_held());
+        assert!(
+            std::future::poll_fn(|cx| Poll::Ready(released.as_mut().poll(cx).is_ready())).await,
+            "the actual release must wake the already pending custody observer"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn r5_fresh_authority_boot_blocks_node_before_state_inspection() {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("models.ini"), INI).unwrap();
