@@ -773,9 +773,14 @@ async fn a_damaged_chunk_fails_the_restore_test() {
         .contains("failed authentication"));
     let s = get(w.f.addr, ROOT, ADMIN).await.json();
     assert_eq!(s["lastError"]["during"], "restore test");
-    // The scratch directory was removed. The system temp directory is shared with the other tests of
-    // this binary (each restore test makes its own scratch directory for a moment), so a directory
-    // that is still there is given time to go: only one that stays is a leftover.
+    // Constructed fixture witness, not provenance of any CI entry: this unrelated
+    // producer keeps a fresh matching path alive after the corruption checks.
+    let foreign = tempfile::Builder::new()
+        .prefix("noevia-restore-test-foreign-witness-")
+        .tempdir()
+        .unwrap();
+    std::fs::write(foreign.path().join("canary"), b"foreign fixture").unwrap();
+    println!("CONSTRUCTED_FOREIGN_RESTORE_WITNESS {:?}", foreign.path());
     let leftovers = || {
         std::fs::read_dir(std::env::temp_dir())
             .unwrap()
@@ -790,11 +795,8 @@ async fn a_damaged_chunk_fails_the_restore_test() {
             })
             .count()
     };
-    let started = Instant::now();
-    while leftovers() != 0 && started.elapsed() < Duration::from_secs(20) {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    assert_eq!(leftovers(), 0);
+    // Evaluate the unchanged global predicate once; do not wait for age-out.
+    assert_eq!(leftovers(), 0, "constructed foreign entry is not a verify leak");
 }
 
 #[tokio::test]
