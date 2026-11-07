@@ -3,6 +3,8 @@
 //! The SQLite transaction is only an OS-managed lock: model contents stay in models.ini.
 //! Hold it on a blocking thread from the revision read through rename and directory fsync.
 //! Closing the connection (including process death) releases it; it is never expired or stolen.
+mod operations;
+pub use operations::Claim;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -53,6 +55,16 @@ fn legacy_kind() -> String {
 pub struct Receipt {
     pub state: String,
     pub revision: Option<String>,
+    #[serde(default)]
+    pub owner: Option<String>,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default, rename = "effectPending")]
+    pub effect_pending: bool,
+    #[serde(default)]
+    pub outcome: Option<String>,
+    #[serde(default, rename = "httpStatus")]
+    pub http_status: Option<u16>,
 }
 
 pub fn now_ms() -> u64 {
@@ -95,7 +107,7 @@ impl Guard {
 
     pub fn authority(&self) -> std::io::Result<Option<AuthorityRecord>> {
         use rusqlite::OptionalExtension;
-        self._connection.execute_batch("CREATE TABLE IF NOT EXISTS preset_authority (singleton INTEGER PRIMARY KEY CHECK(singleton=1), incarnation TEXT NOT NULL, lease TEXT NOT NULL, generation TEXT NOT NULL, active INTEGER NOT NULL, until_ms TEXT NOT NULL, recovery INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS preset_operations (id TEXT PRIMARY KEY, incarnation TEXT NOT NULL, lease TEXT NOT NULL, generation TEXT NOT NULL); CREATE TABLE IF NOT EXISTS preset_revision(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision TEXT NOT NULL);").map_err(io_error)?;
+        self._connection.execute_batch("CREATE TABLE IF NOT EXISTS preset_authority (singleton INTEGER PRIMARY KEY CHECK(singleton=1), incarnation TEXT NOT NULL, lease TEXT NOT NULL, generation TEXT NOT NULL, active INTEGER NOT NULL, until_ms TEXT NOT NULL, recovery INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS preset_operations (id TEXT PRIMARY KEY, incarnation TEXT NOT NULL, lease TEXT NOT NULL, generation TEXT NOT NULL); CREATE TABLE IF NOT EXISTS preset_revision(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision TEXT NOT NULL); CREATE TABLE IF NOT EXISTS preset_incident(singleton INTEGER PRIMARY KEY CHECK(singleton=1),id TEXT NOT NULL);").map_err(io_error)?;
         let columns = {
             let mut statement = self
                 ._connection
@@ -112,6 +124,11 @@ impl Guard {
             ("state", "TEXT NOT NULL DEFAULT 'issued'"),
             ("revision", "TEXT"),
             ("created_ms", "INTEGER NOT NULL DEFAULT 0"),
+            ("owner", "TEXT"),
+            ("target", "TEXT"),
+            ("effect_pending", "INTEGER NOT NULL DEFAULT 0"),
+            ("outcome", "TEXT"),
+            ("http_status", "INTEGER"),
         ] {
             if !columns.iter().any(|column| column == name) {
                 self._connection
@@ -122,7 +139,7 @@ impl Guard {
             }
         }
         self._connection
-            .pragma_update(None, "user_version", 2)
+            .pragma_update(None, "user_version", 3)
             .map_err(io_error)?;
         self._connection.query_row("SELECT incarnation,lease,CAST(generation AS TEXT),active,CAST(until_ms AS TEXT),recovery FROM preset_authority WHERE singleton=1", [], |r| Ok(AuthorityRecord { incarnation:r.get(0)?,lease:r.get(1)?,generation:r.get::<_,String>(2)?.parse().map_err(|_| rusqlite::Error::InvalidQuery)?,active:r.get(3)?,until_ms:r.get::<_,String>(4)?.parse().map_err(|_| rusqlite::Error::InvalidQuery)?,recovery:r.get(5)? })).optional().map_err(io_error)
     }
@@ -134,7 +151,7 @@ impl Guard {
 
     pub fn pending(&self) -> std::io::Result<bool> {
         self._connection
-            .query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE state IN ('issued','running','recovery'))", [], |r| {
+            .query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE state IN ('issued','received','running','recovery'))", [], |r| {
                 r.get(0)
             })
             .map_err(io_error)
@@ -161,7 +178,7 @@ impl Guard {
 
     pub fn validate(&self, f: &Fence) -> std::io::Result<()> {
         self.validate_lease(f)?;
-        let valid: bool = self._connection.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6 AND state IN ('issued','running'))", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision], |r| r.get(0)).map_err(io_error)?;
+        let valid: bool = self._connection.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6 AND state IN ('issued','received','running'))", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision], |r| r.get(0)).map_err(io_error)?;
         if valid {
             Ok(())
         } else {
@@ -170,15 +187,11 @@ impl Guard {
     }
 
     pub fn no_other_publishers(&self, f: &Fence) -> std::io::Result<()> {
-        let pending:bool=self._connection.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE id<>?1 AND kind IN ('pull','register') AND state IN ('issued','running','recovery'))",[&f.operation],|r|r.get(0)).map_err(io_error)?;
-        if pending {
-            Err(conflict())
-        } else {
-            Ok(())
-        }
+        self.publication_idle(Some(&f.operation))
     }
+
     pub fn pending_kinds(&self) -> std::io::Result<Vec<String>> {
-        let mut statement=self._connection.prepare("SELECT DISTINCT kind FROM preset_operations WHERE state IN ('issued','running','recovery')").map_err(io_error)?;
+        let mut statement=self._connection.prepare("SELECT DISTINCT kind FROM preset_operations WHERE state IN ('issued','received','running','recovery')").map_err(io_error)?;
         let rows = statement.query_map([], |r| r.get(0)).map_err(io_error)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(io_error)
     }
@@ -201,7 +214,14 @@ impl Guard {
         if !matches!(state, "settled" | "conflict" | "recovery") {
             return Err(conflict());
         }
-        self._connection.execute("UPDATE preset_operations SET state=?5,revision=?6 WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?7 AND expected_revision IS ?8 AND state IN ('issued','running','recovery')", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),state,revision,f.kind,f.expected_revision]).map_err(io_error)?;
+        let receipt = self.status(f)?.ok_or_else(conflict)?;
+        if receipt.owner.is_some()
+            && !matches!(receipt.state.as_str(), "settled" | "conflict")
+            && state != "recovery"
+        {
+            return Err(conflict());
+        }
+        self._connection.execute("UPDATE preset_operations SET state=?5,revision=COALESCE(?6,revision) WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?7 AND expected_revision IS ?8 AND state IN ('issued','received','running','recovery')", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),state,revision,f.kind,f.expected_revision]).map_err(io_error)?;
         Ok(())
     }
     pub fn settle(&self, f: &Fence) -> std::io::Result<()> {
@@ -209,7 +229,7 @@ impl Guard {
     }
     pub fn status(&self, f: &Fence) -> std::io::Result<Option<Receipt>> {
         use rusqlite::OptionalExtension;
-        self._connection.query_row("SELECT state,revision FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision], |r| Ok(Receipt {state:r.get(0)?,revision:r.get(1)?})).optional().map_err(io_error)
+        self._connection.query_row("SELECT state,revision,owner,target,effect_pending,outcome,http_status FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision], |r| Ok(Receipt {state:r.get(0)?,revision:r.get(1)?,owner:r.get(2)?,target:r.get(3)?,effect_pending:r.get(4)?,outcome:r.get(5)?,http_status:r.get(6)?})).optional().map_err(io_error)
     }
     pub fn expected(&self, f: &Fence, actual: &str) -> std::io::Result<()> {
         self.validate(f)?;
@@ -223,12 +243,15 @@ impl Guard {
     }
 
     pub fn operation_exists(&self, f: &Fence) -> std::io::Result<bool> {
-        self._connection.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND state IN ('issued','running','recovery'))", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string()], |r| r.get(0)).map_err(io_error)
+        self._connection.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND state IN ('issued','received','running','recovery'))", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string()], |r| r.get(0)).map_err(io_error)
     }
 
     pub fn clear_operations(&self) -> std::io::Result<()> {
+        if self.effects_pending()? {
+            return Err(conflict());
+        }
         self._connection
-            .execute("UPDATE preset_operations SET state='reconciled' WHERE state IN ('issued','running','recovery')", [])
+            .execute("UPDATE preset_operations SET state='reconciled' WHERE state IN ('issued','received','running','recovery')", [])
             .map_err(io_error)?;
         Ok(())
     }
@@ -302,10 +325,10 @@ pub fn allows(path: &Path, fence: Option<&Fence>) -> bool {
                     return Ok(false);
                 }
             }
-            return db.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6 AND state IN ('issued','running'))", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision], |r| r.get(0));
+            return db.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6 AND state IN ('issued','received','running'))", rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision], |r| r.get(0));
         }
         let pending: bool =
-            db.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE state IN ('issued','running','recovery'))", [], |r| {
+            db.query_row("SELECT EXISTS(SELECT 1 FROM preset_operations WHERE state IN ('issued','received','running','recovery'))", [], |r| {
                 r.get(0)
             })?;
         Ok(!r.active && !r.recovery && !pending)
@@ -321,7 +344,7 @@ pub fn read_receipt(path: &Path, f: &Fence) -> std::io::Result<Option<Receipt>> 
             .map_err(io_error)?;
     db.busy_timeout(Duration::from_millis(25))
         .map_err(io_error)?;
-    db.query_row("SELECT state,revision FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6",rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision],|r|Ok(Receipt {state:r.get(0)?,revision:r.get(1)?})).optional().map_err(io_error)
+    db.query_row("SELECT state,revision,owner,target,effect_pending,outcome,http_status FROM preset_operations WHERE id=?1 AND incarnation=?2 AND lease=?3 AND generation=?4 AND kind=?5 AND expected_revision IS ?6",rusqlite::params![f.operation,f.incarnation,f.lease,f.generation.to_string(),f.kind,f.expected_revision],|r|Ok(Receipt {state:r.get(0)?,revision:r.get(1)?,owner:r.get(2)?,target:r.get(3)?,effect_pending:r.get(4)?,outcome:r.get(5)?,http_status:r.get(6)?})).optional().map_err(io_error)
 }
 
 /// Keeps WAL/shm available to a read-only gate while this authority is running.

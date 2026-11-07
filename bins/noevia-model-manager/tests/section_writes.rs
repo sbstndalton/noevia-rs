@@ -643,3 +643,108 @@ async fn publication_receipt_includes_the_idle_key_reconciliation() {
         "receipt is the final committed revision, including reconciliation"
     );
 }
+
+#[cfg(feature = "native-safe-defaults")]
+async fn operation_request(state: Arc<StateData>, action: &str, body: Value) -> (u16, Value) {
+    let response = noevia_model_manager::router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/v1/maintenance-operation/{action}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status().as_u16();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&body).unwrap_or(Value::Null))
+}
+
+#[cfg(feature = "native-safe-defaults")]
+#[tokio::test]
+async fn publication_operation_effect_receipt_deduplicates_and_only_its_owner_can_settle() {
+    let (dir, state, fence) =
+        scoped_publication_rig("[target]\nmodel = /models/target.gguf\n", "pull");
+    let proof = serde_json::json!({"maintenance":fence,"owner":"gate-epoch-one","target":"POST /models target"});
+    let (status, first) = operation_request(state.clone(), "claim", proof.clone()).await;
+    assert_eq!(status, 200);
+    assert_eq!(first["state"], "received");
+    assert_eq!(first["dispatch"], true);
+    let (_, duplicate) = operation_request(state.clone(), "claim", proof.clone()).await;
+    assert_eq!(duplicate["dispatch"], false);
+    let (_, armed) = operation_request(state.clone(), "arm", proof.clone()).await;
+    assert_eq!(armed["state"], "running");
+    assert_eq!(armed["effectPending"], true);
+    let (_, duplicate) = operation_request(state.clone(), "claim", proof.clone()).await;
+    assert_eq!(duplicate["dispatch"], false);
+    for owner in [Some("another-owner"), None] {
+        let mut body = serde_json::json!({"maintenance":fence,"state":"settled"});
+        if let Some(owner) = owner {
+            body["owner"] = serde_json::json!(owner);
+        }
+        assert_eq!(
+            operation_request(state.clone(), "settle", body).await.0,
+            409
+        );
+    }
+    // Unrelated ABA/status-only observations cannot become causal terminal evidence.
+    let (_, status) = operation_request(
+        state.clone(),
+        "status",
+        serde_json::json!({"maintenance":fence,"status":"unloaded","listingGeneration":999}),
+    )
+    .await;
+    assert_eq!(status["state"], "running");
+    assert_eq!(status["effectPending"], true);
+    let (_, unknown) = operation_request(
+        state.clone(),
+        "settle",
+        serde_json::json!({"maintenance":fence,"owner":"gate-epoch-one","state":"recovery"}),
+    )
+    .await;
+    assert_eq!(unknown["state"], "recovery");
+    assert_eq!(unknown["effectPending"], true);
+    let journal =
+        model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite"))
+            .unwrap();
+    let authority = journal.authority().unwrap().unwrap();
+    assert!(!authority.active && authority.recovery);
+    journal.commit().unwrap();
+    let (_, terminal) = operation_request(state.clone(), "settle", serde_json::json!({"maintenance":fence,"owner":"gate-epoch-one","state":"settled","outcome":"completed","httpStatus":200})).await;
+    assert_eq!(terminal["state"], "settled");
+    assert_eq!(terminal["effectPending"], false);
+    assert_eq!(terminal["outcome"], "completed");
+    let journal =
+        model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite"))
+            .unwrap();
+    assert!(
+        journal.authority().unwrap().unwrap().recovery,
+        "terminal effect does not acknowledge the incident"
+    );
+}
+
+#[cfg(feature = "native-safe-defaults")]
+#[tokio::test]
+async fn publication_operation_reload_arm_refuses_a_revision_moved_since_received() {
+    let (dir, state, fence) =
+        scoped_publication_rig("[target]\nmodel = /models/target.gguf\n", "reload");
+    let proof = serde_json::json!({"maintenance":fence,"owner":"gate-epoch-one","target":"POST /models/reload"});
+    assert_eq!(
+        operation_request(state.clone(), "claim", proof.clone())
+            .await
+            .0,
+        200
+    );
+    std::fs::write(
+        dir.path().join("models.ini"),
+        "[new]\nmodel = /models/new.gguf\n",
+    )
+    .unwrap();
+    let (_, response) = operation_request(state, "arm", proof).await;
+    assert_eq!(response["dispatch"], false);
+    assert_eq!(response["state"], "settled");
+    assert_eq!(response["outcome"], "refused");
+    assert_eq!(response["httpStatus"], 409);
+}

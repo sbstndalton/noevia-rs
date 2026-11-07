@@ -1095,7 +1095,6 @@ impl Maint {
                             | "reread"
                             | "control"
                             | "acquire"
-                            | "pull"
                             | "register"
                             | "delete"
                             | "prune"
@@ -1107,6 +1106,10 @@ impl Maint {
         }
         let mut delay = Duration::from_millis(100);
         loop {
+            // A fresh lease and GET/model status cannot prove a delayed original dispatch settled.
+            if self.authority.pending_destination_effects() {
+                return;
+            }
             let ticket = self.authority.require_recovery();
             if let Ok(hold) = self
                 .acquire_recovery("Reconciling interrupted native preset editing", HOLD_FOR)

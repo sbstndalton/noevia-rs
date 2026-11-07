@@ -109,6 +109,21 @@ fn status(outcome: &Outcome) -> u16 {
 }
 
 impl SectionWrites {
+    pub(crate) fn validate_revision(
+        &self,
+        guard: &Guard,
+        fence: &model_publication::Fence,
+    ) -> std::io::Result<()> {
+        if fence.expected_revision.is_some() {
+            let (_, revision) =
+                current(&self.ini).map_err(|()| std::io::Error::other("preset read failed"))?;
+            guard.expected(fence, &revision)?;
+            guard.observe_revision(&revision)?;
+        } else {
+            guard.validate(fence)?;
+        }
+        Ok(())
+    }
     pub fn operation_fence(&self) -> Option<&model_publication::Fence> {
         self.fence.as_ref()
     }
@@ -189,6 +204,9 @@ impl SectionWrites {
             Ok(guard) => guard,
             Err(_) => return detail(503, "Preset publication is busy or unavailable."),
         };
+        if guard.authority().is_err() {
+            return detail(503, "Preset authority unavailable.");
+        }
         let mut refused = None;
         let original = self
             .fence

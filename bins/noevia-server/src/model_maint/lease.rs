@@ -133,7 +133,7 @@ struct AuthorityState<'a> {
     journal: Option<model_publication::Guard>,
     epoch: &'a str,
     valid: bool,
-    recovering: bool,
+    recovering: Option<String>,
 }
 impl Deref for AuthorityState<'_> {
     type Target = State;
@@ -154,7 +154,19 @@ impl Drop for AuthorityState<'_> {
         if !self.valid {
             return;
         }
-        let clear = self.recovering && !self.state.recovery_required;
+        // A callback can create a newer incident in this same transaction. Never overwrite it
+        // with the in-memory snapshot or let an older repair acknowledge it.
+        let live_incident = journal.incident().ok().flatten();
+        if live_incident.is_some() && live_incident != self.recovering {
+            self.state.recovery_required = true;
+            self.state.recovery_ticket = live_incident.clone();
+            if let Some(holder) = self.state.holder.as_mut() {
+                holder.fenced = true;
+            }
+        }
+        let clear = self.recovering.is_some()
+            && !self.state.recovery_required
+            && live_incident == self.recovering;
         if self.state.pending_operations && self.state.holder.is_none() && !clear {
             self.state.recovery_required = true;
             if self.state.recovery_ticket.is_none() {
@@ -183,7 +195,19 @@ impl Drop for AuthorityState<'_> {
             }),
             recovery: self.state.recovery_required,
         };
-        let saved = (!clear || journal.clear_operations().is_ok())
+        let cleared = !clear
+            || (journal.clear_operations().is_ok()
+                && self
+                    .recovering
+                    .as_deref()
+                    .is_some_and(|ticket| journal.clear_incident(ticket).unwrap_or(false)));
+        let saved = cleared
+            && (!record.recovery
+                || self
+                    .state
+                    .recovery_ticket
+                    .as_deref()
+                    .is_some_and(|ticket| journal.save_incident(ticket).is_ok()))
             && journal.save_authority(&record).is_ok();
         if !saved || journal.commit().is_err() {
             self.state.journal_available = false;
@@ -283,15 +307,38 @@ impl Authority {
             .journal
             .as_ref()
             .and_then(|path| model_publication::Guard::at(path).ok());
-        let valid = match (&self.inner.journal, &journal) {
-            (None, _) => true,
-            (Some(_), Some(j)) => j
-                .authority()
-                .ok()
-                .flatten()
-                .is_some_and(|r| r.incarnation == self.inner.epoch),
-            _ => false,
-        };
+        let record = journal.as_ref().and_then(|j| j.authority().ok().flatten());
+        let valid = self.inner.journal.is_none()
+            || record
+                .as_ref()
+                .is_some_and(|r| r.incarnation == self.inner.epoch);
+        if let Some(record) = record.as_ref().filter(|_| valid) {
+            let higher = record.generation > state.generation;
+            let changed = higher
+                || state.holder.as_ref().is_some_and(|e| {
+                    !e.fenced
+                        && (!record.active
+                            || e.id != record.lease
+                            || e.generation != record.generation)
+                });
+            let incident = journal.as_ref().and_then(|j| j.incident().ok().flatten());
+            if changed || (incident.is_some() && incident != state.recovery_ticket) {
+                if let Some(holder) = state.holder.as_mut() {
+                    holder.fenced = true;
+                }
+            }
+            state.generation = state.generation.max(record.generation);
+            if record.recovery || incident.is_some() || changed {
+                state.recovery_required = true;
+                state.recovery_ticket = if higher && incident == state.recovery_ticket {
+                    Some(random_hex())
+                } else {
+                    incident
+                        .or_else(|| state.recovery_ticket.clone())
+                        .or_else(|| Some(random_hex()))
+                };
+            }
+        }
         state.journal_available = valid;
         if !valid {
             state.recovery_required = true;
@@ -302,7 +349,10 @@ impl Authority {
         state.pending_operations = journal
             .as_ref()
             .is_some_and(|j| j.pending().unwrap_or(true));
-        let recovering = state.recovery_required;
+        let recovering = match &journal {
+            Some(j) => j.incident().ok().flatten(),
+            None => state.recovery_ticket.clone(),
+        };
         AuthorityState {
             state,
             journal,
@@ -324,6 +374,12 @@ impl Authority {
             || journal
                 .pending()
                 .map_err(|_| "preset authority unavailable")?;
+        let ticket = recovery.then(random_hex);
+        if let Some(ticket) = &ticket {
+            journal
+                .save_incident(ticket)
+                .map_err(|_| "preset authority unavailable")?;
+        }
         journal
             .save_authority(&model_publication::AuthorityRecord {
                 incarnation: self.inner.epoch.clone(),
@@ -346,9 +402,7 @@ impl Authority {
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.recovery_required = recovery;
-        if recovery {
-            state.recovery_ticket = Some(random_hex());
-        }
+        state.recovery_ticket = ticket;
         Ok(self)
     }
 
@@ -392,7 +446,7 @@ impl Authority {
             return;
         }
         if let Some(journal) = &state.journal {
-            let _ = journal.finish(fence, "recovery", None);
+            let _ = journal.raise_recovery(fence, &random_hex());
         }
         state.recovery_required = true;
         state
@@ -449,6 +503,13 @@ impl Authority {
         true
     }
 
+    pub(crate) fn pending_destination_effects(&self) -> bool {
+        let state = self.lock();
+        state
+            .journal
+            .as_ref()
+            .is_some_and(|j| j.effects_pending().unwrap_or(true))
+    }
     pub(crate) fn pending_operation_kinds(&self) -> std::io::Result<Vec<String>> {
         let state = self.lock();
         match &state.journal {
@@ -488,8 +549,8 @@ impl Authority {
                 {
                     return Some(receipt)
                 }
-                Ok(Ok(Some(receipt))) if matches!(receipt.state.as_str(), "issued" | "running") => {
-                }
+                Ok(Ok(Some(receipt)))
+                    if matches!(receipt.state.as_str(), "issued" | "received" | "running") => {}
                 _ => {
                     self.unknown_operation(fence);
                     return None;
@@ -657,7 +718,12 @@ impl Authority {
     }
     pub(crate) fn complete_recovery(&self, ticket: &str) -> bool {
         let mut state = self.lock();
-        if state.recovery_ticket.as_deref() != Some(ticket) {
+        if state.recovery_ticket.as_deref() != Some(ticket)
+            || state
+                .journal
+                .as_ref()
+                .is_some_and(|j| j.effects_pending().unwrap_or(true))
+        {
             return false;
         }
         state.recovery_required = false;
@@ -1124,7 +1190,13 @@ pub async fn answer_node(
                         && Instant::now() < e.renewed_until
                         && Instant::now() < e.hard_at
                 });
-            if !covered || state.recovery_ticket.as_deref() != incident {
+            if !covered
+                || state.recovery_ticket.as_deref() != incident
+                || state
+                    .journal
+                    .as_ref()
+                    .is_some_and(|j| j.effects_pending().unwrap_or(true))
+            {
                 return answer(409, &json!({"error":"Stale maintenance operation."}));
             }
             state.recovery_required = false;
@@ -1605,5 +1677,38 @@ mod tests {
             a.held_by_front(),
             "expiry requires settlement before new writers"
         );
+    }
+    #[test]
+    fn external_authority_fence_is_not_overwritten_by_an_in_memory_holder() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("authority.sqlite");
+        let authority = Authority::new().with_publication(path.clone()).unwrap();
+        let grant = authority.try_acquire(Origin::Front, None, "test").unwrap();
+        let journal = model_publication::Guard::at(&path).unwrap();
+        let mut record = journal.authority().unwrap().unwrap();
+        record.active = false;
+        record.recovery = true;
+        journal.save_authority(&record).unwrap();
+        journal.commit().unwrap();
+        assert!(!authority.covers(&grant.id, grant.generation, Duration::ZERO));
+        let journal = model_publication::Guard::at(&path).unwrap();
+        let record = journal.authority().unwrap().unwrap();
+        assert!(!record.active && record.recovery);
+    }
+    #[test]
+    fn external_new_generation_survives_the_old_incidents_late_completion() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("authority.sqlite");
+        let authority = Authority::new().with_publication(path.clone()).unwrap();
+        let first = authority.require_recovery();
+        let journal = model_publication::Guard::at(&path).unwrap();
+        let mut record = journal.authority().unwrap().unwrap();
+        record.generation += 1;
+        record.recovery = true;
+        journal.save_authority(&record).unwrap();
+        journal.commit().unwrap();
+        assert!(!authority.complete_recovery(&first));
+        assert!(authority.recovery_pending());
+        assert_ne!(authority.recovery_ticket().as_deref(), Some(first.as_str()));
     }
 }

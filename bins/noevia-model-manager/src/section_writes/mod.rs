@@ -571,6 +571,7 @@ impl SectionWrites {
             .ok_or_else(|| std::io::Error::other("no parent"))?;
         std::fs::create_dir_all(dir)?;
         self.with_publication(|_publication| {
+            _publication.publication_idle(fence.map(|f| f.operation.as_str()))?;
             if let Some(fence) = fence {
                 if fence.expected_revision.is_none() {
                     return Err(std::io::Error::new(

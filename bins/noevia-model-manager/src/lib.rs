@@ -797,13 +797,16 @@ async fn handler(State(state): State<Arc<StateData>>, mut req: Request) -> Respo
     if req.method() == Method::POST
         && matches!(
             auth_path,
-            "/api/v1/maintenance-operation/status" | "/api/v1/maintenance-operation/settle"
+            "/api/v1/maintenance-operation/status"
+                | "/api/v1/maintenance-operation/settle"
+                | "/api/v1/maintenance-operation/claim"
+                | "/api/v1/maintenance-operation/arm"
         )
     {
         // This narrow capability endpoint never receives the loader's broader Docker credential.
         // The random exact-operation proof can only read/settle its already issued receipt.
-        let settle = auth_path.ends_with("/settle");
-        return maintenance_receipt(&state, req, settle).await;
+        let action = auth_path.rsplit('/').next().unwrap_or("status").to_owned();
+        return maintenance_receipt(&state, req, action).await;
     }
     if auth_path != "/api/v1/health" && !state.token.is_empty() {
         let supplied = req
@@ -1834,7 +1837,7 @@ fn bench_run_response(outcome: bench_runs::Outcome) -> Response {
 /// the handlers' 400s), then everything else under the one write lock; the store work runs on a
 /// blocking thread that owns the lock guard, so a dropped request still finishes before the next.
 #[cfg(feature = "native-section-writes")]
-async fn maintenance_receipt(state: &StateData, req: Request, settle: bool) -> Response {
+async fn maintenance_receipt(state: &StateData, req: Request, action: String) -> Response {
     let denied = || {
         (
             StatusCode::UNAUTHORIZED,
@@ -1867,33 +1870,117 @@ async fn maintenance_receipt(state: &StateData, req: Request, settle: bool) -> R
         .and_then(serde_json::Value::as_str)
         .unwrap_or("recovery")
         .to_owned();
-    if settle && !matches!(terminal.as_str(), "settled" | "conflict" | "recovery") {
+    if action == "settle" && !matches!(terminal.as_str(), "settled" | "conflict" | "recovery") {
         return denied();
     }
-    let path = writes.publication_path().to_owned();
-    let result = tokio::task::spawn_blocking(
-        move || -> std::io::Result<Option<model_publication::Receipt>> {
-            let guard = model_publication::Guard::at(&path)?;
+    let owner = body
+        .get("owner")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+    let target = body
+        .get("target")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned);
+    let outcome = body
+        .get("outcome")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("completed")
+        .to_owned();
+    let http_status = body
+        .get("httpStatus")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|v| u16::try_from(v).ok());
+    let writes = writes.clone();
+    let result = docker::spawn_blocking_admitted(
+        move || -> std::io::Result<Option<(model_publication::Receipt, bool)>> {
+            let guard = model_publication::Guard::at(writes.publication_path())?;
             guard.authority()?;
             if guard.status(&fence)?.is_none() {
                 return Ok(None);
             }
-            if settle {
-                guard.finish(&fence, &terminal, None)?;
+            let mut dispatch = false;
+            match action.as_str() {
+                "claim" => {
+                    let owner = owner
+                        .as_deref()
+                        .ok_or_else(|| std::io::Error::other("owner required"))?;
+                    let target = target
+                        .as_deref()
+                        .ok_or_else(|| std::io::Error::other("target required"))?;
+                    // A replay observes its original receipt; it cannot reopen or redispatch it.
+                    let prior = guard
+                        .status(&fence)?
+                        .ok_or_else(|| std::io::Error::other("receipt missing"))?;
+                    if prior.owner.is_none() {
+                        match writes.validate_revision(&guard, &fence) {
+                            Ok(()) => {}
+                            Err(error) if model_publication::is_conflict(&error) => {
+                                guard.refuse_unstarted(&fence, 409)?;
+                                let receipt = guard.status(&fence)?;
+                                guard.commit()?;
+                                return Ok(receipt.map(|r| (r, false)));
+                            }
+                            Err(error) => return Err(error),
+                        }
+                    }
+                    dispatch =
+                        guard.claim(&fence, owner, target)? == model_publication::Claim::Received;
+                }
+                "arm" => {
+                    let owner = owner
+                        .as_deref()
+                        .ok_or_else(|| std::io::Error::other("owner required"))?;
+                    let checked = writes.validate_revision(&guard, &fence).and_then(|()| {
+                        if matches!(fence.kind.as_str(), "reload" | "pull") {
+                            guard.publication_idle(Some(&fence.operation))
+                        } else {
+                            Ok(())
+                        }
+                    });
+                    match checked {
+                        Ok(()) => {
+                            guard.arm(&fence, owner)?;
+                            dispatch = true;
+                        }
+                        Err(error) if model_publication::is_conflict(&error) => {
+                            guard.finish_owned(&fence, owner, "refused", Some(409))?;
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
+                "settle" => {
+                    if terminal == "recovery" {
+                        // Unique per report; late completion of an older repair cannot clear this.
+                        let incident =
+                            format!("{}-{}", fence.operation, model_publication::now_ms());
+                        guard.raise_recovery(&fence, &incident)?;
+                    } else if let Some(owner) = owner.as_deref() {
+                        guard.finish_owned(&fence, owner, &outcome, http_status)?;
+                    } else {
+                        guard.finish(&fence, &terminal, None)?;
+                    }
+                }
+                _ => {}
             }
             let receipt = guard.status(&fence)?;
             guard.commit()?;
-            Ok(receipt)
+            Ok(receipt.map(|r| (r, dispatch)))
         },
     )
     .await;
     match result {
-        Ok(Ok(Some(receipt))) => (
-            StatusCode::OK,
-            Json(json!({"state":receipt.state,"revision":receipt.revision})),
-        )
-            .into_response(),
+        Ok(Ok(Some((receipt, dispatch)))) => {
+            let mut body =
+                serde_json::to_value(receipt).unwrap_or_else(|_| json!({"state":"unknown"}));
+            if let Some(body) = body.as_object_mut() {
+                body.insert("dispatch".into(), json!(dispatch));
+            }
+            (StatusCode::OK, Json(body)).into_response()
+        }
         Ok(Ok(None)) => denied(),
+        Ok(Err(error)) if model_publication::is_conflict(&error) => {
+            section_outcome(section_writes::publication_stale())
+        }
         _ => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"error":"Maintenance authority unavailable."})),

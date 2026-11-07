@@ -422,6 +422,9 @@ impl Store {
                     "Preset publication is busy or unavailable. Try again shortly.",
                 )
             })?;
+            _publication
+                .publication_idle(fence.as_ref().map(|f| f.operation.as_str()))
+                .map_err(|_| IniError::new(409, "Another publisher has not settled."))?;
             if let Some(fence) = &fence {
                 _publication
                     .validate(fence)
