@@ -4,6 +4,7 @@
 
 pub mod assertion;
 pub mod backup;
+pub mod storage_gate;
 pub mod config;
 pub mod corpus;
 pub mod health;

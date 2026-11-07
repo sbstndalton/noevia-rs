@@ -493,6 +493,15 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     let Some(r) = route(&parts.method, &path) else {
         return decline();
     };
+    if r.write()
+        && crate::backup::pending(
+            &app.data_root
+                .join("users")
+                .join(header(&headers, "x-cowork-user-id").to_ascii_lowercase()),
+        )
+    {
+        return crate::backup::uncertain();
+    }
     if r.write() && !flag(&headers, WRITER_HEADER) {
         // This process is not the tenant's writer.
         return decline();
@@ -664,6 +673,9 @@ async fn serve_write(
     let task = tokio::task::spawn_blocking(move || {
         app2.writers
             .with_lock(&uid, || {
+                if crate::backup::pending(&app2.data_root.join("users").join(&uid)) {
+                    return workspace::Reply::Json(503, b"{\"detail\":\"Diary backup settlement is uncertain. Saving and deletion remain paused.\"}".to_vec());
+                }
                 // Re-checked under the lock: an earlier write may have left work pending.
                 let root = app2.data_root.join("users").join(&uid);
                 match managed::ready_for_write(&root, &uid, true) {
@@ -721,7 +733,16 @@ async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Bod
     }
     let app2 = app.clone();
     match tokio::task::spawn_blocking(move || app2.writers.fence(&uid)).await {
-        Ok(()) => Response::new(Body::from("ok")),
+        Ok(()) => {
+            let uid = py::query_get(query, "tenant")
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if crate::backup::pending(&app.data_root.join("users").join(uid)) {
+                crate::backup::uncertain()
+            } else {
+                Response::new(Body::from("ok"))
+            }
+        }
         Err(_) => internal_error(),
     }
 }

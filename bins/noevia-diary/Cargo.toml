@@ -20,7 +20,7 @@ serde_json = "1"
 sha2 = "=0.10.9"
 subtle = { version = "=2.6.1", default-features = false }
 chrono = { version = "=0.4.45", default-features = false, features = ["std", "clock"] }
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 regex = "1"
 tenant-assertion = { path = "../../crates/tenant-assertion" }
 diary-corpus-parse = { path = "../../crates/diary-corpus-parse" }

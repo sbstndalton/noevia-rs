@@ -3,16 +3,18 @@
 use crate::{managed, server, workspace, write};
 use axum::{body::Body, http::Response};
 use diary_backup_run::R;
-use reqwest::blocking::{Client, Response as RemoteResponse};
+use reqwest::{Client, Response as RemoteResponse};
 use serde_json::{json, Map, Value};
-use std::{fs::OpenOptions, io::Read, path::Path, time::Duration};
+use std::{fs::OpenOptions, path::Path, time::Duration};
 
 struct Dav {
     client: Client,
     base: String,
     username: String,
     secret: String,
-    gate: std::sync::Arc<std::sync::Mutex<diary_storage_backoff::StorageGate>>,
+    gate: crate::storage_gate::Gate,
+    db: std::path::PathBuf,
+    runtime: tokio::runtime::Runtime,
 }
 impl Dav {
     fn url(&self, path: &str) -> R<reqwest::Url> {
@@ -24,30 +26,43 @@ impl Dav {
             .join("/");
         Ok(reqwest::Url::parse(&format!("{}/{path}", self.base))?)
     }
-    fn send(&self, request: reqwest::blocking::RequestBuilder) -> R<RemoteResponse> {
-        if self
-            .gate
-            .lock()
-            .map_err(|_| "gate")?
-            .check(mono())?
-            .is_some()
-        {
-            return Err("cooldown".into());
+    fn send(
+        &self,
+        method: &str,
+        path: &str,
+        request: reqwest::RequestBuilder,
+    ) -> R<RemoteResponse> {
+        self.gate.check()?;
+        // Write-ahead intent is durable before dispatch. A dropped process/transport has no
+        // authority to clear it. Do not use GET/readback or later success to settle this intent.
+        let mutation = method != "GET";
+        let token = if mutation {
+            Some(begin_effect(&self.db, method, path)?)
+        } else {
+            None
+        };
+        let response = self.runtime.block_on(request.send())?;
+        let code = response.status().as_u16();
+        if let Some(token) = token {
+            let terminal = match method {
+                "MKCOL" => matches!(code, 201 | 405 | 401 | 403),
+                "PUT" => matches!(code, 200 | 201 | 204 | 401 | 403 | 405 | 409 | 412),
+                _ => false,
+            };
+            if terminal {
+                settle_effect(&self.db, &token)?;
+            }
         }
-        let response = request.send()?;
-        self.gate.lock().map_err(|_| "gate")?.record(
-            mono(),
-            write::now_epoch(),
-            response.status().as_u16(),
+        self.gate.record(
+            code,
             response
                 .headers()
                 .get("retry-after")
                 .and_then(|h| h.to_str().ok()),
-            false,
         )?;
         Ok(response)
     }
-    fn request(&self, method: &str, path: &str) -> R<reqwest::blocking::RequestBuilder> {
+    fn request(&self, method: &str, path: &str) -> R<reqwest::RequestBuilder> {
         let mut request = self
             .client
             .request(method.parse()?, self.url(path)?)
@@ -68,16 +83,21 @@ impl Dav {
         Ok(response)
     }
     fn get(&self, path: &str, limit: usize) -> R<Option<Vec<u8>>> {
-        let response = self.send(self.request("GET", path)?)?;
+        let response = self.send("GET", path, self.request("GET", path)?)?;
         if response.status().as_u16() == 404 {
             return Ok(None);
         }
-        let response = Self::checked(response)?;
-        let mut data = Vec::new();
-        response.take(limit as u64 + 1).read_to_end(&mut data)?;
-        if data.len() > limit {
-            return Err("size".into());
-        }
+        let mut response = Self::checked(response)?;
+        let data = self.runtime.block_on(async {
+            let mut data = Vec::new();
+            while let Some(chunk) = response.chunk().await? {
+                if data.len().saturating_add(chunk.len()) > limit {
+                    return Err("size".into());
+                }
+                data.extend_from_slice(&chunk);
+            }
+            Ok::<_, Box<dyn std::error::Error>>(data)
+        })?;
         Ok(Some(data))
     }
     fn verify(&self, path: &str, data: &[u8]) -> R<bool> {
@@ -86,12 +106,15 @@ impl Dav {
             let parts: Vec<_> = path.split('/').collect();
             for end in 1..parts.len() {
                 let directory = parts.get(..end).ok_or("path")?.join("/") + "/";
-                let response = self.send(self.request("MKCOL", &directory)?)?;
+                let response =
+                    self.send("MKCOL", &directory, self.request("MKCOL", &directory)?)?;
                 if !matches!(response.status().as_u16(), 201 | 405) {
                     Self::checked(response)?;
                 }
             }
             let response = self.send(
+                "PUT",
+                path,
                 self.request("PUT", path)?
                     .header("if-none-match", "*")
                     .header("content-type", "text/markdown; charset=utf-8")
@@ -120,6 +143,9 @@ fn run_inner(root: &Path, uid: &str, storage: Option<&Map<String, Value>>) -> R<
     if !path.exists() {
         return Ok(server::json_response(200, &json!({"mode":"legacy"})));
     }
+    if pending(root) {
+        return Ok(uncertain());
+    }
     let store = managed::backup_store(root, uid).map_err(|_| "store")?;
     let empty = Map::new();
     let storage = storage.unwrap_or(&empty);
@@ -143,7 +169,7 @@ fn run_inner(root: &Path, uid: &str, storage: Option<&Map<String, Value>>) -> R<
             .unwrap_or("")
             .to_string()
     };
-    if !string("secretRef").is_empty() && string("secret").is_empty() {
+    if storage.get("secretRef").is_some_and(truthy) && string("secret").is_empty() {
         return Ok(server::json_response(
             428,
             &json!({"detail":{"code":"storage_credential_required"}}),
@@ -162,17 +188,47 @@ fn run_inner(root: &Path, uid: &str, storage: Option<&Map<String, Value>>) -> R<
         client: Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .no_proxy()
-            .timeout(Duration::from_secs(15))
+            // Python uses a per-read/connect inactivity limit, not a total-response deadline.
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(15))
             .build()?,
         base: string("baseUrl").trim_end_matches('/').to_string(),
         username: string("username"),
         secret: string("secret"),
-        gate: gate(&string("baseUrl"), &string("username"), &string("secret")),
+        gate: crate::storage_gate::Gate::new(
+            root.parent()
+                .and_then(Path::parent)
+                .ok_or("root")?
+                .join("storage-gates.db"),
+            &string("baseUrl"),
+            &string("username"),
+            &string("secret"),
+        ),
+        db: path.clone(),
+        runtime: tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?,
     };
+    if pending(root) {
+        return Ok(uncertain());
+    }
     // URL segments append to the configured collection, preserving encoded names.
     let request = json!({"db":path,"tenant":uid,"destination":destination,
                          "now":write::now_epoch(),"corpusRoot":string("corpusRoot")});
-    let result = diary_backup_run::backup(&request, |path, bytes| remote.verify(path, bytes))?;
+    let result = diary_backup_run::backup(&request, |path, bytes| remote.verify(path, bytes));
+    if pending(root) {
+        // Keep the kernel flock as well while this incarnation lives. After process loss,
+        // the same durable intent is checked by every backup/write/delete admission path.
+        use std::sync::{Mutex, OnceLock};
+        static HOLDS: OnceLock<Mutex<Vec<std::fs::File>>> = OnceLock::new();
+        HOLDS
+            .get_or_init(Mutex::default)
+            .lock()
+            .map_err(|_| "hold")?
+            .push(lock);
+        return Ok(uncertain());
+    }
+    let result = result?;
     let mut response = status();
     if let workspace::Reply::Json(_, bytes) = &mut response {
         let mut value: Value = serde_json::from_slice(bytes)?;
@@ -190,48 +246,71 @@ fn run_inner(root: &Path, uid: &str, storage: Option<&Map<String, Value>>) -> R<
     Ok(server::reply(response))
 }
 
-type Gate = std::sync::Arc<std::sync::Mutex<diary_storage_backoff::StorageGate>>;
-fn gate(base: &str, username: &str, secret: &str) -> Gate {
-    use sha2::{Digest, Sha256};
-    use std::sync::{Mutex, OnceLock};
-    static GATES: OnceLock<Mutex<std::collections::HashMap<String, Gate>>> = OnceLock::new();
-    let key = format!(
-        "{:x}",
-        Sha256::digest(format!("webdav\0{base}\0{username}\0{secret}"))
-    );
-    let mut gates = GATES
-        .get_or_init(Mutex::default)
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    if !gates.contains_key(&key) && gates.len() >= 256 {
-        let oldest = gates
-            .iter()
-            .min_by(|a, b| {
-                let remaining = |gate: &Gate| {
-                    gate.lock()
-                        .ok()
-                        .and_then(|g| g.state(mono()).ok())
-                        .map_or(0.0, |s| s.remaining)
-                };
-                remaining(a.1).total_cmp(&remaining(b.1))
-            })
-            .map(|(key, _)| key.clone());
-        if let Some(key) = oldest {
-            gates.remove(&key);
-        }
-    }
-    gates
-        .entry(key)
-        .or_insert_with(|| {
-            std::sync::Arc::new(Mutex::new(diary_storage_backoff::StorageGate::new()))
-        })
-        .clone()
+const EFFECT: &str = "backup_effect_pending";
+fn effect_db(path: &Path) -> R<rusqlite::Connection> {
+    let db =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    db.busy_timeout(Duration::from_secs(30))?;
+    db.execute_batch("PRAGMA synchronous=FULL")?;
+    Ok(db)
 }
-
-fn mono() -> f64 {
-    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    START
-        .get_or_init(std::time::Instant::now)
-        .elapsed()
-        .as_secs_f64()
+fn begin_effect(path: &Path, method: &str, remote_path: &str) -> R<String> {
+    let token =
+        json!({"id":write::uuid4().map_err(|_| "id")?, "method":method, "path":remote_path})
+            .to_string();
+    let db = effect_db(path)?;
+    if db.execute(
+        "INSERT INTO meta(key,value) SELECT ?,? WHERE NOT EXISTS (SELECT 1 FROM meta WHERE key=?)",
+        rusqlite::params![EFFECT, token, EFFECT],
+    )? != 1
+    {
+        return Err("unsettled effect".into());
+    }
+    Ok(token)
+}
+fn settle_effect(path: &Path, token: &str) -> R<()> {
+    if effect_db(path)?.execute(
+        "DELETE FROM meta WHERE key=? AND value=?",
+        rusqlite::params![EFFECT, token],
+    )? != 1
+    {
+        return Err("effect identity".into());
+    }
+    Ok(())
+}
+/// Read-only and fail closed. No timeout, exit, or readback retires an uncertain effect.
+pub fn pending(root: &Path) -> bool {
+    let path = root.join("managed-diary.db");
+    if !path.exists() {
+        return false;
+    }
+    let read = || -> R<bool> {
+        let db = rusqlite::Connection::open_with_flags(
+            &path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        db.busy_timeout(Duration::from_secs(1))?;
+        Ok(db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM meta WHERE key=?)",
+            [EFFECT],
+            |r| r.get(0),
+        )?)
+    };
+    read().unwrap_or(true)
+}
+pub fn uncertain() -> Response<Body> {
+    server::detail(
+        503,
+        "Diary backup settlement is uncertain. Saving and deletion remain paused.",
+    )
+}
+fn truthy(value: &Value) -> bool {
+    match value {
+        Value::Null => false,
+        Value::Bool(v) => *v,
+        Value::Number(v) => v.as_f64() != Some(0.0),
+        Value::String(v) => !v.is_empty(),
+        Value::Array(v) => !v.is_empty(),
+        Value::Object(v) => !v.is_empty(),
+    }
 }
