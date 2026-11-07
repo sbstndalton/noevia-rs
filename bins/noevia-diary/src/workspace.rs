@@ -37,6 +37,8 @@ const BLOCKED_ERROR: &str = "Backup endpoint is not approved. Ask an administrat
 pub enum Reply {
     Json(u16, Vec<u8>),
     Zip(Vec<u8>),
+    /// A plain-text reply (Starlette's 500 for an unhandled exception).
+    Text(u16, String),
     Decline,
 }
 
@@ -102,7 +104,7 @@ fn newer_case(c: char) -> bool {
 // ------------------------------------------------------------------ files
 
 /// workspace_files.safe_path: Err(message) is a 400.
-fn safe_path(path: &str, directory: bool) -> Result<(), &'static str> {
+pub(crate) fn safe_path(path: &str, directory: bool) -> Result<(), &'static str> {
     if path.chars().count() > 500 || path.contains('\\') || path.contains('\0') {
         return Err("Invalid path");
     }
@@ -236,9 +238,8 @@ pub fn files(store: &Managed, path: &str) -> Reply {
     json_reply(200, &Files { files: out })
 }
 
-/// POST /api/file is NOT wired yet: the forwarder never forwards a request with a body (part 1),
-/// so Python serves it. `file_body` and `file_read` are its byte-identical port, kept for when
-/// bodies are forwarded (see the D4b handoff).
+/// POST /api/file (a read with a body) is not wired: D5 forwards bodies only on write routes.
+/// `file_read` is its byte-identical port, kept for when it is.
 ///
 /// FastAPI's `body: dict` for POST /api/file: Some(object) when the body is JSON that Python
 /// parses the same way (UTF-8 JSON object, JSON media type or none). None: decline (Python's

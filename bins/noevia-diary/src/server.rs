@@ -7,6 +7,11 @@
 //! (421 + `x-noevia-diary-decline: 1`) and Python serves it without verifying it again, so every
 //! nonce is consumed exactly once. (assertion::Verifier is kept for D8, when this process becomes
 //! the only verifier; it is not wired in.)
+//!
+//! D5 writes (PUT /api/file, POST /api/directory, POST /api/entries/{append,edit}) are served only
+//! for a request Python marks with `x-noevia-diary-writer: 1`: the tenant's writer is this
+//! process (rust_forward.py, DIARY_RUST_WRITES). They run under the tenant's write lock
+//! (write::Writers) and decline only before writing anything.
 
 use crate::config::Config;
 use crate::corpus::{self, BaseCorpus, Layout};
@@ -14,6 +19,8 @@ use crate::health::{self, Models};
 use crate::managed::{self, Managed, Settings};
 use crate::py;
 use crate::workspace::{self, Reply};
+use crate::write::Writers;
+use crate::writes;
 use axum::body::Body;
 use axum::http::{HeaderMap, Method, Request, Response, StatusCode};
 use serde::Serialize;
@@ -31,7 +38,13 @@ pub const ASSERTED_HEADER: &str = "x-noevia-diary-asserted";
 /// "1" when Python holds a recovered managed state for this tenant (journal replayed, dirty
 /// documents reindexed once), so a read here skips nothing Python would have done.
 pub const RECOVERED_HEADER: &str = "x-noevia-diary-recovered";
+/// "1" when this process is the tenant's writer: set by Python only on the D5 write routes of a
+/// tenant whose writes all go here.
+pub const WRITER_HEADER: &str = "x-noevia-diary-writer";
 const MAX_STORAGE_HEADER_LEN: usize = 4096;
+/// Python's bound on a buffered JSON body (app.py MAX_SIGNED_BODY); the forwarder sends nothing
+/// larger.
+pub const MAX_BODY: usize = 64 * 1024 * 1024;
 
 pub struct App {
     pub auth_token: String,
@@ -45,6 +58,10 @@ pub struct App {
     pub models: Option<Models>,
     pub http: reqwest::Client,
     pub export: crate::config::WorkspaceExport,
+    /// DIARY_CORPUS_WRITE_IMPL in Python: entries are written here only when Python itself uses
+    /// the same native transforms ("rust").
+    pub corpus_write_impl: String,
+    pub writers: Writers,
 }
 
 impl App {
@@ -67,6 +84,8 @@ impl App {
             models,
             http: reqwest::Client::builder().build().unwrap_or_default(),
             export: cfg.workspace_export,
+            corpus_write_impl: cfg.corpus_write_impl,
+            writers: Writers::default(),
         }
     }
 }
@@ -157,13 +176,30 @@ pub enum Route {
     Files,
     StorageStatus,
     WorkspaceExport,
+    /// D5: PUT /api/file, POST /api/directory, POST /api/entries/append, POST /api/entries/edit.
+    PutFile,
+    Directory,
+    Append,
+    Edit,
 }
 
 impl Route {
+    /// The routes whose 401 is FastAPI's HTTPException (`{"detail": ...}`).
     fn d4b(self) -> bool {
         matches!(
             self,
-            Route::Files | Route::StorageStatus | Route::WorkspaceExport
+            Route::Files
+                | Route::StorageStatus
+                | Route::WorkspaceExport
+                | Route::PutFile
+                | Route::Directory
+        )
+    }
+
+    pub fn write(self) -> bool {
+        matches!(
+            self,
+            Route::PutFile | Route::Directory | Route::Append | Route::Edit
         )
     }
 }
@@ -176,6 +212,10 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/files") => Some(Route::Files),
         ("GET", "/api/storage-status") => Some(Route::StorageStatus),
         ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
+        ("PUT", "/api/file") => Some(Route::PutFile),
+        ("POST", "/api/directory") => Some(Route::Directory),
+        ("POST", "/api/entries/append") => Some(Route::Append),
+        ("POST", "/api/entries/edit") => Some(Route::Edit),
         _ => None,
     }
 }
@@ -283,7 +323,18 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::Day
         | Route::Files
         | Route::StorageStatus
-        | Route::WorkspaceExport => {
+        | Route::WorkspaceExport
+        | Route::PutFile
+        | Route::Directory
+        | Route::Append
+        | Route::Edit => {
+            if r.write() && header_uid.is_empty() {
+                // The legacy (header-less) tenant's writes stay with Python.
+                return Plan::Decline;
+            }
+            if matches!(r, Route::Append | Route::Edit) && app.corpus_write_impl != "rust" {
+                return Plan::Decline;
+            }
             if r == Route::WorkspaceExport && export_settings(app, &Settings::new()).is_none() {
                 return Plan::Decline;
             }
@@ -308,7 +359,15 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
             }
             let uid = header_uid.to_ascii_lowercase();
             let root = app.data_root.join("users").join(&uid);
-            match managed::ready(&root, &uid) {
+            let ready = if r.write() {
+                if app.writers.is_fenced(&uid) {
+                    return Plan::Decline;
+                }
+                managed::ready_for_write(&root, &uid, false)
+            } else {
+                managed::ready(&root, &uid)
+            };
+            match ready {
                 Ok(Some((_, ref settings)))
                     if r == Route::WorkspaceExport && export_settings(app, settings).is_none() =>
                 {
@@ -363,7 +422,7 @@ fn flag(headers: &HeaderMap, name: &str) -> bool {
 }
 
 pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
-    let (parts, _body) = req.into_parts();
+    let (parts, body) = req.into_parts();
     let raw_path = parts.uri.path().to_string();
     let query: Vec<u8> = parts
         .uri
@@ -374,6 +433,9 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     let headers = parts.headers;
 
     if path.starts_with("/internal/") {
+        if parts.method == Method::POST && path == "/internal/fence" {
+            return fence(app, &query, &headers).await;
+        }
         return control(&app, &parts.method, &path, &headers);
     }
     // Only Python's forwarder knows the secret; everything else is refused before any work.
@@ -389,6 +451,10 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     let Some(r) = route(&parts.method, &path) else {
         return decline();
     };
+    if r.write() && !flag(&headers, WRITER_HEADER) {
+        // This process is not the tenant's writer.
+        return decline();
+    }
     let tenant = match plan(&app, r, &headers, recovered) {
         Plan::Decline => return decline(),
         Plan::Serve(t) => t,
@@ -398,6 +464,18 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     if !header_uid.is_empty() && !app.tenant_key.is_empty() && !asserted {
         return unverified();
     }
+
+    // FastAPI validates a write's body against the handler's parameter (its 422) before the
+    // handler runs `check_auth` (its 401): a body it would refuse is Python's to answer, whatever
+    // the token.
+    let write = if r.write() {
+        match write_body(r, &headers, body).await {
+            Some(w) => Some(w),
+            None => return decline(),
+        }
+    } else {
+        None
+    };
 
     // ---- seam: the routes below read the tenant only from `header_uid` and `asserted` (the
     // trusted forward headers above).
@@ -434,13 +512,7 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let task =
                 tokio::task::spawn_blocking(move || serve_workspace(&app2, r, &query, &tenant));
             match task.await {
-                Ok(Reply::Json(status, body)) => Response::builder()
-                    .status(status)
-                    .header("content-type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap_or_default(),
-                Ok(Reply::Zip(zip)) => zip_response(zip),
-                Ok(Reply::Decline) => decline(),
+                Ok(r) => reply(r),
                 Err(_) => internal_error(),
             }
         }
@@ -453,6 +525,162 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let task = tokio::task::spawn_blocking(move || serve_corpus(&app2, r, &query, &tenant));
             task.await.unwrap_or_else(|_| internal_error())
         }
+        Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
+            serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
+        }
+    }
+}
+
+/// Reply → HTTP response.
+fn reply(r: Reply) -> Response<Body> {
+    match r {
+        Reply::Json(status, body) => Response::builder()
+            .status(status)
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap_or_default(),
+        Reply::Zip(zip) => zip_response(zip),
+        Reply::Text(status, text) => Response::builder()
+            .status(status)
+            .header("content-type", "text/plain; charset=utf-8")
+            .body(Body::from(text))
+            .unwrap_or_default(),
+        Reply::Decline => decline(),
+    }
+}
+
+/// The body of a forwarded write: a JSON object Python's FastAPI would read the same way, else
+/// None (decline; Python answers 422 or reads it its own way).
+async fn json_body(headers: &HeaderMap, body: Body) -> Option<serde_json::Map<String, Value>> {
+    let bytes = axum::body::to_bytes(body, MAX_BODY).await.ok()?;
+    let content_type = headers.get("content-type").map(|v| v.as_bytes());
+    workspace::file_body(content_type, &bytes)
+}
+
+/// A write's body as FastAPI's handler parameter reads it: `body: dict` for the file, directory
+/// and append routes, `EditEntryRequest` for edit. None: FastAPI would answer 422 (decline).
+struct WriteBody {
+    json: serde_json::Map<String, Value>,
+    edit: Option<writes::EditReq>,
+}
+
+async fn write_body(r: Route, headers: &HeaderMap, body: Body) -> Option<WriteBody> {
+    let json = json_body(headers, body).await?;
+    let edit = if matches!(r, Route::Edit) {
+        Some(writes::edit_model(&json)?)
+    } else {
+        None
+    };
+    Some(WriteBody { json, edit })
+}
+
+/// The D5 write routes, in app.py's order: FastAPI reads the body first (422 → decline, in
+/// `handle` before auth), then auth (already checked), then for the entry routes the body
+/// checks, then `_tenant_state`, then the write under the tenant's writer lock.
+async fn serve_write(
+    app: Arc<App>,
+    r: Route,
+    header_uid: &str,
+    asserted: bool,
+    headers: &HeaderMap,
+    tenant: Option<Tenant>,
+    write: Option<WriteBody>,
+) -> Response<Body> {
+    let Some(WriteBody { json, edit }) = write else {
+        return decline();
+    };
+    enum Op {
+        File,
+        Dir,
+        Append(writes::AppendReq),
+        Edit(writes::EditReq),
+    }
+    let op = match r {
+        Route::PutFile => Op::File,
+        Route::Directory => Op::Dir,
+        Route::Append => match writes::append_validate(&json) {
+            Ok(req) => Op::Append(req),
+            Err(resp) => return reply(resp),
+        },
+        Route::Edit => {
+            let Some(req) = edit else {
+                return decline();
+            };
+            if let Err(resp) = writes::edit_validate(&req) {
+                return reply(resp);
+            }
+            Op::Edit(req)
+        }
+        _ => return decline(),
+    };
+    let tenant = match resolve_tenant(&app, header_uid, asserted, headers, tenant) {
+        Ok(t) => t,
+        Err(resp) => return *resp,
+    };
+    let uid = header_uid.to_ascii_lowercase();
+    let app2 = app.clone();
+    let task = tokio::task::spawn_blocking(move || {
+        app2.writers
+            .with_lock(&uid, || {
+                // Re-checked under the lock: an earlier write may have left work pending.
+                let root = app2.data_root.join("users").join(&uid);
+                match managed::ready_for_write(&root, &uid, true) {
+                    Ok(Some(_)) => {}
+                    _ => return Reply::Decline,
+                }
+                let Ok(journal) = crate::write::Journal::open(&root.join("managed-index.db"))
+                else {
+                    return Reply::Decline;
+                };
+                let ctx = writes::Ctx {
+                    reader: &tenant.store,
+                    store: crate::write::Store::new(tenant.store.db_path()),
+                    journal,
+                    layout: &tenant.layout,
+                };
+                match &op {
+                    Op::File => writes::file_write(&ctx, &json),
+                    Op::Dir => writes::directory_create(&ctx, &json),
+                    Op::Append(req) => writes::append(&ctx, req),
+                    Op::Edit(req) => writes::edit(&ctx, req),
+                }
+            })
+            .unwrap_or(Reply::Decline)
+    });
+    match task.await {
+        Ok(r) => reply(r),
+        Err(_) => internal_error(),
+    }
+}
+
+/// POST /internal/fence?tenant=<uuid> (control token): Python's tenant deletion. Every later
+/// write for the tenant declines, and this returns once the write in flight (if any) is done.
+async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Body> {
+    let supplied = headers
+        .get(CONTROL_HEADER)
+        .map(|v| v.as_bytes().to_vec())
+        .unwrap_or_default();
+    if app.control_token.is_empty()
+        || !bool::from(supplied.as_slice().ct_eq(app.control_token.as_bytes()))
+    {
+        return Response::builder()
+            .status(403)
+            .body(Body::empty())
+            .unwrap_or_default();
+    }
+    let uid = py::query_get(query, "tenant")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !is_uuid(&uid) {
+        return Response::builder()
+            .status(400)
+            .body(Body::empty())
+            .unwrap_or_default();
+    }
+    let app2 = app.clone();
+    match tokio::task::spawn_blocking(move || app2.writers.fence(&uid)).await {
+        Ok(()) => Response::new(Body::from("ok")),
+        Err(_) => internal_error(),
     }
 }
 

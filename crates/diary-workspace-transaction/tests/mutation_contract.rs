@@ -527,8 +527,9 @@ fn simultaneous_same_identity_commits_one_copy_and_one_receipt() -> TestResult<(
 }
 
 #[test]
-fn derived_folder_targets_never_commit_outside_the_admitted_key_domain() -> TestResult<()> {
-    let mut accepted = Vec::new();
+fn derived_folder_targets_commit_like_python_however_long() -> TestResult<()> {
+    // workspace_ops.py bounds only the client's source and destination (500 code points); the
+    // derived children of a move or copy may be longer, and Python commits and reads them.
     for unicode in [false, true] {
         for op in ["copy", "move"] {
             let (_dir, path) = common::fixture()?;
@@ -557,30 +558,31 @@ fn derived_folder_targets_never_commit_outside_the_admitted_key_domain() -> Test
             inspect.config = Some(serde_json::from_value(cfg.clone())?);
             let tag = text(&execute(&inspect)?.body().to_value()?, "version")?.to_owned();
             let mut request = native_request(&path, op, Some("F"))?;
-            request.config = Some(serde_json::from_value(cfg)?);
-            request.destination = Some(destination);
+            request.config = Some(serde_json::from_value(cfg.clone())?);
+            request.destination = Some(destination.clone());
             request.source_version = diary_workspace_transaction::Condition::Value(tag);
-            let before = snapshot(&db)?;
             let result = execute(&request)?;
-            if result.status() != 507 {
-                accepted.push(format!("unicode={unicode}/{op}/status={}", result.status()));
-            } else {
-                assert_eq!(snapshot(&db)?, before);
-                assert_eq!(
-                    db.query_row::<i64, _, _>(
-                        "SELECT count(*) FROM workspace_operation_receipts",
-                        [],
-                        |r| r.get(0)
-                    )?,
-                    1
-                );
-            }
+            assert_eq!(result.status(), 200, "unicode={unicode}/{op}");
+            let derived = diary_workspace_rules::join(&root, &[&format!("{destination}/{leaf}")]);
+            assert!(derived.chars().count() > 500);
+            let stored: i64 =
+                db.query_row("SELECT count(*) FROM files WHERE path=?", [&derived], |r| {
+                    r.get(0)
+                })?;
+            assert_eq!(
+                stored, 1,
+                "unicode={unicode}/{op}: the derived child is stored"
+            );
+            // And it stays readable: the destination folder stats with its long child.
+            let mut after = native_request(&path, "stat", Some(&destination))?;
+            after.config = Some(serde_json::from_value(cfg)?);
+            assert_eq!(
+                execute(&after)?.status(),
+                200,
+                "unicode={unicode}/{op}: stat after"
+            );
         }
     }
-    assert!(
-        accepted.is_empty(),
-        "derived targets escaped their read/client domain: {accepted:?}"
-    );
     Ok(())
 }
 #[test]
