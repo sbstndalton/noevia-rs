@@ -467,7 +467,11 @@ async fn boot_recovery_through_config_interrupts_the_job_and_restores_its_profil
         (s, v),
         (409, json!({"error":"A calibration is already running."}))
     );
-    assert_eq!(e.count("POST /gate/"), 0);
+    assert_eq!(
+        e.count("POST /models/load"),
+        0,
+        "recovery cannot launch a trial"
+    );
     let outcome = tokio::time::timeout(Duration::from_secs(30), recovery)
         .await
         .unwrap()
@@ -584,7 +588,10 @@ async fn boot_recovery_whose_save_fails_keeps_the_interrupted_job_and_saves_it_o
         worker.launch("synth", plan).await,
         Err(Refusal::Unavailable)
     );
-    assert_eq!(e.count("POST /gate/"), 0);
+    assert!(
+        e.count("POST /gate/v1/maintenance") >= 1,
+        "restart repair holds fresh exclusion"
+    );
     assert!(worker.unsaved());
     assert_eq!(std::fs::read_to_string(&state).unwrap(), running);
     // Repaired: the retry lands, without the note.
