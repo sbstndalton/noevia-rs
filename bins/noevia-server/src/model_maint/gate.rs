@@ -1043,6 +1043,128 @@ mod tests {
         assert!(shared.lost.load(Ordering::Acquire));
     }
 
+    // The same test-only overlay compiles against the published pre-fix source.
+    // Drive the actual renewal HTTP response while DELETE is held pending.
+    async fn semantic_node_refusal_during_release(releasing: bool) {
+        use axum::{
+            body::Body,
+            http::{Request, Response},
+        };
+        let renew_seen = Arc::new(tokio::sync::Notify::new());
+        let renew_go = Arc::new(tokio::sync::Notify::new());
+        let delete_seen = Arc::new(tokio::sync::Notify::new());
+        let delete_go = Arc::new(tokio::sync::Notify::new());
+        let (a, b, c, d) = (
+            renew_seen.clone(),
+            renew_go.clone(),
+            delete_seen.clone(),
+            delete_go.clone(),
+        );
+        let app = axum::Router::new().fallback(move |r: Request<Body>| {
+            let (a, b, c, d) = (a.clone(), b.clone(), c.clone(), d.clone());
+            async move {
+                let code = if r.uri().path().ends_with("/renew") {
+                    a.notify_one();
+                    b.notified().await;
+                    404
+                } else if r.uri().path().contains("/recovery/") {
+                    204
+                } else {
+                    c.notify_one();
+                    d.notified().await;
+                    204
+                };
+                Response::builder()
+                    .status(code)
+                    .body(Body::empty())
+                    .unwrap()
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let node = Arc::new(
+            NodeLeases::new(
+                Some(&format!("http://{}", listener.local_addr().unwrap())),
+                Some("synthetic"),
+            )
+            .unwrap(),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let shared = Shared::new(
+            Some("fedcba9876543210fedcba9876543210".into()),
+            Instant::now() + Duration::from_secs(10),
+            Some(Duration::from_secs(10)),
+            Some(Instant::now() + Duration::from_secs(10)),
+            Some(Instant::now() + Duration::from_secs(10)),
+        );
+        let task = tokio::spawn(lease_loop(
+            shared.clone(),
+            node.clone(),
+            Duration::from_millis(1),
+        ));
+        tokio::time::timeout(Duration::from_secs(2), renew_seen.notified())
+            .await
+            .unwrap();
+        let mut hold = Hold {
+            shared: shared.clone(),
+            gate: None,
+            node: Some(node),
+            local: Arc::new(AtomicBool::new(true)),
+            reason: "synthetic".into(),
+            local_finished: false,
+        };
+        if releasing {
+            shared.start_release(hold.node.as_ref().unwrap().clone());
+            tokio::time::timeout(Duration::from_secs(2), delete_seen.notified())
+                .await
+                .unwrap();
+        }
+        renew_go.notify_one();
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap();
+        let lost = hold.lost();
+        let pending = *shared.release.lock().unwrap() == ReleaseState::Pending;
+        let confirmed_early = hold.node_release_confirmed();
+        delete_go.notify_one();
+        tokio::time::timeout(Duration::from_secs(2), hold.release_node_lease())
+            .await
+            .unwrap();
+        let confirmed = hold.node_release_confirmed();
+        server.abort();
+        assert!(server.await.unwrap_err().is_cancelled());
+        if releasing {
+            assert!(pending, "the real DELETE must still be pending at refusal");
+            assert!(
+                !confirmed_early,
+                "a pending DELETE is not release confirmation"
+            );
+            assert!(
+                !lost,
+                "a late Node refusal must not reclassify intentional release"
+            );
+        } else {
+            assert!(
+                lost,
+                "a still-active lease must detect a genuine Node refusal"
+            );
+        }
+        assert!(
+            confirmed,
+            "completion requires the actual DELETE acknowledgment"
+        );
+    }
+
+    #[tokio::test]
+    async fn semantic_late_node_refusal_during_actual_pending_delete() {
+        semantic_node_refusal_during_release(true).await;
+    }
+
+    #[tokio::test]
+    async fn semantic_active_node_refusal_is_still_loss() {
+        semantic_node_refusal_during_release(false).await;
+    }
+
     // REVIEW_RELEASE_TESTS_END
 
     #[test]

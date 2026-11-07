@@ -433,7 +433,10 @@ async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
         if path == "/v1/embeddings" && !observed.swap(true, Ordering::AcqRel) {
             // Keep the actual HTTP request pending until every heartbeat assertion
             // finishes. Scheduler delays must not silently finish the pass first.
-            let _ = pending.lock().unwrap().recv_timeout(std::time::Duration::from_secs(55));
+            let _ = pending
+                .lock()
+                .unwrap()
+                .recv_timeout(std::time::Duration::from_secs(55));
         }
         default_reply(path)
     })
