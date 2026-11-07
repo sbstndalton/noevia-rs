@@ -258,7 +258,7 @@ pub fn supported(c: &Ctx<'_>) -> bool {
     };
     for e in entries {
         let Ok(p) = serde_json::from_str::<Value>(&e.payload) else {
-            continue;
+            return false;
         };
         let fields: &[&str] = match e.kind.as_str() {
             "exchange" => &["day", "xid", "sub_header", "body"],
@@ -314,6 +314,21 @@ pub fn supported(c: &Ctx<'_>) -> bool {
                 // Leave an out-of-range document with the reference path, never quarantine it.
                 if result.is_err() || idx.render().is_err() {
                     return false;
+                }
+            }
+        }
+        if e.kind == "exchange_edit" {
+            if let Some(month) = p.get("month").and_then(Value::as_str) {
+                // Empty means no hint in the reference applier. Other forms must
+                // preserve its integer/calendar exceptions and retry classification.
+                if !month.is_empty() {
+                    let first = format!("{month}-01");
+                    if NaiveDate::parse_from_str(&first, "%Y-%m-%d")
+                        .ok()
+                        .is_none_or(|d| d.format("%Y-%m").to_string() != month)
+                    {
+                        return false;
+                    }
                 }
             }
         }
