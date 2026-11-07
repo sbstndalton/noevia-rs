@@ -256,6 +256,11 @@ async fn server_main() -> ExitCode {
             switch,
             start_id: app.config.start_id.clone().unwrap_or_default().into(),
         };
+        // Row V: the egress issuer publishes the proxy key and holds the session from the front's
+        // own start, whether or not Node is up; Node only asks it for grants.
+        if let Some(issuer) = app.code_egress.as_ref() {
+            issuer.start();
+        }
         let mut rx = stop_rx.clone();
         tokio::spawn(noevia_server::project_store::serve_with_context(
             listener,

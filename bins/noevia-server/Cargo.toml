@@ -70,6 +70,7 @@ s3-sign = { path = "../../crates/s3-sign" }
 storage-path = { path = "../../crates/storage-path", optional = true }
 rand_core = { version = "0.6", features = ["getrandom"] }
 google-token-seal = { path = "../../crates/google-token-seal" }
+egress-issuer = { path = "../../crates/egress-issuer" }
 offsite-backup-format = { path = "../../crates/offsite-backup-format" }
 dav-parse = { path = "../../crates/dav-parse" }
 policy-leaves = { path = "../../crates/policy-leaves" }
@@ -125,6 +126,9 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 
 [dev-dependencies]
+rustix = { version = "1.1.5", features = ["process"] }
+egress = { path = "../../crates/egress" }
+egress-issuer = { path = "../../crates/egress-issuer", features = ["testing"] }
 # tests/storage_integrations.rs: a synthetic https Nextcloud on 127.0.0.1 (tests/fixtures/synthetic-tls).
 rustls = { version = "=0.23.45", default-features = false, features = ["std", "ring", "tls12"] }
 tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }
