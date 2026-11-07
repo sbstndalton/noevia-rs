@@ -980,6 +980,12 @@ async fn a_damaged_chunk_fails_the_restore_test() {
     }
     let child = run_restore_child("clean");
     assert!(child.status.success(), "{}{}", child.stdout, child.stderr);
+    assert!(child
+        .stdout
+        .contains(&format!("test {DAMAGED_CHUNK_CASE} ...")));
+    assert!(child
+        .stdout
+        .contains("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured;"));
     assert_eq!(
         child
             .stdout
@@ -1018,9 +1024,9 @@ fn owned_restore_scratch_is_rejected_after_corruption_checks_even_when_aged() {
         assert!(child
             .stdout
             .contains(&format!("test {DAMAGED_CHUNK_CASE} ...")));
-        assert!(child.stdout.contains(
-            "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out;"
-        ));
+        assert!(child
+            .stdout
+            .contains("test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured;"));
         assert!(
             child
                 .stderr
