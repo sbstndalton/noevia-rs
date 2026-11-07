@@ -19,6 +19,7 @@ pub mod chat_framing_suggest;
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_status_routes;
+pub mod code_egress;
 pub mod code_net;
 pub mod config;
 pub mod connector_routes;
@@ -448,6 +449,9 @@ pub const FEATURES: &[&str] = &[
     "rust-calibration-worker-v2",
     "rust-model-manager-scan",
     "rust-model-evidence-recheck",
+    // Row V: the front is the only issuer of the egress proxy's control key and signed task grants
+    // (code_egress.rs); the paired Core asks it (`noevia-code-egress-client/1`) and publishes nothing.
+    "rust-code-egress-issuer",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -562,6 +566,9 @@ pub struct App {
     /// The MCP credential broker (sbstndalton/noevia#2202): OAuth sign-ins and per-account keys.
     #[cfg(feature = "rust-storage-reads")]
     pub mcp: Option<Arc<mcp_broker::Mcp>>,
+    /// The code-sandbox egress control (row V, code_egress.rs): the only issuer of the proxy's
+    /// control key and of the signed task grants; `None` when `CODE_EGRESS_PORT` is unset.
+    pub code_egress: Option<Arc<code_egress::Issuer>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
     #[cfg(feature = "rust-storage-reads")]
     pub provider_models: provider_models_routes::Lists,
@@ -677,6 +684,7 @@ impl App {
                 .map(Arc::new),
             #[cfg(feature = "rust-storage-reads")]
             mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
+            code_egress: code_egress::Issuer::new(&config),
             #[cfg(feature = "rust-storage-reads")]
             provider_models: provider_models_routes::Lists::default(),
             #[cfg(feature = "rust-storage-reads")]

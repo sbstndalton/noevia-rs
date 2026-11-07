@@ -910,6 +910,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "egress-issuer"
+version = "0.1.0"
+dependencies = [
+ "egress",
+ "egress-issuer",
+ "futures-util",
+ "hmac",
+ "rand_core 0.6.4",
+ "rustix",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "egress-proxy"
 version = "0.1.0"
 dependencies = [
@@ -1996,6 +2012,8 @@ dependencies = [
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "egress",
+ "egress-issuer",
  "embedding-worker",
  "engine-admission",
  "flate2",
@@ -2020,6 +2038,7 @@ dependencies = [
  "regex",
  "reqwest",
  "research-core",
+ "rustix",
  "rustls",
  "s3-sign",
  "secret-envelope",

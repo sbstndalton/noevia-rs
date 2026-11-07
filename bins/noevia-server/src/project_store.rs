@@ -705,7 +705,40 @@ pub fn router_with_app(
             }),
         );
     }
+    // Row V: the code-sandbox egress control (code_egress.rs), same secret.
+    for op in ["status", "grant", "activity", "revoke", "forget"] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/egress/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { egress_op(store, app, headers, raw, op).await }
+            }),
+        );
+    }
     router
+}
+
+/// `POST /v1/egress/{op}` (see code_egress.rs): 401 without the secret, 503 while unconfigured.
+async fn egress_op(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: &'static str,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let issuer = app.and_then(|a| a.code_egress.clone());
+    if op == "status" && issuer.is_none() {
+        return reply(StatusCode::OK, &crate::code_egress::unconfigured_status());
+    }
+    let (status, body) = crate::code_egress::internal_op(issuer, op, &raw).await;
+    reply(
+        StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        &body,
+    )
 }
 
 /// The bodies of the preset baseline bridge: two preset texts and the router's rows.
