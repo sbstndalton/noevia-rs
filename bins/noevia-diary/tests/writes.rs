@@ -1009,3 +1009,209 @@ async fn year_zero_hints_decline_before_effects_and_adjacent_years_stay_native()
         assert!(!d, "{id} must stay native");
     }
 }
+
+// ------------------------------------------------- D6 recovery x R4 backup authority (union)
+
+const INTENT: &str = r#"{"id":"synthetic-intent","method":"PUT","path":"/synthetic"}"#;
+
+fn primary(root: &Path) -> rusqlite::Connection {
+    rusqlite::Connection::open(tenant_root(root).join("managed-diary.db")).unwrap()
+}
+
+fn outbox(root: &Path) -> Vec<String> {
+    let db = primary(root);
+    let mut stmt = db
+        .prepare("SELECT path FROM workspace_index_outbox ORDER BY path")
+        .unwrap();
+    stmt.query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+fn journal_rows(root: &Path) -> Vec<(String, i64, i64)> {
+    let idx = index(root);
+    let mut stmt = idx
+        .prepare("SELECT id, applied, attempts FROM journal ORDER BY rowid")
+        .unwrap();
+    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+/// Imported Markdown queued for indexing (not yet marked dirty), plus one pending index entry.
+fn queued_import(root: &Path) {
+    managed_tenant(
+        root,
+        &[
+            ("Imports/x.md", "# x\n"),
+            ("Imports/y.md", "# y\n"),
+            ("Imports/n.txt", "n"),
+        ],
+    );
+    primary(root)
+        .execute_batch(
+            "INSERT INTO workspace_index_outbox VALUES ('Imports/x.md');
+             INSERT INTO workspace_index_outbox VALUES ('Imports/y.md');",
+        )
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn recovery_drain_borrows_its_held_primary_reservation_for_journal_marks() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    let addr = start(dir.path(), "rust").await;
+    let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
+    // A drain that opened a second primary reservation for each dirty mark waited for its own
+    // (the 30 s busy timeout) and then failed the write with a 500.
+    let (s, d, body) = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        send(addr, "PUT", "/api/file", &writer(), &b),
+    )
+    .await
+    .expect("the outbox drain contended with its own primary reservation");
+    assert_eq!((s, d), (200, false), "{body}");
+    assert!(outbox(dir.path()).is_empty());
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md", "a.md"]);
+    // The next write recovers again: nothing is transferred twice, every mark stays single.
+    let b2 = serde_json::json!({"path": "b.md", "content": "y", "version": null});
+    let (s, _, body) = send(addr, "PUT", "/api/file", &writer(), &b2).await;
+    assert_eq!(s, 200, "{body}");
+    assert!(outbox(dir.path()).is_empty());
+    assert_eq!(
+        dirty(dir.path()),
+        ["Imports/x.md", "Imports/y.md", "a.md", "b.md"]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_pending_backup_intent_stops_recovery_before_any_effect() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    index(dir.path())
+        .execute(
+            "INSERT INTO journal (id, created_at, kind, payload) VALUES ('m','2030','index_month',?)",
+            [r#"{"label":"January 2030","month":"2030-01.md"}"#],
+        )
+        .unwrap();
+    primary(dir.path())
+        .execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
+        .unwrap();
+    let addr = start(dir.path(), "rust").await;
+    let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
+    let (s, d, body) = send(addr, "PUT", "/api/file", &writer(), &b).await;
+    assert_eq!((s, d), (503, false));
+    assert!(body.contains("backup settlement is uncertain"), "{body}");
+    // No replay, transfer, dirty mark or write while the intent is unsettled.
+    assert_eq!(outbox(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert!(dirty(dir.path()).is_empty());
+    assert_eq!(journal_rows(dir.path()), [("m".to_string(), 0, 0)]);
+    assert!(file_row(dir.path(), "a.md").is_none());
+    assert!(file_row(dir.path(), "INDEX.md").is_none());
+    // Synthetic settlement (test-only removal): the next write recovers exactly once.
+    primary(dir.path())
+        .execute("DELETE FROM meta WHERE key='backup_effect_pending'", [])
+        .unwrap();
+    let (s, _, body) = send(addr, "PUT", "/api/file", &writer(), &b).await;
+    assert_eq!(s, 200, "{body}");
+    assert!(outbox(dir.path()).is_empty());
+    assert_eq!(journal_rows(dir.path()), [("m".to_string(), 1, 0)]);
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md", "a.md"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_intent_committed_while_the_drain_waits_refuses_every_transfer() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    let addr = start(dir.path(), "rust").await;
+    // Another holder of the one primary reservation (as native backup intent insertion is).
+    let path = tenant_root(dir.path()).join("managed-diary.db");
+    let (held_tx, held) = std::sync::mpsc::channel();
+    let (go, go_rx) = std::sync::mpsc::channel::<()>();
+    let holder = std::thread::spawn(move || {
+        let mut c = rusqlite::Connection::open(&path).unwrap();
+        let t = c
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        held_tx.send(()).unwrap();
+        go_rx.recv().unwrap();
+        t.execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
+        .unwrap();
+        t.commit().unwrap();
+    });
+    held.recv().unwrap();
+    let b = serde_json::json!({"path": "a.md", "content": "x", "version": null});
+    let request = tokio::spawn(async move { send(addr, "PUT", "/api/file", &writer(), &b).await });
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(
+        !request.is_finished(),
+        "the drain must wait for the held reservation"
+    );
+    go.send(()).unwrap();
+    holder.join().unwrap();
+    let (s, _, _) = tokio::time::timeout(std::time::Duration::from_secs(10), request)
+        .await
+        .unwrap()
+        .unwrap();
+    // The drain got the reservation only after the intent committed: it refuses inside it,
+    // rolls back and transfers nothing (the write itself is not attempted).
+    assert_ne!(s, 200);
+    assert_eq!(outbox(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert!(dirty(dir.path()).is_empty());
+    assert!(file_row(dir.path(), "a.md").is_none());
+}
+
+#[test]
+fn borrowed_journal_marks_check_the_held_reservation_and_refuse_any_other() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let t = tenant_root(dir.path());
+    let journal = noevia_diary::write::Journal::open(&t.join("managed-index.db")).unwrap();
+    let mut held = primary(dir.path());
+    let tx = held
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
+    journal.mark_dirty_in(&tx, "a.md").unwrap();
+    // The reservation is still held through the effect: no intent can commit beside it.
+    let other = primary(dir.path());
+    other
+        .busy_timeout(std::time::Duration::from_millis(100))
+        .unwrap();
+    assert!(other
+        .execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT]
+        )
+        .is_err());
+    tx.commit().unwrap();
+    other
+        .execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
+        .unwrap();
+    let tx = held
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
+    assert!(journal.mark_dirty_in(&tx, "b.md").is_err());
+    drop(tx);
+    // A transaction on any other database is never accepted as the primary reservation.
+    let mut foreign = rusqlite::Connection::open(dir.path().join("foreign.db")).unwrap();
+    foreign
+        .execute_batch("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+        .unwrap();
+    let ftx = foreign
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
+    assert!(journal.mark_dirty_in(&ftx, "c.md").is_err());
+    drop(ftx);
+    assert_eq!(dirty(dir.path()), ["a.md"]);
+}

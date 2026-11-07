@@ -215,6 +215,8 @@ pub fn apply_pending(c: &Ctx<'_>, limit: i64) -> Result<usize, write::Error> {
 
 /// Transfer each outbox path only after its dirty mark is durable. A crash before
 /// the managed transaction commits leaves the row for a harmless repeat transfer.
+/// Each mark borrows this drain's primary reservation (Python's primary_scope): the
+/// backup-intent check runs inside it, and nothing is transferred once an intent exists.
 pub fn drain_index_outbox(c: &Ctx<'_>) -> Result<(), write::Error> {
     let mut db = write::open_rw(c.reader.db_path())?;
     let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
@@ -224,7 +226,7 @@ pub fn drain_index_outbox(c: &Ctx<'_>) -> Result<(), write::Error> {
         rows.collect::<Result<Vec<_>, _>>()?
     };
     for path in paths {
-        c.journal.mark_dirty(&path)?;
+        c.journal.mark_dirty_in(&tx, &path)?;
         tx.execute("DELETE FROM workspace_index_outbox WHERE path=?", [&path])?;
     }
     tx.commit()?;
@@ -234,10 +236,16 @@ pub fn drain_index_outbox(c: &Ctx<'_>) -> Result<(), write::Error> {
 /// Native replay recovery; retrieval remains Python-owned. Dirty marks are retained
 /// until that owner's reindex pass, including all Markdown after an uncertain save.
 pub fn recover(c: &Ctx<'_>) -> Result<(), write::Error> {
-    let db = write::open_rw(c.reader.db_path())?;
-    let mut stmt = db.prepare("SELECT path FROM files WHERE lower(path) LIKE '%.md' AND path NOT IN (SELECT path FROM workspace_index_outbox)")?;
-    for path in stmt.query_map([], |r| r.get::<_, String>(0))? {
-        c.journal.mark_dirty(&path?)?;
+    // Read first and release the primary, as _recover_state does: each mark then takes
+    // its own primary reservation, never while this connection still reads it.
+    let documents = {
+        let db = write::open_rw(c.reader.db_path())?;
+        let mut stmt = db.prepare("SELECT path FROM files WHERE lower(path) LIKE '%.md' AND path NOT IN (SELECT path FROM workspace_index_outbox)")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    for path in documents {
+        c.journal.mark_dirty(&path)?;
     }
     apply_pending(c, 100)?;
     drain_index_outbox(c)?;

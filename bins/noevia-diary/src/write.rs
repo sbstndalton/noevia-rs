@@ -449,6 +449,31 @@ impl Journal {
         Ok(result)
     }
 
+    /// The same publication inside the primary reservation its caller already holds (the outbox
+    /// drain; Python's `primary_scope` borrow in tenant_writer.index_publication). Opening a second
+    /// primary connection there would wait on that very reservation. The check runs on the
+    /// borrowed transaction, which stays open (and is committed or rolled back) by its owner
+    /// through the effect. Any other transaction is refused: never a second authority.
+    fn borrowed<T>(
+        &self,
+        primary: &rusqlite::Transaction<'_>,
+        effect: impl FnOnce() -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        let same = match (primary.path(), self.primary.canonicalize()) {
+            (Some(held), Ok(own)) => Path::new(held).canonicalize().is_ok_and(|h| h == own),
+            _ => false,
+        };
+        if !same || primary.is_autocommit() {
+            return Err(Error("primary reservation mismatch".into()));
+        }
+        // Upgrade a read transaction before checking, as Python does (a no-op when immediate).
+        primary.execute("UPDATE meta SET value=value WHERE 0", [])?;
+        if diary_backup_run::pending_effect(primary)? {
+            return Err(Error("backup settlement uncertain".into()));
+        }
+        effect()
+    }
+
     pub fn enqueue(&self, kind: &str, payload: &str) -> Result<String, Error> {
         self.publication(|| {
             let id = uuid4()?;
@@ -530,13 +555,24 @@ impl Journal {
     }
 
     pub fn mark_dirty(&self, document: &str) -> Result<(), Error> {
-        self.publication(|| {
-            self.conn.execute(
-                "INSERT OR IGNORE INTO dirty_documents(document) VALUES (?)",
-                [document],
-            )?;
-            Ok(())
-        })
+        self.publication(|| self.insert_dirty(document))
+    }
+
+    /// mark_dirty under the caller's held primary reservation (see `borrowed`).
+    pub fn mark_dirty_in(
+        &self,
+        primary: &rusqlite::Transaction<'_>,
+        document: &str,
+    ) -> Result<(), Error> {
+        self.borrowed(primary, || self.insert_dirty(document))
+    }
+
+    fn insert_dirty(&self, document: &str) -> Result<(), Error> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO dirty_documents(document) VALUES (?)",
+            [document],
+        )?;
+        Ok(())
     }
 
     pub fn is_dirty(&self, document: &str) -> Result<bool, Error> {
