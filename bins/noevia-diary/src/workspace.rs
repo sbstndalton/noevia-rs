@@ -39,7 +39,8 @@ pub enum Reply {
     Zip(Vec<u8>),
     /// A plain-text reply (Starlette's 500 for an unhandled exception).
     Text(u16, String),
-    /// 503 BUSY with `Retry-After: 1` (app.py `writer_busy`): a definite refusal, nothing written.
+    /// 503 BUSY with `Retry-After: 1` (app.py `writer_busy`) for a known pending-intent refusal: a
+    /// public error classification, not a no-effect proof (never a decline).
     Busy,
     Decline,
 }

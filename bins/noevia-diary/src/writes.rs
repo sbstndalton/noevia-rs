@@ -56,9 +56,10 @@ pub fn internal() -> Reply {
     Reply::Text(500, "Internal Server Error".into())
 }
 
-/// `internal()`, except for the definite pending-intent refusal of a publication transaction,
-/// which app.py answers through `writer_busy` (503 BUSY, Retry-After 1). Only for a step after
-/// which nothing of this request is durable yet; every other error keeps its classification.
+/// `internal()`, except for the known pending-intent refusal of a publication transaction, which
+/// app.py answers through `writer_busy` (503 BUSY, Retry-After 1). BUSY is the public error
+/// classification, not a no-effect proof: nothing is declined, cleared or acknowledged, and a
+/// journal row already queued stays pending for replay. Every other error keeps its class.
 fn refused_or(e: &write::Error, otherwise: Reply) -> Reply {
     if e.is_settlement_refusal() {
         Reply::Busy
@@ -533,8 +534,7 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
     if let Err(e) = c.journal.mark_dirty(&document) {
         return refused_or(&e, internal());
     }
-    // A refused enqueue inserted no row. Once the row is durable, a later refusal is NOT a
-    // definite no-effect (the exchange replays): apply_entry keeps its own classification.
+    // A refused enqueue inserted no row; a refusal after it leaves the row queued (below).
     let id = match c.journal.enqueue("exchange", &payload) {
         Ok(id) => id,
         Err(e) => return refused_or(&e, internal()),
@@ -558,7 +558,10 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
         Ok(true) => {}
         // NativeWriteUnavailable: 503 {"error": ...}.
         Ok(false) => return error(503, PENDING_NATIVE),
-        Err(_) => return internal(),
+        // Row durable, its put/mark refused by the known intent: Python's log_exchange answers
+        // writer_busy after the same journal commit. The row is not marked failed and replays
+        // once after settlement; other failures stay 500.
+        Err(e) => return refused_or(&e, internal()),
     }
     match has(&document) {
         Ok(true) => ok(false),

@@ -1388,3 +1388,159 @@ async fn a_wrong_assertion_is_refused_before_any_backup_state_is_answered() {
     assert!(dirty(dir.path()).is_empty() && file_row(dir.path(), "a.md").is_none());
     assert_eq!(meta(dir.path(), "backup_effect_pending"), INTENT);
 }
+
+const APPEND_RID: &str = "cccccccc-dddd-4eee-8fff-000000000001";
+
+fn append_body() -> serde_json::Value {
+    serde_json::json!({"text": "Synthetic union note.", "title": "t", "requestId": APPEND_RID,
+                       "entryTime": now_iso()})
+}
+
+/// Occurrences of the append's xid marker across the corpus.
+fn markers(root: &Path) -> usize {
+    let db = primary(root);
+    let mut stmt = db.prepare("SELECT data FROM files").unwrap();
+    let marker = format!("xid:{APPEND_RID}");
+    stmt.query_map([], |r| r.get::<_, Vec<u8>>(0))
+        .unwrap()
+        .map(|d| {
+            String::from_utf8_lossy(&d.unwrap())
+                .matches(&marker)
+                .count()
+        })
+        .sum()
+}
+
+/// (applied, attempts, last_error) of the append's journal row.
+fn append_row(root: &Path) -> (i64, i64, Option<String>) {
+    index(root)
+        .query_row(
+            "SELECT applied, attempts, last_error FROM journal WHERE kind='exchange' AND id<>'old'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap()
+}
+
+/// A diary that already has an exchange (no first-entry scaffold), plus one applied old row.
+fn diary_with_history(root: &Path) {
+    managed_tenant(root, &[]);
+    index(root)
+        .execute(
+            "INSERT INTO journal (id, created_at, kind, payload, applied) VALUES ('old','2030','exchange','{}',1)",
+            [],
+        )
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_intent_after_the_append_row_commits_is_busy_and_the_row_replays_once() {
+    let dir = tempfile::tempdir().unwrap();
+    diary_with_history(dir.path());
+    // Test-only: the intent commits together with the append's own corpus write, i.e. after its
+    // journal row is durable and before the row is marked applied. It would fire again on any
+    // second write of that exchange.
+    primary(dir.path())
+        .execute_batch(&format!(
+            "CREATE TRIGGER synthetic_intent_i AFTER INSERT ON files WHEN instr(NEW.data, 'xid:{APPEND_RID}') > 0
+             BEGIN INSERT OR IGNORE INTO meta VALUES ('backup_effect_pending', 'synthetic'); END;
+             CREATE TRIGGER synthetic_intent_u AFTER UPDATE ON files WHEN instr(NEW.data, 'xid:{APPEND_RID}') > 0
+             BEGIN INSERT OR IGNORE INTO meta VALUES ('backup_effect_pending', 'synthetic'); END;"
+        ))
+        .unwrap();
+    let addr = start(dir.path(), "rust").await;
+    let (s, retry, content_type, body) = send_wire(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append_body(),
+    )
+    .await;
+    // app.py: log_exchange -> apply_pending -> mark_failed -> WriterBusy -> writer_busy.
+    assert_eq!(
+        (s, retry.as_deref(), content_type.as_deref(), body.as_str()),
+        (503, Some("1"), Some("application/json"), BUSY)
+    );
+    // Not a no-effect: the row stays durably pending (never marked failed) and the corpus write
+    // that preceded the refusal is there once. The intent is retained.
+    assert_eq!(append_row(dir.path()), (0, 0, None));
+    assert_eq!(markers(dir.path()), 1);
+    assert_eq!(meta(dir.path(), "backup_effect_pending"), "synthetic");
+    // While it is unsettled every write is refused at admission, and nothing changes.
+    let (s, retry, _, body) = send_wire(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append_body(),
+    )
+    .await;
+    assert_eq!((s, retry), (503, None));
+    assert!(body.contains("backup settlement is uncertain"), "{body}");
+    assert_eq!(journal_rows(dir.path()).len(), 2);
+    // Synthetic settlement (test-only removal): the next write's recovery applies the row once,
+    // without writing the exchange again (the trigger would re-create the intent).
+    primary(dir.path())
+        .execute("DELETE FROM meta WHERE key='backup_effect_pending'", [])
+        .unwrap();
+    for (n, path) in ["b.md", "c.md"].iter().enumerate() {
+        let b = serde_json::json!({"path": path, "content": "x", "version": null});
+        let (s, _, _, body) = send_wire(addr, "PUT", "/api/file", &writer(), &b).await;
+        assert_eq!(s, 200, "{n}: {body}");
+        assert_eq!(append_row(dir.path()), (1, 0, None));
+        assert_eq!(markers(dir.path()), 1);
+        assert!(primary(dir.path())
+            .query_row(
+                "SELECT 1 FROM meta WHERE key='backup_effect_pending'",
+                [],
+                |_| Ok(())
+            )
+            .is_err());
+    }
+    // Repeating the same append is idempotent: no new row, no second exchange.
+    let (s, _, _, body) = send_wire(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append_body(),
+    )
+    .await;
+    assert_eq!(s, 200, "{body}");
+    assert_eq!(journal_rows(dir.path()).len(), 2);
+    assert_eq!(markers(dir.path()), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unrelated_failure_after_the_append_row_commits_stays_500() {
+    let dir = tempfile::tempdir().unwrap();
+    diary_with_history(dir.path());
+    // Test-only: marking the row applied fails with an ordinary SQLite error (no intent).
+    index(dir.path())
+        .execute_batch(
+            "CREATE TRIGGER synthetic_failure BEFORE UPDATE OF applied ON journal WHEN NEW.applied = 1
+             BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END;",
+        )
+        .unwrap();
+    let addr = start(dir.path(), "rust").await;
+    let (s, retry, content_type, body) = send_wire(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append_body(),
+    )
+    .await;
+    assert_eq!(
+        (s, retry, content_type.as_deref(), body.as_str()),
+        (
+            500,
+            None,
+            Some("text/plain; charset=utf-8"),
+            "Internal Server Error"
+        )
+    );
+    assert_eq!(append_row(dir.path()), (0, 0, None));
+    assert_eq!(markers(dir.path()), 1);
+}
