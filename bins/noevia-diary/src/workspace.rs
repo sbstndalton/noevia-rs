@@ -319,7 +319,7 @@ struct Status {
 
 /// ManagedCorpusBackend.destination for a descriptor. Ok(None): not a WebDAV destination.
 /// Err: a value whose json.dumps this side does not reproduce.
-fn destination(storage: &serde_json::Map<String, Value>) -> Result<Option<String>, ()> {
+pub(crate) fn destination(storage: &serde_json::Map<String, Value>) -> Result<Option<String>, ()> {
     if !matches!(
         storage.get("kind").and_then(Value::as_str),
         Some("webdav" | "nextcloud")

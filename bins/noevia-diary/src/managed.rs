@@ -229,3 +229,17 @@ impl Managed {
         Ok(entries)
     }
 }
+
+/// Backup does not need retrieval recovery, nor does it create missing state.
+pub fn backup_store(root: &Path, uid: &str) -> Result<Managed, Error> {
+    let db_path = root.join("managed-diary.db");
+    let marker = root.join("managed-diary.active");
+    if marker.exists() && std::fs::read(&marker)? != uid.as_bytes() {
+        return Err(Error("identity".into()));
+    }
+    let conn = open_ro(&db_path)?;
+    if meta(&conn, "tenant")?.as_deref() != Some(uid) {
+        return Err(Error("identity".into()));
+    }
+    Ok(Managed { db_path })
+}

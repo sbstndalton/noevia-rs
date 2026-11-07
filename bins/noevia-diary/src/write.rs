@@ -264,6 +264,9 @@ impl Store {
         let mut conn = open_rw(&self.db_path)?;
         conn.execute_batch("PRAGMA synchronous=FULL")?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if diary_backup_run::pending_effect(&tx)? {
+            return Err(Error("backup settlement uncertain".into()));
+        }
         let row: Option<String> = tx
             .query_row("SELECT version FROM files WHERE path=?", [path], |r| {
                 r.get(0)
@@ -324,6 +327,9 @@ impl Store {
         let mut conn = open_rw(&self.db_path)?;
         conn.execute_batch("PRAGMA synchronous=FULL")?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if diary_backup_run::pending_effect(&tx)? {
+            return Err(Error("backup settlement uncertain".into()));
+        }
         let parent = path.rsplit_once('/').map(|(p, _)| p).unwrap_or("");
         let all: Vec<String> = {
             let mut stmt =
@@ -406,6 +412,7 @@ pub enum WriteFailure {
 
 pub struct Journal {
     conn: Connection,
+    primary: PathBuf,
 }
 
 pub struct Entry {
@@ -421,42 +428,68 @@ impl Journal {
     pub fn open(path: &Path) -> Result<Self, Error> {
         Ok(Journal {
             conn: open_rw(path)?,
+            primary: path
+                .parent()
+                .ok_or_else(|| Error("journal parent".into()))?
+                .join("managed-diary.db"),
         })
     }
 
+    /// Index/journal publication uses the primary authority's reservation too. Holding its
+    /// immediate transaction through the index commit prevents a backup intent from slipping
+    /// between a separate-database check and the actual journal effect.
+    fn publication<T>(&self, effect: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+        let mut primary = open_rw(&self.primary)?;
+        let tx = primary.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if diary_backup_run::pending_effect(&tx)? {
+            return Err(Error("backup settlement uncertain".into()));
+        }
+        let result = effect()?;
+        tx.commit()?;
+        Ok(result)
+    }
+
     pub fn enqueue(&self, kind: &str, payload: &str) -> Result<String, Error> {
-        let id = uuid4()?;
-        self.conn.execute(
-            "INSERT INTO journal (id, created_at, kind, payload) VALUES (?, ?, ?, ?)",
-            rusqlite::params![id, local_iso_seconds(), kind, payload],
-        )?;
-        Ok(id)
+        self.publication(|| {
+            let id = uuid4()?;
+            self.conn.execute(
+                "INSERT INTO journal (id, created_at, kind, payload) VALUES (?, ?, ?, ?)",
+                rusqlite::params![id, local_iso_seconds(), kind, payload],
+            )?;
+            Ok(id)
+        })
     }
 
     pub fn mark_applied(&self, id: &str) -> Result<(), Error> {
-        self.conn.execute(
-            "UPDATE journal SET applied = 1, applied_at = ?, last_error = NULL WHERE id = ?",
-            rusqlite::params![local_iso_seconds(), id],
-        )?;
-        Ok(())
+        self.publication(|| {
+            self.conn.execute(
+                "UPDATE journal SET applied = 1, applied_at = ?, last_error = NULL WHERE id = ?",
+                rusqlite::params![local_iso_seconds(), id],
+            )?;
+            Ok(())
+        })
     }
 
     pub fn mark_failed(&self, id: &str, error: &str) -> Result<(), Error> {
-        let short: String = error.chars().take(500).collect();
-        self.conn.execute(
-            "UPDATE journal SET attempts = attempts + 1, last_error = ? WHERE id = ?",
-            rusqlite::params![short, id],
-        )?;
-        Ok(())
+        self.publication(|| {
+            let short: String = error.chars().take(500).collect();
+            self.conn.execute(
+                "UPDATE journal SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+                rusqlite::params![short, id],
+            )?;
+            Ok(())
+        })
     }
 
     pub fn quarantine(&self, id: &str, error: &str) -> Result<(), Error> {
+        self.publication(|| {
         let short: String = error.chars().take(2000).collect();
         self.conn.execute(
             "UPDATE journal SET applied = 1, applied_at = ?, attempts = attempts + 1, last_error = ? WHERE id = ?",
             rusqlite::params![local_iso_seconds(), short, id],
         )?;
         Ok(())
+            })
     }
 
     pub fn is_applied(&self, id: &str) -> Result<bool, Error> {
@@ -497,11 +530,13 @@ impl Journal {
     }
 
     pub fn mark_dirty(&self, document: &str) -> Result<(), Error> {
-        self.conn.execute(
-            "INSERT OR IGNORE INTO dirty_documents(document) VALUES (?)",
-            [document],
-        )?;
-        Ok(())
+        self.publication(|| {
+            self.conn.execute(
+                "INSERT OR IGNORE INTO dirty_documents(document) VALUES (?)",
+                [document],
+            )?;
+            Ok(())
+        })
     }
 
     pub fn is_dirty(&self, document: &str) -> Result<bool, Error> {
@@ -517,9 +552,11 @@ impl Journal {
     }
 
     pub fn clear_dirty(&self, document: &str) -> Result<(), Error> {
-        self.conn
-            .execute("DELETE FROM dirty_documents WHERE document=?", [document])?;
-        Ok(())
+        self.publication(|| {
+            self.conn
+                .execute("DELETE FROM dirty_documents WHERE document=?", [document])?;
+            Ok(())
+        })
     }
 }
 

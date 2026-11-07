@@ -122,7 +122,7 @@ pub fn now() -> f64 {
 
 // ---------------------------------------------------------------- responses
 
-fn json_response<T: Serialize>(status: u16, value: &T) -> Response<Body> {
+pub(crate) fn json_response<T: Serialize>(status: u16, value: &T) -> Response<Body> {
     let body = serde_json::to_vec(value).unwrap_or_default();
     Response::builder()
         .status(status)
@@ -131,7 +131,7 @@ fn json_response<T: Serialize>(status: u16, value: &T) -> Response<Body> {
         .unwrap_or_default()
 }
 
-fn detail(status: u16, text: &str) -> Response<Body> {
+pub(crate) fn detail(status: u16, text: &str) -> Response<Body> {
     json_response(status, &json!({ "detail": text }))
 }
 
@@ -140,7 +140,7 @@ fn error(status: u16, text: &str) -> Response<Body> {
 }
 
 /// Starlette's ServerErrorMiddleware answer to an unhandled exception.
-fn internal_error() -> Response<Body> {
+pub(crate) fn internal_error() -> Response<Body> {
     Response::builder()
         .status(500)
         .header("content-type", "text/plain; charset=utf-8")
@@ -515,7 +515,8 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     } else {
         flag(&headers, ASSERTED_HEADER)
     };
-    let mut resp = serve(app, r, query, headers, bytes, asserted).await;
+    let backup = parts.method == Method::POST && path == "/api/storage-backup";
+    let mut resp = serve(app, r, backup, query, headers, bytes, asserted).await;
     if verified {
         resp.headers_mut()
             .insert(VERIFIED_HEADER, axum::http::HeaderValue::from_static("1"));
@@ -567,15 +568,70 @@ fn verify_assertion(
 async fn serve(
     app: Arc<App>,
     r: Option<Route>,
+    backup: bool,
     query: Vec<u8>,
     headers: HeaderMap,
     bytes: Option<axum::body::Bytes>,
     asserted: bool,
 ) -> Response<Body> {
     let recovered = flag(&headers, RECOVERED_HEADER);
+    // R4 managed backup, served after the D8 assertion check (`asserted`) and inside `serve`, so
+    // a verified request's reply carries the verified marker (Python commits its nonce and never
+    // serves or verifies it again).
+    if backup {
+        if !flag(&headers, WRITER_HEADER) {
+            return decline();
+        }
+        match check_auth(&app, &headers) {
+            Ok(true) => {}
+            Ok(false) => return detail(401, "unauthorized"),
+            Err(()) => return internal_error(),
+        }
+        let uid = header(&headers, "x-cowork-user-id").to_ascii_lowercase();
+        if !is_uuid(&uid) {
+            return detail(400, "invalid tenant");
+        }
+        if !app.tenant_key.is_empty() && !asserted {
+            return unverified();
+        }
+        let Ok(storage) = strict_descriptor(&header(&headers, "x-cowork-storage")) else {
+            return decline();
+        };
+        if storage.as_ref().is_some_and(|s| {
+            ["baseUrl", "username", "secret", "corpusRoot"]
+                .iter()
+                .any(|key| s.get(*key).is_some_and(|v| !v.is_string()))
+        }) {
+            return decline();
+        }
+        let app2 = app.clone();
+        // Dropping the HTTP future detaches this task; its locks remain until all effects settle.
+        return tokio::task::spawn_blocking(move || {
+            app2.writers
+                .with_lock(&uid, || {
+                    crate::backup::run(
+                        &app2.data_root.join("users").join(&uid),
+                        &uid,
+                        storage.as_ref(),
+                    )
+                })
+                .unwrap_or_else(|| detail(410, "tenant deleted"))
+        })
+        .await
+        .unwrap_or_else(|_| internal_error());
+    }
     let Some(r) = r else {
         return decline();
     };
+    if r.write()
+        && crate::backup::pending(
+            &app.data_root
+                .join("users")
+                .join(header(&headers, "x-cowork-user-id").to_ascii_lowercase()),
+        )
+    {
+        return crate::backup::uncertain();
+    }
     if r.write() && !flag(&headers, WRITER_HEADER) {
         // This process is not the tenant's writer.
         return decline();
@@ -657,7 +713,7 @@ async fn serve(
 }
 
 /// Reply → HTTP response.
-fn reply(r: Reply) -> Response<Body> {
+pub(crate) fn reply(r: Reply) -> Response<Body> {
     match r {
         Reply::Json(status, body) => Response::builder()
             .status(status)
@@ -746,6 +802,9 @@ async fn serve_write(
     let task = tokio::task::spawn_blocking(move || {
         app2.writers
             .with_lock(&uid, || {
+                if crate::backup::pending(&app2.data_root.join("users").join(&uid)) {
+                    return workspace::Reply::Json(503, b"{\"detail\":\"Diary backup settlement is uncertain. Saving and deletion remain paused.\"}".to_vec());
+                }
                 // Re-checked under the lock: an earlier write may have left work pending.
                 let root = app2.data_root.join("users").join(&uid);
                 match managed::ready_for_write(&root, &uid, false) {
@@ -819,7 +878,16 @@ async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Bod
     }
     let app2 = app.clone();
     match tokio::task::spawn_blocking(move || app2.writers.fence(&uid)).await {
-        Ok(()) => Response::new(Body::from("ok")),
+        Ok(()) => {
+            let uid = py::query_get(query, "tenant")
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if crate::backup::pending(&app.data_root.join("users").join(uid)) {
+                crate::backup::uncertain()
+            } else {
+                Response::new(Body::from("ok"))
+            }
+        }
         Err(_) => internal_error(),
     }
 }
