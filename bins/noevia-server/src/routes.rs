@@ -475,6 +475,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
+        p if auth && p == crate::reranker_routes::PATH => return Some(Native::Models),
         p if auth && p == crate::model_manager_scan::PATH => return Some(Native::Models),
         p if auth
             && (crate::model_routes::ROUTES.contains(&p)
@@ -637,7 +638,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
         || route.path == server_account::vault_mirror::PATH
         || route.path == crate::model_manager_scan::PATH
         || route.path == crate::model_downloads_read::PATH
-        || route.path == crate::preset_read_routes::PATH)
+        || route.path == crate::preset_read_routes::PATH
+        || route.path == crate::reranker_routes::PATH)
         && path != route.path
     {
         return None;
@@ -1401,6 +1403,10 @@ mod tests {
         for p in [
             "/api/model-manager",
             "/api/models/delete",
+            "/api/models/mtp-artifact",
+            "/api/models/pull",
+            "/api/models/reranker/",
+            "/api/models/rerankerx",
             "/api/models/load",
             "/api/models/machines",
             "/api/models/preset/",
@@ -1417,6 +1423,13 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-model-downloads-read"));
         assert!(crate::FEATURES.contains(&"rust-preset-read"));
+        assert!(crate::FEATURES.contains(&"reranker-settings-v1"));
+        for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(method, crate::reranker_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
         // All native model routes appear in the contract with exactly their owned methods.
         let rust: Vec<_> = ROUTES
             .iter()
@@ -1451,6 +1464,7 @@ mod tests {
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
+                (crate::reranker_routes::PATH, &[][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]
         );

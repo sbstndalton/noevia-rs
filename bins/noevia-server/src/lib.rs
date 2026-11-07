@@ -84,6 +84,8 @@ pub mod provider_test_routes;
 pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
+pub mod reranker_routes;
+pub mod reranker_settings;
 pub mod research_routes;
 pub mod routes;
 pub mod routing_default_routes;
@@ -399,6 +401,7 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "reranker-settings-v1",
     "rust-diary-backup-worker",
     "rust-embedding-background-v1",
     "rust-index-outbox-v3",
@@ -411,7 +414,7 @@ pub const FEATURES: &[&str] = &[
     "rust-research",
     "rust-task-reads",
     "rust-tool-approvals",
-    server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
+    "noevia-research-jobs-store/1",
     "rust-auth",
     "rust-diary",
     "rust-diary-routes",

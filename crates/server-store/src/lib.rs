@@ -211,6 +211,15 @@ impl RustDecisionSettings {
     }
 }
 
+/// Exclusive capability for the reranker configuration row.
+#[derive(Debug, Clone, Copy)]
+pub struct RustRerankerSettings(());
+impl RustRerankerSettings {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
 /// Settings -> Diary & storage, the Nextcloud sign-in and the storage test/folder routes
 /// (sbstndalton/noevia#2190): a completed sign-in saves the account's `storage_connections` row
 /// through [`WriteTx::save_storage_connection`], Node's exact upsert. Since round 4 the Settings save
@@ -1171,6 +1180,44 @@ impl WriteTx<'_> {
             "INSERT OR REPLACE INTO settings(key,value) VALUES('reasoning_effort_default',?1)",
             [value],
         )?)
+    }
+
+    /// Advance the durable generation inside the writer's BEGIN IMMEDIATE transaction.
+    /// Even an identical save or an already-empty reset invalidates every front's consumers.
+    pub fn set_reranker_configuration(
+        &self,
+        _owner: RustRerankerSettings,
+        value: Option<&str>,
+    ) -> Result<usize, StoreError> {
+        let current: Option<String> = self.reader().row(
+            "SELECT value FROM settings WHERE key='rerank:revision'",
+            [],
+            |r| r.get(0),
+        )?;
+        let generation = match current {
+            None => 0,
+            Some(value) => value
+                .parse::<u64>()
+                .map_err(|_| StoreError::NotOwned("invalid reranker revision".into()))?,
+        };
+        let next = generation
+            .checked_add(1)
+            .ok_or_else(|| StoreError::NotOwned("reranker revision exhausted".into()))?;
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('rerank:revision',?1)",
+            [next.to_string()],
+        )?;
+        Ok(match value {
+            Some(value) => self.conn.execute(
+                "INSERT OR REPLACE INTO settings(key,value) VALUES('rerank:configuration',?1)",
+                [value],
+            )?,
+            None => self
+                .conn
+                .execute("DELETE FROM settings WHERE key='rerank:configuration'", [])?,
+        })
     }
 
     /// Exactly Node's decision-settings save statement (core feature-setting-source.cjs WRITE_SQL
