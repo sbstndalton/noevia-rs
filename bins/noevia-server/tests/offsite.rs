@@ -748,8 +748,175 @@ fn Keys9() -> offsite_backup_format::Keys {
     offsite_backup_format::Keys::derive(&[9u8; 32]).unwrap()
 }
 
-#[tokio::test]
-async fn a_damaged_chunk_fails_the_restore_test() {
+const DAMAGED_CHUNK_CASE: &str = "a_damaged_chunk_fails_the_restore_test";
+const RESTORE_CHILD_MODE: &str = "NOEVIA_TEST_OFFSITE_CHILD_MODE";
+const RESTORE_CHILD_ROOT: &str = "NOEVIA_TEST_OFFSITE_CHILD_ROOT";
+const CORRUPTION_CHECKS_PASSED: &str = "OFFSITE_CORRUPTION_CHECKS_PASSED";
+const OWNED_SCRATCH_FAILURE: &str = "OFFSITE_OWNED_RESTORE_SCRATCH_PRESENT";
+
+/// The private process namespace owns every matching entry, regardless of age or type.
+fn owned_restore_entries(root: &Path) -> std::io::Result<Vec<(std::ffi::OsString, &'static str)>> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(root)? {
+        let entry = entry?;
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("noevia-restore-test-")
+        {
+            let kind = std::fs::symlink_metadata(entry.path())?.file_type();
+            let kind = if kind.is_symlink() {
+                "symlink"
+            } else if kind.is_dir() {
+                "directory"
+            } else if kind.is_file() {
+                "file"
+            } else {
+                "other"
+            };
+            found.push((entry.file_name(), kind));
+        }
+    }
+    found.sort();
+    Ok(found)
+}
+
+type FixtureIdentity = (u64, u64, u32, u64, std::time::SystemTime);
+
+fn fixture_identity(path: &Path) -> FixtureIdentity {
+    use std::os::unix::fs::MetadataExt as _;
+    let m = std::fs::symlink_metadata(path).unwrap();
+    (m.dev(), m.ino(), m.mode(), m.len(), m.modified().unwrap())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ForeignScratchProof {
+    directory: FixtureIdentity,
+    canary: FixtureIdentity,
+    names: Vec<std::ffi::OsString>,
+    bytes: Vec<u8>,
+}
+
+fn foreign_scratch_proof(path: &Path) -> ForeignScratchProof {
+    assert!(std::fs::symlink_metadata(path).unwrap().is_dir());
+    let canary = path.join("canary");
+    assert!(std::fs::symlink_metadata(&canary).unwrap().is_file());
+    let mut names = std::fs::read_dir(path)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect::<Vec<_>>();
+    names.sort();
+    ForeignScratchProof {
+        directory: fixture_identity(path),
+        canary: fixture_identity(&canary),
+        names,
+        bytes: std::fs::read(canary).unwrap(),
+    }
+}
+
+struct RestoreChild {
+    owned: tempfile::TempDir,
+    foreign: tempfile::TempDir,
+    sibling: PathBuf,
+    foreign_before: ForeignScratchProof,
+    sibling_before: ForeignScratchProof,
+    status: std::process::ExitStatus,
+    stdout: String,
+    stderr: String,
+    // Keep the owner alive until after verdicts; the owned TempDir drops first.
+    _container: tempfile::TempDir,
+}
+
+impl RestoreChild {
+    fn assert_foreign_unchanged(&self) {
+        assert_eq!(
+            foreign_scratch_proof(self.foreign.path()),
+            self.foreign_before
+        );
+        assert_eq!(foreign_scratch_proof(&self.sibling), self.sibling_before);
+    }
+}
+
+/// Drain both pipes through EOF, retaining at most 64 KiB per stream. Continuing
+/// to drain after the cap prevents a noisy child from blocking on a full pipe.
+fn restore_child_output(mut pipe: impl std::io::Read) -> std::io::Result<(Vec<u8>, bool)> {
+    const LIMIT: usize = 64 * 1024;
+    let mut output = Vec::new();
+    let mut exceeded = false;
+    let mut buf = [0; 4096];
+    loop {
+        let n = std::io::Read::read(&mut pipe, &mut buf)?;
+        if n == 0 {
+            return Ok((output, exceeded));
+        }
+        let keep = n.min(LIMIT - output.len());
+        exceeded |= keep != n;
+        output.extend_from_slice(&buf[..keep]);
+    }
+}
+
+fn run_restore_child(mode: &str) -> RestoreChild {
+    use std::process::{Command, Stdio};
+    let container = tempfile::tempdir().unwrap();
+    let owned = tempfile::tempdir_in(container.path()).unwrap();
+    let foreign = tempfile::Builder::new()
+        .prefix("noevia-restore-test-foreign-")
+        .tempdir()
+        .unwrap();
+    let sibling = container.path().join("noevia-restore-test-sibling");
+    std::fs::create_dir(&sibling).unwrap();
+    for path in [foreign.path(), &sibling] {
+        std::fs::write(path.join("canary"), b"foreign fixture").unwrap();
+    }
+    let foreign_before = foreign_scratch_proof(foreign.path());
+    let sibling_before = foreign_scratch_proof(&sibling);
+    let owned_root = owned.path().canonicalize().unwrap();
+    // Reuse this binary's exact test, setting TMPDIR only on Command before
+    // startup. The canonical outer runner remains unchanged with TMPDIR unset.
+    // The existing timeout executable bounds/reaps the child without cleanup
+    // polling; two negative children fit within the outer 120-second budget.
+    let mut child = Command::new("/usr/bin/timeout")
+        .args(["-k", "1", "30"])
+        .arg(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            DAMAGED_CHUNK_CASE,
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(RESTORE_CHILD_MODE, mode)
+        .env(RESTORE_CHILD_ROOT, &owned_root)
+        .env("TMPDIR", &owned_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+    let stdout = std::thread::spawn(move || restore_child_output(stdout));
+    let stderr = std::thread::spawn(move || restore_child_output(stderr));
+    let status = child.wait().unwrap();
+    let (stdout, stdout_exceeded) = stdout.join().unwrap().unwrap();
+    let (stderr, stderr_exceeded) = stderr.join().unwrap().unwrap();
+    assert!(
+        !stdout_exceeded && !stderr_exceeded,
+        "restore child output exceeded its bound"
+    );
+    RestoreChild {
+        owned,
+        foreign,
+        sibling,
+        foreign_before,
+        sibling_before,
+        status,
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        _container: container,
+    }
+}
+
+async fn damaged_chunk_corruption_checks() -> World {
     let w = world(&[]).await;
     assert_eq!(
         send(w.f.addr, "POST", &format!("{ROOT}/run"), ADMIN, "")
@@ -773,30 +940,176 @@ async fn a_damaged_chunk_fails_the_restore_test() {
         .contains("failed authentication"));
     let s = get(w.f.addr, ROOT, ADMIN).await.json();
     assert_eq!(s["lastError"]["during"], "restore test");
-    // Constructed fixture witness, not provenance of any CI entry: this unrelated
-    // producer keeps a fresh matching path alive after the corruption checks.
-    let foreign = tempfile::Builder::new()
-        .prefix("noevia-restore-test-foreign-witness-")
-        .tempdir()
-        .unwrap();
-    std::fs::write(foreign.path().join("canary"), b"foreign fixture").unwrap();
-    println!("CONSTRUCTED_FOREIGN_RESTORE_WITNESS {:?}", foreign.path());
-    let leftovers = || {
-        std::fs::read_dir(std::env::temp_dir())
-            .unwrap()
-            .flatten()
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with("noevia-restore-test-")
-                    && e.metadata()
-                        .map(|m| m.modified().unwrap().elapsed().unwrap() < Duration::from_secs(30))
-                        .unwrap_or(false)
-            })
-            .count()
-    };
-    // Evaluate the unchanged global predicate once; do not wait for age-out.
-    assert_eq!(leftovers(), 0, "constructed foreign entry is not a verify leak");
+    w
+}
+
+#[tokio::test]
+async fn a_damaged_chunk_fails_the_restore_test() {
+    if let Ok(mode) = std::env::var(RESTORE_CHILD_MODE) {
+        assert!(matches!(
+            mode.as_str(),
+            "clean" | "owned-fresh" | "owned-aged"
+        ));
+        let owned = PathBuf::from(std::env::var_os(RESTORE_CHILD_ROOT).unwrap());
+        assert_eq!(
+            std::env::temp_dir(),
+            owned,
+            "child namespace was not configured at startup"
+        );
+        // Keep the original world alive through the post-response assertion.
+        let _world = damaged_chunk_corruption_checks().await;
+        println!("\n{CORRUPTION_CHECKS_PASSED} {mode}");
+        if mode != "clean" {
+            let leak = owned.join(format!("noevia-restore-test-{mode}"));
+            std::fs::create_dir(&leak).unwrap();
+            std::fs::write(leak.join("canary"), b"owned cleanup control").unwrap();
+            if mode == "owned-aged" {
+                std::fs::File::open(&leak)
+                    .unwrap()
+                    .set_modified(std::time::SystemTime::now() - Duration::from_secs(60))
+                    .unwrap();
+            }
+        }
+        let entries = owned_restore_entries(&owned)
+            .unwrap_or_else(|e| panic!("OFFSITE_OWNED_RESTORE_SCAN_FAILED: {:?}", e.kind()));
+        assert!(
+            entries.is_empty(),
+            "{OWNED_SCRATCH_FAILURE} {mode}: {entries:?}"
+        );
+        return;
+    }
+    let child = run_restore_child("clean");
+    assert!(child.status.success(), "{}{}", child.stdout, child.stderr);
+    assert_eq!(
+        child
+            .stdout
+            .lines()
+            .filter(|l| *l == format!("{CORRUPTION_CHECKS_PASSED} clean"))
+            .count(),
+        1
+    );
+    assert!(owned_restore_entries(child.owned.path())
+        .unwrap()
+        .is_empty());
+    child.assert_foreign_unchanged();
+}
+
+#[test]
+fn owned_restore_scratch_is_rejected_after_corruption_checks_even_when_aged() {
+    for mode in ["owned-fresh", "owned-aged"] {
+        let child = run_restore_child(mode);
+        // Timeout, signal, overflow, setup and HTTP failures are not accepted as
+        // cleanup evidence. Require this exact test's dedicated post-HTTP panic.
+        assert_eq!(
+            child.status.code(),
+            Some(101),
+            "{}{}",
+            child.stdout,
+            child.stderr
+        );
+        assert_eq!(
+            child
+                .stdout
+                .lines()
+                .filter(|l| *l == format!("{CORRUPTION_CHECKS_PASSED} {mode}"))
+                .count(),
+            1
+        );
+        assert!(child
+            .stdout
+            .contains(&format!("test {DAMAGED_CHUNK_CASE} ...")));
+        assert!(child.stdout.contains(
+            "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out;"
+        ));
+        assert!(
+            child
+                .stderr
+                .contains("bins/noevia-server/tests/offsite.rs:")
+                && child.stderr.contains("panicked at "),
+            "{}",
+            child.stderr
+        );
+        assert!(
+            child
+                .stderr
+                .contains(&format!("{OWNED_SCRATCH_FAILURE} {mode}:")),
+            "{}",
+            child.stderr
+        );
+        assert!(!child.stderr.contains("OFFSITE_OWNED_RESTORE_SCAN_FAILED"));
+        let leak = child
+            .owned
+            .path()
+            .join(format!("noevia-restore-test-{mode}"));
+        assert_eq!(
+            owned_restore_entries(child.owned.path()).unwrap(),
+            [(leak.file_name().unwrap().to_os_string(), "directory")]
+        );
+        assert_eq!(
+            std::fs::read(leak.join("canary")).unwrap(),
+            b"owned cleanup control"
+        );
+        if mode == "owned-aged" {
+            assert!(
+                std::fs::symlink_metadata(&leak)
+                    .unwrap()
+                    .modified()
+                    .unwrap()
+                    .elapsed()
+                    .unwrap()
+                    > Duration::from_secs(30)
+            );
+        }
+        child.assert_foreign_unchanged();
+        // Only now may parent RAII remove its deliberately leaked fixture.
+    }
+}
+
+#[test]
+fn owned_restore_scan_counts_all_types_without_following_links_or_dropping_errors() {
+    use std::os::unix::fs::symlink;
+    let owned = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    std::fs::write(outside.path().join("canary"), b"outside").unwrap();
+    let file = owned.path().join("noevia-restore-test-file");
+    std::fs::write(&file, b"owned").unwrap();
+    std::fs::create_dir(owned.path().join("noevia-restore-test-directory")).unwrap();
+    symlink(
+        outside.path(),
+        owned.path().join("noevia-restore-test-link"),
+    )
+    .unwrap();
+    symlink(
+        outside.path().join("absent"),
+        owned.path().join("noevia-restore-test-dangling"),
+    )
+    .unwrap();
+    assert_eq!(
+        owned_restore_entries(owned.path()).unwrap(),
+        [
+            (
+                std::ffi::OsString::from("noevia-restore-test-dangling"),
+                "symlink"
+            ),
+            (
+                std::ffi::OsString::from("noevia-restore-test-directory"),
+                "directory"
+            ),
+            (std::ffi::OsString::from("noevia-restore-test-file"), "file"),
+            (
+                std::ffi::OsString::from("noevia-restore-test-link"),
+                "symlink"
+            ),
+        ]
+    );
+    assert!(
+        owned_restore_entries(&file).is_err(),
+        "a scan error is never an empty result"
+    );
+    assert_eq!(
+        std::fs::read(outside.path().join("canary")).unwrap(),
+        b"outside"
+    );
 }
 
 #[tokio::test]
