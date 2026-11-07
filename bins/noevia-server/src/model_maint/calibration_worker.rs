@@ -5595,7 +5595,7 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(10), decision.0.notified())
             .await
             .unwrap();
-        let loads = |e: &Mutex<Vec<String>>| {
+        let loads = |e: &RequestLog| {
             e.lock()
                 .unwrap()
                 .iter()
