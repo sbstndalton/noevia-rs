@@ -193,3 +193,28 @@ async fn embedding_admission_is_a_guard_only_lease_and_is_released() {
     assert!(core[0].contains("\"embedding\":true"));
     assert!(core[1].starts_with("DELETE /internal/inference-admission/lease/"));
 }
+
+#[tokio::test]
+async fn source_notification_carries_tenant_project_and_file_identity() {
+    let (base, requests, task) = stub(vec![(200,serde_json::json!({"protocol":"rust-embedding-worker-v1","start":"synthetic-start","notified":true}).to_string())]).await;
+    let http = Http::new("", None, &base, None).unwrap();
+    let file = "nested/source 😀.md";
+    http.source_changed(
+        &base,
+        "synthetic-token",
+        "synthetic-start",
+        "11111111-1111-4111-8111-111111111111",
+        "p",
+        file,
+    )
+    .await
+    .unwrap();
+    task.await.unwrap();
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    let body = requests[0].split_once("\r\n\r\n").unwrap().1;
+    let body: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(body["file"], file);
+    assert_eq!(body["project"], "p");
+    assert_eq!(body["user"], "11111111-1111-4111-8111-111111111111");
+}

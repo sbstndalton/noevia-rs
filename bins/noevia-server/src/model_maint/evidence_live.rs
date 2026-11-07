@@ -245,6 +245,16 @@ impl Maint {
         model: &str,
         record: &JValue,
     ) -> Result<Option<JValue>, Failure> {
+        self.record_evidence_if(model, record, std::sync::Arc::new(|| true))
+            .await
+    }
+
+    pub(super) async fn record_evidence_if(
+        &self,
+        model: &str,
+        record: &JValue,
+        allowed: super::ini::WriteAllowed,
+    ) -> Result<Option<JValue>, Failure> {
         if self.evidence.is_none() {
             return Ok(None);
         }
@@ -252,7 +262,7 @@ impl Maint {
         let Some(live) = self.identity_for_record(model, &result).await? else {
             return Ok(None);
         };
-        self.file_record(model, record, &live, crate::identity::now_ms())
+        self.file_record_if(model, record, &live, crate::identity::now_ms(), allowed)
             .await
     }
 
@@ -263,6 +273,18 @@ impl Maint {
         record: &JValue,
         live: &Live,
         at: i64,
+    ) -> Result<Option<JValue>, Failure> {
+        self.file_record_if(model, record, live, at, std::sync::Arc::new(|| true))
+            .await
+    }
+
+    async fn file_record_if(
+        &self,
+        model: &str,
+        record: &JValue,
+        live: &Live,
+        at: i64,
+        allowed: super::ini::WriteAllowed,
     ) -> Result<Option<JValue>, Failure> {
         let Some(store) = self.evidence.clone() else {
             return Ok(None);
@@ -281,7 +303,10 @@ impl Maint {
                 }
             }
         }
-        let entry = JValue::Obj(entry);
+        let mut entry = JValue::Obj(entry);
+        store
+            .tag_record(&mut entry)
+            .map_err(|_| Failure::internal())?;
         let rate = result == "reported"
             && record
                 .get("value")
@@ -292,7 +317,7 @@ impl Maint {
             if rate {
                 store.append_reported_rate(&entry, at)
             } else {
-                store.append_if_changed(&entry, at)
+                store.append_if_changed_if(&entry, at, &*allowed)
             }
         })
         .await
@@ -300,7 +325,7 @@ impl Maint {
         .map(Some)
         .map_err(|e| match e {
             // The record itself is unusable; trying again cannot help.
-            ev::StoreError::Io => Failure::internal(),
+            ev::StoreError::Io | ev::StoreError::RunStorage(_) => Failure::internal(),
             _ => Failure {
                 status: 400,
                 message: "Invalid evidence record".into(),
