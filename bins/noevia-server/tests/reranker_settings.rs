@@ -514,12 +514,20 @@ async fn original_public_reranker_save_errors_put_reset_and_delete() {
         ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
     ];
     let front = front_env(dir.path(), true, &env).await;
-    let (catalogue_status, _, catalogue_text) = get(front.addr, "/api/models/installed", ADMIN).await;
-    assert_eq!(catalogue_status, 200, "original available-catalogue precondition: {catalogue_text}");
+    let (catalogue_status, _, catalogue_text) =
+        get(front.addr, "/api/models/installed", ADMIN).await;
+    assert_eq!(
+        catalogue_status, 200,
+        "original available-catalogue precondition: {catalogue_text}"
+    );
     let catalogue = j(&catalogue_text);
     let rows = catalogue.as_array().unwrap();
-    assert!(rows.iter().any(|row| row["name"] == "synthetic-reranker-q8" && row["missingFile"] == false));
-    assert!(rows.iter().any(|row| row["name"] == "synthetic-gone-reranker" && row["missingFile"] == true));
+    assert!(rows
+        .iter()
+        .any(|row| row["name"] == "synthetic-reranker-q8" && row["missingFile"] == false));
+    assert!(rows
+        .iter()
+        .any(|row| row["name"] == "synthetic-gone-reranker" && row["missingFile"] == true));
     let before = snapshot(front.store).await;
     let (status, _, text) = raw(front.addr, "PUT", PATH, ADMIN, br#"{"enabled":false}"#).await;
     let off = j(&text);
@@ -569,12 +577,27 @@ async fn original_public_reranker_save_errors_put_reset_and_delete() {
         assert_eq!(snapshot(front.store).await, saved);
         assert_eq!(audits(&db, "rerank.%"), ["rerank.configure"]);
     }
-    let unreadable = front_env(dir.path(), true, &[
-        ("RERANK_BACKEND", "tei".into()),
-        ("NOEVIA_FEATURE_RAG_RERANK", "true".into()),
-    ]).await;
-    let (status, _, text) = raw(unreadable.addr, "PUT", PATH, ADMIN, br#"{"enabled":true,"choice":"llamacpp:x"}"#).await;
-    assert_eq!((status, j(&text)["errorId"].as_str()), (503, Some("catalogueUnavailable")));
+    let unreadable = front_env(
+        dir.path(),
+        true,
+        &[
+            ("RERANK_BACKEND", "tei".into()),
+            ("NOEVIA_FEATURE_RAG_RERANK", "true".into()),
+        ],
+    )
+    .await;
+    let (status, _, text) = raw(
+        unreadable.addr,
+        "PUT",
+        PATH,
+        ADMIN,
+        br#"{"enabled":true,"choice":"llamacpp:x"}"#,
+    )
+    .await;
+    assert_eq!(
+        (status, j(&text)["errorId"].as_str()),
+        (503, Some("catalogueUnavailable"))
+    );
     assert_eq!(snapshot(front.store).await, saved);
     assert_eq!(audits(&db, "rerank.%"), ["rerank.configure"]);
     let (status, _, text) = raw(front.addr, "PUT", PATH, ADMIN, br#"{"reset":true}"#).await;
