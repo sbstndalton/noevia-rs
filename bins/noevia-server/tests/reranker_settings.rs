@@ -429,3 +429,95 @@ async fn independent_process_mutations_invalidate_consumer_snapshot() {
         audit_baseline + 8
     );
 }
+
+// The two original Core public-route tests execute here through the actual
+// native HTTP listener. Direct Node retirement tests are a separate boundary.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn original_public_reranker_auth_methods_and_address_redaction() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = seed(dir.path());
+    let engine = upstream().await;
+    engine.set(|_| reply("500 Internal Server Error", "{}"));
+    let env = [
+        ("RERANK_BACKEND", "tei".into()),
+        ("NOEVIA_FEATURE_RAG_RERANK", "true".into()),
+        ("MODEL_MANAGER_KIND", "llamacpp".into()),
+        ("MODEL_MANAGER_BASE_URL", engine.base()),
+    ];
+    let front = front_env(dir.path(), true, &env).await;
+    let before = snapshot(front.store).await;
+    let initial = engine.seen().len();
+    for method in ["GET", "PUT", "DELETE"] {
+        // Invalid input must not outrank authentication/role or touch the catalogue.
+        assert_eq!(raw(front.addr, method, PATH, "", b"{").await.0, 401);
+        assert_eq!(raw(front.addr, method, PATH, MEMBER, b"{").await.0, 403);
+    }
+    assert_eq!(engine.seen().len(), initial);
+    for method in ["PUT", "DELETE"] {
+        assert_eq!(support::raw_text(front.addr, method, PATH, ADMIN, "", b"{}").await.0, 403);
+    }
+    assert_eq!(snapshot(front.store).await, before);
+    assert!(audits(&db, "rerank.%").is_empty());
+    let (status, _, text) = get(front.addr, PATH, ADMIN).await;
+    let body = j(&text);
+    assert_eq!((status, &body["enabled"], &body["choice"]),
+        (200, &serde_json::json!(true), &serde_json::json!("tei")));
+    assert_eq!(body["source"], "deployment");
+    assert_eq!(body["options"], serde_json::json!([
+        {"id":"tei","backend":"tei","model":"gte-multilingual-reranker-base"}
+    ]));
+    for private in ["http://", "https://", "rerank:8080", "127.0.0.1", "10.0.0."] {
+        assert!(!text.contains(private), "{text}");
+    }
+    assert_eq!(raw(front.addr, "POST", PATH, ADMIN, b"{}").await.0, 405);
+    assert_eq!(snapshot(front.store).await, before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn original_public_reranker_save_errors_put_reset_and_delete() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = seed(dir.path());
+    let env = [("RERANK_BACKEND", "tei".into()), ("NOEVIA_FEATURE_RAG_RERANK", "true".into())];
+    let front = front_env(dir.path(), true, &env).await;
+    let before = snapshot(front.store).await;
+    let (status, _, text) = raw(front.addr, "PUT", PATH, ADMIN, br#"{"enabled":false}"#).await;
+    let off = j(&text);
+    assert_eq!((status, &off["enabled"], &off["source"]),
+        (200, &serde_json::json!(false), &serde_json::json!("admin")));
+    let audit: (String, String, String) = db.query_row(
+        "SELECT action,actor_user_id,detail FROM audit_events WHERE action='rerank.configure' ORDER BY id DESC LIMIT 1",
+        [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
+    assert_eq!((&*audit.0, &*audit.1), ("rerank.configure", A));
+    assert_eq!(j(&audit.2), serde_json::json!({"enabled":false,"backend":"tei","model":"gte-multilingual-reranker-base"}));
+    let stored: String = db.query_row("SELECT value FROM settings WHERE key='rerank:configuration'", [], |r| r.get(0)).unwrap();
+    assert_eq!(j(&stored), serde_json::json!({"enabled":false,"choice":"tei"}));
+    let saved = snapshot(front.store).await;
+    assert_ne!(saved["revision"], before["revision"]);
+    let restarted = front_env(dir.path(), true, &env).await;
+    assert_eq!(j(&get(restarted.addr, PATH, ADMIN).await.2)["enabled"], false);
+    for (input, error) in [
+        (br#"{"enabled":true,"choice":"llamacpp:x"}"#.as_slice(), "unknownReranker"),
+        (b"{".as_slice(), "invalidInput"),
+    ] {
+        let (status, _, text) = raw(front.addr, "PUT", PATH, ADMIN, input).await;
+        assert_eq!((status, j(&text)["errorId"].as_str()), (400, Some(error)), "{text}");
+        assert_eq!(snapshot(front.store).await, saved);
+        assert_eq!(audits(&db, "rerank.%"), ["rerank.configure"]);
+    }
+    let (status, _, text) = raw(front.addr, "PUT", PATH, ADMIN, br#"{"reset":true}"#).await;
+    assert_eq!((status, j(&text)["source"].as_str()), (200, Some("deployment")));
+    let reset = snapshot(front.store).await;
+    assert_ne!(reset["revision"], saved["revision"]);
+    assert_eq!(raw(front.addr, "PUT", PATH, ADMIN, br#"{"enabled":false}"#).await.0, 200);
+    let second = snapshot(front.store).await;
+    assert_ne!(second["revision"], reset["revision"]);
+    let (status, _, text) = raw(front.addr, "DELETE", PATH, ADMIN, b"").await;
+    let deleted = j(&text);
+    assert_eq!((status, &deleted["source"], &deleted["enabled"]),
+        (200, &serde_json::json!("deployment"), &serde_json::json!(true)));
+    assert_ne!(snapshot(front.store).await["revision"], second["revision"]);
+    assert_eq!(db.query_row("SELECT count(*) FROM settings WHERE key='rerank:configuration'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    assert_eq!(audits(&db, "rerank.%"), ["rerank.configure","rerank.reset","rerank.configure","rerank.reset"]);
+    let actors: i64 = db.query_row("SELECT count(*) FROM audit_events WHERE action LIKE 'rerank.%' AND actor_user_id!=?1", [A], |r| r.get(0)).unwrap();
+    assert_eq!(actors, 0, "a member or another tenant must never be credited with the admin mutation");
+}
