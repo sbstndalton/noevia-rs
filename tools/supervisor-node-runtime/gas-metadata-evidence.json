@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "nodeSourceSha256": "7b9adc82d612d0a2a863d96c46de2292552e250cee51956ebbe0146c42aacae9",
+  "builderManifest": "sha256:94c973596a8581a87ba42746ceb0b0e0b5246d098de45b1ce04dcc967cfc5dfb",
+  "referenceGasVersion": "2.35",
+  "builderGasVersion": "2.40",
+  "gasFieldReferences": [
+    {
+      "path": "deps/openssl/config/generate_gypi.pl",
+      "sha256": "c8ae4ea8406f981f6980ce93186224632d46c475b84f47370fcce9827027d0bc",
+      "bytes": 13305
+    },
+    {
+      "path": "deps/openssl/openssl.gypi",
+      "sha256": "71dcc792305db4d9454ff43bf69b54f0d249e08d9b165bf73e2c8649a1ae5060",
+      "bytes": 50212
+    },
+    {
+      "path": "deps/openssl/openssl.gyp",
+      "sha256": "6db46b7dae108e5d094dc59db291adef3b05825c79b3b6e05ee4ba80295c56c0",
+      "bytes": 4229
+    },
+    {
+      "path": "deps/openssl/unofficial.gni",
+      "sha256": "8c4418a64cba1bc7d1b436e056a051594fa5167fb71e3e485afd7e11525614ee",
+      "bytes": 4908
+    },
+    {
+      "path": "test/ffi/fixture_library/build/config.gypi",
+      "sha256": "f71e6118aa5c206c336bf0e9fd5040bf82886e63d4ad11b96893c0cb47776b92",
+      "bytes": 21313
+    },
+    {
+      "path": "configure.py",
+      "sha256": "9ae98ce309ca866955c4860cc2e0f664d15ac326e9401523973ee4ee1c012984",
+      "bytes": 87247
+    }
+  ],
+  "supportingSources": [
+    {
+      "path": "Makefile",
+      "sha256": "da6b3ed9fa64c338c3016c0ef3210dc22b2ec93d47c098f23ff53fded016012e"
+    },
+    {
+      "path": "deps/openssl/config/Makefile",
+      "sha256": "715048196d0ba4eb8682be67ed5d629cff40deec012902e335e7a9eed6a53bc8"
+    },
+    {
+      "path": "deps/openssl/README.md",
+      "sha256": "2ae1cc037b439888d942e1c16e097d88a8b65833f73498f61376bbd34cd5bd46"
+    }
+  ],
+  "predicates": [
+    {
+      "path": "configure.py",
+      "line": 1810,
+      "literal": "('gas_version' in variables and Version(variables['gas_version']) >= Version('2.23')) or \\",
+      "operator": ">=",
+      "threshold": "2.23"
+    },
+    {
+      "path": "deps/openssl/openssl.gyp",
+      "line": 39,
+      "literal": "}, 'gas_version and v(gas_version) >= v(\"2.26\") or '",
+      "operator": ">=",
+      "threshold": "2.26"
+    },
+    {
+      "path": "deps/openssl/openssl.gyp",
+      "line": 99,
+      "literal": "}, 'gas_version and v(gas_version) >= v(\"2.26\") or '",
+      "operator": ">=",
+      "threshold": "2.26"
+    },
+    {
+      "path": "deps/openssl/openssl.gypi",
+      "line": 1040,
+      "literal": "'gas_version and v(gas_version) >= v(\"2.23\") or '",
+      "operator": ">=",
+      "threshold": "2.23"
+    },
+    {
+      "path": "deps/openssl/config/generate_gypi.pl",
+      "line": 34,
+      "literal": "if ($gas_version < $gas_version_min) {",
+      "operator": "<",
+      "threshold": "2.30",
+      "constantLine": 31,
+      "constantLiteral": "my $gas_version_min = 2.30;"
+    }
+  ],
+  "cryptoTests": [
+    {
+      "label": "hash",
+      "path": "test/parallel/test-crypto-hash.js",
+      "sha256": "f1d31f34dea863c3f2a1c1d16dc9083edae8c224d3670c701271f5f355de353f"
+    },
+    {
+      "label": "hmac",
+      "path": "test/parallel/test-crypto-hmac.js",
+      "sha256": "152d6264ca5556a13561ecf6270ef94a9634657e86be896198a6d4acf295eec4"
+    },
+    {
+      "label": "cipher",
+      "path": "test/parallel/test-crypto-cipheriv-decipheriv.js",
+      "sha256": "b3657376b4d1285983386c8ded67f3204eb22341337ac1cb65a6c2db61deb236"
+    },
+    {
+      "label": "authenticated",
+      "path": "test/parallel/test-crypto-authenticated.js",
+      "sha256": "3b7dd02b285349126ae13a4cb8662bb06dc7453806ac0409d20ba0850c047cbf"
+    },
+    {
+      "label": "sign",
+      "path": "test/parallel/test-crypto-async-sign-verify.js",
+      "sha256": "2acbdf2e4f8f0ce9e7edc51f060fb11b8cda202d7a14bc819a90bf22423d0db7"
+    }
+  ],
+  "assemblyGeneration": "Normal make-node uses checked-in architecture assembly. Separate gen-openssl Docker target is not selected. Same field-controlled predicates, not a claim of identical assembler machine code.",
+  "nonBuildReferences": {
+    "deps/openssl/unofficial.gni": "GN-only TODO comment, not this GYP build",
+    "test/ffi/fixture_library/build/config.gypi": "checked-in test fixture"
+  }
+}

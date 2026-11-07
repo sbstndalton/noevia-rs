@@ -81,8 +81,11 @@ impl Harness {
         ) + "\n"
     }
     async fn close(self) {
+        self.close_with_timeout(Duration::from_secs(3)).await;
+    }
+    async fn close_with_timeout(self, deadline: Duration) {
         self.stop.send(true).unwrap();
-        tokio::time::timeout(Duration::from_secs(3), self.server)
+        tokio::time::timeout(deadline, self.server)
             .await
             .unwrap()
             .unwrap()
@@ -591,6 +594,109 @@ async fn stalled_final_output_resets_instead_of_clean_eof() {
         }
     }
     h.close().await;
+}
+
+#[tokio::test]
+async fn node_reader_distinguishes_complete_output_from_post_exit_reset() {
+    // The reviewed Node22/libuv consumer correction is an explicit test input.
+    // Other workspace Node oracles retain their existing runtime and goldens.
+    let configured = std::env::var_os("NOEVIA_SUPERVISOR_TEST_NODE");
+    let explicit = configured.is_some();
+    assert!(
+        std::env::var_os("GITHUB_ACTIONS").as_deref() != Some(std::ffi::OsStr::new("true"))
+            || configured.is_some(),
+        "CI must supply its verified, provenance-bound Node22 candidate"
+    );
+    let node = configured.map_or_else(
+        || std::path::PathBuf::from("node"),
+        std::path::PathBuf::from,
+    );
+    let path = if node.is_absolute() {
+        assert!(node.is_file() && !node.is_symlink());
+        let parent = node.parent().unwrap();
+        std::env::join_paths(
+            std::iter::once(parent.to_path_buf())
+                .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap())),
+        )
+        .unwrap()
+    } else {
+        assert!(!explicit, "an explicit candidate path must be absolute");
+        assert_eq!(node, std::path::Path::new("node"));
+        std::env::var_os("PATH").unwrap()
+    };
+    let version = tokio::process::Command::new(&node)
+        .arg("--version")
+        .output()
+        .await
+        .expect("Node22 is a required CI input");
+    assert!(version.status.success());
+    assert!(String::from_utf8_lossy(&version.stdout).starts_with("v22."));
+    for paused in [false, true] {
+        let h = Harness::with_options(
+            "exec node producer.cjs",
+            1,
+            Duration::from_secs(15),
+            Duration::from_secs(5),
+            false,
+        )
+        .await;
+        std::fs::write(h.work.join("producer.cjs"), r#"
+const {spawn}=require('node:child_process');
+const child=spawn(process.execPath,['-e',`
+  process.on('SIGTERM',()=>{});process.stdout.on('error',()=>process.exit(0));
+  (async()=>{for(let i=0;i<1024;i++){
+    await new Promise((resolve,reject)=>process.stdout.write(Buffer.alloc(65536),e=>e?reject(e):resolve()));
+    if(i===0)process.send({ready:true});
+  }})().catch(()=>process.exit(0));
+`],{stdio:['ignore',1,2,'ipc']});
+child.once('error',()=>process.exit(2));
+child.once('message',()=>{child.disconnect();child.unref();process.exit(0)});
+"#).unwrap();
+        let env = serde_json::json!({"PATH":path.to_str().unwrap()});
+        let start = h.start(&env.to_string());
+        let result = tokio::time::timeout(
+            Duration::from_secs(18),
+            tokio::process::Command::new(&node)
+                .arg("-e")
+                .arg(r#"
+const net=require('node:net'),assert=require('node:assert/strict');
+const socket=net.connect(Number(process.argv[1]),'127.0.0.1');
+const paused=process.argv[3]==='true',events=[];
+const runtime={node:process.version,uv:process.versions.uv};
+let bytes=0,reset=false,eof=false;
+const deadline=setTimeout(()=>{console.error(JSON.stringify({runtime,paused,events,bytes,reset,eof}));process.exit(2)},12000);
+const done=new Promise((resolve,reject)=>{
+  socket.on('data',b=>{bytes+=b.length;if(bytes>67108864)reject(Error('output cap'))});
+  socket.on('end',()=>{eof=true;events.push('end')});
+  socket.on('error',e=>{events.push(e.code);if(['ECONNRESET','ECONNABORTED'].includes(e.code))reset=true;else reject(e)});
+  socket.once('close',hadError=>{events.push('close:'+hadError);resolve()});
+});
+void done.catch(()=>{});
+(async()=>{
+  await new Promise((resolve,reject)=>{socket.once('connect',resolve);socket.once('error',reject)});
+  socket.write(process.argv[2]);
+  if(paused){events.push('pause');socket.pause();await new Promise(r=>setTimeout(r,3000));events.push('resume');socket.resume()}
+  await done;console.log(JSON.stringify({runtime,paused,events,bytes,reset,eof}));
+  assert.equal(reset,paused);assert.equal(eof,!paused);
+  if(!paused)assert.equal(bytes,67108864);
+})().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>{clearTimeout(deadline);socket.destroy()});
+"#)
+                .arg(h.port.to_string())
+                .arg(start)
+                .arg(paused.to_string())
+                .kill_on_drop(true)
+                .output(),
+        )
+        .await;
+        h.close_with_timeout(Duration::from_secs(8)).await;
+        let output = result.expect("Node reader exceeded its bound").unwrap();
+        assert!(
+            output.status.success(),
+            "Node reader paused={paused}: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }
 
 async fn escaped_session_pid(path: &std::path::Path) -> nix::unistd::Pid {
