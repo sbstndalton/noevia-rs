@@ -79,7 +79,8 @@ pub async fn server(reply: impl Fn(&str, &str) -> (u16, String) + Send + Sync + 
     server_async(move |path, body| {
         let reply = Arc::clone(&reply);
         async move { reply(&path, &body) }
-    }).await
+    })
+    .await
 }
 
 // Same serial HTTP fixture, with an awaitable response for controlled in-flight work.

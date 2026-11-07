@@ -433,25 +433,45 @@ async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
     let pending = Arc::new(std::sync::Mutex::new(Some(pending)));
     let (observed, failed, events) = (embedding.clone(), watchdog_failed.clone(), trace.clone());
     let stub = server_async(move |path, _| {
-        let (observed, failed, events, pending) = (observed.clone(), failed.clone(), events.clone(), pending.clone());
+        let (observed, failed, events, pending) = (
+            observed.clone(),
+            failed.clone(),
+            events.clone(),
+            pending.clone(),
+        );
         async move {
             if path == "/v1/embeddings" && !observed.swap(true, Ordering::AcqRel) {
-                events.lock().unwrap().push(("request-entered", started.elapsed()));
+                events
+                    .lock()
+                    .unwrap()
+                    .push(("request-entered", started.elapsed()));
                 let receiver = pending.lock().unwrap().take().unwrap();
                 // Awaiting the gate never blocks a Tokio executor thread. A watchdog
                 // or dropped controller is an explicit failed fixture, never a success.
-                let outcome = tokio::time::timeout(std::time::Duration::from_secs(55), receiver).await;
+                let outcome =
+                    tokio::time::timeout(std::time::Duration::from_secs(55), receiver).await;
                 if !matches!(outcome, Ok(Ok(()))) {
                     failed.store(true, Ordering::Release);
-                    let why = if outcome.is_err() { "watchdog-expired" } else { "controller-dropped" };
+                    let why = if outcome.is_err() {
+                        "watchdog-expired"
+                    } else {
+                        "controller-dropped"
+                    };
                     events.lock().unwrap().push((why, started.elapsed()));
-                    return (503, "{\"error\":\"synthetic pending-request control ended\"}".into());
+                    return (
+                        503,
+                        "{\"error\":\"synthetic pending-request control ended\"}".into(),
+                    );
                 }
-                events.lock().unwrap().push(("request-released", started.elapsed()));
+                events
+                    .lock()
+                    .unwrap()
+                    .push(("request-released", started.elapsed()));
             }
             default_reply(&path)
         }
-    }).await;
+    })
+    .await;
     let http = Http::new("", None, &stub.base, None).unwrap();
     let worker = runtime::start(
         store,
@@ -477,10 +497,21 @@ async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
     for _ in 0..8 {
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
         let status = snapshot();
-        trace.lock().unwrap().push(("heartbeat-observed", started.elapsed()));
-        assert!(!watchdog_failed.load(Ordering::Acquire), "{:?}", trace.lock().unwrap());
+        trace
+            .lock()
+            .unwrap()
+            .push(("heartbeat-observed", started.elapsed()));
+        assert!(
+            !watchdog_failed.load(Ordering::Acquire),
+            "{:?}",
+            trace.lock().unwrap()
+        );
         let at = status["at"].as_u64().unwrap();
-        assert!(at > previous, "heartbeat stalled during embedding: {:?}", trace.lock().unwrap());
+        assert!(
+            at > previous,
+            "heartbeat stalled during embedding: {:?}",
+            trace.lock().unwrap()
+        );
         assert!(status["lastPass"].is_null());
         assert!(status["service"].is_null());
         previous = at;
@@ -488,9 +519,19 @@ async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
     assert!(pending_started.elapsed() >= std::time::Duration::from_secs(30));
     release.send(()).unwrap();
     wait_until(|| !snapshot()["lastPass"].is_null()).await;
-    trace.lock().unwrap().push(("pass-completed", started.elapsed()));
-    assert!(!watchdog_failed.load(Ordering::Acquire), "{:?}", trace.lock().unwrap());
-    eprintln!("heartbeat pending-request trace: {:?}", trace.lock().unwrap());
+    trace
+        .lock()
+        .unwrap()
+        .push(("pass-completed", started.elapsed()));
+    assert!(
+        !watchdog_failed.load(Ordering::Acquire),
+        "{:?}",
+        trace.lock().unwrap()
+    );
+    eprintln!(
+        "heartbeat pending-request trace: {:?}",
+        trace.lock().unwrap()
+    );
     worker.shutdown().await;
 }
 

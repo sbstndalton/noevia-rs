@@ -97,7 +97,11 @@ impl LiveCore {
             .recv_timeout(std::time::Duration::from_secs(120))
             .expect("the paired Core became ready (its own message is on stderr above)");
         let v: Value = serde_json::from_str(&line).unwrap();
-        assert_eq!(v["nativeMaintenanceReady"], json!(true), "actual native registration/barrier witness required");
+        assert_eq!(
+            v["nativeMaintenanceReady"],
+            json!(true),
+            "actual native registration/barrier witness required"
+        );
         LiveCore {
             child,
             port: u16::try_from(v["port"].as_u64().unwrap()).unwrap(),
@@ -241,12 +245,18 @@ async fn a_real_core_answers_the_fronts_bridge_and_lease_calls() {
 
 #[test]
 fn native_registration_fixture_refusal_and_custody_controls() {
-    let Some(core_dir) = paired_core() else { return; };
+    let Some(core_dir) = paired_core() else {
+        return;
+    };
     let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/research_core_live.fixture.test.cjs");
     let status = Command::new("node")
         .args(["--test", script.to_str().unwrap()])
         .env("NOEVIA_RESEARCH_CORE", core_dir)
-        .status().unwrap();
-    assert!(status.success(), "actual HTTP registration/barrier fixture controls");
+        .status()
+        .unwrap();
+    assert!(
+        status.success(),
+        "actual HTTP registration/barrier fixture controls"
+    );
 }
