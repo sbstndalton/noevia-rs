@@ -429,6 +429,7 @@ impl Shared {
                 .is_none_or(|(a, g)| a.renew(&g.id, Some(g.generation)));
         if !live {
             self.lost.store(true, Ordering::Release);
+            eprintln!("[models] the maintenance lease authority ended this front's lease; the work stops before its next step");
         }
         Some(live)
     }
@@ -437,6 +438,7 @@ impl Shared {
         let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
         if *state == ReleaseState::Idle {
             self.lost.store(true, Ordering::Release);
+            eprintln!("[models] Node ended this front's maintenance lease; the work stops before its next step");
         }
     }
 
