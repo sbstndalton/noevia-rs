@@ -1,6 +1,7 @@
 name: Native chat search and download GET
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
