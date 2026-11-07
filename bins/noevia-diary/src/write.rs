@@ -22,28 +22,74 @@ const DEBOUNCE_S: f64 = 3.0;
 /// Python's tenant tombstone lifetime (app.py `_TENANT_DELETED_TTL_S`).
 const FENCE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
+/// A write-side failure: the exact message (journal `last_error`, logs) plus a private kind.
+/// The kind is set only where the condition is known, never derived from message text: every
+/// conversion from another error (`From<Display>`, SQLite triggers included) is `Kind::Other`.
+/// Not `Display`, so `?` can never re-wrap an `Error` through the blanket conversion and lose it.
 #[derive(Debug)]
-pub struct Error(pub String);
+pub struct Error {
+    message: String,
+    kind: Kind,
+}
 
-/// The one definite refusal of a publication: it found an unsettled backup intent inside its own
-/// (or its borrowed) primary transaction, before any effect of that transaction.
-const SETTLEMENT_UNCERTAIN: &str = "backup settlement uncertain";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Other,
+    /// A primary reservation (or the primary's own write transaction) found an unsettled backup
+    /// intent, before any effect of that transaction.
+    SettlementRefused,
+    /// The managed primary at the reserved path is no longer the file this reservation holds.
+    PrimaryReplaced,
+}
 
 impl Error {
-    fn settlement_uncertain() -> Self {
-        Error(SETTLEMENT_UNCERTAIN.into())
+    pub fn other(message: impl Into<String>) -> Self {
+        Error {
+            message: message.into(),
+            kind: Kind::Other,
+        }
     }
 
-    /// True only for that refusal, never for SQLite, I/O or any other failure (Python's
-    /// `WriterBusy(uid, 'backup settlement uncertain')` from tenant_writer.index_publication).
+    /// Only at the explicit pending checks (Store::put, Store::create_directory and
+    /// Journal::primary_reservation). The text is Python's WriterBusy reason.
+    fn settlement_refused() -> Self {
+        Error {
+            message: "backup settlement uncertain".into(),
+            kind: Kind::SettlementRefused,
+        }
+    }
+
+    fn primary_replaced() -> Self {
+        Error {
+            message: "managed primary replaced".into(),
+            kind: Kind::PrimaryReplaced,
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn into_message(self) -> String {
+        self.message
+    }
+
+    /// True only for the settlement refusal (Python's `WriterBusy(uid, 'backup settlement
+    /// uncertain')` from tenant_writer.index_publication), never for SQLite, I/O, a trigger with
+    /// the same text, a replaced primary or any other failure.
     pub fn is_settlement_refusal(&self) -> bool {
-        self.0 == SETTLEMENT_UNCERTAIN
+        self.kind == Kind::SettlementRefused
+    }
+
+    /// A replaced or removed primary. A generic failure on the wire, never BUSY.
+    pub fn is_primary_replaced(&self) -> bool {
+        self.kind == Kind::PrimaryReplaced
     }
 }
 
 impl<E: std::fmt::Display> From<E> for Error {
     fn from(e: E) -> Self {
-        Error(e.to_string())
+        Error::other(e.to_string())
     }
 }
 
@@ -56,8 +102,19 @@ pub struct Writers {
     fenced: Mutex<HashMap<String, Instant>>,
 }
 
+/// The held writer slot of one tenant, lent to the operation `with_lock` runs. It is the same
+/// slot `fence` waits for, so while any `WriteGuard` (and every `Journal` borrowing it) exists,
+/// Python's tenant deletion cannot pass its fence and remove the tenant root. Only `with_lock`
+/// constructs one.
 pub struct WriteGuard<'a> {
+    uid: String,
     _guard: MutexGuard<'a, ()>,
+}
+
+impl WriteGuard<'_> {
+    pub fn uid(&self) -> &str {
+        &self.uid
+    }
 }
 
 impl Writers {
@@ -66,16 +123,20 @@ impl Writers {
         map.entry(uid.to_string()).or_default().clone()
     }
 
-    /// Hold the tenant's writer for one operation. None: the tenant is fenced (being deleted).
-    pub fn with_lock<T>(&self, uid: &str, f: impl FnOnce() -> T) -> Option<T> {
+    /// Hold the tenant's writer for one operation, lending its guard to `f`. None: the tenant is
+    /// fenced (being deleted).
+    pub fn with_lock<T>(&self, uid: &str, f: impl FnOnce(&WriteGuard<'_>) -> T) -> Option<T> {
         let slot = self.slot(uid);
         let guard = slot.lock().unwrap_or_else(|e| e.into_inner());
         // Checked under the tenant lock: a fence taken before this point is always seen.
         if self.is_fenced(uid) {
             return None;
         }
-        let _held = WriteGuard { _guard: guard };
-        Some(f())
+        let held = WriteGuard {
+            uid: uid.to_string(),
+            _guard: guard,
+        };
+        Some(f(&held))
     }
 
     pub fn is_fenced(&self, uid: &str) -> bool {
@@ -195,11 +256,11 @@ fn next_generation(text: Option<String>) -> Result<String, Error> {
     let text = text.unwrap_or_else(|| "0".into());
     let digits = text.strip_prefix('-').unwrap_or(&text);
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(Error("non-canonical generation".into()));
+        return Err(Error::other("non-canonical generation"));
     }
     let n: i64 = text.parse()?;
     Ok(n.checked_add(1)
-        .ok_or_else(|| Error("generation overflow".into()))?
+        .ok_or_else(|| Error::other("generation overflow"))?
         .to_string())
 }
 
@@ -212,8 +273,8 @@ fn bump(tx: &Connection, now: f64) -> Result<(), Error> {
         })
         .optional()?;
     let next = next_generation(generation)?;
-    let due = py_float(now + DEBOUNCE_S).ok_or_else(|| Error("clock".into()))?;
-    let snap = py_float(now).ok_or_else(|| Error("clock".into()))?;
+    let due = py_float(now + DEBOUNCE_S).ok_or_else(|| Error::other("clock"))?;
+    let snap = py_float(now).ok_or_else(|| Error::other("clock"))?;
     tx.execute(
         "INSERT OR REPLACE INTO meta VALUES (?,?)",
         ["generation", next.as_str()],
@@ -275,13 +336,13 @@ impl Store {
     /// `put(path, data, if_match)` with Python's `if_none_match='*'` default.
     pub fn put(&self, path: &str, data: &[u8], if_match: Option<&str>) -> Result<Put, Error> {
         if !crate::managed::safe_key(path) {
-            return Err(Error("Invalid corpus path".into()));
+            return Err(Error::other("Invalid corpus path"));
         }
         let mut conn = open_rw(&self.db_path)?;
         conn.execute_batch("PRAGMA synchronous=FULL")?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if diary_backup_run::pending_effect(&tx)? {
-            return Err(Error::settlement_uncertain());
+            return Err(Error::settlement_refused());
         }
         let row: Option<String> = tx
             .query_row("SELECT version FROM files WHERE path=?", [path], |r| {
@@ -338,13 +399,13 @@ impl Store {
 
     pub fn create_directory(&self, path: &str) -> Result<Mkdir, Error> {
         if !crate::managed::safe_key(path) {
-            return Err(Error("Invalid corpus path".into()));
+            return Err(Error::other("Invalid corpus path"));
         }
         let mut conn = open_rw(&self.db_path)?;
         conn.execute_batch("PRAGMA synchronous=FULL")?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if diary_backup_run::pending_effect(&tx)? {
-            return Err(Error::settlement_uncertain());
+            return Err(Error::settlement_refused());
         }
         let parent = path.rsplit_once('/').map(|(p, _)| p).unwrap_or("");
         let all: Vec<String> = {
@@ -404,11 +465,11 @@ impl Store {
             match self.put(path, new_text.as_bytes(), etag) {
                 Ok(Put::Ok(..)) => return Ok(()),
                 Ok(Put::Precondition) => continue,
-                Ok(Put::PathConflict(at)) => return Err(WriteFailure::Transient(Error(at))),
+                Ok(Put::PathConflict(at)) => return Err(WriteFailure::Transient(Error::other(at))),
                 Err(e) => return Err(WriteFailure::Infra(e)),
             }
         }
-        Err(WriteFailure::Infra(Error(format!(
+        Err(WriteFailure::Infra(Error::other(format!(
             "could not write {path} after 5 attempts (persistent conflict)"
         ))))
     }
@@ -426,9 +487,11 @@ pub enum WriteFailure {
 
 // ------------------------------------------------------------------ journal (index db)
 
-pub struct Journal {
+pub struct Journal<'h> {
     conn: Connection,
     primary: PathBuf,
+    /// The tenant's writer slot, held for as long as this Journal exists.
+    _held: &'h WriteGuard<'h>,
 }
 
 pub struct Entry {
@@ -439,55 +502,159 @@ pub struct Entry {
     pub attempts: i64,
 }
 
-impl Journal {
-    /// The tenant's existing index db (Python creates it when it builds the state).
-    pub fn open(path: &Path) -> Result<Self, Error> {
-        Ok(Journal {
-            conn: open_rw(path)?,
-            primary: path
-                .parent()
-                .ok_or_else(|| Error("journal parent".into()))?
-                .join("managed-diary.db"),
+/// The primary file a reservation holds open: its (dev, ino) when opened, before SQLite opens the
+/// same path. Holding the File keeps that inode allocated, so no other file can take its number
+/// meanwhile. Necessary, not sufficient: see `Reservation::verify`.
+struct Bound {
+    path: PathBuf,
+    file: std::fs::File,
+    dev: u64,
+    ino: u64,
+}
+
+impl Bound {
+    #[cfg(unix)]
+    fn open(path: &Path) -> Result<Self, Error> {
+        use std::os::unix::fs::MetadataExt;
+        // Read-only and never created: a missing primary stays missing (legacy / removed tenant).
+        let file = std::fs::File::open(path)?;
+        let meta = file.metadata()?;
+        Ok(Bound {
+            path: path.to_path_buf(),
+            file,
+            dev: meta.dev(),
+            ino: meta.ino(),
         })
     }
 
-    /// Index/journal publication uses the primary authority's reservation too. Holding its
-    /// immediate transaction through the index commit prevents a backup intent from slipping
-    /// between a separate-database check and the actual journal effect.
-    fn publication<T>(&self, effect: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+    #[cfg(not(unix))]
+    fn open(_path: &Path) -> Result<Self, Error> {
+        // No file identity to bind: fail closed.
+        Err(Error::primary_replaced())
+    }
+
+    /// The path still names the held file, and the held file is still linked.
+    #[cfg(unix)]
+    fn current(&self) -> bool {
+        use std::os::unix::fs::MetadataExt;
+        let Ok(held) = self.file.metadata() else {
+            return false;
+        };
+        let Ok(now) = std::fs::metadata(&self.path) else {
+            return false;
+        };
+        held.nlink() > 0 && now.dev() == self.dev && now.ino() == self.ino
+    }
+
+    #[cfg(not(unix))]
+    fn current(&self) -> bool {
+        false
+    }
+}
+
+/// One Journal-owned reservation of the tenant's primary authority (`managed-diary.db`), lent to
+/// the body of `Journal::primary_reservation`. Its transaction is never exposed: every primary
+/// statement and every index effect inside it is a narrow method here.
+pub struct Reservation<'r, 'h> {
+    tx: rusqlite::Transaction<'r>,
+    journal: &'r Journal<'h>,
+    bound: Bound,
+}
+
+impl Reservation<'_, '_> {
+    /// Fail closed when the reserved path no longer names the held primary file.
+    ///
+    /// This detects a replacement (rename-over, unlink and recreate) or removal that is visible at
+    /// the time of the check. It does NOT prove SQLite's handle is the held File across arbitrary
+    /// replacement and restoration (ABA), and it is not an atomic compare-and-swap with the effect
+    /// or COMMIT that follows. Replacement is excluded during the reservation by the writer slot
+    /// (`WriteGuard`) that `/internal/fence`, and so Python's tenant deletion, waits for.
+    fn verify(&self) -> Result<(), Error> {
+        if self.tx.is_autocommit() || !self.bound.current() {
+            return Err(Error::primary_replaced());
+        }
+        Ok(())
+    }
+
+    /// One index/journal effect inside the reservation, after an identity check.
+    fn publish<T>(&self, effect: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+        self.verify()?;
+        effect()
+    }
+
+    /// The paths in the primary's index outbox.
+    pub fn outbox(&self) -> Result<Vec<String>, Error> {
+        self.verify()?;
+        let mut stmt = self.tx.prepare("SELECT path FROM workspace_index_outbox")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn mark_dirty(&self, document: &str) -> Result<(), Error> {
+        self.publish(|| self.journal.insert_dirty(document))
+    }
+
+    /// Remove an outbox row whose dirty mark is durable (committed with the reservation).
+    pub fn transferred(&self, path: &str) -> Result<(), Error> {
+        self.verify()?;
+        self.tx
+            .execute("DELETE FROM workspace_index_outbox WHERE path=?", [path])?;
+        Ok(())
+    }
+}
+
+impl<'h> Journal<'h> {
+    /// The tenant's existing index db (Python creates it when it builds the state), opened under
+    /// that tenant's held writer slot.
+    pub fn open(path: &Path, held: &'h WriteGuard<'h>) -> Result<Self, Error> {
+        let tenant = path
+            .parent()
+            .ok_or_else(|| Error::other("journal parent"))?;
+        if tenant.file_name().and_then(|n| n.to_str()) != Some(held.uid()) {
+            return Err(Error::other("journal tenant mismatch"));
+        }
+        Ok(Journal {
+            conn: open_rw(path)?,
+            primary: tenant.join("managed-diary.db"),
+            _held: held,
+        })
+    }
+
+    /// The primary authority's reservation, owned by this Journal (the counterpart of Python's
+    /// tenant_writer.index_publication). Holding its immediate transaction through `body` keeps
+    /// a backup intent from slipping between the check and the actual effect, on a separate
+    /// database. It never creates the primary, and never accepts a caller's transaction.
+    ///
+    /// Commits only when `body` returns Ok; otherwise the reservation rolls back. A refusal
+    /// is typed: SettlementRefused (an unsettled intent, before `body` runs) or PrimaryReplaced
+    /// (the reserved path no longer names the held file).
+    pub fn primary_reservation<T>(
+        &self,
+        body: impl FnOnce(&Reservation<'_, 'h>) -> Result<T, Error>,
+    ) -> Result<T, Error> {
+        // Bind the file first, so a replacement before SQLite opens the path is seen below.
+        let bound = Bound::open(&self.primary)?;
         let mut primary = open_rw(&self.primary)?;
         let tx = primary.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if diary_backup_run::pending_effect(&tx)? {
-            return Err(Error::settlement_uncertain());
+        let reservation = Reservation {
+            tx,
+            journal: self,
+            bound,
+        };
+        // Identity before the intent check: a replaced primary is never answered as BUSY.
+        reservation.verify()?;
+        if diary_backup_run::pending_effect(&reservation.tx)? {
+            return Err(Error::settlement_refused());
         }
-        let result = effect()?;
-        tx.commit()?;
+        let result = body(&reservation)?;
+        reservation.verify()?;
+        reservation.tx.commit()?;
         Ok(result)
     }
 
-    /// The same publication inside the primary reservation its caller already holds (the outbox
-    /// drain; Python's `primary_scope` borrow in tenant_writer.index_publication). Opening a second
-    /// primary connection there would wait on that very reservation. The check runs on the
-    /// borrowed transaction, which stays open (and is committed or rolled back) by its owner
-    /// through the effect. Any other transaction is refused: never a second authority.
-    fn borrowed<T>(
-        &self,
-        primary: &rusqlite::Transaction<'_>,
-        effect: impl FnOnce() -> Result<T, Error>,
-    ) -> Result<T, Error> {
-        let same = match (primary.path(), self.primary.canonicalize()) {
-            (Some(held), Ok(own)) => Path::new(held).canonicalize().is_ok_and(|h| h == own),
-            _ => false,
-        };
-        if !same || primary.is_autocommit() {
-            return Err(Error("primary reservation mismatch".into()));
-        }
-        // Upgrade a read transaction before checking, as Python does (a no-op when immediate).
-        primary.execute("UPDATE meta SET value=value WHERE 0", [])?;
-        if diary_backup_run::pending_effect(primary)? {
-            return Err(Error::settlement_uncertain());
-        }
-        effect()
+    /// One index/journal publication under its own primary reservation.
+    fn publication<T>(&self, effect: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+        self.primary_reservation(|r| r.publish(effect))
     }
 
     pub fn enqueue(&self, kind: &str, payload: &str) -> Result<String, Error> {
@@ -572,15 +739,6 @@ impl Journal {
 
     pub fn mark_dirty(&self, document: &str) -> Result<(), Error> {
         self.publication(|| self.insert_dirty(document))
-    }
-
-    /// mark_dirty under the caller's held primary reservation (see `borrowed`).
-    pub fn mark_dirty_in(
-        &self,
-        primary: &rusqlite::Transaction<'_>,
-        document: &str,
-    ) -> Result<(), Error> {
-        self.borrowed(primary, || self.insert_dirty(document))
     }
 
     fn insert_dirty(&self, document: &str) -> Result<(), Error> {

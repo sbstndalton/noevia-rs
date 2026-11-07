@@ -610,7 +610,7 @@ async fn serve(
         // Dropping the HTTP future detaches this task; its locks remain until all effects settle.
         return tokio::task::spawn_blocking(move || {
             app2.writers
-                .with_lock(&uid, || {
+                .with_lock(&uid, |_| {
                     crate::backup::run(
                         &app2.data_root.join("users").join(&uid),
                         &uid,
@@ -809,7 +809,7 @@ async fn serve_write(
     let app2 = app.clone();
     let task = tokio::task::spawn_blocking(move || {
         app2.writers
-            .with_lock(&uid, || {
+            .with_lock(&uid, |held| {
                 if crate::backup::pending(&app2.data_root.join("users").join(&uid)) {
                     return workspace::Reply::Json(503, b"{\"detail\":\"Diary backup settlement is uncertain. Saving and deletion remain paused.\"}".to_vec());
                 }
@@ -819,7 +819,7 @@ async fn serve_write(
                     Ok(Some(_)) => {}
                     _ => return Reply::Decline,
                 }
-                let Ok(journal) = crate::write::Journal::open(&root.join("managed-index.db"))
+                let Ok(journal) = crate::write::Journal::open(&root.join("managed-index.db"), held)
                 else {
                     return Reply::Decline;
                 };

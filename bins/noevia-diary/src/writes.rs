@@ -32,7 +32,7 @@ pub struct Ctx<'a> {
     pub recovery: &'a std::sync::Mutex<crate::recovery::State>,
     pub reader: &'a Managed,
     pub store: Store,
-    pub journal: Journal,
+    pub journal: Journal<'a>,
     pub layout: &'a Layout,
 }
 
@@ -235,7 +235,7 @@ fn apply_entry(
             Ok(true)
         }
         Err(WriteFailure::Infra(e) | WriteFailure::Transient(e)) => {
-            c.journal.mark_failed(id, &e.0)?;
+            c.journal.mark_failed(id, e.message())?;
             Ok(false)
         }
     }
@@ -857,7 +857,7 @@ pub fn edit(c: &Ctx<'_>, req: &EditReq) -> Reply {
         let target = match find_document(c, &xid, month, &mut errors) {
             Ok(Some((path, _))) => path,
             Ok(None) if errors => {
-                return Err(WriteFailure::Infra(write::Error(format!(
+                return Err(WriteFailure::Infra(write::Error::other(format!(
                     "no corpus document contains exchange {xid} (scan incomplete)"
                 ))))
             }
@@ -866,7 +866,7 @@ pub fn edit(c: &Ctx<'_>, req: &EditReq) -> Reply {
                     "no corpus document contains exchange {xid}"
                 )))
             }
-            Err(()) => return Err(WriteFailure::Infra(write::Error("scan failed".into()))),
+            Err(()) => return Err(WriteFailure::Infra(write::Error::other("scan failed"))),
         };
         c.journal.mark_dirty(&target).map_err(WriteFailure::Infra)?;
         c.store.guarded_write(&target, |current| {

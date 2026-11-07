@@ -82,11 +82,11 @@ fn apply(c: &Ctx<'_>, e: &Entry, p: &Value) -> Result<(), WriteFailure> {
                 p.get("month").and_then(Value::as_str),
                 &mut errors,
             )
-            .map_err(|_| WriteFailure::Infra(write::Error("scan failed".into())))?;
+            .map_err(|_| WriteFailure::Infra(write::Error::other("scan failed")))?;
             let path = match found {
                 Some((path, _)) => path,
                 None if errors => {
-                    return Err(WriteFailure::Infra(write::Error(format!(
+                    return Err(WriteFailure::Infra(write::Error::other(format!(
                         "no corpus document contains exchange {xid} (scan incomplete)"
                     ))))
                 }
@@ -141,7 +141,7 @@ fn apply(c: &Ctx<'_>, e: &Entry, p: &Value) -> Result<(), WriteFailure> {
 fn message(e: WriteFailure) -> String {
     match e {
         WriteFailure::Permanent(s) => s,
-        WriteFailure::Infra(e) | WriteFailure::Transient(e) => e.0,
+        WriteFailure::Infra(e) | WriteFailure::Transient(e) => e.into_message(),
     }
 }
 fn truthy(v: &Value) -> bool {
@@ -215,22 +215,18 @@ pub fn apply_pending(c: &Ctx<'_>, limit: i64) -> Result<usize, write::Error> {
 
 /// Transfer each outbox path only after its dirty mark is durable. A crash before
 /// the managed transaction commits leaves the row for a harmless repeat transfer.
-/// Each mark borrows this drain's primary reservation (Python's primary_scope): the
-/// backup-intent check runs inside it, and nothing is transferred once an intent exists.
+/// The whole drain runs inside ONE Journal-owned primary reservation (Python's
+/// primary_scope borrow in tenant_writer.index_publication): the backup-intent check runs
+/// inside it before anything, and every mark re-checks that the reserved primary is still
+/// the file it holds.
 pub fn drain_index_outbox(c: &Ctx<'_>) -> Result<(), write::Error> {
-    let mut db = write::open_rw(c.reader.db_path())?;
-    let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-    let paths = {
-        let mut stmt = tx.prepare("SELECT path FROM workspace_index_outbox")?;
-        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-        rows.collect::<Result<Vec<_>, _>>()?
-    };
-    for path in paths {
-        c.journal.mark_dirty_in(&tx, &path)?;
-        tx.execute("DELETE FROM workspace_index_outbox WHERE path=?", [&path])?;
-    }
-    tx.commit()?;
-    Ok(())
+    c.journal.primary_reservation(|r| {
+        for path in r.outbox()? {
+            r.mark_dirty(&path)?;
+            r.transferred(&path)?;
+        }
+        Ok(())
+    })
 }
 
 /// Native replay recovery; retrieval remains Python-owned. Dirty marks are retained

@@ -1214,51 +1214,322 @@ async fn an_intent_committed_while_the_drain_waits_refuses_every_transfer() {
     assert!(file_row(dir.path(), "a.md").is_none());
 }
 
-#[test]
-fn borrowed_journal_marks_check_the_held_reservation_and_refuse_any_other() {
-    let dir = tempfile::tempdir().unwrap();
-    managed_tenant(dir.path(), &[]);
-    let t = tenant_root(dir.path());
-    let journal = noevia_diary::write::Journal::open(&t.join("managed-index.db")).unwrap();
-    let mut held = primary(dir.path());
-    let tx = held
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+/// Run `f` on the tenant's journal under its held writer slot (as serve_write does).
+fn with_journal<T>(root: &Path, f: impl FnOnce(&noevia_diary::write::Journal<'_>) -> T) -> T {
+    let writers = noevia_diary::write::Writers::default();
+    writers
+        .with_lock(UID, |held| {
+            let journal = noevia_diary::write::Journal::open(
+                &tenant_root(root).join("managed-index.db"),
+                held,
+            )
+            .unwrap();
+            f(&journal)
+        })
+        .unwrap()
+}
+
+/// An intent-free copy of the primary with its own outbox and generation, to replace it with.
+fn replacement_primary(root: &Path) -> PathBuf {
+    let fresh = tenant_root(root).join("fresh.db");
+    std::fs::copy(tenant_root(root).join("managed-diary.db"), &fresh).unwrap();
+    rusqlite::Connection::open(&fresh)
+        .unwrap()
+        .execute_batch(
+            "DELETE FROM workspace_index_outbox;
+             INSERT INTO workspace_index_outbox VALUES ('Fresh/z.md');
+             UPDATE meta SET value='7' WHERE key='generation';",
+        )
         .unwrap();
-    journal.mark_dirty_in(&tx, "a.md").unwrap();
-    // The reservation is still held through the effect: no intent can commit beside it.
+    fresh
+}
+
+#[test]
+fn the_journal_reservation_holds_the_primary_through_its_effects_and_refuses_a_pending_intent() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
     let other = primary(dir.path());
     other
         .busy_timeout(std::time::Duration::from_millis(100))
         .unwrap();
-    assert!(other
-        .execute(
-            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
-            [INTENT]
-        )
-        .is_err());
-    tx.commit().unwrap();
+    with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                assert_eq!(r.outbox()?, ["Imports/x.md", "Imports/y.md"]);
+                r.mark_dirty("Imports/x.md")?;
+                // Still reserved through the effect: no intent can commit beside it.
+                assert!(other
+                    .execute(
+                        "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+                        [INTENT]
+                    )
+                    .is_err());
+                r.transferred("Imports/x.md")
+            })
+            .unwrap();
+    });
+    assert_eq!(outbox(dir.path()), ["Imports/y.md"]);
+    assert_eq!(dirty(dir.path()), ["Imports/x.md"]);
+    // Current pending intent: refused (typed) before the body runs; nothing changes.
     other
         .execute(
             "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
             [INTENT],
         )
         .unwrap();
-    let tx = held
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+    let mut ran = false;
+    let e = with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                ran = true;
+                r.mark_dirty("Imports/y.md")
+            })
+            .unwrap_err()
+    });
+    assert!(!ran && e.is_settlement_refusal() && !e.is_primary_replaced());
+    assert_eq!(e.message(), "backup settlement uncertain");
+    assert_eq!(outbox(dir.path()), ["Imports/y.md"]);
+    assert_eq!(dirty(dir.path()), ["Imports/x.md"]);
+}
+
+#[test]
+fn a_primary_renamed_over_after_acquisition_is_refused_before_any_journal_effect() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    let fresh = replacement_primary(dir.path());
+    let path = tenant_root(dir.path()).join("managed-diary.db");
+    let e = with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                let paths = r.outbox()?;
+                // Raw replacement after the reservation is acquired, before its first effect.
+                std::fs::rename(&fresh, &path).unwrap();
+                for p in paths {
+                    r.mark_dirty(&p)?;
+                    r.transferred(&p)?;
+                }
+                Ok(())
+            })
+            .unwrap_err()
+    });
+    // Fail closed and never BUSY: no mark, no transfer, the new file untouched.
+    assert!(e.is_primary_replaced() && !e.is_settlement_refusal());
+    assert!(dirty(dir.path()).is_empty());
+    assert_eq!(outbox(dir.path()), ["Fresh/z.md"]);
+    assert_eq!(meta(dir.path(), "generation"), "7");
+}
+
+#[test]
+fn a_primary_unlinked_and_recreated_or_removed_is_refused_and_never_recreated() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    let path = tenant_root(dir.path()).join("managed-diary.db");
+    // Unlink + recreate at the same path inside the reservation.
+    let e = with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                std::fs::remove_file(&path).unwrap();
+                rusqlite::Connection::open(&path)
+                    .unwrap()
+                    .execute_batch(
+                        "CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                         CREATE TABLE workspace_index_outbox(path TEXT PRIMARY KEY);",
+                    )
+                    .unwrap();
+                r.mark_dirty("Imports/x.md")
+            })
+            .unwrap_err()
+    });
+    assert!(e.is_primary_replaced() && !e.is_settlement_refusal());
+    assert!(dirty(dir.path()).is_empty() && outbox(dir.path()).is_empty());
+    // Removal without a successor: refused, and the retired primary is not recreated, neither
+    // by this reservation's rollback nor by the next publication (no SQLite CREATE anywhere).
+    std::fs::remove_file(&path).unwrap();
+    let e = with_journal(dir.path(), |journal| {
+        let e = journal
+            .primary_reservation(|r| r.mark_dirty("Imports/x.md"))
+            .unwrap_err();
+        assert!(!e.is_settlement_refusal());
+        assert!(journal.mark_dirty("Imports/y.md").is_err());
+        e
+    });
+    assert!(
+        !e.is_primary_replaced(),
+        "nothing was bound: a plain open failure"
+    );
+    assert!(!path.exists());
+    assert!(dirty(dir.path()).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn an_aliased_tenant_root_is_the_same_primary_and_a_foreign_tenant_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    // Alias: the data root through a symlink names the same files.
+    let alias = dir.path().join("alias");
+    std::fs::create_dir(&alias).unwrap();
+    std::os::unix::fs::symlink(dir.path().join("users"), alias.join("users")).unwrap();
+    with_journal(&alias, |journal| {
+        journal
+            .primary_reservation(|r| {
+                for p in r.outbox()? {
+                    r.mark_dirty(&p)?;
+                    r.transferred(&p)?;
+                }
+                Ok(())
+            })
+            .unwrap();
+    });
+    assert!(outbox(dir.path()).is_empty());
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    // Foreign: another tenant's journal is never opened under this tenant's writer slot, and a
+    // reservation of that tenant reads only that tenant's authority.
+    let other_uid = "1b5f6c1e-3a2d-4c8e-9f10-1a2b3c4d5e6f";
+    let other = dir.path().join("users").join(other_uid);
+    std::fs::create_dir_all(&other).unwrap();
+    for f in ["managed-diary.db", "managed-index.db"] {
+        std::fs::copy(tenant_root(dir.path()).join(f), other.join(f)).unwrap();
+    }
+    primary(dir.path())
+        .execute(
+            "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+            [INTENT],
+        )
         .unwrap();
-    assert!(journal.mark_dirty_in(&tx, "b.md").is_err());
-    drop(tx);
-    // A transaction on any other database is never accepted as the primary reservation.
-    let mut foreign = rusqlite::Connection::open(dir.path().join("foreign.db")).unwrap();
-    foreign
-        .execute_batch("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+    let writers = noevia_diary::write::Writers::default();
+    writers
+        .with_lock(UID, |held| {
+            let e = noevia_diary::write::Journal::open(&other.join("managed-index.db"), held)
+                .err()
+                .unwrap();
+            assert!(!e.is_settlement_refusal() && !e.is_primary_replaced());
+        })
         .unwrap();
-    let ftx = foreign
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+    writers
+        .with_lock(other_uid, |held| {
+            let journal =
+                noevia_diary::write::Journal::open(&other.join("managed-index.db"), held).unwrap();
+            journal
+                .primary_reservation(|r| r.mark_dirty("o.md"))
+                .unwrap();
+        })
         .unwrap();
-    assert!(journal.mark_dirty_in(&ftx, "c.md").is_err());
-    drop(ftx);
-    assert_eq!(dirty(dir.path()), ["a.md"]);
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+}
+
+#[test]
+fn a_rolled_back_reservation_keeps_the_outbox_and_a_deferred_holder_cannot_upgrade_into_it() {
+    let dir = tempfile::tempdir().unwrap();
+    queued_import(dir.path());
+    // Rollback: the body fails after a mark and a transfer.
+    let e = with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                r.mark_dirty("Imports/x.md")?;
+                r.transferred("Imports/x.md")?;
+                Err::<(), _>(noevia_diary::write::Error::other("synthetic"))
+            })
+            .unwrap_err()
+    });
+    assert!(!e.is_settlement_refusal() && !e.is_primary_replaced());
+    assert_eq!(e.message(), "synthetic");
+    // The primary rolled back (the row is transferred again later); the index mark made inside
+    // the reservation stays, which is harmless (an idempotent repeat, Python's same order).
+    assert_eq!(outbox(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert_eq!(dirty(dir.path()), ["Imports/x.md"]);
+    // Deferred upgrade: a read transaction that saw no intent cannot commit one while the
+    // reservation is held, so its check stays true through the effect.
+    let mut reader = primary(dir.path());
+    reader
+        .busy_timeout(std::time::Duration::from_millis(100))
+        .unwrap();
+    let deferred = reader
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Deferred)
+        .unwrap();
+    assert!(deferred
+        .query_row(
+            "SELECT 1 FROM meta WHERE key='backup_effect_pending'",
+            [],
+            |_| Ok(())
+        )
+        .is_err());
+    let mut deferred = Some(deferred);
+    with_journal(dir.path(), |journal| {
+        journal
+            .primary_reservation(|r| {
+                let tx = deferred.take().unwrap();
+                assert!(tx
+                    .execute(
+                        "INSERT INTO meta VALUES ('backup_effect_pending', ?)",
+                        [INTENT]
+                    )
+                    .is_err());
+                tx.rollback().unwrap();
+                r.mark_dirty("Imports/y.md")
+            })
+            .unwrap();
+    });
+    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md"]);
+    assert!(primary(dir.path())
+        .query_row(
+            "SELECT 1 FROM meta WHERE key='backup_effect_pending'",
+            [],
+            |_| Ok(())
+        )
+        .is_err());
+}
+
+#[test]
+fn a_fence_cannot_pass_while_a_journal_effect_is_reserved() {
+    use std::sync::mpsc::channel;
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let writers = Arc::new(noevia_diary::write::Writers::default());
+    let (inside_tx, inside) = channel();
+    let (go, go_rx) = channel::<()>();
+    let root = dir.path().to_path_buf();
+    let w = writers.clone();
+    let writing = std::thread::spawn(move || {
+        w.with_lock(UID, |held| {
+            let journal = noevia_diary::write::Journal::open(
+                &tenant_root(&root).join("managed-index.db"),
+                held,
+            )
+            .unwrap();
+            journal
+                .primary_reservation(|r| {
+                    r.mark_dirty("a.md")?;
+                    inside_tx.send(()).unwrap();
+                    go_rx.recv().unwrap();
+                    r.mark_dirty("b.md")
+                })
+                .unwrap();
+        })
+    });
+    inside.recv().unwrap();
+    // Python's tenant deletion: fence (prepare_delete), then tombstone, then rmtree.
+    let (fenced_tx, fenced) = channel();
+    let w = writers.clone();
+    let fence = std::thread::spawn(move || {
+        w.fence(UID);
+        fenced_tx.send(()).unwrap();
+    });
+    assert!(
+        fenced
+            .recv_timeout(std::time::Duration::from_millis(500))
+            .is_err(),
+        "the fence must wait while the journal effect is reserved"
+    );
+    go.send(()).unwrap();
+    assert_eq!(writing.join().unwrap(), Some(()));
+    fenced
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap();
+    fence.join().unwrap();
+    assert_eq!(dirty(dir.path()), ["a.md", "b.md"]);
+    // From here no writer slot (and so no Journal or reservation) is granted for the tenant.
+    assert!(writers.with_lock(UID, |_| ()).is_none());
 }
 
 /// A route's reply as (status, retry-after, body).
@@ -1274,6 +1545,13 @@ fn wire(r: noevia_diary::workspace::Reply) -> (u16, Option<&'static str>, Vec<u8
 
 #[test]
 fn in_transaction_intent_refusals_of_writes_are_busy_and_write_nothing() {
+    let writers = noevia_diary::write::Writers::default();
+    writers
+        .with_lock(UID, in_transaction_intent_refusals)
+        .unwrap();
+}
+
+fn in_transaction_intent_refusals(held: &noevia_diary::write::WriteGuard<'_>) {
     use noevia_diary::{corpus::Layout, recovery::State, write, writes};
     let dir = tempfile::tempdir().unwrap();
     managed_tenant(dir.path(), &[]);
@@ -1291,7 +1569,7 @@ fn in_transaction_intent_refusals_of_writes_are_busy_and_write_nothing() {
         recovery: &state,
         reader: &reader,
         store: write::Store::new(&t.join("managed-diary.db")),
-        journal: write::Journal::open(&t.join("managed-index.db")).unwrap(),
+        journal: write::Journal::open(&t.join("managed-index.db"), held).unwrap(),
         layout: &layout,
     };
     let file = serde_json::json!({"path": "a.md", "content": "x", "version": null});
