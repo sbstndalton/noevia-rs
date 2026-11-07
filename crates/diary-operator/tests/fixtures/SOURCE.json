@@ -1,0 +1,13 @@
+{
+  "repository": "sbstndalton/noevia-services",
+  "commit": "b5e82adc7f13753801a6b0268858231629e5cad8",
+  "sha256": {
+    "diary/agent/config.py": "9953bcd8ca05a41c0554559f332af0b07e93816262d4f93aeb8f70e4ec994877",
+    "diary/agent/backup_restore.py": "1ab27bf458252fed1c2e69792310e4067af272ce58cb4fc52f127a64f6b83106",
+    "diary/agent/managed_storage.py": "486840125e463067aaf2a1ffc61e19795efe68eed92ab30bd8829bb6b9f1b6b7"
+  },
+  "python": "3.12.15",
+  "yaml_loader": "yaml.SafeLoader",
+  "inputs": "synthetic only; no app import, runtime initialization or network calls",
+  "tracebacks": "Complete exception-only class/message retained for legacy uncaught exceptions. Argparse and warnings compared byte-for-byte; full crash frames retained privately."
+}
