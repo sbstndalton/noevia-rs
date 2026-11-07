@@ -2645,6 +2645,7 @@ dependencies = [
  "httparse",
  "rustix",
  "serde_json",
+ "server-projects",
  "sha2",
  "tempfile",
 ]
