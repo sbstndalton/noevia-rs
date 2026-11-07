@@ -629,9 +629,15 @@ impl SectionWrites {
                 };
                 let plan = model_files::backups::plan(&request);
                 if plan.revision.is_some() {
+                    if let Some(fence) = fence {
+                        _publication.validate(fence)?;
+                    }
                     immutable_backup(path, base.unwrap_or_default())?;
                 }
                 if let Some(rot) = plan.rotating {
+                    if let Some(fence) = fence {
+                        _publication.validate(fence)?;
+                    }
                     copy(path, &dir.join(rot))?;
                 }
                 prune = plan
@@ -672,6 +678,9 @@ impl SectionWrites {
             let _ = std::fs::remove_file(&tmp);
             result?;
             if let Some((old, new)) = roles {
+                if let Some(fence) = fence {
+                    _publication.validate(fence)?;
+                }
                 forget_role(&self.ini, old, new)?;
             }
             for old in prune {

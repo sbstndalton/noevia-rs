@@ -400,79 +400,246 @@ async fn conditional_publication_checks_generation_at_loader_and_retains_a_query
     let _ = server.await;
 }
 
-#[cfg(feature="native-safe-defaults")]
-fn scoped_publication_rig(text:&str,kind:&str)->(tempfile::TempDir,Arc<StateData>,model_publication::Fence) {
-    let dir=tempfile::tempdir().unwrap();let ini=dir.path().join("models.ini");let models=dir.path().join("models");
-    std::fs::create_dir(&models).unwrap();std::fs::write(&ini,text).unwrap();
-    let writes=SectionWrites::new(&ini,(1024,2048));writes.set_safe_models(&models);
-    let mut state=state(writes,"http://127.0.0.1:9");
-    Arc::get_mut(&mut state).unwrap().sections=Some(Arc::new(noevia_model_manager::sections::Sections::new(Arc::new(noevia_model_manager::sections::Files::new(&models,&ini).unwrap()))));
-    let fence=model_publication::Fence{incarnation:"front".into(),lease:"grant".into(),generation:1,operation:"first".into(),kind:kind.into(),expected_revision:Some(format!("{:x}",Sha256::digest(text.as_bytes())))};
-    let guard=model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite")).unwrap();guard.authority().unwrap();
-    guard.save_authority(&model_publication::AuthorityRecord{incarnation:"front".into(),lease:"grant".into(),generation:1,active:true,until_ms:model_publication::now_ms()+60_000,recovery:false}).unwrap();guard.begin(&fence).unwrap();guard.commit().unwrap();
-    (dir,state,fence)
+#[cfg(feature = "native-safe-defaults")]
+fn scoped_publication_rig(
+    text: &str,
+    kind: &str,
+) -> (tempfile::TempDir, Arc<StateData>, model_publication::Fence) {
+    let dir = tempfile::tempdir().unwrap();
+    let ini = dir.path().join("models.ini");
+    let models = dir.path().join("models");
+    std::fs::create_dir(&models).unwrap();
+    std::fs::write(&ini, text).unwrap();
+    let writes = SectionWrites::new(&ini, (1024, 2048));
+    writes.set_safe_models(&models);
+    let mut state = state(writes, "http://127.0.0.1:9");
+    Arc::get_mut(&mut state).unwrap().sections =
+        Some(Arc::new(noevia_model_manager::sections::Sections::new(
+            Arc::new(noevia_model_manager::sections::Files::new(&models, &ini).unwrap()),
+        )));
+    let fence = model_publication::Fence {
+        incarnation: "front".into(),
+        lease: "grant".into(),
+        generation: 1,
+        operation: "first".into(),
+        kind: kind.into(),
+        expected_revision: Some(format!("{:x}", Sha256::digest(text.as_bytes()))),
+    };
+    let guard =
+        model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite"))
+            .unwrap();
+    guard.authority().unwrap();
+    guard
+        .save_authority(&model_publication::AuthorityRecord {
+            incarnation: "front".into(),
+            lease: "grant".into(),
+            generation: 1,
+            active: true,
+            until_ms: model_publication::now_ms() + 60_000,
+            recovery: false,
+        })
+        .unwrap();
+    guard.begin(&fence).unwrap();
+    guard.commit().unwrap();
+    (dir, state, fence)
 }
 
-#[cfg(feature="native-safe-defaults")]
+#[cfg(feature = "native-safe-defaults")]
 #[tokio::test]
 async fn publication_refusals_finish_their_receipt_and_stale_is_typed() {
-    for (name,status) in [("target",409),("bad%20name",400)] {
-        let (dir,state,fence)=scoped_publication_rig("[target]\nmodel = /models/target.gguf\n","register");
-        let response=noevia_model_manager::router(state.clone()).oneshot(Request::builder().method("POST").uri(format!("/api/v1/sections/{name}/safe-defaults")).header("x-model-loader-token",TOKEN).header("x-noevia-maintenance-fence",serde_json::to_string(&fence).unwrap()).body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(response.status().as_u16(),status);
-        let guard=model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite")).unwrap();
-        let receipt=guard.status(&fence).unwrap().unwrap();assert_eq!(receipt.state,"settled","known refusal is terminal at the destination");assert_eq!(receipt.revision,None);guard.commit().unwrap();
-        let response=noevia_model_manager::router(state).oneshot(Request::builder().method("POST").uri("/api/v1/sections/target/safe-defaults").header("x-model-loader-token",TOKEN).header("x-noevia-maintenance-fence",serde_json::to_string(&fence).unwrap()).body(Body::empty()).unwrap()).await.unwrap();
-        assert_eq!(response.status().as_u16(),409);
-        let body:Value=serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
-        assert_eq!(body["code"],"maintenance_operation_stale");
+    for (name, status) in [("target", 409), ("bad%20name", 400)] {
+        let (dir, state, fence) =
+            scoped_publication_rig("[target]\nmodel = /models/target.gguf\n", "register");
+        let response = noevia_model_manager::router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/v1/sections/{name}/safe-defaults"))
+                    .header("x-model-loader-token", TOKEN)
+                    .header(
+                        "x-noevia-maintenance-fence",
+                        serde_json::to_string(&fence).unwrap(),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), status);
+        let guard =
+            model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite"))
+                .unwrap();
+        let receipt = guard.status(&fence).unwrap().unwrap();
+        assert_eq!(
+            receipt.state, "settled",
+            "known refusal is terminal at the destination"
+        );
+        assert_eq!(receipt.revision, None);
+        guard.commit().unwrap();
+        let response = noevia_model_manager::router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/sections/target/safe-defaults")
+                    .header("x-model-loader-token", TOKEN)
+                    .header(
+                        "x-noevia-maintenance-fence",
+                        serde_json::to_string(&fence).unwrap(),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), 409);
+        let body: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(body["code"], "maintenance_operation_stale");
     }
 }
 
-#[cfg(feature="native-safe-defaults")]
+#[cfg(feature = "native-safe-defaults")]
 #[tokio::test]
 async fn publication_predicate_checks_fresh_file_presence_with_delete_and_roles() {
-    let before="[target]\nmodel = /models/target.gguf\n";
-    let (dir,state,fence)=scoped_publication_rig(before,"delete");
-    let file=dir.path().join("models/target.gguf");std::fs::write(&file,b"new file after the caller's discovery").unwrap();
-    let roles=dir.path().join("models.roles.json");std::fs::write(&roles,"{\"code\":\"target\"}").unwrap();
-    let response=noevia_model_manager::router(state.clone()).oneshot(Request::builder().method("DELETE").uri(format!("/api/v1/sections/target?baseRevision={}",fence.expected_revision.as_ref().unwrap())).header("x-model-loader-token",TOKEN).header("x-noevia-maintenance-fence",serde_json::to_string(&fence).unwrap()).header("x-noevia-publication-condition",r#"{"fileAbsent":"target"}"#).body(Body::empty()).unwrap()).await.unwrap();
-    assert_eq!(response.status().as_u16(),409,"restored file prevents cleanup at publication");
-    assert_eq!(std::fs::read_to_string(dir.path().join("models.ini")).unwrap(),before);assert_eq!(std::fs::read_to_string(&roles).unwrap(),"{\"code\":\"target\"}");
+    let before = "[target]\nmodel = /models/target.gguf\n";
+    let (dir, state, fence) = scoped_publication_rig(before, "delete");
+    let file = dir.path().join("models/target.gguf");
+    std::fs::write(&file, b"new file after the caller's discovery").unwrap();
+    let roles = dir.path().join("models.roles.json");
+    std::fs::write(&roles, "{\"code\":\"target\"}").unwrap();
+    let response = noevia_model_manager::router(state.clone())
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/v1/sections/target?baseRevision={}",
+                    fence.expected_revision.as_ref().unwrap()
+                ))
+                .header("x-model-loader-token", TOKEN)
+                .header(
+                    "x-noevia-maintenance-fence",
+                    serde_json::to_string(&fence).unwrap(),
+                )
+                .header(
+                    "x-noevia-publication-condition",
+                    r#"{"fileAbsent":"target"}"#,
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status().as_u16(),
+        409,
+        "restored file prevents cleanup at publication"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("models.ini")).unwrap(),
+        before
+    );
+    assert_eq!(
+        std::fs::read_to_string(&roles).unwrap(),
+        "{\"code\":\"target\"}"
+    );
     std::fs::remove_file(file).unwrap();
-    let next=model_publication::Fence{operation:"second".into(),..fence};
-    let guard=model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite")).unwrap();guard.begin(&next).unwrap();guard.commit().unwrap();
-    let response=noevia_model_manager::router(state).oneshot(Request::builder().method("DELETE").uri(format!("/api/v1/sections/target/missing?baseRevision={}",next.expected_revision.as_ref().unwrap())).header("x-model-loader-token",TOKEN).header("x-noevia-maintenance-fence",serde_json::to_string(&next).unwrap()).body(Body::empty()).unwrap()).await.unwrap();
-    assert_eq!(response.status().as_u16(),200);
-    assert!(!std::fs::read_to_string(dir.path().join("models.ini")).unwrap().contains("[target]"));
+    let next = model_publication::Fence {
+        operation: "second".into(),
+        ..fence
+    };
+    let guard =
+        model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite"))
+            .unwrap();
+    guard.begin(&next).unwrap();
+    guard.commit().unwrap();
+    let response = noevia_model_manager::router(state)
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/v1/sections/target/missing?baseRevision={}",
+                    next.expected_revision.as_ref().unwrap()
+                ))
+                .header("x-model-loader-token", TOKEN)
+                .header(
+                    "x-noevia-maintenance-fence",
+                    serde_json::to_string(&next).unwrap(),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 200);
+    assert!(!std::fs::read_to_string(dir.path().join("models.ini"))
+        .unwrap()
+        .contains("[target]"));
 }
 
-#[cfg(feature="native-safe-defaults")]
+#[cfg(feature = "native-safe-defaults")]
 #[tokio::test]
 async fn publication_file_identity_rejects_a_swapped_symlink_before_planning() {
     use std::os::unix::fs::MetadataExt;
-    let before="[other]\nmodel = /models/other.gguf\n";
-    let (dir,state,fence)=scoped_publication_rig(before,"register");
-    let target=dir.path().join("models/target.gguf");std::fs::write(&target,b"first").unwrap();let meta=std::fs::metadata(&target).unwrap();
-    let condition=serde_json::json!({"fileIdentity":{"relative":"target.gguf","device":meta.dev(),"inode":meta.ino(),"size":meta.len(),"mtimeNs":(i128::from(meta.mtime())*1_000_000_000+i128::from(meta.mtime_nsec())).to_string()}});
-    std::fs::write(dir.path().join("models/replacement.gguf"),b"replacement").unwrap();std::fs::remove_file(&target).unwrap();std::os::unix::fs::symlink("replacement.gguf",&target).unwrap();
-    let response=noevia_model_manager::router(state).oneshot(Request::builder().method("POST").uri("/api/v1/sections/target/safe-defaults").header("x-model-loader-token",TOKEN).header("x-noevia-maintenance-fence",serde_json::to_string(&fence).unwrap()).header("x-noevia-publication-condition",condition.to_string()).body(Body::empty()).unwrap()).await.unwrap();
-    assert_eq!(response.status().as_u16(),409,"the loader must plan only the validated file");
-    assert_eq!(std::fs::read_to_string(dir.path().join("models.ini")).unwrap(),before);
+    let before = "[other]\nmodel = /models/other.gguf\n";
+    let (dir, state, fence) = scoped_publication_rig(before, "register");
+    let target = dir.path().join("models/target.gguf");
+    std::fs::write(&target, b"first").unwrap();
+    let meta = std::fs::metadata(&target).unwrap();
+    let condition = serde_json::json!({"fileIdentity":{"relative":"target.gguf","device":meta.dev(),"inode":meta.ino(),"size":meta.len(),"mtimeNs":(i128::from(meta.mtime())*1_000_000_000+i128::from(meta.mtime_nsec())).to_string()}});
+    std::fs::write(dir.path().join("models/replacement.gguf"), b"replacement").unwrap();
+    std::fs::remove_file(&target).unwrap();
+    std::os::unix::fs::symlink("replacement.gguf", &target).unwrap();
+    let response = noevia_model_manager::router(state)
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/v1/sections/target/safe-defaults")
+                .header("x-model-loader-token", TOKEN)
+                .header(
+                    "x-noevia-maintenance-fence",
+                    serde_json::to_string(&fence).unwrap(),
+                )
+                .header("x-noevia-publication-condition", condition.to_string())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status().as_u16(),
+        409,
+        "the loader must plan only the validated file"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("models.ini")).unwrap(),
+        before
+    );
 }
 
-#[cfg(feature="native-safe-defaults")]
+#[cfg(feature = "native-safe-defaults")]
 #[tokio::test]
 async fn publication_receipt_includes_the_idle_key_reconciliation() {
-    let before="[target]\nmodel = /models/target.gguf\n";
-    let (dir,mut state,fence)=scoped_publication_rig(before,"preset-write");
-    let ini=dir.path().join("models.ini");
-    Arc::get_mut(&mut state).unwrap().idle_unload=Some(Arc::new(noevia_model_manager::idle_unload::Reconciler::new(ini.clone(),Some(300))));
+    let before = "[target]\nmodel = /models/target.gguf\n";
+    let (dir, mut state, fence) = scoped_publication_rig(before, "preset-write");
+    let ini = dir.path().join("models.ini");
+    Arc::get_mut(&mut state).unwrap().idle_unload = Some(Arc::new(
+        noevia_model_manager::idle_unload::Reconciler::new(ini.clone(), Some(300)),
+    ));
     let response=noevia_model_manager::router(state).oneshot(Request::builder().method("PUT").uri("/api/v1/models-ini").header("x-model-loader-token",TOKEN).header("content-type","application/json").body(Body::from(serde_json::json!({"baseRevision":fence.expected_revision,"text":format!("{before}ctx-size = 8192\n"),"maintenance":fence}).to_string())).unwrap()).await.unwrap();
-    assert_eq!(response.status().as_u16(),200);
-    let body:Value=serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
-    let text=std::fs::read_to_string(&ini).unwrap();assert!(text.contains("sleep-idle-seconds = 300"));
-    let revision=format!("{:x}",Sha256::digest(text.as_bytes()));assert_eq!(body["revision"],revision);
-    let guard=model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite")).unwrap();
-    assert_eq!(guard.status(&fence).unwrap().unwrap().revision.as_deref(),Some(revision.as_str()),"receipt is the final committed revision, including reconciliation");
+    assert_eq!(response.status().as_u16(), 200);
+    let body: Value =
+        serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let text = std::fs::read_to_string(&ini).unwrap();
+    assert!(text.contains("sleep-idle-seconds = 300"));
+    let revision = format!("{:x}", Sha256::digest(text.as_bytes()));
+    assert_eq!(body["revision"], revision);
+    let guard =
+        model_publication::Guard::at(&dir.path().join(".models.ini.noevia-publication.sqlite"))
+            .unwrap();
+    assert_eq!(
+        guard.status(&fence).unwrap().unwrap().revision.as_deref(),
+        Some(revision.as_str()),
+        "receipt is the final committed revision, including reconciliation"
+    );
 }

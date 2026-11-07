@@ -2158,6 +2158,9 @@ fn after_native_preset_write_in_scope(
     bytes: Vec<u8>,
 ) -> section_writes::Outcome {
     let result = writer.with_publication(|guard| {
+        if let Some(fence) = writer.operation_fence() {
+            guard.validate(fence)?;
+        }
         reconciler
             .reconcile_in_publication(guard)
             .map_err(std::io::Error::other)

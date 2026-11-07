@@ -155,10 +155,10 @@ impl SectionWrites {
     ) -> Outcome {
         self.transaction(|scoped| {
             let verdict = {
-                let guard = scoped
-                    .scope
-                    .as_ref()
-                    .expect("publication scope")
+                let Some(scope) = scoped.scope.as_ref() else {
+                    return stale();
+                };
+                let guard = scope
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 match guard.as_ref() {
@@ -225,11 +225,13 @@ impl SectionWrites {
             Some(outcome) => outcome,
             None => effect(&scoped),
         };
-        let guard = scope
+        let Some(guard) = scope
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take()
-            .expect("publication owner");
+        else {
+            return detail(503, "Maintenance settlement unavailable.");
+        };
         let revision = if scoped
             .published
             .as_ref()
@@ -250,10 +252,11 @@ impl SectionWrites {
                 if guard.finish(fence, "settled", revision.as_deref()).is_err() {
                     return detail(503, "Maintenance settlement unavailable.");
                 }
-            } else if status(&outcome) >= 500 && original.as_deref() == Some("issued") {
-                if guard.finish(fence, "recovery", None).is_err() {
-                    return detail(503, "Maintenance settlement unavailable.");
-                }
+            } else if status(&outcome) >= 500
+                && original.as_deref() == Some("issued")
+                && guard.finish(fence, "recovery", None).is_err()
+            {
+                return detail(503, "Maintenance settlement unavailable.");
             }
         }
         if guard.commit().is_err() {
