@@ -858,7 +858,7 @@ pub async fn start(app: &Arc<App>, body: &Value) -> Result<Value, registry::Refu
         .research
         .node_call_text(
             "/internal/inference-machines/ready",
-            &registry::encode_json(&json!({"target":target})),
+            registry::encode_json(&json!({"target":target})),
             Duration::from_secs(15),
         )
         .await
@@ -1241,7 +1241,7 @@ async fn public_view(
         .research
         .node_call_text(
             "/internal/inference-machines/probes",
-            &registry::encode_json(&json!({"view":view,"health":health,"changed":changed})),
+            registry::encode_json(&json!({"view":view,"health":health,"changed":changed})),
             Duration::from_secs(45),
         )
         .await

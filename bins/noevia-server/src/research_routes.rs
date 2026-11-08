@@ -309,30 +309,6 @@ impl Research {
         Some((status, bytes))
     }
 
-    /// The same bounded private bridge for protocols retaining JavaScript UTF-16 strings.
-    pub(crate) async fn node_call_text(
-        &self,
-        path: &str,
-        body: &str,
-        timeout: Duration,
-    ) -> Option<(u16, Vec<u8>)> {
-        let mut res = self
-            .bridge_post(path, &Value::Null, timeout)?
-            .body(body.to_string())
-            .send()
-            .await
-            .ok()?;
-        let status = res.status().as_u16();
-        let mut bytes = Vec::new();
-        while let Some(chunk) = res.chunk().await.ok()? {
-            bytes.extend_from_slice(&chunk);
-            if bytes.len() > MAX_BRIDGE_BYTES {
-                return None;
-            }
-        }
-        Some((status, bytes))
-    }
-
     /// One bridge call: (status, JSON). `None`: no answer, a cancel, or a reply over the cap.
     async fn bridge_call(
         &self,
