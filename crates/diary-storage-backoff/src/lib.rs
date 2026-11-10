@@ -233,6 +233,26 @@ impl StorageGate {
         Self::default()
     }
 
+    /// Restore only a validated authority snapshot; callers hold its transaction lock.
+    pub fn restore(
+        until: f64,
+        kind: Option<GateKind>,
+        last_reset: f64,
+    ) -> Result<Self, ClockError> {
+        if !valid_clock(until) || !valid_clock(last_reset) {
+            return Err(ClockError::NonFiniteOrOutOfRange);
+        }
+        Ok(Self {
+            until,
+            kind,
+            last_reset,
+        })
+    }
+
+    pub fn snapshot(&self) -> (f64, Option<GateKind>, f64) {
+        (self.until, self.kind, self.last_reset)
+    }
+
     fn remaining(&self, now: f64) -> Result<f64, ClockError> {
         if !valid_clock(now) {
             return Err(ClockError::NonFiniteOrOutOfRange);
