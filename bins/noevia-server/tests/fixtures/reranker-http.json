@@ -1,0 +1,196 @@
+[
+  {
+    "name": "signed-out",
+    "method": "GET",
+    "role": null,
+    "status": 401,
+    "body": {
+      "error": "unauthorized"
+    },
+    "stored": null
+  },
+  {
+    "name": "member",
+    "method": "GET",
+    "role": "member",
+    "status": 403,
+    "body": {
+      "error": "administrator required"
+    },
+    "stored": null
+  },
+  {
+    "name": "csrf",
+    "method": "PUT",
+    "role": "admin",
+    "raw": "{}",
+    "csrf": false,
+    "status": 403,
+    "body": {
+      "error": "invalid CSRF token"
+    },
+    "stored": null
+  },
+  {
+    "name": "get",
+    "method": "GET",
+    "role": "admin",
+    "status": 200,
+    "body": {
+      "enabled": false,
+      "choice": "tei",
+      "source": "deployment",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        }
+      ]
+    },
+    "stored": null
+  },
+  {
+    "name": "invalid",
+    "method": "PUT",
+    "role": "admin",
+    "raw": "null",
+    "status": 400,
+    "body": {
+      "error": "Send whether reranking is on and which reranker to use.",
+      "errorId": "invalidInput"
+    },
+    "stored": null
+  },
+  {
+    "name": "malformed",
+    "method": "PUT",
+    "role": "admin",
+    "raw": "{",
+    "status": 400,
+    "body": {
+      "error": "invalid JSON",
+      "errorId": "invalidInput"
+    },
+    "stored": null
+  },
+  {
+    "name": "enable",
+    "method": "PUT",
+    "role": "admin",
+    "raw": "{\"enabled\":true,\"choice\":\"tei\"}",
+    "status": 200,
+    "body": {
+      "enabled": true,
+      "choice": "tei",
+      "source": "admin",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        }
+      ]
+    },
+    "stored": "{\"enabled\":true,\"choice\":\"tei\"}"
+  },
+  {
+    "name": "reset",
+    "method": "PUT",
+    "role": "admin",
+    "raw": "{\"reset\":true}",
+    "seed": {
+      "enabled": true,
+      "choice": "tei"
+    },
+    "status": 200,
+    "body": {
+      "enabled": false,
+      "choice": "tei",
+      "source": "deployment",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        }
+      ]
+    },
+    "stored": null
+  },
+  {
+    "name": "delete",
+    "method": "DELETE",
+    "role": "admin",
+    "seed": {
+      "enabled": true,
+      "choice": "tei"
+    },
+    "status": 200,
+    "body": {
+      "enabled": false,
+      "choice": "tei",
+      "source": "deployment",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        }
+      ]
+    },
+    "stored": null
+  },
+  {
+    "name": "catalogue-unreachable",
+    "method": "PUT",
+    "role": "admin",
+    "raw": "{\"enabled\":true,\"choice\":\"llamacpp:synthetic\"}",
+    "status": 503,
+    "body": {
+      "error": "The installed models could not be read. Try again in a moment.",
+      "errorId": "catalogueUnavailable"
+    },
+    "stored": null
+  },
+  {
+    "name": "overflow-unused",
+    "method": "PUT",
+    "role": "admin",
+    "raw": "{\"enabled\":false,\"unused\":1e999}",
+    "status": 200,
+    "body": {
+      "enabled": false,
+      "choice": "tei",
+      "source": "admin",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        }
+      ]
+    },
+    "stored": "{\"enabled\":false,\"choice\":\"tei\"}"
+  },
+  {
+    "name": "surrogate-unused",
+    "method": "PUT",
+    "role": "admin",
+    "raw": "{\"enabled\":false,\"unused\":\"\\ud800\"}",
+    "status": 200,
+    "body": {
+      "enabled": false,
+      "choice": "tei",
+      "source": "admin",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        }
+      ]
+    },
+    "stored": "{\"enabled\":false,\"choice\":\"tei\"}"
+  }
+]

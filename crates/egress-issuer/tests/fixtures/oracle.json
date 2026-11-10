@@ -1,0 +1,3045 @@
+{
+ "version": 1,
+ "capability": "noevia-code-egress-control/1",
+ "masterHex": "0707070707070707070707070707070707070707070707070707070707070707",
+ "scenarios": [
+  {
+   "name": "basic grant, renew, revoke, forget",
+   "keyed": false,
+   "initialKeyHex": null,
+   "endpoint": "egress-rs-code:8040",
+   "ttlMs": 21600000,
+   "lifetimeMs": 7200000,
+   "wall0": 1800000000000,
+   "mono0": 1000,
+   "steps": [
+    {
+     "op": "ready",
+     "result": {
+      "ok": true
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "a6121b45945f12fd7d7426ee7aca7e6e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "4cb866bfbd4ac619905b4db119b0d6bb40c776c462caeb9446c769ec1db55413"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ddd25952d866e7313b4d5e0f87a684a96acd79b8a0dc74b18a93313b5dfb5502"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":0,\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "renew",
+     "result": {
+      "ok": true
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/renew",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "73"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "3ab94299d4e6be68d0084be41ed58408"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000001000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "7b553903c82e024ce18b14c4afaa41dd0198c0a39116ca08db99b017d60d439e"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"sequence\":1}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "326",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "a0d561dfb7c369f40e0e7d3d0fb2ac27c5a1d918410d4779ec3b20c9b4b47c0c"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"3ab94299d4e6be68d0084be41ed58408\",\"state\":\"renewed\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":1,\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "grant",
+     "as": "h1",
+     "taskId": "task:1",
+     "domains": [
+      ".EXAMPLE.com.",
+      "api.Example.com",
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "task:1",
+       "domains": [
+        "example.com",
+        "api.example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOjEiLCJob3N0cyI6WyJleGFtcGxlLmNvbSIsImFwaS5leGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDAwNzIwMDAwMCwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJDSTZWMlRsNEo4cnpjcUplQXhnNVRRIn0.2qxrundBaUBZopRI3RkHAUIv8Z3LaGWn2Icfe79vx1w"
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "grant",
+     "as": "h2",
+     "taskId": "task:1",
+     "domains": [
+      "example.org"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "task:1",
+       "domains": [
+        "example.org"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOjEiLCJob3N0cyI6WyJleGFtcGxlLm9yZyJdLCJpYXQiOjE4MDAwMDAwMDAwMDEsImV4cCI6MTgwMDAwNzIwMDAwMSwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJFb2JHMlNsYXBZbTVtbW50eHN1NnNRIn0.PwaUrRCUOgcc58TXS1Hy4UwJybXWC0KDUBA1_cfvz2Y"
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "activity",
+     "as": "h1",
+     "result": {
+      "ok": {
+       "available": true,
+       "state": "complete",
+       "final": false,
+       "partial": false,
+       "overflow": false,
+       "snapshotId": "efefefefefefefefefefefefefefefef",
+       "hosts": [
+        {
+         "host": "example.com",
+         "allowed": 2,
+         "refused": 1,
+         "reason": "host does not resolve"
+        }
+       ],
+       "allowed": 2,
+       "refused": 1
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/activity",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "405"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "f1480f3655beff45caffc3074940bf8f"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "93ece0a43f1c8a4dfa282379ad79cbccbb3891e521c8c81b9b81ddd9057ff1d4"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:1\",\"leaseNonce\":\"CI6V2Tl4J8rzcqJeAxg5TQ\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOjEiLCJob3N0cyI6WyJleGFtcGxlLmNvbSIsImFwaS5leGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDAwNzIwMDAwMCwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJDSTZWMlRsNEo4cnpjcUplQXhnNVRRIn0.2qxrundBaUBZopRI3RkHAUIv8Z3LaGWn2Icfe79vx1w\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "512",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "99c72a1feb8210b2185fd73a82082828269913718588ff51f06bf6b08dd9fdd2"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"f1480f3655beff45caffc3074940bf8f\",\"state\":\"activity\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:1\",\"leaseNonce\":\"CI6V2Tl4J8rzcqJeAxg5TQ\",\"barrierInstalled\":false,\"drained\":false,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":false,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "revoke",
+     "as": "h1",
+     "result": {
+      "ok": {
+       "confirmed": true,
+       "report": {
+        "available": true,
+        "state": "complete",
+        "final": true,
+        "partial": false,
+        "overflow": false,
+        "snapshotId": "efefefefefefefefefefefefefefefef",
+        "hosts": [
+         {
+          "host": "example.com",
+          "allowed": 2,
+          "refused": 1,
+          "reason": "host does not resolve"
+         }
+        ],
+        "allowed": 2,
+        "refused": 1
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "677"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "c45873c4daa4dc3280fdc11a008fb87e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "08a8da2835a0d190124080270e0b3d5989acfc25ae2ca828c845a75bb81772b7"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:1\",\"leaseNonce\":\"CI6V2Tl4J8rzcqJeAxg5TQ\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOjEiLCJob3N0cyI6WyJleGFtcGxlLmNvbSIsImFwaS5leGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDAwNzIwMDAwMCwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJDSTZWMlRsNEo4cnpjcUplQXhnNVRRIn0.2qxrundBaUBZopRI3RkHAUIv8Z3LaGWn2Icfe79vx1w\",\"grantIssuedAt\":1800000000000,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoidGFzazoxIiwiaG9zdHMiOltdLCJpYXQiOjE4MDAwMDAwMDAwMDIsImV4cCI6MTgwMDAwNzIwMDAwMiwiaWRsZSI6MSwibm9uY2UiOiJYN05CSXdrNjl1am5ZV1ktM01VN09nIn0.AoAl5Z-2W7jqtFiB0XXkxIx9LfzJqkcYtOHLen11m1Y\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "517",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "d7b38f0910491b61f72146b60c6c2f31b1cca846d9aabb503130c04776d82f23"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"c45873c4daa4dc3280fdc11a008fb87e\",\"state\":\"revoke-confirmed\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:1\",\"leaseNonce\":\"CI6V2Tl4J8rzcqJeAxg5TQ\",\"barrierInstalled\":true,\"drained\":true,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":true,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "forget",
+     "as": "h1",
+     "snapshotId": "efefefefefefefefefefefefefefefef",
+     "result": {
+      "ok": {
+       "confirmed": true
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/forget",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "164"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "f87e2215214e5eb92b03d21d862b9827"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000005000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "0a43f003258bf241f6197487c7a95902e324ac851c20fed3cccea9056f301181"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:1\",\"leaseNonce\":\"CI6V2Tl4J8rzcqJeAxg5TQ\",\"snapshotId\":\"efefefefefefefefefefefefefefefef\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "275",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ade27cbd1271291abfc3ddd2fb5cbf248c52600c81c18d465517dd335d95947b"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"f87e2215214e5eb92b03d21d862b9827\",\"state\":\"forgotten\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:1\",\"leaseNonce\":\"CI6V2Tl4J8rzcqJeAxg5TQ\",\"snapshotId\":\"efefefefefefefefefefefefefefefef\"}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "forget",
+     "as": "h1",
+     "snapshotId": "abababababababababababababababab",
+     "result": {
+      "error": "snapshot"
+     },
+     "exchanges": []
+    },
+    {
+     "op": "revoke",
+     "as": "h2",
+     "result": {
+      "ok": {
+       "confirmed": true,
+       "report": {
+        "available": true,
+        "state": "complete",
+        "final": true,
+        "partial": false,
+        "overflow": false,
+        "snapshotId": "efefefefefefefefefefefefefefefef",
+        "hosts": [
+         {
+          "host": "example.com",
+          "allowed": 2,
+          "refused": 1,
+          "reason": "host does not resolve"
+         }
+        ],
+        "allowed": 2,
+        "refused": 1
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "653"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "9fa014bcdbd92a14346d906f94fc07f7"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "741191ef9304eb44cfaa8ddb9049c6259b2d4cbb37a40c0ffc0626feeadca099"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:1\",\"leaseNonce\":\"EobG2SlapYm5mmntxsu6sQ\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOjEiLCJob3N0cyI6WyJleGFtcGxlLm9yZyJdLCJpYXQiOjE4MDAwMDAwMDAwMDEsImV4cCI6MTgwMDAwNzIwMDAwMSwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJFb2JHMlNsYXBZbTVtbW50eHN1NnNRIn0.PwaUrRCUOgcc58TXS1Hy4UwJybXWC0KDUBA1_cfvz2Y\",\"grantIssuedAt\":1800000000001,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoidGFzazoxIiwiaG9zdHMiOltdLCJpYXQiOjE4MDAwMDAwMDAwMDMsImV4cCI6MTgwMDAwNzIwMDAwMywiaWRsZSI6MSwibm9uY2UiOiJIUHZxSFcxUHktY1VnVGlrUFA3Q3ZRIn0.EUC4heSX_6y4N41yRgguIWpgc-0rdwi-YqgRyyhaixY\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "517",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "a9b3ff64cffe81e1bb08ff6974da5f524ec73230c155fb86a4882e65135c5718"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"9fa014bcdbd92a14346d906f94fc07f7\",\"state\":\"revoke-confirmed\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:1\",\"leaseNonce\":\"EobG2SlapYm5mmntxsu6sQ\",\"barrierInstalled\":true,\"drained\":true,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":true,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "grant",
+     "as": "bad1",
+     "taskId": "bad task",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "error": "task"
+     },
+     "exchanges": []
+    },
+    {
+     "op": "grant",
+     "as": "bad2",
+     "taskId": "task:2",
+     "domains": [],
+     "result": {
+      "error": "hosts"
+     },
+     "exchanges": []
+    },
+    {
+     "op": "grant",
+     "as": "bad3",
+     "taskId": "task:2",
+     "domains": [
+      "not a host"
+     ],
+     "result": {
+      "error": "hosts"
+     },
+     "exchanges": []
+    },
+    {
+     "op": "available",
+     "result": {
+      "ok": true
+     },
+     "exchanges": []
+    }
+   ]
+  },
+  {
+   "name": "lost revoke reply is retried with the exact bytes; concurrent owners share cleanup",
+   "keyed": false,
+   "initialKeyHex": null,
+   "endpoint": "egress-rs-code:8040",
+   "ttlMs": 21600000,
+   "lifetimeMs": 7200000,
+   "wall0": 1800000000000,
+   "mono0": 1000,
+   "steps": [
+    {
+     "op": "grant",
+     "as": "h1",
+     "taskId": "job.1",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "job.1",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IuMSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.x-P-xjpYW-4sx8Ph4hsY4T-X--HsrHTew6z9ev4nPSA"
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "a6121b45945f12fd7d7426ee7aca7e6e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "4cb866bfbd4ac619905b4db119b0d6bb40c776c462caeb9446c769ec1db55413"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ddd25952d866e7313b4d5e0f87a684a96acd79b8a0dc74b18a93313b5dfb5502"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":0,\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "mode",
+     "mode": "lost",
+     "exchanges": []
+    },
+    {
+     "op": "revoke",
+     "as": "h1",
+     "result": {
+      "ok": {
+       "confirmed": true,
+       "report": {
+        "available": true,
+        "state": "complete",
+        "final": true,
+        "partial": false,
+        "overflow": false,
+        "snapshotId": "efefefefefefefefefefefefefefefef",
+        "hosts": [
+         {
+          "host": "example.com",
+          "allowed": 2,
+          "refused": 1,
+          "reason": "host does not resolve"
+         }
+        ],
+        "allowed": 2,
+        "refused": 1
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "650"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "1286c6d9295aa589b99a69edc6cbbab1"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "6c3a9fb5bac662b08b77feb1d83b1da6cf070699ba200ed0cd2b78ed59b66b09"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.1\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IuMSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.x-P-xjpYW-4sx8Ph4hsY4T-X--HsrHTew6z9ev4nPSA\",\"grantIssuedAt\":1800000000000,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoiam9iLjEiLCJob3N0cyI6W10sImlhdCI6MTgwMDAwMDAwMDAwMSwiZXhwIjoxODAwMDA3MjAwMDAxLCJpZGxlIjoxLCJub25jZSI6IkNJNlYyVGw0SjhyemNxSmVBeGc1VFEifQ.ElfRRSy2orQP722EQk1dXgchR7BB6OzsYzfPDejlL64\"}",
+       "response": {
+        "throw": "transport"
+       }
+      },
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "650"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "1286c6d9295aa589b99a69edc6cbbab1"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "6c3a9fb5bac662b08b77feb1d83b1da6cf070699ba200ed0cd2b78ed59b66b09"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.1\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IuMSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.x-P-xjpYW-4sx8Ph4hsY4T-X--HsrHTew6z9ev4nPSA\",\"grantIssuedAt\":1800000000000,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoiam9iLjEiLCJob3N0cyI6W10sImlhdCI6MTgwMDAwMDAwMDAwMSwiZXhwIjoxODAwMDA3MjAwMDAxLCJpZGxlIjoxLCJub25jZSI6IkNJNlYyVGw0SjhyemNxSmVBeGc1VFEifQ.ElfRRSy2orQP722EQk1dXgchR7BB6OzsYzfPDejlL64\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "516",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "b73bb95f75b038248c6cbef19d4bb1dc75ca15c37e7562c210bf7c4de78b8b72"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"1286c6d9295aa589b99a69edc6cbbab1\",\"state\":\"revoke-confirmed\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.1\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"barrierInstalled\":true,\"drained\":true,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":true,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "forget",
+     "as": "h1",
+     "snapshotId": "efefefefefefefefefefefefefefefef",
+     "result": {
+      "ok": {
+       "confirmed": true
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/forget",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "163"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "f1480f3655beff45caffc3074940bf8f"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000005000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "de7491bdaeb3272ca15e4baf80de2d6a48151307774d62deb044d51884173a0d"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.1\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"snapshotId\":\"efefefefefefefefefefefefefefefef\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "274",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "e5dea09237574f953572e2ab22b53b49841848017ddbd2feb668d07e4c012f73"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"f1480f3655beff45caffc3074940bf8f\",\"state\":\"forgotten\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.1\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"snapshotId\":\"efefefefefefefefefefefefefefefef\"}"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "scope mismatch and uncertainty never fabricate success or allow a replacement",
+   "keyed": false,
+   "initialKeyHex": null,
+   "endpoint": "egress-rs-code:8040",
+   "ttlMs": 21600000,
+   "lifetimeMs": 7200000,
+   "wall0": 1800000000000,
+   "mono0": 1000,
+   "steps": [
+    {
+     "op": "grant",
+     "as": "h1",
+     "taskId": "job.1",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "job.1",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IuMSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.x-P-xjpYW-4sx8Ph4hsY4T-X--HsrHTew6z9ev4nPSA"
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "a6121b45945f12fd7d7426ee7aca7e6e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "4cb866bfbd4ac619905b4db119b0d6bb40c776c462caeb9446c769ec1db55413"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ddd25952d866e7313b4d5e0f87a684a96acd79b8a0dc74b18a93313b5dfb5502"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":0,\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "mode",
+     "mode": "cross-task",
+     "exchanges": []
+    },
+    {
+     "op": "activity",
+     "as": "h1",
+     "result": {
+      "error": "scope"
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/activity",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "379"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "088e95d9397827caf372a25e0318394d"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "48b5baa7613eaa73dc90e490333b1d5ee09c08d944194e547e686c2fce4032a7"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.1\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IuMSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.x-P-xjpYW-4sx8Ph4hsY4T-X--HsrHTew6z9ev4nPSA\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "513",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "cde462de0b2f222616cedb47a5298556211a19db139b9e8110cd3300978275ff"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"088e95d9397827caf372a25e0318394d\",\"state\":\"activity\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"another\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"barrierInstalled\":false,\"drained\":false,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":false,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "mode",
+     "mode": "uncertain",
+     "exchanges": []
+    },
+    {
+     "op": "revoke",
+     "as": "h1",
+     "result": {
+      "ok": {
+       "confirmed": false,
+       "report": {
+        "available": false,
+        "state": "uncertain",
+        "final": false,
+        "partial": true
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "650"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "f1480f3655beff45caffc3074940bf8f"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "734f74391c38eae5670645dfe2af1293a582dd0a76cd0bf67f7178761239bcd2"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.1\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IuMSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.x-P-xjpYW-4sx8Ph4hsY4T-X--HsrHTew6z9ev4nPSA\",\"grantIssuedAt\":1800000000000,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoiam9iLjEiLCJob3N0cyI6W10sImlhdCI6MTgwMDAwMDAwMDAwMSwiZXhwIjoxODAwMDA3MjAwMDAxLCJpZGxlIjoxLCJub25jZSI6IkVvYkcyU2xhcFltNW1tbnR4c3U2c1EifQ.8TVcJaWG6g_BZtYPmk7n4VH9JtSN_cCPmsin0qzKfXY\"}",
+       "response": {
+        "status": 503,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "87",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "9f13d6ff32b8c5fcc730431a292e6d054478f6340ee342f44bfc6416f4313210"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"f1480f3655beff45caffc3074940bf8f\",\"state\":\"drain-incomplete\"}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "available",
+     "result": {
+      "ok": false
+     },
+     "exchanges": []
+    },
+    {
+     "op": "mode",
+     "mode": "normal",
+     "exchanges": []
+    },
+    {
+     "op": "grant",
+     "as": "h2",
+     "taskId": "job.1",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "error": "unavailable"
+     },
+     "exchanges": []
+    }
+   ]
+  },
+  {
+   "name": "zero and negative cleanup budgets send nothing and hold new authority",
+   "keyed": false,
+   "initialKeyHex": null,
+   "endpoint": "egress-rs-code:8040",
+   "ttlMs": 21600000,
+   "lifetimeMs": 7200000,
+   "wall0": 1800000000000,
+   "mono0": 1000,
+   "steps": [
+    {
+     "op": "grant",
+     "as": "h1",
+     "taskId": "budget.1",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "budget.1",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJidWRnZXQuMSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.q_pJy78IGbyhFh4coRRgYHTHqAn8-OSm6agBaRAxa7c"
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "a6121b45945f12fd7d7426ee7aca7e6e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "4cb866bfbd4ac619905b4db119b0d6bb40c776c462caeb9446c769ec1db55413"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ddd25952d866e7313b4d5e0f87a684a96acd79b8a0dc74b18a93313b5dfb5502"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":0,\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "revoke",
+     "as": "h1",
+     "budget": 0,
+     "result": {
+      "ok": {
+       "confirmed": false,
+       "report": {
+        "available": false,
+        "state": "uncertain",
+        "final": false,
+        "partial": true
+       }
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "grant",
+     "as": "h2",
+     "taskId": "budget.2",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "error": "unavailable"
+     },
+     "exchanges": []
+    },
+    {
+     "op": "available",
+     "result": {
+      "ok": false
+     },
+     "exchanges": []
+    }
+   ]
+  },
+  {
+   "name": "same-task grants never repeat an issue time; lifetime and idle are capped",
+   "keyed": false,
+   "initialKeyHex": null,
+   "endpoint": "egress-rs-code:8040",
+   "ttlMs": 864000000,
+   "lifetimeMs": 172800000,
+   "wall0": 1800000000000,
+   "mono0": 1000,
+   "steps": [
+    {
+     "op": "grant",
+     "as": "h1",
+     "taskId": "task:s",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "task:s",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOnMiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDA4NjQwMDAwMCwiaWRsZSI6ODY0MDAwMDAsIm5vbmNlIjoiT3JsQ21kVG12bWpRQ0V2a0h0V0VDQSJ9.b0kXE8hjrk7E8BEnKvCBizGOnNdcDgmOdeK4M6ijgGQ"
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "a6121b45945f12fd7d7426ee7aca7e6e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "4cb866bfbd4ac619905b4db119b0d6bb40c776c462caeb9446c769ec1db55413"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ddd25952d866e7313b4d5e0f87a684a96acd79b8a0dc74b18a93313b5dfb5502"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":0,\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "grant",
+     "as": "h2",
+     "taskId": "task:s",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "task:s",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOnMiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDEsImV4cCI6MTgwMDA4NjQwMDAwMSwiaWRsZSI6ODY0MDAwMDAsIm5vbmNlIjoiQ0k2VjJUbDRKOHJ6Y3FKZUF4ZzVUUSJ9.M01-RgZbDaNXonqNF7L2zTQU-azHUBY-GOwyTLZKYIA"
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "set",
+     "wall": 1800000000001,
+     "exchanges": []
+    },
+    {
+     "op": "grant",
+     "as": "h3",
+     "taskId": "task:s",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "task:s",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOnMiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDIsImV4cCI6MTgwMDA4NjQwMDAwMiwiaWRsZSI6ODY0MDAwMDAsIm5vbmNlIjoiRW9iRzJTbGFwWW01bW1udHhzdTZzUSJ9.lvMjKatQNJbdVrYgoTJlMHjONAWalAUc55mgh6oS2R8"
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "revoke",
+     "as": "h3",
+     "result": {
+      "ok": {
+       "confirmed": true,
+       "report": {
+        "available": true,
+        "state": "complete",
+        "final": true,
+        "partial": false,
+        "overflow": false,
+        "snapshotId": "efefefefefefefefefefefefefefefef",
+        "hosts": [
+         {
+          "host": "example.com",
+          "allowed": 2,
+          "refused": 1,
+          "reason": "host does not resolve"
+         }
+        ],
+        "allowed": 2,
+        "refused": 1
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "654"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "5fb34123093af6e8e761663edcc53b3a"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010001"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "32e2ee7b5d8511a1fa98f75ff3f415f0db7319545468410c3ba825984a1957d2"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:s\",\"leaseNonce\":\"EobG2SlapYm5mmntxsu6sQ\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOnMiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDIsImV4cCI6MTgwMDA4NjQwMDAwMiwiaWRsZSI6ODY0MDAwMDAsIm5vbmNlIjoiRW9iRzJTbGFwWW01bW1udHhzdTZzUSJ9.lvMjKatQNJbdVrYgoTJlMHjONAWalAUc55mgh6oS2R8\",\"grantIssuedAt\":1800000000002,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoidGFzazpzIiwiaG9zdHMiOltdLCJpYXQiOjE4MDAwMDAwMDAwMDMsImV4cCI6MTgwMDA4NjQwMDAwMywiaWRsZSI6MSwibm9uY2UiOiI4VWdQTmxXLV8wWEtfOE1IU1VDX2p3In0.WbQSTTNoiPGrXLF5ZqeNuu-eWJa6xD62w8-tSPh_7uQ\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "517",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "f248f7439f7397540fc08cd2bdff4288e16545f2fab19673e32401647e2cfe38"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"5fb34123093af6e8e761663edcc53b3a\",\"state\":\"revoke-confirmed\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:s\",\"leaseNonce\":\"EobG2SlapYm5mmntxsu6sQ\",\"barrierInstalled\":true,\"drained\":true,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":true,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a restarted proxy gets Replace refused then Initial; the old lease cannot take the new session down",
+   "keyed": false,
+   "initialKeyHex": null,
+   "endpoint": "egress-rs-code:8040",
+   "ttlMs": 21600000,
+   "lifetimeMs": 7200000,
+   "wall0": 1800000000000,
+   "mono0": 1000,
+   "steps": [
+    {
+     "op": "grant",
+     "as": "h1",
+     "taskId": "task:r",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "task:r",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOnIiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDAwNzIwMDAwMCwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJPcmxDbWRUbXZtalFDRXZrSHRXRUNBIn0.54NXIXCdcnHizYLAT1kWuha_54yyd86bUYu55Frnjdo"
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "a6121b45945f12fd7d7426ee7aca7e6e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "4cb866bfbd4ac619905b4db119b0d6bb40c776c462caeb9446c769ec1db55413"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ddd25952d866e7313b4d5e0f87a684a96acd79b8a0dc74b18a93313b5dfb5502"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":0,\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "set",
+     "mono": 22000,
+     "exchanges": []
+    },
+    {
+     "op": "ready",
+     "result": {
+      "error": "unavailable"
+     },
+     "exchanges": []
+    },
+    {
+     "op": "set",
+     "mono": 24000,
+     "exchanges": []
+    },
+    {
+     "op": "mode",
+     "mode": "normal",
+     "restarted": true,
+     "session": null,
+     "nextSession": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+     "exchanges": []
+    },
+    {
+     "op": "ready",
+     "result": {
+      "ok": true
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "219"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "1286c6d9295aa589b99a69edc6cbbab1"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "60761663eab98acbddfde5b800dbc5d3a5a5109ee79499fab6f8f7cac7ee3ba4"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"replace\",\"challenge\":\"088e95d9397827caf372a25e0318394d\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\"}",
+       "response": {
+        "status": 409,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "86",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "b3e17bd8ebe7f86d80d2347bb71ca6f50b410f224be4176cc9425a5f5461ba93"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"1286c6d9295aa589b99a69edc6cbbab1\",\"state\":\"no-such-session\"}"
+       }
+      },
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "5fb34123093af6e8e761663edcc53b3a"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "d3cc0e1630e75541d7b280b1e2b3871c7cf206b0e4eb5ac639894a56ae0747ec"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"f1480f3655beff45caffc3074940bf8f\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "4e1be38b89cdd24715131816104bba2a2118fef0d84f8eaaa0b477e3ea4c1a18"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"5fb34123093af6e8e761663edcc53b3a\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":0,\"challenge\":\"f1480f3655beff45caffc3074940bf8f\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "available",
+     "result": {
+      "ok": true
+     },
+     "exchanges": []
+    },
+    {
+     "op": "revoke",
+     "as": "h1",
+     "result": {
+      "ok": {
+       "confirmed": false,
+       "report": {
+        "available": false,
+        "state": "uncertain",
+        "final": false,
+        "partial": true
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "653"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "f87e2215214e5eb92b03d21d862b9827"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "492df38020e44a7e8834c28dc2e9bb62ac7100dc9b8720c947f9273813a23199"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:r\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOnIiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDAwNzIwMDAwMCwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJPcmxDbWRUbXZtalFDRXZrSHRXRUNBIn0.54NXIXCdcnHizYLAT1kWuha_54yyd86bUYu55Frnjdo\",\"grantIssuedAt\":1800000000000,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoidGFzazpyIiwiaG9zdHMiOltdLCJpYXQiOjE4MDAwMDAwMDAwMDEsImV4cCI6MTgwMDAwNzIwMDAwMSwiaWRsZSI6MSwibm9uY2UiOiJ4Rmh6eE5xazNES0FfY0VhQUktNGZnIn0.t9cx97m4LZrbhgcUVLMdNpoeqb9GVImMlElfRiYbc8A\"}",
+       "response": {
+        "status": 409,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "86",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "a1860fe02a948d9e330d7a333dd741808de621e53914cb27f6c8bbbb31803850"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"f87e2215214e5eb92b03d21d862b9827\",\"state\":\"unknown-session\"}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "available",
+     "result": {
+      "ok": true
+     },
+     "exchanges": []
+    },
+    {
+     "op": "grant",
+     "as": "h2",
+     "taskId": "task:r",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "task:r",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOnIiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDIsImV4cCI6MTgwMDAwNzIwMDAwMiwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJIUHZxSFcxUHktY1VnVGlrUFA3Q3ZRIn0.CbqF21_cfyD52Zjy-_34Y-xvz3qQa_J87M2-iOOTKOU"
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "revoke",
+     "as": "h2",
+     "result": {
+      "ok": {
+       "confirmed": true,
+       "report": {
+        "available": true,
+        "state": "complete",
+        "final": true,
+        "partial": false,
+        "overflow": false,
+        "snapshotId": "efefefefefefefefefefefefefefefef",
+        "hosts": [
+         {
+          "host": "example.com",
+          "allowed": 2,
+          "refused": 1,
+          "reason": "host does not resolve"
+         }
+        ],
+        "allowed": 2,
+        "refused": 1
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "653"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "30a0e99a9637791ff1e3a18d1e12811f"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "f6a2bf54b7ff0c848126109de996b24965da14c7a6a811156ca53c77acfd8a24"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3\",\"taskId\":\"task:r\",\"leaseNonce\":\"HPvqHW1Py-cUgTikPP7CvQ\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOnIiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDIsImV4cCI6MTgwMDAwNzIwMDAwMiwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJIUHZxSFcxUHktY1VnVGlrUFA3Q3ZRIn0.CbqF21_cfyD52Zjy-_34Y-xvz3qQa_J87M2-iOOTKOU\",\"grantIssuedAt\":1800000000002,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoidGFzazpyIiwiaG9zdHMiOltdLCJpYXQiOjE4MDAwMDAwMDAwMDMsImV4cCI6MTgwMDAwNzIwMDAwMywiaWRsZSI6MSwibm9uY2UiOiJuNkFVdk52WktoUTBiWkJ2bFB3SDl3In0.i579tF1FRXPYF6VGt0ZlpWRgUv230omQt3nujMFAQD0\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "517",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "37924c9a1034d8bb54df944c1ead3670494eae3708e97117a38f36b79646e429"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"30a0e99a9637791ff1e3a18d1e12811f\",\"state\":\"revoke-confirmed\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3\",\"taskId\":\"task:r\",\"leaseNonce\":\"HPvqHW1Py-cUgTikPP7CvQ\",\"barrierInstalled\":true,\"drained\":true,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":true,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "rotation: signed refusals outlasting any session re-key; held grants of the old key stay scoped",
+   "keyed": true,
+   "initialKeyHex": "1bb767fe0f6373791ee89245a5bc58b26bbb91c7568f33164235d2795ebc6fee",
+   "endpoint": "egress-rs-code:8040",
+   "ttlMs": 21600000,
+   "lifetimeMs": 7200000,
+   "wall0": 1800000000000,
+   "mono0": 1000,
+   "steps": [
+    {
+     "op": "ready",
+     "result": {
+      "ok": true
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "3ab94299d4e6be68d0084be41ed58408"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37"
+        ],
+        [
+         "x-noevia-control-mac",
+         "fa00187731fc77d4cbaac4c30e14dabcad4350183e094733a1e61d049106bb7c"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"expectedKeyFingerprint\":\"b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "34e34ddb9ff2c0d4f2181dce45bd9e1f3b87320010c1b23fb79df1770ad00b14"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"3ab94299d4e6be68d0084be41ed58408\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37\",\"sequence\":0,\"challenge\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "grant",
+     "as": "held",
+     "taskId": "task:held",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "task:held",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOmhlbGQiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDAwNzIwMDAwMCwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJDSTZWMlRsNEo4cnpjcUplQXhnNVRRIn0.QOgzA8eHLc9SQc12j9xUAcnCN14v54sdDbJfkV2Vqt8"
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "keyFile",
+     "result": {
+      "ok": {
+       "hex": "1bb767fe0f6373791ee89245a5bc58b26bbb91c7568f33164235d2795ebc6fee",
+       "mode": "440"
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "mode",
+     "mode": "conflict",
+     "exchanges": []
+    },
+    {
+     "op": "set",
+     "mono": 30000,
+     "exchanges": []
+    },
+    {
+     "op": "ready",
+     "result": {
+      "error": "unavailable"
+     },
+     "exchanges": []
+    },
+    {
+     "op": "set",
+     "mono": 50000,
+     "exchanges": []
+    },
+    {
+     "op": "ready",
+     "result": {
+      "error": "conflict"
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "219"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "f1480f3655beff45caffc3074940bf8f"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37"
+        ],
+        [
+         "x-noevia-control-mac",
+         "afbde7830fa0909a01902d47e99ae76b56013b070e5b0b7dbc78163e2d86fc89"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"replace\",\"challenge\":\"1286c6d9295aa589b99a69edc6cbbab1\",\"expectedKeyFingerprint\":\"b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37\",\"priorSession\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\"}",
+       "response": {
+        "status": 409,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "79",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "faaa9d13fefd9deb4989feda6cb7ed49d5544e746380dc4e45731ef88ab9df76"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"f1480f3655beff45caffc3074940bf8f\",\"state\":\"conflict\"}"
+       }
+      },
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "c45873c4daa4dc3280fdc11a008fb87e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37"
+        ],
+        [
+         "x-noevia-control-mac",
+         "eea8a5de38cd2645ac0aea51206c7c00a586f81e672becdc0d91fc4ba2773a22"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"5fb34123093af6e8e761663edcc53b3a\",\"expectedKeyFingerprint\":\"b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37\",\"priorSession\":null}",
+       "response": {
+        "status": 409,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "79",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "6316c0b8b099d7555c6472be61fc769ea520b519ce7ad3737294d657f1d1d39c"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"c45873c4daa4dc3280fdc11a008fb87e\",\"state\":\"conflict\"}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "set",
+     "mono": 70000,
+     "exchanges": []
+    },
+    {
+     "op": "ready",
+     "result": {
+      "error": "conflict"
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "219"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "1cfbea1d6d4fcbe7148138a43cfec2bd"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37"
+        ],
+        [
+         "x-noevia-control-mac",
+         "bbca6c86010af90ecff3fba73ec02ea869be04dd2c7015c69c812e2386291e28"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"replace\",\"challenge\":\"f87e2215214e5eb92b03d21d862b9827\",\"expectedKeyFingerprint\":\"b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37\",\"priorSession\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\"}",
+       "response": {
+        "status": 409,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "79",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "a79f63ef2fff90176d267b7d25cdfea22f76cc0209fc0d2807c34a08dd815e7c"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"1cfbea1d6d4fcbe7148138a43cfec2bd\",\"state\":\"conflict\"}"
+       }
+      },
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "30a0e99a9637791ff1e3a18d1e12811f"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37"
+        ],
+        [
+         "x-noevia-control-mac",
+         "9ae39b4bc19adc485dde55aa4010cc336c7868a207159fe5dd7b94284a04352c"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"9fa014bcdbd92a14346d906f94fc07f7\",\"expectedKeyFingerprint\":\"b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37\",\"priorSession\":null}",
+       "response": {
+        "status": 409,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "79",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "d167d551b475d658625b2fb1a52ba5538b9cd28a4f1e8ee942d6063806edcbb7"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"30a0e99a9637791ff1e3a18d1e12811f\",\"state\":\"conflict\"}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "set",
+     "mono": 90000,
+     "exchanges": []
+    },
+    {
+     "op": "mode",
+     "mode": "conflict",
+     "nextSession": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+     "exchanges": []
+    },
+    {
+     "op": "ready",
+     "result": {
+      "ok": true
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "219"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "995ae99be156e98bdf41ec485245b24c"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37"
+        ],
+        [
+         "x-noevia-control-mac",
+         "43e5a803b56cf0698a481e6589913b751a3086114b0462ced97dafae7ab694ed"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"replace\",\"challenge\":\"4bf45737ab7b824733066c7248a457d8\",\"expectedKeyFingerprint\":\"b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37\",\"priorSession\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\"}",
+       "response": {
+        "status": 409,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "79",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "5b6d09a7d9a60304c3041aeed7003a4ee81b44e1a7c681231a1d14301039cbfc"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"995ae99be156e98bdf41ec485245b24c\",\"state\":\"conflict\"}"
+       }
+      },
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "2ca47f03618cc82e0806aafcc479aa95"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37"
+        ],
+        [
+         "x-noevia-control-mac",
+         "24547aac6c454d73f5972cf588004f856776a78bf359398a0b9cf0307d3108e1"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"5e7cf557532d62fe193391c0fe1e835e\",\"expectedKeyFingerprint\":\"b9075cdd41fe9f52630b3c20780e7ac6a0c8c6b2b0c6183815db4f795a493f37\",\"priorSession\":null}",
+       "response": {
+        "status": 409,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "79",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ca1639229d00ad2354a9efe04b39c4558ace58ec0ee6936ae87c57e12f1b88bf"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"2ca47f03618cc82e0806aafcc479aa95\",\"state\":\"conflict\"}"
+       }
+      },
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "3912af654496c597275103624454d975"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b787799a3109086782145ccc59650ea89d18fb3db0e2052a82836d4edd2fb304"
+        ],
+        [
+         "x-noevia-control-mac",
+         "89e6c69485f590336aa9c481325aea5f67d57f6bc0197c6eafb92d2d2f8bfa8e"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"b5637dcc983200c2c1ea83a7f86812e2\",\"expectedKeyFingerprint\":\"b787799a3109086782145ccc59650ea89d18fb3db0e2052a82836d4edd2fb304\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "cc7fde76b875565e632b1be25984fbf17ad45fb4276add263a5d959c987f52ad"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"3912af654496c597275103624454d975\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3\",\"keyFingerprint\":\"b787799a3109086782145ccc59650ea89d18fb3db0e2052a82836d4edd2fb304\",\"sequence\":0,\"challenge\":\"b5637dcc983200c2c1ea83a7f86812e2\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "keyFile",
+     "result": {
+      "ok": {
+       "hex": "cf8d566f73388d15f1a3ddb9aac022b49dbb7b324007533960874b1731f2e6a7",
+       "mode": "440"
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "available",
+     "result": {
+      "ok": true
+     },
+     "exchanges": []
+    },
+    {
+     "op": "grant",
+     "as": "fresh",
+     "taskId": "task:fresh",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "task:fresh",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOmZyZXNoIiwiaG9zdHMiOlsiZXhhbXBsZS5jb20iXSwiaWF0IjoxODAwMDAwMDAwMDAwLCJleHAiOjE4MDAwMDcyMDAwMDAsImlkbGUiOjcyMDAwMDAsIm5vbmNlIjoiM2hnbUpXcUFMZm9Nc1hNcmtIVm4zZyJ9.y0oEmzY0vn2YpmjH_sl7x5LiyyWr-1aaky4_j-hhQmg"
+      }
+     },
+     "exchanges": []
+    },
+    {
+     "op": "revoke",
+     "as": "held",
+     "result": {
+      "ok": {
+       "confirmed": false,
+       "report": {
+        "available": false,
+        "state": "uncertain",
+        "final": false,
+        "partial": true
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "664"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "005258e53dd576fe1f0b55c05babbeba"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b787799a3109086782145ccc59650ea89d18fb3db0e2052a82836d4edd2fb304"
+        ],
+        [
+         "x-noevia-control-mac",
+         "dd620c874b8c7fc0aa3f8a37bb47e1443eafe65381fb9bfa393cba3d34f5b3e1"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"task:held\",\"leaseNonce\":\"CI6V2Tl4J8rzcqJeAxg5TQ\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOmhlbGQiLCJob3N0cyI6WyJleGFtcGxlLmNvbSJdLCJpYXQiOjE4MDAwMDAwMDAwMDAsImV4cCI6MTgwMDAwNzIwMDAwMCwiaWRsZSI6NzIwMDAwMCwibm9uY2UiOiJDSTZWMlRsNEo4cnpjcUplQXhnNVRRIn0.QOgzA8eHLc9SQc12j9xUAcnCN14v54sdDbJfkV2Vqt8\",\"grantIssuedAt\":1800000000000,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoidGFzazpoZWxkIiwiaG9zdHMiOltdLCJpYXQiOjE4MDAwMDAwMDAwMDEsImV4cCI6MTgwMDAwNzIwMDAwMSwiaWRsZSI6MSwibm9uY2UiOiJ2WXhzdW9oenZmczdCUExscmhza2RRIn0.7g7x0KT_KRS2x8_IDIcOMiwni7gRjREENuWlgeTh_tY\"}",
+       "response": {
+        "status": 409,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "86",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "f064089e89208a737739d792b7d1540b2ee84aff9bea9e00486e0b28ac8b4d4c"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"005258e53dd576fe1f0b55c05babbeba\",\"state\":\"unknown-session\"}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "available",
+     "result": {
+      "ok": true
+     },
+     "exchanges": []
+    },
+    {
+     "op": "revoke",
+     "as": "fresh",
+     "result": {
+      "ok": {
+       "confirmed": true,
+       "report": {
+        "available": true,
+        "state": "complete",
+        "final": true,
+        "partial": false,
+        "overflow": false,
+        "snapshotId": "efefefefefefefefefefefefefefefef",
+        "hosts": [
+         {
+          "host": "example.com",
+          "allowed": 2,
+          "refused": 1,
+          "reason": "host does not resolve"
+         }
+        ],
+        "allowed": 2,
+        "refused": 1
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "667"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "c28fbf5be9673f305e8643237ca3da81"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "b787799a3109086782145ccc59650ea89d18fb3db0e2052a82836d4edd2fb304"
+        ],
+        [
+         "x-noevia-control-mac",
+         "4bc217e083e1ea39de82ff34bbc2bcb522ea6e07176f6833d5aabe2ae4e083af"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3\",\"taskId\":\"task:fresh\",\"leaseNonce\":\"3hgmJWqALfoMsXMrkHVn3g\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJ0YXNrOmZyZXNoIiwiaG9zdHMiOlsiZXhhbXBsZS5jb20iXSwiaWF0IjoxODAwMDAwMDAwMDAwLCJleHAiOjE4MDAwMDcyMDAwMDAsImlkbGUiOjcyMDAwMDAsIm5vbmNlIjoiM2hnbUpXcUFMZm9Nc1hNcmtIVm4zZyJ9.y0oEmzY0vn2YpmjH_sl7x5LiyyWr-1aaky4_j-hhQmg\",\"grantIssuedAt\":1800000000000,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoidGFzazpmcmVzaCIsImhvc3RzIjpbXSwiaWF0IjoxODAwMDAwMDAwMDAxLCJleHAiOjE4MDAwMDcyMDAwMDEsImlkbGUiOjEsIm5vbmNlIjoiR3U4VmxNakh2TnR6cTVQVk5WZFcyZyJ9.zOhh_nDVkubUDnX_PsIWixufBOXTJEczK3OPxQKH4ak\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "521",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "c37fdd45a4b27503096916f43dd1a48dfd29b292756364f3afceb4bb73d0b339"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"c28fbf5be9673f305e8643237ca3da81\",\"state\":\"revoke-confirmed\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3\",\"taskId\":\"task:fresh\",\"leaseNonce\":\"3hgmJWqALfoMsXMrkHVn3g\",\"barrierInstalled\":true,\"drained\":true,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":true,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a revoke whose snapshot was already evicted still confirms, without a summary",
+   "keyed": false,
+   "initialKeyHex": null,
+   "endpoint": "egress-rs-code:8040",
+   "ttlMs": 21600000,
+   "lifetimeMs": 7200000,
+   "wall0": 1800000000000,
+   "mono0": 1000,
+   "steps": [
+    {
+     "op": "mode",
+     "mode": "normal",
+     "finalState": "evicted",
+     "exchanges": []
+    },
+    {
+     "op": "grant",
+     "as": "h1",
+     "taskId": "job.v",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "job.v",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IudiIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.DGhHzKYGy3MUAKWp6ZQ6-ke8rphfz2Z1JBzeojZ5FcE"
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "a6121b45945f12fd7d7426ee7aca7e6e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "4cb866bfbd4ac619905b4db119b0d6bb40c776c462caeb9446c769ec1db55413"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ddd25952d866e7313b4d5e0f87a684a96acd79b8a0dc74b18a93313b5dfb5502"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":0,\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "revoke",
+     "as": "h1",
+     "result": {
+      "ok": {
+       "confirmed": true,
+       "report": {
+        "available": false,
+        "state": "evicted",
+        "final": true,
+        "partial": false,
+        "overflow": false,
+        "snapshotId": "efefefefefefefefefefefefefefefef"
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "650"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "1286c6d9295aa589b99a69edc6cbbab1"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "2eb9b78ba4a26548ab2eac53f309f2a7934148d6b263dd5cb50fd7e026ce1c80"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.v\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IudiIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.DGhHzKYGy3MUAKWp6ZQ6-ke8rphfz2Z1JBzeojZ5FcE\",\"grantIssuedAt\":1800000000000,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoiam9iLnYiLCJob3N0cyI6W10sImlhdCI6MTgwMDAwMDAwMDAwMSwiZXhwIjoxODAwMDA3MjAwMDAxLCJpZGxlIjoxLCJub25jZSI6IkNJNlYyVGw0SjhyemNxSmVBeGc1VFEifQ.pBampkhyRRSrV7pyhG83umh6nbb49B23RBe4LxRr4Ec\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "404",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "92472f00286e020ac6fc54a987933746e82916a542932f03d2e79382614be172"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"1286c6d9295aa589b99a69edc6cbbab1\",\"state\":\"revoke-confirmed\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.v\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"barrierInstalled\":true,\"drained\":true,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"evicted\",\"final\":true,\"summary\":null,\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "forget",
+     "as": "h1",
+     "snapshotId": "efefefefefefefefefefefefefefefef",
+     "result": {
+      "ok": {
+       "confirmed": true
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/forget",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "163"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "f1480f3655beff45caffc3074940bf8f"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000005000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "14b1f2a5db0cb39de11be0f1c931446167a5ac2fc751991264df7c436a65d859"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.v\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"snapshotId\":\"efefefefefefefefefefefefefefefef\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "274",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "d319ce5f04fb9b6ad2808a3d6fae80833a528e035e1f1283acff5b35909834e6"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"f1480f3655beff45caffc3074940bf8f\",\"state\":\"forgotten\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.v\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"snapshotId\":\"efefefefefefefefefefefefefefefef\"}"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "a late active read after the acknowledgement cannot downgrade the delivered final",
+   "keyed": false,
+   "initialKeyHex": null,
+   "endpoint": "egress-rs-code:8040",
+   "ttlMs": 21600000,
+   "lifetimeMs": 7200000,
+   "wall0": 1800000000000,
+   "mono0": 1000,
+   "steps": [
+    {
+     "op": "grant",
+     "as": "h1",
+     "taskId": "job.e",
+     "domains": [
+      "example.com"
+     ],
+     "result": {
+      "ok": {
+       "taskId": "job.e",
+       "domains": [
+        "example.com"
+       ],
+       "token": "ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IuZSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.SBYILw32HbiBBhc2TcSIq-VmbLEcgV-tatD2VDAr_AM"
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/ready",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "189"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "a6121b45945f12fd7d7426ee7aca7e6e"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "4cb866bfbd4ac619905b4db119b0d6bb40c776c462caeb9446c769ec1db55413"
+        ]
+       ],
+       "body": "{\"version\":1,\"mode\":\"initial\",\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"expectedKeyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"priorSession\":null}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "371",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ddd25952d866e7313b4d5e0f87a684a96acd79b8a0dc74b18a93313b5dfb5502"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"a6121b45945f12fd7d7426ee7aca7e6e\",\"state\":\"ready\",\"capability\":\"noevia-code-egress-control/1\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"keyFingerprint\":\"8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05\",\"sequence\":0,\"challenge\":\"66f2e404402dd2a7014f82f30d1f0b63\",\"leaseMs\":15000}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "revoke",
+     "as": "h1",
+     "result": {
+      "ok": {
+       "confirmed": true,
+       "report": {
+        "available": true,
+        "state": "complete",
+        "final": true,
+        "partial": false,
+        "overflow": false,
+        "snapshotId": "efefefefefefefefefefefefefefefef",
+        "hosts": [
+         {
+          "host": "example.com",
+          "allowed": 2,
+          "refused": 1,
+          "reason": "host does not resolve"
+         }
+        ],
+        "allowed": 2,
+        "refused": 1
+       }
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/revoke",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "650"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "1286c6d9295aa589b99a69edc6cbbab1"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "dbe102ab14041b567acc5de0b1182f85601899dfa86b9664af337134df8818f4"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.e\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IuZSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.SBYILw32HbiBBhc2TcSIq-VmbLEcgV-tatD2VDAr_AM\",\"grantIssuedAt\":1800000000000,\"signedRevoke\":\"ngr1.eyJ2IjoxLCJhY3QiOiJyZXZva2UiLCJ0YXNrIjoiam9iLmUiLCJob3N0cyI6W10sImlhdCI6MTgwMDAwMDAwMDAwMSwiZXhwIjoxODAwMDA3MjAwMDAxLCJpZGxlIjoxLCJub25jZSI6IkNJNlYyVGw0SjhyemNxSmVBeGc1VFEifQ.GunDZYPiuyzwfX-srPK3CDqXBlFXNAzsVhdjdk-_RuU\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "516",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "f4ca210f68f5e67dbc6d31bfe73b0691f47b98d7bb4d7d41d930c62b8efff3f2"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"1286c6d9295aa589b99a69edc6cbbab1\",\"state\":\"revoke-confirmed\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.e\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"barrierInstalled\":true,\"drained\":true,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":true,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "forget",
+     "as": "h1",
+     "snapshotId": "efefefefefefefefefefefefefefefef",
+     "result": {
+      "ok": {
+       "confirmed": true
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/forget",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "163"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "f1480f3655beff45caffc3074940bf8f"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000005000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "be15b242714be141f48549df37b7091ef30977d935727f3656a404b4b88465de"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.e\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"snapshotId\":\"efefefefefefefefefefefefefefefef\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "274",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "ef096ad0826e232c7d2e3293a8fd0ed99922ce57f47bd28d8c62bfcf6d7d0820"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"f1480f3655beff45caffc3074940bf8f\",\"state\":\"forgotten\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.e\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"snapshotId\":\"efefefefefefefefefefefefefefefef\"}"
+       }
+      }
+     ]
+    },
+    {
+     "op": "activity",
+     "as": "h1",
+     "result": {
+      "ok": {
+       "available": true,
+       "state": "complete",
+       "final": false,
+       "partial": false,
+       "overflow": false,
+       "snapshotId": "efefefefefefefefefefefefefefefef",
+       "hosts": [
+        {
+         "host": "example.com",
+         "allowed": 2,
+         "refused": 1,
+         "reason": "host does not resolve"
+        }
+       ],
+       "allowed": 2,
+       "refused": 1
+      }
+     },
+     "exchanges": [
+      {
+       "route": "/v1/control/activity",
+       "headers": [
+        [
+         "content-type",
+         "application/json"
+        ],
+        [
+         "content-length",
+         "379"
+        ],
+        [
+         "connection",
+         "close"
+        ],
+        [
+         "x-noevia-request-id",
+         "5fb34123093af6e8e761663edcc53b3a"
+        ],
+        [
+         "x-noevia-deadline-ms",
+         "1800000010000"
+        ],
+        [
+         "x-noevia-key-fingerprint",
+         "8c0cc17a04942cc4f8e0fe0b302606d3108860c126428ba2ceeb5f9ed41c2b05"
+        ],
+        [
+         "x-noevia-control-mac",
+         "3d2df22f77ba528a5b123e60ad200871835518a561d653d12c00485acb24a411"
+        ],
+        [
+         "x-noevia-boot-id",
+         "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+        ]
+       ],
+       "body": "{\"version\":1,\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.e\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"signedGrant\":\"ngr1.eyJ2IjoxLCJhY3QiOiJncmFudCIsInRhc2siOiJqb2IuZSIsImhvc3RzIjpbImV4YW1wbGUuY29tIl0sImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDA3MjAwMDAwLCJpZGxlIjo3MjAwMDAwLCJub25jZSI6Ik9ybENtZFRtdm1qUUNFdmtIdFdFQ0EifQ.SBYILw32HbiBBhc2TcSIq-VmbLEcgV-tatD2VDAr_AM\"}",
+       "response": {
+        "status": 200,
+        "rawHeaders": [
+         "content-type",
+         "application/json",
+         "content-length",
+         "511",
+         "cache-control",
+         "no-store",
+         "connection",
+         "close",
+         "x-noevia-control-mac",
+         "8c44aaf31d51c3b6b9905254a69fbff7a7a7567bd55add5871a07262df62708f"
+        ],
+        "body": "{\"version\":1,\"requestId\":\"5fb34123093af6e8e761663edcc53b3a\",\"state\":\"activity\",\"bootId\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"sessionId\":\"b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2\",\"taskId\":\"job.e\",\"leaseNonce\":\"OrlCmdTmvmjQCEvkHtWECA\",\"barrierInstalled\":false,\"drained\":false,\"snapshot\":{\"id\":\"efefefefefefefefefefefefefefefef\",\"state\":\"complete\",\"final\":false,\"summary\":{\"hosts\":[{\"host\":\"example.com\",\"allowed\":2,\"refused\":1,\"reason\":\"host does not resolve\"}],\"allowed\":2,\"refused\":1},\"partial\":false,\"overflow\":false}}"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

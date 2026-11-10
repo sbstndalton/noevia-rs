@@ -75,6 +75,21 @@ impl Drop for Server {
     }
 }
 pub async fn server(reply: impl Fn(&str, &str) -> (u16, String) + Send + Sync + 'static) -> Server {
+    let reply = Arc::new(reply);
+    server_async(move |path, body| {
+        let reply = Arc::clone(&reply);
+        async move { reply(&path, &body) }
+    })
+    .await
+}
+
+// Same serial HTTP fixture, with an awaitable response for controlled in-flight work.
+// Existing callers retain their synchronous reply behavior.
+pub async fn server_async<F, R>(reply: F) -> Server
+where
+    F: Fn(String, String) -> R + Send + Sync + 'static,
+    R: std::future::Future<Output = (u16, String)> + Send + 'static,
+{
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let reply = Arc::new(reply);
@@ -117,7 +132,7 @@ pub async fn server(reply: impl Fn(&str, &str) -> (u16, String) + Send + Sync + 
                 .nth(1)
                 .unwrap_or("");
             let body = text.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
-            let (status, body) = reply(path, body);
+            let (status, body) = reply(path.to_owned(), body.to_owned()).await;
             let response=format!("HTTP/1.1 {status} Synthetic\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
             let _ = stream.write_all(response.as_bytes()).await;
         }
@@ -125,6 +140,10 @@ pub async fn server(reply: impl Fn(&str, &str) -> (u16, String) + Send + Sync + 
     Server { base, task }
 }
 pub fn default_reply(path: &str) -> (u16, String) {
+    if path == "/internal/embedding-worker-owner/source-changed" {
+        return (200,serde_json::json!({"protocol":"rust-embedding-worker-v1","start":START,"notified":true}).to_string());
+    }
+
     match path {
         "/internal/embedding-worker-owner" => (200, PROOF.into()),
         "/api/v1/embedding-service" => (200, "{\"managed\":true,\"enabled\":true}".into()),

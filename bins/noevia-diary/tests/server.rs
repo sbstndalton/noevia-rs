@@ -1,5 +1,5 @@
-//! End-to-end: the real server on an ephemeral port over a synthetic managed tenant. Python is the
-//! only verifier; this side trusts only its forward secret.
+//! End-to-end: the real server on an ephemeral port over a synthetic managed tenant. Requests here
+//! carry no verify header (D4 rule: Python verified them); see tests/verifier.rs for D8.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

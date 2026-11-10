@@ -401,6 +401,9 @@ fn execute_with_guard(
     })?;
     guard(&tx)?;
     validate_db(&tx, r)?;
+    if mutation && diary_backup_run::pending_effect(&tx)? {
+        return Err(Fault::Database);
+    }
     let namespace = meta(&tx, "workspace_operation_namespace")?.ok_or(Fault::Schema)?;
     if !canonical_uuid(&namespace) {
         return Err(Fault::Schema);

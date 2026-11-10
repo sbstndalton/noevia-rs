@@ -1,8 +1,8 @@
 //! Tenant assertion checks, ported from tenant_assertion.py (shape, restart guard, bounded nonce
-//! cache) on top of the `tenant-assertion` crate. NOT wired in while Python runs: Python's verifier
-//! and nonce cache are the only ones (a single owner, so a nonce is consumed exactly once), and
-//! this process trusts Python's forward secret instead. Kept for D8, when Python is retired and this
-//! process becomes the only verifier.
+//! cache) on top of the `tenant-assertion` crate. The verifier of every request Python forwards
+//! with `x-noevia-diary-verify: 1` (server.rs): Python does not check those itself; it records the
+//! nonce of each one this side reports verified in its own cache, so a nonce consumed here is
+//! refused by Python's verifier too.
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Mutex;
@@ -10,6 +10,24 @@ use std::sync::Mutex;
 pub const SKEW_S: f64 = 60.0;
 pub const RESTART_SKEW_S: i64 = 1;
 pub const NONCE_CAP: usize = 100_000;
+/// The body hash signed for a non-JSON body (tenant_assertion.STREAM).
+pub const STREAM: &str = "stream";
+
+/// tenant_assertion.body_is_hashed: JSON or untyped bodies are hashed, any other media type signs
+/// STREAM.
+pub fn body_is_hashed(content_type: &str) -> bool {
+    let media = content_type.split(';').next().unwrap_or("");
+    let media = crate::py::strip(media).to_lowercase();
+    media.is_empty() || media == "application/json"
+}
+
+pub fn sha256_hex(data: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(data)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
 
 /// The header fields the assertion covers, as latin-1 strings (Starlette's decoding).
 pub struct Signed<'a> {
@@ -290,5 +308,44 @@ mod tests {
             check(&v, &signed(1_001, &again), 1_003.0),
             Err("replayed or older than the replay cache")
         );
+    }
+
+    #[test]
+    fn clock_window_boundaries_are_inclusive_at_sixty_seconds() {
+        let v = Verifier::new(KEY.into(), 0.0);
+        let a = signed(10_000, "0123456789abcdef0123456789abcde1");
+        assert_eq!(check(&v, &a, 10_060.0), Ok(()));
+        let b = signed(10_000, "0123456789abcdef0123456789abcde2");
+        assert_eq!(check(&v, &b, 10_060.001), Err("rust refused"));
+        let c = signed(10_100, "0123456789abcdef0123456789abcde3");
+        assert_eq!(check(&v, &c, 10_040.0), Ok(()));
+        let d = signed(10_100, "0123456789abcdef0123456789abcde4");
+        assert_eq!(check(&v, &d, 10_039.999), Err("rust refused"));
+    }
+
+    #[test]
+    fn concurrent_verifies_of_one_nonce_accept_exactly_once() {
+        let v = std::sync::Arc::new(Verifier::new(KEY.into(), 0.0));
+        let a = signed(20_000, "0123456789abcdef0123456789abcde5");
+        let handles: Vec<_> = (0..16)
+            .map(|_| {
+                let (v, a) = (v.clone(), a.clone());
+                std::thread::spawn(move || check(&v, &a, 20_000.5).is_ok())
+            })
+            .collect();
+        let ok = handles
+            .into_iter()
+            .map(|h| h.join().unwrap_or(false))
+            .filter(|ok| *ok)
+            .count();
+        assert_eq!(ok, 1);
+    }
+
+    #[test]
+    fn body_media_rule_matches_python() {
+        assert!(body_is_hashed(""));
+        assert!(body_is_hashed(" Application/JSON ; charset=utf-8"));
+        assert!(!body_is_hashed("application/zip"));
+        assert!(!body_is_hashed("multipart/form-data; boundary=x"));
     }
 }

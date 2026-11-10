@@ -1,0 +1,3663 @@
+{
+  "version": 1,
+  "source": "server/inference-budget-watch.cjs via inference-budget-watch-oracle.test.cjs",
+  "gib": 1073741824,
+  "scenarios": [
+    {
+      "name": "two strikes over the overshoot unload the model and log numbers only",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "12884901888",
+          "vram": "536870912",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "cowork-llama-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": 5.5,
+                      "mem_anon_gb": 1.5
+                    },
+                    "gpu": {
+                      "shared_used_gb": 0,
+                      "vram_used_gb": 0
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "12884901888",
+          "vram": "536870912",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "cowork-llama-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": 5.5,
+                      "mem_anon_gb": 1.5
+                    },
+                    "gpu": {
+                      "shared_used_gb": 0,
+                      "vram_used_gb": 0
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "12884901888",
+          "vram": "536870912",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "cowork-llama-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": 5.5,
+                      "mem_anon_gb": 1.5
+                    },
+                    "gpu": {
+                      "shared_used_gb": 0,
+                      "vram_used_gb": 0
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 14,
+            "gttGib": 12,
+            "vramGib": 0.5,
+            "baselineGib": 0,
+            "containerGib": 1.5,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 14,
+            "gttGib": 12,
+            "vramGib": 0.5,
+            "baselineGib": 0,
+            "containerGib": 1.5,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":14,\"gttGib\":12,\"vramGib\":0.5,\"baselineGib\":0,\"containerGib\":1.5,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 14,
+            "gttGib": 12,
+            "vramGib": 0.5,
+            "baselineGib": 0,
+            "containerGib": 1.5,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        }
+      ]
+    },
+    {
+      "name": "a single spike resets the strikes",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "4294967296",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "13421772800",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 4,
+            "gttGib": 4,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 12.5,
+            "gttGib": 12.5,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        }
+      ]
+    },
+    {
+      "name": "the cooldown is waited out while the strikes go on counting",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 30000,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 31000,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":20,\"gttGib\":20,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 2,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 3,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":20,\"gttGib\":20,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a zero overshoot unloads just over the budget",
+      "env": {
+        "INFERENCE_BUDGET_OVERSHOOT_PCT": "0"
+      },
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "13421772800",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "13421772800",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 12.5,
+            "gttGib": 12.5,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 12
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 12.5,
+            "gttGib": 12.5,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 12
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":12.5,\"gttGib\":12.5,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":12,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an overshoot over 100 percent is capped at double the budget",
+      "env": {
+        "INFERENCE_BUDGET_OVERSHOOT_PCT": "250"
+      },
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "25662429594",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "25662429594",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "25877177958",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "25877177958",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 23.9,
+            "gttGib": 23.9,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 24
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 23.9,
+            "gttGib": 23.9,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 24
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 24.1,
+            "gttGib": 24.1,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 24
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 24.1,
+            "gttGib": 24.1,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 24
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":24.1,\"gttGib\":24.1,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":24,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "nothing measurable resets the strikes",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": null,
+          "vram": "0",
+          "backends": {
+            "status": 500,
+            "body": {
+              "error": "down"
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unavailable"
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":20,\"gttGib\":20,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an idle baseline from an empty listing is not charged",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "1610612736",
+          "vram": "536870912",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "15032385536",
+          "vram": "536870912",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "16106127360",
+          "vram": "536870912",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "16106127360",
+          "vram": "536870912",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 0,
+            "gttGib": 1.5,
+            "vramGib": 0.5,
+            "baselineGib": 2,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 12.5,
+            "gttGib": 14,
+            "vramGib": 0.5,
+            "baselineGib": 2,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 13.5,
+            "gttGib": 15,
+            "vramGib": 0.5,
+            "baselineGib": 2,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 13.5,
+            "gttGib": 15,
+            "vramGib": 0.5,
+            "baselineGib": 2,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":13.5,\"gttGib\":15,\"vramGib\":0.5,\"baselineGib\":2,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an unknown listing skips the tick, keeps the strikes and takes no baseline",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "13958643712",
+          "vram": "536870912",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "107374182",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 503,
+            "body": {
+              "error": "busy"
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "107374182",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "models": []
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "107374182",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "text": "not json"
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "107374182",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "drop": true
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "107374182",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                null
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "13958643712",
+          "vram": "536870912",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 13.5,
+            "gttGib": 13,
+            "vramGib": 0.5,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "models-unknown",
+            "strikes": 1
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "models-unknown",
+            "strikes": 1
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "models-unknown",
+            "strikes": 1
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "models-unknown",
+            "strikes": 1
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "models-unknown",
+            "strikes": 1
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 13.5,
+            "gttGib": 13,
+            "vramGib": 0.5,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":13.5,\"gttGib\":13,\"vramGib\":0.5,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "no idle baseline while the maintenance gate is held",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": true,
+          "gtt": "11811160064",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "1073741824",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "15032385536",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 11,
+            "gttGib": 11,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 0,
+            "gttGib": 1,
+            "vramGib": 0,
+            "baselineGib": 1,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 13,
+            "gttGib": 14,
+            "vramGib": 0,
+            "baselineGib": 1,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        }
+      ]
+    },
+    {
+      "name": "no budget reads nothing",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 0,
+          "held": false,
+          "gtt": "32212254720",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": -3,
+          "held": false,
+          "gtt": "32212254720",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "32212254720",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "32212254720",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "no-budget"
+          },
+          "requests": [],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "no-budget"
+          },
+          "requests": [],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 30,
+            "gttGib": 30,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 30,
+            "gttGib": 30,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":30,\"gttGib\":30,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "engine telemetry alone counts the main engine container as anonymous memory",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": null,
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "cowork-llama-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": 7.5,
+                      "mem_anon_gb": 3.5
+                    },
+                    "gpu": {
+                      "shared_used_gb": 9,
+                      "vram_used_gb": 0.4
+                    }
+                  }
+                },
+                {
+                  "name": "cowork-embed-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_anon_gb": 0.8
+                    },
+                    "gpu": null
+                  }
+                },
+                {
+                  "name": "cowork-llama-2",
+                  "stats": {
+                    "ok": false
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": null,
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "llama",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": "6.2"
+                    },
+                    "gpu": {
+                      "shared_used_gb": "7",
+                      "vram_used_gb": null
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": null,
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "llama",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": "6.2"
+                    },
+                    "gpu": {
+                      "shared_used_gb": "7",
+                      "vram_used_gb": null
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 12.9,
+            "gttGib": 9,
+            "vramGib": 0.4,
+            "baselineGib": 0,
+            "containerGib": 3.5,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 13.2,
+            "gttGib": 7,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 6.2,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 13.2,
+            "gttGib": 7,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 6.2,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        }
+      ]
+    },
+    {
+      "name": "a configured engine container is the one counted",
+      "env": {
+        "INFERENCE_ENGINE_CONTAINER": " cowork-embed-1 , other "
+      },
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "1073741824",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "cowork-llama-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": 34,
+                      "mem_anon_gb": 30
+                    },
+                    "gpu": {
+                      "shared_used_gb": 0,
+                      "vram_used_gb": 0
+                    }
+                  }
+                },
+                {
+                  "name": "cowork-embed-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_anon_gb": 12
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "1073741824",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "cowork-llama-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": 34,
+                      "mem_anon_gb": 30
+                    },
+                    "gpu": {
+                      "shared_used_gb": 0,
+                      "vram_used_gb": 0
+                    }
+                  }
+                },
+                {
+                  "name": "cowork-embed-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_anon_gb": 12
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "1073741824",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "cowork-llama-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": 34,
+                      "mem_anon_gb": 30
+                    },
+                    "gpu": {
+                      "shared_used_gb": 0,
+                      "vram_used_gb": 0
+                    }
+                  }
+                },
+                {
+                  "name": "cowork-embed-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_anon_gb": 12
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 13,
+            "gttGib": 1,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 12,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 13,
+            "gttGib": 1,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 12,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 13,
+            "gttGib": 1,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 12,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        }
+      ]
+    },
+    {
+      "name": "without the model manager only the device is read",
+      "env": {},
+      "admin": false,
+      "noLoader": true,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "15032385536",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "cowork-llama-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": 34,
+                      "mem_anon_gb": 30
+                    },
+                    "gpu": {
+                      "shared_used_gb": 0,
+                      "vram_used_gb": 0
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "15032385536",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": [
+                {
+                  "name": "cowork-llama-1",
+                  "stats": {
+                    "ok": true,
+                    "container": {
+                      "mem_used_gb": 34,
+                      "mem_anon_gb": 30
+                    },
+                    "gpu": {
+                      "shared_used_gb": 0,
+                      "vram_used_gb": 0
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 14,
+            "gttGib": 14,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 14,
+            "gttGib": 14,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":14,\"gttGib\":14,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "nothing loaded means nothing to unload",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "32212254720",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "32212254720",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "32212254720",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 0,
+            "gttGib": 30,
+            "vramGib": 0,
+            "baselineGib": 30,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 0,
+            "gttGib": 30,
+            "vramGib": 0,
+            "baselineGib": 30,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 0,
+            "gttGib": 30,
+            "vramGib": 0,
+            "baselineGib": 30,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        }
+      ]
+    },
+    {
+      "name": "loading rows count, failures are not quarantined and an unsettled unload counts as done",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "vision",
+                  "status": {
+                    "value": "loading"
+                  }
+                },
+                {
+                  "id": "lost",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "gone",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                },
+                {
+                  "id": "odd",
+                  "status": {
+                    "value": "sleeping"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {
+            "vision": {
+              "status": 409,
+              "body": {
+                "error": {
+                  "type": "gate_error",
+                  "code": "model_in_use"
+                }
+              }
+            },
+            "lost": {
+              "drop": true
+            }
+          }
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "vision",
+                  "status": {
+                    "value": "loading"
+                  }
+                },
+                {
+                  "id": "lost",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "gone",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                },
+                {
+                  "id": "odd",
+                  "status": {
+                    "value": "sleeping"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {
+            "vision": {
+              "status": 409,
+              "body": {
+                "error": {
+                  "type": "gate_error",
+                  "code": "model_in_use"
+                }
+              }
+            },
+            "lost": {
+              "drop": true
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat",
+              "lost"
+            ],
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload",
+            "POST /models/unload",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            },
+            {
+              "body": {
+                "model": "vision"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            },
+            {
+              "body": {
+                "model": "lost"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ],
+            [
+              "lost",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":20,\"gttGib\":20,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\",\"lost\"],\"failed\":[\"vision\"]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "with the gate admin token the unload is forced",
+      "env": {},
+      "admin": true,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "vision",
+                  "status": {
+                    "value": "loading"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {
+            "vision": {
+              "status": 500,
+              "text": "oops"
+            }
+          }
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "21474836480",
+          "vram": "0",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "vision",
+                  "status": {
+                    "value": "loading"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {
+            "vision": {
+              "status": 500,
+              "text": "oops"
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 20,
+            "gttGib": 20,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat",
+                "force": true
+              },
+              "admin": "synthetic-admin",
+              "authorization": "Bearer synthetic-key"
+            },
+            {
+              "body": {
+                "model": "vision",
+                "force": true
+              },
+              "admin": "synthetic-admin",
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":20,\"gttGib\":20,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[\"vision\"]}"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the GPU counters are summed and a bad vram counter is skipped",
+      "env": {},
+      "admin": false,
+      "noLoader": false,
+      "steps": [
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": " 10737418240\n",
+          "vram": "nan",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "15032385536",
+          "vram": "-5",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        },
+        {
+          "advanceMs": 0,
+          "budget": 12,
+          "held": false,
+          "gtt": "15032385536",
+          "vram": "-5",
+          "backends": {
+            "status": 200,
+            "body": {
+              "backends": []
+            }
+          },
+          "listing": {
+            "status": 200,
+            "body": {
+              "data": [
+                {
+                  "id": "chat",
+                  "status": {
+                    "value": "loaded"
+                  }
+                },
+                {
+                  "id": "embed",
+                  "status": {
+                    "value": "unloaded"
+                  }
+                }
+              ]
+            }
+          },
+          "unload": {}
+        }
+      ],
+      "expect": [
+        {
+          "result": {
+            "state": "ok",
+            "usedGib": 10,
+            "gttGib": 10,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "over",
+            "strikes": 1,
+            "usedGib": 14,
+            "gttGib": 14,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models"
+          ],
+          "unloads": [],
+          "quarantined": [],
+          "log": []
+        },
+        {
+          "result": {
+            "state": "unloaded",
+            "models": [
+              "chat"
+            ],
+            "usedGib": 14,
+            "gttGib": 14,
+            "vramGib": 0,
+            "baselineGib": 0,
+            "containerGib": 0,
+            "budgetGib": 12,
+            "limitGib": 13.2
+          },
+          "requests": [
+            "GET /api/v1/backends token=synthetic-loader-token",
+            "GET /models",
+            "POST /models/unload"
+          ],
+          "unloads": [
+            {
+              "body": {
+                "model": "chat"
+              },
+              "admin": null,
+              "authorization": "Bearer synthetic-key"
+            }
+          ],
+          "quarantined": [
+            [
+              "chat",
+              12
+            ]
+          ],
+          "log": [
+            "[inference-budget] {\"event\":\"unload\",\"usedGib\":14,\"gttGib\":14,\"vramGib\":0,\"baselineGib\":0,\"containerGib\":0,\"budgetGib\":12,\"limitGib\":13.2,\"models\":[\"chat\"],\"failed\":[]}"
+          ]
+        }
+      ]
+    }
+  ]
+}
