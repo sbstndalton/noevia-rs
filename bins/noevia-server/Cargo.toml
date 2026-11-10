@@ -73,6 +73,7 @@ google-token-seal = { path = "../../crates/google-token-seal" }
 egress-issuer = { path = "../../crates/egress-issuer" }
 offsite-backup-format = { path = "../../crates/offsite-backup-format" }
 dav-parse = { path = "../../crates/dav-parse" }
+server-dav = { path = "../../crates/server-dav" }
 policy-leaves = { path = "../../crates/policy-leaves" }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
 server-reasoning-settings = { path = "../../crates/server-reasoning-settings" }
@@ -103,6 +104,7 @@ base64 = "0.22"
 brotli = "8"
 bytes = "1"
 flate2 = "1"
+futures-util = "0.3"
 http-body = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "client", "server"] }
