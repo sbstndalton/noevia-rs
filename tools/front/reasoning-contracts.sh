@@ -8,14 +8,19 @@ replay="${4:?replay binary}"
 out="${5:?new evidence directory}"
 root="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
 mkdir -p "$out/seed"
+# Native publication keeps this flock inode after release. Seed it in
+# BOTH copies; retain the complete state comparison and validate it.
+python3 "$root/tools/stats-seed.py" initialize "$out/seed"
 "$replay" run --corpus "$root/contracts/http/corpus" --base http://127.0.0.1:18021 \
   --ignore-body hours --ignore-body peakHour/hour --seed "$out/seed" --work "$out/node" \
   --server-cmd "exec '$(dirname "$replay")/corpus-launcher' serve '$core'" \
   --report "$out/node-report.json" --state-out "$out/node-state.json"
+python3 "$root/tools/stats-seed.py" verify "$out/seed" "$out/node"
 "$replay" run --corpus "$root/contracts/http/corpus" --base http://127.0.0.1:18021 \
   --ignore-body hours --ignore-body peakHour/hour --seed "$out/seed" --work "$out/front" \
   --native-move-state --server-cmd "exec env NOEVIA_RUST_AUTH=1 sh '$root/tools/front/replay-front.sh' '$paired' '$front'" \
   --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*snapshot-demand' --state-ignore '*embedding-worker-status.json' --state-ignore '*embedding-worker.lock' --state-ignore '*chat-activity.json' --state-ignore '*/rag/' \
   --report "$out/positive-report.json" --state-out "$out/positive-state.json" --expect-state "$out/node-state.json"
+python3 "$root/tools/stats-seed.py" verify "$out/seed" "$out/front"
 # The omission control left with the reasoning switch (sbstndalton/noevia#1071): the front can no
 # longer omit the PUT, and core's own tests prove Node refuses it.
