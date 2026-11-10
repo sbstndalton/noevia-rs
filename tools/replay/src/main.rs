@@ -114,6 +114,18 @@ const REQUEST_TS: &str = "2026-01-01T00:00:00.000Z";
 
 struct Server(Child);
 
+/// Whether any process is left in the group `pgid` (signal 0 sends nothing; it only checks).
+#[cfg(unix)]
+fn group_alive(pgid: u32) -> bool {
+    Command::new("kill")
+        .arg("-0")
+        .arg("--")
+        .arg(format!("-{pgid}"))
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 impl Drop for Server {
     fn drop(&mut self) {
         // The server runs in its own process group (see start_server): stop the group, so a
@@ -125,9 +137,14 @@ impl Drop for Server {
                 .arg("--")
                 .arg(format!("-{}", self.0.id()))
                 .status();
+            // Wait for the whole group, not only its leader: a `sh` wrapper exits on TERM while
+            // the Node and front children it started are still closing cowork.db, and a state
+            // snapshot taken then can find the database locked (CI: "missing settings snapshot").
             let deadline = Instant::now() + Duration::from_secs(5);
+            let mut leader_gone = false;
             while Instant::now() < deadline {
-                if let Ok(Some(_)) = self.0.try_wait() {
+                leader_gone = leader_gone || matches!(self.0.try_wait(), Ok(Some(_)));
+                if leader_gone && !group_alive(self.0.id()) {
                     return;
                 }
                 std::thread::sleep(Duration::from_millis(50));
