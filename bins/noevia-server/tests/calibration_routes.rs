@@ -447,11 +447,22 @@ async fn boot_recovery_through_config_interrupts_the_job_and_restores_its_profil
     .unwrap();
     env.push(("NOEVIA_LEGACY_UPSTREAM", up.base()));
     let f = front_env(d.path(), true, &env).await;
-    e.reload_delay_ms.store(1500, Ordering::Release);
+    let held_reload = e.hold_next_reload();
     let recovery = f.app.config.spawn_calibration_recovery().unwrap();
     assert!(
         f.app.config.spawn_calibration_recovery().is_none(),
         "one recovery at a time"
+    );
+    // Recovery has published its replacement job before this restore reload. Hold that
+    // actual phase, rather than racing the earlier generation changes before a delay starts.
+    held_reload.entered().await;
+    assert!(
+        held_reload.is_held(),
+        "the synthetic restore reload is held"
+    );
+    assert!(
+        !recovery.is_finished(),
+        "recovery cannot finish while reload is held"
     );
     // While it runs: the job is the file's, with no run behind it.
     let (s, v) = write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "").await;
@@ -467,7 +478,16 @@ async fn boot_recovery_through_config_interrupts_the_job_and_restores_its_profil
         (s, v),
         (409, json!({"error":"A calibration is already running."}))
     );
-    assert_eq!(e.count("POST /gate/"), 0);
+    assert_eq!(
+        e.count("POST /models/load"),
+        0,
+        "recovery cannot launch a trial"
+    );
+    assert!(
+        held_reload.is_held(),
+        "route assertions did not release the reload"
+    );
+    held_reload.release();
     let outcome = tokio::time::timeout(Duration::from_secs(30), recovery)
         .await
         .unwrap()
@@ -486,6 +506,41 @@ async fn boot_recovery_through_config_interrupts_the_job_and_restores_its_profil
     assert_eq!(e.count("POST /models/load"), 0);
     assert!(!up.seen().iter().any(|r| r.path == LOAD_DECISION));
     core_untouched(&up);
+}
+
+/// The event hold precedes the reply, and only its owner releases it, including on unwind.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn synthetic_reload_hold_orders_the_reply_and_releases_on_drop_or_unwind() {
+    let d = tempfile::tempdir().unwrap();
+    let e = cal::engine(d.path().join("models.ini")).await;
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], e.port));
+    for unwind in [false, true] {
+        let held = e.hold_next_reload();
+        assert!(
+            !held.is_held(),
+            "arming alone is not an observed reload entry"
+        );
+        let before = e.count("GET /models?reload=1");
+        let response = tokio::spawn(async move { get(addr, "/models?reload=1", "").await });
+        held.entered().await;
+        assert!(held.is_held());
+        assert_eq!(e.count("GET /models?reload=1"), before + 1);
+        assert!(
+            !response.is_finished(),
+            "a held reload cannot publish its reply"
+        );
+        if unwind {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                let _owned_hold = held;
+                panic!("synthetic reload hold owner unwind");
+            }));
+            assert!(result.is_err());
+        } else {
+            drop(held);
+        }
+        assert_eq!(response.await.unwrap().0, 200);
+        assert_eq!(e.count("GET /models?reload=1"), before + 1);
+    }
 }
 
 /// Puts a directory's mode back when the test ends, however it ends.
@@ -584,7 +639,10 @@ async fn boot_recovery_whose_save_fails_keeps_the_interrupted_job_and_saves_it_o
         worker.launch("synth", plan).await,
         Err(Refusal::Unavailable)
     );
-    assert_eq!(e.count("POST /gate/"), 0);
+    assert!(
+        e.count("POST /gate/v1/maintenance") >= 1,
+        "restart repair holds fresh exclusion"
+    );
     assert!(worker.unsaved());
     assert_eq!(std::fs::read_to_string(&state).unwrap(), running);
     // Repaired: the retry lands, without the note.

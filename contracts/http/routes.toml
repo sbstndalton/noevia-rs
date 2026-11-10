@@ -250,12 +250,12 @@ owner = "rust"
 methods = ["DELETE"]
 
 # sbstndalton/noevia#2190 close-out (rust-auto-roles): the GET is the front's, from the user's
-# auto-roles.json and the snapshot Node publishes (the served catalogue, the machine models). The PUT
-# stays Node's: a save warms the roles in the engine, which is chat-live (core rust-auto-roles.cjs).
+# auto-roles.json and the snapshot Node publishes. F1 moves PUT and deletion cleanup to the
+# native writer, keeping the existing warming trigger behind a private bridge.
 [[route]]
 path = "/api/auto-roles"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
 
 [[route]]
 path = "/api/chat"
@@ -265,9 +265,12 @@ owner = "node"
 path = "/api/chat-framing/preferences"
 owner = "rust"
 
+# Chat port S4: every method of exactly this path is the front's (bins/noevia-server
+# chat_framing_suggest.rs); core refuses the POST (rust-chat-framing-suggest.cjs) and keeps only the
+# user's lists and the decision behind its loopback /internal/chat-framing/suggest.
 [[route]]
 path = "/api/chat-framing/suggest"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/chat-vault-mirror/preferences"
@@ -658,7 +661,7 @@ owner = "node"
 
 [[route]]
 path = "/api/models/reranker"
-owner = "node"
+owner = "rust"
 
 # sbstndalton/noevia#2210: the preset reload, the front's (bins/noevia-server model_maint/reload.rs);
 # Node's core server/rust-model-maintenance.cjs refuses its POST. Other methods stay Node's (403/405).
@@ -1088,3 +1091,35 @@ owner = "rust"
 methods = ["GET", "HEAD"]
 catch_all = true
 client = false
+
+# Remaining proxy surface; unmatched import/edit verbs retain Core fallback.
+
+[[route]]
+path = "/api/diary/files"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/file"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/workspace-trash"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/history"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/external-sources"
+owner = "rust"
+
+[[route]]
+path = "/api/diary/external-sources/import"
+owner = "rust"
+methods = ["POST"]
+
+[[route]]
+path = "/api/diary/entries/edit"
+owner = "rust"
+methods = ["POST"]
