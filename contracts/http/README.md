@@ -1859,3 +1859,34 @@ Each stage compares the exact job/run/config snapshot; preparation uses the exis
 only within its own call and returns its token after releasing it. Rust owns confirmation,
 resumability/restoration checks, protected-queue filtering, identity decisions, phase/step reset
 instructions and public projection. No cross-request reservation or replacement-job retry is used.
+
+## Code egress issuer (row V)
+
+`rust-code-egress-issuer` makes the front the only issuer of the code-sandbox egress proxy's control
+key and of the signed task grants (`bins/noevia-server/src/code_egress.rs`, `crates/egress-issuer`).
+It is not a public route: Node asks it over the internal store listener (`POST /v1/egress/{status,
+grant,activity,revoke,forget}`, header `x-noevia-store-token`). The shared proxy key keeps its
+published contract (`CODE_EGRESS_CONTROL_KEY_FILE`, mode 0440, owner `CODE_EGRESS_KEY_UID`/`_GID`,
+64 hex digits and LF, replaced by rename); new private issuer state is `code-egress-issuer.json` in an `issuer/` directory
+inside the key directory (a real directory of the issuer, mode exactly 0700 with no group or other bit, checked on every open and so also when it already existed or was loosened later: refused by name, never repaired; created by the issuer; override `CODE_EGRESS_ISSUER_STATE_FILE`; never
+`UI_DATA_DIR`, whose owner is whatever the host made it), mode 0600, and a restart keeps the key
+and replaces its own session. The private state is only read or published through a trusted
+directory chain, anchored to a held directory descriptor: no symlinked component, ancestors owned by
+root or the issuer and not group/other-writable (except root-owned sticky directories), the state
+directory itself owned by the issuer with mode exactly 0700, the file a regular single-link
+0600 file of the issuer. Anything else (including a destination swapped after start) is refused and
+never repaired. The first publication creates the proxy key exclusively and never replaces a key another issuer
+published. **Takeover of the retired Node issuer's key** (no operator step): Node kept no private
+state (its key is `HMAC(master, random nonce)`, the nonce was never stored, the session lived in
+memory), so the published `current.key` is the only artifact. On a start with no private state of
+ours, a published key is adopted unchanged (no rotation) when it passes the checks Node's own
+publisher applied before touching the file: a real 0750-class directory of the web uid/gid
+(no link, not group/other-writable), a regular single-link file of that uid/gid with mode exactly
+0440, content 64 lowercase hex digits and LF, the process running as that uid. Only the issuer's own
+state is written (atomically, 0600, through the trusted directory chain); Node's file and directory
+are not touched, so a rollback to Node works on the same files. A key that fails a check is refused
+with the check named in the start log (`egress.issuer_unavailable`, `reason=legacy_key_*`) and
+nothing is written or repaired. A key that later differs from the one held is another web's:
+superseded, never overwritten; with a persisted candidate only an exact match is adopted. The paired Core
+carries `noevia-code-egress-client/1` (`server/code-egress-client.cjs`) and publishes no key; it
+drops its reference to a grant once the one-shot cleanup flight has settled.

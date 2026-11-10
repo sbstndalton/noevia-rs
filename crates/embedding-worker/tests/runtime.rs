@@ -426,13 +426,50 @@ async fn regression_p1_lock_contender_recovers_when_draining_owner_releases() {
 async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
     let (dir, store) = seed();
     let embedding = Arc::new(AtomicBool::new(false));
-    let observed = embedding.clone();
-    let stub = server(move |path, _| {
-        if path == "/v1/embeddings" {
-            observed.store(true, Ordering::Release);
-            std::thread::sleep(std::time::Duration::from_secs(30));
+    let watchdog_failed = Arc::new(AtomicBool::new(false));
+    let trace = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let started = std::time::Instant::now();
+    let (release, pending) = tokio::sync::oneshot::channel();
+    let pending = Arc::new(std::sync::Mutex::new(Some(pending)));
+    let (observed, failed, events) = (embedding.clone(), watchdog_failed.clone(), trace.clone());
+    let stub = server_async(move |path, _| {
+        let (observed, failed, events, pending) = (
+            observed.clone(),
+            failed.clone(),
+            events.clone(),
+            pending.clone(),
+        );
+        async move {
+            if path == "/v1/embeddings" && !observed.swap(true, Ordering::AcqRel) {
+                events
+                    .lock()
+                    .unwrap()
+                    .push(("request-entered", started.elapsed()));
+                let receiver = pending.lock().unwrap().take().unwrap();
+                // Awaiting the gate never blocks a Tokio executor thread. A watchdog
+                // or dropped controller is an explicit failed fixture, never a success.
+                let outcome =
+                    tokio::time::timeout(std::time::Duration::from_secs(55), receiver).await;
+                if !matches!(outcome, Ok(Ok(()))) {
+                    failed.store(true, Ordering::Release);
+                    let why = if outcome.is_err() {
+                        "watchdog-expired"
+                    } else {
+                        "controller-dropped"
+                    };
+                    events.lock().unwrap().push((why, started.elapsed()));
+                    return (
+                        503,
+                        "{\"error\":\"synthetic pending-request control ended\"}".into(),
+                    );
+                }
+                events
+                    .lock()
+                    .unwrap()
+                    .push(("request-released", started.elapsed()));
+            }
+            default_reply(&path)
         }
-        default_reply(path)
     })
     .await;
     let http = Http::new("", None, &stub.base, None).unwrap();
@@ -455,16 +492,46 @@ async fn heartbeat_stays_fresh_during_thirty_second_pass_without_loader() {
     wait_until(|| snapshot()["configValid"] == true).await;
     signal(dir.path(), 1);
     wait_until(|| embedding.load(Ordering::Acquire)).await;
+    let pending_started = std::time::Instant::now();
     let mut previous = snapshot()["at"].as_u64().unwrap();
-    for _ in 0..7 {
+    for _ in 0..8 {
         tokio::time::sleep(std::time::Duration::from_secs(4)).await;
         let status = snapshot();
+        trace
+            .lock()
+            .unwrap()
+            .push(("heartbeat-observed", started.elapsed()));
+        assert!(
+            !watchdog_failed.load(Ordering::Acquire),
+            "{:?}",
+            trace.lock().unwrap()
+        );
         let at = status["at"].as_u64().unwrap();
-        assert!(at > previous, "heartbeat stalled during embedding");
+        assert!(
+            at > previous,
+            "heartbeat stalled during embedding: {:?}",
+            trace.lock().unwrap()
+        );
         assert!(status["lastPass"].is_null());
         assert!(status["service"].is_null());
         previous = at;
     }
+    assert!(pending_started.elapsed() >= std::time::Duration::from_secs(30));
+    release.send(()).unwrap();
+    wait_until(|| !snapshot()["lastPass"].is_null()).await;
+    trace
+        .lock()
+        .unwrap()
+        .push(("pass-completed", started.elapsed()));
+    assert!(
+        !watchdog_failed.load(Ordering::Acquire),
+        "{:?}",
+        trace.lock().unwrap()
+    );
+    eprintln!(
+        "heartbeat pending-request trace: {:?}",
+        trace.lock().unwrap()
+    );
     worker.shutdown().await;
 }
 
@@ -510,5 +577,79 @@ async fn cancellation_sleeps_until_notified_and_wakes_all_waiters() {
             Poll::Ready(f.poll(cx).is_ready())
         })
         .await
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn index_outbox_yields_to_slow_foreground_without_spending_attempts() {
+    let (_tmp, mut store) = seed();
+    store.seed.next = None;
+    let user = "11111111-1111-4111-8111-111111111111";
+    let auth = rusqlite::Connection::open(store.root.join("cowork.db")).unwrap();
+    auth.execute("INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?,'outbox','outbox','Synthetic','member','synthetic','outbox',0,0)",[user]).unwrap();
+    let dir = store.root.join("users").join(user);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("projects.json"),
+        r#"{"projects":[{"id":"p","files":[{"name":"a.md","content":"synthetic source"}]}]}"#,
+    )
+    .unwrap();
+    server_projects::outbox::enqueue(
+        &dir,
+        &[server_projects::outbox::Job {
+            kind: "index",
+            project: "p",
+            file: Some("a.md"),
+            payload: None,
+        }],
+        1,
+    )
+    .unwrap();
+    let foreground = Arc::new(AtomicBool::new(true));
+    let busy = foreground.clone();
+    let proofs = Arc::new(AtomicUsize::new(0));
+    let seen = proofs.clone();
+    let stub = server(move |path, _| {
+        if path == "/internal/embedding-worker-owner" {
+            seen.fetch_add(1, Ordering::SeqCst);
+            let mut proof: serde_json::Value = serde_json::from_str(PROOF).unwrap();
+            proof["indexOutboxStopped"] = true.into();
+            proof["foregroundBusy"] = busy.load(Ordering::SeqCst).into();
+            return (200, proof.to_string());
+        }
+        default_reply(path)
+    })
+    .await;
+    let http = Http::new("", None, &stub.base, None).unwrap();
+    let worker = runtime::start(
+        store,
+        http,
+        stub.base.clone(),
+        "synthetic-token".into(),
+        START.into(),
+        Options::default(),
+        None,
+    )
+    .unwrap();
+    wait_until(|| proofs.load(Ordering::SeqCst) > 0).await;
+    tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
+    assert_eq!(
+        server_projects::outbox::jobs(&dir).unwrap()[0].state,
+        "pending"
+    );
+    let db = rusqlite::Connection::open(dir.join("index-outbox.db")).unwrap();
+    assert_eq!(
+        db.query_row("SELECT attempts FROM jobs", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+    foreground.store(false, Ordering::SeqCst);
+    wait_until(|| server_projects::outbox::jobs(&dir).unwrap().is_empty()).await;
+    worker.shutdown().await;
+    let db = rusqlite::Connection::open(dir.join("rag/p.db")).unwrap();
+    assert_eq!(
+        db.query_row("SELECT body FROM chunks", [], |r| r.get::<_, String>(0))
+            .unwrap(),
+        "synthetic source"
     );
 }

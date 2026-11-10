@@ -1,0 +1,38 @@
+{
+  "input": "{\"projects\":[{\"id\":\"p/1\",\"files\":[{\"name\":\"unicode.md\",\"content\":\"A\\ud800😀\",\"textRef\":\"stale\",\"chars\":99},{\"name\":\"empty.md\",\"content\":\"\"},{\"name\":\"skill.md\",\"content\":\"---\\r\\nname: synthetic\\r\\n---\\r\\nbody\"},{\"name\":\"meta.md\",\"textRef\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"chars\":3}]}]}",
+  "expected": {
+    "projects": [
+      {
+        "id": "p/1",
+        "files": [
+          {
+            "name": "unicode.md",
+            "textRef": "4580421b90c7a8cd500871fe9b724a3fd4d602837cb0cbfc4e7d9f8f46d07ef4",
+            "chars": 4
+          },
+          {
+            "name": "empty.md",
+            "textRef": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "chars": 0
+          },
+          {
+            "name": "skill.md",
+            "textRef": "f4af71cfed07d31dfa1ceea77a0d0d1ac237ba49064c7892cd01e6cf9e7f9640",
+            "chars": 31,
+            "skillHeader": true
+          },
+          {
+            "name": "meta.md",
+            "textRef": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "chars": 3
+          }
+        ]
+      }
+    ]
+  },
+  "files": {
+    "project-sources/p1/4580421b90c7a8cd500871fe9b724a3fd4d602837cb0cbfc4e7d9f8f46d07ef4.txt": "A�😀",
+    "project-sources/p1/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.txt": "",
+    "project-sources/p1/f4af71cfed07d31dfa1ceea77a0d0d1ac237ba49064c7892cd01e6cf9e7f9640.txt": "---\r\nname: synthetic\r\n---\r\nbody"
+  }
+}

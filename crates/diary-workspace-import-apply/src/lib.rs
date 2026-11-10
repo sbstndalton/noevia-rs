@@ -46,6 +46,7 @@ pub enum Error {
     Fingerprint,
     Archive(workspace_restore_verify::Reject),
     Database,
+    BackupPending,
     Schema,
     Tenant,
     Inactive,
@@ -61,6 +62,7 @@ impl Error {
             Self::Fingerprint => "fingerprint",
             Self::Archive(reason) => reason.code(),
             Self::Database => "database",
+            Self::BackupPending => "backup_pending",
             Self::Schema => "schema",
             Self::Tenant => "tenant",
             Self::Inactive => "inactive",
@@ -73,6 +75,7 @@ impl Error {
         matches!(
             self,
             Self::Database
+                | Self::BackupPending
                 | Self::Schema
                 | Self::Tenant
                 | Self::Inactive
@@ -202,6 +205,11 @@ pub fn apply_guarded(
     db.pragma_update(None, "synchronous", "FULL")?;
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
     required_schema(&tx)?;
+    // Mandatory even for the standalone CLI: a pre-launch/caller guard does not cover
+    // the race while archive verification/preparation was running in another process.
+    if diary_backup_run::pending_effect(&tx)? {
+        return Err(Error::BackupPending);
+    }
     if meta(&tx, "tenant")?.as_deref() != Some(request.expected_tenant.as_str()) {
         return Err(Error::Tenant);
     }

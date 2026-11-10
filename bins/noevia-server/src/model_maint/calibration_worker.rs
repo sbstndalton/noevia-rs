@@ -20,6 +20,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Notify;
 
+#[cfg(test)]
+static TEST_CHANGED: Notify = Notify::const_new();
+
+#[cfg(test)]
+pub(super) fn test_changed() {
+    TEST_CHANGED.notify_waiters();
+}
+
 const PAD: &str = "This is synthetic padding for a context allocation validation.\n";
 /// What a run that lost its exclusion records (the lease ended or Node stopped confirming it).
 pub const LEASE_LOST: &str = "Calibration stopped because its maintenance hold ended; other clients may have used the engine.";
@@ -42,6 +50,10 @@ pub const UNSAVED: &str =
 /// The longest wait between those retries (they start at [`Limits::save_retry`] and double).
 pub const FINALIZATION_FAILED: &str = "Calibration finalization failed.";
 const SAVE_RETRY_MAX: Duration = Duration::from_secs(60);
+/// Delta review P1: the lease a recovery after a lost hold asks for (unload, restore, reload).
+const RECOVERY_LEASE: Duration = Duration::from_secs(15 * 60);
+const RECOVERY_REASON: &str =
+    "Chat is paused while noevia restores the settings an interrupted calibration left behind.";
 /// The reply a load gets when Node cannot decide it (never sent to the engine, never shown).
 const LOAD_UNCHECKED: &str = "The load could not be checked against the inference memory budget.";
 /// Node's load decision, asked before every load.
@@ -229,6 +241,7 @@ impl Drop for SaveCount {
     fn drop(&mut self) {
         self.0.outstanding.fetch_sub(1, Ordering::AcqRel);
         self.0.snapshots.fetch_sub(1, Ordering::AcqRel);
+        test_changed();
     }
 }
 
@@ -249,7 +262,11 @@ pub struct Worker {
     // An owned restoration can outlive the cleanup deadline. Do not admit another run until
     // its write has a definitive result; cancellation cannot revoke a remote CAS already sent.
     restoring: Arc<AtomicBool>,
+    /// Delta review P1: a lost run's restoration is owed to a recovery under a fresh hold; until it
+    /// has run, local admission stays closed (the run's admission fence is kept).
+    recovery: Arc<AtomicBool>,
     local_fence: Mutex<Option<super::gate::AdmissionFence>>,
+    boot_incident: Mutex<Option<String>>,
     fence_wake: Mutex<Arc<Notify>>,
     fence_interrupted: AtomicBool,
     #[cfg(test)]
@@ -258,6 +275,14 @@ pub struct Worker {
     terminal_stall: Mutex<Option<TerminalStall>>,
     #[cfg(test)]
     terminal_error: AtomicBool,
+    #[cfg(test)]
+    post_expiry: Notify,
+    #[cfg(test)]
+    fence_timer: Mutex<Option<Arc<tests::TestGate>>>,
+    #[cfg(test)]
+    long_expirations: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    finalize_gate: Mutex<Option<Arc<tests::TestGate>>>,
     #[cfg(test)]
     run_abort: Mutex<Option<tokio::task::AbortHandle>>,
     #[cfg(test)]
@@ -518,6 +543,7 @@ impl Drop for RecoveryGuard {
 /// Dropping a panicked/cancelled restoration schedules the same idempotent settlement again.
 /// The reservation remains held until that resolver reaches a definitive success or conflict.
 struct RestoreResolver {
+    allowed: super::ini::WriteAllowed,
     ini: super::ini::Store,
     candidate: super::ini::Candidate,
     pending: Arc<AtomicBool>,
@@ -552,9 +578,17 @@ impl RestoreResolver {
             }
             let restored = resolver
                 .ini
-                .settle_restore(&resolver.candidate, resolver.retry)
+                .settle_restore(
+                    &resolver.candidate,
+                    resolver.retry,
+                    Arc::clone(&resolver.allowed),
+                )
                 .await;
-            resolver.pending.store(false, Ordering::Release);
+            if restored {
+                resolver.pending.store(false, Ordering::Release);
+            }
+            #[cfg(test)]
+            test_changed();
             guard.armed = false;
             restored
         })
@@ -578,7 +612,9 @@ impl Worker {
             writes: Arc::new(Mutex::new(())),
             pending_write: tokio::sync::Mutex::new(None),
             restoring: Arc::new(AtomicBool::new(false)),
+            recovery: Arc::new(AtomicBool::new(false)),
             local_fence: Mutex::new(None),
+            boot_incident: Mutex::new(None),
             fence_wake: Mutex::new(Arc::new(Notify::new())),
             fence_interrupted: AtomicBool::new(false),
             #[cfg(test)]
@@ -587,6 +623,14 @@ impl Worker {
             terminal_stall: Mutex::new(None),
             #[cfg(test)]
             terminal_error: AtomicBool::new(false),
+            #[cfg(test)]
+            post_expiry: Notify::new(),
+            #[cfg(test)]
+            fence_timer: Mutex::new(None),
+            #[cfg(test)]
+            long_expirations: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            finalize_gate: Mutex::new(None),
             #[cfg(test)]
             run_abort: Mutex::new(None),
             #[cfg(test)]
@@ -620,13 +664,42 @@ impl Worker {
             Ok(g) => g,
             Err(p) => p.into_inner(),
         };
-        f(&mut guard)
+        #[cfg(test)]
+        let before = (
+            wtf16::stringify(guard.state.job()),
+            guard.active,
+            guard.decided,
+            guard.launching,
+            guard.recovering,
+            guard.unsaved,
+            guard.lease_lost,
+            guard.cancel_requested,
+        );
+        let result = f(&mut guard);
+        #[cfg(test)]
+        if before
+            != (
+                wtf16::stringify(guard.state.job()),
+                guard.active,
+                guard.decided,
+                guard.launching,
+                guard.recovering,
+                guard.unsaved,
+                guard.lease_lost,
+                guard.cancel_requested,
+            )
+        {
+            test_changed();
+        }
+        result
     }
 
     /// Serial writes retain their blocking owner across cancellation/timeout. The async
     /// slot bounds dispatched work; the blocking mutex covers checks, rename and fsync.
     async fn drain_writes(&self) {
         let mut slot = self.pending_write.lock().await;
+        #[cfg(test)]
+        test_changed();
         if let Some(pending) = slot.as_mut() {
             pending.permit.store(false, Ordering::Release);
             let _ = (&mut pending.task).await;
@@ -706,7 +779,8 @@ impl Worker {
             #[cfg(test)]
             if let Some((_, entered, release)) = stall {
                 let _ = entered.send(());
-                let _ = release.recv_timeout(Duration::from_secs(10));
+                test_changed();
+                let _ = release.recv_timeout(Duration::from_secs(120));
             }
             let _writer = writes.lock().unwrap_or_else(|p| p.into_inner());
             // Reject queued/revoked generations before hydration, serialization or disk I/O.
@@ -752,6 +826,8 @@ impl Worker {
             None => (&mut pending.task).await,
         };
         *slot = None;
+        #[cfg(test)]
+        test_changed();
         result.map_err(|_| std::io::Error::other("state write task"))?
     }
 
@@ -841,6 +917,8 @@ impl Worker {
             .take();
         if let Some(fence) = fence {
             fence.release();
+            #[cfg(test)]
+            test_changed();
         }
     }
 
@@ -885,7 +963,23 @@ impl Worker {
                 Err(_) => eprintln!("[models] calibration fence persistence failed: Other"),
             }
             // Cancellation wakes a single wait; it never releases the retained local fence.
-            tokio::select! { () = tokio::time::sleep(wait) => {}, () = wake.notified() => {} }
+            let timer = tokio::time::sleep(wait);
+            #[cfg(test)]
+            let timer = async {
+                let gate = self
+                    .fence_timer
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .clone();
+                if let Some(gate) = gate {
+                    gate.entered.store(true, Ordering::Release);
+                    test_changed();
+                    gate.release.notified().await;
+                } else {
+                    timer.await;
+                }
+            };
+            tokio::select! { () = timer => {}, () = wake.notified() => {} }
             wait = (wait * 2).min(Duration::from_secs(60));
         }
     }
@@ -932,11 +1026,12 @@ impl Worker {
             if i.launching || i.active {
                 return false;
             }
-            // Reserve synchronously when the cached job already identifies recovery work,
-            // before the spawned recovery can yield to another maintenance request.
-            if i.state.job().get("status").as_str() == Some("running")
-                || i.state.job().get("pendingRestore").truthy()
-                || i.state.job().get("pendingTombstone").truthy()
+            // Unknown boot state is an obligation too. Register it synchronously before routes
+            // can admit Node, and keep it while durable inspection/preparation is pending.
+            let mut incident = self.boot_incident.lock().unwrap_or_else(|p| p.into_inner());
+            if incident.is_none() && !self.maint.authority.recovery_pending() {
+                *incident = Some(self.maint.authority.require_recovery());
+            }
             {
                 let mut fence = self.local_fence.lock().unwrap_or_else(|p| p.into_inner());
                 if fence.is_none() {
@@ -960,9 +1055,12 @@ impl Worker {
     async fn recover_held(self: &Arc<Self>) -> Option<Option<bool>> {
         self.drain_writes().await;
         let file = self.file.clone();
-        let loaded = tokio::task::spawn_blocking(move || file.load()).await.ok();
+        let loaded = match tokio::task::spawn_blocking(move || file.load_checked()).await {
+            Ok(Ok(state)) => state,
+            _ => return None, // Unknown outcome retains both boot barriers for another inspection.
+        };
         let cached = self.with(|i| i.state.job().clone());
-        if let Some(state) = loaded.filter(|state| {
+        if let Some(state) = Some(loaded.clone()).filter(|state| {
             // An aborted recovery's last save may already have landed. Adopt that same job's
             // durable terminal record rather than retaining the stale pending marker in memory.
             (state.job().get("id") == cached.get("id")
@@ -1009,11 +1107,18 @@ impl Worker {
                 _ => None,
             };
             self.complete_decision(state, object).await;
+            if !self.recovery.load(Ordering::Acquire) {
+                self.complete_boot_inspection();
+            }
             return Some(restored);
         }
         let wake = Arc::clone(&self.fence_wake.lock().unwrap_or_else(|p| p.into_inner()));
         let object = self.with(|i| i.job_object);
-        let outcome = match self.maint.prepare_calibration_recovery(Some(wake)).await {
+        let outcome = match self
+            .maint
+            .prepare_calibration_recovery(loaded, Some(wake))
+            .await
+        {
             None => Recovery::Nothing,
             Some(prepared) => {
                 let saved = if prepared.decided {
@@ -1044,7 +1149,7 @@ impl Worker {
         // Even a bounded legacy save may have an unresolved blocking owner after timeout.
         // Resolve/discard it before publishing or releasing the recovery's admission fence.
         self.drain_writes().await;
-        let restored = outcome.restored();
+        let mut restored = outcome.restored();
         let unsaved = matches!(outcome, Recovery::Unsaved { .. });
         let replacement =
             if let Recovery::Saved { state, .. } | Recovery::Unsaved { state, .. } = outcome {
@@ -1059,6 +1164,9 @@ impl Worker {
             } else {
                 None
             };
+        let repair = replacement
+            .as_ref()
+            .is_some_and(|state| state.job().get("pendingRestore").truthy());
         self.with(|i| {
             if let Some(state) = replacement {
                 i.state = state;
@@ -1066,14 +1174,39 @@ impl Worker {
                 i.next_object += 1;
                 i.unsaved = unsaved;
             }
-            self.release_local_fence();
-            i.launching = false;
-            i.recovering = false;
+            if !repair {
+                self.complete_boot_inspection();
+                self.release_local_fence();
+            }
+            i.launching = repair;
+            i.recovering = repair;
         });
+        if repair {
+            self.maint.authority.require_recovery();
+            self.restoring.store(true, Ordering::Release);
+            self.recovery.store(true, Ordering::Release);
+            Arc::clone(self).recover_after_loss().await;
+            self.with(|i| {
+                i.launching = false;
+                i.recovering = false;
+            });
+            restored = Some(Some(self.job_get("restored") == JValue::Bool(true)));
+        }
         if unsaved {
             self.spawn_save_retry();
         }
         restored
+    }
+
+    fn complete_boot_inspection(&self) {
+        if let Some(ticket) = self
+            .boot_incident
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take()
+        {
+            self.maint.authority.complete_recovery(&ticket);
+        }
     }
 
     /// Whether memory holds a recovered job the state file does not have yet.
@@ -1212,13 +1345,32 @@ impl Worker {
                 }
             }
         }
+        // Delta review P1: no engine call on a hold that no longer excludes (lost, expired, or fenced
+        // by a newer Node start), checked here, after the load decision's await, and while the call
+        // runs: a call in flight when the hold stops excluding is abandoned and the run stops.
+        if !hold.excluded() {
+            self.lose_exclusion();
+            return Err(Thrown::Cancelled);
+        }
         let token = hold.token();
-        Self::race(
-            abort,
-            router.request(method, path, body, token.as_deref(), timeout),
-        )
-        .await?
-        .map_err(|_| Thrown::Other("fetch failed".into()))
+        let poll = self.limits.exclusion_poll.min(Duration::from_millis(100));
+        let lost = async {
+            loop {
+                tokio::time::sleep(poll).await;
+                if !hold.excluded() {
+                    return;
+                }
+            }
+        };
+        tokio::select! {
+            r = Self::race(abort, router.request(method, path, body, token.as_deref(), timeout)) => {
+                r?.map_err(|_| Thrown::Other("fetch failed".into()))
+            }
+            () = lost => {
+                self.lose_exclusion();
+                Err(Thrown::Cancelled)
+            }
+        }
     }
 
     /// Node's decision on loading `model` now (core model-load-refusal.cjs, over the models.ini the
@@ -1258,6 +1410,7 @@ impl Worker {
             .await
             .map_err(|e| match e {
                 Thrown::Other(m) if m.contains("aborted") => Thrown::Other(m),
+                Thrown::Cancelled => Thrown::Cancelled,
                 _ => down(),
             })?;
         if !r.ok {
@@ -1935,6 +2088,8 @@ impl Worker {
         match tokio::time::timeout(allowance, read).await {
             Ok(read) => read,
             Err(_) => {
+                #[cfg(test)]
+                self.long_expirations.fetch_add(1, Ordering::Release);
                 self.show_progress(index, &Progress::default());
                 Ok(Long::Done(LongOutcome::OverBudget {
                     predicted: false,
@@ -2321,11 +2476,18 @@ impl Worker {
                     .is_ok_and(|i| i.active && i.job_object == object)
         });
         let revoke = WritePermit(permit);
-        let timed_out =
-            tokio::time::timeout_at(until.into(), self.post_outcome(&hold, outcome, allowed))
-                .await
-                .is_err();
+        let post =
+            tokio::time::timeout_at(until.into(), self.post_outcome(&hold, outcome, allowed));
+        #[cfg(not(test))]
+        let timed_out = post.await.is_err();
+        #[cfg(test)]
+        let timed_out = tokio::select! {
+            result = post => result.is_err(),
+            () = self.post_expiry.notified() => true,
+        };
         drop(revoke);
+        #[cfg(test)]
+        let until = if timed_out { Instant::now() } else { until };
         self.finalize(hold, until, timed_out).await;
     }
 
@@ -2393,6 +2555,11 @@ impl Worker {
             let last = self.job_get("lastRevision");
             if !original.is_nullish() && last.truthy() {
                 let restored = match (original.as_str(), last.as_str()) {
+                    // Delta review P1: nothing runs on a lost hold; a recovery under a fresh one restores.
+                    (Some(text), Some(rev)) if lost => {
+                        self.require_recovery(rev, text).await;
+                        false
+                    }
                     (Some(text), Some(rev))
                         if self.current_revision().await.as_deref() == Some(rev) =>
                     {
@@ -2400,8 +2567,14 @@ impl Worker {
                     }
                     _ => false,
                 };
-                self.job_set("restored", JValue::Bool(restored));
                 if !restored {
+                    if let (Some(text), Some(rev)) = (original.as_str(), last.as_str()) {
+                        self.require_recovery(rev, text).await;
+                    }
+                }
+                self.job_set("restored", JValue::Bool(restored));
+                // A lost run's restore is owed to its recovery, not given up: no "not restored" note.
+                if !restored && !self.recovery.load(Ordering::Acquire) {
                     let error = match self.job_get("error") {
                         JValue::Str(s) if !s.is_empty() => s,
                         _ if cancelled => "Calibration cancelled.".into(),
@@ -2478,6 +2651,27 @@ impl Worker {
     }
 
     async fn finalize(self: &Arc<Self>, mut hold: Hold, until: Instant, post_failed: bool) {
+        #[cfg(test)]
+        let until = {
+            let gate = self
+                .finalize_gate
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone();
+            if let Some(gate) = gate {
+                gate.wait().await;
+                Instant::now()
+            } else {
+                until
+            }
+        };
+        if self.restoring.load(Ordering::Acquire) || post_failed {
+            let original = self.job_get("originalText");
+            let revision = self.job_get("lastRevision");
+            if let (Some(text), Some(rev)) = (original.as_str(), revision.as_str()) {
+                self.require_recovery(rev, text).await;
+            }
+        }
         let (mut state, object) = self.with(|i| {
             // Cancellation already handled by run's outcome must not turn cancelled into failed.
             if matches!(
@@ -2517,10 +2711,15 @@ impl Worker {
             tokio::time::sleep(wait.min(until.saturating_duration_since(Instant::now()))).await;
             wait = (wait * 2).min(Duration::from_secs(1));
         }
-        let released = tokio::time::timeout_at(until.into(), hold.release_node_lease())
-            .await
-            .is_ok()
-            && hold.node_release_confirmed();
+        let release = tokio::time::timeout_at(until.into(), hold.release_node_lease());
+        #[cfg(not(test))]
+        let release_in_time = release.await.is_ok();
+        #[cfg(test)]
+        let release_in_time = tokio::select! {
+            result = release => result.is_ok(),
+            () = self.post_expiry.notified() => false,
+        };
+        let released = release_in_time && hold.node_release_confirmed();
         // Cancellation and this choice serialize on the same mutex. Once sealed, neither
         // cancellation nor unwind can change the outcome, even during an uncertain save.
         let decided = self.with(|i| {
@@ -2602,17 +2801,162 @@ impl Worker {
                 i.recovering = false;
                 i.launching = false;
             }
-            self.release_local_fence();
+            if !self.recovery.load(Ordering::Acquire) {
+                self.release_local_fence();
+            }
         });
+        if self.recovery.load(Ordering::Acquire) {
+            tokio::spawn(Arc::clone(self).recover_after_loss());
+        }
+    }
+
+    /// Persists the restore a lost run owes (the same `pendingRestore` marker boot recovery settles) and
+    /// arms the recovery: local admission stays closed until it has run.
+    async fn require_recovery(&self, revision: &str, text: &str) {
+        // Safety markers are not execution on the old hold. Preserve them even after its permit ends.
+        self.maint.authority.require_recovery();
+        self.job_set(
+            "pendingRestore",
+            JValue::obj([
+                ("baseRevision", JValue::Str(revision.to_owned())),
+                ("text", JValue::Str(text.to_owned())),
+            ]),
+        );
+        self.restoring.store(true, Ordering::Release);
+        self.recovery.store(true, Ordering::Release);
+        let _ = self.save().await;
+    }
+
+    /// Delta review P1: the recovery after a lost hold, under a fresh hold (never the lost one): every
+    /// model confirmed unloaded, the original profile put back (compare-and-swap on its revision), the
+    /// router's re-read confirmed. Retried with backoff until it completes; only then is local admission
+    /// released.
+    async fn recover_after_loss(self: Arc<Self>) {
+        let mut wait = self.limits.save_retry.max(Duration::from_millis(1));
+        loop {
+            if let Ok(hold) = self
+                .maint
+                .acquire_recovery(RECOVERY_REASON, RECOVERY_LEASE)
+                .await
+            {
+                let ticket = self.maint.authority.recovery_ticket().unwrap_or_default();
+                let mut done = self.recover_once(&hold).await;
+                if done {
+                    done = hold.excluded()
+                        && (hold.gated_now()
+                            || match hold.recovery_proof() {
+                                Some((id, generation)) => {
+                                    self.maint
+                                        .node
+                                        .complete_recovery(&ticket, id, generation)
+                                        .await
+                                }
+                                None => false,
+                            })
+                        && hold.excluded();
+                    if done {
+                        done = self.maint.authority.complete_recovery(&ticket);
+                    }
+                }
+                if !done {
+                    self.maint.authority.require_recovery();
+                    if !hold.gated_now() {
+                        let _ = self.maint.node.recovery_barrier(true, &ticket).await;
+                    }
+                }
+                hold.release().await;
+                if done {
+                    break;
+                }
+            }
+            tokio::time::sleep(wait).await;
+            wait = (wait * 2).min(SAVE_RETRY_MAX);
+        }
+        self.with(|i| {
+            if let Some(job) = i.state.job_mut() {
+                job.retain(|(k, _)| k != "pendingRestore");
+                if job
+                    .iter()
+                    .any(|(k, v)| k == "restored" && v == &JValue::Bool(true))
+                {
+                    if let Some((_, JValue::Str(error))) =
+                        job.iter_mut().find(|(k, _)| k == "error")
+                    {
+                        *error = error.replace(NOT_RESTORED, "");
+                    }
+                }
+            }
+        });
+        let _ = self.save().await;
+        self.restoring.store(false, Ordering::Release);
+        self.recovery.store(false, Ordering::Release);
+        self.release_local_fence();
+    }
+
+    async fn recover_once(&self, hold: &Hold) -> bool {
+        if self.unload_all_inner(hold).await.is_err() {
+            return false;
+        }
+        let pending = self.job_get("pendingRestore");
+        let (Some(revision), Some(text)) = (
+            pending.get("baseRevision").as_str().map(str::to_owned),
+            pending.get("text").as_str().map(str::to_owned),
+        ) else {
+            return true;
+        };
+        let desired = super::ini::sha(&text);
+        if self.current_revision().await.as_deref() == Some(revision.as_str()) {
+            let Some(ini) = self.maint.ini.clone() else {
+                return false;
+            };
+            let resolver = Arc::new(RestoreResolver {
+                allowed: hold.write_fence(),
+                ini,
+                candidate: super::ini::Candidate {
+                    base_revision: revision,
+                    text,
+                    before: String::new(),
+                },
+                pending: Arc::new(AtomicBool::new(true)),
+                retry: self.limits.save_retry,
+                #[cfg(test)]
+                panic_once: Arc::new(AtomicBool::new(false)),
+            });
+            let restored = resolver.spawn().await.unwrap_or(false);
+            if !hold.excluded() {
+                return false;
+            }
+            if !restored
+                && self.current_revision().await.as_deref()
+                    == Some(resolver.candidate.base_revision.as_str())
+            {
+                return false;
+            }
+        }
+        let settled = self
+            .request(
+                hold,
+                reqwest::Method::GET,
+                "/models?reload=1",
+                None,
+                RELOAD,
+                None,
+            )
+            .await
+            .is_ok_and(|r| r.ok)
+            && hold.excluded();
+        if settled {
+            self.job_set(
+                "restored",
+                JValue::Bool(self.current_revision().await.as_deref() == Some(desired.as_str())),
+            );
+        }
+        settled
     }
 
     /// Put `text` back if models.ini is still at `revision`, then reload the router.
     ///
-    /// After a lost hold this runs without exclusion, on purpose: the profile under test must not
-    /// outlive the run, and the file write is still compare-and-swap on the revision, so nothing
-    /// another writer saved is overwritten. Only the raw reload is unexcluded: once Node has ended
-    /// the lease it can admit a chat, which that reload may interrupt. Leaving a half-tested profile
-    /// live would be worse, so the trade-off is kept.
+    /// Every asynchronous write and retry carries this exact hold's fence; reread is part of success.
     async fn restore(
         &self,
         hold: &Hold,
@@ -2653,7 +2997,10 @@ impl Worker {
             return false;
         }
         self.restoring.store(true, Ordering::Release);
+        let fence = hold.write_fence();
+        let permit = Arc::clone(&allowed);
         let resolver = Arc::new(RestoreResolver {
+            allowed: Arc::new(move || fence() && permit()),
             ini,
             candidate: c,
             pending: Arc::clone(&self.restoring),
@@ -2662,8 +3009,8 @@ impl Worker {
             panic_once: Arc::clone(&self.panic_on_restore),
         });
         let restored = resolver.spawn().await.unwrap_or(false);
-        if restored && allowed() {
-            let _ = self
+        if restored && allowed() && hold.excluded() {
+            return self
                 .request(
                     hold,
                     reqwest::Method::GET,
@@ -2672,9 +3019,11 @@ impl Worker {
                     RELOAD,
                     None,
                 )
-                .await;
+                .await
+                .is_ok_and(|r| r.ok)
+                && hold.excluded();
         }
-        restored
+        false
     }
 
     /// The search and the final write; the history entry on a pass.
@@ -2887,6 +3236,40 @@ fn hold_facts(e: &HoldRefusal) -> JValue {
 mod tests {
     use super::*;
 
+    // Timeouts are deadlock watchdogs only; progress is observed through the rig's
+    // atomics/channels or gates, never inferred from elapsed scheduler time.
+    const WATCHDOG: Duration = Duration::from_secs(120);
+
+    #[derive(Default)]
+    struct RequestLog {
+        rows: Mutex<Vec<String>>,
+        changed: Notify,
+    }
+    impl RequestLog {
+        fn lock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, Vec<String>>> {
+            self.rows.lock()
+        }
+        fn record(&self, row: String) {
+            self.rows.lock().unwrap().push(row);
+            self.changed.notify_waiters();
+        }
+    }
+
+    #[derive(Default)]
+    pub(super) struct TestGate {
+        pub(super) entered: AtomicBool,
+        pub(super) release: Notify,
+    }
+    impl TestGate {
+        pub(super) async fn wait(&self) {
+            self.entered.store(true, Ordering::Release);
+            test_changed();
+            tokio::time::timeout(WATCHDOG, self.release.notified())
+                .await
+                .unwrap();
+        }
+    }
+
     #[test]
     fn uuid_has_the_v4_shape() {
         let u = uuid();
@@ -2910,25 +3293,27 @@ mod tests {
     async fn abort_wakes_a_waiter_and_stays_aborted() {
         let a = Arc::new(Abort::default());
         let b = Arc::clone(&a);
-        let waiter = tokio::spawn(async move { b.wait().await });
-        tokio::task::yield_now().await;
+        let (entered, ready) = tokio::sync::oneshot::channel();
+        let waiter = tokio::spawn(async move {
+            entered.send(()).unwrap();
+            b.wait().await;
+        });
+        tokio::time::timeout(WATCHDOG, ready)
+            .await
+            .unwrap()
+            .unwrap();
         a.abort();
-        tokio::time::timeout(Duration::from_secs(5), waiter)
+        tokio::time::timeout(WATCHDOG, waiter)
             .await
             .unwrap()
             .unwrap();
         assert!(a.aborted());
-        tokio::time::timeout(Duration::from_secs(5), a.wait())
-            .await
-            .unwrap();
+        tokio::time::timeout(WATCHDOG, a.wait()).await.unwrap();
     }
 
     /// A synthetic llama.cpp router and inference gate: loads pass up to 16K, long prompts up to
     /// 8K (an error event above), `stall` makes the long prompt hang until the client goes away.
-    async fn synthetic_engine(
-        ini: std::path::PathBuf,
-        stall: bool,
-    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+    async fn synthetic_engine(ini: std::path::PathBuf, stall: bool) -> (u16, Arc<RequestLog>) {
         synthetic_engine_with(
             ini,
             Synth {
@@ -2942,12 +3327,13 @@ mod tests {
     /// What the synthetic engine does besides passing loads to 16K and long prompts to 8K.
     #[derive(Default, Clone)]
     struct Synth {
-        /// The long prompt answers only after 60 s (until the client goes away).
+        /// The long prompt never answers (until the client goes away).
         stall: bool,
         /// The first `GET /props` sets it and answers late (a lease that ends after the pass).
-        props: Option<Arc<AtomicBool>>,
+        props: Option<Arc<TestGate>>,
         /// The long prompt answers 200 at once, then sends nothing, ever.
         silent: bool,
+        silent_poll: Option<Arc<Notify>>,
         /// Other models live besides the one under test (`extra-<n>`, each until it is unloaded).
         live: Option<Arc<std::sync::atomic::AtomicUsize>>,
         /// Node's load decision (this engine also stands in for Node's loopback listener): given the
@@ -2969,14 +3355,19 @@ mod tests {
     }
 
     /// A body that never sends anything and never ends.
-    struct Silent;
+    struct Silent {
+        polled: Option<Arc<Notify>>,
+    }
     impl http_body::Body for Silent {
         type Data = bytes::Bytes;
         type Error = std::convert::Infallible;
         fn poll_frame(
-            self: std::pin::Pin<&mut Self>,
+            mut self: std::pin::Pin<&mut Self>,
             _: &mut std::task::Context<'_>,
         ) -> std::task::Poll<Option<Result<http_body::Frame<bytes::Bytes>, Self::Error>>> {
+            if let Some(polled) = self.polled.take() {
+                polled.notify_one();
+            }
             std::task::Poll::Pending
         }
     }
@@ -2984,7 +3375,7 @@ mod tests {
     async fn synthetic_engine_with(
         ini: std::path::PathBuf,
         synth: Synth,
-    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+    ) -> (u16, Arc<RequestLog>) {
         use axum::body::Body;
         use axum::http::{Request, Response};
         use http_body_util::BodyExt;
@@ -2992,12 +3383,13 @@ mod tests {
             stall,
             props,
             silent,
+            silent_poll,
             live,
             node,
         } = synth;
         let asks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let status = Arc::new(Mutex::new("unloaded".to_owned()));
-        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::new(RequestLog::default());
         let log = Arc::clone(&seen);
         let ctx_of = move || -> f64 {
             std::fs::read_to_string(&ini)
@@ -3018,12 +3410,13 @@ mod tests {
                 node.clone(),
                 Arc::clone(&asks),
             );
+            let silent_poll = silent_poll.clone();
             async move {
                 let (parts, body) = req.into_parts();
                 let path = parts.uri.path().to_owned();
                 let body = body.collect().await.map(|b| b.to_bytes()).unwrap_or_default();
                 let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-                log.lock().unwrap().push(format!("{} {}", parts.method, parts.uri));
+                log.record(format!("{} {}", parts.method, parts.uri));
                 let json = |code: u16, v: Value| {
                     Response::builder().status(code).header("content-type", "application/json").body(Body::from(v.to_string())).unwrap()
                 };
@@ -3062,13 +3455,14 @@ mod tests {
                     ("POST", "/tokenize") => json(200, json!({"tokens": vec![1; 650]})),
                     ("GET", "/props") => {
                         if let Some(p) = &props {
-                            if !p.swap(true, Ordering::AcqRel) {
-                                tokio::time::sleep(Duration::from_millis(300)).await;
+                            if !p.entered.load(Ordering::Acquire) {
+                                p.wait().await;
                             }
                         }
                         json(200, json!({"build_info": "b-synthetic"}))
                     }
                     ("POST", "/v1/chat/completions") if body["stream"] == Value::Bool(true) => {
+                        log.record("STREAM /v1/chat/completions".into());
                         let content = body["messages"][0]["content"].as_str().unwrap_or("").to_owned();
                         let marker: String = content
                             .strip_prefix("Remember the start marker: ")
@@ -3077,10 +3471,10 @@ mod tests {
                             .take_while(|c| *c != '.')
                             .collect();
                         if stall {
-                            tokio::time::sleep(Duration::from_secs(60)).await;
+                            tokio::time::timeout(WATCHDOG, std::future::pending::<()>()).await.unwrap();
                         }
                         if silent {
-                            return Response::builder().status(200).header("content-type", "text/event-stream").body(Body::new(Silent)).unwrap();
+                            return Response::builder().status(200).header("content-type", "text/event-stream").body(Body::new(Silent { polled: silent_poll })).unwrap();
                         }
                         let events = if ctx_of() <= 8192.0 {
                             format!("data: {}\n\ndata: [DONE]\n\n", json!({"choices": [{"delta": {"content": marker}}]}))
@@ -3162,28 +3556,29 @@ mod tests {
     }
 
     async fn settled(w: &Worker) -> JValue {
-        for _ in 0..600 {
+        delta_wait(|| {
             let job = w.job();
-            // finishedAt is published only after persistence and local admission release.
-            if job.get("status").as_str() != Some("running")
+            job.get("status").as_str() != Some("running")
                 && !matches!(job.get("finishedAt"), JValue::Undefined)
-            {
-                return job;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        panic!("the synthetic run did not finish: {:?}", w.job());
+        })
+        .await;
+        w.job()
     }
 
-    async fn released(log: &Mutex<Vec<String>>, prefix: &str) {
-        // Bounded at 30 s: a run's state saves on the way here can wait out a slow fsync.
-        for _ in 0..3000 {
-            if log.lock().unwrap().iter().any(|r| r.starts_with(prefix)) {
-                return;
+    async fn released(log: &RequestLog, prefix: &str) {
+        tokio::time::timeout(WATCHDOG, async {
+            loop {
+                let changed = log.changed.notified();
+                tokio::pin!(changed);
+                changed.as_mut().enable();
+                if log.lock().unwrap().iter().any(|r| r.starts_with(prefix)) {
+                    return;
+                }
+                changed.await;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        panic!("remote release was not observed: {prefix}");
+        })
+        .await
+        .expect("synthetic request acknowledgement");
     }
 
     const INI: &str =
@@ -3191,20 +3586,20 @@ mod tests {
 
     // REVIEW_REGRESSIONS_BEGIN
     async fn review_wait_outcome(w: &Worker) {
-        tokio::time::timeout(Duration::from_secs(3), async {
-            while w.with(|i| i.state.job().get("status").as_str() == Some("running")) {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .unwrap();
+        let gate = w.finalize_gate.lock().unwrap().clone();
+        if let Some(gate) = gate {
+            delta_wait(|| gate.entered.load(Ordering::Acquire)).await;
+        } else {
+            delta_wait(|| w.with(|i| i.state.job().get("status").as_str() != Some("running")))
+                .await;
+        }
     }
 
     async fn review_blocked_save() -> (tempfile::TempDir, Arc<Worker>, std::path::PathBuf) {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let props = Arc::new(AtomicBool::new(false));
+        let props = Arc::new(TestGate::default());
         let (port, _) = synthetic_engine_with(
             ini,
             Synth {
@@ -3217,27 +3612,24 @@ mod tests {
         let w = with_limits(
             &w,
             Limits {
-                finalize: Duration::from_millis(300),
+                finalize: WATCHDOG,
                 save_retry: Duration::from_millis(5),
                 ..w.limits
             },
         );
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(3), async {
-            while !props.load(Ordering::Acquire) {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .unwrap();
+        delta_wait(|| props.entered.load(Ordering::Acquire)).await;
+        *w.finalize_gate.lock().unwrap() = Some(Arc::new(TestGate::default()));
         let path = w.file.path.clone().unwrap();
         let backup = path.with_extension("review-backup");
         std::fs::rename(&path, &backup).unwrap();
         std::fs::create_dir(&path).unwrap();
+        props.release.notify_one();
         (d, w, backup)
     }
 
-    fn review_failed(w: &Worker, job: &JValue) {
+    async fn review_failed(w: &Worker, job: &JValue) {
+        delta_wait(|| !w.maint.local_held()).await;
         assert_eq!(job.get("status").as_str(), Some("failed"), "{job:?}");
         assert_eq!(
             job.get("error").as_str(),
@@ -3249,6 +3641,14 @@ mod tests {
     }
 
     async fn review_repair_decided_save(w: &Worker, backup: &std::path::Path) {
+        review_wait_outcome(w).await;
+        w.finalize_gate
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .release
+            .notify_one();
         delta_wait(|| w.with(|i| i.decided)).await;
         assert_eq!(w.job().get("status").as_str(), Some("running"));
         assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
@@ -3265,10 +3665,8 @@ mod tests {
     async fn review_persistent_final_save_failure_retains_admission_until_durable() {
         let (_d, w, backup) = review_blocked_save().await;
         review_repair_decided_save(&w, &backup).await;
-        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
-            .await
-            .unwrap();
-        review_failed(&w, &job);
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
+        review_failed(&w, &job).await;
         assert_eq!(w.file.load().job().get("status").as_str(), Some("failed"));
     }
 
@@ -3282,10 +3680,8 @@ mod tests {
             "pre-decision finalization is cancellable"
         );
         review_repair_decided_save(&w, &backup).await;
-        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
-            .await
-            .unwrap();
-        review_failed(&w, &job);
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
+        review_failed(&w, &job).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -3294,10 +3690,8 @@ mod tests {
         review_wait_outcome(&w).await;
         w.lose_exclusion();
         review_repair_decided_save(&w, &backup).await;
-        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
-            .await
-            .unwrap();
-        review_failed(&w, &job);
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
+        review_failed(&w, &job).await;
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -3316,14 +3710,12 @@ mod tests {
         );
         w.panic_on_run.store(true, Ordering::Release);
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
+        let job = tokio::time::timeout(WATCHDOG, settled(&w))
             .await
             .expect("panic reconciled");
-        review_failed(&w, &job);
-        tokio::time::timeout(Duration::from_secs(3), async {
-            while w.unsaved() {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
+        review_failed(&w, &job).await;
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| !w.unsaved()).await;
         })
         .await
         .unwrap();
@@ -3343,13 +3735,19 @@ mod tests {
         };
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        let app = axum::Router::new().fallback(|r: Request<Body>| async move {
+        let deleted = Arc::new(Notify::new());
+        let delete_seen = Arc::clone(&deleted);
+        let app = axum::Router::new().fallback(move |r: Request<Body>| {
+            let delete_seen = Arc::clone(&delete_seen);
+            async move {
             let (code, body) = if r.method() == "DELETE" {
+                delete_seen.notify_one();
                 (503, json!({"error":"private synthetic transport detail"}))
             } else if r.uri().path().ends_with("/lease") {
                 (201, json!({"lease":"fedcba9876543210fedcba9876543210","ttlMs":180000,"renewMs":20,"hardMs":86400000}))
             } else { (200, json!({"refusal":null})) };
             Response::builder().status(code).body(Body::from(body.to_string())).unwrap()
+            }
         });
         tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
@@ -3362,19 +3760,22 @@ mod tests {
         let w = with_limits(
             &w,
             Limits {
-                finalize: Duration::from_millis(300),
+                finalize: WATCHDOG,
                 ..w.limits
             },
         );
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
+        tokio::time::timeout(WATCHDOG, deleted.notified())
+            .await
+            .unwrap();
+        // Expire only once the release request is in flight, not during launch/fsync.
+        w.post_expiry.notify_one();
+        let job = tokio::time::timeout(WATCHDOG, settled(&w))
             .await
             .expect("bounded DELETE");
-        review_failed(&w, &job);
-        tokio::time::timeout(Duration::from_secs(3), async {
-            while w.unsaved() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        review_failed(&w, &job).await;
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| !w.unsaved()).await;
         })
         .await
         .expect("failed record retry persisted");
@@ -3391,7 +3792,7 @@ mod tests {
         let w = with_limits(
             &w,
             Limits {
-                finalize: Duration::from_millis(300),
+                finalize: WATCHDOG,
                 ..w.limits
             },
         );
@@ -3399,13 +3800,19 @@ mod tests {
         let (entered, started) = std::sync::mpsc::channel();
         let (release, resume) = std::sync::mpsc::channel();
         let blocked = std::thread::spawn(move || store.stall_writes(entered, resume));
-        started.recv_timeout(Duration::from_secs(1)).unwrap();
+        started.recv_timeout(WATCHDOG).unwrap();
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        review_wait_outcome(&w).await;
+        let observed = Arc::clone(w.maint.evidence.as_ref().unwrap());
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| observed.decide_attempts() >= 1).await;
+        })
+        .await
+        .expect("old append dispatched to the blocked store boundary");
+        w.post_expiry.notify_one();
         // Evidence is waiting on the actual store mutex after the successful search.
-        let result = tokio::time::timeout(Duration::from_secs(2), settled(&w)).await;
+        let result = tokio::time::timeout(WATCHDOG, settled(&w)).await;
         if let Ok(job) = &result {
-            review_failed(&w, job);
+            review_failed(&w, job).await;
             assert!(!w.with(|i| i.active));
             let h = w
                 .maint
@@ -3421,6 +3828,11 @@ mod tests {
         release.send(()).unwrap();
         blocked.join().unwrap();
         result.expect("post-outcome evidence deadline must publish failure");
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| observed.decide_completions() >= 1).await;
+        })
+        .await
+        .expect("old blocked append completed after release");
         settled(&w).await;
         assert_eq!(
             evidence_count(&w).await,
@@ -3451,6 +3863,126 @@ mod tests {
         let _ = w.cancel();
         settled(&w).await;
     }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn r4_restore_retry_stops_on_exact_hold_loss() {
+        let (d, w, _available, calls, _) = restore_rig("r4down").await;
+        w.maint.authority.node_session("a", 1).unwrap();
+        let hold = w
+            .maint
+            .acquire_recovery("repair", RECOVERY_LEASE)
+            .await
+            .unwrap();
+        let trial = format!("{INI}# trial\n");
+        std::fs::write(d.path().join("models.ini"), &trial).unwrap();
+        let revision = super::super::ini::sha(&trial);
+        let task = {
+            let w = Arc::clone(&w);
+            tokio::spawn(async move { w.restore(&hold, &revision, INI, Arc::new(|| true)).await })
+        };
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while calls.load(Ordering::Acquire) == 0 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        w.maint.authority.node_session("b", 2).unwrap();
+        assert!(!tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("lost restore must stop retrying")
+            .unwrap());
+        let n = calls.load(Ordering::Acquire);
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(calls.load(Ordering::Acquire), n);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn r4_fresh_recovery_cas_retry_stops_on_loss() {
+        let (d, w, _available, calls, _) = restore_rig("r4down").await;
+        w.maint.authority.node_session("a", 1).unwrap();
+        let hold = w
+            .maint
+            .acquire_recovery("repair", RECOVERY_LEASE)
+            .await
+            .unwrap();
+        let trial = format!("{INI}# trial\n");
+        std::fs::write(d.path().join("models.ini"), &trial).unwrap();
+        w.with(|i| i.state.set_job(JValue::obj([] as [(&str, JValue); 0])));
+        w.job_set(
+            "pendingRestore",
+            JValue::obj([
+                ("baseRevision", JValue::Str(super::super::ini::sha(&trial))),
+                ("text", JValue::Str(INI.into())),
+            ]),
+        );
+        let task = {
+            let w = Arc::clone(&w);
+            tokio::spawn(async move { w.recover_once(&hold).await })
+        };
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while calls.load(Ordering::Acquire) == 0 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        w.maint.authority.node_session("b", 2).unwrap();
+        assert!(!tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("lost recovery must stop retrying")
+            .unwrap());
+        let n = calls.load(Ordering::Acquire);
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        assert_eq!(calls.load(Ordering::Acquire), n);
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn r4_loss_during_restore_intent_persistence_prevents_cas() {
+        let (d, w, _, calls, _) = restore_rig("r4down").await;
+        w.maint.authority.node_session("a", 1).unwrap();
+        let hold = w
+            .maint
+            .acquire_recovery("repair", RECOVERY_LEASE)
+            .await
+            .unwrap();
+        let trial = format!("{INI}# trial\n");
+        std::fs::write(d.path().join("models.ini"), &trial).unwrap();
+        let revision = super::super::ini::sha(&trial);
+        let (ready, release, _) = pause_commit(&w);
+        let task = {
+            let w = Arc::clone(&w);
+            tokio::spawn(async move { w.restore(&hold, &revision, INI, Arc::new(|| true)).await })
+        };
+        delta_wait(|| ready.try_recv().is_ok()).await;
+        w.maint.authority.node_session("b", 2).unwrap();
+        release.send(()).unwrap();
+        assert!(!tokio::time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("lost persistence cannot launch restore CAS")
+            .unwrap());
+        assert_eq!(calls.load(Ordering::Acquire), 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn r4_restore_cannot_succeed_when_router_reread_is_unconfirmed() {
+        let (d, mut w, available, _, _) = restore_rig("r4down").await;
+        available.store(true, Ordering::Release);
+        Arc::get_mut(&mut Arc::get_mut(&mut w).unwrap().maint)
+            .unwrap()
+            .router = Some(super::super::router::Router::new("http://127.0.0.1:9", None).unwrap());
+        let hold = w
+            .maint
+            .acquire_recovery("repair", RECOVERY_LEASE)
+            .await
+            .unwrap();
+        let trial = format!("{INI}# trial\n");
+        std::fs::write(d.path().join("models.ini"), &trial).unwrap();
+        let revision = super::super::ini::sha(&trial);
+        assert!(
+            !w.restore(&hold, &revision, INI, Arc::new(|| true)).await,
+            "file CAS alone is not restoration settlement"
+        );
+    }
+
     // SETTLEMENT_REGRESSIONS_BEGIN
     async fn restore_rig(
         mode: &'static str,
@@ -3459,7 +3991,7 @@ mod tests {
         Arc<Worker>,
         Arc<AtomicBool>,
         Arc<std::sync::atomic::AtomicUsize>,
-        Arc<Mutex<Vec<String>>>,
+        Arc<RequestLog>,
     ) {
         use axum::{
             body::Body,
@@ -3470,7 +4002,7 @@ mod tests {
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
         let (engine, seen) = synthetic_engine(ini.clone(), true).await;
-        let available = Arc::new(AtomicBool::new(mode != "down"));
+        let available = Arc::new(AtomicBool::new(mode != "down" && mode != "r4down"));
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -3488,6 +4020,7 @@ mod tests {
                     (409, json!({"detail":"changed"}))
                 } else if text == INI {
                     let attempt = attempts.fetch_add(1, Ordering::AcqRel);
+                    test_changed();
                     match mode {
                         "lost" if attempt == 0 => {
                             std::fs::write(&file, text).unwrap();
@@ -3518,7 +4051,12 @@ mod tests {
         tokio::spawn(async move {
             let _ = axum::serve(listener, app).await;
         });
-        let mut w = worker(d.path(), engine);
+        let mut w = if mode == "r4down" {
+            let (node, _) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
+            worker_with(d.path(), engine, Some(node))
+        } else {
+            worker(d.path(), engine)
+        };
         let maint = Arc::get_mut(&mut Arc::get_mut(&mut w).unwrap().maint).unwrap();
         maint.ini = Some(super::super::ini::Store::new(
             ini,
@@ -3542,22 +4080,21 @@ mod tests {
         (d, w, available, calls, seen)
     }
     async fn wait_restoration(w: &Worker) {
-        tokio::time::timeout(Duration::from_secs(15), async {
-            while w.restoring.load(Ordering::Acquire) {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| !w.restoring.load(Ordering::Acquire)).await;
         })
         .await
         .expect("owned restoration settles and readmits");
     }
-    async fn begin_restore_run(w: &Arc<Worker>, seen: &Mutex<Vec<String>>) {
+    async fn begin_restore_run(w: &Arc<Worker>, seen: &RequestLog) {
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        released(seen, "POST /v1/chat/completions").await;
+        released(seen, "STREAM /v1/chat/completions").await;
         w.cancel().unwrap();
     }
     async fn assert_restore_readmits(w: &Arc<Worker>) {
         wait_restoration(w).await;
         settled(w).await;
+        delta_wait(|| !w.maint.local_held()).await;
         w.launch("synthetic", plan(32768.0, 120.0))
             .await
             .expect("settled CAS readmits a successor");
@@ -3599,41 +4136,23 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn an_unreachable_restore_refuses_calibration_but_keeps_inference_admitted() {
+    async fn an_unreachable_restore_retains_admission_until_settlement() {
         let (_d, w, available, calls, seen) = restore_rig("down").await;
         begin_restore_run(&w, &seen).await;
-        tokio::time::timeout(Duration::from_secs(15), async {
-            while calls.load(Ordering::Acquire) == 0 {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| calls.load(Ordering::Acquire) != 0).await;
         })
         .await
         .unwrap();
+        // The owned CAS has reached the unavailable writer; expire its enclosing await.
+        w.post_expiry.notify_one();
         settled(&w).await;
         assert!(w.restoring.load(Ordering::Acquire));
         assert_eq!(
             w.launch("synthetic", plan(32768.0, 120.0)).await,
             Err(Refusal::Unavailable)
         );
-        assert!(!w.maint.local_held());
-        let reply = w
-            .maint
-            .router
-            .as_ref()
-            .unwrap()
-            .request(
-                reqwest::Method::POST,
-                "/v1/chat/completions",
-                Some(&json!({"messages":[],"stream":false})),
-                None,
-                Duration::from_secs(1),
-            )
-            .await
-            .unwrap();
-        assert_eq!(
-            reply.status, 200,
-            "ordinary inference remains admitted while only calibration waits"
-        );
+        assert!(w.maint.local_held());
         available.store(true, Ordering::Release);
         assert_restore_readmits(&w).await;
     }
@@ -3677,17 +4196,15 @@ mod tests {
         w.file.save(&state).unwrap();
         let worker = Arc::clone(&w);
         let recovery = tokio::spawn(async move { worker.recover().await });
-        tokio::time::timeout(Duration::from_secs(15), async {
-            while calls.load(Ordering::Acquire) < 2 {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| calls.load(Ordering::Acquire) >= 2).await;
         })
         .await
         .expect("boot recovery retains and retries the unsettled CAS");
         available.store(true, Ordering::Release);
         assert_eq!(
             // Recovery's own CAS retry backs off 1 s, 2 s, ...: allow several rounds.
-            tokio::time::timeout(Duration::from_secs(15), recovery)
+            tokio::time::timeout(WATCHDOG, recovery)
                 .await
                 .unwrap()
                 .unwrap(),
@@ -3714,7 +4231,7 @@ mod tests {
         let w = with_limits(
             &w,
             Limits {
-                finalize: Duration::from_millis(150),
+                finalize: WATCHDOG,
                 ..w.limits
             },
         );
@@ -3723,17 +4240,19 @@ mod tests {
         let (release, resume) = std::sync::mpsc::channel();
         store.stall_next_append(entered, resume);
         let old = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        tokio::task::spawn_blocking(move || started.recv_timeout(Duration::from_secs(3)))
+        tokio::task::spawn_blocking(move || started.recv_timeout(WATCHDOG))
             .await
             .unwrap()
             .unwrap();
         let record = w.tag_run_record(JValue::obj([("model", JValue::Str("synthetic".into()))]));
         // Cover old persisted history as well as the deferred evidence append.
         w.with(|i| i.state.push_history("synthetic", record.clone()));
-        let job = tokio::time::timeout(Duration::from_secs(2), settled(&w))
-            .await
-            .unwrap();
-        review_failed(&w, &job);
+        w.post_expiry.notify_one();
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
+        // Public finalization can precede the fresh covered repair. Observe its actual
+        // exclusion settlement before expecting admission to reopen (also true on r4).
+        delta_wait(|| !w.maint.local_held()).await;
+        review_failed(&w, &job).await;
         let withdrawn_before_next = !store.visible("synthetic", &record);
         let reopened =
             super::super::evidence::Store::new(store.file().parent().unwrap().to_owned());
@@ -3749,13 +4268,13 @@ mod tests {
         assert_ne!(next.get("id"), old.get("id"));
         let _ = w.cancel();
         release.send(()).unwrap();
-        tokio::time::timeout(Duration::from_secs(3), async {
-            while !std::fs::read_to_string(store.file())
-                .unwrap_or_default()
-                .contains(old.get("id").as_str().unwrap())
-            {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| {
+                std::fs::read_to_string(store.file())
+                    .unwrap_or_default()
+                    .contains(old.get("id").as_str().unwrap())
+            })
+            .await;
         })
         .await
         .expect("old physical append really completed after successor admission");
@@ -3816,13 +4335,11 @@ mod tests {
         let w = worker(d.path(), port);
         let store = Arc::clone(w.maint.evidence.as_ref().unwrap());
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        released(&seen, "POST /v1/chat/completions").await;
+        released(&seen, "STREAM /v1/chat/completions").await;
         store.inject_run_write_error(true);
         w.cancel().unwrap();
-        tokio::time::timeout(Duration::from_secs(4), async {
-            while store.run_write_failures().len() < 2 {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| store.run_write_failures().len() >= 2).await;
         })
         .await
         .unwrap();
@@ -3842,21 +4359,31 @@ mod tests {
             .await
             .is_err());
         // Cancellation interrupts the wait without releasing the retained local admission.
+        let timer = Arc::new(TestGate::default());
+        *w.fence_timer.lock().unwrap() = Some(Arc::clone(&timer));
+        // Let any already armed backoff finish, then acknowledge the controlled timer.
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| timer.entered.load(Ordering::Acquire)).await;
+        })
+        .await
+        .unwrap();
         let attempts = store.run_write_failures().len();
         w.cancel().unwrap();
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while store.run_write_failures().len() == attempts {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| store.run_write_failures().len() != attempts).await;
         })
         .await
         .expect("cancellation interrupts the retry wait");
+        // The cancellation proof is complete. Recovery after task abort must use
+        // ordinary retry timers, including a cleanup already polling this gate.
+        *w.fence_timer.lock().unwrap() = None;
+        timer.release.notify_one();
         assert!(w.maint.local_held());
         // Task cancellation/shutdown drops Hold, but the worker still owns the local fence.
         w.run_abort.lock().unwrap().as_ref().unwrap().abort();
-        tokio::time::timeout(Duration::from_secs(1), async {
+        tokio::time::timeout(WATCHDOG, async {
             while !w.run_abort.lock().unwrap().as_ref().unwrap().is_finished() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+                tokio::task::yield_now().await;
             }
         })
         .await
@@ -3865,14 +4392,10 @@ mod tests {
         assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
         assert!(w.job().get("finishedAt").is_nullish());
         store.inject_run_write_error(false);
-        let job = tokio::time::timeout(Duration::from_secs(4), settled(&w))
-            .await
-            .unwrap();
-        review_failed(&w, &job);
-        tokio::time::timeout(Duration::from_secs(3), async {
-            while w.unsaved() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
+        review_failed(&w, &job).await;
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| !w.unsaved()).await;
         })
         .await
         .unwrap();
@@ -3904,10 +4427,8 @@ mod tests {
         let restarted = with_limits(&w, w.limits);
         store.inject_run_write_error(true);
         let recovery = restarted.spawn_recover().unwrap();
-        tokio::time::timeout(Duration::from_secs(2), async {
-            while store.run_write_failures().is_empty() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| !store.run_write_failures().is_empty()).await;
         })
         .await
         .expect("recovery retries the pending fence first");
@@ -3916,7 +4437,7 @@ mod tests {
         assert_eq!(restarted.job().get("phase").as_str(), Some("Finalizing"));
         assert!(restarted.job().get("finishedAt").is_nullish());
         store.inject_run_write_error(false);
-        tokio::time::timeout(Duration::from_secs(3), recovery)
+        tokio::time::timeout(WATCHDOG, recovery)
             .await
             .unwrap()
             .unwrap();
@@ -3949,10 +4470,8 @@ mod tests {
         // run future has never been polled. Its local fence must already have been transferred.
         store.inject_run_write_error(true);
         w.run_abort.lock().unwrap().as_ref().unwrap().abort();
-        tokio::time::timeout(Duration::from_secs(2), async {
-            while store.run_write_failures().is_empty() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
-            }
+        tokio::time::timeout(WATCHDOG, async {
+            delta_wait(|| !store.run_write_failures().is_empty()).await;
         })
         .await
         .unwrap();
@@ -3963,22 +4482,127 @@ mod tests {
         assert_eq!(w.job().get("phase").as_str(), Some("Finalizing"));
         assert!(w.job().get("finishedAt").is_nullish());
         store.inject_run_write_error(false);
-        let job = tokio::time::timeout(Duration::from_secs(3), settled(&w))
-            .await
-            .unwrap();
-        review_failed(&w, &job);
+        let job = tokio::time::timeout(WATCHDOG, settled(&w)).await.unwrap();
+        review_failed(&w, &job).await;
     }
 
     // SETTLEMENT_DELTA_REGRESSIONS_BEGIN
     async fn delta_wait(mut ready: impl FnMut() -> bool) {
-        tokio::time::timeout(Duration::from_secs(4), async {
-            while !ready() {
-                tokio::time::sleep(Duration::from_millis(5)).await;
+        tokio::time::timeout(WATCHDOG, async {
+            loop {
+                let changed = TEST_CHANGED.notified();
+                tokio::pin!(changed);
+                changed.as_mut().enable();
+                if ready() {
+                    return;
+                }
+                changed.await;
             }
         })
         .await
         .expect("synthetic transition completed");
     }
+    #[tokio::test(flavor = "current_thread")]
+    async fn local_custody_release_wakes_an_already_pending_observer() {
+        use std::future::Future;
+        use std::task::Poll;
+
+        let d = tempfile::tempdir().unwrap();
+        let w = worker(d.path(), 9);
+        *w.local_fence.lock().unwrap() =
+            super::super::gate::AdmissionFence::reserve(Arc::clone(&w.maint.local));
+        assert!(w.maint.local_held());
+        let released = delta_wait(|| !w.maint.local_held());
+        tokio::pin!(released);
+        std::future::poll_fn(|cx| {
+            assert!(released.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+        // No fixture transition or executor yield intervenes between registration and release.
+        w.release_local_fence();
+        assert!(!w.maint.local_held());
+        assert!(
+            std::future::poll_fn(|cx| Poll::Ready(released.as_mut().poll(cx).is_ready())).await,
+            "the actual release must wake the already pending custody observer"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r5_fresh_authority_boot_blocks_node_before_state_inspection() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let original = worker(d.path(), 9);
+        let mut state = State::empty();
+        state.set_job(JValue::obj([
+            ("id", JValue::Str("persisted-trial".into())),
+            ("status", JValue::Str("running".into())),
+            (
+                "pendingRestore",
+                JValue::obj([
+                    ("baseRevision", JValue::Str("trial".into())),
+                    ("text", JValue::Str(INI.into())),
+                ]),
+            ),
+        ]));
+        original.file.save(&state).unwrap();
+        drop(original);
+        let restarted = worker(d.path(), 9); // a fresh Maint and Authority, not with_limits
+        let pause = restarted.pending_write.lock().await;
+        let recovery = restarted.spawn_recover().unwrap();
+        // Node registers while recovery cannot reach even its first async state inspection.
+        let session = restarted
+            .maint
+            .authority
+            .node_session("fresh-node", 1)
+            .unwrap();
+        let incident = restarted.maint.authority.recovery_ticket();
+        recovery.abort();
+        let _ = recovery.await;
+        drop(pause);
+        assert!(
+            session.front_held,
+            "boot inspection must already exclude Node admission"
+        );
+        assert!(
+            incident.is_some(),
+            "the durable pending trial has an authority obligation before serving"
+        );
+        assert!(
+            restarted.maint.authority.recovery_pending(),
+            "cancellation cannot discharge boot recovery"
+        );
+        assert!(restarted.file.load().job().get("pendingRestore").truthy());
+    }
+
+    #[tokio::test]
+    async fn r5_unknown_boot_state_stays_closed_until_a_verified_no_work_inspection() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let w = worker(d.path(), 9);
+        let path = w.file.path.as_ref().unwrap();
+        std::fs::write(path, "{unreadable state").unwrap();
+        w.recover().await;
+        assert!(
+            w.maint
+                .authority
+                .node_session("node", 1)
+                .unwrap()
+                .front_held
+        );
+        assert!(w.maint.local_held());
+        w.file.save(&State::empty()).unwrap();
+        w.recover().await;
+        assert!(
+            !w.maint
+                .authority
+                .node_session("node", 1)
+                .unwrap()
+                .front_held
+        );
+        assert!(!w.maint.local_held());
+    }
+
     fn delta_pending(w: &Worker, id: &str) {
         let store = w.maint.evidence.as_ref().unwrap();
         store.admit_run("synthetic", "earlier").unwrap();
@@ -4113,7 +4737,7 @@ mod tests {
         assert!(restarted.job().get("finishedAt").is_nullish());
         assert!(restarted.maint.local_held());
         store.inject_run_write_error(false);
-        tokio::time::timeout(Duration::from_secs(4), recovery)
+        tokio::time::timeout(WATCHDOG, recovery)
             .await
             .unwrap()
             .unwrap();
@@ -4143,11 +4767,14 @@ mod tests {
         let (_copy, restarted) = delta_restart(&w, port, true).await;
         restarted.terminal_error.store(true, Ordering::Release);
         let recovery = restarted.spawn_recover().unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        let store = restarted.maint.evidence.as_ref().unwrap();
+        delta_wait(|| store.run_read_failures() > 0).await;
         assert!(restarted.maint.local_held());
         assert_eq!(restarted.job().get("status").as_str(), Some("running"));
         restarted.terminal_error.store(false, Ordering::Release);
-        tokio::time::sleep(Duration::from_millis(1100)).await;
+        let attempts = store.run_read_failures();
+        restarted.fence_wake.lock().unwrap().notify_one();
+        delta_wait(|| store.run_read_failures() > attempts).await;
         assert!(
             restarted.maint.local_held(),
             "a passed decision waits for ledger hydration without erasing history"
@@ -4166,8 +4793,8 @@ mod tests {
                 .join("run-state.json");
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
         }
-        restarted.interrupt_fence_wait();
-        tokio::time::timeout(Duration::from_secs(4), recovery)
+        restarted.fence_wake.lock().unwrap().notify_one();
+        tokio::time::timeout(WATCHDOG, recovery)
             .await
             .unwrap()
             .unwrap();
@@ -4188,7 +4815,7 @@ mod tests {
             "valid passed history survives the read denial"
         );
         w.terminal_error.store(false, Ordering::Release);
-        w.interrupt_fence_wait();
+        w.fence_wake.lock().unwrap().notify_one();
         delta_wait(|| !w.maint.local_held()).await;
         assert_eq!(w.job().get("status").as_str(), Some("passed"));
     }
@@ -4217,12 +4844,12 @@ mod tests {
         );
         let w = worker(d.path(), port);
         let recovery = w.spawn_recover().unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        delta_wait(|| w.maint.evidence.as_ref().unwrap().run_read_failures() > 0).await;
         assert!(w.maint.local_held());
         assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
         std::fs::set_permissions(&ledger, std::fs::Permissions::from_mode(0o600)).unwrap();
         w.interrupt_fence_wait();
-        tokio::time::timeout(Duration::from_secs(4), recovery)
+        tokio::time::timeout(WATCHDOG, recovery)
             .await
             .expect("repaired read hydrates the same registry")
             .unwrap();
@@ -4255,7 +4882,7 @@ mod tests {
         assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
         store.inject_run_write_error(false);
         assert!(
-            tokio::time::timeout(Duration::from_secs(4), w.recover())
+            tokio::time::timeout(WATCHDOG, w.recover())
                 .await
                 .unwrap()
                 .is_some(),
@@ -4297,21 +4924,20 @@ mod tests {
         first.abort();
         assert!(first.await.unwrap_err().is_cancelled());
         let mut retry = w.spawn_recover().expect("the recovery slot is retryable");
-        let overtook = tokio::time::timeout(Duration::from_millis(100), &mut retry)
-            .await
-            .is_ok();
+        delta_wait(|| w.pending_write.try_lock().is_err() || retry.is_finished()).await;
+        let overtook = retry.is_finished();
         let mut release = Some(release);
         if !overtook {
             assert!(w.maint.local_held());
             assert!(w.launch("synthetic", plan(32768.0, 120.0)).await.is_err());
             release.take().unwrap().send(()).unwrap();
-            tokio::time::timeout(Duration::from_secs(4), &mut retry)
+            tokio::time::timeout(WATCHDOG, &mut retry)
                 .await
                 .unwrap()
                 .unwrap();
         }
         let next = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
-        released(&seen, "POST /v1/chat/completions").await;
+        released(&seen, "STREAM /v1/chat/completions").await;
         // Freeze normal checkpoints after the successor is durable. The broken recovery writer
         // bypasses this lock; its stale rename must be observed before another checkpoint hides it.
         let writes = Arc::clone(&w.writes);
@@ -4320,7 +4946,8 @@ mod tests {
         let checkpoint_block = tokio::task::spawn_blocking(move || {
             let _writer = writes.lock().unwrap();
             entered.send(()).unwrap();
-            let _ = wait.recv_timeout(Duration::from_secs(10));
+            test_changed();
+            let _ = wait.recv_timeout(WATCHDOG);
         });
         delta_wait(|| locked.try_recv().is_ok()).await;
         if let Some(release) = release {
@@ -4404,10 +5031,7 @@ mod tests {
             let _ = task.await;
             delta_wait(|| w.save_counts.outstanding.load(Ordering::Acquire) == 0).await;
         } else {
-            tokio::time::timeout(Duration::from_secs(4), task)
-                .await
-                .unwrap()
-                .unwrap();
+            tokio::time::timeout(WATCHDOG, task).await.unwrap().unwrap();
         }
         assert_eq!(
             outstanding, 1,
@@ -4498,7 +5122,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let (port, _) = synthetic_engine(ini.clone(), true).await;
+        let (port, seen) = synthetic_engine(ini.clone(), true).await;
         let w = worker(d.path(), port);
         let plan = Plan {
             prompt_budget_seconds: 120.0,
@@ -4506,17 +5130,7 @@ mod tests {
             base: Vec::new(),
         };
         w.launch("synthetic", plan).await.unwrap();
-        for _ in 0..600 {
-            if w.job()
-                .get("phase")
-                .as_str()
-                .is_some_and(|p| p.starts_with("Long-prompt"))
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        released(&seen, "STREAM /v1/chat/completions").await;
         let snapshot = w.cancel().unwrap();
         assert_eq!(snapshot.get("status").as_str(), Some("running"));
         let job = settled(&w).await;
@@ -4530,7 +5144,7 @@ mod tests {
     async fn native_running_state(d: &std::path::Path) -> (String, String) {
         let ini = d.join("models.ini");
         std::fs::write(&ini, INI).unwrap();
-        let (port, _) = synthetic_engine(ini.clone(), true).await;
+        let (port, seen) = synthetic_engine(ini.clone(), true).await;
         let w = worker(d, port);
         let plan = Plan {
             prompt_budget_seconds: 120.0,
@@ -4538,17 +5152,7 @@ mod tests {
             base: Vec::new(),
         };
         w.launch("synthetic", plan).await.unwrap();
-        for _ in 0..600 {
-            if w.job()
-                .get("phase")
-                .as_str()
-                .is_some_and(|p| p.starts_with("Long-prompt"))
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        released(&seen, "STREAM /v1/chat/completions").await;
         let file = d.join(format!("native-calibration-{}.json", w.maint.suffix));
         let state = std::fs::read_to_string(&file).unwrap();
         let profile = std::fs::read_to_string(&ini).unwrap();
@@ -4596,7 +5200,8 @@ mod tests {
             let name = case["name"].as_str().unwrap();
             let dir = tempfile::tempdir().unwrap();
             std::fs::write(dir.path().join("models.ini"), case["ini"].as_str().unwrap()).unwrap();
-            let w = worker(dir.path(), 9);
+            let (port, _) = synthetic_engine(dir.path().join("models.ini"), false).await;
+            let w = worker(dir.path(), port);
             let file = dir
                 .path()
                 .join(format!("native-calibration-{}.json", w.maint.suffix));
@@ -4703,7 +5308,8 @@ mod tests {
             .unwrap();
         assert_eq!(late.get("reason").as_str(), Some("stale"));
         let mut facts = w.cancellation_facts();
-        for _ in 0..200 {
+        let deadline = Instant::now() + WATCHDOG;
+        while Instant::now() < deadline {
             let applied = w.compare_and_abort(facts.get("token").as_str().unwrap());
             if applied.get("applied") == &JValue::Bool(true) {
                 assert_eq!(applied.get("generation"), first.get("generation"));
@@ -4718,27 +5324,64 @@ mod tests {
 
     /// Node's lease route (model-maintenance-lease.cjs): grants `hard` (None: the cap asked for, as
     /// the new Core does), renews until `ended` is set, then answers 404. Logs requests and bodies.
-    async fn lease_stub(
+    async fn lease_stub(hard: Option<u64>, ended: Arc<AtomicBool>) -> (u16, Arc<RequestLog>) {
+        lease_stub_with_release(hard, ended, None).await
+    }
+
+    async fn lease_stub_with_release(
         hard: Option<u64>,
         ended: Arc<AtomicBool>,
-    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+        release: Option<Arc<TestGate>>,
+    ) -> (u16, Arc<RequestLog>) {
+        lease_stub_options(hard, ended, release, None).await
+    }
+
+    /// Hold a load decision independently of the lease-release gate.
+    async fn lease_stub_gated(
+        hard: Option<u64>,
+        ended: Arc<AtomicBool>,
+        decision: Option<Arc<(Notify, Notify)>>,
+    ) -> (u16, Arc<RequestLog>) {
+        lease_stub_options(hard, ended, None, decision).await
+    }
+
+    async fn lease_stub_options(
+        hard: Option<u64>,
+        ended: Arc<AtomicBool>,
+        release: Option<Arc<TestGate>>,
+        decision: Option<Arc<(Notify, Notify)>>,
+    ) -> (u16, Arc<RequestLog>) {
         use axum::body::Body;
         use axum::http::{Request, Response};
         use http_body_util::BodyExt;
-        let seen = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::new(RequestLog::default());
         let log = Arc::clone(&seen);
         let held = Arc::new(AtomicBool::new(false));
         let app = axum::Router::new().fallback(move |req: Request<Body>| {
+            let release = release.clone();
             let (log, ended, held) = (Arc::clone(&log), Arc::clone(&ended), Arc::clone(&held));
+            let decision = decision.clone();
             async move {
                 let (parts, body) = req.into_parts();
+                if parts.uri.path() == "/internal/model-maintenance/load-refusal" {
+                    if let Some(d) = decision {
+                        let go = d.1.notified();
+                        d.0.notify_one();
+                        go.await;
+                    }
+                }
                 let body = body.collect().await.map(|b| b.to_bytes()).unwrap_or_default();
                 let text = String::from_utf8_lossy(&body).into_owned();
-                log.lock().unwrap().push(format!("{} {} {text}", parts.method, parts.uri.path()));
+                log.record(format!("{} {} {text}", parts.method, parts.uri.path()));
                 let asked = serde_json::from_str::<Value>(&text)
                     .ok()
                     .and_then(|v| v["maxMs"].as_u64());
                 let (code, out) = match (parts.method.as_str(), parts.uri.path()) {
+                    // While ended, the authority grants no new lease (a recovery waits for it).
+                    ("POST", p) if p.starts_with("/internal/model-maintenance/lease/recovery/") => (204, json!({})),
+                    ("POST", "/internal/model-maintenance/lease") if ended.load(Ordering::Acquire) => (
+                        409, json!({"error": "Busy"}),
+                    ),
                     ("POST", "/internal/model-maintenance/lease") if held.swap(true, Ordering::AcqRel) => (
                         409, json!({"error": "Busy"}),
                     ),
@@ -4756,7 +5399,7 @@ mod tests {
                         }
                     }
                     ("DELETE", _) => {
-                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        if let Some(release) = &release { release.wait().await; }
                         held.store(false, Ordering::Release);
                         (204, json!({}))
                     },
@@ -4822,9 +5465,13 @@ mod tests {
         assert_eq!(job.get("status").as_str(), Some("passed"), "{job:?}");
         released(&seen, "DELETE /internal/model-maintenance/lease/").await;
         let log = seen.lock().unwrap().clone();
-        assert_eq!(
-            log[0],
-            format!("POST /internal/model-maintenance/lease {{\"maxMs\":{worst}}}")
+        // Row J review: the latch is asked for under the authority lease's id (its ticket).
+        let first = log[0].clone();
+        assert!(
+            first.starts_with(&format!(
+                "POST /internal/model-maintenance/lease {{\"maxMs\":{worst},\"ticket\":\""
+            )),
+            "{first}"
         );
         assert!(log
             .iter()
@@ -4837,9 +5484,18 @@ mod tests {
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
         let (port, _) = synthetic_engine(ini, false).await;
-        let (lease, _) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
+        let release = Arc::new(TestGate::default());
+        let (lease, _) = lease_stub_with_release(
+            None,
+            Arc::new(AtomicBool::new(false)),
+            Some(Arc::clone(&release)),
+        )
+        .await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
+        delta_wait(|| release.entered.load(Ordering::Acquire)).await;
+        assert!(w.job().get("finishedAt").is_nullish());
+        release.release.notify_one();
         let job = settled(&w).await;
         let saved = w.file.load();
         assert_eq!(saved.job().get("finishedAt"), job.get("finishedAt"));
@@ -4847,6 +5503,7 @@ mod tests {
         // No event wait or private local-held observation: public completion must suffice.
         let next = w.launch("synthetic", plan(32768.0, 120.0)).await.unwrap();
         assert_ne!(next.get("id"), job.get("id"));
+        release.release.notify_one();
         let _ = w.cancel();
         settled(&w).await;
     }
@@ -4877,12 +5534,144 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_lease_lost_mid_run_stops_it_restores_the_profile_and_marks_it_interrupted() {
+        // Delta review P1: nothing is restored on the lost hold; a recovery under a fresh hold does,
+        // and local admission stays closed until it has.
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, engine_seen) = synthetic_engine(ini.clone(), true).await;
+        let ended = Arc::new(AtomicBool::new(false));
+        let (lease, seen) = lease_stub(None, Arc::clone(&ended)).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
+        released(&engine_seen, "STREAM /v1/chat/completions").await;
+        ended.store(true, Ordering::Release);
+        let job = settled_or_recovering(&w).await;
+        assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
+        assert_eq!(job.get("phase").as_str(), Some("Interrupted"));
+        assert!(
+            job.get("error")
+                .as_str()
+                .is_some_and(|e| e.starts_with(LEASE_LOST)),
+            "{job:?}"
+        );
+        assert!(
+            w.maint.local_held(),
+            "admission stays closed until the recovery has run"
+        );
+        let acquired = |seen: &RequestLog| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .filter(|l| l.starts_with("POST /internal/model-maintenance/lease "))
+                .count()
+        };
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(
+            w.maint.local_held(),
+            "still closed while no fresh lease can be had"
+        );
+        assert_ne!(
+            std::fs::read_to_string(&ini).unwrap(),
+            INI,
+            "nothing restored on the lost hold"
+        );
+        // The authority answers again: the recovery takes its own lease and restores.
+        ended.store(false, Ordering::Release);
+        for _ in 0..500 {
+            if !w.maint.local_held() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(
+            !w.maint.local_held(),
+            "admission opens once the recovery settled"
+        );
+        assert!(acquired(&seen) >= 2, "the recovery took a fresh lease");
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+        assert_eq!(w.job().get("restored"), &JValue::Bool(true));
+        assert!(!w.lease_lost());
+    }
+
+    /// A settled job (status not running, finishedAt published), whether or not its recovery has run.
+    async fn settled_or_recovering(w: &Worker) -> JValue {
+        for _ in 0..600 {
+            let job = w.job();
+            if job.get("status").as_str() != Some("running") && job.get("finishedAt").truthy() {
+                return job;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("calibration did not settle: {:?}", w.job());
+    }
+
+    /// Delta review P1: a Node restart (a new incarnation at the authority) between the load decision
+    /// and its dispatch: the fenced hold sends nothing to the engine, the run stops, and the restore
+    /// runs only under a fresh recovery lease.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_node_restart_after_the_load_decision_sends_no_engine_call_on_the_fenced_hold() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, engine) = synthetic_engine(ini.clone(), false).await;
+        let ended = Arc::new(AtomicBool::new(false));
+        let decision = Arc::new((Notify::new(), Notify::new()));
+        let (lease, _) =
+            lease_stub_gated(None, Arc::clone(&ended), Some(Arc::clone(&decision))).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        w.maint.authority.node_session("boot-a", 1).unwrap();
+        w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(10), decision.0.notified())
+            .await
+            .unwrap();
+        let loads = |e: &RequestLog| {
+            e.lock()
+                .unwrap()
+                .iter()
+                .filter(|l| l.contains("/models/load"))
+                .count()
+        };
+        let before = loads(&engine);
+        // Node restarts while its load decision is out: the front's lease is fenced.
+        w.maint.authority.node_session("boot-b", 2).unwrap();
+        decision.1.notify_one();
+        // Every later decision answers at once.
+        let open = Arc::clone(&decision);
+        let release = tokio::spawn(async move {
+            loop {
+                open.0.notified().await;
+                open.1.notify_one();
+            }
+        });
+        let job = settled_or_recovering(&w).await;
+        assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
+        assert_eq!(
+            loads(&engine),
+            before,
+            "no load reached the engine on the fenced hold"
+        );
+        for _ in 0..500 {
+            if !w.maint.local_held() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(!w.maint.local_held());
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+        release.abort();
+    }
+
+    /// Delta review P1: a recovery that cannot get a fresh lease does not open admission, and it is
+    /// retried with backoff until it can (then restores).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_recovery_that_cannot_get_a_fresh_lease_is_retried_before_admission_opens() {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
         let (port, _) = synthetic_engine(ini.clone(), true).await;
         let ended = Arc::new(AtomicBool::new(false));
-        let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
+        let (lease, seen) = lease_stub(None, Arc::clone(&ended)).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
         for _ in 0..600 {
@@ -4896,14 +5685,32 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         ended.store(true, Ordering::Release);
-        let job = settled(&w).await;
-        assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
-        assert_eq!(job.get("phase").as_str(), Some("Interrupted"));
-        assert_eq!(job.get("error").as_str(), Some(LEASE_LOST));
-        assert_eq!(job.get("restored"), &JValue::Bool(true));
+        settled_or_recovering(&w).await;
+        // Recovery attempts keep being refused a lease for a while: each is retried, none opens.
+        let asks = |seen: &RequestLog| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .filter(|l| l.starts_with("POST /internal/model-maintenance/lease "))
+                .count()
+        };
+        for _ in 0..500 {
+            if asks(&seen) >= 3 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(asks(&seen) >= 3, "the recovery was retried");
+        assert!(w.maint.local_held(), "closed while no recovery could run");
+        ended.store(false, Ordering::Release);
+        for _ in 0..500 {
+            if !w.maint.local_held() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(!w.maint.local_held());
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
-        // The next run starts clean.
-        assert!(!w.lease_lost());
     }
 
     fn with_limits(w: &Worker, limits: Limits) -> Arc<Worker> {
@@ -5015,28 +5822,57 @@ mod tests {
     /// P3-1: a long prompt the engine accepts and then never answers ends at its 1.5x deadline as
     /// a failed long test (Node's over-budget stop), not at `limits.long`; the run then fails as
     /// one in which no size passed.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[tokio::test(flavor = "current_thread")]
     async fn a_silent_long_prompt_ends_at_its_deadline_as_a_failed_long_test() {
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
+        let polled = Arc::new(Notify::new());
         let (port, _) = synthetic_engine_with(
             ini.clone(),
             Synth {
                 silent: true,
+                silent_poll: Some(Arc::clone(&polled)),
                 ..Synth::default()
             },
         )
         .await;
         let w = worker(d.path(), port);
-        let began = std::time::Instant::now();
+        // Advance only after the response body is polled, while the long timer is armed.
+        // Keep disk/network setup on the real clock so paused-time auto-advance cannot
+        // race spawn_blocking persistence. Measure all elapsed time, including resumed time.
+        let started = tokio::time::Instant::now();
+        let observed = Arc::clone(&w);
+        let driver = tokio::spawn(async move {
+            loop {
+                tokio::time::timeout(WATCHDOG, polled.notified())
+                    .await
+                    .unwrap();
+                let before = observed.long_expirations.load(Ordering::Acquire);
+                tokio::time::pause();
+                tokio::time::advance(Duration::from_secs(2)).await;
+                // Stay runnable to prevent paused-clock auto-advance. The wall clock
+                // here is only a deadlock watchdog, not the prompt's timing oracle.
+                let watchdog = std::time::Instant::now();
+                while observed.long_expirations.load(Ordering::Acquire) == before
+                    && watchdog.elapsed() < WATCHDOG
+                {
+                    tokio::task::yield_now().await;
+                }
+                let expired = observed.long_expirations.load(Ordering::Acquire) > before;
+                tokio::time::resume();
+                assert!(
+                    expired,
+                    "silent prompt must expire within its virtual budget"
+                );
+            }
+        });
         w.launch("synthetic", plan(16_384.0, 1.0)).await.unwrap();
         let job = settled(&w).await;
-        assert!(
-            began.elapsed() < Duration::from_secs(25),
-            "{:?}",
-            began.elapsed()
-        );
+        driver.abort();
+        assert!(driver.await.unwrap_err().is_cancelled());
+        let elapsed = started.elapsed();
+        assert!(elapsed < Duration::from_secs(25), "{elapsed:?}");
         assert_eq!(job.get("status").as_str(), Some("failed"), "{job:?}");
         assert!(job
             .get("error")
@@ -5089,14 +5925,18 @@ mod tests {
         w.launch("synthetic", p).await.unwrap();
         let job = settled(&w).await;
         assert_eq!(job.get("status").as_str(), Some("passed"), "{job:?}");
-        assert_eq!(
-            seen.lock().unwrap()[0],
-            format!("POST /internal/model-maintenance/lease {{\"maxMs\":{six}}}")
+        // Row J review: the latch is asked for under the authority lease's id (its ticket).
+        let first = seen.lock().unwrap()[0].clone();
+        assert!(
+            first.starts_with(&format!(
+                "POST /internal/model-maintenance/lease {{\"maxMs\":{six},\"ticket\":\""
+            )),
+            "{first}"
         );
         assert_eq!(live.load(Ordering::Acquire), 0);
     }
 
-    fn engine_loads(seen: &Mutex<Vec<String>>) -> usize {
+    fn engine_loads(seen: &RequestLog) -> usize {
         seen.lock()
             .unwrap()
             .iter()
@@ -5104,7 +5944,7 @@ mod tests {
             .count()
     }
 
-    fn load_asks(seen: &Mutex<Vec<String>>) -> usize {
+    fn load_asks(seen: &RequestLog) -> usize {
         seen.lock()
             .unwrap()
             .iter()
@@ -5300,10 +6140,11 @@ mod tests {
         std::fs::write(&ini, INI).unwrap();
         std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
         let ended = Arc::new(AtomicBool::new(false));
+        let props = Arc::new(TestGate::default());
         let (port, _) = synthetic_engine_with(
             ini.clone(),
             Synth {
-                props: Some(Arc::clone(&ended)),
+                props: Some(Arc::clone(&props)),
                 ..Synth::default()
             },
         )
@@ -5311,6 +6152,10 @@ mod tests {
         let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
+        delta_wait(|| props.entered.load(Ordering::Acquire)).await;
+        ended.store(true, Ordering::Release);
+        delta_wait(|| w.lease_lost()).await;
+        props.release.notify_one();
         let job = settled(&w).await;
         assert!(
             ended.load(Ordering::Acquire),
@@ -5318,7 +6163,16 @@ mod tests {
         );
         assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
         assert_eq!(job.get("error").as_str(), Some(LEASE_LOST));
-        assert_eq!(job.get("restored"), &JValue::Bool(true));
+        // Delta review P1: the restore runs under a fresh recovery lease.
+        ended.store(false, Ordering::Release);
+        for _ in 0..500 {
+            if !w.maint.local_held() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(w.job().get("restored"), &JValue::Bool(true));
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
         assert!(
             !matches!(w.history("synthetic"), JValue::Arr(h) if !h.is_empty()),
             "{:?}",

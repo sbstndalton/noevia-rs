@@ -270,6 +270,13 @@ pub struct Store {
     #[cfg(test)]
     run_write_failures: Mutex<Vec<std::time::Instant>>,
     #[cfg(test)]
+    run_read_failures: std::sync::atomic::AtomicUsize,
+    #[cfg(test)]
+    decide_observer: (
+        std::sync::atomic::AtomicUsize,
+        std::sync::atomic::AtomicUsize,
+    ),
+    #[cfg(test)]
     append_stall: Mutex<Option<(std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>)>>,
     /// The only writer: appends and compactions of this process do not interleave.
     write: Mutex<Option<usize>>,
@@ -315,6 +322,10 @@ impl Store {
             #[cfg(test)]
             run_write_failures: Mutex::new(Vec::new()),
             #[cfg(test)]
+            run_read_failures: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            decide_observer: Default::default(),
+            #[cfg(test)]
             append_stall: Mutex::new(None),
             caps: Caps::default(),
             write: Mutex::new(None),
@@ -332,6 +343,10 @@ impl Store {
             #[cfg(test)]
             run_write_failures: Mutex::new(Vec::new()),
             #[cfg(test)]
+            run_read_failures: std::sync::atomic::AtomicUsize::new(0),
+            #[cfg(test)]
+            decide_observer: Default::default(),
+            #[cfg(test)]
             append_stall: Mutex::new(None),
             caps,
             write: Mutex::new(None),
@@ -343,7 +358,14 @@ impl Store {
     // on every mutation; readers remain fail-closed until an actual read succeeds.
     fn hydrate_runs(&self, locked: &mut Option<RunLedger>) -> Result<(), StoreError> {
         if locked.is_none() {
-            *locked = Some(load_runs(&self.dir).map_err(|e| StoreError::RunStorage(e.kind()))?);
+            *locked = Some(load_runs(&self.dir).map_err(|e| {
+                #[cfg(test)]
+                self.run_read_failures
+                    .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                #[cfg(test)]
+                super::calibration_worker::test_changed();
+                StoreError::RunStorage(e.kind())
+            })?);
         }
         Ok(())
     }
@@ -362,6 +384,7 @@ impl Store {
             if let Ok(mut attempts) = self.run_write_failures.lock() {
                 attempts.push(std::time::Instant::now());
             }
+            super::calibration_worker::test_changed();
             return Err(StoreError::RunStorage(std::io::ErrorKind::PermissionDenied));
         }
         use std::os::unix::fs::OpenOptionsExt;
@@ -550,6 +573,12 @@ impl Store {
     }
 
     #[cfg(test)]
+    pub(super) fn run_read_failures(&self) -> usize {
+        self.run_read_failures
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    #[cfg(test)]
     pub(super) fn inject_run_write_error(&self, failing: bool) {
         self.run_write_error
             .store(failing, std::sync::atomic::Ordering::Release);
@@ -679,10 +708,13 @@ impl Store {
                 self.append_stall.lock().ok().and_then(|mut s| s.take())
             {
                 let _ = entered.send(());
-                let _ = release.recv();
+                super::calibration_worker::test_changed();
+                let _ = release.recv_timeout(std::time::Duration::from_secs(120));
             }
             f.write_all(format!("{line}\n").as_bytes())
                 .map_err(|_| StoreError::Io)?;
+            #[cfg(test)]
+            super::calibration_worker::test_changed();
         }
         // Counted once per process and kept up to date by append and compact.
         let count = self.count();
@@ -713,6 +745,21 @@ impl Store {
         at_ms: i64,
         allowed: &dyn Fn() -> bool,
     ) -> Result<JValue, StoreError> {
+        #[cfg(test)]
+        let _completed = {
+            struct Completed<'a>(&'a std::sync::atomic::AtomicUsize);
+            impl Drop for Completed<'_> {
+                fn drop(&mut self) {
+                    self.0.fetch_add(1, std::sync::atomic::Ordering::Release);
+                    super::calibration_worker::test_changed();
+                }
+            }
+            self.decide_observer
+                .0
+                .fetch_add(1, std::sync::atomic::Ordering::Release);
+            super::calibration_worker::test_changed();
+            Completed(&self.decide_observer.1)
+        };
         let _deciding = self.decide.lock().map_err(|_| StoreError::Io)?;
         if !allowed() {
             return Err(StoreError::Io);
@@ -734,6 +781,20 @@ impl Store {
     }
 
     #[cfg(test)]
+    pub(super) fn decide_attempts(&self) -> usize {
+        self.decide_observer
+            .0
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    #[cfg(test)]
+    pub(super) fn decide_completions(&self) -> usize {
+        self.decide_observer
+            .1
+            .load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    #[cfg(test)]
     #[allow(clippy::unwrap_used)]
     pub(super) fn stall_writes(
         &self,
@@ -742,7 +803,9 @@ impl Store {
     ) {
         let _lock = self.decide.lock().unwrap();
         entered.send(()).unwrap();
-        release.recv().unwrap();
+        release
+            .recv_timeout(std::time::Duration::from_secs(120))
+            .unwrap();
     }
 
     /// Reported rates drift a little on every reply; one record per meaningful change or per day.

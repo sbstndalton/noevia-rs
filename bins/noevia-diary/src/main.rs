@@ -2,8 +2,17 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
 
+fn main() -> ExitCode {
+    // Image provenance: answered before the runtime starts, stdin is read or any state is touched.
+    if std::env::args_os().nth(1).is_some_and(|a| a == "--version") {
+        println!("{}", noevia_diary::version_line());
+        return ExitCode::SUCCESS;
+    }
+    serve_from_stdin()
+}
+
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
-async fn main() -> ExitCode {
+async fn serve_from_stdin() -> ExitCode {
     let mut line = String::new();
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin());
     if stdin.read_line(&mut line).await.is_err() {
