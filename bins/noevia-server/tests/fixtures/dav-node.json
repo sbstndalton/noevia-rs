@@ -1,0 +1,466 @@
+[
+  {
+    "name": "absolute target",
+    "method": "GET",
+    "path": "http://sharing.test:8031/dav/alice/entry.md",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 404,
+      "body": "Unknown sharing path",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "empty preconditions",
+    "method": "PUT",
+    "path": "/dav/alice/new.md",
+    "body": "New",
+    "headers": {
+      "if-match": "",
+      "if-none-match": ""
+    },
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": "\"18fdd549b2ed367ac0c74cbec1214644728515b30edbcb78e7d322757a7c8359\"",
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "empty encoding",
+    "method": "PUT",
+    "path": "/dav/alice/new.md",
+    "body": "New",
+    "headers": {
+      "content-encoding": ""
+    },
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": "\"18fdd549b2ed367ac0c74cbec1214644728515b30edbcb78e7d322757a7c8359\"",
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "empty mkdir conditions",
+    "method": "MKCOL",
+    "path": "/dav/alice/folder",
+    "body": "",
+    "headers": {
+      "if": "",
+      "if-match": "",
+      "if-none-match": "",
+      "content-encoding": ""
+    },
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "options",
+    "method": "OPTIONS",
+    "path": "/dav/alice/",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 200,
+      "body": "",
+      "allow": "OPTIONS, HEAD, GET, PROPFIND, PUT, MKCOL, DELETE, MOVE, COPY",
+      "dav": "1",
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "get",
+    "method": "GET",
+    "path": "/dav/alice/entry.md",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 200,
+      "body": "Synthetic",
+      "allow": null,
+      "dav": null,
+      "etag": "\"4a85827ad80e8635fb4a2b41a3fce1d0f23ba1eb27db0aa84113a7b0ca415d42\"",
+      "type": "text/markdown; charset=utf-8"
+    }
+  },
+  {
+    "name": "head",
+    "method": "HEAD",
+    "path": "/dav/alice/entry.md",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 200,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": "\"4a85827ad80e8635fb4a2b41a3fce1d0f23ba1eb27db0aa84113a7b0ca415d42\"",
+      "type": "text/markdown; charset=utf-8"
+    }
+  },
+  {
+    "name": "root get",
+    "method": "GET",
+    "path": "/dav/alice/",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 405,
+      "body": "Use PROPFIND to list this folder",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "missing",
+    "method": "GET",
+    "path": "/dav/alice/missing.md",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 404,
+      "body": "File or folder not found",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "depth omitted",
+    "method": "PROPFIND",
+    "path": "/dav/alice/",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 403,
+      "body": "Only Depth 0 and 1 are supported",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "depth zero",
+    "method": "PROPFIND",
+    "path": "/dav/alice/",
+    "body": "",
+    "headers": {
+      "depth": "0"
+    },
+    "expected": {
+      "status": 207,
+      "body": "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:multistatus xmlns:d=\"DAV:\"><d:response><d:href>/dav/alice/</d:href><d:propstat><d:prop><d:displayname>alice</d:displayname><d:resourcetype><d:collection/></d:resourcetype><d:getcontenttype>httpd/unix-directory</d:getcontenttype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "application/xml; charset=utf-8"
+    }
+  },
+  {
+    "name": "depth one",
+    "method": "PROPFIND",
+    "path": "/dav/alice/",
+    "body": "",
+    "headers": {
+      "depth": "1"
+    },
+    "expected": {
+      "status": 207,
+      "body": "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:multistatus xmlns:d=\"DAV:\"><d:response><d:href>/dav/alice/</d:href><d:propstat><d:prop><d:displayname>alice</d:displayname><d:resourcetype><d:collection/></d:resourcetype><d:getcontenttype>httpd/unix-directory</d:getcontenttype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response><d:response><d:href>/dav/alice/entry.md</d:href><d:propstat><d:prop><d:displayname>entry.md</d:displayname><d:resourcetype></d:resourcetype><d:getcontenttype>text/markdown; charset=utf-8</d:getcontenttype><d:getlastmodified>Thu, 01 Jan 1970 00:00:01 GMT</d:getlastmodified><d:getetag>&quot;4a85827ad80e8635fb4a2b41a3fce1d0f23ba1eb27db0aa84113a7b0ca415d42&quot;</d:getetag><d:getcontentlength>9</d:getcontentlength></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "application/xml; charset=utf-8"
+    }
+  },
+  {
+    "name": "named properties",
+    "method": "PROPFIND",
+    "path": "/dav/alice/entry.md",
+    "body": "<d:propfind xmlns:d=\"DAV:\"><d:prop><d:getetag/><d:getcontentlength/></d:prop></d:propfind>",
+    "headers": {
+      "depth": "0"
+    },
+    "expected": {
+      "status": 207,
+      "body": "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:multistatus xmlns:d=\"DAV:\"><d:response><d:href>/dav/alice/entry.md</d:href><d:propstat><d:prop><d:getetag>&quot;4a85827ad80e8635fb4a2b41a3fce1d0f23ba1eb27db0aa84113a7b0ca415d42&quot;</d:getetag><d:getcontentlength>9</d:getcontentlength></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "application/xml; charset=utf-8"
+    }
+  },
+  {
+    "name": "unsupported",
+    "method": "LOCK",
+    "path": "/dav/alice/",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 405,
+      "body": "This Markdown endpoint does not support that operation",
+      "allow": "OPTIONS, HEAD, GET, PROPFIND, PUT, MKCOL, DELETE, MOVE, COPY",
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "path traversal",
+    "method": "GET",
+    "path": "/dav/alice/%2e%2e/a.md",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 400,
+      "body": "Invalid path",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "encoded slash",
+    "method": "GET",
+    "path": "/dav/alice/a%2fb.md",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 400,
+      "body": "Invalid path",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "bad escape",
+    "method": "GET",
+    "path": "/dav/alice/%GG",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 400,
+      "body": "Invalid path encoding",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "write type",
+    "method": "PUT",
+    "path": "/dav/alice/new.txt",
+    "body": "x",
+    "headers": {
+      "if-none-match": "*"
+    },
+    "expected": {
+      "status": 415,
+      "body": "Only Markdown files can be written",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "write create",
+    "method": "PUT",
+    "path": "/dav/alice/new.md",
+    "body": "New",
+    "headers": {
+      "if-none-match": "*"
+    },
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": "\"18fdd549b2ed367ac0c74cbec1214644728515b30edbcb78e7d322757a7c8359\"",
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "write unconditional",
+    "method": "PUT",
+    "path": "/dav/alice/entry.md",
+    "body": "Replacement",
+    "headers": {},
+    "expected": {
+      "status": 204,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": "\"cefd665229744cd945523e0c83aa2e6bce40cb8367c85bd3e68dbd5f76ae1ecf\"",
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "write conflict",
+    "method": "PUT",
+    "path": "/dav/alice/entry.md",
+    "body": "New",
+    "headers": {
+      "if-none-match": "*"
+    },
+    "expected": {
+      "status": 412,
+      "body": "changed",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "conditional unsupported",
+    "method": "PUT",
+    "path": "/dav/alice/entry.md",
+    "body": "x",
+    "headers": {
+      "if": "x"
+    },
+    "expected": {
+      "status": 400,
+      "body": "Use If-Match or If-None-Match",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "mkdir",
+    "method": "MKCOL",
+    "path": "/dav/alice/folder",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "mkdir root",
+    "method": "MKCOL",
+    "path": "/dav/alice/",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 405,
+      "body": "The diary root already exists",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "mkdir body",
+    "method": "MKCOL",
+    "path": "/dav/alice/folder",
+    "body": "x",
+    "headers": {},
+    "expected": {
+      "status": 415,
+      "body": "MKCOL request bodies are unsupported",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "delete",
+    "method": "DELETE",
+    "path": "/dav/alice/entry.md",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 204,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "copy",
+    "method": "COPY",
+    "path": "/dav/alice/entry.md",
+    "body": "",
+    "headers": {
+      "destination": "/dav/alice/copy.md",
+      "overwrite": "F"
+    },
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "move",
+    "method": "MOVE",
+    "path": "/dav/alice/entry.md",
+    "body": "",
+    "headers": {
+      "destination": "/dav/alice/moved.md"
+    },
+    "expected": {
+      "status": 201,
+      "body": "",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  },
+  {
+    "name": "root delete",
+    "method": "DELETE",
+    "path": "/dav/alice/",
+    "body": "",
+    "headers": {},
+    "expected": {
+      "status": 403,
+      "body": "The diary root cannot be changed",
+      "allow": null,
+      "dav": null,
+      "etag": null,
+      "type": "text/plain; charset=utf-8"
+    }
+  }
+]
