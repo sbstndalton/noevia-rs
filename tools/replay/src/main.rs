@@ -17,7 +17,9 @@
 //!   --state-out FILE       write the data dir snapshot (tree + cowork.db) after the replay
 //!   --expect-state FILE    diff the snapshot against FILE (one written by --state-out)
 //!   --native-move-state    REQUIRED for managed Rust front state replay; validates authoritative move state
-//!   --state-ignore PATH    leave a path (or `*suffix`) out of the snapshot (repeatable)
+//!   --state-ignore PATH    leave a path (or `*suffix`) out of the snapshot (repeatable); a
+//!                          pattern ending in `/` drops only a directory's own entry, from both
+//!                          the snapshot and an --expect-state reference
 //!   --report FILE          write the outcomes as JSON
 //!   --stop-on-first        stop at the first exchange that differs
 //!   --allow-remote         accept a --base that is not loopback (the replay sends session
@@ -112,6 +114,18 @@ const REQUEST_TS: &str = "2026-01-01T00:00:00.000Z";
 
 struct Server(Child);
 
+/// Whether any process is left in the group `pgid` (signal 0 sends nothing; it only checks).
+#[cfg(unix)]
+fn group_alive(pgid: u32) -> bool {
+    Command::new("kill")
+        .arg("-0")
+        .arg("--")
+        .arg(format!("-{pgid}"))
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 impl Drop for Server {
     fn drop(&mut self) {
         // The server runs in its own process group (see start_server): stop the group, so a
@@ -123,9 +137,14 @@ impl Drop for Server {
                 .arg("--")
                 .arg(format!("-{}", self.0.id()))
                 .status();
+            // Wait for the whole group, not only its leader: a `sh` wrapper exits on TERM while
+            // the Node and front children it started are still closing cowork.db, and a state
+            // snapshot taken then can find the database locked (CI: "missing settings snapshot").
             let deadline = Instant::now() + Duration::from_secs(5);
+            let mut leader_gone = false;
             while Instant::now() < deadline {
-                if let Ok(Some(_)) = self.0.try_wait() {
+                leader_gone = leader_gone || matches!(self.0.try_wait(), Ok(Some(_)));
+                if leader_gone && !group_alive(self.0.id()) {
                     return;
                 }
                 std::thread::sleep(Duration::from_millis(50));
@@ -388,7 +407,9 @@ fn run(a: &Args) -> Result<bool, String> {
         }
         if let Some(p) = a.one("expect-state") {
             let text = std::fs::read_to_string(p).map_err(|e| format!("read {p}: {e}"))?;
-            let expected: Value = serde_json::from_str(&text).map_err(|e| format!("{p}: {e}"))?;
+            let mut expected: Value =
+                serde_json::from_str(&text).map_err(|e| format!("{p}: {e}"))?;
+            state::drop_dir_entries(&mut expected, &ignore, &b);
             let diffs = state::compare(&expected, projection.as_ref().unwrap_or(&snap));
             for d in &diffs {
                 println!("STATE {}: expected {} got {}", d.at, d.expected, d.actual);
