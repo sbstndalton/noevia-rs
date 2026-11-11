@@ -126,6 +126,10 @@ pub trait Engine {
     fn large_lock_file(&self) -> Option<std::path::PathBuf> {
         None
     }
+    /// Optional background lifecycle cancellation; foreground engines keep their existing behavior.
+    fn cancelled(&self) -> bool {
+        false
+    }
     /// The busy waits (BUSY_WAITS_MS, 5 s and 15 s); a test shortens them.
     fn busy_waits(&self) -> Vec<Duration> {
         vec![Duration::from_secs(5), Duration::from_secs(15)]
@@ -216,6 +220,9 @@ impl Engine for Budgeted<'_> {
     }
     fn large_lock_file(&self) -> Option<std::path::PathBuf> {
         self.inner.large_lock_file()
+    }
+    fn cancelled(&self) -> bool {
+        self.inner.cancelled()
     }
     fn busy_waits(&self) -> Vec<Duration> {
         self.inner.busy_waits()
@@ -766,17 +773,31 @@ fn is_passing(e: &EngineError) -> bool {
 /// documents.cjs `patiently(fn, waits)`.
 fn patiently<T>(
     waits: &[Duration],
+    cancelled: impl Fn() -> bool,
     mut f: impl FnMut() -> Result<T, EngineError>,
 ) -> Result<T, EngineError> {
     let mut attempt = 0usize;
     loop {
+        if cancelled() {
+            return Err(EngineError::new("background extraction cancelled"));
+        }
         match f() {
             Ok(v) => return Ok(v),
             Err(e) => {
                 let Some(wait) = waits.get(attempt).filter(|_| is_busy(&e)) else {
                     return Err(e);
                 };
-                std::thread::sleep(*wait);
+                let until = Instant::now() + *wait;
+                while Instant::now() < until {
+                    if cancelled() {
+                        return Err(EngineError::new("background extraction cancelled"));
+                    }
+                    std::thread::sleep(
+                        until
+                            .saturating_duration_since(Instant::now())
+                            .min(FILE_POLL),
+                    );
+                }
                 attempt += 1;
             }
         }
@@ -889,9 +910,11 @@ fn complete_unlocked(
             break;
         }
         let end = last.min(next + limits.range_pages as f64 - 1.0);
-        let got = patiently(&waits, || {
-            engine.docling(name, bytes, figures, Some((next as u32, end as u32)))
-        });
+        let got = patiently(
+            &waits,
+            || engine.cancelled(),
+            || engine.docling(name, bytes, figures, Some((next as u32, end as u32))),
+        );
         let got = match got {
             Ok(body) => {
                 let got = docling_pages(&body, figures);
@@ -1152,9 +1175,11 @@ fn retry_incomplete_pages(
             .map(|(_, p)| n(p, "number") as u32)
             .collect();
         let timeout = retry_timeout_ms(batch.len());
-        let got = patiently(waits, || {
-            engine.ocr_pages(bytes, &numbers, Some(RETRY_DPI), Some(timeout))
-        });
+        let got = patiently(
+            waits,
+            || engine.cancelled(),
+            || engine.ocr_pages(bytes, &numbers, Some(RETRY_DPI), Some(timeout)),
+        );
         let results = match got {
             Ok(r) => r,
             Err(e) => {
@@ -1353,10 +1378,17 @@ fn acquire_wait() -> Duration {
 
 /// The file lock, polled until `deadline`; `None` past it. An error opening the file (not a busy
 /// one) is also `None`: the lock is never skipped.
-fn take_file(file: &std::path::Path, deadline: Instant) -> Option<rusqlite::Connection> {
+fn take_file(
+    file: &std::path::Path,
+    deadline: Instant,
+    cancelled: &dyn Fn() -> bool,
+) -> Option<rusqlite::Connection> {
     let conn = rusqlite::Connection::open(file).ok()?;
     conn.busy_timeout(Duration::ZERO).ok()?;
     loop {
+        if cancelled() {
+            return None;
+        }
         match conn.execute_batch("BEGIN IMMEDIATE") {
             Ok(()) => return Some(conn),
             Err(rusqlite::Error::SqliteFailure(e, _))
@@ -1378,6 +1410,17 @@ fn take_file(file: &std::path::Path, deadline: Instant) -> Option<rusqlite::Conn
 /// process's, then the host's in `file`), at most the acquire wait (two minutes), then is "busy" (a
 /// passing failure; the job tries again).
 pub fn large_lock(size: usize, file: Option<&std::path::Path>) -> Result<LargeHold, String> {
+    large_lock_cancellable(size, file, &|| false)
+}
+/// The same resource permit, with bounded polling of a background owner's cancellation.
+pub fn large_lock_cancellable(
+    size: usize,
+    file: Option<&std::path::Path>,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<LargeHold, String> {
+    if cancelled() {
+        return Err(BUSY.into());
+    }
     if size <= LARGE_BYTES || HELD_HERE.with(std::cell::Cell::get) {
         return Ok(LargeHold(false, None));
     }
@@ -1386,11 +1429,11 @@ pub fn large_lock(size: usize, file: Option<&std::path::Path>) -> Result<LargeHo
         let mut held = LARGE.lock().map_err(|_| BUSY.to_string())?;
         while *held {
             let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() {
+            if cancelled() || left.is_zero() {
                 return Err(BUSY.into());
             }
             let (next, _) = FREED
-                .wait_timeout(held, left)
+                .wait_timeout(held, left.min(FILE_POLL))
                 .map_err(|_| BUSY.to_string())?;
             held = next;
         }
@@ -1400,7 +1443,10 @@ pub fn large_lock(size: usize, file: Option<&std::path::Path>) -> Result<LargeHo
     HELD_HERE.with(|h| h.set(true));
     if let Some(file) = file {
         // Dropping `hold` on failure frees this process's turn for the next waiter.
-        hold.1 = Some(take_file(file, deadline).ok_or_else(|| BUSY.to_string())?);
+        hold.1 = Some(take_file(file, deadline, cancelled).ok_or_else(|| BUSY.to_string())?);
+    }
+    if cancelled() {
+        return Err(BUSY.into());
     }
     Ok(hold)
 }
@@ -1867,5 +1913,31 @@ pub(crate) mod tests {
         std::env::set_var("LARGE_DOCUMENT_ACQUIRE_WAIT_MS", "5000");
         let hold = large_lock(LARGE_BYTES + 1, Some(&file));
         assert!(hold.is_ok(), "free once the other process lets go");
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod background_cancel_tests {
+    use super::*;
+    #[test]
+    fn shutdown_skips_the_pending_busy_retry_and_acquires_no_large_document_permit() {
+        let cancelled = std::cell::Cell::new(false);
+        let calls = std::cell::Cell::new(0usize);
+        let result: Result<(), EngineError> = patiently(
+            &[Duration::from_secs(60)],
+            || cancelled.get(),
+            || {
+                calls.set(calls.get() + 1);
+                cancelled.set(true);
+                Err(EngineError {
+                    status: Some(503),
+                    ..EngineError::new("busy")
+                })
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(calls.get(), 1);
+        assert!(large_lock_cancellable(LARGE_BYTES + 1, None, &|| true).is_err());
     }
 }

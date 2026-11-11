@@ -974,6 +974,7 @@ dependencies = [
 name = "embedding-worker"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "engine-admission",
  "js-json",
  "model-stream",

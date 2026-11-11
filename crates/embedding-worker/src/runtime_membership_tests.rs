@@ -1,7 +1,6 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
-#[path = "../tests/support/mod.rs"]
-mod support;
+use crate::test_support as support;
 use server_projects::outbox::{self, Job};
 use std::sync::atomic::AtomicUsize;
 use support::*;
@@ -95,9 +94,9 @@ async fn refuses_notification(missing: Missing) {
     .await;
     let host = NativeHost {
         store,
-        http: Http::new("", None, &stub.base, None)
-            .unwrap()
-            .with_ownership(&stub.base, "synthetic-token", START),
+        // These tests isolate tenant/source membership. Ownership HTTP timing
+        // has dedicated tests; the notification itself still uses the stub.
+        http: Http::new("", None, &stub.base, None).unwrap(),
         valid: Arc::new(AtomicBool::new(true)),
         off: Arc::new(AtomicBool::new(false)),
         service_base: None,
@@ -109,7 +108,8 @@ async fn refuses_notification(missing: Missing) {
     let attempt = host.run_rag(USER, &row, &mut rx).await;
     assert!(
         attempt.result.is_ok(),
-        "non-member text work remains a no-op"
+        "non-member text work remains a no-op: {:?}",
+        attempt.result
     );
     assert_eq!(
         notices.load(Ordering::SeqCst),
