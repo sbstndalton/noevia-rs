@@ -88,6 +88,7 @@ pub mod reply;
 pub mod reranker_routes;
 pub mod reranker_settings;
 pub mod research_routes;
+mod residual_fallback;
 pub mod routes;
 pub mod routing_default_routes;
 pub mod routing_mode_routes;
@@ -410,6 +411,7 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-residual-fallbacks-v1",
     "rust-source-startup-v1",
     "rust-dav-listener-v1",
     "reranker-settings-v1",
@@ -894,6 +896,19 @@ async fn handle(
             }
         })
         .await;
+    }
+    if let Some(p) = whatwg.as_deref() {
+        let fallback = residual_fallback::classify(req.method().as_str(), p).or_else(|| {
+            (p != path
+                && ["/api/", "/api/models", "/api/connect"].contains(&p)
+                && routes::route_for(p).is_none()
+                && (residual_fallback::classify(req.method().as_str(), &path).is_some()
+                    || path.starts_with("/api/providers/")))
+            .then_some(residual_fallback::Kind::Missing)
+        });
+        if let Some(kind) = fallback {
+            return residual_fallback::serve(&app, req, p.to_string(), kind).await;
+        }
     }
     match native {
         Some(routes::Native::StorageMetadata) => {

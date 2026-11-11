@@ -64,14 +64,25 @@ async fn sentinel() -> SocketAddr {
             };
             tokio::spawn(async move {
                 let svc = hyper::service::service_fn(|r: Request<Incoming>| async move {
+                    let facts = r.method() == "POST"
+                        && r.uri().path() == "/internal/model-downloads-read/facts"
+                        && r.headers()
+                            .get("x-noevia-store-token")
+                            .is_some_and(|h| h == "synthetic-residual-grid-private-token");
                     let _ = r.into_body().collect().await;
-                    Ok::<_, std::convert::Infallible>(
+                    let answer = if facts {
+                        Response::builder()
+                            .status(200)
+                            .body(Full::new(Bytes::from_static(br#"{"kind":"disabled"}"#)))
+                            .unwrap()
+                    } else {
                         Response::builder()
                             .status(599)
                             .header("x-residual-sentinel", "1")
                             .body(Full::new(Bytes::new()))
-                            .unwrap(),
-                    )
+                            .unwrap()
+                    };
+                    Ok::<_, std::convert::Infallible>(answer)
                 });
                 let _ = hyper::server::conn::http1::Builder::new()
                     .serve_connection(hyper_util::rt::TokioIo::new(stream), svc)
@@ -135,6 +146,10 @@ async fn front(up: SocketAddr, data: &Path) -> SocketAddr {
     let mut env: HashMap<&str, String> = HashMap::new();
     env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{up}"));
     env.insert("UI_PORT", "1".into());
+    env.insert(
+        "NOEVIA_PROJECT_STORE_TOKEN",
+        "synthetic-residual-grid-private-token".into(),
+    );
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
     env.insert("PUBLIC_ORIGIN", ORIGIN.into());
@@ -161,6 +176,7 @@ struct Answer {
     proxied: bool,
     cookies: Vec<String>,
     text: String,
+    headers: BTreeMap<String, String>,
 }
 
 /// One request on its own connection, bounded by [`DEADLINE`]; `id` names the case on failure.
@@ -203,12 +219,18 @@ async fn call(
             .iter()
             .map(|v| v.to_str().unwrap().split(';').next().unwrap().to_string())
             .collect();
+        let headers = res
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap().to_string()))
+            .collect();
         let bytes = res.into_body().collect().await.unwrap().to_bytes();
         Answer {
             status,
             proxied,
             cookies,
             text: String::from_utf8(bytes.to_vec()).unwrap(),
+            headers,
         }
     };
     match tokio::time::timeout(DEADLINE, exchange).await {
@@ -815,6 +837,56 @@ async fn negative_controls_fail_the_grid() {
         "{:?}",
         moved.failures
     );
+}
+
+/// Scoped Node origin/main fallback oracle, replayed through the same real identity layer and
+/// sentinel as the full grid. Compare stable header values and literal body bytes as well.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn residual_fallback_wire_answers_equal_node() {
+    let wire: Value =
+        serde_json::from_str(include_str!("fixtures/residual-fallback-node.json")).unwrap();
+    let (addr, _up, accts, _data) = booted().await;
+    let cases = wire["cases"].as_array().unwrap();
+    assert!(cases.len() > 1000, "fallback oracle unexpectedly empty");
+    let baseline = fixture();
+    let out = replay(addr, cases, &baseline["policy"], &accts, None, false).await;
+    assert!(out.failures.is_empty(), "{}", out.failures.join("\n"));
+    for c in cases.iter().filter(|c| c["answeredBy"] == "front") {
+        let who = c["who"].as_str().unwrap();
+        let acct = if who.starts_with("admin") {
+            Some(&accts.0)
+        } else if who.starts_with("member") {
+            Some(&accts.1)
+        } else {
+            None
+        };
+        let mut h = vec![("origin", ORIGIN)];
+        if let Some(a) = acct {
+            h.push(("cookie", a.cookie.as_str()));
+            if !who.ends_with("-nocsrf") {
+                h.push(("x-csrf-token", a.csrf.as_str()));
+            }
+        }
+        let method = c["method"].as_str().unwrap();
+        let got = call(
+            addr,
+            c["id"].as_str().unwrap(),
+            method,
+            c["path"].as_str().unwrap(),
+            &h,
+            UNSAFE.contains(&method).then_some("{}"),
+        )
+        .await;
+        assert_eq!(got.text, c["wireBody"].as_str().unwrap(), "{}", c["id"]);
+        for (k, v) in c["headers"].as_object().unwrap() {
+            assert_eq!(
+                got.headers.get(k).map(String::as_str),
+                v.as_str(),
+                "{} header {k}",
+                c["id"]
+            );
+        }
+    }
 }
 
 fn dated_fixture_cases() -> Vec<Value> {

@@ -473,9 +473,13 @@ async fn the_installed_list_is_nodes_row_for_row() {
         "Node's remembered model keeps its source"
     );
     assert_eq!(sent["ids"][0], "good");
-    // Another method is Node's.
-    let (_, _, body) = call(addr, "POST", "/api/models/installed", ADMIN).await;
-    assert_eq!(parse(&body), json!({"proxied":true}));
+    // Another method is the residual fallback's: Node's former 405, never proxied.
+    let csrf = format!("{ADMIN}Origin: http://{addr}\r\nX-CSRF-Token: csrf\r\n");
+    let (status, _, body) = call(addr, "POST", "/api/models/installed", &csrf).await;
+    assert_eq!(
+        (status, parse(&body)),
+        (405, json!({"error":"Method not allowed"}))
+    );
 }
 
 #[tokio::test]
