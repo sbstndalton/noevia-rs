@@ -278,25 +278,34 @@ fn settle_effect(path: &Path, token: &str) -> R<()> {
     }
     Ok(())
 }
-/// Read-only and fail closed. No timeout, exit, or readback retires an uncertain effect.
+/// Read-only and fail closed (a hot journal left by a crashed writer is rolled back through one
+/// read-write open of the existing file). No timeout, exit, or readback retires an uncertain effect.
 pub fn pending(root: &Path) -> bool {
     let path = root.join("managed-diary.db");
     if !path.exists() {
         return false;
     }
-    let read = || -> R<bool> {
-        let db = rusqlite::Connection::open_with_flags(
-            &path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )?;
+    let read = |flags: rusqlite::OpenFlags| -> rusqlite::Result<bool> {
+        let db = rusqlite::Connection::open_with_flags(&path, flags)?;
         db.busy_timeout(Duration::from_secs(1))?;
-        Ok(db.query_row(
+        db.query_row(
             "SELECT EXISTS(SELECT 1 FROM meta WHERE key=?)",
             [EFFECT],
             |r| r.get(0),
-        )?)
+        )
     };
-    read().unwrap_or(true)
+    match read(rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY) {
+        Ok(v) => v,
+        // A writer killed inside a transaction left a hot journal, which a read-only handle may
+        // not roll back. A read-write open of the existing file (never created here) lets
+        // SQLite restore the last committed state; a committed intent survives it.
+        Err(rusqlite::Error::SqliteFailure(e, _))
+            if e.extended_code == rusqlite::ffi::SQLITE_READONLY_ROLLBACK =>
+        {
+            read(rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE).unwrap_or(true)
+        }
+        Err(_) => true,
+    }
 }
 pub fn uncertain() -> Response<Body> {
     server::detail(
@@ -312,5 +321,95 @@ fn truthy(value: &Value) -> bool {
         Value::String(v) => !v.is_empty(),
         Value::Array(v) => !v.is_empty(),
         Value::Object(v) => !v.is_empty(),
+    }
+}
+
+#[cfg(test)]
+mod hot_journal_tests {
+    use super::{pending, EFFECT};
+    use std::path::Path;
+
+    type T = Result<(), Box<dyn std::error::Error>>;
+    const DB: &str = "managed-diary.db";
+
+    fn seed(dir: &Path, committed_intent: bool) -> T {
+        let db = rusqlite::Connection::open(dir.join(DB))?;
+        db.execute_batch(
+            "CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT); CREATE TABLE pad(b BLOB);",
+        )?;
+        if committed_intent {
+            db.execute(
+                "INSERT INTO meta(key,value) VALUES(?,'committed')",
+                [EFFECT],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Leaves `copy/` with the database and journal of a writer that died mid-transaction: the
+    /// copy has a hot journal and no process holds its lock.
+    fn crashed_copy(src: &Path, copy: &Path) -> T {
+        let db = rusqlite::Connection::open(src.join(DB))?;
+        db.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA cache_size=1; BEGIN IMMEDIATE;")?;
+        db.execute(
+            "INSERT OR REPLACE INTO meta(key,value) VALUES(?,'uncommitted')",
+            [EFFECT],
+        )?;
+        for _ in 0..64 {
+            db.execute("INSERT INTO pad(b) VALUES(zeroblob(8192))", [])?;
+        }
+        let journal = format!("{DB}-journal");
+        assert!(
+            src.join(&journal).exists(),
+            "the open transaction keeps a rollback journal"
+        );
+        std::fs::copy(src.join(DB), copy.join(DB))?;
+        std::fs::copy(src.join(&journal), copy.join(&journal))?;
+        db.execute_batch("ROLLBACK")?;
+        Ok(())
+    }
+
+    fn read_only_refusal(dir: &Path) -> Result<Option<i32>, rusqlite::Error> {
+        let db = rusqlite::Connection::open_with_flags(
+            dir.join(DB),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        Ok(
+            match db.query_row("SELECT count(*) FROM meta", [], |r| r.get::<_, i64>(0)) {
+                Err(rusqlite::Error::SqliteFailure(e, _)) => Some(e.extended_code),
+                _ => None,
+            },
+        )
+    }
+
+    #[test]
+    fn an_uncommitted_intent_left_by_a_crashed_writer_is_rolled_back_and_not_pending() -> T {
+        let (src, copy) = (tempfile::tempdir()?, tempfile::tempdir()?);
+        seed(src.path(), false)?;
+        crashed_copy(src.path(), copy.path())?;
+        assert_eq!(
+            read_only_refusal(copy.path())?,
+            Some(rusqlite::ffi::SQLITE_READONLY_ROLLBACK)
+        );
+        assert!(!pending(copy.path()));
+        assert!(!copy.path().join(format!("{DB}-journal")).exists());
+        Ok(())
+    }
+
+    #[test]
+    fn a_committed_intent_survives_the_rollback_and_still_pauses_saves() -> T {
+        let (src, copy) = (tempfile::tempdir()?, tempfile::tempdir()?);
+        seed(src.path(), true)?;
+        crashed_copy(src.path(), copy.path())?;
+        assert!(pending(copy.path()));
+        Ok(())
+    }
+
+    #[test]
+    fn a_file_that_is_not_a_database_fails_closed() -> T {
+        let dir = tempfile::tempdir()?;
+        std::fs::write(dir.path().join(DB), b"not a database at all, just bytes")?;
+        assert!(pending(dir.path()));
+        Ok(())
     }
 }

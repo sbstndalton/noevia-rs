@@ -642,6 +642,7 @@ pub fn router_with_app(
             async move { legacy_webdav(store, app, headers, raw).await }
         }),
     );
+    router = router.merge(crate::machine_service::router(store.clone(), app.clone()));
     let reranker_store = store.clone();
     let reranker_app = app.clone();
     router = router.route(

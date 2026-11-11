@@ -72,6 +72,9 @@ const FAMILIES = {
 //   (:1128-1130), both before the only fetch (:1136).
 // - POST /api/providers/test with `{}`: 400 valid baseUrl required (provider_test_routes.rs:397-398)
 //   before any probe.
+// - POST /api/models/machines with `{}`: the empty action is neither tune nor tuneAbort, so it
+//   reaches the registry mutation, where inference_machines.rs mutate refuses it 400 invalidAction
+//   inside the write transaction before anything is saved or audited; no probe, DNS or tune starts.
 // - POST /api/models/autotune/resume with `{}`: 404 when auto-tune is unavailable
 //   (autotune_resume_routes.rs:231), else validate(confirmPause) refuses (:242; Fault::Confirm 400,
 //   server-projects autotune_resume.rs:48-51) before prepare (:251) and commit (:282).
@@ -140,7 +143,7 @@ const NODE_FACTS = [
   '/api/chat-vault-mirror/preferences', '/api/connectors', '/api/connectors/nextcloud/policy', '/api/features',
   '/api/models/assignments', '/api/models/autotune', '/api/models/autotune/cancel',
   '/api/models/autotune/clear', '/api/models/autotune/resume', '/api/models/autotune/settings', '/api/models/autotune/untuned',
-  '/api/models/calibration', '/api/models/calibration/cancel', '/api/models/downloads', '/api/models/inference-budget',
+  '/api/models/calibration', '/api/models/calibration/cancel', '/api/models/downloads', '/api/models/inference-budget', '/api/models/machines',
   '/api/models/preset', '/api/profile/diary-connectors', '/api/toolboxes', '/api/toolboxes/permitted',
 ];
 // Deliberate changes from the Node-era answer, applied on every regeneration.

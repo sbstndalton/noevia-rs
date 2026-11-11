@@ -1341,6 +1341,9 @@ mod tests {
     fn model_reads_are_rusts_for_get_only_and_the_other_model_routes_stay_nodes() {
         let on = Switches::default();
         for p in crate::model_routes::ROUTES {
+            if *p == crate::inference_machines::PATH {
+                continue;
+            }
             assert_eq!(
                 dispatch_under("GET", p, on),
                 Some(Native::Models),
@@ -1408,7 +1411,6 @@ mod tests {
             "/api/models/reranker/",
             "/api/models/rerankerx",
             "/api/models/load",
-            "/api/models/machines",
             "/api/models/preset/",
             "/api/models/downloads/",
             "/api/models/capabilitiesx",
@@ -1462,6 +1464,7 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::inference_machines::PATH, &[][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::reranker_routes::PATH, &[][..]),

@@ -211,6 +211,15 @@ impl RustDecisionSettings {
     }
 }
 
+/// Native machine registry and synthetic measurement results, fixed keys only.
+#[derive(Debug, Clone, Copy)]
+pub struct RustInferenceMachines(());
+impl RustInferenceMachines {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
 /// Exclusive capability for the reranker configuration row.
 #[derive(Debug, Clone, Copy)]
 pub struct RustRerankerSettings(());
@@ -1232,6 +1241,28 @@ impl WriteTx<'_> {
         Ok(self.conn.execute(
             "INSERT OR REPLACE INTO settings(key,value) VALUES('decision:configuration',?1)",
             [value],
+        )?)
+    }
+
+    /// The machine registry's sole writer; no arbitrary settings capability.
+    pub fn set_inference_machines(
+        &self,
+        _owner: RustInferenceMachines,
+        tune: bool,
+        value: &str,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES(?1,?2)",
+            [
+                if tune {
+                    "inference:machineTune"
+                } else {
+                    "inference:machines"
+                },
+                value,
+            ],
         )?)
     }
 

@@ -36,7 +36,9 @@ pub mod health;
 pub mod health_routes;
 pub mod identity;
 pub mod idle_unload_read;
+pub mod inference_machines;
 pub mod legacy_proxy;
+pub mod machine_service;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
 #[cfg(feature = "rust-storage-reads")]
@@ -526,6 +528,7 @@ pub const FEATURES: &[&str] = &[
     "rust-preset-read",
     "rust-idle-unload-read",
     "rust-model-assignments",
+    "rust-inference-machines",
     "rust-model-downloads-read",
     "rust-autotune-resume",
     "rust-budget-watch-v3",
@@ -580,6 +583,7 @@ pub(crate) fn account_row_exists(writes: &upkeep::WriterLayer, id: &str) -> bool
 }
 
 pub struct App {
+    pub machines: Arc<machine_service::Service>,
     pub auto_roles: auto_roles_routes::Writer,
     /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
     pub demand: Arc<snapshot::Demand>,
@@ -711,6 +715,7 @@ impl App {
             _ => None,
         };
         Arc::new(App {
+            machines: Arc::new(machine_service::Service::default()),
             demand: Arc::new(snapshot::Demand::default()),
             drive,
             offsite,
@@ -1294,6 +1299,7 @@ pub fn router(app: Arc<App>) -> Router {
     Router::new().fallback(handle).with_state(app)
 }
 
+mod machine_json;
 pub mod source_startup;
 
 pub mod dav;
