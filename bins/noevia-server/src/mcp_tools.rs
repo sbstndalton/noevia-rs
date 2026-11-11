@@ -32,6 +32,11 @@ fn name_ok(name: &str) -> bool {
 
 /// core `convertTool`: the tool, or the reason it is dropped.
 pub fn convert(tool: &JValue) -> Result<Tool, String> {
+    converted(tool).map(|(tool, _)| tool)
+}
+
+/// [`convert`], with the schema as mcp-frame resolved it (the tree in mcp-frame's wire encoding).
+fn converted(tool: &JValue) -> Result<(Tool, Vec<u8>), String> {
     let name = match tool.get("name") {
         JValue::Str(n) if name_ok(n) => n.clone(),
         other => {
@@ -63,20 +68,94 @@ pub fn convert(tool: &JValue) -> Result<Tool, String> {
     }
     let text = js_json::stringify(schema).ok_or("unresolvable schema")?;
     let units: Vec<u16> = text.encode_utf16().collect();
-    match mcp_frame::schema::resolve_schema_refs(&units) {
-        Ok(Ok(_)) => {}
+    let resolved = match mcp_frame::schema::resolve_schema_refs(&units) {
+        Ok(Ok(bytes)) => bytes,
         Ok(Err(e)) => return Err(format!("unresolvable schema: {}", schema_reason(&e))),
         Err(_) => return Err("unresolvable schema: could not be read".into()),
-    }
+    };
     let description = match (tool.get("description"), tool.get("title")) {
         (JValue::Str(d), _) if !d.is_empty() => d.clone(),
         (_, JValue::Str(t)) => t.clone(),
         _ => String::new(),
     };
-    Ok(Tool {
-        name,
-        description,
-        schema: text,
+    Ok((
+        Tool {
+            name,
+            description,
+            schema: text,
+        },
+        resolved,
+    ))
+}
+
+/// A tool as the chat loop carries it (core `convertTool`'s `tool`):
+/// `{ type: 'function', function: { name, description, parameters: { type: 'object', properties, required } } }`.
+#[derive(Debug, Clone)]
+pub struct Definition {
+    pub name: String,
+    pub tool: JValue,
+}
+
+/// mcp-frame's resolved tree as values: every key `"=k"` loses its mark. An object whose prototype
+/// was set (`"^"`) is returned with the members the prototype supplies, which is what a property
+/// read of the JS object would find (a serialization of it would not show them).
+fn decode_tree(v: JValue) -> JValue {
+    match v {
+        JValue::Arr(items) => JValue::Arr(items.into_iter().map(decode_tree).collect()),
+        JValue::Obj(items) => JValue::Obj(
+            items
+                .into_iter()
+                .filter_map(|(k, v)| k.strip_prefix('=').map(|k| (k.to_owned(), decode_tree(v))))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// The member a property read of the resolved root finds: its own, else its prototype's.
+fn root_member(raw: &JValue, key: &str) -> JValue {
+    let own = format!("={key}");
+    if let JValue::Obj(items) = raw {
+        if let Some((_, v)) = items.iter().find(|(k, _)| *k == own) {
+            return decode_tree(v.clone());
+        }
+        if let Some((_, JValue::Obj(p))) = items.iter().find(|(k, _)| k == "^") {
+            if let Some((_, v)) = p.iter().find(|(k, _)| *k == own) {
+                return decode_tree(v.clone());
+            }
+        }
+    }
+    JValue::Undefined
+}
+
+/// core `convertTool`: the definition, or the reason the tool is dropped.
+pub fn definition(tool: &JValue) -> Result<Definition, String> {
+    let (converted, resolved) = converted(tool)?;
+    let text = String::from_utf8(resolved).map_err(|_| "unresolvable schema".to_owned())?;
+    let raw = js_json::parse(&text).map_err(|_| "unresolvable schema".to_owned())?;
+    let truthy = |v: JValue, empty: JValue| if v.truthy() { v } else { empty };
+    let properties = truthy(root_member(&raw, "properties"), JValue::obj::<&str>([]));
+    let required = truthy(root_member(&raw, "required"), JValue::Arr(Vec::new()));
+    Ok(Definition {
+        name: converted.name.clone(),
+        tool: JValue::obj([
+            ("type", JValue::Str("function".into())),
+            (
+                "function",
+                JValue::obj([
+                    ("name", JValue::Str(converted.name)),
+                    ("description", JValue::Str(converted.description)),
+                    (
+                        "parameters",
+                        JValue::obj([
+                            ("type", JValue::Str("object".into())),
+                            ("properties", properties),
+                            ("required", required),
+                        ]),
+                    ),
+                ]),
+            ),
+        ]),
     })
 }
 

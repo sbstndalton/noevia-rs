@@ -81,6 +81,8 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "--state-ignore",
             "*mcp-discovery.json",
             "--state-ignore",
+            "*toolbox-chat-facts.json",
+            "--state-ignore",
             "*snapshot-demand",
             // The native embedding worker's status file and lifetime flock (crates/embedding-worker
             // OWNERSHIP.md): state of the running front's worker; Node's oracle writes neither.

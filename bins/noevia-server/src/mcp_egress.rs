@@ -127,6 +127,9 @@ impl Reply {
 pub struct Egress {
     client: reqwest::Client,
     qa_loopback: bool,
+    /// An operator's own server (a LAN Nextcloud, the in-process server): any http(s) address the
+    /// operator configured, not only a public one. Never used for a directory server.
+    unrestricted: bool,
     /// The places for listings that run at once ([`LIST_PERMITS`]).
     listings: tokio::sync::Semaphore,
     /// [`LIST_DEADLINE`] and [`LIST_QUEUE_WAIT`] (shortened by the unit tests).
@@ -146,10 +149,45 @@ impl Egress {
         Some(Arc::new(Egress {
             client,
             qa_loopback,
+            unrestricted: false,
             listings: tokio::sync::Semaphore::new(LIST_PERMITS),
             list_deadline: LIST_DEADLINE,
             list_queue_wait: LIST_QUEUE_WAIT,
         }))
+    }
+
+    /// The guarded client for directory servers' discovery: [`Egress::new`] with room for `places`
+    /// listings at once (discovery lists every configured server together).
+    pub fn for_discovery(qa_loopback: bool, places: usize) -> Option<Arc<Egress>> {
+        let mut egress = Egress::new_inner(qa_loopback, false, true)?;
+        egress.listings = tokio::sync::Semaphore::new(places);
+        Some(Arc::new(egress))
+    }
+
+    /// The client for the operator's own servers (core's ordinary fetch: no redirect, no environment
+    /// proxy, but any address the operator configured).
+    pub fn operator(places: usize) -> Option<Arc<Egress>> {
+        let mut egress = Egress::new_inner(false, true, false)?;
+        egress.listings = tokio::sync::Semaphore::new(places);
+        Some(Arc::new(egress))
+    }
+
+    fn new_inner(qa_loopback: bool, unrestricted: bool, guarded: bool) -> Option<Egress> {
+        let mut builder = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .user_agent("noevia");
+        if guarded {
+            builder = builder.dns_resolver(Arc::new(PublicOnly));
+        }
+        Some(Egress {
+            client: builder.build().ok()?,
+            qa_loopback,
+            unrestricted,
+            listings: tokio::sync::Semaphore::new(LIST_PERMITS),
+            list_deadline: LIST_DEADLINE,
+            list_queue_wait: LIST_QUEUE_WAIT,
+        })
     }
 
     pub fn qa_loopback(&self) -> bool {
@@ -160,6 +198,9 @@ impl Egress {
     /// loopback stand-in). A name that does not resolve, or resolves to anything not public, is
     /// refused.
     pub async fn url_allowed(&self, url: &str) -> bool {
+        if self.unrestricted {
+            return url.starts_with("http://") || url.starts_with("https://");
+        }
         if !hosted_url_ok(url, self.qa_loopback) {
             return false;
         }
@@ -767,6 +808,7 @@ mod tests {
                 .build()
                 .unwrap(),
             qa_loopback: true,
+            unrestricted: false,
             listings: tokio::sync::Semaphore::new(LIST_PERMITS),
             list_deadline: deadline,
             list_queue_wait: queue_wait,

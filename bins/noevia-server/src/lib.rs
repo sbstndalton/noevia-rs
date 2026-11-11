@@ -48,7 +48,13 @@ pub mod mcp_directory_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_discovery;
 #[cfg(feature = "rust-storage-reads")]
+pub mod mcp_discovery_actor;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_discovery_backend;
+#[cfg(feature = "rust-storage-reads")]
 pub mod mcp_egress;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_manifest;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
 #[cfg(feature = "rust-storage-reads")]
@@ -270,12 +276,12 @@ use std::sync::Arc;
 /// event-stream replies, public https only), is the only writer of `directory_mcp_servers` (the server
 /// rows and the administrators' shared key slot) and re-seals that slot for a secrets rotation. Node
 /// re-reads the table for its chat-time MCP client. The paired core refuses the routes
-/// (rust-mcp-directory.cjs `RUST_MCP_DIRECTORY_OWNED`), publishes the discovery snapshot
-/// (`mcp-discovery.json`) and writes nothing of the table.
+/// (rust-mcp-directory.cjs `RUST_MCP_DIRECTORY_OWNED`), asks this front for discovery
+/// (`POST /v1/mcp/discovery`) and writes nothing of the table.
 /// `rust-toolboxes-permitted`: `GET /api/toolboxes/permitted` (toolbox_routes.rs), computed here from
 /// the front's own state and that snapshot (core `RUST_TOOLBOXES_PERMITTED_OWNED`).
 /// `rust-toolbox-picker`: every method of `/api/toolboxes`; current account filtering and
-/// response composition in toolbox_picker.rs, selected live facts over trusted loopback.
+/// response composition in toolbox_picker.rs from the front's own MCP discovery and the chat process's published toolbox facts.
 /// `rust-connectors`: `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy`
 /// (nextcloud_routes.rs; core `RUST_CONNECTORS_OWNED`).
 ///
@@ -396,6 +402,12 @@ use std::sync::Arc;
 /// (model_state_routes.rs); Core refuses them (rust-model-state-reads.cjs) and offers the facts only it holds on the
 /// loopback bridge (rust-model-facts.cjs). The supervisor pairs them.
 ///
+/// `rust-mcp-discovery`: this build discovers MCP tools itself (mcp_discovery_actor.rs: connect, list, convert,
+/// bind the curated boxes, cadence, backoff) and answers `POST /v1/mcp/discovery` on the internal store; core
+/// (mcp-native-discovery.cjs) is its fail-closed client and publishes only toolbox-chat-facts.json. A core that
+/// still discovers beside this front would offer different tools than the front's own pages, and a front without
+/// it beside a core that asks would leave every chat with no MCP tools, so the release pairs them.
+///
 /// `rust-chat-framing-suggest`: this build answers every method of `/api/chat-framing/suggest`
 /// (chat_framing_suggest.rs, chat port S4): the gate, 405, the 10-a-minute `chat-frame:` budget, the
 /// body and the cut to 4,000 UTF-16 units; Core refuses the POST (rust-chat-framing-suggest.cjs) and
@@ -419,6 +431,7 @@ pub const FEATURES: &[&str] = &[
     "reranker-settings-v1",
     "rust-diary-backup-worker",
     "rust-embedding-background-v1",
+    "rust-mcp-discovery",
     "rust-chat-mirror-v1",
     "rust-index-outbox-v3",
     "rust-media-background-v1",
@@ -588,6 +601,9 @@ pub struct App {
     /// The MCP credential broker (sbstndalton/noevia#2202): OAuth sign-ins and per-account keys.
     #[cfg(feature = "rust-storage-reads")]
     pub mcp: Option<Arc<mcp_broker::Mcp>>,
+    /// MCP tool discovery (sbstndalton/noevia row T): made on first use, `None` inside when it cannot run.
+    #[cfg(feature = "rust-storage-reads")]
+    pub mcp_discovery: std::sync::OnceLock<Option<Arc<mcp_discovery_backend::Handle>>>,
     /// The code-sandbox egress control (row V, code_egress.rs): the only issuer of the proxy's
     /// control key and of the signed task grants; `None` when `CODE_EGRESS_PORT` is unset.
     pub code_egress: Option<Arc<code_egress::Issuer>>,
@@ -711,6 +727,8 @@ impl App {
             #[cfg(feature = "rust-storage-reads")]
             mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
             code_egress: code_egress::Issuer::new(&config),
+            #[cfg(feature = "rust-storage-reads")]
+            mcp_discovery: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
             provider_models: provider_models_routes::Lists::default(),
             #[cfg(feature = "rust-storage-reads")]

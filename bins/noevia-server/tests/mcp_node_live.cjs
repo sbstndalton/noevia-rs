@@ -5,7 +5,7 @@
 // Run by that test as a separate process against a paired noevia-core checkout (NOEVIA_MCP_CORE, the
 // contracts/http/front-core.ref generation). It uses Core's REAL modules - the internal-store client
 // (project-store-client.cjs), the broker adapter (rust-mcp-credentials.cjs), the MCP wiring
-// (mcp-wiring.cjs) and the MCP protocol client (mcp.cjs) - against the in-process Rust front's real
+// (mcp-wiring.cjs), its client of the front's discovery (mcp-native-discovery.cjs) and the MCP protocol client (mcp.cjs) - against the in-process Rust front's real
 // internal store listener and a synthetic MCP server on 127.0.0.1. Only a synthetic server and
 // synthetic credentials: nothing outside this machine is contacted.
 //
@@ -40,9 +40,9 @@ const { createMcpWiring, createCredentialOriginCheck } = core('mcp-wiring.cjs');
 const scope = new AsyncLocalStorage();
 const wiring = createMcpWiring({
   servers: [{ id: 'dir-live', url: mcpUrl, auth: 'oauth', title: 'Live', addedBy: userId }],
-  manifest: [],
   mcp: core('mcp.cjs'),
-  bindBoxes: ({ manifest }) => manifest.map(() => ({})),
+  // MCP discovery is the front's (mcp_discovery_actor.rs): this process asks it over the internal store.
+  discovery: core('mcp-native-discovery.cjs').createNativeDiscovery({ broker }),
   directoryMcp: { signal: () => 0, asServers: () => [], boxFor: () => ({}), headersFor: () => ({}) },
   mcpOAuth: credentials.oauth,
   mcpKeys: credentials.keys,
@@ -92,7 +92,7 @@ async function directoryPhase() {
   const secrets = core('secrets.cjs').createSecretStore(env('DATA_DIR'), { env: {} });
   const directoryMcp = core('directory-mcp.cjs').createDirectoryMcp({ db, secrets });
   const w = createMcpWiring({
-    servers: [], manifest: [], mcp: core('mcp.cjs'), bindBoxes: ({ manifest }) => manifest.map((m) => m), directoryMcp,
+    servers: [], mcp: core('mcp.cjs'), discovery: core('mcp-native-discovery.cjs').createNativeDiscovery({ broker }), directoryMcp,
     mcpOAuth: credentials.oauth, mcpKeys: credentials.keys, directoryUrlAllowed: async () => true,
     credentialOriginAllowed: createCredentialOriginCheck(''), scope, storageFor: () => ({ kind: 'local' }), isWriteTool: () => false,
     internal: { mintToken: () => 'unused' }, internalKey: 'unused', reduceToolResult: (text) => ({ text, reduced: false }), env: {},

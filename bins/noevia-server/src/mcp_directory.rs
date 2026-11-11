@@ -157,7 +157,7 @@ impl Mcp {
     }
 
     /// The names of the headers the shared key holds (core `keyHeaders`), never their values.
-    fn key_header_names(&self, row: &Row) -> Vec<String> {
+    pub(crate) fn key_header_names(&self, row: &Row) -> Vec<String> {
         let Some(raw) = row.headers_enc.as_deref() else {
             return Vec::new();
         };
