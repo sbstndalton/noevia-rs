@@ -68,6 +68,7 @@ pub struct Config {
     pub plugin_directory: crate::plugin_directory_routes::Sources,
     /// /api/admin/decision-settings (sbstndalton/noevia#2190): the deployment's
     /// COWORK_DECISION_URL, the view's fallback.
+    pub reranker: crate::reranker_settings::Deployment,
     pub decision: crate::decision_settings_routes::Deployment,
     /// The MCP credential broker (sbstndalton/noevia#2202): NOEVIA_QA_ALLOW_LOOPBACK_MCP.
     #[cfg(feature = "rust-storage-reads")]
@@ -424,6 +425,23 @@ impl Config {
             rust_stats,
             models,
             plugin_directory: crate::plugin_directory_routes::Sources::from_lookup(&get),
+            reranker: [
+                "RERANK_BACKEND",
+                "RERANK_BASE_URL",
+                "RERANK_MODEL",
+                "RERANK_API_KEY",
+                "RERANK_TEI_MODEL",
+                "RERANK_TEI_BASE_URL",
+                "RERANK_LLAMACPP_BASE_URL",
+                "RERANK_SHARED_ENGINE",
+                "NOEVIA_FEATURE_RAG_RERANK",
+                "INFERENCE_BASE_URL",
+                "MODEL_MANAGER_BASE_URL",
+                "LEMONADE_BASE_URL",
+            ]
+            .into_iter()
+            .filter_map(|k| get(k).map(|v| (k.to_owned(), v)))
+            .collect(),
             decision: crate::decision_settings_routes::Deployment::from_lookup(&get),
             #[cfg(feature = "rust-storage-reads")]
             mcp: crate::mcp_broker::Settings::from_lookup(&get),

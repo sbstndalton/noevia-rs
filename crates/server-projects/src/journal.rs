@@ -1,8 +1,8 @@
 //! A user's chat change journal, `chat-changes.jsonl` (sbstndalton/noevia#2153, #1071 slice 5a,
-//! decision D9). Rust writes every chat transcript ([`crate::transcript`]); Node still owns what a
-//! changed transcript sets off (the Diary chat mirror and the per-chat brain) until those move too.
-//! So that Node learns of a change it did not make, every successful transcript mutation appends
-//! one line here, in the same hold of the user's `chat-transcripts.lock`:
+//! decision D9). Rust writes every chat transcript ([`crate::transcript`]) and schedules what a
+//! changed transcript sets off (the Diary chat mirror and the per-chat brain; their work is still
+//! Node's). Every successful transcript mutation appends one line here, in the same hold of the
+//! user's `chat-transcripts.lock`:
 //!
 //! `{"seq":7,"chatId":"c1","revision":"<sha256 hex>"|null,"op":"write"|"append"|"remove","origin":"history"|"import"|"turn"|"remove"|"other","start":"<NOEVIA_START_ID>","at":<ms>}`
 //!
@@ -20,8 +20,9 @@
 //!   end in a newline and parse, and the next append starts on a fresh line.
 //! - Readers take no lock: appends are single `O_APPEND` writes and a rotation is a rename.
 //!
-//! Node is the only reader, through the internal project store (`POST /v1/changes/read`); see
-//! [`read`] for the cursor contract.
+//! The reader is the server's chat mirror schedule (bins/noevia-server chat_mirror.rs, crate
+//! chat-mirror-sched), in process; see [`read`] for the cursor contract. The internal store's
+//! `POST /v1/changes/read` stays as an observation interface.
 
 use crate::store::{self, StoreError};
 use serde_json::{json, Value};
@@ -48,7 +49,7 @@ pub fn set_start_id(id: &str) {
     let _ = START.set(id.to_string());
 }
 
-fn start_id() -> &'static str {
+pub fn start_id() -> &'static str {
     START.get().map(String::as_str).unwrap_or("")
 }
 

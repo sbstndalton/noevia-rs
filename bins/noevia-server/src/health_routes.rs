@@ -136,12 +136,6 @@ pub fn retrieval_checked(data_dir: &Path, now_ms: i64) -> Option<(bool, &'static
     }
 }
 
-/// `(ragAvailable, retrieval)` from the published snapshot; the unusable case is
-/// `(false, "unavailable")`.
-pub fn retrieval_from(data_dir: &Path, now_ms: i64) -> (bool, &'static str) {
-    retrieval_checked(data_dir, now_ms).unwrap_or((false, "unavailable"))
-}
-
 fn body(inference: bool, diary: Option<bool>, rag: bool, retrieval: &str) -> String {
     let diary = match diary {
         Some(true) => "true",

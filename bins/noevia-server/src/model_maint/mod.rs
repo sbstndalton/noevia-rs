@@ -33,6 +33,7 @@ pub mod lease;
 pub mod node_lease;
 pub mod reload;
 pub mod router;
+pub mod v8_json;
 // #697 the memory watchdog (Core inference-budget-watch.cjs; `rust-budget-watch`).
 pub mod budget_watch;
 

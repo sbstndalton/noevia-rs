@@ -97,6 +97,11 @@ fn op_for(method: &str, path: &str) -> Option<Op> {
     }
 }
 
+/// Exact substantive credential operations; residual methods keep the outer identity gates.
+pub(crate) fn owns(method: &str, path: &str) -> bool {
+    op_for(method, path).is_some()
+}
+
 pub(crate) fn answer(status: u16, body: &JValue) -> Response<Body> {
     reply::json_text(
         StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),

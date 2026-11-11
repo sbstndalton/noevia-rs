@@ -1,0 +1,240 @@
+[
+  {
+    "name": "deployment",
+    "input": null,
+    "status": 200,
+    "body": {
+      "enabled": false,
+      "choice": "tei",
+      "source": "deployment",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        },
+        {
+          "id": "llamacpp:synthetic-reranker",
+          "backend": "llamacpp",
+          "model": "synthetic-reranker"
+        }
+      ]
+    },
+    "stored": null,
+    "audits": [],
+    "changes": 0
+  },
+  {
+    "name": "invalid-null",
+    "input": null,
+    "status": 400,
+    "body": {
+      "error": "Send whether reranking is on and which reranker to use.",
+      "errorId": "invalidInput"
+    },
+    "stored": null,
+    "audits": [],
+    "changes": 0
+  },
+  {
+    "name": "invalid-enabled",
+    "input": {
+      "enabled": 1
+    },
+    "status": 400,
+    "body": {
+      "error": "Send whether reranking is on and which reranker to use.",
+      "errorId": "invalidInput"
+    },
+    "stored": null,
+    "audits": [],
+    "changes": 0
+  },
+  {
+    "name": "unknown",
+    "input": {
+      "enabled": true,
+      "choice": "unknown"
+    },
+    "status": 400,
+    "body": {
+      "error": "That reranker is not available on this server.",
+      "errorId": "unknownReranker"
+    },
+    "stored": null,
+    "audits": [],
+    "changes": 0
+  },
+  {
+    "name": "no-choice",
+    "input": {
+      "enabled": true,
+      "choice": null
+    },
+    "status": 400,
+    "body": {
+      "error": "Choose a reranker before turning reranking on.",
+      "errorId": "noReranker"
+    },
+    "stored": null,
+    "audits": [],
+    "changes": 0
+  },
+  {
+    "name": "tei",
+    "input": {
+      "enabled": true,
+      "choice": "tei"
+    },
+    "status": 200,
+    "body": {
+      "enabled": true,
+      "choice": "tei",
+      "source": "admin",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        },
+        {
+          "id": "llamacpp:synthetic-reranker",
+          "backend": "llamacpp",
+          "model": "synthetic-reranker"
+        }
+      ]
+    },
+    "stored": "{\"enabled\":true,\"choice\":\"tei\"}",
+    "audits": [
+      [
+        "rerank.configure",
+        "synthetic-admin",
+        {
+          "enabled": true,
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        }
+      ]
+    ],
+    "changes": 1
+  },
+  {
+    "name": "llamacpp",
+    "input": {
+      "enabled": true,
+      "choice": "llamacpp:synthetic-reranker"
+    },
+    "status": 200,
+    "body": {
+      "enabled": true,
+      "choice": "llamacpp:synthetic-reranker",
+      "source": "admin",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        },
+        {
+          "id": "llamacpp:synthetic-reranker",
+          "backend": "llamacpp",
+          "model": "synthetic-reranker"
+        }
+      ]
+    },
+    "stored": "{\"enabled\":true,\"choice\":\"llamacpp:synthetic-reranker\"}",
+    "audits": [
+      [
+        "rerank.configure",
+        "synthetic-admin",
+        {
+          "enabled": true,
+          "backend": "llamacpp",
+          "model": "synthetic-reranker"
+        }
+      ]
+    ],
+    "changes": 1
+  },
+  {
+    "name": "unreadable",
+    "input": {
+      "enabled": true,
+      "choice": "llamacpp:synthetic-reranker"
+    },
+    "status": 503,
+    "body": {
+      "error": "The installed models could not be read. Try again in a moment.",
+      "errorId": "catalogueUnavailable"
+    },
+    "stored": null,
+    "audits": [],
+    "changes": 0
+  },
+  {
+    "name": "reset",
+    "input": null,
+    "status": 200,
+    "body": {
+      "enabled": false,
+      "choice": "tei",
+      "source": "deployment",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        },
+        {
+          "id": "llamacpp:synthetic-reranker",
+          "backend": "llamacpp",
+          "model": "synthetic-reranker"
+        }
+      ]
+    },
+    "stored": null,
+    "audits": [
+      [
+        "rerank.reset",
+        "synthetic-admin",
+        {
+          "hadSaved": false
+        }
+      ]
+    ],
+    "changes": 1
+  },
+  {
+    "name": "delete",
+    "input": null,
+    "status": 200,
+    "body": {
+      "enabled": false,
+      "choice": "tei",
+      "source": "deployment",
+      "options": [
+        {
+          "id": "tei",
+          "backend": "tei",
+          "model": "gte-multilingual-reranker-base"
+        },
+        {
+          "id": "llamacpp:synthetic-reranker",
+          "backend": "llamacpp",
+          "model": "synthetic-reranker"
+        }
+      ]
+    },
+    "stored": null,
+    "audits": [
+      [
+        "rerank.reset",
+        "synthetic-admin",
+        {
+          "hadSaved": false
+        }
+      ]
+    ],
+    "changes": 1
+  }
+]

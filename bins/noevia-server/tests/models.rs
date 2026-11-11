@@ -246,7 +246,7 @@ async fn hardware_without_a_model_manager_is_nodes_404() {
 }
 
 #[tokio::test]
-async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() {
+async fn residual_methods_are_native_and_substantive_routes_keep_their_owner() {
     let d = tempfile::tempdir().unwrap();
     let _db = seed_database(d.path());
     let (addr, stop) = start(d.path(), &[]).await;
@@ -307,9 +307,58 @@ async fn other_methods_trailing_slashes_and_the_other_model_routes_go_to_node() 
         ("HEAD", "/api/model-manager/models"),
         ("GET", "/api/model-manager/models/"),
         ("GET", "/api/model-manager"),
+        // Normalization must not turn a substantive Node executor into an unmatched response.
+        ("POST", "/api/providers/../models/pull"),
     ] {
         let (s, _, b) = call(addr, m, p, &csrf).await;
-        assert_eq!(s, 502, "{m} {p}: {b}");
+        let residual = [
+            CAPABILITIES,
+            HARDWARE,
+            "/api/models/estimate",
+            "/api/models/preset/suggest",
+        ]
+        .contains(&p.split('?').next().unwrap_or(p))
+            || (p.starts_with("/api/models/") && p.ends_with('/'));
+        let method_refusal = [
+            HARDWARE,
+            "/api/models/estimate",
+            "/api/models/preset/suggest",
+        ]
+        .contains(&p.split('?').next().unwrap_or(p));
+        assert_eq!(
+            s,
+            if method_refusal {
+                405
+            } else if residual {
+                404
+            } else {
+                502
+            },
+            "{m} {p}: {b}"
+        );
+    }
+    let _ = stop.send(());
+}
+
+#[tokio::test]
+async fn residual_browser_gate_and_early_ownership_refusal_keep_node_order() {
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed_database(d.path());
+    let (addr, stop) = start(d.path(), &[]).await;
+    let device = format!("Authorization: Bearer {DEVICE}\r\n");
+    for path in [
+        "/api/admin/offsite-backup/",
+        "/api/mcp-keys/grid-x/",
+        "/api/providers/chatgpt/grid-unmatched",
+    ] {
+        let (status, _, body) = call(addr, "GET", path, &device).await;
+        assert_eq!(status, 403, "{path}: {body}");
+        assert_eq!(json(&body)["code"], "browser_session_required", "{path}");
+    }
+    for headers in ["", device.as_str()] {
+        let (status, _, body) = call(addr, "DELETE", "/api/mcp-keys/servers", headers).await;
+        assert_eq!(status, 503);
+        assert_eq!(json(&body)["code"], "RUST_MCP_CREDENTIALS_OWNED");
     }
     let _ = stop.send(());
 }
