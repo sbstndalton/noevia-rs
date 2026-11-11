@@ -278,25 +278,34 @@ fn settle_effect(path: &Path, token: &str) -> R<()> {
     }
     Ok(())
 }
-/// Read-only and fail closed. No timeout, exit, or readback retires an uncertain effect.
+/// Read-only and fail closed (a hot journal left by a crashed writer is rolled back through one
+/// read-write open of the existing file). No timeout, exit, or readback retires an uncertain effect.
 pub fn pending(root: &Path) -> bool {
     let path = root.join("managed-diary.db");
     if !path.exists() {
         return false;
     }
-    let read = || -> R<bool> {
-        let db = rusqlite::Connection::open_with_flags(
-            &path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )?;
+    let read = |flags: rusqlite::OpenFlags| -> rusqlite::Result<bool> {
+        let db = rusqlite::Connection::open_with_flags(&path, flags)?;
         db.busy_timeout(Duration::from_secs(1))?;
-        Ok(db.query_row(
+        db.query_row(
             "SELECT EXISTS(SELECT 1 FROM meta WHERE key=?)",
             [EFFECT],
             |r| r.get(0),
-        )?)
+        )
     };
-    read().unwrap_or(true)
+    match read(rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY) {
+        Ok(v) => v,
+        // A writer killed inside a transaction left a hot journal, which a read-only handle may
+        // not roll back. A read-write open of the existing file (never created here) lets
+        // SQLite restore the last committed state; a committed intent survives it.
+        Err(rusqlite::Error::SqliteFailure(e, _))
+            if e.extended_code == rusqlite::ffi::SQLITE_READONLY_ROLLBACK =>
+        {
+            read(rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE).unwrap_or(true)
+        }
+        Err(_) => true,
+    }
 }
 pub fn uncertain() -> Response<Body> {
     server::detail(
