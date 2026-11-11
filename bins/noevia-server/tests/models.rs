@@ -282,6 +282,15 @@ async fn residual_methods_are_native_and_substantive_routes_keep_their_owner() {
         (404, r#"{"error":"Native calibration is unavailable"}"#)
     );
     assert!(h.contains("cache-control: no-store"));
+    // Settings -> Inference machines is the front's: with no Node probe bridge it fails closed
+    // natively instead of reaching Node (whose old route is retired).
+    let (s, h, b) = call(addr, "GET", "/api/models/machines", &csrf).await;
+    assert_eq!(s, 503, "{b}");
+    assert_eq!(
+        json(&b),
+        serde_json::json!({"error": "Inference machines are unavailable.", "code": "machinesUnavailable"})
+    );
+    assert!(h.contains("cache-control: no-store"));
     for (m, p) in [
         ("HEAD", CAPABILITIES),
         ("POST", CAPABILITIES),
@@ -302,7 +311,6 @@ async fn residual_methods_are_native_and_substantive_routes_keep_their_owner() {
         ("HEAD", "/api/models/autotune"),
         ("GET", "/api/models/autotune/"),
         ("GET", "/api/models/calibration/"),
-        ("GET", "/api/models/machines"),
         ("POST", "/api/model-manager/models"),
         ("HEAD", "/api/model-manager/models"),
         ("GET", "/api/model-manager/models/"),
