@@ -73,15 +73,23 @@ async fn settled(f: &Front) -> Value {
 
 /// Completion is a public persistence/admission boundary, including when the last save fails.
 /// A directory at the state-file destination deterministically refuses the final atomic rename.
+///
+/// #2427: the block goes in only once the cancelled run has put its profile back, while the
+/// restore's router reload is held. Blocked earlier, it also refuses the restore's own intent save,
+/// and that run (by design) publishes its terminal status with the restore owed to a recovery
+/// under a fresh hold, which keeps admission closed and rewrites the job after the status is
+/// terminal: a different contract (calibration_worker's owed-recovery tests), and the race this
+/// test used to lose.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn finished_status_has_a_final_saved_record_and_admits_the_next_start() {
     let (d, f, _up, e) = rig().await;
     assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, 202);
     let path = cal::state_file(d.path(), &e);
-    tokio::time::timeout(Duration::from_secs(15), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-            if saved["job"]["originalText"].is_string() {
+            if saved["job"]["originalText"].is_string() && e.stream_started.load(Ordering::Acquire)
+            {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
@@ -89,15 +97,22 @@ async fn finished_status_has_a_final_saved_record_and_admits_the_next_start() {
     })
     .await
     .unwrap();
-    let backup = path.with_extension("blocked-save-backup");
-    std::fs::rename(&path, &backup).unwrap();
-    std::fs::create_dir(&path).unwrap();
+    // The long prompt is in flight, so the next router reload is the cancelled run's restore.
+    let held_reload = e.hold_next_reload();
     assert_eq!(
         write(f.addr, "POST", "/api/models/calibration/cancel", ADMIN, "")
             .await
             .0,
         202
     );
+    tokio::time::timeout(Duration::from_secs(30), held_reload.entered())
+        .await
+        .unwrap();
+    // The restore has saved its intent and written the original profile; only its reload is out.
+    assert_eq!(cal::ini(d.path()), format!("{}{}", cal::INI, cal::LAYA_INI));
+    std::fs::remove_file(&path).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    held_reload.release();
     // The raw outcome may be cancelled, but clients must see no terminal status until the
     // final saved record and admission release are published together.
     let until = tokio::time::Instant::now() + Duration::from_secs(1);
@@ -108,8 +123,10 @@ async fn finished_status_has_a_final_saved_record_and_admits_the_next_start() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     std::fs::remove_dir(&path).unwrap();
-    std::fs::rename(&backup, &path).unwrap();
     let job = settled(&f).await;
+    assert_eq!(job["status"], "cancelled", "{job}");
+    // Restored on the run's own hold: no recovery is owed after the terminal status.
+    assert_eq!(job["restored"], true, "{job}");
     let saved: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     assert_eq!(saved["job"]["id"], job["id"]);
     assert_eq!(saved["job"]["finishedAt"], job["finishedAt"]);
