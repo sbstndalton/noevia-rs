@@ -1,0 +1,230 @@
+[
+  {
+    "raw": "",
+    "status": 400,
+    "error": "Enter the machine’s address, for example 192.168.1.20 or pi5.lan.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": "  ",
+    "status": 400,
+    "error": "Enter the machine’s address, for example 192.168.1.20 or pi5.lan.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": "192.168.1.2",
+    "status": 200,
+    "address": "http://192.168.1.2"
+  },
+  {
+    "raw": "HTTP://BOX.lan",
+    "status": 200,
+    "address": "http://box.lan"
+  },
+  {
+    "raw": "http://127.0.0.1:80",
+    "status": 200,
+    "address": "http://127.0.0.1"
+  },
+  {
+    "raw": "https://[::1]:443",
+    "status": 200,
+    "address": "https://[::1]"
+  },
+  {
+    "raw": "192.168.1.2:8080",
+    "status": 400,
+    "error": "Leave the port out of the machine address: each service on it has its own port.",
+    "code": "portInAddress"
+  },
+  {
+    "raw": "ftp://192.168.1.2",
+    "status": 400,
+    "error": "A machine address uses http or https.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": "http://user:password@192.168.1.2",
+    "status": 400,
+    "error": "A machine address is only http(s) and a host name or IP address.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": "http://192.168.1.2/path",
+    "status": 400,
+    "error": "A machine address is only http(s) and a host name or IP address.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": "http://192.168.1.2?",
+    "status": 400,
+    "error": "A machine address is only http(s) and a host name or IP address.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": "http://192.168.1.2#",
+    "status": 400,
+    "error": "A machine address is only http(s) and a host name or IP address.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": "8.8.8.8",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 8.8.8.8 is not on this network (8.8.8.8 is a public address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "0.0.0.0",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 0.0.0.0 is not on this network (0.0.0.0 is the unspecified address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "169.254.10.10",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 169.254.10.10 is not on this network (169.254.10.10 is a link-local address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "169.254.169.254",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 169.254.169.254 is not on this network (169.254.169.254 is a cloud metadata address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "100.100.100.200",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 100.100.100.200 is not on this network (100.100.100.200 is a cloud metadata address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "224.0.0.1",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 224.0.0.1 is not on this network (224.0.0.1 is a multicast address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "255.255.255.255",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 255.255.255.255 is not on this network (255.255.255.255 is the broadcast address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "192.0.2.1",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 192.0.2.1 is not on this network (192.0.2.1 is a reserved address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "198.51.100.1",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 198.51.100.1 is not on this network (198.51.100.1 is a documentation address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "203.0.113.1",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 203.0.113.1 is not on this network (203.0.113.1 is a documentation address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "[::]",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): :: is not on this network (:: is the unspecified address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "[::1]",
+    "status": 200,
+    "address": "http://[::1]"
+  },
+  {
+    "raw": "[::2]",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): ::2 is not on this network (::2 is a reserved address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "[fe80::1]",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): fe80::1 is not on this network (fe80::1 is a link-local address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "[ff02::1]",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): ff02::1 is not on this network (ff02::1 is a multicast address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "[64:ff9b::1]",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 64:ff9b::1 is not on this network (64:ff9b::1 is a reserved address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "[2001:db8::1]",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 2001:db8::1 is not on this network (2001:db8::1 is a reserved address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "[fd00:ec2::254]",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): fd00:ec2::254 is not on this network (fd00:ec2::254 is a cloud metadata address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "[::ffff:192.168.1.2]",
+    "status": 200,
+    "address": "http://[::ffff:c0a8:102]"
+  },
+  {
+    "raw": "[::ffff:8.8.8.8]",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): ::ffff:808:808 is not on this network (::ffff:808:808 is a public address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": "a..b",
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): not a valid host name.",
+    "code": "publicAddress"
+  },
+  {
+    "raw": null,
+    "status": 400,
+    "error": "Enter the machine’s address, for example 192.168.1.20 or pi5.lan.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": 17,
+    "status": 400,
+    "error": "Machines must be on this network (a LAN or Tailscale address): 0.0.0.17 is not on this network (0.0.0.17 is the unspecified address).",
+    "code": "publicAddress"
+  },
+  {
+    "raw": false,
+    "status": 200,
+    "address": "http://false"
+  },
+  {
+    "raw": {},
+    "status": 400,
+    "error": "That is not a machine address.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": [],
+    "status": 400,
+    "error": "Enter the machine’s address, for example 192.168.1.20 or pi5.lan.",
+    "code": "invalidAddress"
+  },
+  {
+    "raw": [
+      "192.168.1.2"
+    ],
+    "status": 200,
+    "address": "http://192.168.1.2"
+  }
+]

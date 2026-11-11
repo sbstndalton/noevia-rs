@@ -567,7 +567,7 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/inference-budget` | node | budget store, boot-time budget, Node's shared installed list; PUT writes |
 | `/api/models/installed` | node | Node's shared (cached, invalidated by its writes) installed list |
 | `/api/models/load` | node | write through Node's lease and maintenance gate (M2) |
-| `/api/models/machines` | node | machine health probe and tune caches in Node memory; POST writes |
+| `/api/models/machines` | rust | native registry, mutations and tune; Node supplies health/readiness facts |
 | `/api/models/presets/reload` (POST) | rust | moved in #2210 (below); other methods keep Node's 403/405 |
 | `/api/models/preset/suggest` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
 | `/api/models/{*}` | node | preset, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
@@ -1870,6 +1870,23 @@ only within its own call and returns its token after releasing it. Rust owns con
 resumability/restoration checks, protected-queue filtering, identity decisions, phase/step reset
 instructions and public projection. No cross-request reservation or replacement-job retry is used.
 
+### Inference-machine array coercion: explicit compatibility exception
+
+For `POST /api/models/machines` add/update string coercion, Rust deterministically refuses
+array nesting **at or above 3086** with status 500 and exactly
+`{"error":"The inference machines could not be changed."}`, without a registry or audit write.
+Depth 3085 remains accepted for an otherwise valid add; tests cover 3085, 3086 and 3087.
+This is a root-approved compatibility exception, not exact reproduction of a V8 stack limit:
+Node's limit depends on request frames and warmup, so no single faithful number exists.
+The boundary is the lowest first-refused depth in two cold and two warm loopback HTTP searches
+using the preserved route and production `server/http.cjs` async-iterator `readJson`, in the
+pinned web image `sha256:4018d741e3e56c274268d55d606410d756c50268c4d476ff0d3b0890c4cb3d8c`.
+Runtime: Linux x64, Node v22.23.3, V8 12.4.254.21-node.57, default stack and no extra flags.
+All four searches first refused 3086; another Node stack context may accept that input.
+Exact runtime measurements are qualification-only (`deploy/tools/qualify-machines-depth.sh`
+in the release repo); floating Core CI checks ordinary observable cases, not exact V8 numbers.
+Requalification does not automatically raise the Rust boundary: changing the exception requires
+an explicit contract decision. Synthetic data only; disposable containers, external network disabled.
 ## Code egress issuer (row V)
 
 `rust-code-egress-issuer` makes the front the only issuer of the code-sandbox egress proxy's control
