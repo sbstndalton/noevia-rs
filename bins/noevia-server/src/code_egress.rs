@@ -3,7 +3,9 @@
 //!
 //! - it generates, persists (mode 0600, `code-egress-issuer.json`) and publishes the shared proxy
 //!   key (mode 0440, `CODE_EGRESS_CONTROL_KEY_FILE`, exactly the contract the Node publisher had),
-//!   and a restart keeps that key;
+//!   and a restart keeps that key. On the first start after the retired Node issuer it adopts Node's
+//!   published key; the proxy is still initialized under it by Node's Ready, so the first Initial is
+//!   refused and the front rotates the key once, at once (no conflict wait), then is ready;
 //! - it keeps the authenticated session with the proxy (Ready, 5 s renewal, recovery, re-key after
 //!   signed refusals) from its own start, whether or not Node is running;
 //! - Node asks it, over the internal store listener (`x-noevia-store-token`), for a task's grant and

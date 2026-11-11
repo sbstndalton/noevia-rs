@@ -680,8 +680,10 @@ pub enum Opened {
     Restored,
     /// The published key is another web's: nothing is written, ever.
     Superseded,
-    /// The key the retired Node issuer had published was taken over unchanged (no rotation); only the
-    /// private state was written.
+    /// The key the retired Node issuer had published was taken over; only the private state was
+    /// written here (no epoch: Node's session lived in memory). The proxy is normally still initialized
+    /// under that key by Node's Ready, so the client's first Initial is refused and, having no session to
+    /// Replace, it rotates the key once at once (`Client`'s conflict handling) and is ready on the new key.
     Adopted,
 }
 

@@ -251,7 +251,9 @@ async fn a_takeover_serves_the_same_key_to_the_proxy_and_a_later_rotation_is_nod
         Arc::new(|_, _| {}),
     )
     .unwrap();
-    // The proxy reads the key Node published, signs with it, and the issuer is Ready on it.
+    // A proxy that never saw Node's Ready (restarted since) reads the key Node published, signs with
+    // it, and the issuer is Ready on it without a rotation. A proxy Node already readied under that key
+    // refuses Initial and gets one immediate rotation instead: tests/adopted_proxy.rs.
     client.ready().await.unwrap();
     assert!(proxy.session().is_some());
     assert_eq!(hex(proxy.key().as_bytes()), hex(&node.key));

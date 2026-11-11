@@ -1,6 +1,11 @@
 //! A fake proxy for tests of this crate and its users (feature `testing`): it reads the published key on
 //! every request, as the real proxy does, verifies the request's MAC, signs its answers, and keeps one
-//! session. Synthetic; never built into the front.
+//! session. As the real engine (`bins/egress-proxy/src/control/engine.rs`, `ready_precondition` and
+//! `sync_key`) it accepts Initial only while it is not initialized under the published key, and a
+//! changed key resets that and retires the session. Session expiry does not reset it.
+//! [`FakeProxy::initialized_by_node`] starts already initialized under the published key, with a
+//! session nobody in the test can name, as the live proxy is after the retired Node issuer's Ready.
+//! Synthetic; never built into the front.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -16,6 +21,8 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 pub const BOOT: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+/// The session of [`FakeProxy::initialized_by_node`]: the retired Node issuer's, never known to a client.
+pub const NODE_SESSION: &str = "40de40de40de40de40de40de40de40de";
 
 #[derive(Default)]
 pub struct ProxyState {
@@ -26,6 +33,14 @@ pub struct ProxyState {
     pub prior_sessions: Vec<Option<String>>,
     pub down: bool,
     pub requests: u32,
+    /// A Ready succeeded under `fingerprint` (the engine's `initialized`).
+    pub initialized: bool,
+    /// The fingerprint of the published key the last request was read under (the engine's `sync_key`).
+    pub fingerprint: Option<String>,
+    /// How many times the published key changed under it.
+    pub key_changes: u32,
+    /// Not the engine: a key change resets nothing, so Initial stays refused (a proxy that never accepts).
+    pub sticky: bool,
 }
 
 pub struct FakeProxy {
@@ -38,6 +53,22 @@ impl FakeProxy {
         Arc::new(Self {
             key_file,
             state: Mutex::new(ProxyState::default()),
+        })
+    }
+    /// A proxy the retired Node issuer already did its Ready on, under the key published now: Initial is
+    /// refused until the key changes, and the live session is one no test client can name.
+    pub fn initialized_by_node(key_file: PathBuf) -> Arc<Self> {
+        let fingerprint = FileKey::from_hex(std::fs::read_to_string(&key_file).unwrap().trim())
+            .unwrap()
+            .fingerprint();
+        Arc::new(Self {
+            key_file,
+            state: Mutex::new(ProxyState {
+                session: Some(NODE_SESSION.to_string()),
+                initialized: true,
+                fingerprint: Some(fingerprint),
+                ..ProxyState::default()
+            }),
         })
     }
     pub fn key(&self) -> FileKey {
@@ -89,6 +120,16 @@ impl Transport for ProxyTransport {
                 .map_err(|_| ControlError(Reason::Authentication))?;
             let body: Value = serde_json::from_slice(&request.body).unwrap();
             let fp = file.fingerprint();
+            if st.fingerprint.as_deref() != Some(fp.as_str()) {
+                if st.fingerprint.is_some() {
+                    st.key_changes += 1;
+                    if !st.sticky {
+                        st.session = None;
+                        st.initialized = false;
+                    }
+                }
+                st.fingerprint = Some(fp.clone());
+            }
             let reply = |status: u16, fields: String| -> Reply {
                 let json = format!("{{\"version\":1,\"requestId\":\"{request_id}\",{fields}}}");
                 let mac = control
@@ -120,7 +161,7 @@ impl Transport for ProxyTransport {
                     st.ready_modes.push(mode.clone());
                     st.prior_sessions.push(prior.clone());
                     let ok = match (mode.as_str(), &st.session) {
-                        ("initial", None) => true,
+                        ("initial", None) => !st.initialized,
                         ("replace", Some(live)) => prior.as_deref() == Some(live.as_str()),
                         _ => false,
                     };
@@ -128,6 +169,7 @@ impl Transport for ProxyTransport {
                         return Ok(reply(409, "\"state\":\"conflict\"".into()));
                     }
                     st.sessions_issued += 1;
+                    st.initialized = true;
                     let session =
                         format!("{:032x}", 0x5e55_1011u128 + u128::from(st.sessions_issued));
                     st.session = Some(session.clone());
