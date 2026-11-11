@@ -276,13 +276,30 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
             }
             Owner::Node => {
                 node_routes += 1;
+                // The residual fallback (residual_fallback.rs) answers Node's former refusals on
+                // these Node rows itself: every method but POST on the exact model writes, and every
+                // path behind the model wildcard but its three substantive handlers (checked below).
+                let residual = |m: &str| match r.path {
+                    "/api/models/delete" | "/api/models/load" | "/api/models/prune-missing" => {
+                        m != "POST"
+                    }
+                    "/api/models/{*}" => true,
+                    _ => false,
+                };
                 for method in ["GET", "POST"] {
                     let (res, _c) = call(front, method, &path, &[], b"").await;
-                    assert_eq!(
-                        res.headers().get("x-upstream").map(|v| v.as_bytes()),
-                        Some(&b"1"[..]),
-                        "{method} {path} did not reach Node"
-                    );
+                    if residual(method) {
+                        assert!(
+                            res.headers().get("x-upstream").is_none(),
+                            "{method} {path} is a residual answered by the front but reached Node"
+                        );
+                    } else {
+                        assert_eq!(
+                            res.headers().get("x-upstream").map(|v| v.as_bytes()),
+                            Some(&b"1"[..]),
+                            "{method} {path} did not reach Node"
+                        );
+                    }
                 }
             }
         }
@@ -322,6 +339,10 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
         ("OPTIONS", "/api/models/autotune"),
         ("POST", "/api/ready"),
         ("HEAD", "/api/ready"),
+        // The model wildcard's substantive handlers stay Node's beside the residual fallback.
+        ("POST", "/api/models/pull"),
+        ("POST", "/api/models/unload"),
+        ("GET", "/api/models/mtp-artifact"),
         ("POST", "/"),
         ("DELETE", "/c/x"),
     ] {

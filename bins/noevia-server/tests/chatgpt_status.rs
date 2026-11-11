@@ -212,18 +212,28 @@ async fn gate_flag_tenant_and_node_answers_through_the_front() {
     assert_eq!(s, 200);
     let (s, _, _) = call(addr, "GET", "/api/providers/x/../chatgpt", MEMBER, None).await;
     assert_eq!(s, 200);
-    // Everything else is Node's (dead upstream: 502).
+    // Every other method on the path and its broker siblings (sbstndalton/noevia#2190 round 5)
+    // is the residual fallback's (residual_fallback.rs, with rust-storage-reads): Node's former
+    // answer with the switch on, 405, never a Node proxy. Without rust-storage-reads it is Node's
+    // (dead upstream: 502).
+    let residual = cfg!(feature = "rust-storage-reads");
     for (m, p) in [
         ("POST", PATH),
         ("HEAD", PATH),
         ("GET", "/api/providers/chatgpt/"),
-        // The broker's siblings (sbstndalton/noevia#2190 round 5) keep their other methods on Node.
         ("POST", "/api/providers/chatgpt/models"),
         ("GET", "/api/providers/chatgpt/device"),
         ("GET", "/api/providers/chatgpt/device/poll"),
     ] {
-        let (s, _, _) = call(addr, m, p, MEMBER, Some("csrf")).await;
-        assert_eq!(s, 502, "{m} {p}");
+        let (s, _, b) = call(addr, m, p, MEMBER, Some("csrf")).await;
+        if residual {
+            assert_eq!(s, 405, "{m} {p}");
+            if m != "HEAD" {
+                assert_eq!(b, r#"{"error":"method not allowed"}"#, "{m} {p}");
+            }
+        } else {
+            assert_eq!(s, 502, "{m} {p}");
+        }
     }
     // DELETE is the provider registry's since round 6 (provider_routes.rs), not Node's: the
     // disconnect, which makes the account's directory first as any provider write does (this
