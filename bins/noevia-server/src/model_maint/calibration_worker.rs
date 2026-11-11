@@ -1470,10 +1470,14 @@ impl Worker {
     }
 
     /// `unload(model)`: asked, then polled until it reads unloaded (or the time is up).
+    ///
+    /// #2427: once the run has lost its exclusion, every request is refused before it reaches the
+    /// engine, so nothing can be asked or confirmed: stop rather than wait out the whole unload
+    /// limit. The recovery under a fresh hold unloads every model before it restores the profile.
     async fn unload(&self, hold: &Hold, model: &str) {
         self.post_unload(hold, model).await;
         let deadline = tokio::time::Instant::now() + self.limits.unload;
-        while tokio::time::Instant::now() < deadline {
+        while tokio::time::Instant::now() < deadline && !self.lease_lost() {
             if let Ok(rows) = self.listing(hold, None).await {
                 if rows
                     .iter()
@@ -2805,6 +2809,10 @@ impl Worker {
                 self.release_local_fence();
             }
         });
+        // #2427: the terminal publication is an observable transition even when a recovery still
+        // holds admission (no fence release notifies it then).
+        #[cfg(test)]
+        test_changed();
         if self.recovery.load(Ordering::Acquire) {
             tokio::spawn(Arc::clone(self).recover_after_loss());
         }
@@ -3579,6 +3587,30 @@ mod tests {
         })
         .await
         .expect("synthetic request acknowledgement");
+    }
+
+    /// #2427: at least `n` requests starting with `prefix`, observed as they are logged.
+    async fn requested(log: &RequestLog, prefix: &str, n: usize) {
+        tokio::time::timeout(WATCHDOG, async {
+            loop {
+                let changed = log.changed.notified();
+                tokio::pin!(changed);
+                changed.as_mut().enable();
+                if log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|r| r.starts_with(prefix))
+                    .count()
+                    >= n
+                {
+                    return;
+                }
+                changed.await;
+            }
+        })
+        .await
+        .expect("synthetic requests logged");
     }
 
     const INI: &str =
@@ -5578,12 +5610,7 @@ mod tests {
         );
         // The authority answers again: the recovery takes its own lease and restores.
         ended.store(false, Ordering::Release);
-        for _ in 0..500 {
-            if !w.maint.local_held() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        readmitted(&w).await;
         assert!(
             !w.maint.local_held(),
             "admission opens once the recovery settled"
@@ -5594,16 +5621,62 @@ mod tests {
         assert!(!w.lease_lost());
     }
 
+    /// #2427: a run whose hold is lost mid-step settles at once. Its end-of-step unload cannot ask or
+    /// confirm anything (every request is refused before it reaches the engine), so it does not wait
+    /// out the unload limit; the recovery under a fresh hold unloads and restores.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_lost_hold_settles_without_waiting_out_the_unload_limit() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (port, engine_seen) = synthetic_engine(ini.clone(), true).await;
+        let ended = Arc::new(AtomicBool::new(false));
+        let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        // Twice the settle watchdog: a run that waited out this limit could not settle in time.
+        let w = with_limits(
+            &w,
+            Limits {
+                unload: WATCHDOG * 2,
+                ..w.limits
+            },
+        );
+        w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
+        released(&engine_seen, "STREAM /v1/chat/completions").await;
+        ended.store(true, Ordering::Release);
+        let job = settled_or_recovering(&w).await;
+        assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
+        assert!(
+            w.maint.local_held(),
+            "admission stays closed until the recovery has run"
+        );
+        assert_ne!(
+            std::fs::read_to_string(&ini).unwrap(),
+            INI,
+            "nothing restored on the lost hold"
+        );
+        ended.store(false, Ordering::Release);
+        readmitted(&w).await;
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+        assert_eq!(w.job().get("restored"), &JValue::Bool(true));
+    }
+
     /// A settled job (status not running, finishedAt published), whether or not its recovery has run.
+    /// #2427: observed at the terminal publication itself (bounded by the watchdog), not within a
+    /// fixed number of polls that a loaded runner's durable writes could outlast.
     async fn settled_or_recovering(w: &Worker) -> JValue {
-        for _ in 0..600 {
-            let job = w.job();
-            if job.get("status").as_str() != Some("running") && job.get("finishedAt").truthy() {
-                return job;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        panic!("calibration did not settle: {:?}", w.job());
+        let mut settled = JValue::Null;
+        delta_wait(|| {
+            settled = w.job();
+            settled.get("status").as_str() != Some("running") && settled.get("finishedAt").truthy()
+        })
+        .await;
+        settled
+    }
+
+    /// Local admission reopened (the recovery's fence release is an observed transition).
+    async fn readmitted(w: &Worker) {
+        delta_wait(|| !w.maint.local_held()).await;
     }
 
     /// Delta review P1: a Node restart (a new incarnation at the authority) between the load decision
@@ -5651,12 +5724,7 @@ mod tests {
             before,
             "no load reached the engine on the fenced hold"
         );
-        for _ in 0..500 {
-            if !w.maint.local_held() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        readmitted(&w).await;
         assert!(!w.maint.local_held());
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
         release.abort();
@@ -5674,41 +5742,20 @@ mod tests {
         let (lease, seen) = lease_stub(None, Arc::clone(&ended)).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
-        for _ in 0..600 {
-            if w.job()
+        delta_wait(|| {
+            w.job()
                 .get("phase")
                 .as_str()
                 .is_some_and(|p| p.starts_with("Long-prompt"))
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        })
+        .await;
         ended.store(true, Ordering::Release);
         settled_or_recovering(&w).await;
         // Recovery attempts keep being refused a lease for a while: each is retried, none opens.
-        let asks = |seen: &RequestLog| {
-            seen.lock()
-                .unwrap()
-                .iter()
-                .filter(|l| l.starts_with("POST /internal/model-maintenance/lease "))
-                .count()
-        };
-        for _ in 0..500 {
-            if asks(&seen) >= 3 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-        assert!(asks(&seen) >= 3, "the recovery was retried");
+        requested(&seen, "POST /internal/model-maintenance/lease ", 3).await;
         assert!(w.maint.local_held(), "closed while no recovery could run");
         ended.store(false, Ordering::Release);
-        for _ in 0..500 {
-            if !w.maint.local_held() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        readmitted(&w).await;
         assert!(!w.maint.local_held());
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
     }
@@ -6165,12 +6212,7 @@ mod tests {
         assert_eq!(job.get("error").as_str(), Some(LEASE_LOST));
         // Delta review P1: the restore runs under a fresh recovery lease.
         ended.store(false, Ordering::Release);
-        for _ in 0..500 {
-            if !w.maint.local_held() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        readmitted(&w).await;
         assert_eq!(w.job().get("restored"), &JValue::Bool(true));
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
         assert!(
