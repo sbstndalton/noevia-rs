@@ -15,6 +15,7 @@ pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
 pub mod chat_framing_suggest;
+pub mod chat_mirror;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -188,8 +189,14 @@ use std::sync::Arc;
 /// rust-decision-settings.cjs `RUST_DECISION_SETTINGS_OWNED`), so the supervisor pairs them.
 ///
 /// `rust-vault-mirror-preferences`: this build answers `GET|PUT /api/chat-vault-mirror/preferences`
-/// natively (server-account vault_mirror) and writes the mirror nudges core polls; the paired core
-/// refuses that path (rust-vault-mirror-preferences.cjs `RUST_VAULT_MIRROR_PREFERENCES_OWNED`).
+/// natively (server-account vault_mirror) and nudges its own mirror schedule when a save turns the
+/// mirror on; the paired core refuses that path (rust-vault-mirror-preferences.cjs
+/// `RUST_VAULT_MIRROR_PREFERENCES_OWNED`).
+/// `rust-chat-mirror-v1`: this build reads every active account's chat change journal in process and
+/// owns the Diary mirror and chat brain schedules (chat_mirror.rs, crate chat-mirror-sched); the paired
+/// core keeps only their two work executors and nudges the schedule over the project store (core
+/// rust-chat-mirror.cjs `RUST_CHAT_MIRROR_OWNED`). Both processes must carry it: a front without it
+/// beside this core leaves the journal unread, a core without it beside this front runs a second schedule.
 /// `rust-storage-integrations`: this build answers `POST /api/integrations/storage/folder`,
 /// `/test` and `/nextcloud/{start,poll,cancel}` (sbstndalton/noevia#2190): it owns the pending
 /// Nextcloud sign-ins (`nextcloud-login-flows.json`), saves a completed sign-in's storage row and
@@ -395,6 +402,8 @@ use std::sync::Arc;
 /// `chat-activity`: this build records each authenticated request's account in
 /// `UI_DATA_DIR/chat-activity.json` (chat_activity.rs, chat port S3), which core's change journal
 /// reader merges as request starts (chat-activity.cjs). Either side alone keeps today's behaviour.
+/// With `rust-chat-mirror-v1` that reader is this front's own journal consumer (chat_mirror.rs
+/// `ACTIVITY_FILE`), which merges the same file on each tick; core no longer reads it.
 ///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
@@ -406,6 +415,7 @@ pub const FEATURES: &[&str] = &[
     "reranker-settings-v1",
     "rust-diary-backup-worker",
     "rust-embedding-background-v1",
+    "rust-chat-mirror-v1",
     "rust-index-outbox-v3",
     "rust-media-background-v1",
     "client-address-header",
@@ -613,6 +623,9 @@ pub struct App {
     /// `connectorRate` of the Diary connector endpoint (core routes/diary.cjs): fixed windows, one
     /// per bucket key, in this process's memory like core's.
     diary_connector_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
+    /// The chat mirror and brain schedule, set once the server runs (`rust-chat-mirror-v1`);
+    /// Node's triggers reach it over the project store.
+    pub chat_mirror: std::sync::OnceLock<Arc<chat_mirror::ChatMirror>>,
     /// core index.cjs's `llmRateLimiter` for the `chat-frame:<user>` buckets only (chat port S4):
     /// no other key shared them.
     pub(crate) framing_suggest_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
@@ -713,6 +726,7 @@ impl App {
             diary: server_diary::Diary::new(config.diary.clone())
                 .ok()
                 .map(Arc::new),
+            chat_mirror: std::sync::OnceLock::new(),
             diary_connector_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
                 identity::now_ms(),
             )),

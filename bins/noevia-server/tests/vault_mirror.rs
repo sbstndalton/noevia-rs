@@ -14,6 +14,23 @@ const ORIGIN: &str = "https://mirror.example.test";
 const SESSION: &str = "synthetic-mirror-session";
 const CSRF: &str = "synthetic-mirror-csrf";
 
+/// The nudges the preferences route raised, by data directory (the server installs one hook per
+/// process; tests share it and read their own directory's).
+static NUDGES: std::sync::Mutex<Vec<(std::path::PathBuf, String)>> =
+    std::sync::Mutex::new(Vec::new());
+
+fn install_nudge_hook() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        server_account::vault_mirror::set_nudge_hook(Box::new(|dir, user| {
+            NUDGES
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .push((dir.to_path_buf(), user.to_string()));
+        }));
+    });
+}
+
 struct Harness {
     dir: tempfile::TempDir,
     db: Connection,
@@ -21,6 +38,7 @@ struct Harness {
 }
 impl Harness {
     fn new() -> Result<Self, Error> {
+        install_nudge_hook();
         let dir = tempfile::tempdir()?;
         let db = Connection::open(server_store::db_path(dir.path()))?;
         db.execute_batch(include_str!(
@@ -63,8 +81,14 @@ impl Harness {
             .join(UID)
             .join("chat-vault-mirror.json")
     }
-    fn nudges(&self) -> Option<String> {
-        std::fs::read_to_string(self.dir.path().join("chat-vault-mirror-nudges.json")).ok()
+    /// The accounts nudged for this harness's directory since the last call, if any.
+    fn nudges(&self) -> Option<Vec<String>> {
+        let mut all = NUDGES.lock().unwrap_or_else(|p| p.into_inner());
+        let (mine, rest): (Vec<_>, Vec<_>) = all
+            .drain(..)
+            .partition(|(dir, _)| dir.as_path() == self.dir.path());
+        *all = rest;
+        (!mine.is_empty()).then(|| mine.into_iter().map(|(_, user)| user).collect())
     }
     fn audits(&self) -> Result<Vec<String>, Error> {
         let mut st = self.db.prepare(
@@ -240,12 +264,11 @@ async fn availability_follows_chat_framing_and_diary_and_nudges_node() -> Result
         h.call("PUT", r#"{"enabled":true,"extra":1}"#).await?,
         (200, r#"{"enabled":true,"available":true}"#.to_string())
     );
-    let nudges = h.nudges().ok_or("no nudge")?;
-    assert!(
-        nudges.starts_with(&format!(r#"{{"version":1,"nudges":{{"{UID}":"#)),
-        "{nudges}"
+    assert_eq!(
+        h.nudges(),
+        Some(vec![UID.to_string()]),
+        "one nudge, for the account"
     );
-    std::fs::remove_file(h.dir.path().join("chat-vault-mirror-nudges.json"))?;
     // Turning it off never nudges.
     assert_eq!(
         h.call("PUT", r#"{"enabled":false}"#).await?,
