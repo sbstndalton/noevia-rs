@@ -2039,6 +2039,7 @@ dependencies = [
  "llamacpp-presets",
  "long-profile",
  "mcp-frame",
+ "mcp-servers",
  "model-stream",
  "offsite-backup-format",
  "policy-leaves",

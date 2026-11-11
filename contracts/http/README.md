@@ -1361,15 +1361,25 @@ previewed removes the server **and forgets the key the administrator stored** (t
 rotation re-seals the shared key slot through the broker (`directory_mcp_servers` is its fourth table; `POST
 /v1/mcp/reseal`), and Core's rotation no longer lists it.
 
-**Node's discovery, published.** `mcp-discovery.json` (`mcp_discovery.rs`; Core `mcp-discovery-snapshot.cjs`) carries what
-only the live MCP client knows: the offered boxes with their tools and whether each writes, the configured boxes,
-each server's last discovery, the coding harness switch, whether a repository is registered, whether a Nextcloud MCP
-server is configured and `MCP_NEXTCLOUD_ORIGINS`. It is written atomically (0600) every 3 s **only while the front asks**
-(the demand marker `snapshot-demand`, snapshot.rs), and the front trusts it only while it is two intervals young;
-otherwise the answer is "not ready" (the permitted view: 503 `Retry-After: 2`; the admin listing: no tool counts; the
-connectors page: Drive plus a Nextcloud entry that says it is being prepared). `snapshot.rs` and Core's
-`published-snapshot.cjs` are the close-out round's files (#2190 group D) copied unchanged so the two branches merge
-without a conflict; `mcp-discovery.json` joins `PUBLISHED_STATE` (the off-site walk and the replay state comparison leave it out).
+**MCP discovery, the front's (row T).** `mcp_discovery_actor.rs` connects to every configured server (the operator's
+`MCP_SERVERS`, then the directory's), lists and converts its tools, binds the curated boxes (`mcp_manifest.rs`), and owns
+each server's last outcome, the refresh cadence (10 min; 30 s after a run that found nothing; 5/15/45/120 s for a failing
+remote server; the in-process server is retried at the next request), the coalescing of callers (a forced call that arrives
+during a run waits and runs again) and the reaction to a changed directory table or a changed administrator credential.
+Discovery uses service credentials only (a static bearer, the directory's shared key, a discovery-only capability token for the
+in-process server, the adding administrator's sign-in or key); a disabled administrator's credential is not trusted; the snapshot
+never varies by caller. Core (`mcp-native-discovery.cjs`) is its fail-closed client over the internal store
+(`POST /v1/mcp/discovery { force?, generation? }` -> the snapshot, or `{ unchanged: true }`; 503 while it cannot answer, and Core then
+offers no tools and no boxes). What only the chat process knows - the built-in boxes with their tool definitions and which of them
+read, the connector boxes, the coding-harness switch, whether a repository is registered and the prefill measurements - is
+`toolbox-chat-facts.json` (`mcp_discovery.rs`; Core `toolbox-chat-facts.cjs`), written atomically (0600) every 3 s **only while
+the front asks** (the demand marker `snapshot-demand`, snapshot.rs) and trusted only while two intervals young. The catalogue
+(`compose`) behind the permitted view, the admin listing and the connectors page is built from those two sources; either one
+missing, stale or unproven answers "not ready" (the permitted view: 503 `Retry-After: 2`; the admin listing: no tool counts;
+the connectors page: Drive plus a Nextcloud entry that says it is being prepared). Both files join `PUBLISHED_STATE` (the
+off-site walk and the replay state comparison leave them out). `tests/mcp-discovery-oracle.cjs` runs Core's real discovery
+wiring over 18 scenarios (a virtual clock, scripted servers) and `tests/mcp_discovery_actor.rs` replays them against the actor,
+the catalogue and the picker's facts.
 
 **Permitted tools, with no stale window.** The view is computed per request from the `toolboxes-permitted` crate, the
 project (tenant-scoped `users/<id>/projects.json`), the account's `tool_policies`, Drive connection, MCP sign-ins and
@@ -1812,10 +1822,10 @@ for this metadata port; those engine behaviors are not proven by its synthetic t
 `toolbox_picker.rs` authenticates the account and reads its current Drive connection;
 `server-projects::toolbox_picker` composes summaries, UTF-16 token estimates, prefill observations
 and redacted MCP status. The old Node public handler, summary helper and MCP status helper are removed.
-`POST /internal/toolbox-picker/facts` accepts an empty object from the trusted loopback front only;
-Node awaits discovery and supplies selected raw offered definitions and live observations. It receives
-no account selector. URLs, header configuration and credentials are never copied into server facts;
-authentication kinds are checked against the supported enum. Unavailable or malformed facts fail with 503.
+The facts are the front's own MCP discovery plus the chat process's published toolbox facts (`toolbox-chat-facts.json`); the old
+`POST /internal/toolbox-picker/facts` bridge is gone, so nothing is asked of Node per request and no account selector can reach
+it. URLs, header configuration and credentials are never copied into the facts; authentication kinds are checked against the
+supported enum. Facts that are not provably current, or malformed, fail with 503.
 
 The frozen Node fixture checks exact response and token-cost parity, including UTF-16 title truncation.
 Real-front synthetic HTTP checks cover authentication, CSRF, 405s, current-account Drive isolation and

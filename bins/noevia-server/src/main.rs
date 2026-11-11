@@ -195,6 +195,10 @@ async fn server_main() -> ExitCode {
     if let Some(mcp) = app.mcp.as_ref() {
         mcp.sweep_once(&app).await;
     }
+    // sbstndalton/noevia row T: MCP tool discovery is this process's; the first listing warms the
+    // catalogue so the first chat does not pay for it (a server still starting is retried by the cadence).
+    #[cfg(feature = "rust-storage-reads")]
+    noevia_server::mcp_discovery_backend::warm(&app);
     // sbstndalton/noevia#2190 round 7: Google Drive's state file is brought up to date with the disk,
     // and the off-site backup's nightly schedule starts.
     if let Some(drive) = app.drive.as_ref() {
