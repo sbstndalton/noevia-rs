@@ -1029,7 +1029,7 @@ impl Broker {
     }
 
     /// The `chatgptOAuth` flag, read per request.
-    fn flag(&self, app: &App) -> Result<bool, ()> {
+    pub(crate) fn flag(&self, app: &App) -> Result<bool, ()> {
         let writer = app.writes.writer().map_err(|_| ())?;
         writer
             .read(|r| server_chatgpt_status::enabled(r, self.feature_env))
