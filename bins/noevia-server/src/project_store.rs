@@ -31,7 +31,8 @@
 //! ignored, as they always were.
 //!
 //! A user's chat change journal (sbstndalton/noevia#2153; crates/server-projects `journal`), one
-//! entry per transcript mutation, which Node tails to run the chat mirror and brain:
+//! entry per transcript mutation. This process's chat mirror schedule consumes it in process
+//! (chat_mirror.rs); the read op below is kept as the journal's observation interface:
 //!
 //! `POST /v1/changes/read { user, after? }`         -> 200 `{ entries, oldestSeq, latestSeq, more, start }`
 //!   Each entry is `{ seq, chatId, revision, op, origin, start, at }` (`origin` missing on
@@ -708,6 +709,17 @@ pub fn router_with_app(
             }),
         );
     }
+    // `rust-chat-mirror-v1`: Node's triggers for the chat mirror schedule (chat_mirror.rs), same secret.
+    for op in ["schedule", "touch"] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/chat-mirror/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { chat_mirror_op(store, app, headers, raw, op).await }
+            }),
+        );
+    }
     // sbstndalton/noevia#2202: the MCP credential broker (mcp_routes.rs `internal_op`), same secret.
     for op in [
         "session",
@@ -741,6 +753,46 @@ pub fn router_with_app(
         );
     }
     router
+}
+
+/// `POST /v1/chat-mirror/schedule {user, chatId|null, immediate?}` and `/touch {user}`: Node's
+/// triggers for the mirror schedule (a project change, an import, a request start). 200 `{}` when taken;
+/// 400 for a body that is not that; 503 while the schedule is not running.
+async fn chat_mirror_op(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: &'static str,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Some(mirror) = app.as_ref().and_then(|a| a.chat_mirror.get()) else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, "chat mirror unavailable");
+    };
+    let Ok(body) = serde_json::from_slice::<Value>(&raw) else {
+        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let Some(user) = body
+        .get("user")
+        .and_then(Value::as_str)
+        .filter(|u| !u.is_empty() && u.len() <= 1024)
+    else {
+        return error(StatusCode::BAD_REQUEST, "user required");
+    };
+    if op == "touch" {
+        mirror.touch(user);
+    } else {
+        let chat = match body.get("chatId") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(c)) if !c.is_empty() && c.len() <= 1024 => Some(c.as_str()),
+            Some(_) => return error(StatusCode::BAD_REQUEST, "chatId must be a string or null"),
+        };
+        let immediate = body.get("immediate").and_then(Value::as_bool) == Some(true);
+        mirror.schedule(user, chat, immediate);
+    }
+    reply(StatusCode::OK, &json!({}))
 }
 
 /// `POST /v1/egress/{op}` (see code_egress.rs): 401 without the secret, 503 while unconfigured.
