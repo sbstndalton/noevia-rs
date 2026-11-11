@@ -26,12 +26,22 @@ fn support(name: &str) -> PathBuf {
         .join(name)
 }
 
+/// A free loopback port, never the same twice in this process: tests run in parallel and each
+/// backend binds its port later, so a port handed out once must not be handed out again.
 fn free_port() -> u16 {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port()
+    static GIVEN: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+    loop {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let mut given = GIVEN.lock().unwrap();
+        if !given.contains(&port) {
+            given.push(port);
+            return port;
+        }
+    }
 }
 
 fn port_open(port: u16) -> bool {
@@ -246,7 +256,9 @@ proxy = "http://127.0.0.1:1"
         for p in [self.pa, self.pb, self.pc] {
             assert!(
                 !port_open(p),
-                "backend on {p} left running after router stop"
+                "backend on {p} left running after router stop\n{}\n{:#?}",
+                self.router_err(),
+                self.events()
             );
         }
     }
@@ -682,8 +694,10 @@ async fn never_healthy_backend_times_out() {
 async fn stuck_container_refuses_swap() {
     let ps = free_port();
     let fb = format!("python3 {}", support("fake_backend.py").display());
+    let docker = support("fake-docker");
     let extra = format!(
-        "[[models]]\nname = \"boxed\"\ncmd = \"exec {fb} --port {ps} --name S --container nrouter-test\"\nproxy = \"http://127.0.0.1:{ps}\"\nstop = \"docker stop nrouter-test\"\ncontainers = [\"nrouter-test\"]\n"
+        "[[models]]\nname = \"boxed\"\ncmd = \"exec {fb} --port {ps} --name S --container nrouter-test\"\nproxy = \"http://127.0.0.1:{ps}\"\nstop = \"{} stop nrouter-test\"\ncontainers = [\"nrouter-test\"]\n",
+        docker.display()
     );
     let h = Harness::start("", &extra).await;
     let (s, d) = h.chat("boxed", "x", false).await;
@@ -691,6 +705,15 @@ async fn stuck_container_refuses_swap() {
     let container = h.docker_dir().join("nrouter-test");
     assert!(container.exists());
     std::fs::write(&container, "sticky").unwrap(); // `docker rm -f` will not remove it now
+                                                   // An unload that cannot verify the container gone says so.
+    let (s, d) = h
+        .req(reqwest::Method::POST, "/router/unload", Some(json!({})))
+        .await;
+    assert_eq!(s, 503, "{d}");
+    assert!(d.contains("nrouter-test"), "{d}");
+    let unload = h.swaps().await.pop().unwrap();
+    assert_eq!(unload["stop_cmd_rc"], 0, "{unload}");
+    assert_eq!(unload["stop_containers_left"], json!(["nrouter-test"]));
     let (s, d) = h.chat("dense-a", "x", false).await;
     assert_eq!(s, 503, "{d}");
     assert!(d.contains("nrouter-test") && d.contains("refusing"), "{d}");
@@ -702,9 +725,8 @@ async fn stuck_container_refuses_swap() {
     assert_eq!(st["stuck_containers"], json!(["nrouter-test"]));
     assert!(st["loaded"].is_null());
     let swap = h.swaps().await.pop().unwrap();
-    assert_eq!(
-        swap["stop_containers_left"],
-        json!(["nrouter-test"]),
+    assert!(
+        swap["error"].as_str().unwrap().contains("still present"),
         "{swap}"
     );
     // The container finally goes: the next request removes it, verifies, and starts.
@@ -735,11 +757,13 @@ async fn ttl_unload_after_idle_only() {
     );
     let t1 = Instant::now();
     loop {
-        if h.status().await["loaded"].is_null() {
+        // `loaded` clears when the unload starts; wait for the stop to finish too.
+        let st = h.status().await;
+        if st["loaded"].is_null() && st["swapping"] == false {
             break;
         }
         assert!(
-            t1.elapsed() < Duration::from_secs(5),
+            t1.elapsed() < Duration::from_secs(8),
             "ttl unload did not happen"
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -844,4 +868,73 @@ async fn busy_model_does_not_starve_another() {
         p.await.unwrap();
     }
     std::sync::Arc::into_inner(h).unwrap().finish();
+}
+
+/// An upstream that accepts a request and then goes silent is cut at `upstream_read_timeout`:
+/// the lease is freed and the router can swap again.
+#[tokio::test(flavor = "multi_thread")]
+async fn hung_upstream_frees_its_lease() {
+    let ph = free_port();
+    let fb = format!("python3 {}", support("fake_backend.py").display());
+    let extra = format!(
+        "[[models]]\nname = \"hung\"\ncmd = \"exec {fb} --port {ph} --name H --hang\"\nproxy = \"http://127.0.0.1:{ph}\"\n"
+    );
+    let h = Harness::start("upstream_read_timeout = 1.5", &extra).await;
+    let t0 = Instant::now();
+    let (s, d) = h.chat("hung", "x", false).await;
+    assert_eq!(s, 502, "{d}");
+    assert!(t0.elapsed() < Duration::from_secs(15), "{:?}", t0.elapsed());
+    assert_eq!(h.status().await["inflight"], 0);
+    let (s, _) = h.chat("dense-a", "x", false).await;
+    assert_eq!(s, 200);
+    assert!(!port_open(ph));
+    h.finish();
+}
+
+/// SIGTERM while a swap is still stopping the old backend: the router exits without starting the
+/// new one.
+#[tokio::test(flavor = "multi_thread")]
+async fn sigterm_during_stop_never_starts_the_next_backend() {
+    let pw = free_port();
+    let fb = format!("python3 {}", support("fake_backend.py").display());
+    let extra = format!(
+        "[[models]]\nname = \"slow-stop\"\nstop = \"sleep 3\"\ncmd = \"exec {fb} --port {pw} --name W\"\nproxy = \"http://127.0.0.1:{pw}\"\n"
+    );
+    let mut h = Harness::start("", &extra).await;
+    assert_eq!(h.chat("slow-stop", "x", false).await.0, 200);
+    let url = h.url("/v1/chat/completions");
+    let pending = tokio::spawn(async move {
+        let body = json!({"model": "dense-a", "messages": [{"role": "user", "content": "x"}]});
+        reqwest::Client::new()
+            .post(url)
+            .json(&body)
+            .send()
+            .await
+            .map(|r| r.status().as_u16())
+    });
+    tokio::time::sleep(Duration::from_millis(1000)).await; // the stop command is running
+    assert_eq!(h.status().await["swapping"], true);
+    let watcher = {
+        let pa = h.pa;
+        std::thread::spawn(move || {
+            let t0 = Instant::now();
+            let mut opened = false;
+            while t0.elapsed() < Duration::from_secs(8) {
+                opened |= port_open(pa);
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            opened
+        })
+    };
+    h.terminate();
+    let status = pending.await.unwrap();
+    assert!(status.as_ref().map_or(true, |s| *s == 503), "{status:?}");
+    assert!(
+        !watcher.join().unwrap(),
+        "the next backend started during shutdown\n{}\n{:?}",
+        h.router_err(),
+        h.events()
+    );
+    assert!(!port_open(pw));
+    h.finish();
 }

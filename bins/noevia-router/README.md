@@ -12,7 +12,9 @@ router does the following, in order:
 1. **Drain.** It waits for in-flight requests to finish.
 2. **Stop, verified.** It runs the entry's `stop` command. Then it sends SIGTERM to the backend's
    process group, and SIGKILL after `stop_timeout`. Finally it runs `docker rm -f` on every
-   `containers` name until `docker ps -a` no longer lists it.
+   `containers` name until `docker ps -a` no longer lists it, and checks that no process of the
+   group is left (a host process can hold the GPU too). The stop command runs even if the
+   backend has already exited.
 3. **Start.** It runs `sh -c cmd` in a new process group, with its output appended to
    `backend-<name>.log`.
 4. **Health.** It polls `health` every 250 ms until the body contains `health_expect`, the process
@@ -42,6 +44,9 @@ meaning. Unknown keys are an error.
 - `docker`: the CLI used to verify and remove containers.
 - `max_body_mb`: default 64.
 - `shutdown_grace`: seconds that in-flight requests may run after SIGTERM, default 10.
+- `upstream_read_timeout`: the longest an upstream may stay silent mid-request, default 3600 s.
+  When it passes, the request fails with a 502 and its hold on the backend is released, so a
+  wedged engine cannot block swaps forever.
 - `gpu_lock` and `gpu_lock_timeout`: see below.
 
 `[defaults]` sets any model key for every entry.
@@ -83,7 +88,12 @@ never removes those.
 ## Refusals
 **A stop that leaves a container behind refuses the swap.** The next backend is not started while
 the old one may still hold the GPU. The router reports the leftover names in `stuck_containers`
-and keeps the GPU lock. Every later swap first tries to remove them again.
+and keeps the GPU lock. Every later swap first tries to remove them again. A process group with
+a member that is still alive 10 s after SIGKILL blocks starts in the same way
+(`stuck_process_groups`). An unload that leaves either behind answers 503.
+
+If docker itself cannot be asked (no daemon, no permission), a container counts as present, not
+gone. A model with `containers` then refuses to start until docker answers.
 
 Before a start, the router also verifies that the target's own containers are absent, for example
 a leftover from an earlier crash.
@@ -116,6 +126,11 @@ that same lock.
 8. **Shutdown during a start.** A backend that was still starting when SIGTERM arrived was never
    stopped, and was orphaned with its container. Shutdown now cancels the start and stops it.
 9. **Query strings.** These were dropped when proxying. They are now forwarded.
+10. **Process groups.** The prototype did not check that the process group was gone after SIGKILL.
+    The port refuses to start while a member is alive.
+
+Other differences from the prototype: a wrong method on a known route gets a JSON 405, not a 404,
+and trailing slashes are not stripped (`/v1/models/` is a 404).
 
 ## Tests
 `tests/router.rs` runs the binary against fake backends (`tests/support/fake_backend.py`) and a
@@ -132,7 +147,9 @@ The other tests cover:
 - ttl only after idle;
 - the GPU lock;
 - SIGKILL escalation;
-- starvation.
+- starvation;
+- an upstream that hangs (the read timeout frees the lease);
+- SIGTERM during a slow stop, which must not start the next backend.
 
 ## Before it could replace the production model path
 - Per-request auth.
@@ -142,3 +159,5 @@ The other tests cover:
 - A package (image or service unit) with docker socket access.
 - A translation of the production model presets into `[[models]]` entries.
 - A side-by-side replay against the current endpoint.
+- Tying backends to the router's lifetime. A router killed with SIGKILL leaves its backend running
+  in its own process group, and a later start could pass its health check against that orphan.

@@ -38,6 +38,7 @@ struct RawRouter {
     docker: Option<String>,
     max_body_mb: Option<u64>,
     shutdown_grace: Option<f64>,
+    upstream_read_timeout: Option<f64>,
 }
 
 /// One `[[models]]` entry, or `[defaults]` (every key optional there).
@@ -124,6 +125,8 @@ pub struct Config {
     pub max_body_bytes: usize,
     /// How long in-flight requests may run after SIGTERM before the backend is stopped anyway.
     pub shutdown_grace: Duration,
+    /// Longest silence allowed from an upstream mid-request (a wedged backend frees its lease).
+    pub upstream_read_timeout: Duration,
     /// Models in file order (disabled entries dropped).
     pub models: Vec<Model>,
     /// Every name and alias -> index into `models`.
@@ -286,6 +289,12 @@ impl Config {
             .map_err(|e| ConfigError(format!("gpu_lock_timeout: {e}")))?;
         let shutdown_grace = Duration::try_from_secs_f64(grace)
             .map_err(|e| ConfigError(format!("shutdown_grace: {e}")))?;
+        let read = r.upstream_read_timeout.unwrap_or(3600.0);
+        if !read.is_finite() || read <= 0.0 {
+            return err(format!("upstream_read_timeout = {read} is out of range"));
+        }
+        let upstream_read_timeout = Duration::try_from_secs_f64(read)
+            .map_err(|e| ConfigError(format!("upstream_read_timeout: {e}")))?;
         let max_body_mb = r.max_body_mb.unwrap_or(64);
         Ok(Config {
             host: r.host.unwrap_or_else(|| "127.0.0.1".into()),
@@ -301,6 +310,7 @@ impl Config {
             max_body_bytes: usize::try_from(max_body_mb.saturating_mul(1 << 20))
                 .unwrap_or(usize::MAX),
             shutdown_grace,
+            upstream_read_timeout,
             models,
             names,
         })

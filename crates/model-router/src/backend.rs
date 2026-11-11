@@ -194,8 +194,19 @@ impl Backend {
             report.signals.push(sig.as_str().to_string());
             let _ = timeout(wait, self.child.wait()).await;
         }
-        // The shell is gone; anything else left in its group goes too.
+        // The shell is gone; anything else left in its group goes too, and must be seen to go: a
+        // host process (not a container) can hold the GPU as well.
         let _ = self.signal(Signal::SIGKILL);
+        if let Some(pgid) = self.pgid {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while group_alive(pgid) {
+                if Instant::now() >= deadline {
+                    report.group_left = Some(pgid.as_raw());
+                    break;
+                }
+                sleep(Duration::from_millis(100)).await;
+            }
+        }
         report.exited = self.exited();
         report.containers_left = remove_containers(docker, &self.model.containers).await;
         report.stop_s = round2(t0.elapsed());
@@ -211,6 +222,8 @@ pub struct StopReport {
     pub signals: Vec<String>,
     pub exited: Option<String>,
     pub containers_left: Vec<String>,
+    /// The process group, if a member was still alive 10 s after the last SIGKILL.
+    pub group_left: Option<i32>,
     pub stop_s: f64,
 }
 
@@ -220,9 +233,15 @@ impl StopReport {
             "cmd_rc": self.stop_cmd_rc,
             "signals": self.signals,
             "containers_left": self.containers_left,
+            "group_left": self.group_left,
             "s": self.stop_s,
         })
     }
+}
+
+/// Whether any process of this group still exists.
+pub fn group_alive(pgid: Pid) -> bool {
+    killpg(pgid, None).is_ok()
 }
 
 pub fn round2(d: Duration) -> f64 {

@@ -12,6 +12,7 @@ ap.add_argument("--exit-after", type=float, default=0, help="exit with code 3 af
 ap.add_argument("--slow", type=float, default=0, help="seconds between streamed chunks")
 ap.add_argument("--ignore-term", action="store_true", help="ignore SIGTERM (only SIGKILL stops it)")
 ap.add_argument("--container", default="", help="fake docker container to register while running")
+ap.add_argument("--hang", action="store_true", help="accept requests and never answer (a wedged engine)")
 ap.add_argument("--abort-file", default="", help="append a line here when a client disconnects mid-stream")
 a = ap.parse_args(); T0 = time.monotonic()
 if a.ignore_term:
@@ -34,6 +35,8 @@ class H(BaseHTTPRequestHandler):
         self._j(404, {})
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if a.hang:
+            time.sleep(3600)
         text = f"{a.name}: {req['messages'][-1]['content']} (model={req.get('model')}) (path={self.path})"
         if not req.get("stream"):
             return self._j(200, {"object": "chat.completion", "model": a.name, "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": "stop"}]})

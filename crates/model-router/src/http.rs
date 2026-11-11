@@ -37,6 +37,7 @@ pub fn app(router: Router) -> axum::Router {
         .route("/router/unload", post(unload))
         .route("/v1/{*rest}", post(proxy))
         .fallback(not_found)
+        .method_not_allowed_fallback(not_allowed)
         .layer(DefaultBodyLimit::max(limit))
         .with_state(router)
 }
@@ -54,6 +55,14 @@ async fn not_found(method: Method, uri: axum::http::Uri) -> Response {
     error(
         StatusCode::NOT_FOUND,
         format!("no route {method} {}", uri.path()),
+        "invalid_request_error",
+    )
+}
+
+async fn not_allowed(method: Method, uri: axum::http::Uri) -> Response {
+    error(
+        StatusCode::METHOD_NOT_ALLOWED,
+        format!("{method} is not allowed on {}", uri.path()),
         "invalid_request_error",
     )
 }

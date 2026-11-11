@@ -8,10 +8,11 @@
 //! done: drain, stop (verified), start, health. A failed swap fails every request that was queued
 //! for that model when it failed, instead of each retrying the whole start.
 
-use crate::backend::{remove_containers, round2, Backend, StartError, StopReport};
+use crate::backend::{group_alive, remove_containers, round2, Backend, StartError, StopReport};
 use crate::config::Config;
 use crate::events::Events;
 use crate::gpu_lock::{self, GpuLock};
+use nix::unistd::Pid;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -27,7 +28,7 @@ enum Target {
 
 #[derive(Debug, Clone)]
 struct Failure {
-    model: usize,
+    target: Target,
     /// Tickets below this were queued when the swap failed: they share its error.
     before: u64,
     error: String,
@@ -47,8 +48,10 @@ struct State {
     batch_before: u64,
     last_used: Instant,
     failure: Option<Failure>,
-    /// Containers a stop could not remove: no backend starts until they are gone.
+    /// Containers a stop could not remove, and process groups that outlived SIGKILL: no backend
+    /// starts until they are gone.
     stuck: Vec<String>,
+    stuck_groups: Vec<i32>,
     lock: Option<GpuLock>,
     shutting_down: bool,
     swaps: u64,
@@ -133,6 +136,7 @@ impl Router {
         let events = Events::open(&config.logdir)?;
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(10))
+            .read_timeout(config.upstream_read_timeout)
             .build()
             .map_err(std::io::Error::other)?;
         let (shutdown, _) = watch::channel(false);
@@ -147,6 +151,7 @@ impl Router {
             last_used: Instant::now(),
             failure: None,
             stuck: Vec::new(),
+            stuck_groups: Vec::new(),
             lock: None,
             shutting_down: false,
             swaps: 0,
@@ -224,8 +229,8 @@ impl Router {
                 if s.shutting_down {
                     return Err(AcquireError::ShuttingDown);
                 }
-                if let (Target::Model(m), Some(f)) = (target, &s.failure) {
-                    if f.model == m && id < f.before {
+                if let Some(f) = &s.failure {
+                    if f.target == target && id < f.before {
                         return Err(AcquireError::Failed(f.error.clone()));
                     }
                 }
@@ -250,7 +255,10 @@ impl Router {
                     let wants_other = |t: &Target| match t {
                         Target::Model(i) => Some(*i) != loaded,
                         Target::Unload => {
-                            loaded.is_some() || s.active.is_some() || !s.stuck.is_empty()
+                            loaded.is_some()
+                                || s.active.is_some()
+                                || !s.stuck.is_empty()
+                                || !s.stuck_groups.is_empty()
                         }
                     };
                     let oldest_other = s
@@ -318,16 +326,24 @@ impl Router {
         };
         let name = |i: Option<usize>| i.and_then(|i| cfg.models.get(i)).map(|m| m.name.clone());
         let mut rec = obj(json!({"from": name(from), "to": name(to), "reason": reason}));
-        let mut stuck = std::mem::take(&mut inner.state().stuck);
+        let (mut stuck, mut groups) = {
+            let mut s = inner.state();
+            (
+                std::mem::take(&mut s.stuck),
+                std::mem::take(&mut s.stuck_groups),
+            )
+        };
         if let Some(prev) = prev {
             let report = prev.stop(&cfg.docker).await;
             put_stop(&mut rec, "stop", &report);
             stuck.extend(report.containers_left);
+            groups.extend(report.group_left);
         }
-        let outcome = self.start(to, &mut stuck, &mut rec, t0).await;
+        let outcome = self.start(to, &mut stuck, &mut groups, &mut rec, t0).await;
         rec.insert("total_s".into(), json!(round2(t0.elapsed())));
         let mut s = inner.state();
         s.stuck = stuck;
+        s.stuck_groups = groups;
         match outcome {
             Ok(Some(backend)) => {
                 s.active = Some(backend);
@@ -339,19 +355,22 @@ impl Router {
             Ok(None) => {}
             Err(error) => {
                 rec.insert("error".into(), json!(error));
-                if let Some(m) = to {
-                    s.failure = Some(Failure {
-                        model: m,
-                        before: s.next_ticket,
-                        error,
-                    });
-                }
+                let target = match to {
+                    Some(m) => Target::Model(m),
+                    None => Target::Unload,
+                };
+                s.failure = Some(Failure {
+                    target,
+                    before: s.next_ticket,
+                    error,
+                });
             }
         }
-        if s.active.is_none() && s.stuck.is_empty() {
+        if s.active.is_none() && s.stuck.is_empty() && s.stuck_groups.is_empty() {
             s.lock = None; // nothing of ours can be on the GPU any more
         }
         rec.insert("stuck_containers".into(), json!(s.stuck));
+        rec.insert("stuck_process_groups".into(), json!(s.stuck_groups));
         s.swapping = None;
         drop(s);
         inner.events.emit("swap", rec);
@@ -364,11 +383,18 @@ impl Router {
         &self,
         to: Option<usize>,
         stuck: &mut Vec<String>,
+        groups: &mut Vec<i32>,
         rec: &mut Map<String, Value>,
         t0: Instant,
     ) -> Result<Option<Backend>, String> {
         let inner = &self.inner;
         let cfg = &inner.config;
+        groups.retain(|g| group_alive(Pid::from_raw(*g)));
+        if !groups.is_empty() {
+            return Err(format!(
+                "process groups {groups:?} outlived SIGKILL; refusing to start another backend"
+            ));
+        }
         if !stuck.is_empty() {
             *stuck = remove_containers(&cfg.docker, stuck).await;
             if !stuck.is_empty() {
@@ -387,6 +413,10 @@ impl Router {
             ));
         }
         rec.insert("stopped_s".into(), json!(round2(t0.elapsed())));
+        let cancelled = || *inner.shutdown.borrow();
+        if cancelled() {
+            return Err(StartError::Cancelled.to_string());
+        }
         if let Some(path) = &cfg.gpu_lock {
             let have = inner.state().lock.is_some();
             if !have {
@@ -395,6 +425,9 @@ impl Router {
                 rec.insert("gpu_lock_wait_s".into(), json!(round2(t.elapsed())));
                 inner.state().lock = Some(lock);
             }
+        }
+        if cancelled() {
+            return Err(StartError::Cancelled.to_string());
         }
         let t1 = Instant::now();
         let mut backend = Backend::spawn(model, &cfg.logdir).map_err(|e| e.to_string())?;
@@ -407,6 +440,7 @@ impl Router {
                 let report = backend.stop(&cfg.docker).await;
                 put_stop(rec, "failed_stop", &report);
                 stuck.extend(report.containers_left);
+                groups.extend(report.group_left);
                 Err(match e {
                     StartError::Cancelled => e.to_string(),
                     _ => format!("{}: {e}", model.name),
@@ -423,7 +457,16 @@ impl Router {
         if s.swapping.is_some() || s.shutting_down || s.inflight > 0 || !s.waiters.is_empty() {
             return;
         }
-        let Some(i) = s.loaded else { return };
+        let Some(i) = s.loaded else {
+            // A backend found dead by a request that then went away: clean it up now.
+            if s.active.is_some() {
+                s.swapping = Some(None);
+                drop(s);
+                let router = self.clone();
+                tokio::spawn(async move { router.swap(None, "died").await });
+            }
+            return;
+        };
         let died = s.active.as_mut().and_then(Backend::exited);
         let ttl = inner.config.models.get(i).and_then(|m| m.ttl);
         let reason = if let Some(status) = died {
@@ -447,7 +490,7 @@ impl Router {
     pub fn begin_shutdown(&self) {
         let inner = &self.inner;
         inner.state().shutting_down = true;
-        let _ = inner.shutdown.send(true);
+        inner.shutdown.send_replace(true);
         inner.notify.notify_waiters();
     }
 
@@ -465,10 +508,14 @@ impl Router {
             }
             let _ = tokio::time::timeout(Duration::from_millis(500), notified).await;
         }
-        let (active, mut stuck) = {
+        let (active, mut stuck, mut groups) = {
             let mut s = inner.state();
             s.loaded = None;
-            (s.active.take(), std::mem::take(&mut s.stuck))
+            (
+                s.active.take(),
+                std::mem::take(&mut s.stuck),
+                std::mem::take(&mut s.stuck_groups),
+            )
         };
         let mut rec = Map::new();
         if let Some(b) = active {
@@ -476,16 +523,20 @@ impl Router {
             let report = b.stop(&inner.config.docker).await;
             put_stop(&mut rec, "stop", &report);
             stuck.extend(report.containers_left);
+            groups.extend(report.group_left);
         }
         if !stuck.is_empty() {
             stuck = remove_containers(&inner.config.docker, &stuck).await;
         }
+        groups.retain(|g| group_alive(Pid::from_raw(*g)));
         rec.insert("stuck_containers".into(), json!(stuck));
+        rec.insert("stuck_process_groups".into(), json!(groups));
         let mut s = inner.state();
-        if stuck.is_empty() {
+        if stuck.is_empty() && groups.is_empty() {
             s.lock = None;
         }
         s.stuck = stuck;
+        s.stuck_groups = groups;
         drop(s);
         inner.events.emit("shutdown", rec);
     }
@@ -505,6 +556,7 @@ impl Router {
             "waiting": s.waiters.len(),
             "swaps": s.swaps,
             "stuck_containers": s.stuck,
+            "stuck_process_groups": s.stuck_groups,
             "gpu_lock": cfg.gpu_lock.as_ref().map(|p| json!({"path": p, "held": s.lock.is_some()})),
             "history": inner.events.recent(20),
             "models": cfg.models.iter().map(|m| json!({
