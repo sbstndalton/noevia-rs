@@ -24,7 +24,33 @@ fn destination(raw: &str, origin: &str, username: &str) -> Result<(String, Url),
     {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let (user, path) = parse_path(url.path())?;
+    let prefix = format!("/dav/{}/", encode(username));
+    if !url
+        .path()
+        .to_lowercase()
+        .starts_with(&prefix.to_lowercase())
+    {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let (user, path) = parse_path(url.path()).map_err(|status| {
+        if status == StatusCode::BAD_REQUEST {
+            let bad_encoding = url.path().split('/').any(|part| {
+                let bytes = part.as_bytes();
+                bytes.iter().enumerate().any(|(i, b)| {
+                    *b == b'%'
+                        && (bytes.get(i + 1).is_none_or(|b| !b.is_ascii_hexdigit())
+                            || bytes.get(i + 2).is_none_or(|b| !b.is_ascii_hexdigit()))
+                }) || percent_decode_str(part).decode_utf8().is_err()
+            });
+            if bad_encoding {
+                status
+            } else {
+                StatusCode::FORBIDDEN
+            }
+        } else {
+            status
+        }
+    })?;
     if !user.eq_ignore_ascii_case(username) || path.is_empty() {
         return Err(StatusCode::FORBIDDEN);
     }
@@ -34,13 +60,20 @@ fn destination_tag(raw: &str, destination: &Url) -> Option<String> {
     // Accept only tagged strong entity conditions. Other DAV If expressions do not
     // become a guessed precondition; the actual current target is statted below.
     for part in raw.split('<').skip(1) {
-        let (uri, rest) = part.split_once('>')?;
-        let rest = rest
+        let Some((uri, rest)) = part.split_once('>') else {
+            continue;
+        };
+        let Some(rest) = rest
             .trim_start()
-            .strip_prefix('(')?
-            .trim_start()
-            .strip_prefix('[')?;
-        let (etag, end) = rest.split_once(']')?;
+            .strip_prefix('(')
+            .map(str::trim_start)
+            .and_then(|r| r.strip_prefix('['))
+        else {
+            continue;
+        };
+        let Some((etag, end)) = rest.split_once(']') else {
+            continue;
+        };
         if !end.trim_start().starts_with(')') {
             continue;
         }
@@ -94,17 +127,6 @@ impl<B: Backend> DavService<B> {
         }
         let method = req.method().as_str().to_owned();
         let headers = req.headers().clone();
-        for name in [
-            "destination",
-            "overwrite",
-            "depth",
-            "if",
-            "content-encoding",
-        ] {
-            if headers.get_all(name).iter().nth(1).is_some() {
-                return Err(bad(StatusCode::BAD_REQUEST, "Duplicate operation header"));
-            }
-        }
         let header = |name: &str| -> Result<Option<&str>, Box<Response<Body>>> {
             headers
                 .get(name)
@@ -114,15 +136,23 @@ impl<B: Backend> DavService<B> {
                 })
                 .transpose()
         };
-        if header("content-encoding")?.is_some_and(|v| v != "identity") {
+        if header("content-encoding")?.is_some_and(|v| !v.is_empty() && v != "identity") {
             return Err(bad(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "Encoded bodies are unsupported",
             ));
         }
-        let body =
-            tokio::time::timeout(self.config.deadline, to_bytes(req.into_body(), 8192)).await;
-        if !matches!(body, Ok(Ok(ref b)) if b.is_empty()) {
+        let body = match tokio::time::timeout(self.config.deadline, to_bytes(req.into_body(), 8192))
+            .await
+        {
+            Ok(Ok(bytes)) => bytes,
+            Ok(Err(error)) => return Err(Box::new(body_error(error))),
+            Err(_) => return Err(bad(StatusCode::REQUEST_TIMEOUT, "Request timed out")),
+        };
+        if std::str::from_utf8(&body).is_err() {
+            return Err(bad(StatusCode::BAD_REQUEST, "UTF-8 text required"));
+        }
+        if !body.is_empty() {
             return Err(bad(
                 StatusCode::UNSUPPORTED_MEDIA_TYPE,
                 "Request bodies are unsupported",
@@ -130,7 +160,10 @@ impl<B: Backend> DavService<B> {
         }
         let depth = header("depth")?;
         if depth.is_some_and(|d| d != "infinity" && !(method == "COPY" && d == "0")) {
-            return Err(bad(StatusCode::BAD_REQUEST, "Invalid Depth"));
+            return Err(bad(
+                StatusCode::BAD_REQUEST,
+                "Folder operations apply to the whole folder (Depth: infinity)",
+            ));
         }
         let mut version = header("if-match")?
             .map(|v| {
@@ -138,10 +171,13 @@ impl<B: Backend> DavService<B> {
                     .ok_or_else(|| bad(StatusCode::BAD_REQUEST, "A single strong ETag is required"))
             })
             .transpose()?;
-        if !self.is_allowed(identity).await {
-            return Err(bad(StatusCode::FORBIDDEN, "Sharing was disabled"));
+        match self.is_allowed(identity).await {
+            Ok(true) => (),
+            Ok(false) => return Err(bad(StatusCode::FORBIDDEN, "Sharing was disabled")),
+            Err(f) => return Err(Box::new(fault_reply(f, false))),
         }
-        if version.is_none() && method != "COPY" {
+        let unconditional = version.is_none() && method != "COPY";
+        if unconditional {
             let stat = self
                 .operation(identity, json!({"op":"stat","path":path}))
                 .await?;
@@ -153,11 +189,24 @@ impl<B: Backend> DavService<B> {
             );
         }
         if method == "DELETE" {
-            self.operation(
-                identity,
-                json!({"op":"delete","path":path,"version":version}),
-            )
-            .await?;
+            let result = self
+                .operation(
+                    identity,
+                    json!({"op":"delete","path":path,"version":version}),
+                )
+                .await?;
+            let trashed = result
+                .get("trash")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            self.backend
+                .audit(
+                    identity,
+                    "dav.delete",
+                    json!({"path":path,"trashed":trashed,"unconditional":unconditional}),
+                )
+                .await
+                .map_err(|f| Box::new(fault_reply(f, false)))?;
             return Ok(*bad(StatusCode::NO_CONTENT, ""));
         }
         let (target, url) = destination(
@@ -199,7 +248,7 @@ impl<B: Backend> DavService<B> {
             if stat.get("isDir") != Some(&Value::Bool(false)) {
                 return Err(bad(
                     StatusCode::FORBIDDEN,
-                    "Copying a folder without contents is unsupported",
+                    "Copying a folder without its contents is unsupported",
                 ));
             }
         }
@@ -215,6 +264,7 @@ impl<B: Backend> DavService<B> {
                 .insert("destinationVersion".into(), json!(v));
         }
         let result = self.operation(identity, body).await?;
+        self.backend.audit(identity,&format!("dav.{}",method.to_ascii_lowercase()),json!({"path":path,"destination":target,"replaced":result.get("replaced")==Some(&Value::Bool(true)),"unconditional":unconditional})).await.map_err(|f|Box::new(fault_reply(f,false)))?;
         Ok(*bad(
             if result.get("replaced") == Some(&Value::Bool(true)) {
                 StatusCode::NO_CONTENT

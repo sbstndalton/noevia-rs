@@ -181,6 +181,9 @@ async fn server_main() -> ExitCode {
     // sbstndalton/noevia#2191 round 9 (review L5): an account folder with no account row is named in the log
     // (count and ids), never removed: a database restored from an older copy would make live data look orphaned.
     noevia_server::admin_user_routes::report_orphan_folders(&app).await;
+    // Complete the source-text sweep before the project store or public requests can run.
+    noevia_server::source_startup::run(&app).await;
+
     // sbstndalton/noevia#2190 round 5: the token broker removes the rows of deleted accounts.
     #[cfg(feature = "rust-chatgpt-status")]
     if let Some(broker) = app.chatgpt_oauth.as_ref() {
@@ -208,6 +211,10 @@ async fn server_main() -> ExitCode {
     // sbstndalton/noevia#2210: the front is the evidence store's only writer; Node's producers leave
     // their records in the inbox, which is drained here.
     app.config.maint.spawn_inbox();
+    // #2303: a calibration interrupted by a restart restores the preset it was testing (Core's boot
+    // `modelManager.calibration?.recover()`, which is off now that the worker is native).
+    // The recovery takes the launch slot before the routes serve, so no launch races it.
+    let _ = app.config.spawn_calibration_recovery();
     {
         let maint = std::sync::Arc::clone(&app.config.maint);
         tokio::spawn(async move {
@@ -219,7 +226,16 @@ async fn server_main() -> ExitCode {
     // #1071: permanent; NOEVIA_RUST_PROJECTS is retired (a leftover value is reported above).
     println!("noevia-server: Rust owns the project routes, projects.json and free-chats.json");
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+    // #697: the memory watchdog (Core's inference-budget-watch.cjs, which Core no longer starts:
+    // rust-budget-watch). Its first reading is one interval from now; it stops with the server.
+    let budget_watch = noevia_server::model_maint::budget_watch::spawn(
+        &app.config.maint,
+        &|k: &str| std::env::var(k).ok(),
+        stop_rx.clone(),
+    );
     let mut stop_wait = stop_rx.clone();
+    let backup_stop = stop_tx.clone();
+    let diary_backup = noevia_server::diary_backup::spawn(&app, stop_rx.clone());
     // sbstndalton/noevia#1264: Node's projects.json / free-chats.json writes, loopback only.
     let switch = app.config.rust_projects;
     if let (Some(cfg), Some(data_dir)) = (
@@ -243,6 +259,11 @@ async fn server_main() -> ExitCode {
             switch,
             start_id: app.config.start_id.clone().unwrap_or_default().into(),
         };
+        // Row V: the egress issuer publishes the proxy key and holds the session from the front's
+        // own start, whether or not Node is up; Node only asks it for grants.
+        if let Some(issuer) = app.code_egress.as_ref() {
+            issuer.start();
+        }
         let mut rx = stop_rx.clone();
         tokio::spawn(noevia_server::project_store::serve_with_context(
             listener,
@@ -264,10 +285,18 @@ async fn server_main() -> ExitCode {
                 None
             }
         };
+    let dav = match noevia_server::dav::start(&app, stop_rx.clone()).await {
+        Ok(worker) => worker,
+        Err(error) => {
+            eprintln!("noevia-server: {error}");
+            return ExitCode::from(1);
+        }
+    };
     let server = serve::serve(listener, app, serve::Limits::default(), async move {
         let mut rx = stop_rx;
         let _ = rx.wait_for(|s| *s).await;
     });
+    let worker_stop = stop_tx.clone();
     tokio::spawn(async move {
         terminated().await;
         let _ = stop_tx.send(true);
@@ -280,11 +309,27 @@ async fn server_main() -> ExitCode {
         () = server => ExitCode::SUCCESS,
         _ = drained => ExitCode::SUCCESS,
     };
+    let _ = worker_stop.send(true);
+    if let Some(mut watch) = budget_watch {
+        if tokio::time::timeout(Duration::from_secs(2), &mut watch)
+            .await
+            .is_err()
+        {
+            watch.abort();
+            let _ = watch.await;
+        }
+    }
+    if let Some(worker) = dav {
+        worker.abort();
+        let _ = worker.await;
+    }
     if let Some(worker) = embedding_background {
         worker.shutdown().await;
     }
     #[cfg(feature = "rust-storage-reads")]
     let _ = storage_metadata.shutdown().await;
+    let _ = backup_stop.send(true);
+    let _ = diary_backup.await;
     exit
 }
 

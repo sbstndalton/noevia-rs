@@ -909,27 +909,31 @@ async fn timed_out_write_is_ambiguous_and_cancelled() -> TestResult {
 }
 
 #[tokio::test]
-async fn duplicate_security_headers_and_lookup_cardinality_refuse() -> TestResult {
+async fn duplicate_headers_follow_the_original_server_view_and_large_lookup_is_allowed(
+) -> TestResult {
     let backend = Synthetic::new();
     let (addr, task) = serve(Arc::clone(&backend), lan()?).await?;
     let auth = "Authorization: Basic YWxpY2U6c3ludGhldGlj\r\n";
-    for extra in [
-        "Host: localhost\r\n",
-        auth,
-        "If-Match: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\r\nIf-Match: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\r\n",
-        "If-None-Match: *\r\nIf-None-Match: *\r\n",
-        "x-cowork-dav-proxy-token: a\r\nx-cowork-dav-proxy-token: a\r\n",
-        "x-forwarded-proto: https\r\nx-forwarded-proto: https\r\n",
+    for (extra, expected) in [
+        ("Host: localhost\r\n",428),
+        (auth,428),
+        ("If-Match: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\r\nIf-Match: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\r\n",400),
+        ("If-None-Match: *\r\nIf-None-Match: *\r\n",400),
+        ("x-cowork-dav-proxy-token: a\r\nx-cowork-dav-proxy-token: a\r\n",428),
+        ("x-forwarded-proto: https\r\nx-forwarded-proto: https\r\n",428),
     ] {
-        let wire = format!("PUT /dav/alice/new.md HTTP/1.1\r\nHost: localhost\r\n{auth}{extra}Content-Length: 0\r\nConnection: close\r\n\r\n");
-        assert_eq!(raw_status(addr, &wire).await?, 400, "{extra}");
+        let wire=format!("PUT /dav/alice/new.md HTTP/1.1\r\nHost: localhost\r\n{auth}{extra}Content-Length: 0\r\nConnection: close\r\n\r\n");
+        assert_eq!(raw_status(addr,&wire).await?,expected,"{extra}");
     }
+    backend.change(|s| {
+        s.items.insert("child0.md".into(), "Synthetic".into());
+    });
     backend.change(|s| s.children = 1025);
     assert_eq!(
         request(addr, "GET", "/dav/alice/child0.md", &[], b"")
             .await?
             .status,
-        413
+        200
     );
     task.abort();
     Ok(())
