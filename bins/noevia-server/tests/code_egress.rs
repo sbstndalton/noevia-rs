@@ -13,7 +13,7 @@ use axum::{
     http::{Request, StatusCode},
 };
 use egress::control::{derive_epoch_keys, FileKey};
-use egress_issuer::testing::{FakeProxy, ProxyTransport, BOOT};
+use egress_issuer::testing::{FakeProxy, ProxyTransport, BOOT, NODE_SESSION};
 use egress_issuer::transport::{Transport, TransportRequest};
 use http_body_util::BodyExt;
 use noevia_server::project_store::{self, Store, TOKEN_HEADER};
@@ -465,11 +465,19 @@ async fn an_unreachable_proxy_refuses_grants_and_reports_unavailable() {
         (st, b["code"].as_str()),
         (StatusCode::SERVICE_UNAVAILABLE, Some("EGRESS_UNAVAILABLE"))
     );
-    // The key is published for the proxy to find when it arrives.
-    assert_eq!(
-        std::fs::metadata(&r.key_file).unwrap().mode() & 0o7777,
-        0o440
-    );
+    // The key is published for the proxy to find when it arrives. Publication is asynchronous
+    // to the first grant's answer (sbstndalton/noevia#2433), so wait for it, bounded.
+    let published = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if let Ok(m) = std::fs::metadata(&r.key_file) {
+                return m;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(published.mode() & 0o7777, 0o440);
 }
 
 #[tokio::test]
@@ -497,7 +505,8 @@ async fn an_unprepared_key_directory_is_never_created_or_repaired() {
 
 /// The key the retired Node issuer left published (bytes written by the real Node code, see
 /// `egress-issuer/tests/fixtures/node-published-key.json`) is served unchanged on a first start with no
-/// Rust state: no rotation, no operator step, Node's file untouched, grants the proxy verifies.
+/// Rust state, to a proxy that never saw Node's Ready: no rotation, no operator step, Node's file
+/// untouched, grants the proxy verifies. (A proxy Node already readied: the next test.)
 #[tokio::test]
 async fn a_key_node_left_published_is_served_unchanged_on_the_first_start() {
     let Some(r) = rig(Some(1)) else { return };
@@ -535,6 +544,69 @@ async fn a_key_node_left_published_is_served_unchanged_on_the_first_start() {
         "the state is kept in the issuer's own directory beside the key, not in UI_DATA_DIR"
     );
     assert!(!r.data.join("code-egress-issuer.json").exists());
+    let (st, g) = call(
+        &router,
+        "grant",
+        Some(TOKEN),
+        json!({ "taskId": "task:1", "domains": ["example.com"] }),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let session = proxy.session().unwrap();
+    assert!(proxy_accepts(
+        &r.key_file,
+        &session,
+        g["token"].as_str().unwrap()
+    ));
+}
+
+/// The live cutover: the retained proxy is already initialized under the key Node published (Node did
+/// its Ready under it) and refuses Initial until the key changes. The front adopts that key, has no
+/// session to Replace, rotates once at once and is available well inside the 25 s conflict wait. The
+/// new key keeps the published contract (0440, one link, same owner, replaced by rename), so the old
+/// image can still overwrite it on a rollback.
+#[tokio::test]
+async fn a_key_node_left_published_under_a_proxy_node_readied_is_rotated_once_at_once() {
+    let Some(r) = rig(Some(1)) else { return };
+    let doc: Value = serde_json::from_str(include_str!(
+        "../../../crates/egress-issuer/tests/fixtures/node-published-key.json"
+    ))
+    .unwrap();
+    let node_bytes = format!("{}\n", doc["keyHex"].as_str().unwrap());
+    std::fs::write(&r.key_file, &node_bytes).unwrap();
+    std::fs::set_permissions(&r.key_file, std::fs::Permissions::from_mode(0o440)).unwrap();
+    let before = std::fs::metadata(&r.key_file).unwrap();
+    let proxy = FakeProxy::initialized_by_node(r.key_file.clone());
+    let port = serve_proxy(Arc::clone(&proxy)).await;
+    let mut env = r.env.clone();
+    env.insert("CODE_EGRESS_PORT".into(), port.to_string());
+    let app = app_of(&env);
+    let router = router(&app, &r.data);
+    app.code_egress.as_ref().unwrap().start();
+    // At most 10 s (the conflict path needed at least 25 s).
+    until_available(&router).await;
+    {
+        let st = proxy.state.lock().unwrap();
+        assert_eq!(st.ready_modes, ["initial", "initial"]);
+        assert_eq!((st.key_changes, st.sessions_issued), (1, 1));
+        assert_ne!(st.session.as_deref(), Some(NODE_SESSION));
+    }
+    let after = std::fs::metadata(&r.key_file).unwrap();
+    assert_ne!(std::fs::read_to_string(&r.key_file).unwrap(), node_bytes);
+    assert_eq!(
+        (
+            after.mode() & 0o7777,
+            after.nlink(),
+            after.uid(),
+            after.gid()
+        ),
+        (0o440, 1, before.uid(), before.gid())
+    );
+    assert_ne!(after.ino(), before.ino());
+    assert_eq!(
+        std::fs::metadata(state_file(&r)).unwrap().mode() & 0o7777,
+        0o600
+    );
     let (st, g) = call(
         &router,
         "grant",

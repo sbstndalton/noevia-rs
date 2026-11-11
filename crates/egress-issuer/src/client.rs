@@ -166,6 +166,8 @@ struct State {
     file: [u8; 32],
     fingerprint: String,
     conflict_since: Option<f64>,
+    /// The one immediate re-key for a refused Initial with no session to wait for has been used.
+    unnamed_rekeyed: bool,
     superseded_noted: bool,
     records: HashMap<String, Arc<Record>>,
     record_order: VecDeque<String>,
@@ -364,6 +366,7 @@ impl Client {
                 file: file_key,
                 fingerprint,
                 conflict_since: None,
+                unnamed_rekeyed: false,
                 superseded_noted: false,
                 records: HashMap::new(),
                 record_order: VecDeque::new(),
@@ -805,22 +808,41 @@ impl Inner {
         Ok(Sent { reply, challenge })
     }
 
-    // Both modes refused with a signed answer, so the proxy holds this key and a session nobody here can
-    // name: a Ready that committed after this client gave up on it. Nothing else clears that until a new
-    // key does. The wait outlasts any session this client could still renew, so a live one is never cut
-    // short. The proxy reads the key file on every request and a new key retires its session.
-    async fn conflicted(self: &Arc<Self>) -> Result<(), ControlError> {
+    // Initial refused with a signed answer: the proxy is already initialized under this key, by a session
+    // nobody here can name. The proxy accepts Initial again only after a key change (session expiry does
+    // not reset it), so nothing else clears that until a new key does. The proxy reads the key file on
+    // every request and a new key retires its session.
+    //
+    // `unnamed`: this client had no session of its own to offer (no Replace was tried). Then no wait can
+    // help: Replace needs a session id this client does not have. This is the takeover of a key the
+    // retired Node issuer published and already did its Ready under (an adopted key has no epoch), or a
+    // start whose epoch was never saved. The first such refusal re-keys at once, without the wait and
+    // without a conflict event. Only one immediate re-key per client: a refusal that persists after it
+    // falls back to the wait below, so a proxy that never accepts can't make it rotate on every retry.
+    //
+    // Otherwise Replace was refused too. The wait outlasts any session this client could still renew,
+    // so a live one is never cut short. Replace succeeds by itself once that session has expired.
+    async fn conflicted(self: &Arc<Self>, unnamed: bool) -> Result<(), ControlError> {
         let at = self.mono()?;
-        {
+        let immediate = {
             let mut s = self.lock();
-            if s.conflict_since.is_none() {
-                s.conflict_since = Some(at);
-                self.note("egress.control_conflict", &[]);
+            if unnamed && !s.unnamed_rekeyed {
+                s.unnamed_rekeyed = true;
+                true
+            } else {
+                if s.conflict_since.is_none() {
+                    s.conflict_since = Some(at);
+                    self.note("egress.control_conflict", &[]);
+                }
+                if at - s.conflict_since.unwrap_or(at) < SESSION_MS + RPC_MS {
+                    return err(Reason::Conflict);
+                }
+                false
             }
-            if at - s.conflict_since.unwrap_or(at) < SESSION_MS + RPC_MS {
-                return err(Reason::Conflict);
-            }
-        }
+        };
+        // `rekey` writes only over this process's own key (never a superseded or foreign one), with the
+        // published contract: owner and group from the configuration, mode 0440, one link, replaced by
+        // rename in the same directory.
         let next = self
             .keeper
             .as_ref()
@@ -834,7 +856,14 @@ impl Inner {
         s.fingerprint = FileKey::from_bytes(next).fingerprint();
         s.last_epoch = None;
         s.conflict_since = None;
-        self.note("egress.control_rekeyed", &[]);
+        if immediate {
+            self.note(
+                "egress.control_rekeyed",
+                &[("cause", "unnamed_session".to_string())],
+            );
+        } else {
+            self.note("egress.control_rekeyed", &[]);
+        }
         Ok(())
     }
 
@@ -857,6 +886,7 @@ impl Inner {
             }
         }
         let mut prior = self.lock().last_epoch.clone();
+        let unnamed = prior.is_none();
         let mut sent: Option<Sent> = None;
         // Replace answers a live proxy whose session this client held. A restarted or re-keyed proxy has
         // no such session and answers 409, signed; it accepts only Initial, which an initialized proxy refuses.
@@ -874,7 +904,7 @@ impl Inner {
             None => {
                 let mut s = self.ready_request("initial", None).await?;
                 if s.reply.status == 409 {
-                    self.conflicted().await?;
+                    self.conflicted(unnamed).await?;
                     prior = None;
                     s = self.ready_request("initial", None).await?;
                 }

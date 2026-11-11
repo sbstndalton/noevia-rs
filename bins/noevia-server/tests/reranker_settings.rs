@@ -343,13 +343,12 @@ async fn worker(
         .unwrap();
     let child = Worker(child);
     for _ in 0..500 {
+        // The worker writes the file non-atomically: only use it once both addresses parse.
         if let Ok(text) = std::fs::read_to_string(&ready) {
-            let mut addresses = text.split_whitespace();
-            return (
-                child,
-                addresses.next().unwrap().parse().unwrap(),
-                addresses.next().unwrap().parse().unwrap(),
-            );
+            let mut addresses = text.split_whitespace().map(str::parse);
+            if let (Some(Ok(front)), Some(Ok(store))) = (addresses.next(), addresses.next()) {
+                return (child, front, store);
+            }
         }
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
