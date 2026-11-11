@@ -1086,7 +1086,13 @@ async fn node_lists_the_tools_of_a_server_the_front_added_through_its_reread_dir
     let Some(core) = paired_core() else {
         return;
     };
-    let (d, db, up, s, f) = rig("", false, ECHO).await;
+    // The front's real discovery actor answers Node's discovery requests here (not a fixed catalogue).
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let s = synth(&up, ECHO);
+    *s.registry.lock().unwrap() = Some(registry_of(&up.base(), "io.test/weather", false));
+    let f = front_env_discovering(d.path(), true, &[("NOEVIA_QA_MCP_REGISTRY", up.base())]).await;
     let a = f.addr;
     *s.key.lock().unwrap() = Some(SECRET.into());
     let url = format!("{}/mcp", up.base());

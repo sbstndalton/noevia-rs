@@ -382,6 +382,25 @@ pub async fn front_env(
     qa_loopback: bool,
     extra: &[(&str, String)],
 ) -> Front {
+    front_inner(dir, qa_loopback, extra, true).await
+}
+
+/// [`front_env`] with the front's real discovery actor behind `POST /v1/mcp/discovery` instead of the
+/// [`FixedSource`] (for the tests where Node's real client asks the front what it discovered).
+pub async fn front_env_discovering(
+    dir: &std::path::Path,
+    qa_loopback: bool,
+    extra: &[(&str, String)],
+) -> Front {
+    front_inner(dir, qa_loopback, extra, false).await
+}
+
+async fn front_inner(
+    dir: &std::path::Path,
+    qa_loopback: bool,
+    extra: &[(&str, String)],
+    fixed: bool,
+) -> Front {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let mut env = HashMap::from([
@@ -397,12 +416,14 @@ pub async fn front_env(
     }
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     let source = Arc::new(FixedSource::default());
-    let _ = app.mcp_discovery.set(Some(Arc::new(
-        noevia_server::mcp_discovery_backend::Handle::configured(
-            &app.config.mcp,
-            Arc::clone(&source) as Arc<dyn noevia_server::mcp_discovery_backend::Source>,
-        ),
-    )));
+    if fixed {
+        let _ = app.mcp_discovery.set(Some(Arc::new(
+            noevia_server::mcp_discovery_backend::Handle::configured(
+                &app.config.mcp,
+                Arc::clone(&source) as Arc<dyn noevia_server::mcp_discovery_backend::Source>,
+            ),
+        )));
+    }
     tokio::spawn(serve(
         listener,
         Arc::clone(&app),

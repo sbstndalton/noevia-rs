@@ -24,16 +24,16 @@ const FIXTURE: &str = include_str!("fixtures/mcp-discovery-node.v1.json");
 const KEY: &[u8] = b"oracle-internal-key";
 
 fn fixture() -> Value {
-    serde_json::from_str(
-        std::env::var("NOEVIA_MCP_DISCOVERY_FIXTURE")
-            .ok()
-            .map_or_else(
-                || FIXTURE.replace("MCP 502: bad gateway", "fetch failed"),
-                |p| std::fs::read_to_string(p).unwrap(),
-            )
-            .as_str(),
-    )
-    .unwrap()
+    // The actor reports every failed listing as `fetch failed` (mcp_discovery_actor.rs), never the server's
+    // own words; core's `MCP 502: …` maps the same way whether the fixture is the committed one or the one
+    // CI regenerates from the oracle's core (NOEVIA_MCP_DISCOVERY_FIXTURE).
+    let text = std::env::var("NOEVIA_MCP_DISCOVERY_FIXTURE")
+        .ok()
+        .map_or_else(
+            || FIXTURE.to_owned(),
+            |p| std::fs::read_to_string(p).unwrap(),
+        );
+    serde_json::from_str(&text.replace("MCP 502: bad gateway", "fetch failed")).unwrap()
 }
 
 /// core `canon` of the oracle: JSON with sorted keys.
