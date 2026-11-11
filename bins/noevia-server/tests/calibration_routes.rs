@@ -83,6 +83,10 @@ async fn settled(f: &Front) -> Value {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn finished_status_has_a_final_saved_record_and_admits_the_next_start() {
     let (d, f, _up, e) = rig().await;
+    // Every ladder size loads, so the run reaches its long prompt (which stays pending until the
+    // cancel). The fixture marks a load over 16,384 tokens `failed`, a status the worker keeps
+    // polling for the whole load limit, so at the default 32,768 the run never gets there.
+    e.native.store(16384, Ordering::Release);
     assert_eq!(write(f.addr, "POST", PATH, ADMIN, ASK).await.0, 202);
     let path = cal::state_file(d.path(), &e);
     tokio::time::timeout(Duration::from_secs(30), async {
