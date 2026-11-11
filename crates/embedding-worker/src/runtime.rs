@@ -141,15 +141,28 @@ pub fn seed(get: impl Fn(&str) -> Option<String>) -> Result<Config, String> {
         previous: None,
     })
 }
-struct NativeHost {
-    store: SqlStore,
-    http: Http,
+pub(crate) struct NativeHost {
+    pub(crate) store: SqlStore,
+    pub(crate) http: Http,
     valid: Arc<AtomicBool>,
     off: Arc<AtomicBool>,
-    service_base: Option<String>,
-    core: String,
-    token: zeroize::Zeroizing<String>,
-    start: String,
+    pub(crate) service_base: Option<String>,
+    pub(crate) core: String,
+    pub(crate) token: zeroize::Zeroizing<String>,
+    pub(crate) start: String,
+}
+#[cfg(test)]
+pub(crate) fn media_test_host(store: SqlStore, http: Http, core: String) -> NativeHost {
+    NativeHost {
+        store,
+        http,
+        core,
+        valid: Arc::new(AtomicBool::new(true)),
+        off: Arc::new(AtomicBool::new(false)),
+        service_base: None,
+        token: zeroize::Zeroizing::new("synthetic-token".into()),
+        start: "11111111111111111111111111111111".into(),
+    }
 }
 impl NativeHost {
     fn off(&self, target: &Target) -> bool {
@@ -269,6 +282,19 @@ pub fn start(
     options: Options,
     service_base: Option<String>,
 ) -> Result<Background, String> {
+    start_with_documents(store, http, core, token, start, options, service_base, None)
+}
+#[allow(clippy::too_many_arguments)]
+pub fn start_with_documents(
+    store: SqlStore,
+    http: Http,
+    core: String,
+    token: String,
+    start: String,
+    options: Options,
+    service_base: Option<String>,
+    documents: Option<crate::media_runtime::EngineFactory>,
+) -> Result<Background, String> {
     let http = http.with_ownership(&core, &token, &start);
     let token = zeroize::Zeroizing::new(token);
     let (stop, mut rx) = watch::channel(false);
@@ -366,6 +392,7 @@ pub fn start(
                     tokio::select! {_=tokio::time::sleep(Duration::from_secs(2))=>{},_=outbox_rx.changed()=>break}
                 }
             };
+            let media_rx = rx.clone();
             let migrate=async {
                 let begun=tokio::time::Instant::now();let mut initial=false;
                 let mut seen=None;let mut config_version=None;let mut request_stamp=0;
@@ -396,7 +423,8 @@ pub fn start(
                 }
                 control.stop();
             };
-            tokio::join!(refresh,migrate,outbox);
+            let media = crate::media_runtime::run(&host, control.clone(), &state, documents, media_rx);
+            tokio::join!(refresh,migrate,outbox,media);
             let _=heartbeat.await;
         });
     });

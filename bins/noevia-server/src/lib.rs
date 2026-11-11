@@ -421,6 +421,7 @@ pub const FEATURES: &[&str] = &[
     "rust-embedding-background-v1",
     "rust-chat-mirror-v1",
     "rust-index-outbox-v3",
+    "rust-media-background-v1",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
@@ -1284,3 +1285,13 @@ mod machine_json;
 pub mod source_startup;
 
 pub mod dav;
+
+#[cfg(test)]
+mod feature_literal_compatibility_tests {
+    #[test]
+    fn research_job_feature_literal_matches_its_store() {
+        assert!(
+            super::FEATURES.contains(&server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER)
+        );
+    }
+}

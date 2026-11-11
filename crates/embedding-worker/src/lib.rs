@@ -4,6 +4,9 @@
 // Reuse the integration fixtures in the private executor's unit tests.
 #[cfg(test)]
 extern crate self as embedding_worker;
+#[cfg(test)]
+#[path = "../tests/support/mod.rs"]
+pub(crate) mod test_support;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -16,6 +19,10 @@ use std::{
 };
 pub mod fill;
 pub mod http;
+pub mod media_documents;
+pub mod media_policy;
+pub mod media_runtime;
+pub mod media_store;
 pub mod outbox;
 pub mod runtime;
 pub mod service;
@@ -99,6 +106,8 @@ type PublicationProbe = Arc<dyn Fn() -> Result<(), String> + Send + Sync>;
 #[derive(Clone, Default)]
 pub struct Control {
     cancellation: Arc<tokio::sync::Notify>,
+    epoch: Arc<AtomicU64>,
+    generation: Option<u64>,
     publication_probe: Arc<std::sync::Mutex<Option<PublicationProbe>>>,
     stopped: Arc<AtomicBool>,
     pending: Arc<AtomicBool>,
@@ -110,6 +119,13 @@ pub struct Control {
     proof_at: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
 }
 impl Control {
+    /// A pass is permanently fenced when coverage is lost. A later owner
+    /// renewal may admit a new pass, but never revives an old engine future.
+    pub fn pass(&self) -> Self {
+        let mut pass = self.clone();
+        pass.generation = Some(self.epoch.load(Ordering::Acquire));
+        pass
+    }
     pub fn kick(&self) {
         self.pending.store(true, Ordering::Release);
     }
@@ -118,6 +134,7 @@ impl Control {
         self.cancellation.notify_waiters();
     }
     pub fn suspend(&self) {
+        self.epoch.fetch_add(1, Ordering::AcqRel);
         let at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
@@ -182,6 +199,9 @@ impl Control {
     }
     pub fn suspended(&self) -> bool {
         self.suspended.load(Ordering::Acquire)
+            || self
+                .generation
+                .is_some_and(|generation| generation != self.epoch.load(Ordering::Acquire))
     }
     pub fn unconfirmed_since(&self) -> Option<u64> {
         let at = self.unconfirmed_since.load(Ordering::Acquire);
