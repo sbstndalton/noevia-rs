@@ -465,11 +465,19 @@ async fn an_unreachable_proxy_refuses_grants_and_reports_unavailable() {
         (st, b["code"].as_str()),
         (StatusCode::SERVICE_UNAVAILABLE, Some("EGRESS_UNAVAILABLE"))
     );
-    // The key is published for the proxy to find when it arrives.
-    assert_eq!(
-        std::fs::metadata(&r.key_file).unwrap().mode() & 0o7777,
-        0o440
-    );
+    // The key is published for the proxy to find when it arrives. Publication is asynchronous
+    // to the first grant's answer (sbstndalton/noevia#2433), so wait for it, bounded.
+    let published = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if let Ok(m) = std::fs::metadata(&r.key_file) {
+                return m;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(published.mode() & 0o7777, 0o440);
 }
 
 #[tokio::test]
