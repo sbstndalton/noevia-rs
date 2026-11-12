@@ -130,6 +130,12 @@ pub const OWNED_JSON_FILES: &[&str] = &[
     "chat-framing.json",
     // core chat-vault-mirror.cjs `writePreferences` (sbstndalton/noevia#2190 round 3).
     "chat-vault-mirror.json",
+    // sbstndalton/noevia#2446 (Coworkers and Spaces): the account's specialists and Spaces lists, and
+    // each Space's page index (`spaces/<spaceId>/index.json`). The page files are
+    // [`json::write_owned_page`]'s.
+    "specialists.json",
+    "spaces.json",
+    "index.json",
 ];
 
 /// Rust's ownership of sign-in and the account (M3): the tables and files Rust writes. It was the

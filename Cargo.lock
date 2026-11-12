@@ -3304,6 +3304,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "server-specialists"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "server-store",
+ "sha2",
+ "tempfile",
+ "uuid",
+]
+
+[[package]]
 name = "server-stats"
 version = "0.1.0"
 dependencies = [
