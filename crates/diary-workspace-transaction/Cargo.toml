@@ -10,6 +10,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+diary-backup-run = { path = "../diary-backup-run" }
 diary-entity-focus = { path = "../diary-entity-focus" }
 diary-backup-format = { path = "../diary-backup-format" }
 diary-workspace-rules = { path = "../diary-workspace-rules" }

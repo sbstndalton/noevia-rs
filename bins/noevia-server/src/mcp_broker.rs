@@ -534,12 +534,27 @@ pub struct Settings {
     /// `NOEVIA_QA_ALLOW_LOOPBACK_MCP=1` (never set in deployments): a synthetic MCP and OAuth server
     /// on `http://127.0.0.1`.
     pub qa_loopback: bool,
+    /// The operator's MCP configuration, as core reads it at boot (MCP discovery, row T):
+    /// `MCP_SERVERS`, `MCP_SERVER_URL`, `ENABLED_TOOLBOXES`, `MCP_NEXTCLOUD_ORIGINS` and
+    /// `MCP_DISCOVERY_FAIL_TTL_MS`.
+    pub servers: Option<String>,
+    pub server_url: Option<String>,
+    pub enabled_toolboxes: Option<String>,
+    pub nextcloud_origins: String,
+    pub discovery_fail_ttl_ms: Option<f64>,
 }
 
 impl Settings {
     pub fn from_lookup(get: &impl Fn(&str) -> Option<String>) -> Settings {
         Settings {
             qa_loopback: get("NOEVIA_QA_ALLOW_LOOPBACK_MCP").as_deref() == Some("1"),
+            servers: get("MCP_SERVERS"),
+            server_url: get("MCP_SERVER_URL"),
+            enabled_toolboxes: get("ENABLED_TOOLBOXES"),
+            nextcloud_origins: get("MCP_NEXTCLOUD_ORIGINS").unwrap_or_default(),
+            discovery_fail_ttl_ms: get("MCP_DISCOVERY_FAIL_TTL_MS")
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .filter(|v| v.is_finite() && *v >= 0.0),
         }
     }
 }
@@ -626,7 +641,7 @@ impl Mcp {
     // ── keys and sealing ──
 
     /// The key snapshot: loaded on first use, replaced by a re-seal.
-    fn keys(&self) -> Option<Arc<SecretKeys>> {
+    pub(crate) fn keys(&self) -> Option<Arc<SecretKeys>> {
         if let Some(k) = self.keys.read().unwrap_or_else(|e| e.into_inner()).as_ref() {
             return Some(Arc::clone(k));
         }

@@ -312,8 +312,15 @@ async fn the_directory_gate_and_methods_follow_core() {
         0,
         "no refused request reached the directory"
     );
-    let (s, _, _) = call(addr, "GET", "/api/plugins/directory/", &cookie(MEMBER)).await;
-    assert_eq!(s, 502, "the trailing-slash form is Node's (dead here)");
+    // The trailing-slash form reaches Node's static JSON 404, which the residual fallback
+    // answers itself (residual_fallback.rs; tests/fixtures/residual-fallback-node.json).
+    let (s, _, b) = call(addr, "GET", "/api/plugins/directory/", &cookie(MEMBER)).await;
+    assert_eq!(
+        (s, b.as_str()),
+        (404, r#"{"error":"not found"}"#),
+        "the trailing-slash form is the residual's"
+    );
+    assert_eq!(up.count.load(Ordering::SeqCst), 0);
     let _ = stop.send(());
 }
 

@@ -276,13 +276,30 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
             }
             Owner::Node => {
                 node_routes += 1;
+                // The residual fallback (residual_fallback.rs) answers Node's former refusals on
+                // these Node rows itself: every method but POST on the exact model writes, and every
+                // path behind the model wildcard but its three substantive handlers (checked below).
+                let residual = |m: &str| match r.path {
+                    "/api/models/delete" | "/api/models/load" | "/api/models/prune-missing" => {
+                        m != "POST"
+                    }
+                    "/api/models/{*}" => true,
+                    _ => false,
+                };
                 for method in ["GET", "POST"] {
                     let (res, _c) = call(front, method, &path, &[], b"").await;
-                    assert_eq!(
-                        res.headers().get("x-upstream").map(|v| v.as_bytes()),
-                        Some(&b"1"[..]),
-                        "{method} {path} did not reach Node"
-                    );
+                    if residual(method) {
+                        assert!(
+                            res.headers().get("x-upstream").is_none(),
+                            "{method} {path} is a residual answered by the front but reached Node"
+                        );
+                    } else {
+                        assert_eq!(
+                            res.headers().get("x-upstream").map(|v| v.as_bytes()),
+                            Some(&b"1"[..]),
+                            "{method} {path} did not reach Node"
+                        );
+                    }
                 }
             }
         }
@@ -310,8 +327,9 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // the preset reload's POST, the evidence read and the model-card import: 25; #2218 moved the research
     // paths, of which only the list was a listed Node route: 24; #2257 moved the active list and a project's
     // #2262 left 19 Node rows; #2281 toolbox, #2282 approval, #2287 settings,
-    // Calibration start/read leaves 10; evidence recheck leaves 9; untuned discovery leaves 8.
-    assert!(node_routes >= 8, "{node_routes} node routes");
+    // Calibration start/read leaves 10; evidence recheck leaves 9; untuned discovery leaves 8;
+    // the inference machines registry leaves 7.
+    assert!(node_routes >= 7, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("GET", "/api/tool-approvals/a"),
@@ -322,6 +340,10 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
         ("OPTIONS", "/api/models/autotune"),
         ("POST", "/api/ready"),
         ("HEAD", "/api/ready"),
+        // The model wildcard's substantive handlers stay Node's beside the residual fallback.
+        ("POST", "/api/models/pull"),
+        ("POST", "/api/models/unload"),
+        ("GET", "/api/models/mtp-artifact"),
         ("POST", "/"),
         ("DELETE", "/c/x"),
     ] {
@@ -458,10 +480,11 @@ async fn headers_cookies_and_forwarded_for() {
     }
     // With TRUST_PROXY, a spoofed prefix never survives: only the rightmost entry is sent.
     let front = start_front(up_addr, &dist, true).await;
+    // A GET Node still answers (Settings → Inference machines, used here before, is native now).
     let (res, _c) = call(
         front,
         "GET",
-        "/api/models/machines",
+        "/api/model-manager",
         &[("x-forwarded-for", "1.1.1.1, 203.0.113.7")],
         b"",
     )
@@ -471,7 +494,7 @@ async fn headers_cookies_and_forwarded_for() {
         echo["headers"]["x-forwarded-for"],
         serde_json::json!(["203.0.113.7"])
     );
-    let (res, _c) = call(front, "GET", "/api/models/machines", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/model-manager", &[], b"").await;
     let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
     assert_eq!(
         echo["headers"]["x-forwarded-for"],
@@ -563,7 +586,7 @@ async fn node_down_is_a_502_and_ready_is_a_503() {
     let dist = dist_dir("down");
     std::fs::remove_file(dist.join("version.json")).unwrap();
     let front = start_front(free, &dist, false).await;
-    let (res, _c) = call(front, "GET", "/api/models/machines", &[], b"").await;
+    let (res, _c) = call(front, "GET", "/api/model-manager", &[], b"").await;
     assert_eq!(res.status(), 502);
     let (res, _c) = call(front, "GET", "/api/ready", &[], b"").await;
     assert_eq!(res.status(), 503);

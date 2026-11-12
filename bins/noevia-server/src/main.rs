@@ -181,6 +181,9 @@ async fn server_main() -> ExitCode {
     // sbstndalton/noevia#2191 round 9 (review L5): an account folder with no account row is named in the log
     // (count and ids), never removed: a database restored from an older copy would make live data look orphaned.
     noevia_server::admin_user_routes::report_orphan_folders(&app).await;
+    // Complete the source-text sweep before the project store or public requests can run.
+    noevia_server::source_startup::run(&app).await;
+
     // sbstndalton/noevia#2190 round 5: the token broker removes the rows of deleted accounts.
     #[cfg(feature = "rust-chatgpt-status")]
     if let Some(broker) = app.chatgpt_oauth.as_ref() {
@@ -192,6 +195,10 @@ async fn server_main() -> ExitCode {
     if let Some(mcp) = app.mcp.as_ref() {
         mcp.sweep_once(&app).await;
     }
+    // sbstndalton/noevia row T: MCP tool discovery is this process's; the first listing warms the
+    // catalogue so the first chat does not pay for it (a server still starting is retried by the cadence).
+    #[cfg(feature = "rust-storage-reads")]
+    noevia_server::mcp_discovery_backend::warm(&app);
     // sbstndalton/noevia#2190 round 7: Google Drive's state file is brought up to date with the disk,
     // and the off-site backup's nightly schedule starts.
     if let Some(drive) = app.drive.as_ref() {
@@ -256,6 +263,11 @@ async fn server_main() -> ExitCode {
             switch,
             start_id: app.config.start_id.clone().unwrap_or_default().into(),
         };
+        // Row V: the egress issuer publishes the proxy key and holds the session from the front's
+        // own start, whether or not Node is up; Node only asks it for grants.
+        if let Some(issuer) = app.code_egress.as_ref() {
+            issuer.start();
+        }
         let mut rx = stop_rx.clone();
         tokio::spawn(noevia_server::project_store::serve_with_context(
             listener,
@@ -277,6 +289,23 @@ async fn server_main() -> ExitCode {
                 None
             }
         };
+    // `rust-chat-mirror-v1`: the change-journal consumer and the mirror and brain schedules.
+    if let Some(mirror) = noevia_server::chat_mirror::ChatMirror::start(
+        std::sync::Arc::clone(&app.config.research),
+        app.config.data_dir.clone(),
+    ) {
+        mirror.install_nudge_hook();
+        let _ = app.chat_mirror.set(mirror);
+    } else {
+        eprintln!("noevia-server: chat mirror schedule idle (no data directory)");
+    }
+    let dav = match noevia_server::dav::start(&app, stop_rx.clone()).await {
+        Ok(worker) => worker,
+        Err(error) => {
+            eprintln!("noevia-server: {error}");
+            return ExitCode::from(1);
+        }
+    };
     let server = serve::serve(listener, app, serve::Limits::default(), async move {
         let mut rx = stop_rx;
         let _ = rx.wait_for(|s| *s).await;
@@ -303,6 +332,10 @@ async fn server_main() -> ExitCode {
             watch.abort();
             let _ = watch.await;
         }
+    }
+    if let Some(worker) = dav {
+        worker.abort();
+        let _ = worker.await;
     }
     if let Some(worker) = embedding_background {
         worker.shutdown().await;

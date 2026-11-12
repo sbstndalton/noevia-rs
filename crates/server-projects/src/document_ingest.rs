@@ -86,6 +86,35 @@ fn read_record(file: &Path) -> Option<JValue> {
     wtf16::parse(&text).ok()
 }
 
+/// A short publication hold shared by foreground and background record writers.
+/// It lives beside projects.json so document pruning never unlinks its inode.
+/// Engine calls must finish before taking it.
+pub fn lock_records(dir: &Path) -> std::io::Result<crate::lock::FileLock> {
+    crate::lock::acquire(&dir.join("document-records"))
+        .map_err(|_| std::io::Error::other("document record lock unavailable"))
+}
+
+// Completion computes outside the record lock. A competing read may finish
+// first; retain its newer record rather than publishing the older snapshot.
+fn persist_record(
+    dir: &Path,
+    path: &Path,
+    before: Option<&JValue>,
+    next: JValue,
+) -> std::io::Result<JValue> {
+    let _record = lock_records(dir)?;
+    let current = read_record(path);
+    if current.as_ref() != before {
+        return current.ok_or_else(|| std::io::Error::other("document record changed"));
+    }
+    write_once(
+        dir,
+        path,
+        wtf16::stringify(&next).unwrap_or_default().as_bytes(),
+    )?;
+    Ok(next)
+}
+
 fn set(v: &mut JValue, key: &str, value: JValue) {
     if let JValue::Obj(items) = v {
         wtf16::set(items, key, value);
@@ -206,7 +235,8 @@ pub fn ingest(
         write_once(dir, &original, bytes)?;
     }
     let result_file = version_path(dir, project, &version, ".json").ok_or_else(bad)?;
-    let cached = read_record(&result_file).filter(|c| !c.get("retryable").truthy());
+    let stored = read_record(&result_file);
+    let cached = stored.clone().filter(|c| !c.get("retryable").truthy());
     let mut figures = FigureBytes::new();
     let mut outcome = "unchanged";
     let out = match cached {
@@ -216,11 +246,7 @@ pub fn ingest(
             if completed != c {
                 let mut completed = completed;
                 store_figures(dir, project, &version, &mut completed, &figures)?;
-                write_once(
-                    dir,
-                    &result_file,
-                    wtf16::stringify(&completed).unwrap_or_default().as_bytes(),
-                )?;
+                let completed = persist_record(dir, &result_file, stored.as_ref(), completed)?;
                 outcome = "reopened";
                 completed
             } else {
@@ -236,12 +262,7 @@ pub fn ingest(
                     Err(extract::Permanent(m)) => extract::thrown(&m, false),
                 };
             store_figures(dir, project, &version, &mut out, &figures)?;
-            write_once(
-                dir,
-                &result_file,
-                wtf16::stringify(&out).unwrap_or_default().as_bytes(),
-            )?;
-            out
+            persist_record(dir, &result_file, stored.as_ref(), out)?
         }
     };
     let state = out.get("state").as_str().unwrap_or("failed").to_string();
@@ -366,5 +387,47 @@ pub fn prune_now(dir: &std::path::Path, id: &str) {
         if let Some(p) = crate::store::find(&projects, id) {
             crate::files::prune_documents(dir, p);
         }
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod record_publication_tests {
+    use super::*;
+    #[test]
+    fn stale_completion_keeps_the_newer_record_and_pruning_preserves_the_lock_inode() {
+        let root = tempfile::tempdir().unwrap();
+        let version = "a".repeat(64);
+        let path = version_path(root.path(), "p", &version, ".json").unwrap();
+        let before = JValue::obj([("completion", JValue::Str("partial".into()))]);
+        let newer = JValue::obj([("completion", JValue::Str(extract::COMPLETION.into()))]);
+        write_once(
+            root.path(),
+            &path,
+            wtf16::stringify(&before).unwrap().as_bytes(),
+        )
+        .unwrap();
+        assert_eq!(
+            persist_record(root.path(), &path, Some(&before), newer.clone()).unwrap(),
+            newer
+        );
+        let stale = JValue::obj([("completion", JValue::Str("older partial".into()))]);
+        assert_eq!(
+            persist_record(root.path(), &path, Some(&before), stale).unwrap(),
+            newer
+        );
+        assert_eq!(read_record(&path).unwrap(), newer);
+        let project = JValue::obj([
+            ("id", JValue::Str("p".into())),
+            (
+                "files",
+                JValue::Arr(vec![JValue::obj([(
+                    "document",
+                    JValue::obj([("version", JValue::Str(version))]),
+                )])]),
+            ),
+        ]);
+        crate::files::prune_documents(root.path(), &project);
+        assert!(crate::lock::path_for(&root.path().join("document-records")).exists());
     }
 }

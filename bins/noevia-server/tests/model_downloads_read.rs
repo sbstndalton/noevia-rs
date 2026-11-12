@@ -119,19 +119,21 @@ async fn selected_values_preserve_reserved_unicode_and_deep_json() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn head_other_verbs_and_trailing_path_stay_with_node() {
+async fn residual_methods_use_native_projection_and_trailing_path_is_missing() {
     let (_d, front, up) = rig().await;
-    up.set(|_| reply_with("202 NodeMethod", "X-Node-Method: yes\r\n", "{}"));
-    for (method, path) in [
-        ("HEAD", PATH),
-        ("POST", PATH),
-        ("GET", "/api/models/downloads/"),
-    ] {
-        let (status, headers, _) = raw_text(front.addr, method, path, ADMIN, "", b"").await;
-        assert_eq!(status, 202, "{method} {path}");
-        assert!(headers.contains("x-node-method: yes"));
+    up.set(|_| reply("200 OK", r#"{"kind":"disabled"}"#));
+    let csrf = format!("Origin: http://{}\r\nX-CSRF-Token: csrf\r\n", front.addr);
+    for method in ["HEAD", "POST"] {
+        let (status, headers, body) = raw_text(front.addr, method, PATH, ADMIN, &csrf, b"").await;
+        assert_eq!(status, 200, "{method}");
+        assert!(!headers.contains("x-node-method"));
+        assert_eq!(body, if method == "HEAD" { "" } else { "[]" });
     }
-    assert!(up.seen().iter().all(|req| req.path != FACTS));
+    let (status, _, _) =
+        raw_text(front.addr, "GET", "/api/models/downloads/", ADMIN, "", b"").await;
+    assert_eq!(status, 404);
+    assert_eq!(up.count(FACTS), 2);
+    assert!(up.seen().iter().all(|req| req.path == FACTS));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

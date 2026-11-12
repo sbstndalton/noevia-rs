@@ -4,11 +4,10 @@
 //! `users/<id>/chat-vault-mirror.json`; Node's mirror reads it on every use (`readPreferences`).
 //!
 //! Node answered a PUT that turned the mirror on (while it is available) by scheduling the
-//! account's mirror at once. The mirror stays in Node, so a save here that turns it on writes the
-//! nudge Node's mirror polls: `UI_DATA_DIR/chat-vault-mirror-nudges.json`,
-//! `{version:1,nudges:{<userId>:<epoch ms>}}` (core rust-vault-mirror-preferences.cjs re-reads it
-//! by its file signal and runs that account's mirror immediately). Node's mirror applies its own
-//! `enabled(userId)` gate before it writes anything, as it did before.
+//! account's mirror at once. The mirror's schedule is this process's now (`chat-mirror-sched`,
+//! wired in bins/noevia-server chat_mirror.rs), so a save here that turns it on calls the nudge
+//! hook the server installs, which runs that account's mirror pass immediately. The pass's work
+//! (still Node's) applies its own `enabled(userId)` gate before it writes anything, as before.
 //!
 //! Order follows core: the session gate, 405 for other methods, the body (PUT only: 1 MiB 413,
 //! `invalid JSON` 400), the validation (`enabled must be true or false`), then the save with its
@@ -21,16 +20,11 @@ use server_auth::Identity;
 use server_features::Feature;
 use server_store::{json, Reader, StoreError};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::OnceLock;
 
 pub const PATH: &str = "/api/chat-vault-mirror/preferences";
 const FILE: &str = "chat-vault-mirror.json";
-/// The nudges Node's mirror polls (in UI_DATA_DIR).
-pub const NUDGES_FILE: &str = "chat-vault-mirror-nudges.json";
 const INVALID: &str = "enabled must be true or false";
-
-/// One writer of the nudge file in this process.
-static NUDGES: Mutex<()> = Mutex::new(());
 
 /// `readPreferences(dir)`: `{enabled: data?.enabled === true}`; a missing or unreadable file is off.
 fn read(dir: &Path) -> bool {
@@ -83,49 +77,23 @@ fn context_unavailable() -> Outcome {
     Reply::error(503, "Feature runtime context is unavailable.").into()
 }
 
-/// Records that `user` turned the mirror on, for Node's mirror to run at once. Best effort: a
-/// failure is logged with no detail and never changes the answer (the mirror still runs on its
-/// next scheduled pass).
-fn nudge(data_dir: &Path, user: &str, now: i64) {
-    let _guard = NUDGES.lock().unwrap_or_else(|p| p.into_inner());
-    let file = data_dir.join(NUDGES_FILE);
-    let mut nudges = std::fs::read(&file)
-        .ok()
-        .and_then(|b| js_json::parse(&String::from_utf8_lossy(&b)).ok())
-        .map(|doc| match doc.get("nudges") {
-            JValue::Obj(items) => items.clone(),
-            _ => Vec::new(),
-        })
-        .unwrap_or_default();
-    js_json::wtf16::set(&mut nudges, user, JValue::Num(now as f64));
-    let doc = JValue::obj([
-        ("version", JValue::Num(1.0)),
-        ("nudges", JValue::Obj(nudges)),
-    ]);
-    let written = js_json::stringify(&doc)
-        .ok_or(())
-        .and_then(|text| write_private(&file, &text).map_err(|_| ()));
-    if written.is_err() {
-        eprintln!("noevia-server: chat vault mirror nudge could not be written");
-    }
+/// Called with the data directory and the account when a save turns the mirror on, so the
+/// process's chat mirror scheduler runs that account's mirror at once.
+pub type NudgeHook = Box<dyn Fn(&Path, &str) + Send + Sync>;
+
+static NUDGE_HOOK: OnceLock<NudgeHook> = OnceLock::new();
+
+/// Installs the hook once at start (the chat mirror scheduler); a second call is ignored.
+pub fn set_nudge_hook(hook: NudgeHook) {
+    let _ = NUDGE_HOOK.set(hook);
 }
 
-fn write_private(file: &Path, text: &str) -> std::io::Result<()> {
-    use std::io::Write as _;
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut tmp = file.as_os_str().to_owned();
-    tmp.push(format!(".{}.tmp", std::process::id()));
-    let tmp = std::path::PathBuf::from(tmp);
-    let mut out = std::fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(&tmp)?;
-    out.write_all(text.as_bytes())?;
-    out.sync_all()?;
-    drop(out);
-    std::fs::rename(&tmp, file)
+/// Tells the mirror scheduler that `user` turned the mirror on. In process and best effort: with
+/// no scheduler installed nothing happens (the mirror still runs on its next scheduled pass).
+fn nudge(data_dir: &Path, user: &str) {
+    if let Some(hook) = NUDGE_HOOK.get() {
+        hook(data_dir, user);
+    }
 }
 
 fn view(enabled: bool, available: bool) -> JValue {
@@ -213,7 +181,7 @@ pub(crate) fn handle(
         Ok(Ok(Reply::json(200, &view(*enabled, open)).into()))
     })?;
     if turned_on {
-        nudge(&acct.settings.data_dir, &authn.user.id, current_time());
+        nudge(&acct.settings.data_dir, &authn.user.id);
     }
     result.map(Some)
 }
@@ -242,18 +210,21 @@ mod tests {
     }
 
     #[test]
-    fn nudges_keep_other_accounts_and_replace_the_time() {
-        let d = tempfile::tempdir().unwrap();
-        nudge(d.path(), "a", 5);
-        nudge(d.path(), "b", 6);
-        nudge(d.path(), "a", 7);
-        let text = std::fs::read_to_string(d.path().join(NUDGES_FILE)).unwrap();
-        assert_eq!(text, r#"{"version":1,"nudges":{"a":7,"b":6}}"#);
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(d.path().join(NUDGES_FILE))
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o777, 0o600);
+    fn the_nudge_hook_is_called_with_the_data_dir_and_account() {
+        use std::sync::Mutex;
+        static SEEN: Mutex<Vec<(std::path::PathBuf, String)>> = Mutex::new(Vec::new());
+        set_nudge_hook(Box::new(|dir, user| {
+            SEEN.lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .push((dir.to_path_buf(), user.to_string()));
+        }));
+        // A second install is ignored: the first hook stays.
+        set_nudge_hook(Box::new(|_, _| {}));
+        nudge(Path::new("/data"), "a");
+        let seen = SEEN.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        assert_eq!(
+            seen,
+            vec![(std::path::PathBuf::from("/data"), "a".to_string())]
+        );
     }
 }

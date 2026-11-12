@@ -802,6 +802,7 @@ mod differential {
             }
         };
         let cat = Catalogue {
+            offers: Default::default(),
             mcp_enabled: true,
             harness_enabled: i.get("harnessEnabled").truthy(),
             has_repositories: matches!(i.get("repositories"), JValue::Arr(r) if !r.is_empty()),

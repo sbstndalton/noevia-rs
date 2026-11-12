@@ -483,7 +483,7 @@ fn with_held<T>(
     run(&mut s)
 }
 fn internal(id: &str) -> bool {
-    id == "cowork-diary-extras" || id.starts_with("cowork-chat-context-")
+    store::internal_project_id(id)
 }
 fn list(v: &JValue) -> Result<Vec<JValue>, MoveError> {
     match v {

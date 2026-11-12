@@ -1,6 +1,7 @@
 name: Native project writes
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
@@ -96,11 +97,15 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/seed"
+          # Native publication keeps this flock inode after release. Seed it in
+          # BOTH copies; retain the complete state comparison and validate it.
+          python3 tools/stats-seed.py initialize "$RUNNER_TEMP/seed"
           target/debug/replay run --corpus contracts/http/corpus --base http://127.0.0.1:18021 \
             --ignore-body hours --ignore-body peakHour/hour \
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-node" \
             --server-cmd "exec '$GITHUB_WORKSPACE/target/debug/corpus-launcher' serve '$GITHUB_WORKSPACE/core'" \
             --state-out "$RUNNER_TEMP/node-state.json"
+          python3 tools/stats-seed.py verify "$RUNNER_TEMP/seed" "$RUNNER_TEMP/work-node"
       - name: Full replay through the permanent native context owner
         # The corpus's GET /api/chats/{id}/context is the front's here; every answer, file and
         # cowork.db row must still be Node's. The M4 lock files are ignored, as in ci.yml.
@@ -111,8 +116,9 @@ jobs:
             --seed "$RUNNER_TEMP/seed" --work "$RUNNER_TEMP/work-writes" \
             --native-move-state --server-cmd "exec env NOEVIA_RUST_PROJECT_WRITES=hostile NOEVIA_RUST_PROJECT_WRITES_CONFIRMED=hostile sh '$GITHUB_WORKSPACE/tools/front/replay-front.sh' '$GITHUB_WORKSPACE/front-core' '$GITHUB_WORKSPACE/target/debug/noevia-server'" \
             --report "$RUNNER_TEMP/writes-positive.json" \
-            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*snapshot-demand' --state-ignore '*embedding-worker-status.json' --state-ignore '*embedding-worker.lock' --state-ignore '*chat-activity.json' \
+            --state-ignore '*projects.json.lock' --state-ignore '*free-chats.json.lock' --state-ignore '*chat-transcripts.lock' --state-ignore '*chat-changes.jsonl' --state-ignore '*chat-retention.json.lock' --state-ignore '*rag-status.json' --state-ignore '*auto-roles-snapshot.json' --state-ignore '*mcp-discovery.json' --state-ignore '*toolbox-chat-facts.json' --state-ignore '*snapshot-demand' --state-ignore '*embedding-worker-status.json' --state-ignore '*embedding-worker.lock' --state-ignore '*chat-activity.json' --state-ignore '*/rag/' \
             --expect-state "$RUNNER_TEMP/node-state.json"
+          python3 tools/stats-seed.py verify "$RUNNER_TEMP/seed" "$RUNNER_TEMP/work-writes"
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
