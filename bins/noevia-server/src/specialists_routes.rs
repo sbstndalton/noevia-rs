@@ -486,7 +486,7 @@ async fn with_toolboxes(
     if wanted.is_none_or(<[String]>::is_empty) {
         return Ok(store);
     }
-    let Some(catalogue) = crate::mcp_discovery::read(app).await else {
+    let Some(ids) = known_toolboxes(app).await else {
         let mut res = failure(
             StatusCode::SERVICE_UNAVAILABLE,
             "The tool list is being prepared. Try again in a moment.",
@@ -496,13 +496,26 @@ async fn with_toolboxes(
             .insert("retry-after", HeaderValue::from_static("2"));
         return Err(Box::new(res));
     };
-    let ids = catalogue
-        .boxes
-        .iter()
-        .filter(|b| !catalogue.connector_boxes.contains(&b.id))
-        .map(|b| b.id.clone())
-        .collect();
     Ok(store.with_known_toolboxes(ids))
+}
+
+#[cfg(feature = "rust-storage-reads")]
+async fn known_toolboxes(app: &Arc<App>) -> Option<Vec<String>> {
+    let catalogue = crate::mcp_discovery::read(app).await?;
+    Some(
+        catalogue
+            .boxes
+            .iter()
+            .filter(|b| !catalogue.connector_boxes.contains(&b.id))
+            .map(|b| b.id.clone())
+            .collect(),
+    )
+}
+
+/// A build without tool discovery cannot vouch for any toolbox.
+#[cfg(not(feature = "rust-storage-reads"))]
+async fn known_toolboxes(_app: &Arc<App>) -> Option<Vec<String>> {
+    None
 }
 
 async fn run(
