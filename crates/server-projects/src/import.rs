@@ -198,7 +198,7 @@ struct Listed {
 fn internal(p: &JValue) -> bool {
     p.get("id")
         .as_str()
-        .is_some_and(|id| id == "cowork-diary-extras" || id.starts_with("cowork-chat-context-"))
+        .is_some_and(crate::store::internal_project_id)
 }
 
 /// What planning reads of the account, from disk (the front holds no cache).

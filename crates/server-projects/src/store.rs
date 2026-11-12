@@ -163,7 +163,7 @@ pub fn ensure_user_dir(data_dir: &Path, user_id: &str) -> Result<Ensured, StoreE
 /// fails with `NotFound` instead of recreating `users/<id>` (sbstndalton/noevia#1425, the account
 /// deletion fence of core's `workspace.assertActive`). Every writer of a file under a user's directory
 /// that can run long (a storage read, an extraction) creates its folders this way.
-pub(crate) fn create_dirs_below(user_dir: &Path, dir: &Path) -> std::io::Result<()> {
+pub fn create_dirs_below(user_dir: &Path, dir: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;
     let below = dir
         .strip_prefix(user_dir)
@@ -230,6 +230,20 @@ fn drop_null_files(projects: &mut [JValue]) {
             }
         }
     }
+}
+
+/// Prefix of a coworker's hidden backing project (`specialist-<specialist id>`,
+/// sbstndalton/noevia#2446). Project ids are made by the server (`proj-...`), so no person's
+/// project can carry it.
+pub const SPECIALIST_PREFIX: &str = "specialist-";
+
+/// core diary-extras.cjs `internalProject` by id: the Diary's extras project, a free chat's
+/// attachments project and a coworker's backing project. None of them is ever listed, searched,
+/// exported, retained away or offered as a destination.
+pub fn internal_project_id(id: &str) -> bool {
+    id == "cowork-diary-extras"
+        || id.starts_with("cowork-chat-context-")
+        || id.starts_with(SPECIALIST_PREFIX)
 }
 
 /// The project with this id (`PROJECTS.find((p) => p.id === id)`).

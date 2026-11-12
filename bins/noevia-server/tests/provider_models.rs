@@ -503,16 +503,16 @@ async fn provider_model_lists_follow_core() {
         get(addr, "/api/providers/shared-gpt/models", ADMIN).await,
         (404, e("Sign in with ChatGPT is turned off on this server."))
     );
-    // Shapes Node keeps: the broker's static route's other methods, a tail.
+    // Residual shapes answered natively: the broker's static route's other methods, a tail.
     assert_eq!(
         post(addr, "/api/providers/chatgpt/models", ADMIN, "{}")
             .await
             .0,
-        502
+        405
     );
     assert_eq!(
         get(addr, "/api/providers/mine/models/x", ADMIN).await.0,
-        502
+        404
     );
 }
 

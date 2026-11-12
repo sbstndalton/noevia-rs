@@ -130,6 +130,12 @@ pub const OWNED_JSON_FILES: &[&str] = &[
     "chat-framing.json",
     // core chat-vault-mirror.cjs `writePreferences` (sbstndalton/noevia#2190 round 3).
     "chat-vault-mirror.json",
+    // sbstndalton/noevia#2446 (Coworkers and Spaces): the account's specialists and Spaces lists, and
+    // each Space's page index (`spaces/<spaceId>/index.json`). The page files are
+    // [`json::write_owned_page`]'s.
+    "specialists.json",
+    "spaces.json",
+    "index.json",
 ];
 
 /// Rust's ownership of sign-in and the account (M3): the tables and files Rust writes. It was the
@@ -206,6 +212,24 @@ impl RustReasoningSettings {
 pub struct RustDecisionSettings(());
 impl RustDecisionSettings {
     pub const KEY: &'static str = "decision:configuration";
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
+/// Native machine registry and synthetic measurement results, fixed keys only.
+#[derive(Debug, Clone, Copy)]
+pub struct RustInferenceMachines(());
+impl RustInferenceMachines {
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
+/// Exclusive capability for the reranker configuration row.
+#[derive(Debug, Clone, Copy)]
+pub struct RustRerankerSettings(());
+impl RustRerankerSettings {
     pub const fn owned() -> Self {
         Self(())
     }
@@ -1173,6 +1197,44 @@ impl WriteTx<'_> {
         )?)
     }
 
+    /// Advance the durable generation inside the writer's BEGIN IMMEDIATE transaction.
+    /// Even an identical save or an already-empty reset invalidates every front's consumers.
+    pub fn set_reranker_configuration(
+        &self,
+        _owner: RustRerankerSettings,
+        value: Option<&str>,
+    ) -> Result<usize, StoreError> {
+        let current: Option<String> = self.reader().row(
+            "SELECT value FROM settings WHERE key='rerank:revision'",
+            [],
+            |r| r.get(0),
+        )?;
+        let generation = match current {
+            None => 0,
+            Some(value) => value
+                .parse::<u64>()
+                .map_err(|_| StoreError::NotOwned("invalid reranker revision".into()))?,
+        };
+        let next = generation
+            .checked_add(1)
+            .ok_or_else(|| StoreError::NotOwned("reranker revision exhausted".into()))?;
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('rerank:revision',?1)",
+            [next.to_string()],
+        )?;
+        Ok(match value {
+            Some(value) => self.conn.execute(
+                "INSERT OR REPLACE INTO settings(key,value) VALUES('rerank:configuration',?1)",
+                [value],
+            )?,
+            None => self
+                .conn
+                .execute("DELETE FROM settings WHERE key='rerank:configuration'", [])?,
+        })
+    }
+
     /// Exactly Node's decision-settings save statement (core feature-setting-source.cjs WRITE_SQL
     /// without RETURNING), under its own capability.
     pub fn set_decision_configuration(
@@ -1185,6 +1247,28 @@ impl WriteTx<'_> {
         Ok(self.conn.execute(
             "INSERT OR REPLACE INTO settings(key,value) VALUES('decision:configuration',?1)",
             [value],
+        )?)
+    }
+
+    /// The machine registry's sole writer; no arbitrary settings capability.
+    pub fn set_inference_machines(
+        &self,
+        _owner: RustInferenceMachines,
+        tune: bool,
+        value: &str,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES(?1,?2)",
+            [
+                if tune {
+                    "inference:machineTune"
+                } else {
+                    "inference:machines"
+                },
+                value,
+            ],
         )?)
     }
 

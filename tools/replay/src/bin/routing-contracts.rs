@@ -75,9 +75,13 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "--state-ignore",
             "*rag-status.json",
             "--state-ignore",
+            "*/rag/",
+            "--state-ignore",
             "*auto-roles-snapshot.json",
             "--state-ignore",
             "*mcp-discovery.json",
+            "--state-ignore",
+            "*toolbox-chat-facts.json",
             "--state-ignore",
             "*snapshot-demand",
             // The native embedding worker's status file and lifetime flock (crates/embedding-worker
@@ -86,6 +90,10 @@ fn replay(core: &Path, corpus: &Path, out: &Path, name: &str, front: bool) -> Re
             "*embedding-worker-status.json",
             "--state-ignore",
             "*embedding-worker.lock",
+            // The front's activity record for Node's change journal (chat_activity.rs, chat port S3): written by the
+            // running front for Node to read, like the demand marker; Node's oracle writes none.
+            "--state-ignore",
+            "*chat-activity.json",
         ])
         .arg("--seed")
         .arg(out.join("seed"))

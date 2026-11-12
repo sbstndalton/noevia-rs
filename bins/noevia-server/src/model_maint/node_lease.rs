@@ -14,18 +14,37 @@ use serde_json::Value;
 use std::time::{Duration, Instant};
 
 const PATH: &str = "/internal/model-maintenance/lease";
+/// Core model-load-refusal.cjs: the load decision a calibration load asks for first (#2303).
+const LOAD_REFUSAL: &str = "/internal/model-maintenance/load-refusal";
+/// How long Node may take to decide a load (it may read the model file's header to estimate it).
+pub const LOAD_CHECK: Duration = Duration::from_secs(30);
 const CALL_TIMEOUT: Duration = Duration::from_secs(5);
+/// model-maintenance-lease.cjs `MAX_MS`: the longest hard cap a lease may ask for.
+pub const MAX_LEASE: Duration = Duration::from_secs(24 * 3600);
 
 /// A lease Node granted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LeaseGrant {
     pub id: String,
+    /// Node latch generation, required to complete its captured recovery obligations.
+    pub generation: u64,
     pub ttl: Duration,
     pub renew_every: Duration,
     /// Node ends the lease this long after granting it, however often it is renewed.
     pub hard: Duration,
     /// Just before asking: Node's clocks started no earlier, so times counted from here are never long.
     pub asked: Instant,
+}
+
+/// Node's decision on a load (llamacpp-manager.cjs `overBudget`, through model-load-refusal.cjs).
+#[derive(Debug, Clone, PartialEq)]
+pub enum LoadDecision {
+    /// Nothing refuses it.
+    Proceed,
+    /// Refused: the body Node's own request closure answers its 409 with (`{error, code, ...}`).
+    Refused(Value),
+    /// No decision (Node unreachable, or any other answer): the caller must not load.
+    Unavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,10 +112,46 @@ impl NodeLeases {
     }
 
     pub async fn acquire(&self) -> Result<LeaseGrant, LeaseFault> {
+        self.acquire_capped(None, None).await
+    }
+
+    /// A latch asking for hard cap `max` (`{maxMs}`; Node clamps it to [60 min, 24 h]). `ticket`
+    /// (the authority lease's id) names the latch, so one whose answer is lost (a cancelled or failed
+    /// call) can still be given back with [`Self::release_ticket`]. Neither: no body, as before.
+    pub async fn acquire_capped(
+        &self,
+        max: Option<Duration>,
+        ticket: Option<&str>,
+    ) -> Result<LeaseGrant, LeaseFault> {
+        self.acquire_kind(max, ticket, false).await
+    }
+
+    pub(super) async fn acquire_kind(
+        &self,
+        max: Option<Duration>,
+        ticket: Option<&str>,
+        recovery: bool,
+    ) -> Result<LeaseGrant, LeaseFault> {
         let asked = Instant::now();
-        let req = self
+        let mut req = self
             .request(reqwest::Method::POST, PATH)
             .ok_or(LeaseFault::Unavailable)?;
+        let mut ask = serde_json::Map::new();
+        if recovery {
+            ask.insert("recovery".into(), true.into());
+        }
+        if let Some(max) = max {
+            let ms = u64::try_from(max.min(MAX_LEASE).as_millis()).unwrap_or(0);
+            ask.insert("maxMs".into(), ms.into());
+        }
+        if let Some(t) = ticket.filter(|t| is_lease_id(t)) {
+            ask.insert("ticket".into(), t.into());
+        }
+        if !ask.is_empty() {
+            req = req
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(Value::Object(ask).to_string());
+        }
         let res = req.send().await.map_err(|_| LeaseFault::Unavailable)?;
         match res.status().as_u16() {
             201 => {
@@ -122,6 +177,7 @@ impl NodeLeases {
                 };
                 Ok(LeaseGrant {
                     id: id.to_owned(),
+                    generation: body.get("generation").and_then(Value::as_u64).unwrap_or(0),
                     ttl: Duration::from_millis(ttl),
                     renew_every: ms("renewMs")?,
                     hard: ms("hardMs")?,
@@ -147,10 +203,91 @@ impl NodeLeases {
         }
     }
 
+    /// Whether Node lets `model` load now, over its current models.ini and budget.
+    pub async fn load_refusal(&self, model: &str) -> LoadDecision {
+        let Some(req) = self.request(reqwest::Method::POST, LOAD_REFUSAL) else {
+            return LoadDecision::Unavailable;
+        };
+        let sent = req
+            .timeout(LOAD_CHECK)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::json!({ "model": model }).to_string())
+            .send()
+            .await;
+        let Ok(res) = sent else {
+            return LoadDecision::Unavailable;
+        };
+        if res.status().as_u16() != 200 {
+            return LoadDecision::Unavailable;
+        }
+        let Ok(bytes) = res.bytes().await else {
+            return LoadDecision::Unavailable;
+        };
+        match serde_json::from_slice::<Value>(&bytes)
+            .ok()
+            .and_then(|v| v.get("refusal").cloned())
+        {
+            Some(Value::Null) => LoadDecision::Proceed,
+            Some(r @ Value::Object(_)) => LoadDecision::Refused(r),
+            _ => LoadDecision::Unavailable,
+        }
+    }
+
+    /// Establish the recovery-required Node barrier, with acknowledgement.
+    pub(crate) async fn recovery_barrier(&self, required: bool, ticket: &str) -> bool {
+        // Completion requires a fresh repair proof; never send the old unscoped DELETE.
+        if !required {
+            return false;
+        }
+        let Some(req) = self.request(reqwest::Method::POST, &format!("{PATH}/recovery/{ticket}"))
+        else {
+            return false;
+        };
+        req.send().await.is_ok_and(|r| r.status().as_u16() == 204)
+    }
+
+    pub(crate) async fn complete_recovery(
+        &self,
+        ticket: &str,
+        lease: &str,
+        generation: u64,
+    ) -> bool {
+        let Some(req) = self.request(
+            reqwest::Method::DELETE,
+            &format!("{PATH}/recovery/{ticket}"),
+        ) else {
+            return false;
+        };
+        req.header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(serde_json::json!({"lease":lease,"generation":generation}).to_string())
+            .send()
+            .await
+            .is_ok_and(|r| r.status().as_u16() == 204)
+    }
+
+    /// Core's idempotent DELETE acknowledges that its local admission is clear.
+    pub(super) async fn release_confirmed(&self, id: &str) -> bool {
+        let Some(req) = self.request(reqwest::Method::DELETE, &format!("{PATH}/{id}")) else {
+            return false;
+        };
+        req.send().await.is_ok_and(|r| r.status().as_u16() == 204)
+    }
+
+    /// Gives back the latch named `ticket`, whether or not its grant reached this front (204 also
+    /// when there is none). Best effort: an unreleased latch ends by itself.
+    pub async fn release_ticket(&self, ticket: &str) -> bool {
+        if !is_lease_id(ticket) {
+            return false;
+        }
+        let Some(req) = self.request(reqwest::Method::DELETE, &format!("{PATH}/ticket/{ticket}"))
+        else {
+            return false;
+        };
+        req.send().await.is_ok_and(|r| r.status().as_u16() == 204)
+    }
+
     /// Best effort: an unreleased lease ends by itself.
     pub async fn release(&self, id: &str) {
-        if let Some(req) = self.request(reqwest::Method::DELETE, &format!("{PATH}/{id}")) {
-            let _ = req.send().await;
-        }
+        let _ = self.release_confirmed(id).await;
     }
 }

@@ -48,7 +48,7 @@ async fn native_projection_matches_the_old_node_fixture_for_members_and_admins()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn no_probe_before_auth_and_other_methods_keep_the_node_fallback() {
+async fn no_probe_before_auth_and_residual_methods_are_native() {
     let dir = tempfile::tempdir().unwrap();
     seed(dir.path());
     let owner = upstream().await;
@@ -69,7 +69,10 @@ async fn no_probe_before_auth_and_other_methods_keep_the_node_fallback() {
         ("HEAD", PATH),
         ("GET", "/api/models/assignments/"),
     ] {
-        assert_eq!(write(front.addr, method, path, ADMIN, "").await.0, 418);
+        assert_eq!(
+            write(front.addr, method, path, ADMIN, "").await.0,
+            if method == "GET" { 404 } else { 405 }
+        );
     }
     assert_eq!(owner.count(FACTS), 0);
 }

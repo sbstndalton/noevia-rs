@@ -16,9 +16,9 @@
 //! A candidate server is probed and its tools listed **by this front** (`mcp_egress::list_tools`:
 //! initialize, tools/list over JSON or event-stream replies, public https only, no redirect, caps and
 //! deadlines), so an add never waits on Node. Each state-changing request runs as one spawned task
-//! that the handler awaits: a client that goes away strands nothing half-done. What Node's chat
-//! client discovers (each server's tool count, the first tools, an error) comes from
-//! `mcp-discovery.json` (mcp_discovery.rs); a server Node has not discovered yet shows no tools,
+//! that the handler awaits: a client that goes away strands nothing half-done. What discovery
+//! found (each server's tool count, the first tools, an error) comes from the front's own actor
+//! (mcp_discovery_actor.rs, via mcp_discovery.rs); a server not discovered yet shows no tools,
 //! except the one this request has just listed itself.
 //!
 //! A custom add is rolled back when the server's tools changed between the preview and the

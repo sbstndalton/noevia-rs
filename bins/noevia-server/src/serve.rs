@@ -27,7 +27,7 @@ use std::convert::Infallible;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -74,6 +74,7 @@ struct Activity {
     start: Instant,
     in_flight: AtomicUsize,
     last_ms: AtomicU64,
+    waiting_keepalive: AtomicBool,
 }
 
 impl Activity {
@@ -93,6 +94,7 @@ struct InFlight(Arc<Activity>);
 impl Drop for InFlight {
     fn drop(&mut self) {
         self.0.touch();
+        self.0.waiting_keepalive.store(true, Ordering::Relaxed);
         self.0.in_flight.fetch_sub(1, Ordering::Relaxed);
     }
 }
@@ -119,7 +121,7 @@ impl HttpBody for TrackedBody {
     }
 }
 
-/// The socket, noting every read that returns bytes.
+/// The socket, noting successful reads and writes for the inactivity deadline.
 struct TrackedIo {
     inner: TcpStream,
     activity: Arc<Activity>,
@@ -135,6 +137,9 @@ impl AsyncRead for TrackedIo {
         let r = Pin::new(&mut self.inner).poll_read(cx, buf);
         if buf.filled().len() > before {
             self.activity.touch();
+            self.activity
+                .waiting_keepalive
+                .store(false, Ordering::Relaxed);
         }
         r
     }
@@ -146,7 +151,11 @@ impl AsyncWrite for TrackedIo {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
+        let result = Pin::new(&mut self.inner).poll_write(cx, buf);
+        if matches!(result,Poll::Ready(Ok(n)) if n>0) {
+            self.activity.touch();
+        }
+        result
     }
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         Pin::new(&mut self.inner).poll_flush(cx)
@@ -159,7 +168,11 @@ impl AsyncWrite for TrackedIo {
         cx: &mut Context<'_>,
         bufs: &[std::io::IoSlice<'_>],
     ) -> Poll<std::io::Result<usize>> {
-        Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+        let result = Pin::new(&mut self.inner).poll_write_vectored(cx, bufs);
+        if matches!(result,Poll::Ready(Ok(n)) if n>0) {
+            self.activity.touch();
+        }
+        result
     }
     fn is_write_vectored(&self) -> bool {
         self.inner.is_write_vectored()
@@ -184,6 +197,17 @@ pub async fn serve_router(
     limits: Limits,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) {
+    serve_router_with_socket_timeout(listener, router, limits, None, shutdown).await;
+}
+
+/// A dedicated listener may enforce inactivity even while a request is active.
+pub async fn serve_router_with_socket_timeout(
+    listener: TcpListener,
+    router: Router,
+    limits: Limits,
+    socket_timeout: Option<Duration>,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) {
     let max = limits
         .max_connections
         .clamp(1, tokio::sync::Semaphore::MAX_PERMITS);
@@ -194,7 +218,16 @@ pub async fn serve_router(
         let _ = stop_tx.send(true);
     });
     let mut stop = stop_rx.clone();
-    accept_loop(&listener, &permits, &router, limits, &stop_rx, &mut stop).await;
+    accept_loop(
+        &listener,
+        &permits,
+        &router,
+        limits,
+        &stop_rx,
+        &mut stop,
+        socket_timeout,
+    )
+    .await;
     drop(listener);
     // Every connection holds a permit until it closes: wait for all of them.
     let _ = permits
@@ -209,6 +242,7 @@ async fn accept_loop(
     limits: Limits,
     stop_rx: &tokio::sync::watch::Receiver<bool>,
     stop: &mut tokio::sync::watch::Receiver<bool>,
+    socket_timeout: Option<Duration>,
 ) {
     loop {
         let permit = tokio::select! {
@@ -234,7 +268,7 @@ async fn accept_loop(
         let router = router.clone();
         let stop = stop_rx.clone();
         tokio::spawn(async move {
-            serve_connection(stream, conn, router, limits, stop).await;
+            serve_connection(stream, conn, router, limits, stop, socket_timeout).await;
             drop(permit);
         });
     }
@@ -246,11 +280,13 @@ async fn serve_connection(
     router: Router,
     limits: Limits,
     mut stop: tokio::sync::watch::Receiver<bool>,
+    socket_timeout: Option<Duration>,
 ) {
     let activity = Arc::new(Activity {
         start: Instant::now(),
         in_flight: AtomicUsize::new(0),
         last_ms: AtomicU64::new(0),
+        waiting_keepalive: AtomicBool::new(false),
     });
     let io = TrackedIo {
         inner: stream,
@@ -286,8 +322,9 @@ async fn serve_connection(
     loop {
         tokio::select! {
             _ = connection.as_mut() => return,
-            _ = tokio::time::sleep(tick), if !closing => {
-                if activity.in_flight.load(Ordering::Relaxed) == 0
+            _ = tokio::time::sleep(tick) => {
+                if socket_timeout.is_some_and(|bound| activity.idle_for() >= bound) { return; }
+                if !closing && (socket_timeout.is_none() || activity.waiting_keepalive.load(Ordering::Relaxed)) && activity.in_flight.load(Ordering::Relaxed) == 0
                     && activity.idle_for() >= limits.keep_alive_idle
                 {
                     closing = true;

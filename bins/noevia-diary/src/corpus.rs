@@ -130,7 +130,7 @@ pub fn layout(base: &BaseCorpus, tenant: &Settings) -> Option<Layout> {
 }
 
 /// CorpusStore._join with remote_root "" (managed tenants).
-fn join(parts: &[&str]) -> String {
+pub(crate) fn join(parts: &[&str]) -> String {
     parts
         .iter()
         .filter(|p| !p.is_empty())
@@ -139,7 +139,7 @@ fn join(parts: &[&str]) -> String {
         .join("/")
 }
 
-fn month_name(month: u32) -> &'static str {
+pub(crate) fn month_name(month: u32) -> &'static str {
     MONTHS
         .get(month.saturating_sub(1) as usize)
         .copied()
@@ -261,7 +261,7 @@ pub fn list_months(store: &Managed, l: &Layout) -> Result<Vec<MonthItem>, ListEr
 }
 
 /// `^<Month> \d{1,2}, <year>\.md$` (Unicode `\d`); Some(day number) on a match.
-fn daily_name(name: &str, month: &str, year: u32) -> Option<u32> {
+pub(crate) fn daily_name(name: &str, month: &str, year: u32) -> Option<u32> {
     let body = name.strip_suffix('\n').unwrap_or(name);
     let rest = body.strip_prefix(month)?.strip_prefix(' ')?;
     let rest = rest.strip_suffix(&format!(", {year}.md"))?;
@@ -315,7 +315,7 @@ fn list_daily_months(store: &Managed, l: &Layout) -> Vec<MonthItem> {
     }
 }
 
-fn days_in_month(year: i32, month: u32) -> u32 {
+pub(crate) fn days_in_month(year: i32, month: u32) -> u32 {
     let next = if month == 12 {
         NaiveDate::from_ymd_opt(year + 1, 1, 1)
     } else {
@@ -326,7 +326,7 @@ fn days_in_month(year: i32, month: u32) -> u32 {
         .unwrap_or(28)
 }
 
-fn daily_path(l: &Layout, day: NaiveDate) -> String {
+pub(crate) fn daily_path(l: &Layout, day: NaiveDate) -> String {
     let month = month_name(day.month());
     join(&[
         &l.entries_prefix,
@@ -336,7 +336,7 @@ fn daily_path(l: &Layout, day: NaiveDate) -> String {
     ])
 }
 
-fn month_filename(l: &Layout, day: NaiveDate) -> String {
+pub(crate) fn month_filename(l: &Layout, day: NaiveDate) -> String {
     // str.format with the four fields; the template has no other fields (Python would raise).
     l.month_file_template
         .replace("{year}", &day.year().to_string())
@@ -345,7 +345,7 @@ fn month_filename(l: &Layout, day: NaiveDate) -> String {
         .replace("{month_name}", month_name(day.month()))
 }
 
-fn document_path(l: &Layout, day: NaiveDate) -> String {
+pub(crate) fn document_path(l: &Layout, day: NaiveDate) -> String {
     if l.daily {
         daily_path(l, day)
     } else {

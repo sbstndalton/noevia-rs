@@ -152,13 +152,16 @@ pub fn is_client_route(p: &str) -> bool {
         "customise",
         "customize",
         "plugins",
+        "spaces",
+        "coworkers",
     ];
     const CUSTOMISE: &[&str] = &["customise", "customize", "plugins"];
     const CUSTOMISE_TABS: &[&str] = &["skills", "connectors", "plugins", "mcp", "connected"];
     const PROJECT_TABS: &[&str] = &["new", "chats", "sources", "research", "code", "browser"];
     match segs.as_slice() {
         [one] => PLACES.contains(one) || *one == "c" || *one == "p" || *one == "device",
-        ["c", x] | ["p", x] => id(x),
+        ["c", x] | ["p", x] | ["spaces", x] | ["coworkers", x] => id(x),
+        ["spaces", x, page] => id(x) && id(page),
         ["p", x, tab] => id(x) && PROJECT_TABS.contains(tab),
         ["settings", s] => section(s),
         [c, tab] => CUSTOMISE.contains(c) && CUSTOMISE_TABS.contains(tab),
@@ -465,6 +468,12 @@ mod tests {
             "/models/a%2Fb",
             "/device",
             "/device/",
+            "/spaces",
+            "/spaces/",
+            "/spaces/abc_1-2",
+            "/spaces/abc/def/",
+            "/coworkers",
+            "/coworkers/abc-1/",
         ] {
             assert!(is_client_route(p), "{p}");
         }
@@ -483,6 +492,11 @@ mod tests {
             "/customise/other",
             "/chat//",
             "/x/skills",
+            "/spaces/a b",
+            "/spaces/a.b",
+            "/spaces/a/b/c",
+            "/coworkers/a/b",
+            "/coworkers//a",
         ] {
             assert!(!is_client_route(p), "{p}");
         }
