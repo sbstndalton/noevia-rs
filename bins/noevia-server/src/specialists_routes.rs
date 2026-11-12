@@ -518,6 +518,39 @@ async fn known_toolboxes(_app: &Arc<App>) -> Option<Vec<String>> {
     None
 }
 
+/// `POST /v1/specialists/page-save { user, projectId, chatId, spaceId?, title, content }` on the
+/// internal store (behind the store secret, loopback only): the coworker conversation's
+/// `space_page_save` tool, called by Node's chat loop. A thin wrapper: the grants, the limits and
+/// the same-draft rule are all in `server_specialists::tools`. `user` is the account the chat loop
+/// already authenticated; the ids are checked against that account's own record, so another
+/// account's ids resolve to nothing (404).
+pub async fn page_save_internal(data_dir: std::path::PathBuf, raw: &[u8]) -> Response<Body> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Call {
+        user: String,
+        project_id: String,
+        chat_id: String,
+        #[serde(flatten)]
+        page: server_specialists::tools::SavePage,
+    }
+    let Ok(call) = serde_json::from_slice::<Call>(raw) else {
+        return invalid("invalid request");
+    };
+    let Ok(dir) = server_projects::store::user_dir(&data_dir, &call.user) else {
+        return invalid("invalid user");
+    };
+    let store = Store::new(dir);
+    run(store, move |s| {
+        let saved = s.space_page_save(&call.project_id, &call.chat_id, &call.page)?;
+        Ok((
+            StatusCode::OK,
+            serde_json::to_value(saved).unwrap_or(Value::Null),
+        ))
+    })
+    .await
+}
+
 async fn run(
     store: Store,
     f: impl FnOnce(&Store) -> Result<(StatusCode, Value), Error> + Send + 'static,
