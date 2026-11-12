@@ -1,0 +1,596 @@
+{
+  "cases": [
+    {
+      "name": "empty",
+      "status": 200,
+      "body": {
+        "machines": [
+          {
+            "id": "local",
+            "builtIn": true,
+            "name": null,
+            "address": null,
+            "services": [
+              "chatFast",
+              "chatSmart",
+              "chatCode",
+              "chatCreative",
+              "vision",
+              "decision",
+              "sensitivity",
+              "embedding",
+              "reranker",
+              "ocr",
+              "documents"
+            ]
+          }
+        ],
+        "services": [
+          {
+            "id": "chatFast",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatSmart",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCode",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCreative",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "vision",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "decision",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "sensitivity",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "embedding",
+            "mode": "reindex",
+            "machine": "local"
+          },
+          {
+            "id": "reranker",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "ocr",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          },
+          {
+            "id": "documents",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          }
+        ]
+      },
+      "state": null
+    },
+    {
+      "name": "add {}",
+      "status": 400,
+      "body": {
+        "error": "Give the machine a name of up to 60 characters.",
+        "code": "invalidName"
+      },
+      "state": null
+    },
+    {
+      "name": "add {\"name\":\"box\",\"address\":\"8.8.8.8\"}",
+      "status": 400,
+      "body": {
+        "error": "Machines must be on this network (a LAN or Tailscale address): 8.8.8.8 is not on this network (8.8.8.8 is a public address).",
+        "code": "publicAddress"
+      },
+      "state": null
+    },
+    {
+      "name": "add {\"name\":\"box\",\"address\":\"192.168.1.2:8080\"}",
+      "status": 400,
+      "body": {
+        "error": "Leave the port out of the machine address: each service on it has its own port.",
+        "code": "portInAddress"
+      },
+      "state": null
+    },
+    {
+      "name": "add {\"name\":\"box\",\"address\":\"192.168.1.2\"}",
+      "status": 200,
+      "body": {
+        "machine": {
+          "id": "<machine>",
+          "name": "box",
+          "address": "http://192.168.1.2"
+        },
+        "machines": [
+          {
+            "id": "local",
+            "builtIn": true,
+            "name": null,
+            "address": null,
+            "services": [
+              "chatFast",
+              "chatSmart",
+              "chatCode",
+              "chatCreative",
+              "vision",
+              "decision",
+              "sensitivity",
+              "embedding",
+              "reranker",
+              "ocr",
+              "documents"
+            ]
+          },
+          {
+            "id": "<machine>",
+            "name": "box",
+            "address": "http://192.168.1.2",
+            "services": []
+          }
+        ],
+        "services": [
+          {
+            "id": "chatFast",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatSmart",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCode",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCreative",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "vision",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "decision",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "sensitivity",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "embedding",
+            "mode": "reindex",
+            "machine": "local"
+          },
+          {
+            "id": "reranker",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "ocr",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          },
+          {
+            "id": "documents",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "machines": [
+          {
+            "id": "<machine>",
+            "name": "box",
+            "address": "http://192.168.1.2"
+          }
+        ],
+        "assignments": {}
+      }
+    },
+    {
+      "name": "duplicate name",
+      "status": 409,
+      "body": {
+        "error": "Another machine already has that name.",
+        "code": "duplicateName"
+      },
+      "state": {
+        "version": 1,
+        "machines": [
+          {
+            "id": "<machine>",
+            "name": "box",
+            "address": "http://192.168.1.2"
+          }
+        ],
+        "assignments": {}
+      }
+    },
+    {
+      "name": "duplicate address",
+      "status": 409,
+      "body": {
+        "error": "Another machine already has that address.",
+        "code": "duplicateAddress"
+      },
+      "state": {
+        "version": 1,
+        "machines": [
+          {
+            "id": "<machine>",
+            "name": "box",
+            "address": "http://192.168.1.2"
+          }
+        ],
+        "assignments": {}
+      }
+    },
+    {
+      "name": "assign",
+      "status": 200,
+      "body": {
+        "machines": [
+          {
+            "id": "local",
+            "builtIn": true,
+            "name": null,
+            "address": null,
+            "services": [
+              "chatFast",
+              "chatSmart",
+              "chatCode",
+              "chatCreative",
+              "vision",
+              "sensitivity",
+              "embedding",
+              "reranker",
+              "ocr",
+              "documents"
+            ]
+          },
+          {
+            "id": "<machine>",
+            "name": "box",
+            "address": "http://192.168.1.2",
+            "services": [
+              "decision"
+            ]
+          }
+        ],
+        "services": [
+          {
+            "id": "chatFast",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatSmart",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCode",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCreative",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "vision",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "decision",
+            "mode": "runtime",
+            "machine": "<machine>",
+            "port": 8040
+          },
+          {
+            "id": "sensitivity",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "embedding",
+            "mode": "reindex",
+            "machine": "local"
+          },
+          {
+            "id": "reranker",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "ocr",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          },
+          {
+            "id": "documents",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "machines": [
+          {
+            "id": "<machine>",
+            "name": "box",
+            "address": "http://192.168.1.2"
+          }
+        ],
+        "assignments": {
+          "decision": {
+            "machine": "<machine>",
+            "port": 8040
+          }
+        }
+      }
+    },
+    {
+      "name": "remove assigned",
+      "status": 409,
+      "body": {
+        "error": "Move the services on this machine to another machine before removing it.",
+        "code": "inUse",
+        "services": [
+          "decision"
+        ]
+      },
+      "state": {
+        "version": 1,
+        "machines": [
+          {
+            "id": "<machine>",
+            "name": "box",
+            "address": "http://192.168.1.2"
+          }
+        ],
+        "assignments": {
+          "decision": {
+            "machine": "<machine>",
+            "port": 8040
+          }
+        }
+      }
+    },
+    {
+      "name": "unassign",
+      "status": 200,
+      "body": {
+        "machines": [
+          {
+            "id": "local",
+            "builtIn": true,
+            "name": null,
+            "address": null,
+            "services": [
+              "chatFast",
+              "chatSmart",
+              "chatCode",
+              "chatCreative",
+              "vision",
+              "decision",
+              "sensitivity",
+              "embedding",
+              "reranker",
+              "ocr",
+              "documents"
+            ]
+          },
+          {
+            "id": "<machine>",
+            "name": "box",
+            "address": "http://192.168.1.2",
+            "services": []
+          }
+        ],
+        "services": [
+          {
+            "id": "chatFast",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatSmart",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCode",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCreative",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "vision",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "decision",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "sensitivity",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "embedding",
+            "mode": "reindex",
+            "machine": "local"
+          },
+          {
+            "id": "reranker",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "ocr",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          },
+          {
+            "id": "documents",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "machines": [
+          {
+            "id": "<machine>",
+            "name": "box",
+            "address": "http://192.168.1.2"
+          }
+        ],
+        "assignments": {}
+      }
+    },
+    {
+      "name": "remove",
+      "status": 200,
+      "body": {
+        "machines": [
+          {
+            "id": "local",
+            "builtIn": true,
+            "name": null,
+            "address": null,
+            "services": [
+              "chatFast",
+              "chatSmart",
+              "chatCode",
+              "chatCreative",
+              "vision",
+              "decision",
+              "sensitivity",
+              "embedding",
+              "reranker",
+              "ocr",
+              "documents"
+            ]
+          }
+        ],
+        "services": [
+          {
+            "id": "chatFast",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatSmart",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCode",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "chatCreative",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "vision",
+            "mode": "chat",
+            "machine": "local"
+          },
+          {
+            "id": "decision",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "sensitivity",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "embedding",
+            "mode": "reindex",
+            "machine": "local"
+          },
+          {
+            "id": "reranker",
+            "mode": "runtime",
+            "machine": "local"
+          },
+          {
+            "id": "ocr",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          },
+          {
+            "id": "documents",
+            "mode": "runtime",
+            "machine": "local",
+            "enabled": false
+          }
+        ]
+      },
+      "state": {
+        "version": 1,
+        "machines": [],
+        "assignments": {}
+      }
+    }
+  ],
+  "state": "{\"version\":1,\"machines\":[],\"assignments\":{}}"
+}

@@ -31,7 +31,8 @@
 //! ignored, as they always were.
 //!
 //! A user's chat change journal (sbstndalton/noevia#2153; crates/server-projects `journal`), one
-//! entry per transcript mutation, which Node tails to run the chat mirror and brain:
+//! entry per transcript mutation. This process's chat mirror schedule consumes it in process
+//! (chat_mirror.rs); the read op below is kept as the journal's observation interface:
 //!
 //! `POST /v1/changes/read { user, after? }`         -> 200 `{ entries, oldestSeq, latestSeq, more, start }`
 //!   Each entry is `{ seq, chatId, revision, op, origin, start, at }` (`origin` missing on
@@ -630,6 +631,7 @@ pub fn router_with_app(
     context: Option<Arc<crate::feature_context::Layer>>,
     app: Option<Arc<crate::App>>,
 ) -> Router {
+    let roles_route = crate::auto_roles_routes::store_route(store.clone(), app.clone());
     let storage_store = store.clone();
     let storage_app = app.clone();
     let mut router = router_with_context(store.clone(), context).route(
@@ -640,10 +642,41 @@ pub fn router_with_app(
             async move { legacy_webdav(store, app, headers, raw).await }
         }),
     );
+    router = router.merge(crate::machine_service::router(store.clone(), app.clone()));
+    let reranker_store = store.clone();
+    let reranker_app = app.clone();
+    router = router.route(
+        "/v1/reranker/settings",
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let store = reranker_store.clone();
+            let app = reranker_app.clone();
+            async move {
+                if !authorised(&store, &headers) {
+                    return error(StatusCode::UNAUTHORIZED, "unauthorized");
+                }
+                let Some(app) = app else {
+                    return error(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Reranker settings are unavailable.",
+                    );
+                };
+                let Some(installed) = crate::reranker_settings::parse_consumer_request(&raw) else {
+                    return error(StatusCode::BAD_REQUEST, "invalid JSON");
+                };
+                crate::reranker_routes::internal(app, installed).await
+            }
+        }),
+    );
+    router = router.merge(roles_route);
     // Port contract 2026-11-04 RS-1: the preset reload baseline's authority.
     router = router.merge(preset_baseline_routes(
         store.clone(),
         app.as_ref().map(|a| a.config.maint.guard.clone()),
+    ));
+    // Port contract row J: the maintenance lease authority, for Node's maintenance gate.
+    router = router.merge(maintenance_lease_routes(
+        store.clone(),
+        app.as_ref().map(|a| a.config.maint.authority.clone()),
     ));
     // sbstndalton/noevia#2190 round 6: the provider keys' re-seal (provider_reseal.rs).
     let reseal_store = store.clone();
@@ -677,6 +710,17 @@ pub fn router_with_app(
             }),
         );
     }
+    // `rust-chat-mirror-v1`: Node's triggers for the chat mirror schedule (chat_mirror.rs), same secret.
+    for op in ["schedule", "touch"] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/chat-mirror/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { chat_mirror_op(store, app, headers, raw, op).await }
+            }),
+        );
+    }
     // sbstndalton/noevia#2202: the MCP credential broker (mcp_routes.rs `internal_op`), same secret.
     for op in [
         "session",
@@ -688,6 +732,7 @@ pub fn router_with_app(
         "forget",
         "key-set",
         "reseal",
+        "discovery",
     ] {
         let (store, app) = (store.clone(), app.clone());
         router = router.route(
@@ -698,12 +743,142 @@ pub fn router_with_app(
             }),
         );
     }
+    // sbstndalton/noevia#2446 slice 4b: the coworker conversation's `space_page_save` tool, same secret.
+    let page_store = store.clone();
+    router = router.route(
+        "/v1/specialists/page-save",
+        // The layer above only wraps the routes added before it; a page of 512 KiB of control characters is
+        // 3 MiB of JSON, past the extractor's own 2 MiB default.
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let store = page_store.clone();
+            async move {
+                if !authorised(&store, &headers) {
+                    return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                }
+                crate::specialists_routes::page_save_internal(store.data_dir.clone(), &raw).await
+            }
+        })
+        .layer(DefaultBodyLimit::max(BODY_LIMIT)),
+    );
+    // Row V: the code-sandbox egress control (code_egress.rs), same secret.
+    for op in ["status", "grant", "activity", "revoke", "forget"] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/egress/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { egress_op(store, app, headers, raw, op).await }
+            }),
+        );
+    }
     router
+}
+
+/// `POST /v1/chat-mirror/schedule {user, chatId|null, immediate?}` and `/touch {user}`: Node's
+/// triggers for the mirror schedule (a project change, an import, a request start). 200 `{}` when taken;
+/// 400 for a body that is not that; 503 while the schedule is not running.
+async fn chat_mirror_op(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: &'static str,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Some(mirror) = app.as_ref().and_then(|a| a.chat_mirror.get()) else {
+        return error(StatusCode::SERVICE_UNAVAILABLE, "chat mirror unavailable");
+    };
+    let Ok(body) = serde_json::from_slice::<Value>(&raw) else {
+        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let Some(user) = body
+        .get("user")
+        .and_then(Value::as_str)
+        .filter(|u| !u.is_empty() && u.len() <= 1024)
+    else {
+        return error(StatusCode::BAD_REQUEST, "user required");
+    };
+    if op == "touch" {
+        mirror.touch(user);
+    } else {
+        let chat = match body.get("chatId") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(c)) if !c.is_empty() && c.len() <= 1024 => Some(c.as_str()),
+            Some(_) => return error(StatusCode::BAD_REQUEST, "chatId must be a string or null"),
+        };
+        let immediate = body.get("immediate").and_then(Value::as_bool) == Some(true);
+        mirror.schedule(user, chat, immediate);
+    }
+    reply(StatusCode::OK, &json!({}))
+}
+
+/// `POST /v1/egress/{op}` (see code_egress.rs): 401 without the secret, 503 while unconfigured.
+async fn egress_op(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: &'static str,
+) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let issuer = app.and_then(|a| a.code_egress.clone());
+    if op == "status" && issuer.is_none() {
+        return reply(StatusCode::OK, &crate::code_egress::unconfigured_status());
+    }
+    let (status, body) = crate::code_egress::internal_op(issuer, op, &raw).await;
+    reply(
+        StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        &body,
+    )
 }
 
 /// The bodies of the preset baseline bridge: two preset texts and the router's rows.
 pub const PRESET_BASELINE_LIMIT: usize =
     2 * preset_reload::MAX_INPUT_BYTES + 16 * 1024 * 1024 + 64 * 1024;
+
+/// `POST /v1/maintenance-lease/{op}` (model_maint/lease.rs), answered by `authority` (`None`: 503,
+/// so Node's holds fail closed).
+pub fn maintenance_lease_routes(
+    store: Store,
+    authority: Option<crate::model_maint::lease::Authority>,
+) -> Router {
+    use crate::model_maint::lease;
+    let mut router = Router::new();
+    for op in lease::OPS {
+        let (store, authority) = (store.clone(), authority.clone());
+        router = router.route(
+            &format!("{}/{op}", lease::ROUTE_PREFIX),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, authority) = (store.clone(), authority.clone());
+                async move {
+                    if !authorised(&store, &headers) {
+                        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                    }
+                    let Some(authority) = authority else {
+                        return error(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "The maintenance lease authority is unavailable.",
+                        );
+                    };
+                    let body = if raw.iter().all(u8::is_ascii_whitespace) {
+                        json!({})
+                    } else {
+                        match serde_json::from_slice::<Value>(&raw) {
+                            Ok(b @ Value::Object(_)) => b,
+                            _ => return error(StatusCode::BAD_REQUEST, "invalid JSON"),
+                        }
+                    };
+                    lease::answer_node(&authority, op, &body).await
+                }
+            }),
+        );
+    }
+    router.layer(DefaultBodyLimit::max(lease::BODY_LIMIT))
+}
 
 /// `POST /v1/preset-baseline/{op}` (see the header), answered by `guard` (`None`: 503).
 pub fn preset_baseline_routes(

@@ -1528,8 +1528,13 @@ mod tests {
         assert!(g.known());
     }
 
+    type DyingGate = (std::sync::mpsc::Sender<()>, std::sync::mpsc::Receiver<()>);
+    static DYING_GATE: std::sync::Mutex<Option<DyingGate>> = std::sync::Mutex::new(None);
+
     fn dying_write(_: &Path, _: &[u8], _: Duration) -> std::io::Result<()> {
-        std::thread::sleep(Duration::from_millis(300));
+        let (entered, release) = DYING_GATE.lock().unwrap().take().unwrap();
+        entered.send(()).unwrap();
+        release.recv_timeout(Duration::from_secs(120)).unwrap();
         panic!("synthetic writer fault")
     }
 
@@ -1550,35 +1555,48 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        let g = Guard::build(
-            Some(file.clone()),
-            "",
-            timing(0, Duration::from_secs(30)),
-            dying_write,
-        );
+        let (entered, started) = std::sync::mpsc::channel();
+        let (release, resume) = std::sync::mpsc::channel();
+        *DYING_GATE.lock().unwrap() = Some((entered, resume));
+        // The normal reply timeout is > 600 s. A separate 120 s watchdog can only
+        // observe replies from writer exit, never a successful timeout fallback.
+        let mut t = timing(0, Duration::from_secs(30));
+        t.lock_wait = Duration::from_secs(600);
+        let g = Guard::build(Some(file.clone()), "", t, dying_write);
         assert!(g.known());
-        let started = Instant::now();
-        // One write the writer dies on, one queued behind it: both hear "not saved".
+        let (done, replies) = std::sync::mpsc::channel();
         let first = {
-            let g = g.clone();
-            std::thread::spawn(move || g.forget())
+            let (g, done) = (g.clone(), done.clone());
+            std::thread::spawn(move || done.send(g.forget()).unwrap())
         };
-        wait_for("the first write to be asked", || gen_of(&g) == 1);
+        started.recv_timeout(Duration::from_secs(120)).unwrap();
         let second = {
-            let (g, rows) = (g.clone(), rows.clone());
-            std::thread::spawn(move || g.record(Some(BASE), &rows, Some(BASE)))
+            let (g, done) = (g.clone(), done.clone());
+            std::thread::spawn(move || done.send(g.record(Some(BASE), &rows, Some(BASE))).unwrap())
         };
-        assert!(!first.join().unwrap());
-        assert!(!second.join().unwrap());
-        assert!(started.elapsed() < Duration::from_secs(5));
+        wait_for("the second write queued behind the blocked writer", || {
+            gen_of(&g) == 2
+        });
+        release.send(()).unwrap();
+        for _ in 0..2 {
+            assert!(!replies.recv_timeout(Duration::from_secs(120)).unwrap());
+        }
+        first.join().unwrap();
+        second.join().unwrap();
         assert!(g.shared.lock().no_writer);
         assert!(!g.known(), "unknown for the rest of this start");
-        // Later writes answer at once.
-        let started = Instant::now();
-        assert!(!g.forget());
-        let t = g.begin("rust");
-        assert!(!g.settle(&t.ticket, Settle::Forget).unwrap().saved);
-        assert!(started.elapsed() < Duration::from_secs(1));
+        // Later writes must also reply without waiting for the normal timeout.
+        let later = {
+            let g = g.clone();
+            std::thread::spawn(move || {
+                let forgotten = g.forget();
+                let t = g.begin("rust");
+                done.send(forgotten || g.settle(&t.ticket, Settle::Forget).unwrap().saved)
+                    .unwrap();
+            })
+        };
+        assert!(!replies.recv_timeout(Duration::from_secs(120)).unwrap());
+        later.join().unwrap();
         assert!(!g.known());
     }
 

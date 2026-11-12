@@ -15,11 +15,13 @@ pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
 pub mod chat_framing_suggest;
+pub mod chat_mirror;
 pub mod chat_turn;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_status_routes;
+pub mod code_egress;
 pub mod code_net;
 pub mod config;
 pub mod connector_routes;
@@ -35,7 +37,9 @@ pub mod health;
 pub mod health_routes;
 pub mod identity;
 pub mod idle_unload_read;
+pub mod inference_machines;
 pub mod legacy_proxy;
+pub mod machine_service;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
 #[cfg(feature = "rust-storage-reads")]
@@ -45,7 +49,13 @@ pub mod mcp_directory_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_discovery;
 #[cfg(feature = "rust-storage-reads")]
+pub mod mcp_discovery_actor;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_discovery_backend;
+#[cfg(feature = "rust-storage-reads")]
 pub mod mcp_egress;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_manifest;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_routes;
 #[cfg(feature = "rust-storage-reads")]
@@ -84,7 +94,10 @@ pub mod provider_test_routes;
 pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
+pub mod reranker_routes;
+pub mod reranker_settings;
 pub mod research_routes;
+mod residual_fallback;
 pub mod routes;
 pub mod routing_default_routes;
 pub mod routing_mode_routes;
@@ -94,6 +107,7 @@ pub mod snapshot;
 pub mod source_job_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod source_storage_io;
+pub mod specialists_routes;
 pub mod static_files;
 pub mod stats_routes;
 #[cfg(feature = "rust-storage-browse")]
@@ -186,8 +200,14 @@ use std::sync::Arc;
 /// rust-decision-settings.cjs `RUST_DECISION_SETTINGS_OWNED`), so the supervisor pairs them.
 ///
 /// `rust-vault-mirror-preferences`: this build answers `GET|PUT /api/chat-vault-mirror/preferences`
-/// natively (server-account vault_mirror) and writes the mirror nudges core polls; the paired core
-/// refuses that path (rust-vault-mirror-preferences.cjs `RUST_VAULT_MIRROR_PREFERENCES_OWNED`).
+/// natively (server-account vault_mirror) and nudges its own mirror schedule when a save turns the
+/// mirror on; the paired core refuses that path (rust-vault-mirror-preferences.cjs
+/// `RUST_VAULT_MIRROR_PREFERENCES_OWNED`).
+/// `rust-chat-mirror-v1`: this build reads every active account's chat change journal in process and
+/// owns the Diary mirror and chat brain schedules (chat_mirror.rs, crate chat-mirror-sched); the paired
+/// core keeps only their two work executors and nudges the schedule over the project store (core
+/// rust-chat-mirror.cjs `RUST_CHAT_MIRROR_OWNED`). Both processes must carry it: a front without it
+/// beside this core leaves the journal unread, a core without it beside this front runs a second schedule.
 /// `rust-storage-integrations`: this build answers `POST /api/integrations/storage/folder`,
 /// `/test` and `/nextcloud/{start,poll,cancel}` (sbstndalton/noevia#2190): it owns the pending
 /// Nextcloud sign-ins (`nextcloud-login-flows.json`), saves a completed sign-in's storage row and
@@ -234,8 +254,10 @@ use std::sync::Arc;
 /// `rust-health`: this build answers `GET /api/health` (health_routes.rs, sbstndalton/noevia#2190
 /// close-out): the default provider and the Diary sidecar it probes itself, retrieval from the
 /// `rag-status.json` snapshot Node publishes. `rust-auto-roles`: `GET /api/auto-roles`
-/// (auto_roles_routes.rs; the PUT stays Node's) from `auto-roles.json` and the
-/// `auto-roles-snapshot.json` Node publishes. `rust-workspace`: `GET /api/workspace`
+/// (auto_roles_routes.rs; persistence is native) from `auto-roles.json` and the
+/// `auto-roles-snapshot.json` Node publishes. `rust-auto-roles-write` adds PUT and native deletion cleanup. `rust-specialists`: the
+/// six /api/specialists and /api/spaces routes (specialists_routes.rs, sbstndalton/noevia#2446); no Node counterpart exists, so no
+/// core marker pairs with it. `rust-workspace`: `GET /api/workspace`
 /// (sbstndalton/noevia#2191 close-out), with the delete-old-chats sweep and the orphan chat-context
 /// cleanup it runs. The paired core refuses each (rust-health.cjs `RUST_HEALTH_OWNED`,
 /// rust-auto-roles.cjs `RUST_AUTO_ROLES_OWNED`, rust-workspace.cjs `RUST_WORKSPACE_OWNED`) and
@@ -258,12 +280,12 @@ use std::sync::Arc;
 /// event-stream replies, public https only), is the only writer of `directory_mcp_servers` (the server
 /// rows and the administrators' shared key slot) and re-seals that slot for a secrets rotation. Node
 /// re-reads the table for its chat-time MCP client. The paired core refuses the routes
-/// (rust-mcp-directory.cjs `RUST_MCP_DIRECTORY_OWNED`), publishes the discovery snapshot
-/// (`mcp-discovery.json`) and writes nothing of the table.
+/// (rust-mcp-directory.cjs `RUST_MCP_DIRECTORY_OWNED`), asks this front for discovery
+/// (`POST /v1/mcp/discovery`) and writes nothing of the table.
 /// `rust-toolboxes-permitted`: `GET /api/toolboxes/permitted` (toolbox_routes.rs), computed here from
 /// the front's own state and that snapshot (core `RUST_TOOLBOXES_PERMITTED_OWNED`).
 /// `rust-toolbox-picker`: every method of `/api/toolboxes`; current account filtering and
-/// response composition in toolbox_picker.rs, selected live facts over trusted loopback.
+/// response composition in toolbox_picker.rs from the front's own MCP discovery and the chat process's published toolbox facts.
 /// `rust-connectors`: `GET /api/connectors` and `PUT /api/connectors/nextcloud/policy`
 /// (nextcloud_routes.rs; core `RUST_CONNECTORS_OWNED`).
 ///
@@ -290,6 +312,12 @@ use std::sync::Arc;
 /// release assembly pair them in both directions. Generation 2: every load the job asks for is first
 /// decided by Core's own load refusal (`POST /internal/model-maintenance/load-refusal`, core
 /// model-load-refusal.cjs), so it pairs only with `noevia-calibration-worker-rust/2`.
+///
+/// `noevia-maintenance-lease-authority/2` (model_maint/lease.rs `AUTHORITY_MARKER`, port contract row J):
+/// this build is the one model-maintenance lease authority and answers `POST
+/// /v1/maintenance-lease/{acquire,renew,release,held,session}` on the project-store listener. Core's
+/// `noevia-maintenance-lease-client/2` takes every maintenance hold there; the release assembly pairs the
+/// two markers in both directions.
 ///
 /// `rust-preset-baseline`: this build is the preset reload baseline's one in-memory authority
 /// (port contract 2026-11-04 RS-1, model_maint/reload.rs `Guard`) and answers `POST
@@ -378,6 +406,12 @@ use std::sync::Arc;
 /// (model_state_routes.rs); Core refuses them (rust-model-state-reads.cjs) and offers the facts only it holds on the
 /// loopback bridge (rust-model-facts.cjs). The supervisor pairs them.
 ///
+/// `rust-mcp-discovery`: this build discovers MCP tools itself (mcp_discovery_actor.rs: connect, list, convert,
+/// bind the curated boxes, cadence, backoff) and answers `POST /v1/mcp/discovery` on the internal store; core
+/// (mcp-native-discovery.cjs) is its fail-closed client and publishes only toolbox-chat-facts.json. A core that
+/// still discovers beside this front would offer different tools than the front's own pages, and a front without
+/// it beside a core that asks would leave every chat with no MCP tools, so the release pairs them.
+///
 /// `rust-chat-framing-suggest`: this build answers every method of `/api/chat-framing/suggest`
 /// (chat_framing_suggest.rs, chat port S4): the gate, 405, the 10-a-minute `chat-frame:` budget, the
 /// body and the cut to 4,000 UTF-16 units; Core refuses the POST (rust-chat-framing-suggest.cjs) and
@@ -392,14 +426,24 @@ use std::sync::Arc;
 /// `chat-activity`: this build records each authenticated request's account in
 /// `UI_DATA_DIR/chat-activity.json` (chat_activity.rs, chat port S3), which core's change journal
 /// reader merges as request starts (chat-activity.cjs). Either side alone keeps today's behaviour.
+/// With `rust-chat-mirror-v1` that reader is this front's own journal consumer (chat_mirror.rs
+/// `ACTIVITY_FILE`), which merges the same file on each tick; core no longer reads it.
 ///
 /// `client-address-header`: the front drops any `X-Noevia-Client-Ip` a client sends and stamps its
 /// own value on what it forwards (#1245). The web supervisor confirms it to Node
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    "rust-residual-fallbacks-v1",
+    "rust-source-startup-v1",
+    "rust-dav-listener-v1",
+    "reranker-settings-v1",
     "rust-diary-backup-worker",
     "rust-embedding-background-v1",
+    "rust-mcp-discovery",
+    "rust-chat-mirror-v1",
+    "rust-index-outbox-v3",
+    "rust-media-background-v1",
     "client-address-header",
     "code-net-guard",
     "header-read-timeout",
@@ -409,7 +453,7 @@ pub const FEATURES: &[&str] = &[
     "rust-research",
     "rust-task-reads",
     "rust-tool-approvals",
-    server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER,
+    "noevia-research-jobs-store/1",
     "rust-auth",
     "rust-diary",
     "rust-diary-routes",
@@ -438,12 +482,18 @@ pub const FEATURES: &[&str] = &[
     "rust-model-sizing",
     "rust-model-maintenance",
     "rust-preset-baseline",
+    // Port contract row J: the maintenance lease authority (model_maint/lease.rs AUTHORITY_MARKER; the
+    // release assembly reads this exact literal and pairs it with core's lease client).
+    "noevia-maintenance-lease-authority/2",
     "rust-autotune-cancel",
     "rust-calibration-cancel",
     "rust-calibration-routes",
     "rust-calibration-worker-v2",
     "rust-model-manager-scan",
     "rust-model-evidence-recheck",
+    // Row V: the front is the only issuer of the egress proxy's control key and signed task grants
+    // (code_egress.rs); the paired Core asks it (`noevia-code-egress-client/1`) and publishes nothing.
+    "rust-code-egress-issuer",
     "rust-web-address-read",
     "rust-web-address-write",
     "rust-projects",
@@ -487,6 +537,7 @@ pub const FEATURES: &[&str] = &[
     "rust-preset-read",
     "rust-idle-unload-read",
     "rust-model-assignments",
+    "rust-inference-machines",
     "rust-model-downloads-read",
     "rust-autotune-resume",
     "rust-budget-watch-v3",
@@ -500,6 +551,8 @@ pub const FEATURES: &[&str] = &[
     "rust-vault-mirror-preferences",
     "rust-health",
     "rust-auto-roles",
+    "rust-auto-roles-write",
+    "rust-specialists",
     "rust-workspace",
     "rust-chat-framing-suggest",
     "rust-chat-turn",
@@ -541,6 +594,8 @@ pub(crate) fn account_row_exists(writes: &upkeep::WriterLayer, id: &str) -> bool
 }
 
 pub struct App {
+    pub machines: Arc<machine_service::Service>,
+    pub auto_roles: auto_roles_routes::Writer,
     /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
     pub demand: Arc<snapshot::Demand>,
     /// Google Drive's token authority (sbstndalton/noevia#2190 round 7); `None` without UI_DATA_DIR.
@@ -557,6 +612,12 @@ pub struct App {
     /// The MCP credential broker (sbstndalton/noevia#2202): OAuth sign-ins and per-account keys.
     #[cfg(feature = "rust-storage-reads")]
     pub mcp: Option<Arc<mcp_broker::Mcp>>,
+    /// MCP tool discovery (sbstndalton/noevia row T): made on first use, `None` inside when it cannot run.
+    #[cfg(feature = "rust-storage-reads")]
+    pub mcp_discovery: std::sync::OnceLock<Option<Arc<mcp_discovery_backend::Handle>>>,
+    /// The code-sandbox egress control (row V, code_egress.rs): the only issuer of the proxy's
+    /// control key and of the signed task grants; `None` when `CODE_EGRESS_PORT` is unset.
+    pub code_egress: Option<Arc<code_egress::Issuer>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
     #[cfg(feature = "rust-storage-reads")]
     pub provider_models: provider_models_routes::Lists,
@@ -595,6 +656,9 @@ pub struct App {
     /// `connectorRate` of the Diary connector endpoint (core routes/diary.cjs): fixed windows, one
     /// per bucket key, in this process's memory like core's.
     diary_connector_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
+    /// The chat mirror and brain schedule, set once the server runs (`rust-chat-mirror-v1`);
+    /// Node's triggers reach it over the project store.
+    pub chat_mirror: std::sync::OnceLock<Arc<chat_mirror::ChatMirror>>,
     /// core index.cjs's `llmRateLimiter` for the `chat-frame:<user>` buckets only (chat port S4):
     /// no other key shared them.
     pub(crate) framing_suggest_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
@@ -662,6 +726,7 @@ impl App {
             _ => None,
         };
         Arc::new(App {
+            machines: Arc::new(machine_service::Service::default()),
             demand: Arc::new(snapshot::Demand::default()),
             drive,
             offsite,
@@ -672,6 +737,9 @@ impl App {
                 .map(Arc::new),
             #[cfg(feature = "rust-storage-reads")]
             mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
+            code_egress: code_egress::Issuer::new(&config),
+            #[cfg(feature = "rust-storage-reads")]
+            mcp_discovery: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
             provider_models: provider_models_routes::Lists::default(),
             #[cfg(feature = "rust-storage-reads")]
@@ -694,6 +762,7 @@ impl App {
             diary: server_diary::Diary::new(config.diary.clone())
                 .ok()
                 .map(Arc::new),
+            chat_mirror: std::sync::OnceLock::new(),
             diary_connector_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
                 identity::now_ms(),
             )),
@@ -717,6 +786,7 @@ impl App {
             plugin_directory: plugin_directory_routes::Directory::new(
                 config.plugin_directory.clone(),
             ),
+            auto_roles: auto_roles_routes::Writer::default(),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -724,6 +794,17 @@ impl App {
             config,
         })
     }
+}
+
+/// Whether `path` is `/api/projects/{id}` or below it with an `id` (percent-decoded once, as
+/// Node decodes a path segment) that names a coworker's hidden project.
+fn hidden_project_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/projects/") else {
+        return false;
+    };
+    let segment = rest.split('/').next().unwrap_or("");
+    server_projects::js::decode_uri_component(segment)
+        .is_some_and(|id| id.starts_with(server_projects::store::SPECIALIST_PREFIX))
 }
 
 async fn handle(
@@ -743,6 +824,20 @@ async fn handle(
         }
     }
     let path = req.uri().path().to_string();
+    // A coworker's backing project is the coworker's to change (sbstndalton/noevia#2446): no
+    // `/api/projects/{id}...` route, Rust's or Node's, may name it. Checked on the raw path and on
+    // Node's WHATWG pathname, so no spelling of the id reaches a handler.
+    if hidden_project_path(&path)
+        || identity::whatwg_pathname_of(req.uri())
+            .as_deref()
+            .is_some_and(hidden_project_path)
+    {
+        return reply::json(
+            StatusCode::NOT_FOUND,
+            &serde_json::json!({"error": "no such project"}),
+            true,
+        );
+    }
     let switches = app.config.switches();
     let mut native = routes::dispatch_under(req.method().as_str(), &path, switches);
     // Node routes on the WHATWG pathname (`new URL(req.url, base)`): a Rust-owned switched route
@@ -781,6 +876,7 @@ async fn handle(
                     | routes::Native::Providers
                     | routes::Native::Health
                     | routes::Native::AutoRoles
+                    | routes::Native::Specialists
                     | routes::Native::McpCredentials
                     | routes::Native::McpDirectory
                     | routes::Native::AutotuneSettings
@@ -826,6 +922,7 @@ async fn handle(
             | routes::Native::Providers
             | routes::Native::Health
             | routes::Native::AutoRoles
+            | routes::Native::Specialists
             | routes::Native::McpCredentials
             | routes::Native::McpDirectory
             | routes::Native::AutotuneSettings
@@ -862,6 +959,19 @@ async fn handle(
             }
         })
         .await;
+    }
+    if let Some(p) = whatwg.as_deref() {
+        let fallback = residual_fallback::classify(req.method().as_str(), p).or_else(|| {
+            (p != path
+                && ["/api/", "/api/models", "/api/connect"].contains(&p)
+                && routes::route_for(p).is_none()
+                && (residual_fallback::classify(req.method().as_str(), &path).is_some()
+                    || path.starts_with("/api/providers/")))
+            .then_some(residual_fallback::Kind::Missing)
+        });
+        if let Some(kind) = fallback {
+            return residual_fallback::serve(&app, req, p.to_string(), kind).await;
+        }
     }
     match native {
         Some(routes::Native::StorageMetadata) => {
@@ -1104,6 +1214,12 @@ async fn handle(
             };
             health_routes::serve(&app, conn, req, p).await
         }
+        Some(routes::Native::Specialists) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            specialists_routes::serve(&app, conn, req, p).await
+        }
         Some(routes::Native::AutoRoles) => {
             let Some(p) = whatwg else {
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
@@ -1233,4 +1349,19 @@ async fn handle(
 /// `into_make_service_with_connect_info::<serve::Conn>()`, which has no timeouts).
 pub fn router(app: Arc<App>) -> Router {
     Router::new().fallback(handle).with_state(app)
+}
+
+mod machine_json;
+pub mod source_startup;
+
+pub mod dav;
+
+#[cfg(test)]
+mod feature_literal_compatibility_tests {
+    #[test]
+    fn research_job_feature_literal_matches_its_store() {
+        assert!(
+            super::FEATURES.contains(&server_projects::research_jobs::RESEARCH_JOBS_STORE_MARKER)
+        );
+    }
 }

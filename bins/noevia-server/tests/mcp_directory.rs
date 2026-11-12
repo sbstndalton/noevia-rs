@@ -854,10 +854,11 @@ async fn the_listing_shows_what_nodes_published_discovery_found_and_only_while_i
         false,
         "[]",
     );
-    let many: Vec<serde_json::Value> = (0..40)
+    let many: Vec<serde_json::Value> = (0..55)
         .map(|i| serde_json::json!({"name": format!("t{i}"), "description": "d"}))
         .collect();
     write_snapshot(
+        &f,
         d.path(),
         serde_json::json!({"servers": [
             {"id": "dir-found", "auth": "none", "directory": true, "error": null, "toolCount": 55, "tools": many, "toolsTruncated": true},
@@ -907,9 +908,9 @@ async fn the_listing_shows_what_nodes_published_discovery_found_and_only_while_i
     );
     // The front asked Node to publish (the demand marker), and the listing never serves a file it cannot prove current.
     assert!(d.path().join("snapshot-demand").exists());
-    let mut stale = std::fs::read_to_string(d.path().join("mcp-discovery.json")).unwrap();
+    let mut stale = std::fs::read_to_string(d.path().join("toolbox-chat-facts.json")).unwrap();
     stale = stale.replacen("\"writtenAt\":", "\"writtenAt\":1,\"x\":", 1);
-    std::fs::write(d.path().join("mcp-discovery.json"), stale).unwrap();
+    std::fs::write(d.path().join("toolbox-chat-facts.json"), stale).unwrap();
     let (_, body) = get(a, LIST, ADMIN).await;
     assert_eq!(
         body["servers"][0]["toolCount"],
@@ -1085,7 +1086,13 @@ async fn node_lists_the_tools_of_a_server_the_front_added_through_its_reread_dir
     let Some(core) = paired_core() else {
         return;
     };
-    let (d, db, up, s, f) = rig("", false, ECHO).await;
+    // The front's real discovery actor answers Node's discovery requests here (not a fixed catalogue).
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let up = upstream().await;
+    let s = synth(&up, ECHO);
+    *s.registry.lock().unwrap() = Some(registry_of(&up.base(), "io.test/weather", false));
+    let f = front_env_discovering(d.path(), true, &[("NOEVIA_QA_MCP_REGISTRY", up.base())]).await;
     let a = f.addr;
     *s.key.lock().unwrap() = Some(SECRET.into());
     let url = format!("{}/mcp", up.base());
@@ -1419,49 +1426,76 @@ async fn a_rollback_that_finds_the_server_replaced_forgets_only_the_adding_admin
     );
 }
 
+fn facts_node(core: &std::path::Path, mode: &str, dir: &std::path::Path) -> std::process::Output {
+    let script =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/toolbox_facts_live.cjs");
+    std::process::Command::new("node")
+        .arg(script)
+        .arg(mode)
+        .env("NOEVIA_MCP_CORE", core)
+        .env("DATA_DIR", dir)
+        .output()
+        .unwrap()
+}
+
 #[test]
-fn the_snapshot_node_writes_for_hostile_tools_is_one_the_front_reads() {
-    // The review of round 2, H1: a description cut through an emoji left a lone surrogate, which this reader's
-    // JSON parser refuses, and twenty thousand tools passed the 4 MiB the reader accepts: either made the
-    // snapshot unreadable for every account. Node's real publisher writes both cases; the front's reader reads it.
+fn the_facts_node_writes_for_hostile_input_are_ones_the_front_reads_or_are_not_written() {
+    // The review of round 2, H1, for the chat process's facts: a string cut through an emoji leaves a lone
+    // surrogate, which this reader's JSON parser refuses (the file would be unreadable for every account), and a file
+    // over the reader's limit is never accepted. Node's real publisher makes the first well formed and refuses the second.
     let Some(core) = paired_core() else {
         return;
     };
     let d = tempfile::tempdir().unwrap();
-    let script =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/mcp_snapshot_live.cjs");
-    let out = std::process::Command::new("node")
-        .arg(script)
-        .env("NOEVIA_MCP_CORE", &core)
-        .env("DATA_DIR", d.path())
-        .output()
-        .unwrap();
+    let out = facts_node(&core, "surrogate", d.path());
     assert!(
         out.status.success(),
         "node: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    let file = d.path().join("mcp-discovery.json");
-    let size = std::fs::metadata(&file).unwrap().len();
-    assert!(size < 4 * 1024 * 1024, "{size} bytes");
+    let file = d.path().join(noevia_server::mcp_discovery::FACTS_FILE);
     let snap = noevia_server::snapshot::read(
         &file,
-        noevia_server::mcp_discovery::SNAPSHOT_KIND,
+        noevia_server::mcp_discovery::FACTS_KIND,
         noevia_server::identity::now_ms(),
     )
     .expect("the front reads what Node wrote");
-    let cat = noevia_server::mcp_discovery::parse(&snap.body).expect("and it is a catalogue");
-    let b = &cat.boxes[0];
-    assert!(
-        !b.tools.is_empty() && b.tools.len() <= 500,
-        "{}",
-        b.tools.len()
-    );
+    let doc = js_json::wtf16::parse(std::str::from_utf8(&snap.raw).unwrap()).unwrap();
+    let desc = doc.get("builtin");
+    let js_json::JValue::Arr(boxes) = desc else {
+        panic!("builtin");
+    };
+    let tool_desc = boxes[0].get("tools");
+    let js_json::JValue::Arr(tools) = tool_desc else {
+        panic!("tools");
+    };
+    let text = tools[0]
+        .get("function")
+        .get("description")
+        .as_str()
+        .unwrap();
     assert_eq!(
-        b.tools[0].description.chars().count(),
+        text.chars().count(),
         240,
-        "the cut keeps 239 letters and the replacement for the half of the pair"
+        "239 letters and the replacement for the half of the pair"
     );
-    assert!(b.tools[0].description.ends_with('\u{FFFD}'));
-    assert_eq!(cat.servers[0].tool_count, Some(20000));
+    assert!(text.ends_with('\u{FFFD}'));
+    assert!(doc
+        .get("prefill")
+        .get("models")
+        .get("model\u{FFFD}")
+        .is_object());
+
+    let d2 = tempfile::tempdir().unwrap();
+    let out = facts_node(&core, "huge", d2.path());
+    assert!(
+        !out.status.success(),
+        "a document over the limit is refused"
+    );
+    assert!(
+        !d2.path()
+            .join(noevia_server::mcp_discovery::FACTS_FILE)
+            .exists(),
+        "and nothing is written"
+    );
 }

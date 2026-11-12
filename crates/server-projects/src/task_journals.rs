@@ -1161,7 +1161,7 @@ pub fn active_row(job: &Job, project_name: &JValue, approval: &JValue) -> JValue
 
 /// core diary-extras.cjs `internalProject`: never named in the account-wide active list.
 pub fn internal_project(id: &str) -> bool {
-    id == "cowork-diary-extras" || id.starts_with("cowork-chat-context-")
+    crate::store::internal_project_id(id)
 }
 
 #[cfg(all(test, unix))]

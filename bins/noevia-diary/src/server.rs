@@ -1,37 +1,67 @@
-//! Request handling. Python (agent/rust_forward.py) verifies the tenant assertion with its own
-//! verifier and nonce cache (the only ones while both processes exist), then forwards the request
-//! here with its raw path, query and headers plus three loopback-only headers: the per-process
-//! forward secret (sent to this process on stdin), whether the tenant was asserted, and whether
-//! Python has already recovered the tenant's state. Anything without the matching secret is refused
-//! with Python's own 401 bytes. This side serves the request exactly as app.py would, or DECLINES it
-//! (421 + `x-noevia-diary-decline: 1`) and Python serves it without verifying it again, so every
-//! nonce is consumed exactly once. (assertion::Verifier is kept for D8, when this process becomes
-//! the only verifier; it is not wired in.)
+//! Request handling. Python (agent/rust_forward.py) forwards the request here with its raw path,
+//! query, headers and body plus loopback-only headers: the per-process forward secret (sent to this
+//! process on stdin), `x-noevia-diary-verify: 1`, and whether Python has already recovered the
+//! tenant's state. Anything without the matching secret is refused with Python's own 401 bytes.
+//!
+//! Tenant assertion (D8 verifier move): this process is the ONLY verifier of every request Python
+//! forwards with `x-noevia-diary-verify: 1`. It checks the assertion here (assertion::Verifier:
+//! shape, restart guard, signature, clock window, bounded nonce cache) BEFORE anything else, with
+//! TenantAssertionMiddleware's exact refusals (401 `invalid tenant assertion`, 413 `request body
+//! too large` above 64 MiB). Every reply to a request it verified carries
+//! `x-noevia-diary-verified: 1`: Python then records the nonce in its own cache and, for a decline,
+//! serves the request without verifying it again. Python verifies everything else itself (a
+//! request it does not forward, or one this side declined without that header or never answered).
+//! A request forwarded without the verify header (an older forwarder) keeps the D4 rule: it is
+//! served only when `x-noevia-diary-asserted: 1` says Python verified it.
+//!
+//! This side serves the request exactly as app.py would, or DECLINES it (421 +
+//! `x-noevia-diary-decline: 1`).
+//!
+//! D5 writes (PUT /api/file, POST /api/directory, POST /api/entries/{append,edit}) are served only
+//! for a request Python marks with `x-noevia-diary-writer: 1`: the tenant's writer is this
+//! process (rust_forward.py, DIARY_RUST_WRITES). They run under the tenant's write lock
+//! (write::Writers) and decline only before writing anything.
 
+use crate::assertion::{self, Signed, Verifier};
 use crate::config::Config;
 use crate::corpus::{self, BaseCorpus, Layout};
 use crate::health::{self, Models};
 use crate::managed::{self, Managed, Settings};
 use crate::py;
 use crate::workspace::{self, Reply};
+use crate::write::Writers;
+use crate::writes;
 use axum::body::Body;
 use axum::http::{HeaderMap, Method, Request, Response, StatusCode};
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use subtle::ConstantTimeEq;
 
 pub const DECLINE_HEADER: &str = "x-noevia-diary-decline";
+/// rust_forward.BUSY, the body of app.py's `writer_busy` 503 (WriterBusy other than "restarting").
+pub const BUSY: &[u8] = br#"{"detail":"Diary is saving another change. Try again in a moment."}"#;
 pub const CONTROL_HEADER: &str = "x-noevia-diary-control";
 /// Set by Python on every forwarded request: the per-process forward secret.
 pub const FORWARD_HEADER: &str = "x-noevia-diary-forward";
 /// "1" when Python's middleware verified the tenant assertion of this request.
 pub const ASSERTED_HEADER: &str = "x-noevia-diary-asserted";
+/// "1": this process verifies the tenant assertion of this request (Python did not).
+pub const VERIFY_HEADER: &str = "x-noevia-diary-verify";
+/// "1" on every reply to a request whose assertion this process verified and accepted.
+pub const VERIFIED_HEADER: &str = "x-noevia-diary-verified";
 /// "1" when Python holds a recovered managed state for this tenant (journal replayed, dirty
 /// documents reindexed once), so a read here skips nothing Python would have done.
 pub const RECOVERED_HEADER: &str = "x-noevia-diary-recovered";
+/// "1" when this process is the tenant's writer: set by Python only on the D5 write routes of a
+/// tenant whose writes all go here.
+pub const WRITER_HEADER: &str = "x-noevia-diary-writer";
 const MAX_STORAGE_HEADER_LEN: usize = 4096;
+/// Python's bound on a buffered JSON body (app.py MAX_SIGNED_BODY); the forwarder sends nothing
+/// larger.
+pub const MAX_BODY: usize = 64 * 1024 * 1024;
 
 pub struct App {
     pub auth_token: String,
@@ -39,12 +69,21 @@ pub struct App {
     pub data_root: PathBuf,
     pub legacy_user_id: String,
     pub forward_secret: String,
-    /// DIARY_TENANT_KEY (for the secretRef check only; assertions are Python's).
+    /// DIARY_TENANT_KEY: the secretRef check and the tenant assertion (`verifier`).
     pub tenant_key: String,
+    /// The tenant assertion verifier and nonce cache for the requests forwarded with
+    /// `x-noevia-diary-verify: 1`.
+    pub verifier: Verifier,
     pub corpus: BaseCorpus,
     pub models: Option<Models>,
     pub http: reqwest::Client,
     pub export: crate::config::WorkspaceExport,
+    /// DIARY_CORPUS_WRITE_IMPL in Python: entries are written here only when Python itself uses
+    /// the same native transforms ("rust").
+    pub corpus_write_impl: String,
+    pub writers: Writers,
+    /// Native replay state; retrieval indexing has a separate Python lifecycle.
+    pub recovered: Mutex<HashMap<String, Arc<Mutex<crate::recovery::State>>>>,
 }
 
 impl App {
@@ -62,18 +101,30 @@ impl App {
             data_root: PathBuf::from(cfg.data_root),
             legacy_user_id: cfg.legacy_user_id,
             forward_secret: cfg.forward_secret,
+            verifier: Verifier::new(key.clone(), now()),
             tenant_key: key,
             corpus: cfg.corpus,
             models,
             http: reqwest::Client::builder().build().unwrap_or_default(),
             export: cfg.workspace_export,
+            corpus_write_impl: cfg.corpus_write_impl,
+            writers: Writers::default(),
+            recovered: Mutex::new(HashMap::new()),
         }
     }
 }
 
+/// Seconds since the Unix epoch (Python `time.time()`).
+pub fn now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0)
+}
+
 // ---------------------------------------------------------------- responses
 
-fn json_response<T: Serialize>(status: u16, value: &T) -> Response<Body> {
+pub(crate) fn json_response<T: Serialize>(status: u16, value: &T) -> Response<Body> {
     let body = serde_json::to_vec(value).unwrap_or_default();
     Response::builder()
         .status(status)
@@ -82,7 +133,7 @@ fn json_response<T: Serialize>(status: u16, value: &T) -> Response<Body> {
         .unwrap_or_default()
 }
 
-fn detail(status: u16, text: &str) -> Response<Body> {
+pub(crate) fn detail(status: u16, text: &str) -> Response<Body> {
     json_response(status, &json!({ "detail": text }))
 }
 
@@ -91,7 +142,7 @@ fn error(status: u16, text: &str) -> Response<Body> {
 }
 
 /// Starlette's ServerErrorMiddleware answer to an unhandled exception.
-fn internal_error() -> Response<Body> {
+pub(crate) fn internal_error() -> Response<Body> {
     Response::builder()
         .status(500)
         .header("content-type", "text/plain; charset=utf-8")
@@ -157,13 +208,30 @@ pub enum Route {
     Files,
     StorageStatus,
     WorkspaceExport,
+    /// D5: PUT /api/file, POST /api/directory, POST /api/entries/append, POST /api/entries/edit.
+    PutFile,
+    Directory,
+    Append,
+    Edit,
 }
 
 impl Route {
+    /// The routes whose 401 is FastAPI's HTTPException (`{"detail": ...}`).
     fn d4b(self) -> bool {
         matches!(
             self,
-            Route::Files | Route::StorageStatus | Route::WorkspaceExport
+            Route::Files
+                | Route::StorageStatus
+                | Route::WorkspaceExport
+                | Route::PutFile
+                | Route::Directory
+        )
+    }
+
+    pub fn write(self) -> bool {
+        matches!(
+            self,
+            Route::PutFile | Route::Directory | Route::Append | Route::Edit
         )
     }
 }
@@ -176,6 +244,10 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/files") => Some(Route::Files),
         ("GET", "/api/storage-status") => Some(Route::StorageStatus),
         ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
+        ("PUT", "/api/file") => Some(Route::PutFile),
+        ("POST", "/api/directory") => Some(Route::Directory),
+        ("POST", "/api/entries/append") => Some(Route::Append),
+        ("POST", "/api/entries/edit") => Some(Route::Edit),
         _ => None,
     }
 }
@@ -283,7 +355,18 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::Day
         | Route::Files
         | Route::StorageStatus
-        | Route::WorkspaceExport => {
+        | Route::WorkspaceExport
+        | Route::PutFile
+        | Route::Directory
+        | Route::Append
+        | Route::Edit => {
+            if r.write() && header_uid.is_empty() {
+                // The legacy (header-less) tenant's writes stay with Python.
+                return Plan::Decline;
+            }
+            if matches!(r, Route::Append | Route::Edit) && app.corpus_write_impl != "rust" {
+                return Plan::Decline;
+            }
             if r == Route::WorkspaceExport && export_settings(app, &Settings::new()).is_none() {
                 return Plan::Decline;
             }
@@ -301,14 +384,22 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
             let Ok(descriptor) = strict_descriptor(&storage) else {
                 return Plan::Decline;
             };
-            if !recovered {
+            if !recovered && !r.write() {
                 // Python recovers a tenant's state on its first request (journal replay, dirty
                 // reindex, outbox): let it serve until it has.
                 return Plan::Decline;
             }
             let uid = header_uid.to_ascii_lowercase();
             let root = app.data_root.join("users").join(&uid);
-            match managed::ready(&root, &uid) {
+            let ready = if r.write() {
+                if app.writers.is_fenced(&uid) {
+                    return Plan::Decline;
+                }
+                managed::ready_for_write(&root, &uid, false)
+            } else {
+                managed::ready(&root, &uid)
+            };
+            match ready {
                 Ok(Some((_, ref settings)))
                     if r == Route::WorkspaceExport && export_settings(app, settings).is_none() =>
                 {
@@ -363,7 +454,7 @@ fn flag(headers: &HeaderMap, name: &str) -> bool {
 }
 
 pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
-    let (parts, _body) = req.into_parts();
+    let (parts, body) = req.into_parts();
     let raw_path = parts.uri.path().to_string();
     let query: Vec<u8> = parts
         .uri
@@ -374,6 +465,9 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     let headers = parts.headers;
 
     if path.starts_with("/internal/") {
+        if parts.method == Method::POST && path == "/internal/fence" {
+            return fence(app, &query, &headers).await;
+        }
         return control(&app, &parts.method, &path, &headers);
     }
     // Only Python's forwarder knows the secret; everything else is refused before any work.
@@ -384,11 +478,166 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     if app.forward_secret.is_empty() || !bool::from(supplied.ct_eq(app.forward_secret.as_bytes())) {
         return unverified();
     }
-    let asserted = flag(&headers, ASSERTED_HEADER);
+    let verify = flag(&headers, VERIFY_HEADER);
+    let r = route(&parts.method, &path);
+    // The body is read once, bounded by Python's MAX_SIGNED_BODY: for a write, and for any request
+    // this side verifies (its hash is signed).
+    let bytes = if verify || r.is_some_and(Route::write) {
+        match axum::body::to_bytes(body, MAX_BODY).await {
+            Ok(b) => Some(b),
+            // TenantAssertionMiddleware's 413; without verification, Python's to answer.
+            Err(_) if verify => return detail(413, "request body too large"),
+            Err(_) => return decline(),
+        }
+    } else {
+        None
+    };
+    let verified = if verify {
+        match verify_assertion(
+            &app,
+            &headers,
+            parts.method.as_str(),
+            &raw_path,
+            &query,
+            bytes.as_deref().unwrap_or_default(),
+            now(),
+        ) {
+            Ok(v) => v,
+            Err(reason) => {
+                // Reason codes only (never the header or any request value).
+                eprintln!("noevia-diary: tenant assertion rejected: {reason}");
+                return unverified();
+            }
+        }
+    } else {
+        false
+    };
+    let asserted = if verify {
+        verified
+    } else {
+        flag(&headers, ASSERTED_HEADER)
+    };
+    let backup = parts.method == Method::POST && path == "/api/storage-backup";
+    let mut resp = serve(app, r, backup, query, headers, bytes, asserted).await;
+    if verified {
+        resp.headers_mut()
+            .insert(VERIFIED_HEADER, axum::http::HeaderValue::from_static("1"));
+    }
+    resp
+}
+
+/// TenantAssertionMiddleware for a request forwarded with the verify header: Ok(true) when it
+/// names a tenant and its assertion is valid and unseen, Ok(false) when nothing is to be verified
+/// (no tenant header, or no tenant key: Python's middleware lets those through unverified), Err
+/// with a log reason otherwise.
+fn verify_assertion(
+    app: &App,
+    headers: &HeaderMap,
+    method: &str,
+    raw_path: &str,
+    query: &[u8],
+    body: &[u8],
+    now: f64,
+) -> Result<bool, &'static str> {
+    let user_id = header(headers, "x-cowork-user-id");
+    if user_id.is_empty() || app.tenant_key.is_empty() {
+        return Ok(false);
+    }
+    let content_type = header(headers, "content-type");
+    let body_hash = if assertion::body_is_hashed(&content_type) {
+        assertion::sha256_hex(body)
+    } else {
+        assertion::STREAM.to_string()
+    };
+    app.verifier
+        .verify(
+            &Signed {
+                user_id: &user_id,
+                assertion: &header(headers, "x-cowork-tenant-assertion"),
+                method,
+                path: raw_path,
+                query,
+                body_hash: &body_hash,
+                storage: &header(headers, "x-cowork-storage"),
+                legacy_owner: &header(headers, "x-cowork-legacy-owner"),
+                blocked: &header(headers, "x-cowork-storage-blocked"),
+            },
+            now,
+        )
+        .map(|()| true)
+}
+
+async fn serve(
+    app: Arc<App>,
+    r: Option<Route>,
+    backup: bool,
+    query: Vec<u8>,
+    headers: HeaderMap,
+    bytes: Option<axum::body::Bytes>,
+    asserted: bool,
+) -> Response<Body> {
     let recovered = flag(&headers, RECOVERED_HEADER);
-    let Some(r) = route(&parts.method, &path) else {
+    // R4 managed backup, served after the D8 assertion check (`asserted`) and inside `serve`, so
+    // a verified request's reply carries the verified marker (Python commits its nonce and never
+    // serves or verifies it again).
+    if backup {
+        if !flag(&headers, WRITER_HEADER) {
+            return decline();
+        }
+        match check_auth(&app, &headers) {
+            Ok(true) => {}
+            Ok(false) => return detail(401, "unauthorized"),
+            Err(()) => return internal_error(),
+        }
+        let uid = header(&headers, "x-cowork-user-id").to_ascii_lowercase();
+        if !is_uuid(&uid) {
+            return detail(400, "invalid tenant");
+        }
+        if !app.tenant_key.is_empty() && !asserted {
+            return unverified();
+        }
+        let Ok(storage) = strict_descriptor(&header(&headers, "x-cowork-storage")) else {
+            return decline();
+        };
+        if storage.as_ref().is_some_and(|s| {
+            ["baseUrl", "username", "secret", "corpusRoot"]
+                .iter()
+                .any(|key| s.get(*key).is_some_and(|v| !v.is_string()))
+        }) {
+            return decline();
+        }
+        let app2 = app.clone();
+        // Dropping the HTTP future detaches this task; its locks remain until all effects settle.
+        return tokio::task::spawn_blocking(move || {
+            app2.writers
+                .with_lock(&uid, |_| {
+                    crate::backup::run(
+                        &app2.data_root.join("users").join(&uid),
+                        &uid,
+                        storage.as_ref(),
+                    )
+                })
+                .unwrap_or_else(|| detail(410, "tenant deleted"))
+        })
+        .await
+        .unwrap_or_else(|_| internal_error());
+    }
+    let Some(r) = r else {
         return decline();
     };
+    if r.write()
+        && crate::backup::pending(
+            &app.data_root
+                .join("users")
+                .join(header(&headers, "x-cowork-user-id").to_ascii_lowercase()),
+        )
+    {
+        return crate::backup::uncertain();
+    }
+    if r.write() && !flag(&headers, WRITER_HEADER) {
+        // This process is not the tenant's writer.
+        return decline();
+    }
     let tenant = match plan(&app, r, &headers, recovered) {
         Plan::Decline => return decline(),
         Plan::Serve(t) => t,
@@ -398,6 +647,18 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     if !header_uid.is_empty() && !app.tenant_key.is_empty() && !asserted {
         return unverified();
     }
+
+    // FastAPI validates a write's body against the handler's parameter (its 422) before the
+    // handler runs `check_auth` (its 401): a body it would refuse is Python's to answer, whatever
+    // the token.
+    let write = if r.write() {
+        match write_body(r, &headers, bytes.as_deref().unwrap_or_default()) {
+            Some(w) => Some(w),
+            None => return decline(),
+        }
+    } else {
+        None
+    };
 
     // ---- seam: the routes below read the tenant only from `header_uid` and `asserted` (the
     // trusted forward headers above).
@@ -434,13 +695,7 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let task =
                 tokio::task::spawn_blocking(move || serve_workspace(&app2, r, &query, &tenant));
             match task.await {
-                Ok(Reply::Json(status, body)) => Response::builder()
-                    .status(status)
-                    .header("content-type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap_or_default(),
-                Ok(Reply::Zip(zip)) => zip_response(zip),
-                Ok(Reply::Decline) => decline(),
+                Ok(r) => reply(r),
                 Err(_) => internal_error(),
             }
         }
@@ -453,6 +708,199 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
             let task = tokio::task::spawn_blocking(move || serve_corpus(&app2, r, &query, &tenant));
             task.await.unwrap_or_else(|_| internal_error())
         }
+        Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
+            serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
+        }
+    }
+}
+
+/// Reply → HTTP response.
+pub(crate) fn reply(r: Reply) -> Response<Body> {
+    match r {
+        Reply::Json(status, body) => Response::builder()
+            .status(status)
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap_or_default(),
+        Reply::Zip(zip) => zip_response(zip),
+        Reply::Text(status, text) => Response::builder()
+            .status(status)
+            .header("content-type", "text/plain; charset=utf-8")
+            .body(Body::from(text))
+            .unwrap_or_default(),
+        Reply::Busy => Response::builder()
+            .status(503)
+            .header("retry-after", "1")
+            .header("content-type", "application/json")
+            .body(Body::from(BUSY))
+            .unwrap_or_default(),
+        Reply::Decline => decline(),
+    }
+}
+
+/// The body of a forwarded write: a JSON object Python's FastAPI would read the same way, else
+/// None (decline; Python answers 422 or reads it its own way).
+fn json_body(headers: &HeaderMap, bytes: &[u8]) -> Option<serde_json::Map<String, Value>> {
+    let content_type = headers.get("content-type").map(|v| v.as_bytes());
+    workspace::file_body(content_type, bytes)
+}
+
+/// A write's body as FastAPI's handler parameter reads it: `body: dict` for the file, directory
+/// and append routes, `EditEntryRequest` for edit. None: FastAPI would answer 422 (decline).
+struct WriteBody {
+    json: serde_json::Map<String, Value>,
+    edit: Option<writes::EditReq>,
+}
+
+fn write_body(r: Route, headers: &HeaderMap, body: &[u8]) -> Option<WriteBody> {
+    let json = json_body(headers, body)?;
+    let edit = if matches!(r, Route::Edit) {
+        Some(writes::edit_model(&json)?)
+    } else {
+        None
+    };
+    Some(WriteBody { json, edit })
+}
+
+/// The D5 write routes, in app.py's order: FastAPI reads the body first (422 → decline, in
+/// `handle` before auth), then auth (already checked), then for the entry routes the body
+/// checks, then `_tenant_state`, then the write under the tenant's writer lock.
+async fn serve_write(
+    app: Arc<App>,
+    r: Route,
+    header_uid: &str,
+    asserted: bool,
+    headers: &HeaderMap,
+    tenant: Option<Tenant>,
+    write: Option<WriteBody>,
+) -> Response<Body> {
+    let Some(WriteBody { json, edit }) = write else {
+        return decline();
+    };
+    enum Op {
+        File,
+        Dir,
+        Append(writes::AppendReq),
+        Edit(writes::EditReq),
+    }
+    let op = match r {
+        Route::PutFile => Op::File,
+        Route::Directory => Op::Dir,
+        Route::Append => match writes::append_validate(&json) {
+            Ok(req) => Op::Append(req),
+            Err(resp) => return reply(resp),
+        },
+        Route::Edit => {
+            let Some(req) = edit else {
+                return decline();
+            };
+            if let Err(resp) = writes::edit_validate(&req) {
+                return reply(resp);
+            }
+            Op::Edit(req)
+        }
+        _ => return decline(),
+    };
+    let tenant = match resolve_tenant(&app, header_uid, asserted, headers, tenant) {
+        Ok(t) => t,
+        Err(resp) => return *resp,
+    };
+    let uid = header_uid.to_ascii_lowercase();
+    let app2 = app.clone();
+    let task = tokio::task::spawn_blocking(move || {
+        app2.writers
+            .with_lock(&uid, |held| {
+                if crate::backup::pending(&app2.data_root.join("users").join(&uid)) {
+                    return workspace::Reply::Json(503, b"{\"detail\":\"Diary backup settlement is uncertain. Saving and deletion remain paused.\"}".to_vec());
+                }
+                // Re-checked under the lock: an earlier write may have left work pending.
+                let root = app2.data_root.join("users").join(&uid);
+                match managed::ready_for_write(&root, &uid, false) {
+                    Ok(Some(_)) => {}
+                    _ => return Reply::Decline,
+                }
+                let Ok(journal) = crate::write::Journal::open(&root.join("managed-index.db"), held)
+                else {
+                    return Reply::Decline;
+                };
+                let recovery = app2
+                    .recovered
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .entry(uid.clone())
+                    .or_default()
+                    .clone();
+                let ctx = writes::Ctx {
+                    recovery: &recovery,
+                    reader: &tenant.store,
+                    store: crate::write::Store::new(tenant.store.db_path()),
+                    journal,
+                    layout: &tenant.layout,
+                };
+                if !crate::recovery::supported(&ctx) {
+                    return Reply::Decline;
+                }
+                // The forwarder's writer token covers this blocking task until its effect
+                // settles (including caller cancellation / lost child barriers).
+                match crate::recovery::recover(&ctx) {
+                    Ok(()) => {}
+                    // A definite refusal inside a publication transaction: nothing of this
+                    // request ran (Python's _recover_state raises WriterBusy: 503 BUSY).
+                    Err(e) if e.is_settlement_refusal() => return Reply::Busy,
+                    Err(_) => return writes::internal(),
+                }
+                match &op {
+                    Op::File => writes::file_write(&ctx, &json),
+                    Op::Dir => writes::directory_create(&ctx, &json),
+                    Op::Append(req) => writes::append(&ctx, req),
+                    Op::Edit(req) => writes::edit(&ctx, req),
+                }
+            })
+            .unwrap_or(Reply::Decline)
+    });
+    match task.await {
+        Ok(r) => reply(r),
+        Err(_) => internal_error(),
+    }
+}
+
+/// POST /internal/fence?tenant=<uuid> (control token): Python's tenant deletion. Every later
+/// write for the tenant declines, and this returns once the write in flight (if any) is done.
+async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Body> {
+    let supplied = headers
+        .get(CONTROL_HEADER)
+        .map(|v| v.as_bytes().to_vec())
+        .unwrap_or_default();
+    if app.control_token.is_empty()
+        || !bool::from(supplied.as_slice().ct_eq(app.control_token.as_bytes()))
+    {
+        return Response::builder()
+            .status(403)
+            .body(Body::empty())
+            .unwrap_or_default();
+    }
+    let uid = py::query_get(query, "tenant")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !is_uuid(&uid) {
+        return Response::builder()
+            .status(400)
+            .body(Body::empty())
+            .unwrap_or_default();
+    }
+    let app2 = app.clone();
+    match tokio::task::spawn_blocking(move || app2.writers.fence(&uid)).await {
+        Ok(()) => {
+            let uid = py::query_get(query, "tenant")
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if crate::backup::pending(&app.data_root.join("users").join(uid)) {
+                crate::backup::uncertain()
+            } else {
+                Response::new(Body::from("ok"))
+            }
+        }
+        Err(_) => internal_error(),
     }
 }
 

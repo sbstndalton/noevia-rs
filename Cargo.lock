@@ -91,6 +91,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arraydeque"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -391,6 +397,14 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",
  "rand_core 0.10.1",
+]
+
+[[package]]
+name = "chat-mirror-sched"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -733,6 +747,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-operator"
+version = "0.1.0"
+dependencies = [
+ "diary-backup-format",
+ "num-bigint-dig",
+ "regex",
+ "serde_json",
+ "tempfile",
+ "yaml-rust2",
+]
+
+[[package]]
 name = "diary-score-gap"
 version = "0.1.0"
 
@@ -770,6 +796,7 @@ dependencies = [
 name = "diary-workspace-import-apply"
 version = "0.1.0"
 dependencies = [
+ "diary-backup-run",
  "rusqlite",
  "ryu",
  "serde",
@@ -795,6 +822,7 @@ name = "diary-workspace-transaction"
 version = "0.1.0"
 dependencies = [
  "diary-backup-format",
+ "diary-backup-run",
  "diary-entity-focus",
  "diary-workspace-rules",
  "rusqlite",
@@ -908,6 +936,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "egress-issuer"
+version = "0.1.0"
+dependencies = [
+ "egress",
+ "egress-issuer",
+ "futures-util",
+ "hmac",
+ "rand_core 0.6.4",
+ "rustix",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "egress-proxy"
 version = "0.1.0"
 dependencies = [
@@ -948,7 +992,9 @@ dependencies = [
 name = "embedding-worker"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "engine-admission",
+ "js-json",
  "model-stream",
  "proc-macro2",
  "prompt-framing",
@@ -1734,6 +1780,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
+]
+
+[[package]]
 name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1837,6 +1892,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-router"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bytes",
+ "futures-util",
+ "nix",
+ "reqwest",
+ "rustix",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "model-stream"
 version = "0.1.0"
 dependencies = [
@@ -1866,12 +1940,17 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "diary-backup-run",
  "diary-corpus-parse",
+ "diary-corpus-write",
+ "diary-index-transform",
+ "diary-storage-backoff",
  "diary-workspace-export",
  "http-body-util",
  "regex",
  "reqwest",
  "rusqlite",
+ "s3-sign",
  "serde",
  "serde_json",
  "sha2",
@@ -1977,6 +2056,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "noevia-router"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "model-router",
+ "nix",
+ "reqwest",
+ "rustix",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "noevia-server"
 version = "0.1.0"
 dependencies = [
@@ -1985,12 +2080,16 @@ dependencies = [
  "base64 0.22.1",
  "brotli",
  "bytes",
+ "chat-mirror-sched",
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "egress",
+ "egress-issuer",
  "embedding-worker",
  "engine-admission",
  "flate2",
+ "futures-util",
  "gguf",
  "google-token-seal",
  "http-body",
@@ -2002,6 +2101,7 @@ dependencies = [
  "llamacpp-presets",
  "long-profile",
  "mcp-frame",
+ "mcp-servers",
  "model-stream",
  "offsite-backup-format",
  "policy-leaves",
@@ -2012,6 +2112,7 @@ dependencies = [
  "regex",
  "reqwest",
  "research-core",
+ "rustix",
  "rustls",
  "s3-sign",
  "secret-envelope",
@@ -2020,6 +2121,7 @@ dependencies = [
  "server-account",
  "server-auth",
  "server-chatgpt-status",
+ "server-dav",
  "server-diary",
  "server-export",
  "server-features",
@@ -2028,6 +2130,7 @@ dependencies = [
  "server-routing-default",
  "server-routing-mode",
  "server-sampling-settings",
+ "server-specialists",
  "server-stats",
  "server-storage-reads",
  "server-store",
@@ -2058,6 +2161,7 @@ dependencies = [
  "num-iter",
  "num-traits",
  "rand 0.8.8",
+ "serde",
  "smallvec",
  "zeroize",
 ]
@@ -2487,6 +2591,7 @@ version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c"
 dependencies = [
+ "libc",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
 ]
@@ -2624,6 +2729,7 @@ dependencies = [
  "httparse",
  "rustix",
  "serde_json",
+ "server-projects",
  "sha2",
  "tempfile",
 ]
@@ -3263,6 +3369,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "server-specialists"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "serde",
+ "serde_json",
+ "server-projects",
+ "server-store",
+ "sha2",
+ "tempfile",
+ "uuid",
+]
+
+[[package]]
 name = "server-stats"
 version = "0.1.0"
 dependencies = [
@@ -3354,6 +3474,15 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
  "digest",
+]
+
+[[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
 ]
 
 [[package]]
@@ -3605,6 +3734,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread_local"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "time"
 version = "0.3.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3808,7 +3946,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
 dependencies = [
  "pin-project-lite",
+ "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -3818,6 +3968,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
+dependencies = [
+ "matchers",
+ "once_cell",
+ "regex-automata",
+ "sharded-slab",
+ "thread_local",
+ "tracing",
+ "tracing-core",
 ]
 
 [[package]]
@@ -4278,6 +4443,16 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "yaml-rust2"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57e5b818a27a4cd30884ea380857a5e56f7ec3ba24a3990a3cc0b95af3238e18"
+dependencies = [
+ "arraydeque",
+ "hashlink",
+]
 
 [[package]]
 name = "yasna"

@@ -49,6 +49,9 @@ pub struct Config {
     pub llm: Llm,
     #[serde(default)]
     pub workspace_export: WorkspaceExport,
+    /// Python's DIARY_CORPUS_WRITE_IMPL ("python" when absent).
+    #[serde(default)]
+    pub corpus_write_impl: String,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

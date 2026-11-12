@@ -154,7 +154,7 @@ pub fn has_uploads(project: &JValue) -> bool {
 /// `internalProject(project)`: the Diary's extras project and a free chat's attachments project.
 pub fn internal_project(project: &JValue) -> bool {
     let id = project.get("id").as_str().unwrap_or("");
-    id == "cowork-diary-extras" || id.starts_with("cowork-chat-context-")
+    crate::store::internal_project_id(id)
 }
 
 /// The route's `defaultProjectDocs(project, hadUploads)`: the Project documents box is turned on once,
