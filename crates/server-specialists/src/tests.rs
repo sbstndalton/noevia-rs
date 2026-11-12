@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 use super::*;
 
 fn store() -> (tempfile::TempDir, Store) {
@@ -60,7 +65,10 @@ fn specialist_create_fills_null_backing_ids_and_bumps_revision() {
 fn specialist_limits_and_validation() {
     let (_t, s) = store();
     for bad in ["", "   ", &"x".repeat(61), "a\nb"] {
-        assert!(matches!(s.create_specialist(spec(bad)), Err(Error::Invalid(_))), "{bad:?}");
+        assert!(
+            matches!(s.create_specialist(spec(bad)), Err(Error::Invalid(_))),
+            "{bad:?}"
+        );
     }
     let mut long = spec("ok");
     long.brief = Some("b".repeat(8001));
@@ -106,13 +114,21 @@ fn specialist_patch_checks_revision_and_can_clear_default() {
         ..Default::default()
     };
     match s.update_specialist(&made.id, stale) {
-        Err(Error::Stale { revision: Some(r), version: None }) => assert_eq!(r, rev),
+        Err(Error::Stale {
+            revision: Some(r),
+            version: None,
+        }) => assert_eq!(r, rev),
         other => panic!("{other:?}"),
     }
-    let patch: SpecialistPatch =
-        serde_json::from_str(&format!(r#"{{"revision":{rev},"defaultSpace":null,"name":"QA B"}}"#)).unwrap();
+    let patch: SpecialistPatch = serde_json::from_str(&format!(
+        r#"{{"revision":{rev},"defaultSpace":null,"name":"QA B"}}"#
+    ))
+    .unwrap();
     let (rev2, got) = s.update_specialist(&made.id, patch).unwrap();
-    assert_eq!((rev2, got.name.as_str(), got.default_space), (rev + 1, "QA B", None));
+    assert_eq!(
+        (rev2, got.name.as_str(), got.default_space),
+        (rev + 1, "QA B", None)
+    );
     // Absent defaultSpace leaves it alone; unknown fields are refused.
     let r: Result<SpecialistPatch, _> = serde_json::from_str(r#"{"revision":1,"projectId":"x"}"#);
     assert!(r.is_err());
@@ -128,18 +144,29 @@ fn specialist_delete_checks_revision() {
     ));
     assert_eq!(s.delete_specialist(&made.id, rev).unwrap(), rev + 1);
     assert!(matches!(s.get_specialist(&made.id), Err(Error::NotFound)));
-    assert!(matches!(s.delete_specialist("../x", 0), Err(Error::NotFound)));
+    assert!(matches!(
+        s.delete_specialist("../x", 0),
+        Err(Error::NotFound)
+    ));
 }
 
 #[test]
 fn space_limit_and_name_rules() {
     let (_t, s) = store();
-    assert!(s.create_space(NewSpace { name: "x".repeat(81) }).is_err());
+    assert!(s
+        .create_space(NewSpace {
+            name: "x".repeat(81)
+        })
+        .is_err());
     assert!(s.create_space(NewSpace { name: " ".into() }).is_err());
     for i in 0..MAX_SPACES {
         space(&s, &format!("QA {i}"));
     }
-    let e = s.create_space(NewSpace { name: "more".into() }).unwrap_err();
+    let e = s
+        .create_space(NewSpace {
+            name: "more".into(),
+        })
+        .unwrap_err();
     assert_eq!(e.code(), "space_limit");
 }
 
@@ -147,7 +174,9 @@ fn space_limit_and_name_rules() {
 fn page_create_get_and_version_is_sha256_of_content() {
     let (_t, s) = store();
     let sp = space(&s, "QA");
-    let w = s.create_page(&sp, "QA note", "# hello", SAVED_BY_YOU).unwrap();
+    let w = s
+        .create_page(&sp, "QA note", "# hello", SAVED_BY_YOU)
+        .unwrap();
     assert!(w.created && w.changed);
     assert_eq!(w.page.version, version_of("# hello"));
     assert_eq!(w.page.version.len(), 64);
@@ -160,27 +189,49 @@ fn page_put_revision_rule() {
     let (_t, s) = store();
     let sp = space(&s, "QA");
     let id = new_id();
-    let created = s.put_page(&sp, &id, put("one", None), SAVED_BY_YOU).unwrap();
+    let created = s
+        .put_page(&sp, &id, put("one", None), SAVED_BY_YOU)
+        .unwrap();
     // Create again with null: 409 with the current version.
     match s.put_page(&sp, &id, put("two", None), SAVED_BY_YOU) {
-        Err(Error::Stale { version: Some(v), .. }) => assert_eq!(v, created.page.version),
+        Err(Error::Stale {
+            version: Some(v), ..
+        }) => assert_eq!(v, created.page.version),
         other => panic!("{other:?}"),
     }
     // Identical content is a no-op with the same version and updatedAt.
     let same = s
-        .put_page(&sp, &id, put("one", Some(&created.page.version)), SAVED_BY_YOU)
+        .put_page(
+            &sp,
+            &id,
+            put("one", Some(&created.page.version)),
+            SAVED_BY_YOU,
+        )
         .unwrap();
     assert!(!same.changed);
     assert_eq!(same.page, created.page);
     // A real change moves the version.
     let next = s
-        .put_page(&sp, &id, put("two", Some(&created.page.version)), SAVED_BY_YOU)
+        .put_page(
+            &sp,
+            &id,
+            put("two", Some(&created.page.version)),
+            SAVED_BY_YOU,
+        )
         .unwrap();
     assert!(next.changed && !next.created);
     assert_eq!(next.page.version, version_of("two"));
     // The old base is now stale and carries the current version.
-    match s.put_page(&sp, &id, put("three", Some(&created.page.version)), SAVED_BY_YOU) {
-        Err(Error::Stale { version: Some(v), revision: None }) => assert_eq!(v, next.page.version),
+    match s.put_page(
+        &sp,
+        &id,
+        put("three", Some(&created.page.version)),
+        SAVED_BY_YOU,
+    ) {
+        Err(Error::Stale {
+            version: Some(v),
+            revision: None,
+        }) => assert_eq!(v, next.page.version),
         other => panic!("{other:?}"),
     }
     // A version for a page that does not exist is 404, not a create.
@@ -199,7 +250,10 @@ fn page_title_only_change_keeps_version_and_needs_matching_base() {
     p.title = Some("New".into());
     let got = s.put_page(&sp, &w.page.id, p, SAVED_BY_YOU).unwrap();
     assert!(got.changed);
-    assert_eq!((got.page.title.as_str(), got.page.version.as_str()), ("New", w.page.version.as_str()));
+    assert_eq!(
+        (got.page.title.as_str(), got.page.version.as_str()),
+        ("New", w.page.version.as_str())
+    );
 }
 
 #[test]
@@ -208,9 +262,13 @@ fn page_limits() {
     let sp = space(&s, "QA");
     let big = "a".repeat(MAX_PAGE_BYTES);
     s.create_page(&sp, "max", &big, SAVED_BY_YOU).unwrap();
-    let e = s.create_page(&sp, "over", &format!("{big}a"), SAVED_BY_YOU).unwrap_err();
+    let e = s
+        .create_page(&sp, "over", &format!("{big}a"), SAVED_BY_YOU)
+        .unwrap_err();
     assert_eq!(e.code(), "page_too_large");
-    assert!(s.create_page(&sp, &"t".repeat(201), "x", SAVED_BY_YOU).is_err());
+    assert!(s
+        .create_page(&sp, &"t".repeat(201), "x", SAVED_BY_YOU)
+        .is_err());
     assert!(s.create_page(&sp, "t", "x", "someone").is_err());
 }
 
@@ -231,7 +289,9 @@ fn page_count_limit() {
         });
     }
     s.write(&s.space_dir(&sp), "index.json", &index).unwrap();
-    let e = s.create_page(&sp, "one more", "x", SAVED_BY_YOU).unwrap_err();
+    let e = s
+        .create_page(&sp, "one more", "x", SAVED_BY_YOU)
+        .unwrap_err();
     assert_eq!(e.code(), "page_limit");
 }
 
@@ -239,9 +299,12 @@ fn page_count_limit() {
 fn search_is_case_folded_over_title_and_content_and_bounded() {
     let (_t, s) = store();
     let sp = space(&s, "QA");
-    s.create_page(&sp, "Alpha Notes", "nothing", SAVED_BY_YOU).unwrap();
-    s.create_page(&sp, "Other", "the QUICK fox", SAVED_BY_YOU).unwrap();
-    s.create_page(&sp, "Third", "quick again", SAVED_BY_YOU).unwrap();
+    s.create_page(&sp, "Alpha Notes", "nothing", SAVED_BY_YOU)
+        .unwrap();
+    s.create_page(&sp, "Other", "the QUICK fox", SAVED_BY_YOU)
+        .unwrap();
+    s.create_page(&sp, "Third", "quick again", SAVED_BY_YOU)
+        .unwrap();
     let hit = |q: &str| s.list_pages(&sp, Some(q), None, 0).unwrap();
     assert_eq!(hit("ALPHA").pages.len(), 1);
     assert_eq!(hit("quick").pages.len(), 2);
@@ -291,9 +354,20 @@ fn space_delete_needs_with_pages_and_removes_grants_and_files() {
     let (_, who) = s.create_specialist(n).unwrap();
     let w = s.create_page(&sp, "p", "x", SAVED_BY_YOU).unwrap();
     let rev = s.list_spaces().unwrap().revision;
-    assert!(matches!(s.delete_space(&sp, rev, false), Err(Error::SpaceNotEmpty)));
-    assert!(matches!(s.delete_space(&sp, rev + 1, true), Err(Error::Stale { .. })));
-    assert!(t.path().join("spaces").join(&sp).join(format!("{}.md", w.page.id)).exists());
+    assert!(matches!(
+        s.delete_space(&sp, rev, false),
+        Err(Error::SpaceNotEmpty)
+    ));
+    assert!(matches!(
+        s.delete_space(&sp, rev + 1, true),
+        Err(Error::Stale { .. })
+    ));
+    assert!(t
+        .path()
+        .join("spaces")
+        .join(&sp)
+        .join(format!("{}.md", w.page.id))
+        .exists());
     s.delete_space(&sp, rev, true).unwrap();
     assert!(!t.path().join("spaces").join(&sp).exists());
     let (_, after) = s.get_specialist(&who.id).unwrap();
@@ -315,8 +389,16 @@ fn page_delete_removes_row_and_file() {
     let sp = space(&s, "QA");
     let w = s.create_page(&sp, "p", "x", SAVED_BY_YOU).unwrap();
     s.delete_page(&sp, &w.page.id).unwrap();
-    assert!(!t.path().join("spaces").join(&sp).join(format!("{}.md", w.page.id)).exists());
-    assert!(matches!(s.delete_page(&sp, &w.page.id), Err(Error::NotFound)));
+    assert!(!t
+        .path()
+        .join("spaces")
+        .join(&sp)
+        .join(format!("{}.md", w.page.id))
+        .exists());
+    assert!(matches!(
+        s.delete_page(&sp, &w.page.id),
+        Err(Error::NotFound)
+    ));
 }
 
 #[test]
@@ -324,7 +406,10 @@ fn malformed_ids_never_reach_the_disk() {
     let (t, s) = store();
     for bad in ["../x", "a/b", "", "A"] {
         assert!(matches!(s.get_space(bad), Err(Error::NotFound)));
-        assert!(matches!(s.list_pages(bad, None, None, 0), Err(Error::NotFound)));
+        assert!(matches!(
+            s.list_pages(bad, None, None, 0),
+            Err(Error::NotFound)
+        ));
         assert!(matches!(s.get_page(bad, bad), Err(Error::NotFound)));
         assert!(matches!(s.delete_space(bad, 0, true), Err(Error::NotFound)));
     }
@@ -335,8 +420,14 @@ fn malformed_ids_never_reach_the_disk() {
 fn unreadable_store_file_is_never_overwritten() {
     let (t, s) = store();
     std::fs::write(t.path().join("spaces.json"), "{not json").unwrap();
-    assert!(matches!(s.create_space(NewSpace { name: "QA".into() }), Err(Error::Corrupt(_))));
-    assert_eq!(std::fs::read_to_string(t.path().join("spaces.json")).unwrap(), "{not json");
+    assert!(matches!(
+        s.create_space(NewSpace { name: "QA".into() }),
+        Err(Error::Corrupt(_))
+    ));
+    assert_eq!(
+        std::fs::read_to_string(t.path().join("spaces.json")).unwrap(),
+        "{not json"
+    );
 }
 
 #[test]
@@ -346,14 +437,29 @@ fn concurrent_puts_from_one_base_have_one_winner() {
     let w = s.create_page(&sp, "p", "base", SAVED_BY_YOU).unwrap();
     let results: Vec<_> = (0..8)
         .map(|i| {
-            let (s, sp, id, v) = (s.clone(), sp.clone(), w.page.id.clone(), w.page.version.clone());
-            std::thread::spawn(move || s.put_page(&sp, &id, put(&format!("writer {i}"), Some(&v)), SAVED_BY_YOU))
+            let (s, sp, id, v) = (
+                s.clone(),
+                sp.clone(),
+                w.page.id.clone(),
+                w.page.version.clone(),
+            );
+            std::thread::spawn(move || {
+                s.put_page(
+                    &sp,
+                    &id,
+                    put(&format!("writer {i}"), Some(&v)),
+                    SAVED_BY_YOU,
+                )
+            })
         })
         .collect::<Vec<_>>()
         .into_iter()
         .map(|h| h.join().unwrap())
         .collect();
     let won = results.iter().filter(|r| r.is_ok()).count();
-    let stale = results.iter().filter(|r| matches!(r, Err(Error::Stale { .. }))).count();
+    let stale = results
+        .iter()
+        .filter(|r| matches!(r, Err(Error::Stale { .. })))
+        .count();
     assert_eq!((won, stale), (1, 7));
 }

@@ -195,7 +195,11 @@ impl Store {
                 });
             }
             let spaces = self.granted(new.spaces.as_deref().unwrap_or(&[]))?;
-            if new.default_space.as_ref().is_some_and(|d| !spaces.contains(d)) {
+            if new
+                .default_space
+                .as_ref()
+                .is_some_and(|d| !spaces.contains(d))
+            {
                 return Err(Error::Invalid("defaultSpace must be one of spaces".into()));
             }
             let now = now_ms();

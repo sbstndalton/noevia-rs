@@ -119,6 +119,9 @@ pub enum Native {
     /// GET /api/auto-roles (sbstndalton/noevia#2190 close-out, `rust-auto-roles`):
     /// auto_roles_routes.rs. GET and PUT share the native user fence.
     AutoRoles,
+    /// The six /api/specialists and /api/spaces routes (sbstndalton/noevia#2446 slice 1,
+    /// `rust-specialists`): specialists_routes.rs.
+    Specialists,
     /// /api/mcp-keys/* and /api/mcp-oauth/* (sbstndalton/noevia#2202): mcp_routes.rs.
     McpCredentials,
     /// Every method of /api/admin/mcp-directory* (sbstndalton/noevia#2202 round 2):
@@ -497,6 +500,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && STORAGE_INTEGRATIONS.contains(&p) => return Some(Native::StorageIntegrations),
         crate::health_routes::PATH if auth => return Some(Native::Health),
         crate::auto_roles_routes::PATH if auth => return Some(Native::AutoRoles),
+        p if auth && crate::specialists_routes::ROUTES.contains(&p) => {
+            return Some(Native::Specialists)
+        }
         PROVIDER_TEST if auth => return Some(Native::ProviderTest),
         p if auth && CHATGPT_OAUTH.contains(&p) => return Some(Native::ChatgptOAuth),
         PROVIDER_MODELS if auth => return Some(Native::ProviderModels),

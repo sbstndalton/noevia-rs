@@ -7,8 +7,7 @@
 
 use crate::{
     clean_line, is_id, new_id, now_ms, version_of, Error, Store, DEFAULT_LIMIT, MAX_LIMIT,
-    MAX_PAGES, MAX_PAGE_BYTES, MAX_QUERY_CHARS, MAX_TITLE_CHARS, SAVED_BY_YOU,
-    SEARCH_BYTE_BUDGET,
+    MAX_PAGES, MAX_PAGE_BYTES, MAX_QUERY_CHARS, MAX_TITLE_CHARS, SAVED_BY_YOU, SEARCH_BYTE_BUDGET,
 };
 use serde::{Deserialize, Serialize};
 use server_store::json::{remove_owned_page, write_owned_page};
@@ -68,7 +67,9 @@ fn saved_by_ok(s: &str) -> Result<(), Error> {
     if s == SAVED_BY_YOU || is_id(s) {
         Ok(())
     } else {
-        Err(Error::Invalid("savedBy must be \"you\" or a coworker id".into()))
+        Err(Error::Invalid(
+            "savedBy must be \"you\" or a coworker id".into(),
+        ))
     }
 }
 
@@ -330,11 +331,7 @@ impl Store {
                 .ok_or(Error::NotFound)?;
             index.pages.remove(at);
             self.write_index(space, &index)?;
-            remove_owned_page(
-                &self.space_dir(space),
-                &file_name(page),
-                RustAuth::owned(),
-            )?;
+            remove_owned_page(&self.space_dir(space), &file_name(page), RustAuth::owned())?;
             Ok(())
         })
     }

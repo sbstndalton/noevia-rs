@@ -61,7 +61,10 @@ pub enum Error {
     /// The request is not valid; the text is for the person.
     Invalid(String),
     /// A count limit: `code` is `specialist_limit`, `space_limit` or `page_limit`.
-    Limit { code: &'static str, message: String },
+    Limit {
+        code: &'static str,
+        message: String,
+    },
     /// Page content over [`MAX_PAGE_BYTES`].
     PageTooLarge,
     /// The write was based on an old revision (lists) or version (pages). Exactly one is set.
@@ -216,8 +219,8 @@ impl Store {
         name: &str,
         value: &T,
     ) -> Result<(), Error> {
-        let text = serde_json::to_string_pretty(value)
-            .map_err(|_| Error::Corrupt(name.to_owned()))?;
+        let text =
+            serde_json::to_string_pretty(value).map_err(|_| Error::Corrupt(name.to_owned()))?;
         server_store::json::write_owned_text(dir, name, &text, server_store::RustAuth::owned())?;
         Ok(())
     }

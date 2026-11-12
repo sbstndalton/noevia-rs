@@ -2068,6 +2068,7 @@ dependencies = [
  "server-routing-default",
  "server-routing-mode",
  "server-sampling-settings",
+ "server-specialists",
  "server-stats",
  "server-storage-reads",
  "server-store",

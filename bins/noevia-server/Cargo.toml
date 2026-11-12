@@ -117,6 +117,7 @@ url = "2.5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 server-store = { path = "../../crates/server-store" }
 server-projects = { path = "../../crates/server-projects" }
+server-specialists = { path = "../../crates/server-specialists" }
 js-json = { path = "../../crates/js-json" }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }

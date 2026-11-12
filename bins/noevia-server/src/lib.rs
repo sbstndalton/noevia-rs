@@ -106,6 +106,7 @@ pub mod snapshot;
 pub mod source_job_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod source_storage_io;
+pub mod specialists_routes;
 pub mod static_files;
 pub mod stats_routes;
 #[cfg(feature = "rust-storage-browse")]
@@ -253,7 +254,9 @@ use std::sync::Arc;
 /// close-out): the default provider and the Diary sidecar it probes itself, retrieval from the
 /// `rag-status.json` snapshot Node publishes. `rust-auto-roles`: `GET /api/auto-roles`
 /// (auto_roles_routes.rs; persistence is native) from `auto-roles.json` and the
-/// `auto-roles-snapshot.json` Node publishes. `rust-auto-roles-write` adds PUT and native deletion cleanup. `rust-workspace`: `GET /api/workspace`
+/// `auto-roles-snapshot.json` Node publishes. `rust-auto-roles-write` adds PUT and native deletion cleanup. `rust-specialists`: the
+/// six /api/specialists and /api/spaces routes (specialists_routes.rs, sbstndalton/noevia#2446); no Node counterpart exists, so no
+/// core marker pairs with it. `rust-workspace`: `GET /api/workspace`
 /// (sbstndalton/noevia#2191 close-out), with the delete-old-chats sweep and the orphan chat-context
 /// cleanup it runs. The paired core refuses each (rust-health.cjs `RUST_HEALTH_OWNED`,
 /// rust-auto-roles.cjs `RUST_AUTO_ROLES_OWNED`, rust-workspace.cjs `RUST_WORKSPACE_OWNED`) and
@@ -543,6 +546,7 @@ pub const FEATURES: &[&str] = &[
     "rust-health",
     "rust-auto-roles",
     "rust-auto-roles-write",
+    "rust-specialists",
     "rust-workspace",
     "rust-chat-framing-suggest",
     "chat-activity",
@@ -840,6 +844,7 @@ async fn handle(
                     | routes::Native::Providers
                     | routes::Native::Health
                     | routes::Native::AutoRoles
+                    | routes::Native::Specialists
                     | routes::Native::McpCredentials
                     | routes::Native::McpDirectory
                     | routes::Native::AutotuneSettings
@@ -884,6 +889,7 @@ async fn handle(
             | routes::Native::Providers
             | routes::Native::Health
             | routes::Native::AutoRoles
+            | routes::Native::Specialists
             | routes::Native::McpCredentials
             | routes::Native::McpDirectory
             | routes::Native::AutotuneSettings
@@ -1167,6 +1173,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             health_routes::serve(&app, conn, req, p).await
+        }
+        Some(routes::Native::Specialists) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            specialists_routes::serve(&app, conn, req, p).await
         }
         Some(routes::Native::AutoRoles) => {
             let Some(p) = whatwg else {
