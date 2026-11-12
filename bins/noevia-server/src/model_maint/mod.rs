@@ -28,6 +28,7 @@ pub mod evidence_live;
 pub mod evidence_recheck;
 pub mod gate;
 pub mod ini;
+pub mod model_state;
 // Port contract row J: the one maintenance lease authority (replaces core model-maintenance-lease.cjs).
 pub mod lease;
 pub mod node_lease;
@@ -177,6 +178,8 @@ pub struct Maint {
     pub inbox_dir: Option<PathBuf>,
     /// model -> (when, live identity), the 30 s identity cache.
     pub(crate) identities: std::sync::Mutex<Vec<(String, Instant, Option<evidence_live::Live>)>>,
+    /// The no-model-selected default (model_state.rs).
+    pub(crate) last_loaded: model_state::LastLoaded,
     /// The model-card source: `https://huggingface.co`, or the QA source.
     pub(crate) card_base: String,
     pub(crate) source_client: reqwest::Client,
@@ -339,6 +342,7 @@ impl Maint {
             evidence,
             inbox_dir,
             identities: std::sync::Mutex::new(Vec::new()),
+            last_loaded: model_state::LastLoaded::default(),
             card_base,
             source_client,
             node,
