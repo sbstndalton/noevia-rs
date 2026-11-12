@@ -83,6 +83,7 @@ const FAMILIES = {
 const START_WORK = [
   { method: 'POST', route: '/api/auth/logout', roles: ['member', 'admin'], shapes: ['plain'], starts: 'server-account account.rs:60-66 deletes the session' },
   { method: 'POST', route: '/api/models/presets/reload', roles: ['admin'], shapes: ['plain'], starts: 'model_maint/mod.rs:421 spawns reload_presets (`{}` parses as unload false) once a router is configured' },
+  { method: 'POST', route: '/api/models/delete', roles: ['admin'], shapes: ['plain'], starts: 'model_maint/mod.rs DELETE arm spawns delete_model::run (a body without a name is 400 and starts nothing)' },
   { method: 'POST', route: '/api/models/prune-missing', roles: ['admin'], shapes: ['plain'], starts: 'model_maint/mod.rs PRUNE arm spawns prune_missing::run (the route reads no body) once a router is configured' },
   { method: 'POST', route: '/api/admin/offsite-backup/run', roles: ['admin'], shapes: ['plain'], starts: 'offsite_routes.rs:1265 run_now (body ignored)' },
   { method: 'POST', route: '/api/admin/offsite-backup/verify', roles: ['admin'], shapes: ['plain'], starts: 'offsite_routes.rs:1266 Job::Verify (body ignored)' },

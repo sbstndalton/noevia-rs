@@ -277,10 +277,10 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
             Owner::Node => {
                 node_routes += 1;
                 // The residual fallback (residual_fallback.rs) answers Node's former refusals on
-                // these Node rows itself: every method but POST on the exact model writes (delete, load), and every
+                // these Node rows itself: every method but POST on the exact model write (load), and every
                 // path behind the model wildcard but its three substantive handlers (checked below).
                 let residual = |m: &str| match r.path {
-                    "/api/models/delete" | "/api/models/load" => m != "POST",
+                    "/api/models/load" => m != "POST",
                     "/api/models/{*}" => true,
                     _ => false,
                 };
@@ -326,8 +326,8 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // paths, of which only the list was a listed Node route: 24; #2257 moved the active list and a project's
     // #2262 left 19 Node rows; #2281 toolbox, #2282 approval, #2287 settings,
     // Calibration start/read leaves 10; evidence recheck leaves 9; untuned discovery leaves 8;
-    // the inference machines registry leaves 7; the missing-file prune (R3 piece 1) leaves 6.
-    assert!(node_routes >= 6, "{node_routes} node routes");
+    // the inference machines registry leaves 7; the missing-file prune (R3 piece 1) leaves 6; the delete (R3 piece 2) leaves 5.
+    assert!(node_routes >= 5, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("GET", "/api/tool-approvals/a"),

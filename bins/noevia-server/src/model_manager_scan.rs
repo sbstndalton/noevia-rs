@@ -229,7 +229,7 @@ pub struct Removal {
 }
 
 /// JavaScript's encodeURIComponent: everything but letters, digits and `-_.!~*'()` is escaped.
-fn encode_component(text: &str) -> String {
+pub(crate) fn encode_component(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for b in text.bytes() {
         if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) {

@@ -1,0 +1,1310 @@
+{
+  "coreRef": "76cc868",
+  "cases": [
+    {
+      "id": "deletes-everything",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "unloaded": true,
+          "rolesCleared": [],
+          "presetRemoved": true,
+          "presetsReloaded": true
+        }
+      },
+      "threw": null,
+      "loader": [
+        "GET sections",
+        "DELETE sections/qa-model-a?baseRevision=r2"
+      ],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-model-a"
+      ],
+      "sectionsAfter": [
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "deletes-everything",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "not-loaded-unload-refused",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "unloaded": false,
+          "rolesCleared": [],
+          "presetRemoved": true,
+          "presetsReloaded": true
+        }
+      },
+      "threw": null,
+      "loader": [
+        "GET sections",
+        "DELETE sections/qa-model-a?baseRevision=r2"
+      ],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-model-a"
+      ],
+      "sectionsAfter": [
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "not-loaded-unload-refused",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 404,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "delete-retried-after-second-unload",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "unloaded": true,
+          "rolesCleared": [],
+          "presetRemoved": true,
+          "presetsReloaded": true
+        }
+      },
+      "threw": null,
+      "loader": [
+        "GET sections",
+        "DELETE sections/qa-model-a?baseRevision=r2"
+      ],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-model-a"
+      ],
+      "sectionsAfter": [
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "delete-retried-after-second-unload",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 404,
+            "body": {}
+          },
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 500,
+            "body": {}
+          },
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "file-missing-section-only",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "unloaded": false,
+          "rolesCleared": [],
+          "presetRemoved": true,
+          "presetsReloaded": true
+        }
+      },
+      "threw": null,
+      "loader": [
+        "GET sections",
+        "DELETE sections/qa-gone?baseRevision=r2"
+      ],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-gone",
+        "POST /models/unload",
+        "DELETE /models?model=qa-gone"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-gone"
+      ],
+      "sectionsAfter": [
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "file-missing-section-only",
+        "name": "qa-gone",
+        "models": [
+          {
+            "name": "qa-gone",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 404,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 404,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "file-missing-hold-refused",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "Models are busy, so nothing was changed. Try again shortly.",
+          "code": "maintenance_held",
+          "retryable": true,
+          "unloaded": false
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-gone",
+        "POST /models/unload",
+        "DELETE /models?model=qa-gone"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-gone",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "file-missing-hold-refused",
+        "name": "qa-gone",
+        "models": [
+          {
+            "name": "qa-gone",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 404,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 404,
+            "body": {}
+          }
+        ],
+        "holdRefused": true
+      }
+    },
+    {
+      "id": "deleted-hold-refused",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "unloaded": true,
+          "rolesCleared": [],
+          "presetRemoved": false,
+          "presetBusy": true
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 0,
+      "rolesCleared": [
+        "qa-model-a"
+      ],
+      "sectionsAfter": [
+        "qa-model-a",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "deleted-hold-refused",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "holdRefused": true
+      }
+    },
+    {
+      "id": "reload-fails",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "unloaded": true,
+          "rolesCleared": [],
+          "presetRemoved": true,
+          "presetsReloaded": false
+        }
+      },
+      "threw": null,
+      "loader": [
+        "GET sections",
+        "DELETE sections/qa-model-a?baseRevision=r2"
+      ],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-model-a"
+      ],
+      "sectionsAfter": [
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "reload-fails",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "reloadOk": false
+      }
+    },
+    {
+      "id": "section-delete-refused",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "unloaded": true,
+          "rolesCleared": [],
+          "presetRemoved": false
+        }
+      },
+      "threw": null,
+      "loader": [
+        "GET sections",
+        "DELETE sections/qa-model-a?baseRevision=r2"
+      ],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 0,
+      "rolesCleared": [
+        "qa-model-a"
+      ],
+      "sectionsAfter": [
+        "qa-model-a",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "section-delete-refused",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "refuseSection": true
+      }
+    },
+    {
+      "id": "engine-delete-fails-502",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "delete failed: 500",
+          "unloaded": true
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "engine-delete-fails-502",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 500,
+            "body": {
+              "error": "boom"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "engine-refuses-model-in-use",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "qa-model-a is answering a request",
+          "code": "model_in_use",
+          "retryable": true,
+          "unloaded": false
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "engine-refuses-model-in-use",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 409,
+            "body": {
+              "error": {
+                "type": "gate_error",
+                "code": "model_in_use",
+                "message": "qa-model-a is answering a request",
+                "retryable": true
+              }
+            }
+          }
+        ],
+        "delete": [
+          {
+            "status": 409,
+            "body": {
+              "error": {
+                "type": "gate_error",
+                "code": "model_in_use",
+                "message": "qa-model-a is answering a request",
+                "retryable": true
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "engine-refuses-plain-shape",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "The engine is busy.",
+          "code": "engine_busy",
+          "retryable": true,
+          "unloaded": true
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "engine-refuses-plain-shape",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 409,
+            "body": {
+              "error": "The engine is busy.",
+              "code": "engine_busy",
+              "retryable": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "engine-refuses-maintenance-held",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "A tune holds the engine.",
+          "code": "maintenance_held",
+          "retryable": true,
+          "unloaded": true
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "engine-refuses-maintenance-held",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 409,
+            "body": {
+              "error": {
+                "type": "gate_error",
+                "code": "maintenance_held",
+                "message": "A tune holds the engine.",
+                "retryable": true
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "invalid-json",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "invalid JSON"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a"
+      ],
+      "scenario": {
+        "id": "invalid-json",
+        "raw": "{not json",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "name-required-empty-object",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "name required"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a"
+      ],
+      "scenario": {
+        "id": "name-required-empty-object",
+        "raw": "{}",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "name-required-empty-name",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "name required"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a"
+      ],
+      "scenario": {
+        "id": "name-required-empty-name",
+        "raw": "{\"name\":\"\"}",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "name-required-array",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "name required"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a"
+      ],
+      "scenario": {
+        "id": "name-required-array",
+        "raw": "[]",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "null-body",
+      "answer": null,
+      "threw": "Cannot read properties of null (reading 'name')",
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a"
+      ],
+      "scenario": {
+        "id": "null-body",
+        "raw": "null",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "system-model-refused",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "System routing model — not deleted",
+          "errorId": "systemModel",
+          "service": "decision"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "laya_multilingual_f16",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "system-model-refused",
+        "name": "laya_multilingual_f16",
+        "models": [
+          {
+            "name": "laya_multilingual_f16",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "system-model-by-router-path",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "System routing model — not deleted",
+          "errorId": "systemModel",
+          "service": "decision"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [
+        "GET /models"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-neutral-id",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "system-model-by-router-path",
+        "name": "qa-neutral-id",
+        "models": [
+          {
+            "name": "qa-neutral-id",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "routerPath": "/models/laya_multilingual_f16.gguf"
+      }
+    },
+    {
+      "id": "system-model-confirmed",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "unloaded": true,
+          "rolesCleared": [],
+          "presetRemoved": true,
+          "presetsReloaded": true
+        }
+      },
+      "threw": null,
+      "loader": [
+        "GET sections",
+        "DELETE sections/laya_multilingual_f16?baseRevision=r2"
+      ],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=laya_multilingual_f16"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "laya_multilingual_f16"
+      ],
+      "sectionsAfter": [
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "system-model-confirmed",
+        "name": "laya_multilingual_f16",
+        "confirmSystem": true,
+        "models": [
+          {
+            "name": "laya_multilingual_f16",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "system-model-confirm-not-true",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "System routing model — not deleted",
+          "errorId": "systemModel",
+          "service": "decision"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "laya_multilingual_f16"
+      ],
+      "scenario": {
+        "id": "system-model-confirm-not-true",
+        "name": "laya_multilingual_f16",
+        "body": {
+          "name": "laya_multilingual_f16",
+          "confirmSystem": "yes"
+        },
+        "models": [
+          {
+            "name": "laya_multilingual_f16",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "sidecar-embedding",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "A running sidecar (embedding or reranking) depends on this model — not deleted",
+          "errorId": "modelInUse",
+          "service": "embedding"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-embed",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "sidecar-embedding",
+        "name": "qa-embed",
+        "models": [
+          {
+            "name": "qa-embed",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "env": {
+          "EMBEDDING_MODEL": "qa-embed"
+        },
+        "sidecars": [
+          "qa-embed"
+        ]
+      }
+    },
+    {
+      "id": "sidecar-reranker",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "A running sidecar (embedding or reranking) depends on this model — not deleted",
+          "errorId": "modelInUse",
+          "service": "reranker"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-rerank",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "sidecar-reranker",
+        "name": "qa-rerank",
+        "models": [
+          {
+            "name": "qa-rerank",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "env": {
+          "NOEVIA_FEATURE_RAG_RERANK": "on",
+          "RERANK_MODEL": "qa-rerank"
+        },
+        "sidecars": [
+          "qa-rerank"
+        ]
+      }
+    },
+    {
+      "id": "disabled",
+      "answer": {
+        "status": 404,
+        "body": {
+          "error": "model management is disabled"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [],
+      "scenario": {
+        "id": "disabled",
+        "name": "qa-model-a",
+        "models": [],
+        "disabled": true
+      }
+    },
+    {
+      "id": "listing-unreadable",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "Could not confirm this is not a system model. Try again."
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [
+        "GET /models"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a"
+      ],
+      "scenario": {
+        "id": "listing-unreadable",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "listing": "fail"
+      }
+    },
+    {
+      "id": "not-found",
+      "answer": {
+        "status": 404,
+        "body": {
+          "error": "model not found: qa-nope"
+        }
+      },
+      "threw": null,
+      "loader": [],
+      "engine": [
+        "GET /models"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "sectionsAfter": [
+        "qa-model-a",
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "not-found",
+        "name": "qa-nope",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "installed-list-unreadable-still-deletes",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "unloaded": true,
+          "rolesCleared": [],
+          "presetRemoved": true,
+          "presetsReloaded": true
+        }
+      },
+      "threw": null,
+      "loader": [
+        "GET sections",
+        "DELETE sections/qa-model-a?baseRevision=r2"
+      ],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-model-a"
+      ],
+      "sectionsAfter": [
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "installed-list-unreadable-still-deletes",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "installedFails": true,
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "role-cleanup-throws",
+      "answer": null,
+      "threw": "disk",
+      "loader": [
+        "GET sections",
+        "DELETE sections/qa-model-a?baseRevision=r2"
+      ],
+      "engine": [
+        "GET /models",
+        "POST /models/unload",
+        "DELETE /models?model=qa-model-a"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-model-a"
+      ],
+      "sectionsAfter": [
+        "qa-other"
+      ],
+      "scenario": {
+        "id": "role-cleanup-throws",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-other",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "delete": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "rolesThrow": true
+      }
+    }
+  ]
+}
