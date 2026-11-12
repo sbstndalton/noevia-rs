@@ -144,7 +144,14 @@ def main():
         print(f"::error::web client path {p} ({', '.join(sorted(found[p]))}) is missing from routes.toml")
     for p in stale:
         print(f"::warning::routes.toml lists {p} but the web client no longer names it (set client = false if a non-web caller uses it)")
-    print(f"routes_check: {len(found)} client paths, {len(listed)} listed, {len(missing)} missing")
+    relays = sorted(r["path"] for r in doc.get("route", []) if r.get("executor") == "node")
+    for r in doc.get("route", []):
+        if "executor" in r and (r.get("executor") != "node" or r.get("owner") != "rust"):
+            print(f"routes_check: bad executor in {r!r} (only executor = node on an owner = rust route)", file=sys.stderr)
+            return 1
+    ported = sum(1 for r in doc.get("route", []) if r.get("owner") == "rust" and r.get("executor") != "node")
+    print(f"routes_check: {len(found)} client paths, {len(listed)} listed, {len(missing)} missing; "
+          f"{ported} ported, {len(relays)} transitional (Node executor: {', '.join(relays) or 'none'})")
     return 1 if missing else 0
 
 

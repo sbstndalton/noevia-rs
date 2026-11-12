@@ -291,9 +291,16 @@ owner = "rust"
 path = "/api/spaces/{id}/pages/{pageId}"
 owner = "rust"
 
+# Chat port S5: the turn is the front's as a transparent relay (bins/noevia-server chat_turn.rs): the
+# session gate, then the request unread to core's loopback /internal/chat/turn, whose unchanged pipeline
+# answers. Core refuses any other POST /api/chat (rust-chat-turn.cjs). The other methods stay Node's.
+# TRANSITIONAL (executor = "node"): Node still executes every turn (generation, tools, persistence), so
+# this is not a completed port until the native pipeline (crates/chat-pipeline) owns the turn.
 [[route]]
 path = "/api/chat"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
+executor = "node"
 
 [[route]]
 path = "/api/chat-framing/preferences"
