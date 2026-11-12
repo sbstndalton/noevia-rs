@@ -419,6 +419,10 @@ async fn installed_list(
         .any(|r| string_at(r, "source").as_deref() == Some("preset"));
     let ids: Vec<String> = rows.iter().filter_map(|r| id_of(r)).collect();
     let mut ask = json!({ "want": "installed", "ids": ids, "scan": presetted });
+    if let Some(first) = &first_loaded {
+        // The front names the default as well as Core, so a delete clears both (model_maint/model_state.rs).
+        app.config.maint.adopt_last_loaded(first);
+    }
     if let (Some(first), Some(o)) = (first_loaded, ask.as_object_mut()) {
         o.insert("firstLoaded".into(), first.into());
     }
