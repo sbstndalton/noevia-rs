@@ -17,6 +17,29 @@ use std::path::PathBuf;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+#[path = "support/approval_front.rs"]
+mod approval_front;
+
+/// Node for these tests: it acknowledges the executor-epoch advance every delete completes with
+/// (port contract S9) and answers 502 to anything else, as an absent Node does through the front.
+async fn node() -> SocketAddr {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let router = axum::Router::new()
+        .route(
+            "/internal/approvals/revoke",
+            axum::routing::post(|| async {
+                (
+                    [("content-type", "application/json")],
+                    serde_json::json!({"acknowledged": true, "protocol": approval_front::PROTOCOL})
+                        .to_string(),
+                )
+            }),
+        )
+        .fallback(|| async { axum::http::StatusCode::BAD_GATEWAY });
+    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    addr
+}
 #[path = "../../../crates/server-storage-reads/tests/support/dav_lab.rs"]
 mod dav_lab;
 
@@ -89,9 +112,15 @@ async fn front_with_retired_value(value: Option<&str>) -> Front {
         [server_auth::js::digest(CODE)],
     )
     .unwrap();
-    // Node answers nothing here: every route under test is the front's.
+    // Node answers only the executor-epoch acknowledgement (port contract S9) that every project
+    // and chat delete completes with; every route under test is the front's.
+    let node = node().await;
     let mut env: HashMap<&str, String> = HashMap::new();
-    env.insert("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into());
+    env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{node}"));
+    env.insert(
+        "NOEVIA_PROJECT_STORE_TOKEN",
+        approval_front::STORE_TOKEN.into(),
+    );
     env.insert("UI_PORT", "1".into());
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
