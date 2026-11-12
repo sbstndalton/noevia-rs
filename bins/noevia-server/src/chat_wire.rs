@@ -110,6 +110,14 @@ fn media_type_is(headers: &HeaderMap, want: &str) -> bool {
 /// Core's NDJSON answer as the client's event stream: its status and headers with the event stream's
 /// own in place of Core's type and caching, sent when the first frame is ready.
 pub async fn stream(res: Response<Body>) -> Response<Body> {
+    let (res, _) = stream_with_completion(res).await;
+    res
+}
+
+/// [`stream`], with the flag that is set once the turn is complete (for the lease's body, #2494).
+pub async fn stream_with_completion(
+    res: Response<Body>,
+) -> (Response<Body>, Arc<std::sync::atomic::AtomicBool>) {
     let (mut parts, body) = res.into_parts();
     for name in [
         header::CONTENT_TYPE,
@@ -123,7 +131,12 @@ pub async fn stream(res: Response<Body>) -> Response<Body> {
     }
     let mut wire = EventWire::new(body);
     std::future::poll_fn(|cx| wire.fill(cx)).await;
-    Response::from_parts(parts, Body::new(wire))
+    if wire.complete {
+        wire.completed
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+    let completed = wire.completed();
+    (Response::from_parts(parts, Body::new(wire)), completed)
 }
 
 /// Permits of the holdback budget, one per byte; given back when dropped.
@@ -948,6 +961,8 @@ pub struct EventWire {
     beat_due: bool,
     /// A `done` or `error` event has gone out: the turn is complete (module docs).
     complete: bool,
+    /// `complete`, shared with whoever holds the stream (the admission lease's body, #2494).
+    completed: Arc<std::sync::atomic::AtomicBool>,
     /// The event streaming through, checked as it goes.
     json: Json,
     done: bool,
@@ -968,6 +983,7 @@ impl EventWire {
             beat: None,
             beat_due: false,
             complete: false,
+            completed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             json: Json::new(Reservation {
                 budget: Arc::clone(&budget),
                 bytes: 0,
@@ -982,11 +998,16 @@ impl EventWire {
         }
     }
 
-    /// The stream ends here with [`FAILED_FRAME`] (unless an event's start is already out); Core's
-    /// socket closes.
+    /// Set once the turn is complete; read by the lease's body when the lease is lost (#2494).
+    pub fn completed(&self) -> Arc<std::sync::atomic::AtomicBool> {
+        Arc::clone(&self.completed)
+    }
+
+    /// The stream ends here with [`FAILED_FRAME`] (unless an event's start is already out, or the
+    /// turn is already complete: no failure event follows `done`, #2494); Core's socket closes.
     fn fail(&mut self) {
         drop(self.held.take());
-        if !self.overflow {
+        if !self.overflow && !self.complete {
             self.send(Bytes::from_static(FAILED_FRAME.as_bytes()));
         }
         self.end();
@@ -1239,7 +1260,12 @@ impl HttpBody for EventWire {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Bytes>, axum::Error>>> {
-        match self.fill(cx) {
+        let polled = self.fill(cx);
+        if self.complete {
+            self.completed
+                .store(true, std::sync::atomic::Ordering::Release);
+        }
+        match polled {
             Poll::Pending => Poll::Pending,
             Poll::Ready(()) => Poll::Ready(self.pending.pop_front().map(|b| Ok(Frame::data(b)))),
         }
@@ -1473,6 +1499,33 @@ mod tests {
         let out = through(vec![meta, big], true, Arc::clone(&budget)).await;
         assert_eq!(out.len(), framed.len() + 6 + HOLDBACK + 7);
         assert!(!out.ends_with(FAILED_FRAME.as_bytes()));
+        assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
+    }
+
+    /// #2494: after the turn is complete (`done` or `error` out), Core's socket breaking, or its end
+    /// with an unfinished line (as while it waits for the title), ends the stream cleanly: no failure
+    /// event follows `done`, so the client keeps its finished reply (and Diary its saved entry).
+    #[tokio::test]
+    async fn after_the_turn_is_complete_a_break_ends_cleanly_without_the_failure_frame() {
+        let budget = Arc::new(Semaphore::new(HOLDBACK_BUDGET));
+        let done = b"{\"type\":\"done\"}\n".to_vec();
+        let framed = "data: {\"type\":\"done\"}\n\n";
+        for (reads, broken) in [
+            (vec![done.clone()], true),
+            (vec![done.clone(), b"{\"type\":\"ti".to_vec()], true),
+            (vec![done.clone(), b"{\"type\":\"ti".to_vec()], false),
+            (
+                vec![b"{\"type\":\"error\",\"text\":\"x\"}\n".to_vec()],
+                true,
+            ),
+        ] {
+            let first = reads[0].clone();
+            let out = through(reads, broken, Arc::clone(&budget)).await;
+            assert!(!out.ends_with(FAILED_FRAME.as_bytes()), "{out:?}");
+            if first == done {
+                assert_eq!(out, Bytes::from(framed));
+            }
+        }
         assert_eq!(budget.available_permits(), HOLDBACK_BUDGET);
     }
 
