@@ -90,6 +90,7 @@ pub mod provider_reseal;
 pub mod provider_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod provider_test_routes;
+pub mod prune_missing;
 pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;

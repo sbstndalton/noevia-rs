@@ -110,6 +110,17 @@ impl Loader {
         Some((status, Some(value)))
     }
 
+    /// Core's freshFolderScan: `GET /api/v1/models` now, the `models` array of a 2xx answer, else `None`.
+    pub async fn fresh_scan(&self) -> Option<Vec<JValue>> {
+        let (status, body) = self
+            .get_bounded("/api/v1/models", "", SECTIONS_WAIT)
+            .await?;
+        match body?.get("models") {
+            JValue::Arr(models) if status.is_success() => Some(models.clone()),
+            _ => None,
+        }
+    }
+
     /// `GET /api/v1/sections`, as Core's presetSections (server/routes/models.cjs): `None` without a
     /// loader, on a non-2xx answer or when `sections` is not an array. An entry is a name or an
     /// object; `hasFile` counts only as a JSON boolean.

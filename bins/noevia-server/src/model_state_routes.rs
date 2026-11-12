@@ -376,6 +376,32 @@ async fn installed_list(
     sizing: &Arc<Sizing>,
     listing: &Read,
 ) -> Result<Vec<JValue>, ListFault> {
+    installed_list_with(app, sizing, listing, None).await
+}
+
+/// The installed list read now, with `fresh_scan` (a folder scan just taken from the model manager) standing in
+/// for Core's cached scan, as `modelsInstalledNow` does after the prune dropped the cache (`POST
+/// /api/models/prune-missing`). `Err`: the engine's list or Core's facts could not be had.
+pub(crate) async fn installed_now(
+    app: &crate::App,
+    fresh_scan: &[JValue],
+) -> Result<Vec<JValue>, ()> {
+    let sizing = Arc::clone(&app.config.sizing);
+    if sizing.kind() != server_stats::Kind::LlamaCpp {
+        return Err(());
+    }
+    let listing = sizing.listing().await;
+    installed_list_with(app, &sizing, &listing, Some(fresh_scan))
+        .await
+        .map_err(|_| ())
+}
+
+async fn installed_list_with(
+    app: &crate::App,
+    sizing: &Arc<Sizing>,
+    listing: &Read,
+    fresh_scan: Option<&[JValue]>,
+) -> Result<Vec<JValue>, ListFault> {
     let raw = data_rows(listing).ok_or(ListFault::Engine)?;
     let rows: Vec<&Value> = raw.iter().filter(|r| id_of(r).is_some()).collect();
     let (pairs, roles) = {
@@ -418,7 +444,8 @@ async fn installed_list(
         .iter()
         .any(|r| string_at(r, "source").as_deref() == Some("preset"));
     let ids: Vec<String> = rows.iter().filter_map(|r| id_of(r)).collect();
-    let mut ask = json!({ "want": "installed", "ids": ids, "scan": presetted });
+    let mut ask =
+        json!({ "want": "installed", "ids": ids, "scan": presetted && fresh_scan.is_none() });
     if let Some(first) = &first_loaded {
         // The front names the default as well as Core, so a delete clears both (model_maint/model_state.rs).
         app.config.maint.adopt_last_loaded(first);
@@ -431,8 +458,9 @@ async fn installed_list(
         .ok_or(ListFault::Node)?;
     let sidecars = strings(facts.get("sidecarNames"));
     let sidecar_loaded = strings(facts.get("sidecarLoaded"));
-    let scan = match facts.get("scan") {
-        JValue::Arr(files) if !files.is_empty() => Some(files.as_slice()),
+    let scan = match (fresh_scan, facts.get("scan")) {
+        (Some(files), _) if !files.is_empty() => Some(files),
+        (None, JValue::Arr(files)) if !files.is_empty() => Some(files.as_slice()),
         _ => None,
     };
     let long_loaded: HashSet<&str> = long_of
