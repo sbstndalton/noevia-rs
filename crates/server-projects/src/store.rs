@@ -232,6 +232,20 @@ fn drop_null_files(projects: &mut [JValue]) {
     }
 }
 
+/// Prefix of a coworker's hidden backing project (`specialist-<specialist id>`,
+/// sbstndalton/noevia#2446). Project ids are made by the server (`proj-...`), so no person's
+/// project can carry it.
+pub const SPECIALIST_PREFIX: &str = "specialist-";
+
+/// core diary-extras.cjs `internalProject` by id: the Diary's extras project, a free chat's
+/// attachments project and a coworker's backing project. None of them is ever listed, searched,
+/// exported, retained away or offered as a destination.
+pub fn internal_project_id(id: &str) -> bool {
+    id == "cowork-diary-extras"
+        || id.starts_with("cowork-chat-context-")
+        || id.starts_with(SPECIALIST_PREFIX)
+}
+
 /// The project with this id (`PROJECTS.find((p) => p.id === id)`).
 pub fn find<'a>(projects: &'a [JValue], id: &str) -> Option<&'a JValue> {
     projects.iter().find(|p| p.get("id").as_str() == Some(id))

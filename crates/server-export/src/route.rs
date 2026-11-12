@@ -66,6 +66,8 @@ pub const MAX_FILE_DEPTH: usize = 40;
 
 const DIARY_EXTRAS: &str = "cowork-diary-extras";
 const CHAT_CONTEXT_PREFIX: &str = "cowork-chat-context-";
+/// A coworker's backing project (server-projects `store::SPECIALIST_PREFIX`).
+const SPECIALIST_PREFIX: &str = "specialist-";
 
 /// What the route answers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -296,7 +298,7 @@ fn projects(dir: &Path) -> Result<JValue, ()> {
         let Some(id) = project.get("id").as_str() else {
             return Err(());
         };
-        if id == DIARY_EXTRAS || id.starts_with(CHAT_CONTEXT_PREFIX) {
+        if id == DIARY_EXTRAS || id.starts_with(CHAT_CONTEXT_PREFIX) || id.starts_with(SPECIALIST_PREFIX) {
             continue;
         }
         visible.push(project);

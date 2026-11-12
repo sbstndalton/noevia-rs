@@ -3352,8 +3352,10 @@ dependencies = [
 name = "server-specialists"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "serde",
  "serde_json",
+ "server-projects",
  "server-store",
  "sha2",
  "tempfile",

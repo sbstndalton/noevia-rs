@@ -255,7 +255,10 @@ pub async fn serve(
     let Ok(dir) = server_projects::store::user_dir(&data_dir, &id.user.id) else {
         return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true);
     };
-    let store = Store::new(dir);
+    let store = Store::new(dir).with_backing(server_specialists::Backing {
+        data_dir: data_dir.clone(),
+        user_id: id.user.id.clone(),
+    });
     let q = query(&parts);
     let method = parts.method;
     // A client that goes away cannot cancel a write half-way: the blocking task runs to its end.
@@ -272,6 +275,11 @@ pub async fn serve(
         }
         (Target::Specialists, _) => match json_body(body, SMALL_BODY).await {
             Ok(new) => {
+                let new: server_specialists::NewSpecialist = new;
+                let store = match with_toolboxes(app, store, new.toolboxes.as_deref()).await {
+                    Ok(s) => s,
+                    Err(r) => return *r,
+                };
                 run(store, move |s| {
                     let (revision, made) = s.create_specialist(new)?;
                     Ok((
@@ -295,6 +303,11 @@ pub async fn serve(
         }
         (Target::Specialist(id), Method::PATCH) => match json_body(body, SMALL_BODY).await {
             Ok(patch) => {
+                let patch: server_specialists::SpecialistPatch = patch;
+                let store = match with_toolboxes(app, store, patch.toolboxes.as_deref()).await {
+                    Ok(s) => s,
+                    Err(r) => return *r,
+                };
                 run(store, move |s| {
                     let (revision, v) = s.update_specialist(&id, patch)?;
                     Ok((
@@ -460,6 +473,36 @@ async fn optional_body(body: Body) -> Value {
         Ok(bytes) if !bytes.is_empty() => serde_json::from_slice(&bytes).unwrap_or(Value::Null),
         _ => Value::Null,
     }
+}
+
+/// The store told which toolboxes the account may give a coworker, when a request names any: the
+/// catalogue's boxes except the connectors (a connector's on/off is Settings', as in core's
+/// `sanitizeToolboxes`). A catalogue that is not ready is a 503 asking to retry, never a guess.
+async fn with_toolboxes(
+    app: &Arc<App>,
+    store: Store,
+    wanted: Option<&[String]>,
+) -> Result<Store, Box<Response<Body>>> {
+    if wanted.is_none_or(<[String]>::is_empty) {
+        return Ok(store);
+    }
+    let Some(catalogue) = crate::mcp_discovery::read(app).await else {
+        let mut res = failure(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "The tool list is being prepared. Try again in a moment.",
+            "tools_unavailable",
+        );
+        res.headers_mut()
+            .insert("retry-after", HeaderValue::from_static("2"));
+        return Err(Box::new(res));
+    };
+    let ids = catalogue
+        .boxes
+        .iter()
+        .filter(|b| !catalogue.connector_boxes.contains(&b.id))
+        .map(|b| b.id.clone())
+        .collect();
+    Ok(store.with_known_toolboxes(ids))
 }
 
 async fn run(

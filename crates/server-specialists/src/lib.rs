@@ -20,8 +20,11 @@
 //! base cannot both win. Ids must be lowercase hyphenated UUIDs ([`is_id`]) before any path is
 //! built from them. This crate has no HTTP; the front maps [`Error`] to statuses.
 
+pub mod backing;
 mod lists;
 mod pages;
+
+pub use backing::Backing;
 
 pub use lists::{
     NewSpace, NewSpecialist, Space, SpaceList, SpacePatch, Specialist, SpecialistList,
@@ -45,6 +48,7 @@ pub const MAX_TITLE_CHARS: usize = 200;
 pub const MAX_BRIEF_CHARS: usize = 8000;
 pub const MAX_GLYPH_CHARS: usize = 16;
 pub const MAX_TINT_CHARS: usize = 32;
+pub const MAX_TOOLBOXES: usize = 64;
 pub const MAX_QUERY_CHARS: usize = 200;
 pub const MAX_LIMIT: usize = 100;
 pub const DEFAULT_LIMIT: usize = 100;
@@ -171,6 +175,9 @@ static LOCKS: Mutex<Option<HashMap<PathBuf, Arc<Mutex<()>>>>> = Mutex::new(None)
 #[derive(Debug, Clone)]
 pub struct Store {
     dir: PathBuf,
+    backing: Option<Backing>,
+    /// The ids a coworker's `toolboxes` may name; `None` when the caller could not say.
+    known_toolboxes: Option<Vec<String>>,
 }
 
 impl Store {
@@ -178,7 +185,31 @@ impl Store {
     pub fn new(user_dir: impl Into<PathBuf>) -> Self {
         Store {
             dir: user_dir.into(),
+            backing: None,
+            known_toolboxes: None,
         }
+    }
+
+    /// A store whose coworkers have a hidden project and conversation in the account's project
+    /// store ([`backing`]). Without it ids stay `null` and nothing is mirrored (the stores alone).
+    pub fn with_backing(mut self, backing: Backing) -> Self {
+        self.backing = Some(backing);
+        self
+    }
+
+    /// The toolbox ids this account may give a coworker. A non-empty `toolboxes` is refused
+    /// without it, so an id is never accepted unchecked.
+    pub fn with_known_toolboxes(mut self, ids: Vec<String>) -> Self {
+        self.known_toolboxes = Some(ids);
+        self
+    }
+
+    pub(crate) fn backing(&self) -> Option<&Backing> {
+        self.backing.as_ref()
+    }
+
+    pub(crate) fn known_toolboxes(&self) -> Option<&[String]> {
+        self.known_toolboxes.as_deref()
     }
 
     pub(crate) fn dir(&self) -> &Path {
@@ -230,5 +261,7 @@ impl Store {
     }
 }
 
+#[cfg(test)]
+mod backing_tests;
 #[cfg(test)]
 mod tests;
