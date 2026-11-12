@@ -141,7 +141,10 @@ fn lists(dir: &Path) -> Result<(Vec<JValue>, Vec<JValue>), Reply> {
         let Some(id) = project.get("id").as_str() else {
             return Err(Reply::internal());
         };
-        if id == DIARY_EXTRAS || id.starts_with(CHAT_CONTEXT_PREFIX) || id.starts_with(store::SPECIALIST_PREFIX) {
+        if id == DIARY_EXTRAS
+            || id.starts_with(CHAT_CONTEXT_PREFIX)
+            || id.starts_with(store::SPECIALIST_PREFIX)
+        {
             continue;
         }
         visible.push(project);

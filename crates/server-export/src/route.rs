@@ -298,7 +298,10 @@ fn projects(dir: &Path) -> Result<JValue, ()> {
         let Some(id) = project.get("id").as_str() else {
             return Err(());
         };
-        if id == DIARY_EXTRAS || id.starts_with(CHAT_CONTEXT_PREFIX) || id.starts_with(SPECIALIST_PREFIX) {
+        if id == DIARY_EXTRAS
+            || id.starts_with(CHAT_CONTEXT_PREFIX)
+            || id.starts_with(SPECIALIST_PREFIX)
+        {
             continue;
         }
         visible.push(project);

@@ -78,7 +78,10 @@ pub fn find(ctx: Ctx<'_>, raw: &str) -> Lookup {
             let Some(pid) = project.get("id").as_str() else {
                 return Lookup::Answer(Reply::internal());
             };
-            if pid == DIARY_EXTRAS || pid.starts_with(CHAT_CONTEXT_PREFIX) || pid.starts_with(store::SPECIALIST_PREFIX) {
+            if pid == DIARY_EXTRAS
+                || pid.starts_with(CHAT_CONTEXT_PREFIX)
+                || pid.starts_with(store::SPECIALIST_PREFIX)
+            {
                 continue;
             }
             let hit = match project.get("chats") {

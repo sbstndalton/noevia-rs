@@ -193,9 +193,7 @@ impl Store {
             return Ok(Vec::new());
         }
         if ids.len() > MAX_TOOLBOXES {
-            return Err(Error::Invalid(format!(
-                "at most {MAX_TOOLBOXES} toolboxes"
-            )));
+            return Err(Error::Invalid(format!("at most {MAX_TOOLBOXES} toolboxes")));
         }
         let Some(known) = self.known_toolboxes() else {
             return Err(Error::Invalid(
@@ -277,9 +275,10 @@ impl Store {
             return Ok(true);
         }
         let mut copy = projects.clone();
-        Ok(list.specialists.iter().any(|s| {
-            s.project_id.is_none() || s.chat_id.is_none() || apply(&mut copy, s, 0)
-        }))
+        Ok(list
+            .specialists
+            .iter()
+            .any(|s| s.project_id.is_none() || s.chat_id.is_none() || apply(&mut copy, s, 0)))
     }
 
     /// Repairs what a crash, or a version before this one, left: ids for older coworkers, a

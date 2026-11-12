@@ -264,7 +264,10 @@ async fn create_patch_delete_keep_the_hidden_project_and_chat_in_step() {
         )
         .await;
     assert_eq!(up.status, 200, "{}", up.json);
-    assert_eq!(r.project(A, &pid).unwrap()["instructions"], "Write long notes.");
+    assert_eq!(
+        r.project(A, &pid).unwrap()["instructions"],
+        "Write long notes."
+    );
 
     // A toolbox the catalogue cannot vouch for is refused, never accepted unchecked (no live
     // discovery here, so the answer is the retryable 503), and changes nothing.
@@ -278,7 +281,10 @@ async fn create_patch_delete_keep_the_hidden_project_and_chat_in_step() {
         .await;
     assert_eq!(bad.status, 503, "{}", bad.json);
     assert_eq!(code(&bad), "tools_unavailable");
-    assert_eq!(r.project(A, &pid).unwrap()["instructions"], "Write long notes.");
+    assert_eq!(
+        r.project(A, &pid).unwrap()["instructions"],
+        "Write long notes."
+    );
     let again = r.a("GET", &format!("/api/specialists/{id}"), None).await;
     assert_eq!(again.json["specialist"]["brief"], "Write long notes.");
     assert_eq!(again.json["specialist"]["toolboxes"], json!([]));
@@ -286,7 +292,11 @@ async fn create_patch_delete_keep_the_hidden_project_and_chat_in_step() {
     // Delete: the record, the project and the chat (tombstoned) all go; the rest stays.
     let rev = again.json["revision"].as_u64().unwrap();
     let del = r
-        .a("DELETE", &format!("/api/specialists/{id}?revision={rev}"), None)
+        .a(
+            "DELETE",
+            &format!("/api/specialists/{id}?revision={rev}"),
+            None,
+        )
         .await;
     assert_eq!(del.status, 200, "{}", del.json);
     assert!(r.project(A, &pid).is_none());
@@ -392,7 +402,11 @@ async fn the_coworkers_project_and_chat_are_in_no_list_search_or_export() {
     assert_eq!(ws.status, 200, "{}", ws.json);
     assert!(mentions(&ws.json, "proj-1-aaaaaa") && mentions(&ws.json, "qa-free"));
     for needle in [pid.as_str(), cid.as_str(), "specialist-", name_needle] {
-        assert!(!mentions(&ws.json, needle), "workspace shows {needle}: {}", ws.json);
+        assert!(
+            !mentions(&ws.json, needle),
+            "workspace shows {needle}: {}",
+            ws.json
+        );
     }
     // Search finds an ordinary chat with the same words (the control) but not the coworker's.
     let ord = r
@@ -403,7 +417,9 @@ async fn the_coworkers_project_and_chat_are_in_no_list_search_or_export() {
         )
         .await;
     assert_eq!(ord.status, 200);
-    let s1 = r.a("GET", "/api/chats/search?q=QA-zebra-needle", None).await;
+    let s1 = r
+        .a("GET", "/api/chats/search?q=QA-zebra-needle", None)
+        .await;
     assert_eq!(s1.status, 200, "{}", s1.json);
     assert!(mentions(&s1.json, "qa-ordinary"), "control: {}", s1.json);
     assert!(!mentions(&s1.json, &cid), "{}", s1.json);
@@ -442,7 +458,11 @@ async fn the_chat_id_is_exclusive_to_the_coworkers_project() {
     assert_eq!(into_project.status, 200, "{}", into_project.json);
     let listed = r.a("GET", "/api/projects/proj-1-aaaaaa/chats", None).await;
     assert!(!mentions(&listed.json, &cid), "{}", listed.json);
-    assert!(mentions(&into_project.json, &cid), "reported as skipped: {}", into_project.json);
+    assert!(
+        mentions(&into_project.json, &cid),
+        "reported as skipped: {}",
+        into_project.json
+    );
     let into_free = r
         .a(
             "POST",
@@ -454,7 +474,11 @@ async fn the_chat_id_is_exclusive_to_the_coworkers_project() {
     let free = r.a("GET", "/api/freechats", None).await;
     assert!(!mentions(&free.json, &cid), "{}", free.json);
     let hidden = r
-        .a("GET", &format!("/api/projects/{}/chats", s["projectId"].as_str().unwrap()), None)
+        .a(
+            "GET",
+            &format!("/api/projects/{}/chats", s["projectId"].as_str().unwrap()),
+            None,
+        )
         .await;
     assert!(mentions(&hidden.json, &cid), "{}", hidden.json);
 }
@@ -475,9 +499,11 @@ async fn the_conversation_can_only_be_deleted_with_the_coworker() {
     assert_eq!(project.status, 404, "{}", project.json);
     let p = r.project(A, &pid).unwrap();
     assert_eq!(p["chats"][0]["id"], cid.as_str());
-    assert!(!std::fs::read_to_string(r.user_dir(A).join("deleted-chats.json"))
-        .unwrap_or_default()
-        .contains(&cid));
+    assert!(
+        !std::fs::read_to_string(r.user_dir(A).join("deleted-chats.json"))
+            .unwrap_or_default()
+            .contains(&cid)
+    );
 }
 
 #[tokio::test]
@@ -496,14 +522,24 @@ async fn an_older_coworker_gets_its_conversation_on_the_first_read() {
     .unwrap();
     let got = r.a("GET", &format!("/api/specialists/{id}"), None).await;
     assert_eq!(got.status, 200, "{}", got.json);
-    assert_eq!(got.json["specialist"]["projectId"], format!("specialist-{id}"));
-    assert_eq!(got.json["specialist"]["chatId"], format!("specialist-chat-{id}"));
+    assert_eq!(
+        got.json["specialist"]["projectId"],
+        format!("specialist-{id}")
+    );
+    assert_eq!(
+        got.json["specialist"]["chatId"],
+        format!("specialist-chat-{id}")
+    );
     assert_eq!(
         r.project(A, &format!("specialist-{id}")).unwrap()["instructions"],
         "old brief"
     );
     let hist = r
-        .a("GET", &format!("/api/chats/specialist-chat-{id}/history"), None)
+        .a(
+            "GET",
+            &format!("/api/chats/specialist-chat-{id}/history"),
+            None,
+        )
         .await;
     assert_eq!(hist.status, 200);
 }
@@ -516,10 +552,18 @@ async fn two_coworkers_and_two_accounts_stay_apart() {
     assert_ne!(a1["projectId"], a2["projectId"]);
     assert_ne!(a1["chatId"], a2["chatId"]);
     let b1 = r
-        .go("POST", "/api/specialists", COOKIE_B, Some(json!({"name": "QA Bee", "brief": "bee"})))
+        .go(
+            "POST",
+            "/api/specialists",
+            COOKIE_B,
+            Some(json!({"name": "QA Bee", "brief": "bee"})),
+        )
         .await;
     assert_eq!(b1.status, 201);
-    let theirs = b1.json["specialist"]["projectId"].as_str().unwrap().to_owned();
+    let theirs = b1.json["specialist"]["projectId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     assert!(r.project(A, &theirs).is_none());
     assert!(r.project(B, a1["projectId"].as_str().unwrap()).is_none());
     // Account A's list never names B's coworker.
@@ -527,11 +571,21 @@ async fn two_coworkers_and_two_accounts_stay_apart() {
     assert_eq!(list.json["specialists"].as_array().unwrap().len(), 2);
     // B cannot read or delete A's coworker (404, not 403).
     let id = a1["id"].as_str().unwrap();
-    assert_eq!(r.go("GET", &format!("/api/specialists/{id}"), COOKIE_B, None).await.status, 404);
     assert_eq!(
-        r.go("DELETE", &format!("/api/specialists/{id}?revision=1"), COOKIE_B, None)
+        r.go("GET", &format!("/api/specialists/{id}"), COOKIE_B, None)
             .await
             .status,
+        404
+    );
+    assert_eq!(
+        r.go(
+            "DELETE",
+            &format!("/api/specialists/{id}?revision=1"),
+            COOKIE_B,
+            None
+        )
+        .await
+        .status,
         404
     );
     assert!(r.project(A, a1["projectId"].as_str().unwrap()).is_some());

@@ -272,7 +272,11 @@ async fn specialists_crud_with_revisions() {
     assert_eq!(a.status, 201, "{}", a.json);
     let s = &a.json["specialist"];
     assert_eq!(a.json["revision"], 1);
-    assert!(s["projectId"].is_null() && s["chatId"].is_null());
+    // Slice 4a: every coworker has its hidden project and conversation, and no toolboxes by default.
+    let sid = s["id"].as_str().unwrap();
+    assert_eq!(s["projectId"], format!("specialist-{sid}"));
+    assert_eq!(s["chatId"], format!("specialist-chat-{sid}"));
+    assert_eq!(s["toolboxes"], json!([]));
     assert_eq!(
         (s["name"].as_str(), s["glyph"].as_str(), s["tint"].as_str()),
         (Some("QA Ada"), Some("A"), Some("sky"))

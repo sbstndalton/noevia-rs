@@ -62,7 +62,8 @@ impl Rig {
     }
     /// A project of the account's own that the coworkers must never touch.
     fn other_project(&self) {
-        let text = r#"{"projects":[{"id":"proj-1-aaaaaa","name":"QA keep","chats":[{"id":"qa-keep"}]}]}"#;
+        let text =
+            r#"{"projects":[{"id":"proj-1-aaaaaa","name":"QA keep","chats":[{"id":"qa-keep"}]}]}"#;
         std::fs::write(self.dir().join("projects.json"), text).unwrap();
     }
 }
@@ -88,7 +89,11 @@ fn chat_ids(project: &JValue) -> Vec<String> {
 fn create_makes_the_hidden_project_with_the_brief_and_toolboxes_and_one_chat() {
     let r = rig();
     r.other_project();
-    let made = r.make("QA Scribe", "Write short notes.", &["core", "web-search", "core"]);
+    let made = r.make(
+        "QA Scribe",
+        "Write short notes.",
+        &["core", "web-search", "core"],
+    );
     assert_eq!(made.toolboxes, vec!["core", "web-search"]);
     let pid = made.project_id.clone().unwrap();
     let cid = made.chat_id.clone().unwrap();
@@ -101,7 +106,10 @@ fn create_makes_the_hidden_project_with_the_brief_and_toolboxes_and_one_chat() {
     assert_eq!(chat_ids(&p), vec![cid]);
     assert!(projects::internal_project_id(&pid));
     // The account's other projects are untouched.
-    assert_eq!(chat_ids(&r.project("proj-1-aaaaaa").unwrap()), vec!["qa-keep"]);
+    assert_eq!(
+        chat_ids(&r.project("proj-1-aaaaaa").unwrap()),
+        vec!["qa-keep"]
+    );
 }
 
 #[test]
@@ -192,7 +200,11 @@ fn patch_mirrors_brief_toolboxes_and_name_and_a_noop_patch_writes_nothing() {
     assert_eq!(p.get("instructions").as_str(), Some("v2"));
     assert_eq!(strings(p.get("toolboxes")), vec!["calc"]);
     assert_eq!(p.get("name").as_str(), Some("QA Scribe 2"));
-    assert_eq!(chat_ids(&p), vec![made.chat_id.clone().unwrap()], "still one chat");
+    assert_eq!(
+        chat_ids(&p),
+        vec![made.chat_id.clone().unwrap()],
+        "still one chat"
+    );
     // A patch that changes neither leaves projects.json byte for byte.
     let before = std::fs::read(r.dir().join("projects.json")).unwrap();
     r.store
@@ -205,7 +217,10 @@ fn patch_mirrors_brief_toolboxes_and_name_and_a_noop_patch_writes_nothing() {
             },
         )
         .unwrap();
-    assert_eq!(before, std::fs::read(r.dir().join("projects.json")).unwrap());
+    assert_eq!(
+        before,
+        std::fs::read(r.dir().join("projects.json")).unwrap()
+    );
     // A refused toolbox changes neither the record nor the project.
     let (rev, _) = r.store.get_specialist(&made.id).unwrap();
     assert!(r
@@ -289,8 +304,14 @@ fn a_coworker_from_before_this_slice_gets_its_project_and_chat_on_the_next_read(
     )
     .unwrap();
     let (_, s) = r.store.get_specialist(&id).unwrap();
-    assert_eq!(s.project_id.as_deref(), Some(format!("specialist-{id}").as_str()));
-    assert_eq!(s.chat_id.as_deref(), Some(format!("specialist-chat-{id}").as_str()));
+    assert_eq!(
+        s.project_id.as_deref(),
+        Some(format!("specialist-{id}").as_str())
+    );
+    assert_eq!(
+        s.chat_id.as_deref(),
+        Some(format!("specialist-chat-{id}").as_str())
+    );
     assert!(s.toolboxes.is_empty());
     let p = r.project(&format!("specialist-{id}")).unwrap();
     assert_eq!(p.get("instructions").as_str(), Some("old brief"));
@@ -299,7 +320,10 @@ fn a_coworker_from_before_this_slice_gets_its_project_and_chat_on_the_next_read(
     let before = std::fs::read(r.dir().join("projects.json")).unwrap();
     let rev = r.store.list_specialists().unwrap().revision;
     assert_eq!(rev, 4);
-    assert_eq!(before, std::fs::read(r.dir().join("projects.json")).unwrap());
+    assert_eq!(
+        before,
+        std::fs::read(r.dir().join("projects.json")).unwrap()
+    );
 }
 
 #[test]
@@ -358,7 +382,10 @@ fn delete_removes_the_chat_tombstone_first_then_the_project_and_nothing_else() {
 fn a_chat_that_cannot_be_deleted_keeps_the_project_and_the_next_read_finishes_the_delete() {
     let r = rig();
     let made = r.make("QA", "x", &[]);
-    let (cid, pid) = (made.chat_id.clone().unwrap(), made.project_id.clone().unwrap());
+    let (cid, pid) = (
+        made.chat_id.clone().unwrap(),
+        made.project_id.clone().unwrap(),
+    );
     // The tombstone file cannot be written: a directory sits where it goes.
     std::fs::create_dir(r.dir().join("deleted-chats.json")).unwrap();
     let rev = r.store.list_specialists().unwrap().revision;
@@ -419,13 +446,27 @@ fn a_conversation_resolves_to_its_own_coworker_only() {
     let b = r.make("QA B", "b", &[]);
     let (ap, ac) = (a.project_id.clone().unwrap(), a.chat_id.clone().unwrap());
     let (bp, bc) = (b.project_id.clone().unwrap(), b.chat_id.clone().unwrap());
-    assert_eq!(r.store.resolve_conversation(&ap, &ac).unwrap().unwrap().id, a.id);
-    assert_eq!(r.store.resolve_conversation(&bp, &bc).unwrap().unwrap().id, b.id);
+    assert_eq!(
+        r.store.resolve_conversation(&ap, &ac).unwrap().unwrap().id,
+        a.id
+    );
+    assert_eq!(
+        r.store.resolve_conversation(&bp, &bc).unwrap().unwrap().id,
+        b.id
+    );
     // A mixed pair, a free chat, an ordinary project, and an id that is nobody's.
     assert!(r.store.resolve_conversation(&ap, &bc).unwrap().is_none());
     assert!(r.store.resolve_conversation(&bp, &ac).unwrap().is_none());
-    assert!(r.store.resolve_conversation("proj-1-aaaaaa", &ac).unwrap().is_none());
-    assert!(r.store.resolve_conversation(&ap, "c-1-abc").unwrap().is_none());
+    assert!(r
+        .store
+        .resolve_conversation("proj-1-aaaaaa", &ac)
+        .unwrap()
+        .is_none());
+    assert!(r
+        .store
+        .resolve_conversation(&ap, "c-1-abc")
+        .unwrap()
+        .is_none());
     assert!(r.store.resolve_conversation("", "").unwrap().is_none());
     // Another account's store holds none of these ids.
     let other = rig_for(&r.root, OTHER);
