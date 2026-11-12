@@ -46,6 +46,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ag-ui-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3372,6 +3382,7 @@ dependencies = [
 name = "server-specialists"
 version = "0.1.0"
 dependencies = [
+ "ag-ui-core",
  "js-json",
  "serde",
  "serde_json",

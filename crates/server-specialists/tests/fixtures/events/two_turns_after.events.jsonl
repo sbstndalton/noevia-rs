@@ -1,0 +1,8 @@
+{"type":"TEXT_MESSAGE_START","messageId":"qa-u2","role":"user"}
+{"type":"TEXT_MESSAGE_CONTENT","messageId":"qa-u2","delta":"QA second question"}
+{"type":"TEXT_MESSAGE_END","messageId":"qa-u2"}
+{"type":"RUN_STARTED","threadId":"11111111-1111-4111-8111-111111111111","runId":"qa-a2"}
+{"type":"TEXT_MESSAGE_START","messageId":"qa-a2","role":"assistant"}
+{"type":"TEXT_MESSAGE_CONTENT","messageId":"qa-a2","delta":"QA second answer"}
+{"type":"TEXT_MESSAGE_END","messageId":"qa-a2"}
+{"type":"RUN_FINISHED","threadId":"11111111-1111-4111-8111-111111111111","runId":"qa-a2"}

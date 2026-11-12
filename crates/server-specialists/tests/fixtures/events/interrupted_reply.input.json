@@ -1,0 +1,4 @@
+{"after": null, "history": [
+  {"id": "qa-u1", "role": "user", "content": "QA write a long answer"},
+  {"id": "qa-a1", "role": "assistant", "content": "QA the answer begins and", "interrupted": true}
+]}
