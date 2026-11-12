@@ -463,3 +463,56 @@ fn concurrent_puts_from_one_base_have_one_winner() {
         .count();
     assert_eq!((won, stale), (1, 7));
 }
+
+#[test]
+fn space_delete_removes_the_files_even_when_the_grants_cannot_be_updated() {
+    let (t, s) = store();
+    let sp = space(&s, "QA");
+    s.create_page(&sp, "p", "x", SAVED_BY_YOU).unwrap();
+    // specialists.json is a directory: reading it fails, as a broken disk would.
+    std::fs::create_dir(t.path().join("specialists.json")).unwrap();
+    let rev = s.list_spaces().unwrap().revision;
+    assert!(s.delete_space(&sp, rev, true).is_err());
+    assert!(!t.path().join("spaces").join(&sp).exists());
+    assert!(s.list_spaces().unwrap().spaces.is_empty());
+}
+
+#[test]
+fn a_row_left_stale_by_a_crash_is_repaired_by_the_next_write_and_a_missing_file_is_404() {
+    let (t, s) = store();
+    let sp = space(&s, "QA");
+    let w = s.create_page(&sp, "p", "one", SAVED_BY_YOU).unwrap();
+    // The file changed but the index write never happened.
+    let file = t
+        .path()
+        .join("spaces")
+        .join(&sp)
+        .join(format!("{}.md", w.page.id));
+    std::fs::write(&file, "two").unwrap();
+    assert_eq!(
+        s.list_pages(&sp, None, None, 0).unwrap().pages[0].version,
+        version_of("one")
+    );
+    let mut same = put("two", Some(&version_of("two")));
+    same.title = None;
+    let noop = s.put_page(&sp, &w.page.id, same, SAVED_BY_YOU).unwrap();
+    assert!(!noop.changed);
+    assert_eq!(
+        s.list_pages(&sp, None, None, 0).unwrap().pages[0].version,
+        version_of("two")
+    );
+    // A row without its file: 404 on read and write, and it can still be deleted.
+    std::fs::remove_file(&file).unwrap();
+    assert!(matches!(s.get_page(&sp, &w.page.id), Err(Error::NotFound)));
+    assert!(matches!(
+        s.put_page(
+            &sp,
+            &w.page.id,
+            put("x", Some(&version_of("two"))),
+            SAVED_BY_YOU
+        ),
+        Err(Error::NotFound)
+    ));
+    s.delete_page(&sp, &w.page.id).unwrap();
+    assert!(s.list_pages(&sp, None, None, 0).unwrap().pages.is_empty());
+}

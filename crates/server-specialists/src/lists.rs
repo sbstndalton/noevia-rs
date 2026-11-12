@@ -379,8 +379,8 @@ impl Store {
     }
 
     /// Deletes a Space. One with pages needs `with_pages`. The list is written first (a crash
-    /// leaves an orphaned directory, never a listed Space without its pages), then every
-    /// specialist loses the grant, then the directory goes. Returns the new revision.
+    /// leaves an orphaned directory, never a listed Space without its pages), then the directory
+    /// goes and every specialist loses the grant (both attempted, the first error returned). Returns the new revision.
     pub fn delete_space(&self, id: &str, revision: u64, with_pages: bool) -> Result<u64, Error> {
         if !is_id(id) {
             return Err(Error::NotFound);
@@ -402,26 +402,35 @@ impl Store {
             list.spaces.remove(at);
             list.revision += 1;
             self.write(self.dir(), SPACES, &list)?;
-            let mut granted: SpecialistList = self.read(self.dir(), SPECIALISTS)?;
-            let mut changed = false;
-            for s in &mut granted.specialists {
-                if s.spaces.iter().any(|x| x == id) {
-                    s.spaces.retain(|x| x != id);
-                    if s.default_space.as_deref() == Some(id) {
-                        s.default_space = None;
-                    }
-                    s.updated_at = now_ms();
-                    changed = true;
-                }
-            }
-            if changed {
-                granted.revision += 1;
-                self.write(self.dir(), SPECIALISTS, &granted)?;
-            }
-            match std::fs::remove_dir_all(&dir) {
+            // Both clean-up steps run whatever the other does; the first failure is the answer. The
+            // Space is already unlisted, so a retry could not reach it again.
+            let removed = match std::fs::remove_dir_all(&dir) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(Error::Io(e)),
-                _ => Ok(list.revision),
-            }
+                _ => Ok(()),
+            };
+            let ungranted = self.revoke_grants(id);
+            removed.and(ungranted).map(|()| list.revision)
         })
+    }
+
+    /// Removes `space` from every specialist's grants and default.
+    fn revoke_grants(&self, space: &str) -> Result<(), Error> {
+        let mut granted: SpecialistList = self.read(self.dir(), SPECIALISTS)?;
+        let mut changed = false;
+        for s in &mut granted.specialists {
+            if s.spaces.iter().any(|x| x == space) {
+                s.spaces.retain(|x| x != space);
+                if s.default_space.as_deref() == Some(space) {
+                    s.default_space = None;
+                }
+                s.updated_at = now_ms();
+                changed = true;
+            }
+        }
+        if changed {
+            granted.revision += 1;
+            self.write(self.dir(), SPECIALISTS, &granted)?;
+        }
+        Ok(())
     }
 }

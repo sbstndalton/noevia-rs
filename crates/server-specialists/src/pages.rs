@@ -2,7 +2,8 @@
 //!
 //! The page file is the truth for content and so for `version` (its sha256); the index row is what
 //! lists show. A write puts the file down first and the index second, so a crash between them
-//! leaves a row with a stale version that the next read corrects, never a row without a file. A
+//! leaves a row with a stale version that the next read or write of that page corrects (lists show
+//! the old row until then), never a row without a file. A
 //! delete is the other way round (index first), leaving at worst an orphaned file nothing lists.
 
 use crate::{
@@ -103,8 +104,13 @@ impl Store {
     }
 
     fn read_content(&self, space: &str, page: &str) -> Result<String, Error> {
-        std::fs::read_to_string(self.space_dir(space).join(file_name(page)))
-            .map_err(|_| Error::Corrupt(file_name(page)))
+        // A row whose file is gone (a crash, an edit by hand) is a page that does not exist: it
+        // can still be deleted, which removes the row.
+        match std::fs::read_to_string(self.space_dir(space).join(file_name(page))) {
+            Ok(c) => Ok(c),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(Error::NotFound),
+            Err(_) => Err(Error::Corrupt(file_name(page))),
+        }
     }
 
     fn write_index(&self, space: &str, index: &PageIndex) -> Result<(), Error> {
@@ -285,6 +291,13 @@ impl Store {
             };
             let same_title = title.as_ref().is_none_or(|t| *t == row.title);
             if new_version == current_version && same_title {
+                // Repair a row a crash left behind, so lists show what the page is.
+                if index.pages.get(at) != Some(&row) {
+                    if let Some(slot) = index.pages.get_mut(at) {
+                        *slot = row.clone();
+                    }
+                    self.write_index(space, &index)?;
+                }
                 return Ok(PageWrite {
                     page: row,
                     changed: false,
