@@ -28,6 +28,7 @@ pub mod evidence_live;
 pub mod evidence_recheck;
 pub mod gate;
 pub mod ini;
+pub mod model_state;
 // Port contract row J: the one maintenance lease authority (replaces core model-maintenance-lease.cjs).
 pub mod lease;
 pub mod node_lease;
@@ -53,18 +54,25 @@ use std::time::{Duration, Instant};
 pub use gate::Hold;
 
 pub const RELOAD: &str = "/api/models/presets/reload";
+pub const PRUNE: &str = crate::prune_missing::PATH;
 pub const EVIDENCE: &str = "/api/models/evidence";
 pub const EVIDENCE_IMPORT: &str = "/api/models/evidence/import";
 
 /// The maintenance routes this front answers.
-pub const ROUTES: &[&str] = &[RELOAD, EVIDENCE, EVIDENCE_IMPORT, evidence_recheck::PATH];
+pub const ROUTES: &[&str] = &[
+    RELOAD,
+    PRUNE,
+    EVIDENCE,
+    EVIDENCE_IMPORT,
+    evidence_recheck::PATH,
+];
 
 const MISSING_TOKEN_WARNING: &str = "[inference-gate] INFERENCE_GATE_ADMIN_TOKEN is not set: the memory watchdog cannot unload a model that is answering a request, and \"unload anyway\" on the Models page is unavailable. Set it to the admin token of the gate.";
 
 /// The methods the front answers on each (routes.toml); every other method stays Node's.
 pub fn owned(method: &Method, path: &str) -> bool {
     match path {
-        RELOAD | EVIDENCE_IMPORT | evidence_recheck::PATH => method == Method::POST,
+        RELOAD | PRUNE | EVIDENCE_IMPORT | evidence_recheck::PATH => method == Method::POST,
         EVIDENCE => method == Method::GET,
         _ => false,
     }
@@ -177,6 +185,8 @@ pub struct Maint {
     pub inbox_dir: Option<PathBuf>,
     /// model -> (when, live identity), the 30 s identity cache.
     pub(crate) identities: std::sync::Mutex<Vec<(String, Instant, Option<evidence_live::Live>)>>,
+    /// The no-model-selected default (model_state.rs).
+    pub(crate) last_loaded: model_state::LastLoaded,
     /// The model-card source: `https://huggingface.co`, or the QA source.
     pub(crate) card_base: String,
     pub(crate) source_client: reqwest::Client,
@@ -339,6 +349,7 @@ impl Maint {
             evidence,
             inbox_dir,
             identities: std::sync::Mutex::new(Vec::new()),
+            last_loaded: model_state::LastLoaded::default(),
             card_base,
             source_client,
             node,
@@ -632,6 +643,23 @@ pub async fn serve(
                 Err(_) => reply::error(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Could not reload model profiles.",
+                    true,
+                ),
+            }
+        }
+        PRUNE => {
+            // `!modelManager.enabled` precedes the work; the route reads no body.
+            if app.config.sizing.kind() != server_stats::Kind::LlamaCpp {
+                return reply::error(StatusCode::NOT_FOUND, "model management is disabled", true);
+            }
+            // The work outlives the request: a client that leaves does not strand a half-done prune.
+            let (app, user) = (Arc::clone(app), id.user.id.clone());
+            let job = tokio::spawn(async move { crate::prune_missing::run(&app, &user).await });
+            match job.await {
+                Ok(a) => text(a.status, a.body),
+                Err(_) => reply::error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Could not remove missing presets.",
                     true,
                 ),
             }

@@ -29,7 +29,6 @@ const SESSION: &str = "synthetic-lx-session-0001";
 const CSRF: &str = "synthetic-lx-csrf";
 const ORIGIN: &str = "https://front.example.test";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
-const LEASE: &str = "0123456789abcdef0123456789abcdef";
 
 fn hex(s: &str) -> String {
     Sha256::digest(s.as_bytes())
@@ -90,13 +89,47 @@ async fn server(answer: Answer) -> (String, Log) {
     (base, log)
 }
 
-/// Node's lease route: `grant` for the ask, then renew and release.
+const LEASE_PATH: &str = "/internal/inference-admission/lease";
+
+/// Row H: this process issues the lease id and Node's latch takes it at `PUT <path>/<id>`; a Node start
+/// is registered with the authority first, as the real session route does.
+fn session() {
+    engine_admission::authority::global()
+        .node_session("diary-local-exchange-test", 1)
+        .unwrap();
+}
+
+/// The log's line for the lease's take (`PUT .../<id> <body>`), with the id the authority issued.
+fn taken(held: &Log) -> Vec<String> {
+    held.lock()
+        .unwrap()
+        .iter()
+        .filter(|l| l.starts_with(&format!("PUT {LEASE_PATH}/")))
+        .cloned()
+        .collect()
+}
+
+fn released(held: &Log) -> bool {
+    held.lock()
+        .unwrap()
+        .iter()
+        .any(|l| l.starts_with(&format!("DELETE {LEASE_PATH}/")))
+}
+
+/// Node's lease route: `grant` for the ask (a 201 grants the id the front issued), then renew and release.
 async fn node(grant: (u16, &'static str)) -> (String, Log) {
-    server(Arc::new(move |path, _| {
-        if path == "/internal/inference-admission/lease" {
-            (grant.0, grant.1.to_owned(), "application/json")
-        } else if path.ends_with("/renew") {
+    session();
+    server(Arc::new(move |path, body| {
+        if path.ends_with("/renew") {
             (200, r#"{"ttlMs":30000}"#.into(), "application/json")
+        } else if path.starts_with(&format!("{LEASE_PATH}/")) && !body.is_empty() {
+            let id = path.rsplit('/').next().unwrap_or("");
+            let reply = if grant.0 == 201 {
+                format!(r#"{{"lease":"{id}","ttlMs":30000}}"#)
+            } else {
+                grant.1.to_owned()
+            };
+            (grant.0, reply, "application/json")
         } else {
             (204, String::new(), "application/json")
         }
@@ -186,7 +219,7 @@ async fn settle(check: impl Fn() -> bool) -> bool {
     check()
 }
 
-const GRANT: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000}"#;
+const GRANT: &str = "";
 
 #[tokio::test]
 async fn nothing_is_held_before_the_gate_the_addon_and_the_method() {
@@ -241,12 +274,11 @@ async fn node_refusals_keep_their_status_and_words_and_the_sidecar_hears_nothing
         assert_eq!(res.status().as_u16(), status);
         assert_eq!(res.headers().get("cache-control").unwrap(), "no-store");
         assert_eq!(text(res).await, body);
-        let held = held.lock().unwrap().clone();
-        assert_eq!(
-            held,
-            vec![format!(
-                r#"POST /internal/inference-admission/lease {{"diaryExchange":{{"user":"{USER}"}}}}"#
-            )]
+        let taken = taken(&held);
+        assert_eq!(taken.len(), 1, "{taken:?}");
+        assert!(
+            taken[0].ends_with(&format!(r#" {{"diaryExchange":{{"user":"{USER}"}}}}"#)),
+            "{taken:?}"
         );
     }
     assert!(heard.lock().unwrap().is_empty());
@@ -277,18 +309,16 @@ async fn the_lease_names_the_account_and_ends_with_the_stream() {
         text(res).await,
         "data: {\"type\":\"status\",\"text\":\"Connecting to diary companion…\"}\n\ndata: {\"type\":\"status\",\"text\":\"Opening diary context…\"}\n\ndata: {\"type\":\"done\"}\n\n"
     );
-    let release = format!("DELETE /internal/inference-admission/lease/{LEASE} ");
     assert!(
-        settle(|| held.lock().unwrap().contains(&release)).await,
+        settle(|| released(&held)).await,
         "{:?}",
         held.lock().unwrap()
     );
-    let held = held.lock().unwrap().clone();
-    assert_eq!(
-        held[0],
-        format!(
-            r#"POST /internal/inference-admission/lease {{"diaryExchange":{{"user":"{USER}"}}}}"#
-        )
+    let taken = taken(&held);
+    assert_eq!(taken.len(), 1, "{taken:?}");
+    assert!(
+        taken[0].ends_with(&format!(r#" {{"diaryExchange":{{"user":"{USER}"}}}}"#)),
+        "{taken:?}"
     );
     let heard = heard.lock().unwrap().clone();
     assert_eq!(
@@ -314,6 +344,5 @@ async fn an_unstreamed_exchange_relays_the_reply_and_gives_the_lease_back() {
         "application/json"
     );
     assert_eq!(text(res).await, r#"{"reply":"ok"}"#);
-    let release = format!("DELETE /internal/inference-admission/lease/{LEASE} ");
-    assert!(settle(|| held.lock().unwrap().contains(&release)).await);
+    assert!(settle(|| released(&held)).await);
 }

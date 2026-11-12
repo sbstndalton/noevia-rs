@@ -160,3 +160,19 @@ pub fn default_reply(path: &str) -> (u16, String) {
         _ => (404, "{}".into()),
     }
 }
+
+/// Row H: this process issues the lease id and Node's latch takes it at `PUT <path>/<id>` (answering the id
+/// it latched); a Node start is registered with the authority first, as its session route does.
+pub fn node_session() {
+    engine_admission::authority::global()
+        .node_session("embedding-worker-test", 1)
+        .unwrap();
+}
+
+/// A synthetic Node's answer to a lease take: `Some` for the take of the id in `path` (the one request
+/// with a body), `None` for anything else.
+pub fn lease_take(path: &str, body: &str) -> Option<(u16, String)> {
+    let id = path.strip_prefix("/internal/inference-admission/lease/")?;
+    (!body.is_empty() && !id.contains('/'))
+        .then(|| (201, format!(r#"{{"lease":"{id}","ttlMs":30000}}"#)))
+}

@@ -21,6 +21,7 @@
 //! built from them. This crate has no HTTP; the front maps [`Error`] to statuses.
 
 pub mod backing;
+pub mod events;
 mod lists;
 mod pages;
 pub mod tools;

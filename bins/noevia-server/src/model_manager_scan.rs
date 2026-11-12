@@ -60,6 +60,16 @@ impl Loader {
         query: &str,
         timeout: Duration,
     ) -> Option<(StatusCode, Option<JValue>)> {
+        self.send_bounded(Method::GET, path, query, timeout).await
+    }
+
+    async fn send_bounded(
+        &self,
+        method: Method,
+        path: &str,
+        query: &str,
+        timeout: Duration,
+    ) -> Option<(StatusCode, Option<JValue>)> {
         let base = self.base.as_ref()?;
         let endpoint = if query.is_empty() {
             format!("{base}{path}")
@@ -73,7 +83,7 @@ impl Loader {
         }
         let mut request = self
             .client
-            .get(url)
+            .request(method, url)
             .header(header::CONTENT_TYPE, "application/json")
             .timeout(timeout);
         if let Some(token) = &self.token {
@@ -99,6 +109,136 @@ impl Loader {
         let value = wtf16::parse(&text).unwrap_or_else(|_| JValue::Str(text.into_owned()));
         Some((status, Some(value)))
     }
+
+    /// Core's freshFolderScan: `GET /api/v1/models` now, the `models` array of a 2xx answer, else `None`.
+    pub async fn fresh_scan(&self) -> Option<Vec<JValue>> {
+        let (status, body) = self
+            .get_bounded("/api/v1/models", "", SECTIONS_WAIT)
+            .await?;
+        match body?.get("models") {
+            JValue::Arr(models) if status.is_success() => Some(models.clone()),
+            _ => None,
+        }
+    }
+
+    /// `GET /api/v1/sections`, as Core's presetSections (server/routes/models.cjs): `None` without a
+    /// loader, on a non-2xx answer or when `sections` is not an array. An entry is a name or an
+    /// object; `hasFile` counts only as a JSON boolean.
+    pub async fn sections(&self) -> Option<Sections> {
+        let (status, body) = self
+            .get_bounded("/api/v1/sections", "", SECTIONS_WAIT)
+            .await?;
+        let body = body?;
+        let JValue::Arr(items) = body.get("sections") else {
+            return None;
+        };
+        if !status.is_success() {
+            return None;
+        }
+        let sections = items
+            .iter()
+            .map(|x| match x {
+                JValue::Str(name) => Section {
+                    name: Some(name.to_string()),
+                    has_file: None,
+                },
+                other => Section {
+                    name: other.get("name").as_str().map(str::to_owned),
+                    has_file: match other.get("hasFile") {
+                        JValue::Bool(b) => Some(*b),
+                        _ => None,
+                    },
+                },
+            })
+            .collect();
+        let revision = match body.get("revision") {
+            JValue::Str(r) if !r.is_empty() => Some(r.to_string()),
+            _ => None,
+        };
+        Some(Sections { sections, revision })
+    }
+
+    /// `DELETE /api/v1/sections/{name}?baseRevision=`; `true` on a 2xx answer, `false` on anything
+    /// else, including no answer.
+    pub async fn delete_section(&self, name: &str, base_revision: Option<&str>) -> bool {
+        let path = format!("/api/v1/sections/{}", encode_component(name));
+        let query = base_revision
+            .map(|r| format!("baseRevision={}", encode_component(r)))
+            .unwrap_or_default();
+        matches!(
+            self.send_bounded(Method::DELETE, &path, &query, SECTIONS_WAIT)
+                .await,
+            Some((status, _)) if status.is_success()
+        )
+    }
+
+    /// Core's removePresetSection: only a section the loader lists is ever deleted, under the revision it
+    /// listed, and with `only_without_file` one the loader does not say has no file is kept
+    /// (`has_file: Some(true)` when it says it has one). Never fails; `removed` is false for no loader,
+    /// no listing, no such section or a refused delete.
+    pub async fn remove_section(&self, name: &str, only_without_file: bool) -> Removal {
+        let none = Removal {
+            removed: false,
+            has_file: None,
+        };
+        if !self.configured() || name.is_empty() {
+            return none;
+        }
+        let Some(listing) = self.sections().await else {
+            return none;
+        };
+        let Some(section) = listing
+            .sections
+            .iter()
+            .find(|s| s.name.as_deref() == Some(name))
+        else {
+            return none;
+        };
+        if only_without_file && section.has_file != Some(false) {
+            return Removal {
+                removed: false,
+                has_file: (section.has_file == Some(true)).then_some(true),
+            };
+        }
+        Removal {
+            removed: self.delete_section(name, listing.revision.as_deref()).await,
+            has_file: None,
+        }
+    }
+}
+
+const SECTIONS_WAIT: Duration = Duration::from_secs(15);
+
+/// One models.ini section as the loader lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Section {
+    pub name: Option<String>,
+    pub has_file: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sections {
+    pub sections: Vec<Section>,
+    pub revision: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Removal {
+    pub removed: bool,
+    pub has_file: Option<bool>,
+}
+
+/// JavaScript's encodeURIComponent: everything but letters, digits and `-_.!~*'()` is escaped.
+fn encode_component(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for b in text.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) {
+            out.push(char::from(b));
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
 }
 fn error(status: StatusCode, message: &str) -> Response<Body> {
     reply::error(status, message, true)

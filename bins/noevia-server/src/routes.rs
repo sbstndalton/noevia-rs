@@ -1512,6 +1512,7 @@ mod tests {
                 (crate::inference_machines::PATH, &[][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
+                (crate::model_maint::PRUNE, &["POST"][..]),
                 (crate::reranker_routes::PATH, &[][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]

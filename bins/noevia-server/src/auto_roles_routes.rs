@@ -595,6 +595,8 @@ fn clear_all(writer: &Writer, data_dir: &Path, user: &str, name: &str) -> Result
 
 pub fn store_route(store: crate::project_store::Store, app: Option<Arc<App>>) -> axum::Router {
     let proof_store = store.clone();
+    let forget_store = store.clone();
+    let forget_app = app.clone();
     axum::Router::new()
         .route(
             "/v1/auto-roles/proof",
@@ -607,6 +609,29 @@ pub fn store_route(store: crate::project_store::Store, app: Option<Arc<App>>) ->
                     reply::json_text(
                         StatusCode::OK,
                         r#"{"capability":"rust-auto-roles-write"}"#.to_owned(),
+                        true,
+                    )
+                }
+            }),
+        )
+        .route(
+            "/v1/model-state/forget",
+            axum::routing::post(move |headers: axum::http::HeaderMap, raw: bytes::Bytes| {
+                let store = forget_store.clone();
+                let app = forget_app.clone();
+                async move {
+                    if !crate::project_store::authorised(&store, &headers) {
+                        return reply::error(StatusCode::UNAUTHORIZED, "unauthorized", true);
+                    }
+                    let Some(name) = input_forget(&raw) else {
+                        return bad("Invalid model-state operation.");
+                    };
+                    let Some(app) = app else {
+                        return unavailable();
+                    };
+                    reply::json_text(
+                        StatusCode::OK,
+                        forget_model(&app, &name).await.to_string(),
                         true,
                     )
                 }
@@ -628,25 +653,9 @@ pub fn store_route(store: crate::project_store::Store, app: Option<Arc<App>>) ->
                     let Some(app) = app else {
                         return unavailable();
                     };
-                    if node(&app, "invalidate", &serde_json::json!({}))
-                        .await
-                        .is_none()
-                    {
-                        return unavailable();
-                    }
-                    let writer_app = Arc::clone(&app);
-                    let done = tokio::task::spawn_blocking(move || {
-                        clear_all(&writer_app.auto_roles, &store.data_dir, &ask.0, &ask.1)
-                    })
-                    .await;
-                    if node(&app, "invalidate", &serde_json::json!({}))
-                        .await
-                        .is_none()
-                    {
-                        return unavailable();
-                    }
+                    let done = clear_role_references(&app, &store.data_dir, &ask.0, &ask.1).await;
                     match done {
-                        Ok(Ok(cleared)) => reply::json_text(
+                        Ok(cleared) => reply::json_text(
                             StatusCode::OK,
                             serde_json::json!({"cleared":cleared}).to_string(),
                             true,
@@ -656,6 +665,65 @@ pub fn store_route(store: crate::project_store::Store, app: Option<Arc<App>>) ->
                 }
             }),
         )
+}
+/// The cross-workspace auto-roles clear as one internal call (also behind `POST /v1/auto-roles/clear`):
+/// every role of every account on disk that names `name` is cleared, Core's role cache is invalidated
+/// before and after, and the roles cleared for `user` come back. `Err`: Core did not answer or a write
+/// failed.
+#[allow(clippy::result_unit_err)]
+pub async fn clear_role_references(
+    app: &Arc<App>,
+    data_dir: &Path,
+    user: &str,
+    name: &str,
+) -> Result<Vec<String>, ()> {
+    if node(app, "invalidate", &serde_json::json!({}))
+        .await
+        .is_none()
+    {
+        return Err(());
+    }
+    let writer_app = Arc::clone(app);
+    let (data_dir, user, name) = (data_dir.to_owned(), user.to_owned(), name.to_owned());
+    let done = tokio::task::spawn_blocking(move || {
+        clear_all(&writer_app.auto_roles, &data_dir, &user, &name)
+    })
+    .await;
+    if node(app, "invalidate", &serde_json::json!({}))
+        .await
+        .is_none()
+    {
+        return Err(());
+    }
+    done.map_err(|_| ())?
+}
+/// `POST /v1/model-state/forget` {name}: the one writer of the last-loaded model and the identity
+/// cache (model_maint/model_state.rs). Clears the front's copies, then asks Core to clear its own;
+/// `nodeCleared` is false when Core did not answer (an older Core keeps its copy until restart).
+pub(crate) async fn forget_model(app: &App, name: &str) -> serde_json::Value {
+    let cleared = app.config.maint.forget_model_local(name);
+    let node_cleared = app
+        .config
+        .research
+        .node_call(
+            "/internal/model-state/forget",
+            &serde_json::json!({ "name": name }),
+            std::time::Duration::from_secs(5),
+        )
+        .await
+        .is_some_and(|(status, _)| status == 200);
+    serde_json::json!({"lastLoadedCleared": cleared, "nodeCleared": node_cleared})
+}
+fn input_forget(raw: &[u8]) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_slice(raw).ok()?;
+    let o = v.as_object()?;
+    if o.len() != 1 {
+        return None;
+    }
+    o.get("name")?
+        .as_str()
+        .filter(|n| !n.is_empty())
+        .map(str::to_owned)
 }
 fn input_clear(raw: &[u8]) -> Option<(String, String)> {
     let ask = wtf16::parse(&String::from_utf8_lossy(raw)).ok()?;
@@ -732,7 +800,7 @@ mod tests {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod writer_tests {
     use super::*;
     #[test]
@@ -785,6 +853,37 @@ mod writer_tests {
             1,
             "staged files removed after a rejected CAS"
         );
+    }
+    /// Every row of the Node oracle (tests/model-state-oracle.cjs): the roles cleared for the
+    /// requesting account and the roles left on disk, for the account itself and for another
+    /// account that the request did not come from.
+    #[test]
+    fn matches_the_node_clear_oracle_in_the_current_and_every_other_workspace() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/model-state-node.json")).unwrap();
+        let a = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        let b = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        for row in fixture["rows"].as_array().unwrap() {
+            let root = tempfile::tempdir().unwrap();
+            let writer = Writer::default();
+            for user in [a, b] {
+                let dir = root.path().join("users").join(user);
+                std::fs::create_dir_all(&dir).unwrap();
+                if !row["before"].is_null() {
+                    std::fs::write(dir.join(FILE), row["before"].to_string()).unwrap();
+                }
+            }
+            let model = row["model"].as_str().unwrap();
+            let cleared = clear_all(&writer, root.path(), a, model).unwrap();
+            let want: Vec<String> = serde_json::from_value(row["cleared"].clone()).unwrap();
+            assert_eq!(cleared, want, "{}", row["name"]);
+            for user in [a, b] {
+                let after =
+                    wtf16::stringify(&read_roles(&root.path().join("users").join(user))).unwrap();
+                let after: serde_json::Value = serde_json::from_str(&after).unwrap();
+                assert_eq!(after, row["after"], "{} ({user})", row["name"]);
+            }
+        }
     }
     #[test]
     fn every_role_requires_chat_kind_even_when_unknown_names_are_permitted() {
