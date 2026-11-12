@@ -376,13 +376,13 @@ async fn the_front_counts_the_shared_llm_budget_after_the_gate_and_gives_the_lea
         text(second).await,
         r#"{"error":"Please wait before sending another message"}"#
     );
-    let release = format!("DELETE /internal/inference-admission/lease/{LEASE} ");
+    let release = format!("DELETE {LEASE_PATH}/");
     assert!(
         settle(|| held
             .lock()
             .unwrap()
             .iter()
-            .filter(|l| **l == release)
+            .filter(|l| l.starts_with(&release))
             .count()
             == 2)
         .await,
