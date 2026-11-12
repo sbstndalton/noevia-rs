@@ -61,6 +61,10 @@ impl World {
         std::fs::write(models.join("fx/fx.gguf"), vec![7u8; 2048]).unwrap();
         let ini = dir.path().join("models.ini");
         std::fs::write(&ini, "[fx]\nmodel=/models/fx/fx.gguf\nctx-size=4096\n").unwrap();
+        // Row H: a Node start is registered with this process's admission authority before any lease is issued.
+        engine_admission::authority::global()
+            .node_session("model-evidence-recheck-test", 1)
+            .unwrap();
         let state = Arc::new(Mutex::new(State::default()));
         let (s, p) = (Arc::clone(&state), ini.clone());
         let (port,router)=engine(Arc::new(move |req|match req.target.as_str(){
@@ -74,9 +78,10 @@ impl World {
             let st=s.lock().unwrap().clone();
             if req.method=="DELETE" {return Answer::Reply(204,String::new());}
             if req.target.ends_with("/renew"){return Answer::Reply(st.renew,"{}".into());}
-            if req.target=="/internal/inference-admission/lease" {
+            if req.method=="PUT" && req.target.starts_with("/internal/inference-admission/lease/") {
                 if st.admission == 0 { return Answer::Drop; }
-                return Answer::Reply(st.admission,if st.admission==201 {json!({"lease":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","ttlMs":st.ttl,"headers":{"x-noevia-lease":"syntheticLease1"}}).to_string()} else {json!({"error":"Synthetic budget or maintenance refusal"}).to_string()});
+                let id = req.target.rsplit('/').next().unwrap_or("").to_owned();
+                return Answer::Reply(st.admission,if st.admission==201 {json!({"lease":id,"ttlMs":st.ttl,"headers":{"x-noevia-lease":"syntheticLease1"}}).to_string()} else {json!({"error":"Synthetic budget or maintenance refusal"}).to_string()});
             }
             Answer::Reply(404,"{}".into())
         })).await;
@@ -235,7 +240,10 @@ async fn accepted_pixel_is_recorded_under_its_measured_identity_with_normal_admi
     );
     assert_eq!(payload["messages"][0]["content"][1]["image_url"]["url"],"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
     let node = w.node.lock().unwrap();
-    assert!(node[0].target == "/internal/inference-admission/lease");
+    assert!(node[0]
+        .target
+        .starts_with("/internal/inference-admission/lease/"));
+    assert_eq!(node[0].method, "PUT");
     assert_eq!(node[0].headers["x-noevia-store-token"], SECRET);
     assert!(!node[0].headers.contains_key("x-noevia-client-ip"));
     assert!(!node[0].headers.contains_key("x-forwarded-for"));
@@ -321,7 +329,15 @@ async fn lease_loss_and_changed_configuration_never_file_the_probes_result() {
     assert!(b["error"].as_str().unwrap().contains("lease ended"));
     assert!(started.elapsed() < Duration::from_millis(600));
     assert!(w.records().is_empty());
-    assert!(w.node.lock().unwrap().iter().any(|r| r.method == "DELETE"));
+    // The give-back to Node follows the refusal (row H: it runs when the lost lease is dropped), so wait a bounded time.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while !w.node.lock().unwrap().iter().any(|r| r.method == "DELETE") {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the lease was never given back to Node"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     let changed = World::new("llamacpp").await;
     changed.state.lock().unwrap().change = true;
     let (s, b) = changed.post(BODY, Some(ADMIN)).await;

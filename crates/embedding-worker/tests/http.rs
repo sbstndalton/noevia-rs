@@ -1,9 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod support;
 use embedding_worker::{fill::Embed, http::Http, service::Loader, Control, Target};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+use support::{lease_take, node_session, server};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -171,14 +173,19 @@ async fn redirects_public_endpoints_and_url_credentials_are_refused() {
 async fn embedding_admission_is_a_guard_only_lease_and_is_released() {
     let (engine, requests, engine_task) =
         stub(vec![(200, r#"{"data":[{"embedding":[1,0]}]}"#.into())]).await;
-    let (core, core_requests, core_task) = stub(vec![
-        (
-            201,
-            r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000}"#.into(),
-        ),
-        (204, "null".into()),
-    ])
+    node_session();
+    let core_requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let seen = std::sync::Arc::clone(&core_requests);
+    let core_server = server(move |path, body| {
+        seen.lock().unwrap().push(if body.is_empty() {
+            format!("DELETE {path}")
+        } else {
+            format!("PUT {path} {body}")
+        });
+        lease_take(path, body).unwrap_or((204, "null".into()))
+    })
     .await;
+    let core = core_server.base.clone();
     let http = Http::new(&engine, None, &engine, None)
         .unwrap()
         .with_admission(&core, "synthetic-token")
@@ -187,9 +194,9 @@ async fn embedding_admission_is_a_guard_only_lease_and_is_released() {
         .await
         .unwrap();
     engine_task.await.unwrap();
-    core_task.await.unwrap();
     assert_eq!(requests.lock().unwrap().len(), 1);
     let core = core_requests.lock().unwrap();
+    assert!(core[0].starts_with("PUT /internal/inference-admission/lease/"));
     assert!(core[0].contains("\"embedding\":true"));
     assert!(core[1].starts_with("DELETE /internal/inference-admission/lease/"));
 }
