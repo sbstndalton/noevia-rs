@@ -97,6 +97,11 @@ fn op_for(method: &str, path: &str) -> Option<Op> {
     }
 }
 
+/// Exact substantive credential operations; residual methods keep the outer identity gates.
+pub(crate) fn owns(method: &str, path: &str) -> bool {
+    op_for(method, path).is_some()
+}
+
 pub(crate) fn answer(status: u16, body: &JValue) -> Response<Body> {
     reply::json_text(
         StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY),
@@ -370,6 +375,35 @@ fn word(body: &JValue, key: &str, max: usize) -> Option<String> {
     }
 }
 
+/// `POST /v1/mcp/discovery { force?, generation? }` (sbstndalton/noevia row T): what discovery knows, for
+/// the chat process's tool executor and picker. `{ unchanged: true, generation }` when the caller already
+/// holds the current generation. Fails closed: when discovery cannot answer (no data directory, no
+/// credential broker, a run that did not finish), 503 and no tool list at all, never the last one.
+async fn discovery_op(app: &Arc<App>, body: &JValue) -> Response<Body> {
+    let Some(handle) = crate::mcp_discovery_backend::handle(app) else {
+        return internal_error(503, "unavailable");
+    };
+    let force = body.get("force").as_bool() == Some(true);
+    let known = body.get("generation").as_num();
+    match handle.source.discover(force).await {
+        Ok(snapshot)
+            if known == Some(snapshot.generation as f64)
+                && body.get("incarnation").as_str() == Some(snapshot.incarnation.as_str()) =>
+        {
+            internal(
+                200,
+                &JValue::obj([
+                    ("unchanged", JValue::Bool(true)),
+                    ("incarnation", JValue::Str(snapshot.incarnation.clone())),
+                    ("generation", JValue::Num(snapshot.generation as f64)),
+                ]),
+            )
+        }
+        Ok(snapshot) => internal(200, &snapshot.to_json()),
+        Err(_) => internal_error(503, "unavailable"),
+    }
+}
+
 /// `POST /v1/mcp/<op>` after the store secret was checked.
 pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Response<Body> {
     let Some(app) = app else {
@@ -382,6 +416,9 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
         Ok(b @ JValue::Obj(_)) => b,
         _ => return internal_error(400, "invalid JSON"),
     };
+    if op == "discovery" {
+        return discovery_op(&app, &body).await;
+    }
     mcp.sweep_once(&app).await;
     let user = word(&body, "user", 256);
     let server = word(&body, "server", 256);

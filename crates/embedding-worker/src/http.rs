@@ -238,6 +238,160 @@ impl Http {
         }
         Ok(())
     }
+    pub async fn outbox_ready(&self, base: &str, token: &str, start: &str) -> Result<bool, String> {
+        let (status, body) = self
+            .request(
+                api(&url(base)?, "/internal/embedding-worker-owner")?,
+                Method::GET,
+                headers(Some(token), "x-noevia-store-token")?,
+                None,
+                Duration::from_secs(3),
+                8192,
+            )
+            .await?;
+        Ok(status == 200
+            && body.get("protocol").and_then(Value::as_str) == Some("rust-embedding-worker-v1")
+            && body.get("nodeWorkersStopped") == Some(&Value::Bool(true))
+            && body.get("start").and_then(Value::as_str) == Some(start)
+            && body.get("indexOutboxStopped") == Some(&Value::Bool(true))
+            && body.get("foregroundBusy") == Some(&Value::Bool(false)))
+    }
+    pub async fn media_ready(
+        &self,
+        base: &str,
+        token: &str,
+        start: &str,
+        foreground: bool,
+    ) -> Result<bool, String> {
+        let (status, body) = self
+            .request(
+                api(&url(base)?, "/internal/embedding-worker-owner")?,
+                Method::GET,
+                headers(Some(token), "x-noevia-store-token")?,
+                None,
+                Duration::from_secs(3),
+                8192,
+            )
+            .await?;
+        Ok(status == 200
+            && body.get("protocol").and_then(Value::as_str) == Some("rust-embedding-worker-v1")
+            && body.get("start").and_then(Value::as_str) == Some(start)
+            && body.get("mediaWorkersStopped") == Some(&Value::Bool(true))
+            && (!foreground || body.get("foregroundBusy") == Some(&Value::Bool(false))))
+    }
+    /// Notify the still-owned media scheduler without delegating any outbox work.
+    pub async fn source_changed(
+        &self,
+        base: &str,
+        token: &str,
+        start: &str,
+        user: &str,
+        project: &str,
+        file: &str,
+    ) -> Result<(), String> {
+        let (status, body) = self
+            .request(
+                api(
+                    &url(base)?,
+                    "/internal/embedding-worker-owner/source-changed",
+                )?,
+                Method::POST,
+                headers(Some(token), "x-noevia-store-token")?,
+                Some(
+                    js_json::wtf16::stringify(&js_json::JValue::obj([
+                        ("start", js_json::JValue::from(start)),
+                        ("user", js_json::JValue::from(user)),
+                        ("project", js_json::JValue::from(project)),
+                        ("file", js_json::JValue::from(file)),
+                    ]))
+                    .ok_or_else(err)?,
+                ),
+                Duration::from_secs(3),
+                8192,
+            )
+            .await?;
+        if status == 200
+            && body.get("start").and_then(Value::as_str) == Some(start)
+            && body.get("protocol").and_then(Value::as_str) == Some("rust-embedding-worker-v1")
+            && body.get("notified") == Some(&Value::Bool(true))
+        {
+            Ok(())
+        } else {
+            Err("media notification unavailable".into())
+        }
+    }
+    /// One image request, using the same admission and ownership authority as text.
+    pub async fn media(
+        &self,
+        target: &Target,
+        model: &str,
+        part: Value,
+        control: &Control,
+    ) -> Result<Vec<f32>, String> {
+        self.authorize(control).await?;
+        let cancel = model_stream::Cancel::new();
+        let lease = if let Some(admission) = &self.admission {
+            Some(tokio::select! {
+                grant=admission.enter(Ask::Embedding {model}, &cancel)=>grant.map_err(|_| "embedding admission refused".to_owned())?,
+                _=control.cancelled()=>{cancel.cancel();return Err(err());}
+            })
+        } else {
+            None
+        };
+        let operation = async {
+            let (base, headers) = self.target(target)?;
+            let (status, body) = self.request(api(&base, "/v1/embeddings")?, Method::POST, headers, Some(serde_json::json!({"model":model,"input":[{"content":[part]}],"encoding_format":"float"}).to_string()), Duration::from_millis(crate::media_policy::media_timeout_ms(std::env::var("RAG_MEDIA_EMBED_TIMEOUT_MS").ok().as_deref())), 4*1024*1024).await?;
+            if !(200..300).contains(&status) {
+                return Err(err());
+            }
+            let data = body
+                .get("data")
+                .and_then(Value::as_array)
+                .filter(|v| v.len() == 1)
+                .ok_or_else(err)?;
+            let vector = data
+                .first()
+                .and_then(|v| v.get("embedding"))
+                .and_then(Value::as_array)
+                .ok_or_else(err)?;
+            vector
+                .iter()
+                .map(|v| {
+                    v.as_f64()
+                        .map(|v| v as f32)
+                        .filter(|v| v.is_finite())
+                        .ok_or_else(err)
+                })
+                .collect()
+        };
+        let result = if let Some(lease) = lease {
+            let result = tokio::select! {r=operation=>r,_=lease.lost().cancelled()=>Err(err()),_=control.cancelled()=>{cancel.cancel();Err(err())}};
+            lease.release().await;
+            result
+        } else {
+            tokio::select! {r=operation=>r,_=control.cancelled()=>Err(err())}
+        };
+        result
+    }
+    pub async fn release_media(&self, target: &Target, alias: &str) {
+        if alias == target.model {
+            return;
+        }
+        if let Ok((base, headers)) = self.target(target) {
+            if let Ok(endpoint) = api(&base, "/models/unload") {
+                let _ = self
+                    .request(
+                        endpoint,
+                        Method::POST,
+                        headers,
+                        Some(serde_json::json!({"model":alias}).to_string()),
+                        Duration::from_secs(10),
+                        4096,
+                    )
+                    .await;
+            }
+        }
+    }
     async fn once(&self, target: &Target, input: &[Vec<u16>]) -> Result<Vec<Vec<f32>>, String> {
         let (base, headers) = self.target(target)?;
         let mut body = format!(

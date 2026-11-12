@@ -1,0 +1,101 @@
+# The prototype's routing table, with model names and paths made generic: every key it uses must parse.
+[router]
+host = "127.0.0.1"
+port = 18090
+
+[defaults]
+ready_timeout = 600
+stop_timeout = 45
+
+
+[[models]]
+name = "dense-9b"
+engine = "llamacpp"
+devices = "renderD128"
+notes = "synthetic fixture entry"
+cmd = "exec {dir}/engines/llama.sh 0 models/example/model.gguf 32768 18190 -- --alias dense-9b"
+proxy = "http://127.0.0.1:18190"
+health = "/health"
+health_expect = '"ok"'
+stop = "docker stop -t 20 nrouter-llama"
+containers = ["nrouter-llama"]
+
+[[models]]
+name = "dense-12b"
+engine = "llamacpp"
+devices = "renderD128"
+notes = "synthetic fixture entry"
+cmd = "exec {dir}/engines/llama.sh 0 models/example/model.gguf 32768 18190 -- --alias dense-12b"
+proxy = "http://127.0.0.1:18190"
+health_expect = '"ok"'
+stop = "docker stop -t 20 nrouter-llama"
+containers = ["nrouter-llama"]
+
+[[models]]
+name = "dense-27b"
+engine = "llamacpp"
+devices = "renderD128+renderD129"
+notes = "synthetic fixture entry"
+cmd = "SPLIT=tensor exec {dir}/engines/llama.sh 01 models/example/model.gguf 32768 18190 GGML_SYCL_DEV2DEV_MEMCPY=2 -- --alias dense-27b"
+proxy = "http://127.0.0.1:18190"
+health_expect = '"ok"'
+stop = "docker stop -t 20 nrouter-llama"
+containers = ["nrouter-llama"]
+
+[[models]]
+name = "moe-35b"
+engine = "llamacpp"
+devices = "renderD128+renderD129"
+notes = "synthetic fixture entry"
+cmd = "SPLIT=tensor exec {dir}/engines/llama.sh 01 models/example/model.gguf 32768 18190 GGML_SYCL_DEV2DEV_MEMCPY=2 -- --alias moe-35b"
+proxy = "http://127.0.0.1:18190"
+health_expect = '"ok"'
+stop = "docker stop -t 20 nrouter-llama"
+containers = ["nrouter-llama"]
+
+[[models]]
+name = "moe-26b"
+engine = "llamacpp"
+devices = "renderD128+renderD129"
+notes = "synthetic fixture entry"
+cmd = "SPLIT=layer exec {dir}/engines/llama.sh 01 models/example/model.gguf 32768 18190 -- --alias moe-26b"
+proxy = "http://127.0.0.1:18190"
+health_expect = '"ok"'
+stop = "docker stop -t 20 nrouter-llama"
+containers = ["nrouter-llama"]
+
+
+[[models]]
+name = "tiered-a-iq2"
+engine = "strata"
+aliases = ["tiered-a"]
+devices = "renderD128+renderD129"
+notes = "synthetic fixture entry"
+cmd = "exec /opt/example/strata/venv/bin/python /opt/example/strata/Strata/sycl/serve/server_intel.py --engine strata --config {dir}/engines/strata/tiered-a-iq2.json --host 127.0.0.1 --port 18191 --offline"
+proxy = "http://127.0.0.1:18191"
+health = "/health"
+health_expect = '"loaded": true'
+ready_timeout = 900
+containers = ["nrouter-strata"]
+
+[[models]]
+name = "tiered-a-iq3"
+engine = "strata"
+devices = "renderD128+renderD129"
+notes = "synthetic fixture entry"
+cmd = "exec /opt/example/strata/venv/bin/python /opt/example/strata/Strata/sycl/serve/server_intel.py --engine strata --config {dir}/engines/strata/tiered-a-iq3.json --host 127.0.0.1 --port 18191 --offline"
+proxy = "http://127.0.0.1:18191"
+health_expect = '"loaded": true'
+ready_timeout = 900
+containers = ["nrouter-strata"]
+
+[[models]]
+name = "moe-35b-tiered"
+engine = "strata"
+enabled = false
+devices = "renderD128+renderD129"
+notes = "synthetic fixture entry"
+cmd = "exec /opt/example/strata/venv/bin/python /opt/example/strata/Strata/sycl/serve/server_intel.py --engine strata --config {dir}/engines/strata/moe-35b.json --host 127.0.0.1 --port 18191 --offline"
+proxy = "http://127.0.0.1:18191"
+health_expect = '"loaded": true'
+containers = ["nrouter-strata"]

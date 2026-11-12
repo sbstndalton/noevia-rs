@@ -1,0 +1,3043 @@
+[
+  {
+    "role": null,
+    "method": "GET",
+    "query": "",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "GET",
+    "query": "?health=1",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "GET",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "GET",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "GET",
+    "query": "",
+    "body": null,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "GET",
+    "query": "",
+    "body": [],
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "GET",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "GET",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "GET",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "GET",
+    "query": "",
+    "invalid": true,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "?health=1",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "",
+    "body": null,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "",
+    "body": [],
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "HEAD",
+    "query": "",
+    "invalid": true,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "?health=1",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "",
+    "body": null,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "",
+    "body": [],
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "POST",
+    "query": "",
+    "invalid": true,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "?health=1",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "",
+    "body": null,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "",
+    "body": [],
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PUT",
+    "query": "",
+    "invalid": true,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "?health=1",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "",
+    "body": null,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "",
+    "body": [],
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "PATCH",
+    "query": "",
+    "invalid": true,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "?health=1",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "",
+    "body": null,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "",
+    "body": [],
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "DELETE",
+    "query": "",
+    "invalid": true,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "?health=1",
+    "body": {},
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "",
+    "body": null,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "",
+    "body": [],
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": null,
+    "method": "OPTIONS",
+    "query": "",
+    "invalid": true,
+    "status": 401,
+    "output": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "?health=1",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "",
+    "body": null,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "",
+    "body": [],
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "GET",
+    "query": "",
+    "invalid": true,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "?health=1",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "",
+    "body": null,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "",
+    "body": [],
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "HEAD",
+    "query": "",
+    "invalid": true,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "?health=1",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "",
+    "body": null,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "",
+    "body": [],
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "POST",
+    "query": "",
+    "invalid": true,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "?health=1",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "",
+    "body": null,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "",
+    "body": [],
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PUT",
+    "query": "",
+    "invalid": true,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "?health=1",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "",
+    "body": null,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "",
+    "body": [],
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "PATCH",
+    "query": "",
+    "invalid": true,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "?health=1",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "",
+    "body": null,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "",
+    "body": [],
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "DELETE",
+    "query": "",
+    "invalid": true,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "?health=1",
+    "body": {},
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "",
+    "body": null,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "",
+    "body": [],
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "member",
+    "method": "OPTIONS",
+    "query": "",
+    "invalid": true,
+    "status": 403,
+    "output": {
+      "error": "Administrator required"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "",
+    "body": {},
+    "status": 200,
+    "output": {
+      "machines": [
+        {
+          "id": "local",
+          "builtIn": true,
+          "name": null,
+          "address": null,
+          "services": [
+            "chatFast",
+            "chatSmart",
+            "chatCode",
+            "chatCreative",
+            "vision",
+            "decision",
+            "sensitivity",
+            "embedding",
+            "reranker",
+            "ocr",
+            "documents"
+          ]
+        }
+      ],
+      "services": [
+        {
+          "id": "chatFast",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatSmart",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCode",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCreative",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "vision",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "decision",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "sensitivity",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "embedding",
+          "mode": "reindex",
+          "machine": "local"
+        },
+        {
+          "id": "reranker",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "ocr",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        },
+        {
+          "id": "documents",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        }
+      ]
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "?health=1",
+    "body": {},
+    "status": 200,
+    "output": {
+      "machines": [
+        {
+          "id": "local",
+          "builtIn": true,
+          "name": null,
+          "address": null,
+          "services": [
+            "chatFast",
+            "chatSmart",
+            "chatCode",
+            "chatCreative",
+            "vision",
+            "decision",
+            "sensitivity",
+            "embedding",
+            "reranker",
+            "ocr",
+            "documents"
+          ]
+        }
+      ],
+      "services": [
+        {
+          "id": "chatFast",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatSmart",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCode",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCreative",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "vision",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "decision",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "sensitivity",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "embedding",
+          "mode": "reindex",
+          "machine": "local"
+        },
+        {
+          "id": "reranker",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "ocr",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        },
+        {
+          "id": "documents",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        }
+      ],
+      "health": {
+        "services": {},
+        "machines": {
+          "local": "idle"
+        },
+        "reasons": {},
+        "failing": {}
+      }
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 200,
+    "output": {
+      "tune": null
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 404,
+    "output": {
+      "error": "That machine is not on the list.",
+      "code": "unknownMachine"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "",
+    "body": null,
+    "status": 200,
+    "output": {
+      "machines": [
+        {
+          "id": "local",
+          "builtIn": true,
+          "name": null,
+          "address": null,
+          "services": [
+            "chatFast",
+            "chatSmart",
+            "chatCode",
+            "chatCreative",
+            "vision",
+            "decision",
+            "sensitivity",
+            "embedding",
+            "reranker",
+            "ocr",
+            "documents"
+          ]
+        }
+      ],
+      "services": [
+        {
+          "id": "chatFast",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatSmart",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCode",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCreative",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "vision",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "decision",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "sensitivity",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "embedding",
+          "mode": "reindex",
+          "machine": "local"
+        },
+        {
+          "id": "reranker",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "ocr",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        },
+        {
+          "id": "documents",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        }
+      ]
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "",
+    "body": [],
+    "status": 200,
+    "output": {
+      "machines": [
+        {
+          "id": "local",
+          "builtIn": true,
+          "name": null,
+          "address": null,
+          "services": [
+            "chatFast",
+            "chatSmart",
+            "chatCode",
+            "chatCreative",
+            "vision",
+            "decision",
+            "sensitivity",
+            "embedding",
+            "reranker",
+            "ocr",
+            "documents"
+          ]
+        }
+      ],
+      "services": [
+        {
+          "id": "chatFast",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatSmart",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCode",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCreative",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "vision",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "decision",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "sensitivity",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "embedding",
+          "mode": "reindex",
+          "machine": "local"
+        },
+        {
+          "id": "reranker",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "ocr",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        },
+        {
+          "id": "documents",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        }
+      ]
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 200,
+    "output": {
+      "machines": [
+        {
+          "id": "local",
+          "builtIn": true,
+          "name": null,
+          "address": null,
+          "services": [
+            "chatFast",
+            "chatSmart",
+            "chatCode",
+            "chatCreative",
+            "vision",
+            "decision",
+            "sensitivity",
+            "embedding",
+            "reranker",
+            "ocr",
+            "documents"
+          ]
+        }
+      ],
+      "services": [
+        {
+          "id": "chatFast",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatSmart",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCode",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCreative",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "vision",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "decision",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "sensitivity",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "embedding",
+          "mode": "reindex",
+          "machine": "local"
+        },
+        {
+          "id": "reranker",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "ocr",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        },
+        {
+          "id": "documents",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        }
+      ]
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 200,
+    "output": {
+      "machines": [
+        {
+          "id": "local",
+          "builtIn": true,
+          "name": null,
+          "address": null,
+          "services": [
+            "chatFast",
+            "chatSmart",
+            "chatCode",
+            "chatCreative",
+            "vision",
+            "decision",
+            "sensitivity",
+            "embedding",
+            "reranker",
+            "ocr",
+            "documents"
+          ]
+        }
+      ],
+      "services": [
+        {
+          "id": "chatFast",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatSmart",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCode",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCreative",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "vision",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "decision",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "sensitivity",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "embedding",
+          "mode": "reindex",
+          "machine": "local"
+        },
+        {
+          "id": "reranker",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "ocr",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        },
+        {
+          "id": "documents",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        }
+      ]
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 200,
+    "output": {
+      "machines": [
+        {
+          "id": "local",
+          "builtIn": true,
+          "name": null,
+          "address": null,
+          "services": [
+            "chatFast",
+            "chatSmart",
+            "chatCode",
+            "chatCreative",
+            "vision",
+            "decision",
+            "sensitivity",
+            "embedding",
+            "reranker",
+            "ocr",
+            "documents"
+          ]
+        }
+      ],
+      "services": [
+        {
+          "id": "chatFast",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatSmart",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCode",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCreative",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "vision",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "decision",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "sensitivity",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "embedding",
+          "mode": "reindex",
+          "machine": "local"
+        },
+        {
+          "id": "reranker",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "ocr",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        },
+        {
+          "id": "documents",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        }
+      ]
+    }
+  },
+  {
+    "role": "admin",
+    "method": "GET",
+    "query": "",
+    "invalid": true,
+    "status": 200,
+    "output": {
+      "machines": [
+        {
+          "id": "local",
+          "builtIn": true,
+          "name": null,
+          "address": null,
+          "services": [
+            "chatFast",
+            "chatSmart",
+            "chatCode",
+            "chatCreative",
+            "vision",
+            "decision",
+            "sensitivity",
+            "embedding",
+            "reranker",
+            "ocr",
+            "documents"
+          ]
+        }
+      ],
+      "services": [
+        {
+          "id": "chatFast",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatSmart",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCode",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "chatCreative",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "vision",
+          "mode": "chat",
+          "machine": "local"
+        },
+        {
+          "id": "decision",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "sensitivity",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "embedding",
+          "mode": "reindex",
+          "machine": "local"
+        },
+        {
+          "id": "reranker",
+          "mode": "runtime",
+          "machine": "local"
+        },
+        {
+          "id": "ocr",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        },
+        {
+          "id": "documents",
+          "mode": "runtime",
+          "machine": "local",
+          "enabled": false
+        }
+      ]
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "?health=1",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "",
+    "body": null,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "",
+    "body": [],
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "HEAD",
+    "query": "",
+    "invalid": true,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "",
+    "body": {},
+    "status": 400,
+    "output": {
+      "error": "action must be one of add, update, remove, assign, tune, tuneAbort",
+      "code": "invalidAction"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "?health=1",
+    "body": {},
+    "status": 400,
+    "output": {
+      "error": "action must be one of add, update, remove, assign, tune, tuneAbort",
+      "code": "invalidAction"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 200,
+    "output": {
+      "tune": null
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 400,
+    "output": {
+      "error": "That is not a part of noevia that can be assigned.",
+      "code": "unknownService"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "",
+    "body": null,
+    "status": 400,
+    "output": {
+      "error": "A JSON object is required"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "",
+    "body": [],
+    "status": 400,
+    "output": {
+      "error": "A JSON object is required"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 400,
+    "output": {
+      "error": "Give the machine a name of up to 60 characters.",
+      "code": "invalidName"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 404,
+    "output": {
+      "error": "That machine is not on the list.",
+      "code": "unknownMachine"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 400,
+    "output": {
+      "error": "Confirm the measurement: it sends a few short requests to that machine.",
+      "code": "confirmRequired"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "POST",
+    "query": "",
+    "invalid": true,
+    "status": 400,
+    "output": {
+      "error": "invalid JSON"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "?health=1",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "",
+    "body": null,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "",
+    "body": [],
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PUT",
+    "query": "",
+    "invalid": true,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "?health=1",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "",
+    "body": null,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "",
+    "body": [],
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "PATCH",
+    "query": "",
+    "invalid": true,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "?health=1",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "",
+    "body": null,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "",
+    "body": [],
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "DELETE",
+    "query": "",
+    "invalid": true,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "?health=1",
+    "body": {},
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "?tune=1",
+    "body": {
+      "action": "tuneAbort"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "?models=missing&port=8080",
+    "body": {
+      "action": "assign",
+      "service": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "",
+    "body": null,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "",
+    "body": [],
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "",
+    "body": {
+      "action": "add"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "",
+    "body": {
+      "action": "remove",
+      "id": "missing"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "",
+    "body": {
+      "action": "tune",
+      "confirm": false,
+      "service": "chatFast"
+    },
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  },
+  {
+    "role": "admin",
+    "method": "OPTIONS",
+    "query": "",
+    "invalid": true,
+    "status": 405,
+    "output": {
+      "error": "Method not allowed"
+    }
+  }
+]

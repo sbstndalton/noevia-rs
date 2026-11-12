@@ -53,11 +53,14 @@ const LOOK_EVERY: Duration = Duration::from_millis(100);
 
 /// The files Node publishes for the front and the marker: state of the running process that never
 /// belongs in a backup (the off-site walk leaves them out; so it does their `<name>.<pid>.<hex>.tmp`).
-pub const PUBLISHED_STATE: [&str; 4] = [
+pub const PUBLISHED_STATE: [&str; 5] = [
     "rag-status.json",
     "auto-roles-snapshot.json",
-    // sbstndalton/noevia#2202 round 2: the MCP discovery (mcp_discovery.rs).
+    // sbstndalton/noevia#2202 round 2: the MCP discovery catalogue Node used to publish (mcp_discovery.rs); an old
+    // Node's file is still state of a process, not data.
     "mcp-discovery.json",
+    // Row T: the chat process's toolbox facts (mcp_discovery.rs).
+    "toolbox-chat-facts.json",
     DEMAND_FILE,
 ];
 
@@ -481,10 +484,12 @@ mod demand_tests {
             "rag-status.json",
             "auto-roles-snapshot.json",
             "mcp-discovery.json",
+            "toolbox-chat-facts.json",
             "snapshot-demand",
             "rag-status.json.123.deadbeef.tmp",
             "auto-roles-snapshot.json.9.00ff.tmp",
             "mcp-discovery.json.9.00ff.tmp",
+            "toolbox-chat-facts.json.9.00ff.tmp",
             "snapshot-demand.4242.7.tmp",
         ] {
             assert!(is_published_state(name), "{name}");

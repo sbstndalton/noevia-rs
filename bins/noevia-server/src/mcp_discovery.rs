@@ -1,20 +1,36 @@
-//! What only Node's running MCP client knows, published for the front (sbstndalton/noevia#2202
-//! round 2): the toolboxes this deployment offers right now with their tools, the MCP servers' last
-//! discovery (a tool count, the first tools, the error), the configured boxes and two facts of the
-//! chat process (the coding harness is on; a repository is registered).
+//! The toolbox catalogue (sbstndalton/noevia row T): the toolboxes this deployment offers right now with
+//! their tools, the MCP servers' last discovery (a tool count, the first tools, the error), the
+//! configured boxes and two facts of the chat process (the coding harness is on; a repository is
+//! registered).
 //!
-//! Node's MCP client stays in Node (a chat's live sessions are chat-bound), so the tool lists per
-//! server come from `mcp-discovery.json`, written atomically by core `mcp-discovery-snapshot.cjs`
-//! while someone asks (the demand marker, snapshot.rs). A snapshot that is not provably current
-//! (missing, corrupt, older than two intervals) is **not ready**: the caller answers "being prepared"
+//! **MCP discovery is this process's** (`mcp_discovery_actor.rs`): the tool lists, the bound curated
+//! boxes and each server's last outcome are read from the actor, never from a file Node wrote. What only
+//! the chat process knows - the built-in boxes with their tool definitions, the connector boxes, the
+//! coding-harness facts and the prefill measurements - is the file `toolbox-chat-facts.json`, written
+//! atomically by core `toolbox-chat-facts.cjs` while someone asks (the demand marker, snapshot.rs). A
+//! facts file that is not provably current (missing, corrupt, older than two intervals), or a discovery
+//! that has not produced its first answer, is **not ready**: the caller answers "being prepared"
 //! (503), never an old catalogue. Everything per account (permissions, sign-ins, Drive, the project's
-//! selection) is read by the front itself at the time of the request, so none of it waits for Node.
+//! selection) is read by the front itself at the time of the request.
+//!
+//! [`compose`] is core `mcp-discovery-snapshot.cjs` `buildCatalogue` over those two sources, and
+//! [`picker_facts`] is the facts document the toolbox picker was built from when Node answered
+//! `/internal/toolbox-picker/facts` (that bridge is gone).
+use crate::mcp_discovery_actor::Snapshot;
+use crate::mcp_discovery_backend::Handle;
 use crate::{snapshot, App};
-use serde_json::Value;
+use js_json::{wtf16, JValue};
+use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
-pub const SNAPSHOT_FILE: &str = "mcp-discovery.json";
-pub const SNAPSHOT_KIND: &str = "mcp-discovery";
+pub const FACTS_FILE: &str = "toolbox-chat-facts.json";
+pub const FACTS_KIND: &str = "toolbox-chat-facts";
+/// How long a reader waits for a discovery in progress before it uses what is known (core
+/// `DISCOVERY_WAIT_MS`).
+const DISCOVERY_WAIT: Duration = Duration::from_millis(1500);
+/// Tools carried per box (core `MAX_BOX_TOOLS`).
+const MAX_BOX_TOOLS: usize = 500;
 
 /// One tool of an offered box.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +91,8 @@ pub struct Catalogue {
     pub boxes: Vec<BoxInfo>,
     pub manifest: Vec<ManifestBox>,
     pub servers: Vec<ServerInfo>,
+    /// All native offers, ordered and deduplicated per tool, independent of presentation limits.
+    pub offers: std::collections::HashMap<String, Vec<String>>,
 }
 
 impl Catalogue {
@@ -83,163 +101,383 @@ impl Catalogue {
     }
 }
 
-fn text(v: &Value, key: &str) -> Option<String> {
-    v.get(key).and_then(Value::as_str).map(str::to_owned)
+fn cut(value: &JValue, max: usize) -> String {
+    let text = match value {
+        JValue::Str(s) => s.clone(),
+        JValue::Undefined | JValue::Null => String::new(),
+        other => js_json::to_js_string(other).unwrap_or_default(),
+    };
+    js_json::js_slice(&text, max)
 }
 
-fn flag(v: &Value, key: &str) -> Option<bool> {
-    v.get(key).and_then(Value::as_bool)
+fn strings(v: &JValue) -> Vec<String> {
+    match v {
+        JValue::Arr(items) => items
+            .iter()
+            .filter_map(|x| x.as_str().map(str::to_owned))
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
-fn list<'a>(v: &'a Value, key: &str) -> Option<&'a Vec<Value>> {
-    v.get(key).and_then(Value::as_array)
+/// A box of either source, as the composition reads it.
+struct View<'a> {
+    id: String,
+    label: &'a JValue,
+    description: &'a JValue,
+    source: String,
+    in_app: &'a JValue,
+    server: Option<String>,
+    reads: Vec<String>,
+    tools: &'a [JValue],
 }
 
-/// The snapshot's body as a catalogue, or `None` when it is not of the shape the publisher writes.
-pub fn parse(body: &Value) -> Option<Catalogue> {
-    let boxes = list(body, "boxes")?
+fn view(b: &JValue) -> Option<View<'_>> {
+    let JValue::Obj(_) = b else {
+        return None;
+    };
+    Some(View {
+        id: b.get("id").as_str()?.to_owned(),
+        label: b.get("label"),
+        description: b.get("description"),
+        source: b.get("source").as_str().unwrap_or_default().to_owned(),
+        in_app: b.get("inApp"),
+        server: b
+            .get("server")
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned),
+        reads: strings(b.get("reads")),
+        tools: match b.get("tools") {
+            JValue::Arr(t) => t,
+            _ => &[],
+        },
+    })
+}
+
+fn tool_name(t: &JValue) -> Option<&str> {
+    t.get("function")
+        .get("name")
+        .as_str()
+        .filter(|n| !n.is_empty())
+}
+
+/// core `allToolboxes()`: the chat process's built-in boxes, then the discovered MCP boxes this
+/// deployment offers.
+fn all_boxes<'a>(
+    facts: &'a JValue,
+    snap: &'a Snapshot,
+    offered: &dyn Fn(&str) -> bool,
+) -> Option<Vec<View<'a>>> {
+    let JValue::Arr(builtin) = facts.get("builtin") else {
+        return None;
+    };
+    let mut out: Vec<View<'a>> = builtin.iter().map(view).collect::<Option<_>>()?;
+    out.extend(
+        snap.boxes
+            .iter()
+            .filter_map(view)
+            .filter(|b| offered(&b.id)),
+    );
+    Some(out)
+}
+
+/// core `isWriteTool`: a tool is a write unless some box declares it a read and no box lists it
+/// without declaring it one; a read the MCP server says writes is a write.
+fn write_names<'a>(boxes: &'a [View<'a>], snap: &'a Snapshot) -> impl Fn(&str) -> bool + 'a {
+    let mut writes: HashSet<&str> = HashSet::new();
+    for b in boxes {
+        let reads: HashSet<&str> = b.reads.iter().map(String::as_str).collect();
+        for t in b.tools {
+            if let Some(name) = tool_name(t) {
+                if !reads.contains(name) {
+                    writes.insert(name);
+                }
+            }
+        }
+    }
+    let mut read_only: HashSet<&str> = HashSet::new();
+    for b in boxes {
+        for n in &b.reads {
+            if !writes.contains(n.as_str()) {
+                read_only.insert(n.as_str());
+            }
+        }
+    }
+    let known: std::collections::HashMap<&str, Option<bool>> = snap
+        .tools()
+        .into_iter()
+        .map(|e| (e.name.as_str(), e.read_only))
+        .collect();
+    move |name| {
+        if !read_only.contains(name) {
+            return true;
+        }
+        // The server's positive "this is not read-only" is believed over our manifest.
+        known.get(name).copied().flatten() == Some(false)
+    }
+}
+
+/// core `buildCatalogue`: the catalogue from the chat process's facts and the front's discovery.
+pub fn compose(
+    facts: &JValue,
+    snap: &Snapshot,
+    offered: &dyn Fn(&str) -> bool,
+    nextcloud_origins: &[String],
+) -> Option<Catalogue> {
+    let boxes_in = all_boxes(facts, snap, offered)?;
+    let is_write = write_names(&boxes_in, snap);
+    let boxes = boxes_in
         .iter()
-        .map(|b| {
-            let tools = list(b, "tools")?
+        .map(|b| BoxInfo {
+            id: b.id.clone(),
+            label: cut(b.label, 200),
+            description: cut(b.description, 1000),
+            source: b.source.clone(),
+            in_app: b.source == "builtin" || b.in_app.as_bool() == Some(true),
+            server: b.server.clone(),
+            tools: b
+                .tools
                 .iter()
-                .map(|t| {
-                    Some(ToolInfo {
-                        name: text(t, "name")?,
-                        description: text(t, "description").unwrap_or_default(),
-                        write: flag(t, "write")?,
+                .filter(|t| tool_name(t).is_some())
+                .take(MAX_BOX_TOOLS)
+                .map(|t| ToolInfo {
+                    name: cut(t.get("function").get("name"), 128),
+                    description: cut(t.get("function").get("description"), 240),
+                    write: is_write(tool_name(t).unwrap_or_default()),
+                })
+                .collect(),
+        })
+        .collect();
+    let manifest = if snap.enabled {
+        snap.manifest
+            .iter()
+            .filter(|e| e.get("id").as_str().is_some_and(offered))
+            .map(|e| ManifestBox {
+                id: e.get("id").as_str().unwrap_or_default().to_owned(),
+                label: if e.get("label").truthy() {
+                    cut(e.get("label"), 200)
+                } else {
+                    cut(e.get("id"), 200)
+                },
+                description: cut(e.get("description"), 1000),
+                in_app: true,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let servers = snap
+        .servers
+        .iter()
+        .map(|f| {
+            let box_ = f
+                .spec
+                .directory
+                .then(|| {
+                    snap.boxes.iter().find(|b| {
+                        b.get("directory").as_bool() == Some(true)
+                            && b.get("server").as_str() == Some(f.spec.id.as_str())
+                            && b.get("id").as_str() == Some(f.spec.id.as_str())
                     })
                 })
-                .collect::<Option<Vec<_>>>()?;
-            Some(BoxInfo {
-                id: text(b, "id")?,
-                label: text(b, "label").unwrap_or_default(),
-                description: text(b, "description").unwrap_or_default(),
-                source: text(b, "source").unwrap_or_default(),
-                in_app: flag(b, "inApp").unwrap_or(false),
-                server: text(b, "server"),
+                .flatten();
+            let all: &[JValue] = match box_.map(|b| b.get("tools")) {
+                Some(JValue::Arr(t)) => t,
+                _ => &[],
+            };
+            let tools: Vec<(String, String)> = all
+                .iter()
+                .take(40)
+                .map(|t| {
+                    (
+                        cut(t.get("function").get("name"), 120),
+                        cut(t.get("function").get("description"), 240),
+                    )
+                })
+                .collect();
+            ServerInfo {
+                id: f.spec.id.clone(),
+                auth: f.spec.auth.clone(),
+                directory: f.spec.directory,
+                error: f
+                    .error
+                    .as_deref()
+                    .filter(|e| !e.is_empty())
+                    .map(|e| js_json::js_slice(e, 1000)),
+                tool_count: Some(f.tool_count as i64),
+                tools_truncated: all.len() > tools.len(),
                 tools,
-            })
+            }
         })
-        .collect::<Option<Vec<_>>>()?;
-    let manifest = list(body, "manifest")?
-        .iter()
-        .map(|m| {
-            Some(ManifestBox {
-                id: text(m, "id")?,
-                label: text(m, "label").unwrap_or_default(),
-                description: text(m, "description").unwrap_or_default(),
-                in_app: flag(m, "inApp").unwrap_or(false),
-            })
-        })
-        .collect::<Option<Vec<_>>>()?;
-    let servers = list(body, "servers")?
-        .iter()
-        .map(|s| {
-            Some(ServerInfo {
-                id: text(s, "id")?,
-                auth: text(s, "auth").unwrap_or_default(),
-                directory: flag(s, "directory").unwrap_or(false),
-                error: text(s, "error"),
-                tool_count: s.get("toolCount").and_then(Value::as_i64),
-                tools: list(s, "tools")
-                    .map(|tools| {
-                        tools
-                            .iter()
-                            .filter_map(|t| Some((text(t, "name")?, text(t, "description")?)))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                tools_truncated: flag(s, "toolsTruncated").unwrap_or(false),
-            })
-        })
-        .collect::<Option<Vec<_>>>()?;
-    let strings = |key: &str| -> Option<Vec<String>> {
-        list(body, key)?
-            .iter()
-            .map(|v| v.as_str().map(str::to_owned))
-            .collect()
-    };
+        .collect();
+    let mut offers: std::collections::HashMap<String, Vec<String>> = Default::default();
+    for entry in &snap.offers {
+        let ids = offers.entry(entry.name.clone()).or_default();
+        if !ids.contains(&entry.server) {
+            ids.push(entry.server.clone());
+        }
+    }
     Some(Catalogue {
-        mcp_enabled: flag(body, "mcpEnabled")?,
-        harness_enabled: flag(body, "harnessEnabled")?,
-        has_repositories: flag(body, "hasRepositories")?,
-        nextcloud_configured: flag(body, "nextcloudConfigured")?,
-        nextcloud_origins: strings("nextcloudOrigins")?,
-        defaults: strings("defaults")?,
-        connector_boxes: strings("connectorBoxes")?,
+        offers,
+        mcp_enabled: snap.enabled,
+        harness_enabled: facts.get("harnessEnabled").as_bool()?,
+        has_repositories: facts.get("hasRepositories").as_bool()?,
+        nextcloud_configured: snap.servers.iter().any(|f| f.spec.auth == "nextcloud"),
+        nextcloud_origins: nextcloud_origins.to_vec(),
+        defaults: strings(facts.get("defaults")),
+        connector_boxes: strings(facts.get("connectorBoxes")),
         boxes,
         manifest,
         servers,
     })
 }
 
-/// The current catalogue, asking Node to publish if it has stopped (the demand marker is touched; a
-/// request that finds Node idle waits a moment for the first file). `None`: not ready.
-pub async fn read(app: &Arc<App>) -> Option<Arc<Catalogue>> {
+/// The facts the picker is composed from (`server_projects::toolbox_picker::compose`): every offered box
+/// with its tool definitions, the connector boxes, the prefill measurements and the MCP status.
+pub fn picker_facts(
+    facts: &JValue,
+    snap: &Snapshot,
+    offered: &dyn Fn(&str) -> bool,
+) -> Option<JValue> {
+    let boxes_in = all_boxes(facts, snap, offered)?;
+    let boxes: Vec<JValue> = boxes_in
+        .iter()
+        .map(|b| {
+            let mut row = vec![
+                ("id".to_owned(), JValue::Str(b.id.clone())),
+                ("label".to_owned(), b.label.clone()),
+                ("description".to_owned(), b.description.clone()),
+                ("source".to_owned(), JValue::Str(b.source.clone())),
+            ];
+            if !matches!(b.in_app, JValue::Undefined) {
+                row.push(("inApp".to_owned(), b.in_app.clone()));
+            }
+            row.push(("tools".to_owned(), JValue::Arr(b.tools.to_vec())));
+            JValue::Obj(row)
+        })
+        .collect();
+    let str_or_null = |v: &Option<String>| v.clone().map_or(JValue::Null, JValue::Str);
+    let mcp = JValue::obj([
+        ("enabled", JValue::Bool(snap.enabled)),
+        ("error", str_or_null(&snap.error)),
+        (
+            "tools",
+            JValue::Arr(
+                snap.tools()
+                    .into_iter()
+                    .map(|e| {
+                        JValue::obj([
+                            ("name", JValue::Str(e.name.clone())),
+                            ("serverId", JValue::Str(e.server.clone())),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ),
+        (
+            "states",
+            JValue::Arr(
+                snap.servers
+                    .iter()
+                    .map(|f| {
+                        JValue::obj([
+                            ("id", JValue::Str(f.spec.id.clone())),
+                            ("error", str_or_null(&f.error)),
+                            ("toolCount", JValue::Num(f.tool_count as f64)),
+                            ("discoveredAt", JValue::Num(f.discovered_at as f64)),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ),
+        (
+            "servers",
+            JValue::Arr(
+                snap.servers
+                    .iter()
+                    .map(|f| {
+                        let mut row = vec![
+                            ("id", JValue::Str(f.spec.id.clone())),
+                            ("auth", JValue::Str(f.spec.auth.clone())),
+                            ("directory", JValue::Bool(f.spec.directory)),
+                        ];
+                        if let Some(t) = &f.spec.title {
+                            row.push(("title", JValue::Str(t.clone())));
+                        }
+                        JValue::obj(row)
+                    })
+                    .collect(),
+            ),
+        ),
+        (
+            "manifest",
+            JValue::Arr(
+                snap.manifest
+                    .iter()
+                    .map(|b| {
+                        JValue::obj([
+                            ("server", b.get("server").clone()),
+                            ("tools", b.get("tools").clone()),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ),
+    ]);
+    Some(JValue::obj([
+        ("boxes", JValue::Arr(boxes)),
+        ("connectorBoxes", facts.get("connectorBoxes").clone()),
+        ("prefill", facts.get("prefill").clone()),
+        ("mcp", mcp),
+    ]))
+}
+
+/// The chat process's published facts, proven current (touching the demand marker, and waiting a
+/// moment for the first file after an idle spell). `None`: not ready.
+pub async fn chat_facts(app: &Arc<App>) -> Option<Arc<JValue>> {
     let dir = app.config.data_dir.clone()?;
-    let file = dir.join(SNAPSHOT_FILE);
+    let file = dir.join(FACTS_FILE);
     app.demand
         .read(dir, move |now| {
-            let snap = snapshot::read(&file, SNAPSHOT_KIND, now).ok()?;
-            parse(&snap.body).map(Arc::new)
+            let snap = snapshot::read(&file, FACTS_KIND, now).ok()?;
+            let text = std::str::from_utf8(&snap.raw).ok()?;
+            wtf16::parse(text).ok().map(Arc::new)
         })
         .await
 }
 
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
-mod tests {
-    use super::*;
+/// What discovery knows, asking it for a refresh if it is due and waiting no longer than
+/// [`DISCOVERY_WAIT`] for one in progress. `None`: discovery has not produced its first answer, or
+/// cannot answer (a failed run).
+pub async fn discovered(handle: &Handle) -> Option<Arc<Snapshot>> {
+    let snap = match tokio::time::timeout(DISCOVERY_WAIT, handle.source.discover(false)).await {
+        Ok(Ok(snap)) => snap,
+        Ok(Err(_)) => return None,
+        // A slow server: the catalogue as it stands, the next one carries the result.
+        Err(_) => handle.source.current(),
+    };
+    (snap.generation > 0).then_some(snap)
+}
 
-    fn body() -> Value {
-        serde_json::json!({
-            "mcpEnabled": true, "harnessEnabled": false, "hasRepositories": true,
-            "nextcloudConfigured": true, "nextcloudOrigins": ["https://cloud.example.test"],
-            "defaults": ["core"], "connectorBoxes": ["gdrive"],
-            "boxes": [{"id": "core", "label": "Core", "description": "d", "source": "builtin", "inApp": true,
-                "tools": [{"name": "get_current_time", "description": "t", "write": false}]},
-                {"id": "dir-x", "label": "X", "description": "", "source": "mcp", "inApp": false, "server": "dir-x",
-                "tools": []}],
-            "manifest": [{"id": "files", "label": "Files", "description": "", "inApp": true}],
-            "servers": [{"id": "dir-x", "auth": "oauth", "directory": true, "error": "down", "toolCount": 0,
-                "tools": [{"name": "a", "description": "b"}], "toolsTruncated": false}],
-        })
-    }
+/// The current catalogue. `None`: not ready.
+pub async fn read(app: &Arc<App>) -> Option<Arc<Catalogue>> {
+    let facts = chat_facts(app).await?;
+    let handle = crate::mcp_discovery_backend::handle(app)?;
+    let snap = discovered(handle).await?;
+    compose(
+        &facts,
+        &snap,
+        &|id| handle.offered(id),
+        &handle.nextcloud_origins,
+    )
+    .map(Arc::new)
+}
 
-    #[test]
-    fn the_published_shape_is_read() {
-        let c = parse(&body()).unwrap();
-        assert_eq!(c.boxes.len(), 2);
-        assert_eq!(c.boxes[0].tools[0].name, "get_current_time");
-        assert_eq!(c.boxes[1].server.as_deref(), Some("dir-x"));
-        assert_eq!(c.server("dir-x").unwrap().error.as_deref(), Some("down"));
-        assert_eq!(c.server("dir-x").unwrap().tools, [("a".into(), "b".into())]);
-        assert!(c.has_repositories && !c.harness_enabled);
-    }
-
-    #[test]
-    fn anything_of_another_shape_is_not_a_catalogue() {
-        for drop in [
-            "boxes",
-            "manifest",
-            "servers",
-            "defaults",
-            "connectorBoxes",
-            "mcpEnabled",
-            "harnessEnabled",
-            "hasRepositories",
-            "nextcloudConfigured",
-            "nextcloudOrigins",
-        ] {
-            let mut b = body();
-            b.as_object_mut().unwrap().remove(drop);
-            assert!(parse(&b).is_none(), "{drop}");
-        }
-        let mut b = body();
-        b["boxes"][0]["tools"][0]["write"] = serde_json::json!("yes");
-        assert!(parse(&b).is_none(), "a write flag that is not a boolean");
-        let mut b = body();
-        b["boxes"][0]["id"] = serde_json::json!(5);
-        assert!(parse(&b).is_none());
-    }
+/// The picker's facts document. `None`: not ready.
+pub async fn picker(app: &Arc<App>) -> Option<JValue> {
+    let facts = chat_facts(app).await?;
+    let handle = crate::mcp_discovery_backend::handle(app)?;
+    let snap = discovered(handle).await?;
+    picker_facts(&facts, &snap, &|id| handle.offered(id))
 }

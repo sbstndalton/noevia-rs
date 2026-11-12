@@ -1,0 +1,77 @@
+[
+  {
+    "mcpEnabled": true,
+    "harnessEnabled": false,
+    "hasRepositories": false,
+    "nextcloudConfigured": false,
+    "nextcloudOrigins": [],
+    "defaults": [],
+    "connectorBoxes": [],
+    "boxes": [],
+    "manifest": [],
+    "servers": [],
+    "offers": {
+      "tavily_search": [
+        "search"
+      ],
+      "tavily_extract": [
+        "search"
+      ],
+      "outside_presentation": [
+        "search"
+      ]
+    }
+  },
+  {
+    "mcpEnabled": true,
+    "harnessEnabled": false,
+    "hasRepositories": false,
+    "nextcloudConfigured": false,
+    "nextcloudOrigins": [],
+    "defaults": [],
+    "connectorBoxes": [],
+    "boxes": [],
+    "manifest": [],
+    "servers": [],
+    "offers": {
+      "tavily_search": [
+        "search",
+        "second"
+      ],
+      "tavily_extract": [
+        "search",
+        "second"
+      ],
+      "outside_presentation": [
+        "search",
+        "second"
+      ]
+    }
+  },
+  {
+    "mcpEnabled": true,
+    "harnessEnabled": false,
+    "hasRepositories": false,
+    "nextcloudConfigured": false,
+    "nextcloudOrigins": [],
+    "defaults": [],
+    "connectorBoxes": [],
+    "boxes": [],
+    "manifest": [],
+    "servers": [],
+    "offers": {
+      "tavily_search": [
+        "search",
+        "dir-x"
+      ],
+      "tavily_extract": [
+        "search",
+        "dir-x"
+      ],
+      "outside_presentation": [
+        "search",
+        "dir-x"
+      ]
+    }
+  }
+]

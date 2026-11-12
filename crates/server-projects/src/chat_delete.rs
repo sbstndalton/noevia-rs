@@ -613,6 +613,11 @@ pub fn delete_project_route(ctx: Ctx<'_>, raw_project: &str, raw_chat: &str) -> 
     ) else {
         return Reply::error(400, "invalid chat id");
     };
+    // A coworker's conversation goes only with the coworker (sbstndalton/noevia#2446): a tombstoned
+    // chat id cannot come back, so deleting it alone would end the conversation for good.
+    if project.starts_with(store::SPECIALIST_PREFIX) {
+        return Reply::error(404, "no such project");
+    }
     let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
         Ok(d) => d,
         Err(e) => return chats::store_failure(&e),

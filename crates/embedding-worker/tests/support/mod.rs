@@ -24,10 +24,15 @@ pub fn seed() -> (tempfile::TempDir, SqlStore) {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let auth = Connection::open(root.join("cowork.db")).unwrap();
-    auth.execute_batch(include_str!(
-        "../../../server-store/tests/fixtures/node-schema.sql"
-    ))
+    // Fixture setup is one durable transaction, rather than one fsync per DDL.
+    auth.pragma_update(None, "journal_mode", "WAL").unwrap();
+    auth.execute_batch("BEGIN IMMEDIATE").unwrap();
+    auth.execute_batch(
+        &include_str!("../../../server-store/tests/fixtures/node-schema.sql")
+            .replace("PRAGMA journal_mode = WAL;", ""),
+    )
     .unwrap();
+    auth.execute_batch("COMMIT").unwrap();
     std::fs::create_dir(root.join("rag")).unwrap();
     std::fs::write(
         root.join("projects.json"),
@@ -35,7 +40,7 @@ pub fn seed() -> (tempfile::TempDir, SqlStore) {
     )
     .unwrap();
     let db = Connection::open(root.join("rag/p.db")).unwrap();
-    db.execute_batch("PRAGMA journal_mode=WAL;CREATE TABLE chunks(id INTEGER PRIMARY KEY,file TEXT NOT NULL,chunk_no INTEGER NOT NULL,body TEXT NOT NULL,content_hash TEXT NOT NULL,updated_at TEXT,version TEXT,direct INTEGER,kind TEXT,meta TEXT);CREATE TABLE vec_meta(key TEXT PRIMARY KEY,value TEXT);INSERT INTO chunks VALUES(1,'synthetic.txt',0,'synthetic text','hash',NULL,NULL,0,'text',NULL)").unwrap();
+    db.execute_batch("PRAGMA journal_mode=WAL;BEGIN IMMEDIATE;CREATE TABLE chunks(id INTEGER PRIMARY KEY,file TEXT NOT NULL,chunk_no INTEGER NOT NULL,body TEXT NOT NULL,content_hash TEXT NOT NULL,updated_at TEXT,version TEXT,direct INTEGER,kind TEXT,meta TEXT);CREATE TABLE vec_meta(key TEXT PRIMARY KEY,value TEXT);INSERT INTO chunks VALUES(1,'synthetic.txt',0,'synthetic text','hash',NULL,NULL,0,'text',NULL);COMMIT").unwrap();
     let store = SqlStore {
         rag_dir: None,
         root: root.into(),
@@ -75,6 +80,21 @@ impl Drop for Server {
     }
 }
 pub async fn server(reply: impl Fn(&str, &str) -> (u16, String) + Send + Sync + 'static) -> Server {
+    let reply = Arc::new(reply);
+    server_async(move |path, body| {
+        let reply = Arc::clone(&reply);
+        async move { reply(&path, &body) }
+    })
+    .await
+}
+
+// Same serial HTTP fixture, with an awaitable response for controlled in-flight work.
+// Existing callers retain their synchronous reply behavior.
+pub async fn server_async<F, R>(reply: F) -> Server
+where
+    F: Fn(String, String) -> R + Send + Sync + 'static,
+    R: std::future::Future<Output = (u16, String)> + Send + 'static,
+{
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let reply = Arc::new(reply);
@@ -117,7 +137,7 @@ pub async fn server(reply: impl Fn(&str, &str) -> (u16, String) + Send + Sync + 
                 .nth(1)
                 .unwrap_or("");
             let body = text.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
-            let (status, body) = reply(path, body);
+            let (status, body) = reply(path.to_owned(), body.to_owned()).await;
             let response=format!("HTTP/1.1 {status} Synthetic\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
             let _ = stream.write_all(response.as_bytes()).await;
         }
@@ -125,6 +145,10 @@ pub async fn server(reply: impl Fn(&str, &str) -> (u16, String) + Send + Sync + 
     Server { base, task }
 }
 pub fn default_reply(path: &str) -> (u16, String) {
+    if path == "/internal/embedding-worker-owner/source-changed" {
+        return (200,serde_json::json!({"protocol":"rust-embedding-worker-v1","start":START,"notified":true}).to_string());
+    }
+
     match path {
         "/internal/embedding-worker-owner" => (200, PROOF.into()),
         "/api/v1/embedding-service" => (200, "{\"managed\":true,\"enabled\":true}".into()),

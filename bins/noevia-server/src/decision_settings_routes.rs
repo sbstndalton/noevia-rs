@@ -75,7 +75,7 @@ impl Deployment {
 // ---------------------------------------------------------------------------------------------
 // core service-endpoint.cjs: where an operator's own services may be.
 
-fn js_space(c: char) -> bool {
+pub(crate) fn js_space(c: char) -> bool {
     matches!(
         c,
         '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
@@ -89,7 +89,7 @@ fn js_space(c: char) -> bool {
     )
 }
 
-fn js_trim(s: &str) -> &str {
+pub(crate) fn js_trim(s: &str) -> &str {
     s.trim_matches(js_space)
 }
 
@@ -236,8 +236,8 @@ async fn check_name(name: &str, link_local: bool) -> Result<(), bool> {
 
 /// The connect-time half (core `createServiceLookup`): resolves as usual and refuses the
 /// connection unless every answer is on this network.
-struct LocalOnly {
-    link_local: bool,
+pub(crate) struct LocalOnly {
+    pub(crate) link_local: bool,
 }
 
 impl reqwest::dns::Resolve for LocalOnly {

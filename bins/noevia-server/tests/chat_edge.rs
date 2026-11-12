@@ -463,6 +463,35 @@ async fn turn(f: &Front, body: &[u8]) -> Answer {
     send(f, "POST", "/api/chat", body.to_vec(), Who::SignedIn).await
 }
 
+/// A signed-in turn whose body the front may never read: the body is written beside the read, its
+/// write errors ignored (the front can answer and close first, which breaks a client that waits on
+/// its whole write), and only the status line counts.
+async fn unread_status(f: &Front, body: Vec<u8>) -> u16 {
+    let stream = TcpStream::connect(f.addr).await.unwrap();
+    let (mut rd, mut wr) = stream.into_split();
+    let head = format!(
+        "POST /api/chat HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\ncontent-type: application/json\r\ncookie: {}\r\nx-csrf-token: {}\r\ncontent-length: {}\r\n\r\n",
+        f.jar,
+        f.csrf,
+        body.len()
+    );
+    let writer = tokio::spawn(async move {
+        if wr.write_all(head.as_bytes()).await.is_ok() {
+            let _ = wr.write_all(&body).await;
+        }
+        wr
+    });
+    let mut got = Vec::new();
+    let mut buf = [0u8; 4096];
+    while !got.windows(4).any(|w| w == b"\r\n\r\n") {
+        let n = rd.read(&mut buf).await.unwrap();
+        assert!(n > 0, "closed before a response");
+        got.extend_from_slice(&buf[..n]);
+    }
+    writer.abort();
+    String::from_utf8_lossy(&got)[9..12].parse().unwrap()
+}
+
 async fn exchange(f: &Front, body: &[u8]) -> Answer {
     send(
         f,
@@ -775,8 +804,7 @@ async fn the_budget_comes_after_authentication_and_before_the_body() {
     // Over the budget, a body over the cap or not JSON is still the 429: the body is never read.
     for body in [vec![b'a'; CAP + 1], b"{nope".to_vec()] {
         f.clear();
-        let got = turn(&f, &body).await;
-        assert_eq!(got.status, 429);
+        assert_eq!(unread_status(&f, body).await, 429);
         assert_eq!(f.hits(), [HOLD]);
     }
 }

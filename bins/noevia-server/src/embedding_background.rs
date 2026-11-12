@@ -63,7 +63,7 @@ fn try_start(
         &format!("http://{}", app.config.upstream.authority()),
         &pairing.token,
     )?;
-    runtime::start(
+    runtime::start_with_documents(
         store,
         http,
         format!("http://{}", app.config.upstream.authority()),
@@ -77,6 +77,12 @@ fn try_start(
             n("EMBEDDING_NEXT_RECHECK_MS", 300_000.0),
         ),
         get("EMBEDDING_SERVICE_URL"),
+        app.extraction.clone().map(|engine| {
+            std::sync::Arc::new(move |control| {
+                engine.with_background_control(control)
+                    as std::sync::Arc<dyn server_projects::extract::Engine + Send + Sync>
+            }) as embedding_worker::media_runtime::EngineFactory
+        }),
     )
     .map(Some)
 }

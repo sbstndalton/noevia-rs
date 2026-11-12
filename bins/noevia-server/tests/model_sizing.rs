@@ -460,7 +460,7 @@ async fn nothing_is_written_and_signed_out_device_and_disabled_kinds_answer_like
         let (s, _, _) = call(addr, "GET", p, &cookie(MEMBER)).await;
         assert_eq!(s, 403, "{p}");
     }
-    // Every other method and a trailing slash stay Node's (the dead upstream: 502).
+    // Residual sizing methods and slashes are native 404s; substantive writers retain their owner.
     let csrf = format!(
         "{}X-CSRF-Token: csrf\r\nOrigin: http://{addr}\r\n",
         cookie(ADMIN)
@@ -476,7 +476,22 @@ async fn nothing_is_written_and_signed_out_device_and_disabled_kinds_answer_like
         ("PUT", "/api/models/inference-budget"),
     ] {
         let (s, _, b) = call(addr, m, p, &csrf).await;
-        assert_eq!(s, 502, "{m} {p}: {b}");
+        let residual =
+            p.starts_with("/api/models/estimate") || p.starts_with("/api/models/preset/suggest");
+        let slash = p.split('?').next().unwrap_or(p).ends_with('/');
+        assert_eq!(
+            s,
+            if residual {
+                if slash {
+                    404
+                } else {
+                    405
+                }
+            } else {
+                502
+            },
+            "{m} {p}: {b}"
+        );
     }
     let _ = stop.send(());
 }

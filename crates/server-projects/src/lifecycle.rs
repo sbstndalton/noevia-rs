@@ -873,6 +873,10 @@ pub fn delete(ctx: Ctx<'_>, raw: &str) -> Reply {
     let Some(id) = js::decode_uri_component(raw) else {
         return Reply::internal();
     };
+    // A coworker's backing project goes only with the coworker (sbstndalton/noevia#2446).
+    if id.starts_with(store::SPECIALIST_PREFIX) {
+        return Reply::error(404, "no such project");
+    }
     let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
         Ok(d) => d,
         Err(e) => return chats::store_failure(&e),

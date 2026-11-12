@@ -505,12 +505,6 @@ impl Scheduler {
         self.in_flight.get(&id).copied().unwrap_or(0)
     }
 
-    /// Live leases on `model` (an id or alias).
-    pub fn live_leases(&self, model: &str) -> usize {
-        let id = self.canon(model);
-        self.leases.values().filter(|l| l.model == id).count()
-    }
-
     /// The model a lease holds.
     pub fn lease_model(&self, lease: LeaseKey) -> Option<&str> {
         self.leases.get(&lease).map(|l| l.model.as_str())
