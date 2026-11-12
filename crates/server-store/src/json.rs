@@ -328,6 +328,49 @@ pub fn write_root_shared_providers(
     )
 }
 
+/// Whether `name` is `<uuid>.md` with a lowercase hyphenated UUID: the only page file name.
+fn page_file_name(name: &str) -> bool {
+    let Some(id) = name.strip_suffix(".md") else {
+        return false;
+    };
+    id.len() == 36
+        && id.bytes().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => b == b'-',
+            _ => b.is_ascii_digit() || (b'a'..=b'f').contains(&b),
+        })
+}
+
+/// Writes a Space's page (`dir/<uuid>.md`, sbstndalton/noevia#2446) atomically with the same temp
+/// file, fsync and rename as the JSON files. `dir` is the Space's directory; the caller holds the
+/// account's specialists lock.
+pub fn write_owned_page(
+    dir: &Path,
+    name: &str,
+    text: &str,
+    _switch: crate::RustAuth,
+) -> Result<(), JsonError> {
+    if !page_file_name(name) {
+        return Err(JsonError::NotOwned(name.chars().take(64).collect()));
+    }
+    write_text_atomic(&dir.join(name), text, Parent::Create)
+}
+
+/// `fs.rmSync(dir/<uuid>.md, { force: true })`: a missing page is not an error.
+pub fn remove_owned_page(
+    dir: &Path,
+    name: &str,
+    _switch: crate::RustAuth,
+) -> Result<(), JsonError> {
+    if !page_file_name(name) {
+        return Err(JsonError::NotOwned(name.chars().take(64).collect()));
+    }
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    match std::fs::remove_file(dir.join(name)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(JsonError::Io(e)),
+        _ => Ok(()),
+    }
+}
+
 /// `fs.rmSync(dir/name, { force: true })` for an owned file: a missing file is not an error.
 pub fn remove_owned(dir: &Path, name: &str, _switch: crate::RustAuth) -> Result<(), JsonError> {
     owned_name(crate::OWNED_JSON_FILES, name)?;

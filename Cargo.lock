@@ -2112,6 +2112,7 @@ dependencies = [
  "server-routing-default",
  "server-routing-mode",
  "server-sampling-settings",
+ "server-specialists",
  "server-stats",
  "server-storage-reads",
  "server-store",
@@ -3345,6 +3346,18 @@ dependencies = [
  "serde_json",
  "server-store",
  "tempfile",
+]
+
+[[package]]
+name = "server-specialists"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "server-store",
+ "sha2",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
