@@ -329,7 +329,7 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // #2306 moves status GET (11); #2303 moves calibration start/read (10); evidence recheck leaves 9;
     // untuned discovery leaves 8; the inference machines registry leaves 7; the missing-file prune
     // (R3 piece 1) leaves 6; chat port S5 moves the chat turn's POST (5).
-    assert!(node_routes >= 6, "{node_routes} node routes");
+    assert!(node_routes >= 5, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
         ("GET", "/api/tool-approvals/a"),
