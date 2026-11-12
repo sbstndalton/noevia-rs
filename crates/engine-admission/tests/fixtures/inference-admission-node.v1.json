@@ -1,0 +1,547 @@
+{
+ "version": 1,
+ "recordedFrom": "core 3521cdc2 server/inference-admission-lease.cjs",
+ "node": "v22.23.3",
+ "ttlMs": 80,
+ "scenarios": [
+  {
+   "name": "engine-gate-grant-renew-release",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 201,
+     "body": {
+      "lease": "<lease>",
+      "ttlMs": 80,
+      "headers": {
+       "x-noevia-lease": "abc123"
+      }
+     }
+    },
+    {
+     "op": "renew",
+     "status": 200
+    },
+    {
+     "op": "release",
+     "status": 204
+    },
+    {
+     "op": "renew",
+     "status": 404
+    },
+    {
+     "op": "release",
+     "status": 204
+    }
+   ],
+   "holds": [
+    "enter",
+    "gate m 120000",
+    "gate-release",
+    "leave"
+   ],
+   "open": 0
+  },
+  {
+   "name": "engine-gate-not-renewed-expires",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 201,
+     "body": {
+      "lease": "<lease>",
+      "ttlMs": 80,
+      "headers": {
+       "x-noevia-lease": "abc123"
+      }
+     }
+    },
+    {
+     "op": "wait"
+    },
+    {
+     "op": "renew",
+     "status": 404
+    }
+   ],
+   "holds": [
+    "enter",
+    "gate m 120000",
+    "gate-release",
+    "leave"
+   ],
+   "open": 0
+  },
+  {
+   "name": "engine-no-gate-budget-ok",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 201,
+     "body": {
+      "lease": "<lease>",
+      "ttlMs": 80
+     }
+    },
+    {
+     "op": "release",
+     "status": 204
+    }
+   ],
+   "holds": [
+    "enter",
+    "budget m",
+    "leave"
+   ],
+   "open": 0
+  },
+  {
+   "name": "engine-no-gate-over-budget",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 409,
+     "body": {
+      "error": "Over the inference budget.",
+      "code": "overBudget"
+     }
+    }
+   ],
+   "holds": [
+    "enter",
+    "budget big",
+    "leave"
+   ],
+   "open": 0
+  },
+  {
+   "name": "engine-gate-refusal-kept",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 409,
+     "body": {
+      "error": "The engine is switching models.",
+      "code": "engine_busy"
+     }
+    }
+   ],
+   "holds": [
+    "enter",
+    "gate m 120000",
+    "leave"
+   ],
+   "open": 0
+  },
+  {
+   "name": "engine-gate-500-is-busy",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 503,
+     "body": {
+      "error": "The model is busy. Try again shortly."
+     }
+    }
+   ],
+   "holds": [
+    "enter",
+    "gate m 120000",
+    "leave"
+   ],
+   "open": 0
+  },
+  {
+   "name": "engine-maintenance-tuning-503",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 503,
+     "body": {
+      "error": "A model is being tuned."
+     }
+    }
+   ],
+   "holds": [],
+   "open": 0
+  },
+  {
+   "name": "engine-maintenance-other-busy",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 409,
+     "body": {
+      "error": "The model is busy. Try again shortly."
+     }
+    }
+   ],
+   "holds": [],
+   "open": 0
+  },
+  {
+   "name": "engine-caller-leaves-while-queued",
+   "steps": [
+    {
+     "op": "acquire-abort",
+     "outcome": "gone"
+    }
+   ],
+   "holds": [
+    "enter",
+    "gate m 120000",
+    "leave",
+    "gate-release"
+   ],
+   "open": 0
+  },
+  {
+   "name": "ask-without-model",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "A model is required."
+     }
+    },
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "A model is required."
+     }
+    },
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "A model is required."
+     }
+    }
+   ],
+   "holds": [],
+   "open": 0
+  },
+  {
+   "name": "embedding-grant",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 201,
+     "body": {
+      "lease": "<lease>",
+      "ttlMs": 80
+     }
+    },
+    {
+     "op": "release",
+     "status": 204
+    },
+    {
+     "op": "release",
+     "status": 204
+    }
+   ],
+   "holds": [
+    "enter",
+    "leave"
+   ],
+   "open": 0
+  },
+  {
+   "name": "embedding-invalid",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "Invalid embedding lease."
+     }
+    },
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "Invalid embedding lease."
+     }
+    }
+   ],
+   "holds": [],
+   "open": 0
+  },
+  {
+   "name": "machine-turn",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 201,
+     "body": {
+      "lease": "<lease>",
+      "ttlMs": 80
+     }
+    },
+    {
+     "op": "release",
+     "status": 204
+    }
+   ],
+   "holds": [
+    "ready",
+    "turn",
+    "turn-end"
+   ],
+   "open": 0
+  },
+  {
+   "name": "machine-moved",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 409,
+     "body": {
+      "error": "The model is busy. Try again shortly."
+     }
+    }
+   ],
+   "holds": [],
+   "open": 0
+  },
+  {
+   "name": "machine-offline",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 409,
+     "body": {
+      "error": "The machine is not answering.",
+      "code": "machineUnreachable"
+     }
+    }
+   ],
+   "holds": [
+    "ready"
+   ],
+   "open": 0
+  },
+  {
+   "name": "machine-wrong-role",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "Only the Smart role runs research."
+     }
+    },
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "Only the Smart role runs research."
+     }
+    }
+   ],
+   "holds": [],
+   "open": 0
+  },
+  {
+   "name": "machine-caller-leaves",
+   "steps": [
+    {
+     "op": "acquire-abort",
+     "outcome": "gone"
+    }
+   ],
+   "holds": [
+    "ready",
+    "turn",
+    "turn-end"
+   ],
+   "open": 0
+  },
+  {
+   "name": "diary-grant",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 201,
+     "body": {
+      "lease": "<lease>",
+      "ttlMs": 80
+     }
+    },
+    {
+     "op": "renew",
+     "status": 200
+    },
+    {
+     "op": "release",
+     "status": 204
+    }
+   ],
+   "holds": [
+    "enter-within 3000",
+    "throttle u-synthetic",
+    "pause",
+    "resume",
+    "leave"
+   ],
+   "open": 0
+  },
+  {
+   "name": "diary-throttled",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 429,
+     "body": {
+      "error": "Please wait before sending another message"
+     }
+    }
+   ],
+   "holds": [
+    "enter-within 3000",
+    "throttle u-synthetic",
+    "leave"
+   ],
+   "open": 0
+  },
+  {
+   "name": "diary-maintenance",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 503,
+     "body": {
+      "error": "Model configuration is being applied. Try again shortly.",
+      "code": "inferenceMaintenance"
+     }
+    }
+   ],
+   "holds": [],
+   "open": 0
+  },
+  {
+   "name": "diary-bad-asks",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "A user is required."
+     }
+    },
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "A user is required."
+     }
+    },
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "A user is required."
+     }
+    },
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "A user is required."
+     }
+    }
+   ],
+   "holds": [],
+   "open": 0
+  },
+  {
+   "name": "diary-not-wired",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 400,
+     "body": {
+      "error": "Diary exchanges are not admitted here."
+     }
+    }
+   ],
+   "holds": [],
+   "open": 0
+  },
+  {
+   "name": "diary-caller-leaves",
+   "steps": [
+    {
+     "op": "acquire-abort",
+     "outcome": "gone"
+    }
+   ],
+   "holds": [
+    "enter-within 3000"
+   ],
+   "open": 0
+  },
+  {
+   "name": "concurrent-chat-worker-diary",
+   "steps": [
+    {
+     "op": "acquire",
+     "status": 201,
+     "body": {
+      "lease": "<lease>",
+      "ttlMs": 80,
+      "headers": {
+       "x-noevia-lease": "abc123"
+      }
+     }
+    },
+    {
+     "op": "acquire",
+     "status": 201,
+     "body": {
+      "lease": "<lease>",
+      "ttlMs": 80
+     }
+    },
+    {
+     "op": "acquire",
+     "status": 201,
+     "body": {
+      "lease": "<lease>",
+      "ttlMs": 80
+     }
+    },
+    {
+     "op": "release",
+     "status": 204
+    },
+    {
+     "op": "release",
+     "status": 204
+    },
+    {
+     "op": "release",
+     "status": 204
+    }
+   ],
+   "holds": [
+    "enter",
+    "gate m 120000",
+    "enter",
+    "enter-within 3000",
+    "throttle u1",
+    "pause",
+    "leave",
+    "gate-release",
+    "leave",
+    "resume",
+    "leave"
+   ],
+   "open": 0
+  }
+ ]
+}

@@ -1,0 +1,6 @@
+{"after": null, "history": [
+  {"id": "qa-u1", "role": "user", "content": "QA look up the QA note"},
+  {"id": "qa-a1", "role": "assistant", "content": "QA found it.", "toolCalls": [
+    {"name": "search_notes", "args": "{\"q\":\"QA note\"}", "status": "done", "public": true, "result": "QA note: remember the QA milk."}
+  ]}
+]}
