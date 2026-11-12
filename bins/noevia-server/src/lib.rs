@@ -789,6 +789,17 @@ impl App {
     }
 }
 
+/// Whether `path` is `/api/projects/{id}` or below it with an `id` (percent-decoded once, as
+/// Node decodes a path segment) that names a coworker's hidden project.
+fn hidden_project_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/projects/") else {
+        return false;
+    };
+    let segment = rest.split('/').next().unwrap_or("");
+    server_projects::js::decode_uri_component(segment)
+        .is_some_and(|id| id.starts_with(server_projects::store::SPECIALIST_PREFIX))
+}
+
 async fn handle(
     State(app): State<Arc<App>>,
     ConnectInfo(conn): ConnectInfo<serve::Conn>,
@@ -806,6 +817,20 @@ async fn handle(
         }
     }
     let path = req.uri().path().to_string();
+    // A coworker's backing project is the coworker's to change (sbstndalton/noevia#2446): no
+    // `/api/projects/{id}...` route, Rust's or Node's, may name it. Checked on the raw path and on
+    // Node's WHATWG pathname, so no spelling of the id reaches a handler.
+    if hidden_project_path(&path)
+        || identity::whatwg_pathname_of(req.uri())
+            .as_deref()
+            .is_some_and(hidden_project_path)
+    {
+        return reply::json(
+            StatusCode::NOT_FOUND,
+            &serde_json::json!({"error": "no such project"}),
+            true,
+        );
+    }
     let switches = app.config.switches();
     let mut native = routes::dispatch_under(req.method().as_str(), &path, switches);
     // Node routes on the WHATWG pathname (`new URL(req.url, base)`): a Rust-owned switched route

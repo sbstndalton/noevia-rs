@@ -6,7 +6,7 @@ use crate::{
 };
 use serde::{Deserialize, Deserializer, Serialize};
 
-const SPECIALISTS: &str = "specialists.json";
+pub(crate) const SPECIALISTS: &str = "specialists.json";
 const SPACES: &str = "spaces.json";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -19,7 +19,8 @@ pub struct Specialist {
     pub tint: String,
     /// The coworker's instructions.
     pub brief: String,
-    /// The backing project and conversation: `null` until slice 4 fills them.
+    /// The backing project and conversation (see [`crate::backing`]): `null` only for a coworker
+    /// made before they existed, until the next read or patch gives it both.
     #[serde(default)]
     pub project_id: Option<String>,
     #[serde(default)]
@@ -29,6 +30,10 @@ pub struct Specialist {
     pub spaces: Vec<String>,
     #[serde(default)]
     pub default_space: Option<String>,
+    /// The toolboxes the coworker's conversation may use: ids of the account's permitted
+    /// toolboxes, mirrored into the backing project's tool settings.
+    #[serde(default)]
+    pub toolboxes: Vec<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -74,6 +79,8 @@ pub struct NewSpecialist {
     pub spaces: Option<Vec<String>>,
     #[serde(default)]
     pub default_space: Option<String>,
+    #[serde(default)]
+    pub toolboxes: Option<Vec<String>>,
 }
 
 /// `PATCH /api/specialists/{id}`: the revision the client loaded, and the fields to change.
@@ -94,6 +101,8 @@ pub struct SpecialistPatch {
     /// `Some(None)` clears it.
     #[serde(default, deserialize_with = "some")]
     pub default_space: Option<Option<String>>,
+    #[serde(default)]
+    pub toolboxes: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -153,7 +162,10 @@ fn stale_revision(current: u64) -> Error {
 }
 
 impl Store {
+    /// The coworkers. With a backing, a read first repairs whatever a crash or an older version
+    /// left ([`crate::backing`]).
     pub fn list_specialists(&self) -> Result<SpecialistList, Error> {
+        self.repair_if_needed()?;
         self.locked(|| self.read(self.dir(), SPECIALISTS))
     }
 
@@ -202,23 +214,35 @@ impl Store {
             {
                 return Err(Error::Invalid("defaultSpace must be one of spaces".into()));
             }
+            let boxes = self.toolbox_ids(new.toolboxes.as_deref().unwrap_or(&[]))?;
             let now = now_ms();
+            let sid = new_id();
+            let (project_id, chat_id) = self.backing_ids(&sid);
             let made = Specialist {
-                id: new_id(),
+                id: sid,
                 name,
                 glyph: glyph_v,
                 tint: tint_v,
                 brief: brief_v,
-                project_id: None,
-                chat_id: None,
+                project_id,
+                chat_id,
                 spaces,
                 default_space: new.default_space,
+                toolboxes: boxes,
                 created_at: now,
                 updated_at: now,
             };
             list.specialists.push(made.clone());
             list.revision += 1;
+            // The record first, then the project (see `backing`): a crash between leaves a record
+            // whose project the next read makes. A failed project write takes the record back.
             self.write(self.dir(), SPECIALISTS, &list)?;
+            if let Err(e) = self.mirror(&made) {
+                list.specialists.pop();
+                list.revision += 1;
+                let _ = self.write(self.dir(), SPECIALISTS, &list);
+                return Err(e);
+            }
             Ok((list.revision, made))
         })
     }
@@ -254,6 +278,11 @@ impl Store {
                 .as_deref()
                 .map(|s| self.granted(s))
                 .transpose()?;
+            let boxes = patch
+                .toolboxes
+                .as_deref()
+                .map(|b| self.toolbox_ids(b))
+                .transpose()?;
             let item = list.specialists.get_mut(at).ok_or(Error::NotFound)?;
             let mut next = item.clone();
             if let Some(v) = name {
@@ -271,6 +300,12 @@ impl Store {
             if let Some(v) = spaces {
                 next.spaces = v;
             }
+            if let Some(v) = boxes {
+                next.toolboxes = v;
+            }
+            if next.project_id.is_none() {
+                (next.project_id, next.chat_id) = self.backing_ids(&next.id);
+            }
             if let Some(v) = patch.default_space {
                 next.default_space = v;
             }
@@ -284,12 +319,17 @@ impl Store {
             next.updated_at = now_ms();
             *item = next.clone();
             list.revision += 1;
+            // Record first, then the same brief and toolboxes into the project, in this one lock.
+            // A mirror that fails is repaired by the next read (the record is the truth).
             self.write(self.dir(), SPECIALISTS, &list)?;
+            self.mirror(&next)?;
             Ok((list.revision, next))
         })
     }
 
-    /// Returns the new revision. Slice 4 removes the backing project and chat around this.
+    /// Returns the new revision. The record goes first (that is the delete); the chat (tombstone
+    /// first) and then the project follow, and a crash between leaves an orphan that the next
+    /// read removes (see [`crate::backing`]).
     pub fn delete_specialist(&self, id: &str, revision: u64) -> Result<u64, Error> {
         if !is_id(id) {
             return Err(Error::NotFound);
@@ -304,9 +344,10 @@ impl Store {
             if revision != list.revision {
                 return Err(stale_revision(list.revision));
             }
-            list.specialists.remove(at);
+            let gone = list.specialists.remove(at);
             list.revision += 1;
             self.write(self.dir(), SPECIALISTS, &list)?;
+            self.unback(&gone);
             Ok(list.revision)
         })
     }
