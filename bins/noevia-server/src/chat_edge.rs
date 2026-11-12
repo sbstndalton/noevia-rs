@@ -463,7 +463,13 @@ async fn local_exchange_turn(
             DIARY_TOO_MANY,
             true,
         ))),
-        _ => Ok(Some(held)),
+        Some(false) => Ok(Some(held)),
+        // A limiter that cannot be read refuses, as the chat turn's does: never an uncounted call.
+        None => Err(Box::new(reply::error(
+            StatusCode::BAD_GATEWAY,
+            "The server is not answering. Please retry.",
+            true,
+        ))),
     }
 }
 
