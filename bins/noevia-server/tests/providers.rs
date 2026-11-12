@@ -943,7 +943,7 @@ async fn disconnecting_chatgpt_takes_the_tokens_the_row_and_the_fallbacks() {
 }
 
 #[tokio::test]
-async fn the_siblings_stay_nodes() {
+async fn the_residual_siblings_are_native() {
     let d = tempfile::tempdir().unwrap();
     let _db = seed(d.path());
     let f = front(d.path(), "1").await;
@@ -959,7 +959,15 @@ async fn the_siblings_stay_nodes() {
         ("DELETE", "/api/providers/"),
     ] {
         let (status, _) = call(f.addr, m, p, ADMIN, "{}").await;
-        assert_eq!(status, 502, "{m} {p} is Node's");
+        assert_eq!(
+            status,
+            if p.starts_with("/api/providers/chatgpt") {
+                405
+            } else {
+                404
+            },
+            "{m} {p}"
+        );
     }
 }
 

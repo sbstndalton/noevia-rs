@@ -6,7 +6,7 @@ fn visible(project: &JValue) -> bool {
     project
         .get("id")
         .as_str()
-        .is_some_and(|id| id != "cowork-diary-extras" && !id.starts_with("cowork-chat-context-"))
+        .is_some_and(|id| !store::internal_project_id(id))
 }
 fn serial(value: JValue) -> Reply {
     match wtf16::stringify(&value) {

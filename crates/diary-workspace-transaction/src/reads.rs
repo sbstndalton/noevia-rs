@@ -30,9 +30,11 @@ fn read_path(r: &Request, directory: bool) -> Result<(String, String), Fault> {
     ))
 }
 
-// A backend key is at most a 500-codepoint configured root plus a slash and a
-// 500-codepoint relative path. Byte bounds also cover embedded-NUL storage.
-pub(super) const MAX_KEY_BYTES: i64 = 4004;
+// Stored keys are not bounded by Python: a move or copy derives children longer than the
+// 500-codepoint client limit, and Python stores and reads them. This is only a resource bound
+// on what is decoded (1 MiB per key), well above any key Python's operations produce in
+// practice. Byte bounds also cover embedded-NUL storage.
+pub(super) const MAX_KEY_BYTES: i64 = 1024 * 1024;
 pub(super) fn admit(tx: &Transaction<'_>, full: &str, timestamps: bool) -> Result<(), Fault> {
     let prefix = if full.is_empty() {
         String::new()

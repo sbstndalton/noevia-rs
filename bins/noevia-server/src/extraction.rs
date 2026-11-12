@@ -48,6 +48,7 @@ pub struct HttpEngine {
     /// How often a request that is waiting for its answer asks `/health` whether the service is
     /// still there, and how many asks in a row may go unanswered before the request is given up.
     liveness: (Duration, u32),
+    background_control: Option<embedding_worker::Control>,
 }
 
 /// A request to the document service has no answer until the whole document is read, and a large
@@ -94,9 +95,34 @@ impl HttpEngine {
             caps: Mutex::new(None),
             waits: vec![Duration::from_secs(5), Duration::from_secs(15)],
             liveness: liveness_from_env(),
+            background_control: None,
         }))
     }
 
+    pub fn with_background_control(&self, control: embedding_worker::Control) -> Arc<Self> {
+        Arc::new(Self {
+            rt: self.rt.clone(),
+            client: self.client.clone(),
+            data_dir: self.data_dir.clone(),
+            ranges: Mutex::new(None),
+            caps: Mutex::new(None),
+            waits: self.waits.clone(),
+            liveness: self.liveness,
+            background_control: Some(control),
+        })
+    }
+    fn cancelled(&self) -> bool {
+        self.background_control
+            .as_ref()
+            .is_some_and(|c| c.stopped() || c.suspended())
+    }
+    async fn cancellation(&self) {
+        if let Some(control) = &self.background_control {
+            control.cancelled().await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    }
     /// A test's engine that asks `/health` every `every` and gives up after `misses` misses.
     pub fn with_liveness(mut self: Arc<Self>, every: Duration, misses: u32) -> Arc<Self> {
         if let Some(e) = Arc::get_mut(&mut self) {
@@ -139,7 +165,10 @@ impl HttpEngine {
         if machine && !on_this_network(url) {
             return Err(EngineError::new("fetch failed"));
         }
-        self.rt.block_on(fetch(req, cap))
+        if self.cancelled() {
+            return Err(EngineError::new("background extraction cancelled"));
+        }
+        self.rt.block_on(async {tokio::select! {r=fetch(req,cap)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}})
     }
 
     /// [`Self::send`] for a request that may legitimately wait for minutes: while it waits, the
@@ -157,8 +186,11 @@ impl HttpEngine {
         let (every, limit) = self.liveness;
         let client = self.client.clone();
         let health = format!("{}/health", url.trim_end_matches('/'));
+        if self.cancelled() {
+            return Err(EngineError::new("background extraction cancelled"));
+        }
         self.rt.block_on(async move {
-            let work = fetch(req, cap);
+            let work = async {tokio::select! {r=fetch(req,cap)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}};
             tokio::pin!(work);
             let mut ticks = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
             let mut missed = 0u32;
@@ -623,6 +655,11 @@ impl Engine for HttpEngine {
         })
     }
 
+    fn cancelled(&self) -> bool {
+        self.background_control
+            .as_ref()
+            .is_some_and(|c| c.stopped() || c.suspended())
+    }
     fn busy_waits(&self) -> Vec<Duration> {
         self.waits.clone()
     }
@@ -709,6 +746,43 @@ pub fn spawn(app: &Arc<crate::App>) {
 )]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn background_shutdown_cancels_the_actual_pending_document_http_request() {
+        use tokio::io::AsyncReadExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let (sent, received) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 4096];
+            let _ = stream.read(&mut buf).await;
+            let _ = sent.send(());
+            let mut byte = [0u8; 1];
+            let _ = stream.read(&mut byte).await;
+        });
+        let control = embedding_worker::Control::default();
+        let engine = HttpEngine::new(tokio::runtime::Handle::current(), None)
+            .unwrap()
+            .with_background_control(control.clone());
+        let pending = tokio::task::spawn_blocking(move || {
+            engine.send_watched(&url, false, engine.client.post(&url), 1024)
+        });
+        tokio::time::timeout(Duration::from_secs(2), received)
+            .await
+            .unwrap()
+            .unwrap();
+        control.stop();
+        assert!(tokio::time::timeout(Duration::from_secs(2), pending)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_err());
+        tokio::time::timeout(Duration::from_secs(2), server)
+            .await
+            .unwrap()
+            .unwrap();
+    }
 
     #[test]
     fn names_go_as_core_sends_them() {

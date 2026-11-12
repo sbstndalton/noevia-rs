@@ -1,0 +1,18 @@
+#!/bin/sh
+# A fake docker CLI for the router's tests: containers are files in $FAKE_DOCKER_DIR. A file whose
+# content is "sticky" survives `docker rm -f` (a container that will not go away).
+D=${FAKE_DOCKER_DIR:?}
+echo "$*" >> "$D/.calls"
+case $1 in
+  ps)
+    n=$(printf '%s\n' "$*" | sed -n 's/.*name=^\([^$]*\)\$.*/\1/p')
+    [ -n "$n" ] && [ -e "$D/$n" ] && echo "$n"
+    exit 0;;
+  rm)
+    n=$3
+    [ -e "$D/$n" ] && [ "$(cat "$D/$n")" != sticky ] && rm -f "$D/$n"
+    exit 0;;
+  stop)
+    exit 0;;
+esac
+exit 1

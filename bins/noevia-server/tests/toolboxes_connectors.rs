@@ -53,8 +53,17 @@ fn project(dir: &std::path::Path, user: &str, project: Value) {
 async fn rig() -> (tempfile::TempDir, server_store::rusqlite::Connection, Front) {
     let d = tempfile::tempdir().unwrap();
     let db = seed(d.path());
-    let f = front(d.path()).await;
-    write_snapshot(d.path(), catalogue());
+    // MCP_NEXTCLOUD_ORIGINS is the operator's setting, read by the front itself.
+    let f = front_env(
+        d.path(),
+        true,
+        &[(
+            "MCP_NEXTCLOUD_ORIGINS",
+            "https://cloud.example.test".to_string(),
+        )],
+    )
+    .await;
+    write_snapshot(&f, d.path(), catalogue());
     project(
         d.path(),
         A,
@@ -106,14 +115,14 @@ async fn the_view_is_computed_by_the_front_from_the_catalogue_and_the_account() 
         order,
         [
             "core",
+            "gdrive",
             "nextcloud-notes",
             "dir-x",
-            "gdrive",
             "diary",
             "nextcloud-calendar",
             "code"
         ],
-        "offered boxes, the configured but undiscovered, then the coding harness"
+        "the chat process's boxes, the discovered MCP boxes, the configured but undiscovered, then the coding harness"
     );
     let b = boxes(&body);
     // A box shows what Node's catalogue says of it, in core's key order.
@@ -347,18 +356,18 @@ async fn a_catalogue_that_is_not_provably_current_is_not_ready_and_the_rest_is_r
     assert!(d.path().join("snapshot-demand").exists());
     // A file that is missing, corrupt, of another kind or older than two intervals is no catalogue: 503, try again.
     for (why, text) in [
-        ("old", std::fs::read_to_string(d.path().join("mcp-discovery.json")).unwrap().replacen("\"writtenAt\":", "\"writtenAt\":1,\"was\":", 1)),
+        ("old", std::fs::read_to_string(d.path().join("toolbox-chat-facts.json")).unwrap().replacen("\"writtenAt\":", "\"writtenAt\":1,\"was\":", 1)),
         ("corrupt", "{not json".to_owned()),
-        ("kind", std::fs::read_to_string(d.path().join("mcp-discovery.json")).unwrap().replacen("mcp-discovery", "rag-status", 1)),
-        ("shape", json!({"version": 1, "kind": "mcp-discovery", "writtenAt": noevia_server::identity::now_ms(), "everyMs": 3000, "boxes": "none"}).to_string()),
+        ("kind", std::fs::read_to_string(d.path().join("toolbox-chat-facts.json")).unwrap().replacen("toolbox-chat-facts", "rag-status", 1)),
+        ("shape", json!({"version": 1, "kind": "toolbox-chat-facts", "writtenAt": noevia_server::identity::now_ms(), "everyMs": 3000, "boxes": "none"}).to_string()),
     ] {
-        std::fs::write(d.path().join("mcp-discovery.json"), text).unwrap();
+        std::fs::write(d.path().join("toolbox-chat-facts.json"), text).unwrap();
         let (st, h, b) = raw_text(a, "GET", PERMITTED, ADMIN, "", b"").await;
         assert_eq!(st, 503, "{why}: {b}");
         assert!(h.contains("retry-after: 2"), "{why}: {h}");
         assert!(b.contains("being prepared"), "{why}: {b}");
     }
-    std::fs::remove_file(d.path().join("mcp-discovery.json")).unwrap();
+    std::fs::remove_file(d.path().join("toolbox-chat-facts.json")).unwrap();
     let (st, _) = get(a, PERMITTED, ADMIN).await;
     assert_eq!(st, 503);
 }
@@ -513,6 +522,7 @@ async fn the_list_joins_drive_with_nextcloud_from_the_storage_connection_the_ori
     );
     // No Nextcloud MCP server configured on this deployment.
     write_snapshot(
+        &f,
         d.path(),
         json!({"nextcloudConfigured": false, "boxes": catalogue()["boxes"].clone()}),
     );
@@ -526,7 +536,7 @@ async fn the_list_joins_drive_with_nextcloud_from_the_storage_connection_the_ori
         (json!(false), json!("not-configured"), json!([]))
     );
     // Node's catalogue is not ready: the page still lists Drive and says why Nextcloud is missing.
-    std::fs::remove_file(d.path().join("mcp-discovery.json")).unwrap();
+    std::fs::remove_file(d.path().join("toolbox-chat-facts.json")).unwrap();
     let (st, body) = get(a, CONNECTORS, MEMBER).await;
     assert_eq!(st, 200, "{body}");
     assert_eq!(body["connectors"][0]["id"], "gdrive");
@@ -635,7 +645,7 @@ async fn nextcloud_permissions_are_written_by_the_front_for_the_tools_node_offer
     .await;
     assert_eq!(st, 403, "no CSRF header, no write");
     // Node's catalogue not ready: the tool names cannot be checked, so nothing is written.
-    std::fs::remove_file(d.path().join("mcp-discovery.json")).unwrap();
+    std::fs::remove_file(d.path().join("toolbox-chat-facts.json")).unwrap();
     let before: i64 = db
         .query_row("SELECT count(*) FROM tool_policies", [], |r| r.get(0))
         .unwrap();

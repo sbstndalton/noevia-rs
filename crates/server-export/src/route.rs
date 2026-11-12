@@ -66,6 +66,8 @@ pub const MAX_FILE_DEPTH: usize = 40;
 
 const DIARY_EXTRAS: &str = "cowork-diary-extras";
 const CHAT_CONTEXT_PREFIX: &str = "cowork-chat-context-";
+/// A coworker's backing project (server-projects `store::SPECIALIST_PREFIX`).
+const SPECIALIST_PREFIX: &str = "specialist-";
 
 /// What the route answers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,16 +83,6 @@ pub enum Outcome {
     TooLarge(String),
     /// 500 `{"error":"Internal error"}` (core http.cjs errorResponse for a thrown error).
     Internal,
-}
-
-impl Outcome {
-    /// The ZIP's bytes in one buffer (tests).
-    pub fn zip_bytes(&self) -> Option<Vec<u8>> {
-        match self {
-            Outcome::Zip { chunks, .. } => Some(chunks.concat()),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -306,7 +298,10 @@ fn projects(dir: &Path) -> Result<JValue, ()> {
         let Some(id) = project.get("id").as_str() else {
             return Err(());
         };
-        if id == DIARY_EXTRAS || id.starts_with(CHAT_CONTEXT_PREFIX) {
+        if id == DIARY_EXTRAS
+            || id.starts_with(CHAT_CONTEXT_PREFIX)
+            || id.starts_with(SPECIALIST_PREFIX)
+        {
             continue;
         }
         visible.push(project);

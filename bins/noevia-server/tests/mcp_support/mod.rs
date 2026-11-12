@@ -318,6 +318,8 @@ pub struct Front {
     pub addr: std::net::SocketAddr,
     pub store: std::net::SocketAddr,
     pub app: Arc<App>,
+    /// The front's MCP discovery in these tests: what `write_snapshot` last wrote.
+    pub source: Arc<FixedSource>,
 }
 
 pub const DDL: &str = "CREATE TABLE IF NOT EXISTS mcp_oauth_clients(server_id TEXT PRIMARY KEY, data_enc TEXT NOT NULL, updated_at INTEGER NOT NULL);
@@ -380,6 +382,25 @@ pub async fn front_env(
     qa_loopback: bool,
     extra: &[(&str, String)],
 ) -> Front {
+    front_inner(dir, qa_loopback, extra, true).await
+}
+
+/// [`front_env`] with the front's real discovery actor behind `POST /v1/mcp/discovery` instead of the
+/// [`FixedSource`] (for the tests where Node's real client asks the front what it discovered).
+pub async fn front_env_discovering(
+    dir: &std::path::Path,
+    qa_loopback: bool,
+    extra: &[(&str, String)],
+) -> Front {
+    front_inner(dir, qa_loopback, extra, false).await
+}
+
+async fn front_inner(
+    dir: &std::path::Path,
+    qa_loopback: bool,
+    extra: &[(&str, String)],
+    fixed: bool,
+) -> Front {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let mut env = HashMap::from([
@@ -394,6 +415,15 @@ pub async fn front_env(
         env.insert(k, v.clone());
     }
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    let source = Arc::new(FixedSource::default());
+    if fixed {
+        let _ = app.mcp_discovery.set(Some(Arc::new(
+            noevia_server::mcp_discovery_backend::Handle::configured(
+                &app.config.mcp,
+                Arc::clone(&source) as Arc<dyn noevia_server::mcp_discovery_backend::Source>,
+            ),
+        )));
+    }
     tokio::spawn(serve(
         listener,
         Arc::clone(&app),
@@ -419,6 +449,7 @@ pub async fn front_env(
         addr,
         store: store_addr,
         app,
+        source,
     }
 }
 
@@ -686,10 +717,47 @@ pub fn registry_of(base: &str, name: &str, key_header: bool) -> String {
     )
 }
 
-/// A snapshot as Node publishes it (core mcp-discovery-snapshot.cjs), fresh now.
-pub fn write_snapshot(dir: &std::path::Path, body: serde_json::Value) {
+/// A discovery that answers with whatever the test last wrote (the front's real actor is differential-tested in
+/// mcp_discovery_actor.rs; these tests are about what the front makes of a catalogue).
+#[derive(Default)]
+pub struct FixedSource(std::sync::Mutex<Arc<noevia_server::mcp_discovery_actor::Snapshot>>);
+
+impl noevia_server::mcp_discovery_backend::Source for FixedSource {
+    fn discover<'a>(
+        &'a self,
+        _force: bool,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        Arc<noevia_server::mcp_discovery_actor::Snapshot>,
+                        noevia_server::mcp_discovery_actor::Unavailable,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move { Ok(self.current()) })
+    }
+    fn current(&self) -> Arc<noevia_server::mcp_discovery_actor::Snapshot> {
+        Arc::clone(&self.0.lock().unwrap())
+    }
+}
+
+fn jv(v: &serde_json::Value) -> js_json::JValue {
+    js_json::parse(&v.to_string()).unwrap()
+}
+
+fn def(t: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": {"type": "object"}}})
+}
+
+/// The catalogue a test describes (the shape core's old `mcp-discovery-snapshot.cjs` published: boxes with
+/// `{name, description, write}` tools, `servers`, `manifest`, flags), made the front's two inputs: the chat
+/// process's facts file, and a discovery that holds the MCP boxes and servers. Fresh now.
+pub fn write_snapshot(front: &Front, dir: &std::path::Path, body: serde_json::Value) {
+    use noevia_server::mcp_discovery_actor::{Found, ServerSpec, Snapshot};
     let mut doc = serde_json::json!({
-        "version": 1, "kind": "mcp-discovery", "writtenAt": noevia_server::identity::now_ms(), "everyMs": 600000,
         "mcpEnabled": true, "harnessEnabled": false, "hasRepositories": false,
         "nextcloudConfigured": false, "nextcloudOrigins": [],
         "defaults": ["core"], "connectorBoxes": ["gdrive"], "boxes": [], "manifest": [], "servers": [],
@@ -697,7 +765,126 @@ pub fn write_snapshot(dir: &std::path::Path, body: serde_json::Value) {
     for (k, v) in body.as_object().unwrap() {
         doc[k] = v.clone();
     }
-    std::fs::write(dir.join("mcp-discovery.json"), doc.to_string()).unwrap();
+    let boxes = doc["boxes"].as_array().unwrap().clone();
+    let (mcp, builtin): (Vec<_>, Vec<_>) = boxes.iter().partition(|b| b["source"] == "mcp");
+    let names = |b: &serde_json::Value, write: bool| -> Vec<serde_json::Value> {
+        b["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|t| t["write"].as_bool().unwrap() == write)
+            .map(|t| t["name"].clone())
+            .collect()
+    };
+    let facts_builtin: Vec<serde_json::Value> = builtin
+        .iter()
+        .map(|b| {
+            serde_json::json!({"id": b["id"], "label": b["label"], "description": b["description"], "source": b["source"],
+                "inApp": b["inApp"], "reads": names(b, false), "tools": b["tools"].as_array().unwrap().iter().map(def).collect::<Vec<_>>()})
+        })
+        .collect();
+    let facts = serde_json::json!({
+        "version": 1, "kind": "toolbox-chat-facts", "writtenAt": noevia_server::identity::now_ms(), "everyMs": 600000,
+        "builtin": facts_builtin, "defaults": doc["defaults"], "connectorBoxes": doc["connectorBoxes"],
+        "harnessEnabled": doc["harnessEnabled"], "hasRepositories": doc["hasRepositories"],
+        "prefill": if doc["prefill"].is_object() { doc["prefill"].clone() } else { serde_json::json!({"targetMs": 1250, "models": {}}) },
+    });
+    std::fs::write(dir.join("toolbox-chat-facts.json"), facts.to_string()).unwrap();
+
+    let mut bound: Vec<serde_json::Value> = mcp
+        .iter()
+        .map(|b| {
+            let mut o = serde_json::json!({"id": b["id"], "server": b["server"], "label": b["label"], "description": b["description"],
+                "source": "mcp", "inApp": b["inApp"], "reads": names(b, false),
+                "tools": b["tools"].as_array().unwrap().iter().map(def).collect::<Vec<_>>()});
+            if b["id"].as_str().unwrap().starts_with("dir-") {
+                o["directory"] = serde_json::json!(true);
+            }
+            o
+        })
+        .collect();
+    let mut servers: Vec<Found> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for s in doc["servers"].as_array().unwrap() {
+        let id = s["id"].as_str().unwrap().to_owned();
+        seen.push(id.clone());
+        let directory = s["directory"].as_bool().unwrap_or(false);
+        if directory
+            && !s["tools"].as_array().unwrap().is_empty()
+            && !bound.iter().any(|b| b["id"] == id.as_str())
+        {
+            bound.push(serde_json::json!({"id": id, "server": id, "label": id, "description": "d", "directory": true, "source": "mcp", "inApp": true,
+                "tools": s["tools"].as_array().unwrap().iter().map(def).collect::<Vec<_>>()}));
+        }
+        servers.push(Found {
+            spec: ServerSpec {
+                id,
+                url: "http://127.0.0.1:9/mcp".into(),
+                auth: s["auth"].as_str().unwrap().into(),
+                directory,
+                title: None,
+                added_by: None,
+                token_env: None,
+            },
+            error: s["error"].as_str().map(str::to_owned),
+            discovered_at: 1,
+            tool_count: s["toolCount"].as_u64().unwrap_or(0) as usize,
+        });
+    }
+    if servers.is_empty() {
+        for b in &bound {
+            let id = b["server"].as_str().unwrap().to_owned();
+            if !seen.contains(&id) {
+                seen.push(id.clone());
+                servers.push(Found {
+                    spec: ServerSpec {
+                        id,
+                        url: "http://127.0.0.1:9/mcp".into(),
+                        auth: "none".into(),
+                        directory: false,
+                        title: None,
+                        added_by: None,
+                        token_env: None,
+                    },
+                    error: None,
+                    discovered_at: 1,
+                    tool_count: 0,
+                });
+            }
+        }
+        if doc["nextcloudConfigured"] == true {
+            servers.push(Found {
+                spec: ServerSpec {
+                    id: "nextcloud".into(),
+                    url: "http://127.0.0.1:9/mcp".into(),
+                    auth: "nextcloud".into(),
+                    directory: false,
+                    title: None,
+                    added_by: None,
+                    token_env: None,
+                },
+                error: None,
+                discovered_at: 1,
+                tool_count: 0,
+            });
+        }
+    }
+    let manifest: Vec<js_json::JValue> = doc["manifest"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| jv(&serde_json::json!({"id": m["id"], "label": m["label"], "description": m["description"], "server": "nextcloud", "tools": []})))
+        .collect();
+    let mut guard = front.source.0.lock().unwrap();
+    *guard = Arc::new(Snapshot {
+        generation: guard.generation + 1,
+        incarnation: "synthetic-front".into(),
+        enabled: doc["mcpEnabled"].as_bool().unwrap(),
+        servers,
+        boxes: bound.iter().map(jv).collect(),
+        manifest,
+        ..Snapshot::default()
+    });
 }
 
 /// The directory row `id` as a plain value, or None.
