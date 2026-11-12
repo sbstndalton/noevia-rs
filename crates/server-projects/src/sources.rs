@@ -126,7 +126,7 @@ pub fn get(ctx: Ctx<'_>, raw_project: &str, name: Option<&str>) -> Reply {
     let Some(project) = project else {
         return Reply::error(404, "no such project");
     };
-    if id == "cowork-diary-extras" || id.starts_with("cowork-chat-context-") {
+    if crate::store::internal_project_id(&id) {
         return Reply::error(404, "no such project");
     }
     let Some(name) = name.filter(|s| !s.is_empty()) else {

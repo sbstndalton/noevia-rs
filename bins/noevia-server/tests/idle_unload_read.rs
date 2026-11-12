@@ -69,13 +69,15 @@ async fn authorization_and_only_exact_get_precede_any_loader_read() {
     assert_eq!(get(f.addr, PATH, MEMBER).await.0, 403);
     assert!(owner.seen().is_empty());
     owner.set(|_| reply("418 I'm a teapot", "{}"));
-    for (method, path) in [
-        ("HEAD", PATH),
-        ("PUT", PATH),
-        ("GET", "/api/models/idle-unload/"),
-    ] {
+    for (method, path) in [("HEAD", PATH), ("PUT", PATH)] {
         assert_eq!(write(f.addr, method, path, ADMIN, "").await.0, 418);
     }
+    // The trailing-slash form is Node's static JSON 404, answered by the residual fallback itself
+    // (residual_fallback.rs; tests/fixtures/residual-fallback-node.json), with no read either.
+    assert_eq!(
+        write(f.addr, "GET", "/api/models/idle-unload/", ADMIN, "").await,
+        (404, json!({"error": "not found"}))
+    );
     assert_eq!(owner.count(FACTS), 0);
     assert!(loader.seen().is_empty());
 }

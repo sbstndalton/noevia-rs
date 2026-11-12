@@ -785,7 +785,7 @@ async fn the_routes_keep_the_sessions_gate() {
             .0,
         403
     );
-    // Methods and shapes that were never core's answers are Node's (here a dead upstream).
+    // Residual methods and malformed credential shapes are rejected natively.
     let (st, _) = raw(
         a,
         "POST",
@@ -800,7 +800,7 @@ async fn the_routes_keep_the_sessions_gate() {
         write(a, "PUT", "/api/mcp-keys/Dir-Keyed", MEMBER, "{}")
             .await
             .0,
-        502
+        404
     );
     // The store refuses a caller without the secret.
     assert_eq!(

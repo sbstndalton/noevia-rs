@@ -149,6 +149,8 @@ pub async fn until_lost<T>(lease: &Lease, work: impl std::future::Future<Output 
 pub enum OnLoss {
     /// Writes this last frame (the chat turn's failure event) and ends.
     Frame(&'static str),
+    /// As `Frame`, unless the flag says the turn is already complete: then the body just ends.
+    FrameUnless(&'static str, Arc<std::sync::atomic::AtomicBool>),
     /// Ends the body with an error (the connection is aborted, as for a Core that went away).
     Abort,
 }
@@ -240,6 +242,15 @@ impl http_body::Body for Held {
                 Some(OnLoss::Frame(frame)) => Some(Ok(http_body::Frame::data(Bytes::from_static(
                     frame.as_bytes(),
                 )))),
+                // #2494: never a failure event after the turn's `done` (Node wrote none either).
+                Some(OnLoss::FrameUnless(_, completed))
+                    if completed.load(std::sync::atomic::Ordering::Acquire) =>
+                {
+                    None
+                }
+                Some(OnLoss::FrameUnless(frame, _)) => Some(Ok(http_body::Frame::data(
+                    Bytes::from_static(frame.as_bytes()),
+                ))),
                 Some(OnLoss::Abort) => Some(Err(axum::Error::new(std::io::Error::other(
                     "the call's admission lease was lost",
                 )))),
@@ -429,5 +440,25 @@ mod tests {
             Bytes::from_static(b"data: lost\n\n")
         );
         assert!(body.frame().await.is_none());
+    }
+
+    /// #2494: a lease lost after the turn is complete (its `done` went out, Core still open for the
+    /// title) ends the body cleanly instead of writing the failure frame after `done`.
+    #[tokio::test]
+    async fn a_lease_lost_after_the_turn_is_complete_ends_cleanly() {
+        let lease = losing_lease().await;
+        let completed = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let res = hold_until_end(
+            Response::new(Body::new(Pending(Some(tx)))),
+            lease,
+            OnLoss::FrameUnless("data: lost\n\n", completed),
+        );
+        tokio::time::timeout(std::time::Duration::from_secs(2), rx)
+            .await
+            .expect("Core's body was kept though the lease was lost")
+            .unwrap();
+        let mut body = res.into_body();
+        assert!(body.frame().await.is_none(), "a frame followed done");
     }
 }

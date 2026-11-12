@@ -250,12 +250,39 @@ owner = "rust"
 methods = ["DELETE"]
 
 # sbstndalton/noevia#2190 close-out (rust-auto-roles): the GET is the front's, from the user's
-# auto-roles.json and the snapshot Node publishes (the served catalogue, the machine models). The PUT
-# stays Node's: a save warms the roles in the engine, which is chat-live (core rust-auto-roles.cjs).
+# auto-roles.json and the snapshot Node publishes. F1 moves PUT and deletion cleanup to the
+# native writer, keeping the existing warming trigger behind a private bridge.
 [[route]]
 path = "/api/auto-roles"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "PUT"]
+
+# sbstndalton/noevia#2446 slice 1 (rust-specialists): Coworkers and Spaces, native from the start. Every
+# method is Rust's and each path answers its own 405 with Allow (bins/noevia-server specialists_routes.rs).
+# The web client (noevia-web slices 2 and 3) calls these paths, so they are checked against it.
+[[route]]
+path = "/api/specialists"
+owner = "rust"
+
+[[route]]
+path = "/api/specialists/{id}"
+owner = "rust"
+
+[[route]]
+path = "/api/spaces"
+owner = "rust"
+
+[[route]]
+path = "/api/spaces/{id}"
+owner = "rust"
+
+[[route]]
+path = "/api/spaces/{id}/pages"
+owner = "rust"
+
+[[route]]
+path = "/api/spaces/{id}/pages/{pageId}"
+owner = "rust"
 
 # Chat port S5: the turn is the front's as a transparent relay (bins/noevia-server chat_turn.rs): the
 # session gate, then the request unread to core's loopback /internal/chat/turn, whose unchanged pipeline
@@ -650,7 +677,7 @@ owner = "node"
 # #1638: Settings → Inference machines (noevia-core routes/inference-machines.cjs), administrators only.
 [[route]]
 path = "/api/models/machines"
-owner = "node"
+owner = "rust"
 
 [[route]]
 path = "/api/models/preset"
@@ -668,7 +695,7 @@ owner = "node"
 
 [[route]]
 path = "/api/models/reranker"
-owner = "node"
+owner = "rust"
 
 # sbstndalton/noevia#2210: the preset reload, the front's (bins/noevia-server model_maint/reload.rs);
 # Node's core server/rust-model-maintenance.cjs refuses its POST. Other methods stay Node's (403/405).

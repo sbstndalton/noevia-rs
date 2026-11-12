@@ -1,4 +1,5 @@
-//! #2281: the toolbox picker is answered here; Node only supplies its live discovery/prefill facts.
+//! #2281: the toolbox picker is answered here. Its facts are the front's own MCP discovery and the chat
+//! process's published toolbox facts (mcp_discovery.rs); nothing is asked of Node per request.
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
@@ -6,12 +7,9 @@ use axum::{
     response::IntoResponse,
 };
 use js_json::wtf16;
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
 pub const PATH: &str = "/api/toolboxes";
-const FACTS_PATH: &str = "/internal/toolbox-picker/facts";
-const DEADLINE: Duration = Duration::from_secs(30);
-const MAX_BYTES: usize = 8 * 1024 * 1024;
 const UNAVAILABLE: &str = "The tool list is unavailable. Try again in a moment.";
 
 fn error(status: StatusCode, message: &str) -> Response<Body> {
@@ -42,21 +40,10 @@ pub async fn serve(
     if parts.method != Method::GET {
         return error(StatusCode::METHOD_NOT_ALLOWED, "method not allowed");
     }
-    let Some((200, bytes)) = app
-        .config
-        .research
-        .node_call(FACTS_PATH, &serde_json::json!({}), DEADLINE)
-        .await
-    else {
-        return error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE);
-    };
-    if bytes.len() > MAX_BYTES {
-        return error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE);
-    }
-    let Some(facts) = std::str::from_utf8(&bytes)
-        .ok()
-        .and_then(|s| wtf16::parse(s).ok())
-    else {
+    // Live discovery, the built-in boxes and the prefill measurements: this process's own discovery and
+    // the chat process's published facts (mcp_discovery.rs). Not provably current is not ready: never a
+    // stale answer.
+    let Some(facts) = crate::mcp_discovery::picker(app).await else {
         return error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE);
     };
     // The signed-in identity decides connector visibility; neither the bridge nor request parameters do.

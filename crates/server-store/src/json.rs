@@ -272,6 +272,48 @@ pub fn write_shared_projects(
     write_text_atomic(&dir.join(name), text, Parent::MustExist)
 }
 
+/// A role save whose bytes and fsync are prepared before entering the commit fence.
+/// Only the atomic rename remains at publication. Unpublished files are removed on drop.
+pub struct PreparedAutoRoles {
+    temporary: std::path::PathBuf,
+    destination: std::path::PathBuf,
+}
+impl PreparedAutoRoles {
+    pub fn publish(&self) -> Result<(), JsonError> {
+        Ok(std::fs::rename(&self.temporary, &self.destination)?)
+    }
+}
+impl Drop for PreparedAutoRoles {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.temporary);
+    }
+}
+pub fn prepare_auto_roles(dir: &Path, text: &str) -> Result<PreparedAutoRoles, JsonError> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+    let temporary = dir.join(format!(
+        "auto-roles.json.{}.{}.tmp",
+        std::process::id(),
+        sequence
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temporary)?;
+    let staged = PreparedAutoRoles {
+        temporary,
+        destination: dir.join("auto-roles.json"),
+    };
+    file.write_all(text.as_bytes())?;
+    file.sync_all()?;
+    Ok(staged)
+}
+
 /// Writes [`crate::ROOT_PROVIDER_FILE`] in `data_dir` (which must exist) atomically with text the
 /// caller serialised; the caller holds the file's shared lock (crates/server-projects).
 pub fn write_root_shared_providers(
@@ -284,6 +326,49 @@ pub fn write_root_shared_providers(
         text,
         Parent::MustExist,
     )
+}
+
+/// Whether `name` is `<uuid>.md` with a lowercase hyphenated UUID: the only page file name.
+fn page_file_name(name: &str) -> bool {
+    let Some(id) = name.strip_suffix(".md") else {
+        return false;
+    };
+    id.len() == 36
+        && id.bytes().enumerate().all(|(i, b)| match i {
+            8 | 13 | 18 | 23 => b == b'-',
+            _ => b.is_ascii_digit() || (b'a'..=b'f').contains(&b),
+        })
+}
+
+/// Writes a Space's page (`dir/<uuid>.md`, sbstndalton/noevia#2446) atomically with the same temp
+/// file, fsync and rename as the JSON files. `dir` is the Space's directory; the caller holds the
+/// account's specialists lock.
+pub fn write_owned_page(
+    dir: &Path,
+    name: &str,
+    text: &str,
+    _switch: crate::RustAuth,
+) -> Result<(), JsonError> {
+    if !page_file_name(name) {
+        return Err(JsonError::NotOwned(name.chars().take(64).collect()));
+    }
+    write_text_atomic(&dir.join(name), text, Parent::Create)
+}
+
+/// `fs.rmSync(dir/<uuid>.md, { force: true })`: a missing page is not an error.
+pub fn remove_owned_page(
+    dir: &Path,
+    name: &str,
+    _switch: crate::RustAuth,
+) -> Result<(), JsonError> {
+    if !page_file_name(name) {
+        return Err(JsonError::NotOwned(name.chars().take(64).collect()));
+    }
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    match std::fs::remove_file(dir.join(name)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(JsonError::Io(e)),
+        _ => Ok(()),
+    }
 }
 
 /// `fs.rmSync(dir/name, { force: true })` for an owned file: a missing file is not an error.

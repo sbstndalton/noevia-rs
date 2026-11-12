@@ -54,6 +54,7 @@ rust-project-writes = []
 
 [dependencies]
 autotune-plan = { path = "../../crates/autotune-plan" }
+chat-mirror-sched = { path = "../../crates/chat-mirror-sched" }
 embedding-worker = { path = "../../crates/embedding-worker" }
 context-fit = { path = "../../crates/context-fit" }
 engine-admission = { path = "../../crates/engine-admission" }
@@ -70,8 +71,10 @@ s3-sign = { path = "../../crates/s3-sign" }
 storage-path = { path = "../../crates/storage-path", optional = true }
 rand_core = { version = "0.6", features = ["getrandom"] }
 google-token-seal = { path = "../../crates/google-token-seal" }
+egress-issuer = { path = "../../crates/egress-issuer" }
 offsite-backup-format = { path = "../../crates/offsite-backup-format" }
 dav-parse = { path = "../../crates/dav-parse" }
+server-dav = { path = "../../crates/server-dav" }
 policy-leaves = { path = "../../crates/policy-leaves" }
 server-routing-mode = { path = "../../crates/server-routing-mode" }
 server-reasoning-settings = { path = "../../crates/server-reasoning-settings" }
@@ -95,6 +98,7 @@ server-chatgpt-status = { path = "../../crates/server-chatgpt-status", optional 
 secret-envelope = { path = "../../crates/secret-envelope" }
 ssrf-policy = { path = "../../crates/ssrf-policy" }
 mcp-frame = { path = "../../crates/mcp-frame" }
+mcp-servers = { path = "../../crates/mcp-servers" }
 # sbstndalton/noevia#2202 round 2: GET /api/toolboxes/permitted (toolbox_routes.rs).
 toolboxes-permitted = { path = "../../crates/toolboxes-permitted" }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
@@ -102,6 +106,7 @@ base64 = "0.22"
 brotli = "8"
 bytes = "1"
 flate2 = "1"
+futures-util = "0.3"
 http-body = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "client", "server"] }
@@ -112,6 +117,7 @@ url = "2.5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 server-store = { path = "../../crates/server-store" }
 server-projects = { path = "../../crates/server-projects" }
+server-specialists = { path = "../../crates/server-specialists" }
 js-json = { path = "../../crates/js-json" }
 hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }
@@ -125,6 +131,9 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 
 [dev-dependencies]
+rustix = { version = "1.1.5", features = ["process"] }
+egress = { path = "../../crates/egress" }
+egress-issuer = { path = "../../crates/egress-issuer", features = ["testing"] }
 # tests/storage_integrations.rs: a synthetic https Nextcloud on 127.0.0.1 (tests/fixtures/synthetic-tls).
 rustls = { version = "=0.23.45", default-features = false, features = ["std", "ring", "tls12"] }
 tokio-rustls = { version = "=0.26.6", default-features = false, features = ["ring", "tls12"] }

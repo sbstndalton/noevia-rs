@@ -117,7 +117,7 @@ chat-list save does so only with `NOEVIA_RUST_PROJECT_CHATS_CONFIRMED=1` as well
 supervisor sets only once `--features` lists `rust-project-chats`. The front answers the chat list
 only when built with the cargo feature of that name; without it, the route stays Node's under the
 switch, and Node, unconfirmed, answers it (sbstndalton/noevia#1409). A request start that takes in
-the front's change nudges Node's chat vault mirror, as Node's own project writes did. A front with
+the front's change nudges the chat vault mirror schedule (the front's own, `rust-chat-mirror-v1`), as Node's own project writes did. A front with
 the chat slice needs a core that merges `chats` per item (core#75 or later): noevia's
 `deploy/tools/assemble-release.sh` refuses a release whose front owns a project route its core's
 `OWNED_ROUTES` does not list.
@@ -567,7 +567,7 @@ and `--features` lists `rust-model-reads`. The rest wait for batch M2 (the job r
 | `/api/models/inference-budget` | node | budget store, boot-time budget, Node's shared installed list; PUT writes |
 | `/api/models/installed` | node | Node's shared (cached, invalidated by its writes) installed list |
 | `/api/models/load` | node | write through Node's lease and maintenance gate (M2) |
-| `/api/models/machines` | node | machine health probe and tune caches in Node memory; POST writes |
+| `/api/models/machines` | rust | native registry, mutations and tune; Node supplies health/readiness facts |
 | `/api/models/presets/reload` (POST) | rust | moved in #2210 (below); other methods keep Node's 403/405 |
 | `/api/models/preset/suggest` (GET) | rust | moved in #2189 (below); other methods keep Node's admin check and 405 |
 | `/api/models/{*}` | node | preset, idle-unload, assignments, reranker, prune, mtp-artifact, pull, downloads: mixed reads of Node state and writes |
@@ -720,7 +720,7 @@ at connect time, no redirect, no environment proxy, 3 s, 4 KiB.
 | route | owner | capability / Core refusal | notes |
 |---|---|---|---|
 | `/api/integrations/storage/folder`, `/test`, `/nextcloud/start`, `/nextcloud/poll`, `/nextcloud/cancel` (POST) | rust | `rust-storage-integrations` / `RUST_STORAGE_INTEGRATIONS_OWNED` | session gate, then the JSON-object body (1 MiB); the member-origin rule on every target, no redirect, no environment proxy, Node's deadlines and the 64 KiB Nextcloud reply cap; other methods stay Node's |
-| `/api/chat-vault-mirror/preferences` (all methods) | rust | `rust-vault-mirror-preferences` / `RUST_VAULT_MIRROR_PREFERENCES_OWNED` | Rust is the only writer of `users/<id>/chat-vault-mirror.json` (Node's mirror re-reads it per use); a PUT that turns it on while available writes `chat-vault-mirror-nudges.json` (`{version:1,nudges:{<userId>:<ms>}}`), which core polls by file signal to run that account's mirror at once |
+| `/api/chat-vault-mirror/preferences` (all methods) | rust | `rust-vault-mirror-preferences` / `RUST_VAULT_MIRROR_PREFERENCES_OWNED` | Rust is the only writer of `users/<id>/chat-vault-mirror.json` (Node's mirror re-reads it per use); a PUT that turns it on while available nudges the front's own chat mirror schedule in process (`rust-chat-mirror-v1`), which runs that account's mirror pass at once; no nudge file |
 
 The pending Nextcloud sign-ins move wholesale: the same sealed file
 (`nextcloud-login-flows.json`, `enc:v2:` bound to the account, 10 minutes, at most 100, one per
@@ -1361,15 +1361,25 @@ previewed removes the server **and forgets the key the administrator stored** (t
 rotation re-seals the shared key slot through the broker (`directory_mcp_servers` is its fourth table; `POST
 /v1/mcp/reseal`), and Core's rotation no longer lists it.
 
-**Node's discovery, published.** `mcp-discovery.json` (`mcp_discovery.rs`; Core `mcp-discovery-snapshot.cjs`) carries what
-only the live MCP client knows: the offered boxes with their tools and whether each writes, the configured boxes,
-each server's last discovery, the coding harness switch, whether a repository is registered, whether a Nextcloud MCP
-server is configured and `MCP_NEXTCLOUD_ORIGINS`. It is written atomically (0600) every 3 s **only while the front asks**
-(the demand marker `snapshot-demand`, snapshot.rs), and the front trusts it only while it is two intervals young;
-otherwise the answer is "not ready" (the permitted view: 503 `Retry-After: 2`; the admin listing: no tool counts; the
-connectors page: Drive plus a Nextcloud entry that says it is being prepared). `snapshot.rs` and Core's
-`published-snapshot.cjs` are the close-out round's files (#2190 group D) copied unchanged so the two branches merge
-without a conflict; `mcp-discovery.json` joins `PUBLISHED_STATE` (the off-site walk and the replay state comparison leave it out).
+**MCP discovery, the front's (row T).** `mcp_discovery_actor.rs` connects to every configured server (the operator's
+`MCP_SERVERS`, then the directory's), lists and converts its tools, binds the curated boxes (`mcp_manifest.rs`), and owns
+each server's last outcome, the refresh cadence (10 min; 30 s after a run that found nothing; 5/15/45/120 s for a failing
+remote server; the in-process server is retried at the next request), the coalescing of callers (a forced call that arrives
+during a run waits and runs again) and the reaction to a changed directory table or a changed administrator credential.
+Discovery uses service credentials only (a static bearer, the directory's shared key, a discovery-only capability token for the
+in-process server, the adding administrator's sign-in or key); a disabled administrator's credential is not trusted; the snapshot
+never varies by caller. Core (`mcp-native-discovery.cjs`) is its fail-closed client over the internal store
+(`POST /v1/mcp/discovery { force?, generation? }` -> the snapshot, or `{ unchanged: true }`; 503 while it cannot answer, and Core then
+offers no tools and no boxes). What only the chat process knows - the built-in boxes with their tool definitions and which of them
+read, the connector boxes, the coding-harness switch, whether a repository is registered and the prefill measurements - is
+`toolbox-chat-facts.json` (`mcp_discovery.rs`; Core `toolbox-chat-facts.cjs`), written atomically (0600) every 3 s **only while
+the front asks** (the demand marker `snapshot-demand`, snapshot.rs) and trusted only while two intervals young. The catalogue
+(`compose`) behind the permitted view, the admin listing and the connectors page is built from those two sources; either one
+missing, stale or unproven answers "not ready" (the permitted view: 503 `Retry-After: 2`; the admin listing: no tool counts;
+the connectors page: Drive plus a Nextcloud entry that says it is being prepared). Both files join `PUBLISHED_STATE` (the
+off-site walk and the replay state comparison leave them out). `tests/mcp-discovery-oracle.cjs` runs Core's real discovery
+wiring over 18 scenarios (a virtual clock, scripted servers) and `tests/mcp_discovery_actor.rs` replays them against the actor,
+the catalogue and the picker's facts.
 
 **Permitted tools, with no stale window.** The view is computed per request from the `toolboxes-permitted` crate, the
 project (tenant-scoped `users/<id>/projects.json`), the account's `tool_policies`, Drive connection, MCP sign-ins and
@@ -1812,10 +1822,10 @@ for this metadata port; those engine behaviors are not proven by its synthetic t
 `toolbox_picker.rs` authenticates the account and reads its current Drive connection;
 `server-projects::toolbox_picker` composes summaries, UTF-16 token estimates, prefill observations
 and redacted MCP status. The old Node public handler, summary helper and MCP status helper are removed.
-`POST /internal/toolbox-picker/facts` accepts an empty object from the trusted loopback front only;
-Node awaits discovery and supplies selected raw offered definitions and live observations. It receives
-no account selector. URLs, header configuration and credentials are never copied into server facts;
-authentication kinds are checked against the supported enum. Unavailable or malformed facts fail with 503.
+The facts are the front's own MCP discovery plus the chat process's published toolbox facts (`toolbox-chat-facts.json`); the old
+`POST /internal/toolbox-picker/facts` bridge is gone, so nothing is asked of Node per request and no account selector can reach
+it. URLs, header configuration and credentials are never copied into the facts; authentication kinds are checked against the
+supported enum. Facts that are not provably current, or malformed, fail with 503.
 
 The frozen Node fixture checks exact response and token-cost parity, including UTF-16 title truncation.
 Real-front synthetic HTTP checks cover authentication, CSRF, 405s, current-account Drive isolation and
@@ -1918,3 +1928,51 @@ Each stage compares the exact job/run/config snapshot; preparation uses the exis
 only within its own call and returns its token after releasing it. Rust owns confirmation,
 resumability/restoration checks, protected-queue filtering, identity decisions, phase/step reset
 instructions and public projection. No cross-request reservation or replacement-job retry is used.
+
+### Inference-machine array coercion: explicit compatibility exception
+
+For `POST /api/models/machines` add/update string coercion, Rust deterministically refuses
+array nesting **at or above 3086** with status 500 and exactly
+`{"error":"The inference machines could not be changed."}`, without a registry or audit write.
+Depth 3085 remains accepted for an otherwise valid add; tests cover 3085, 3086 and 3087.
+This is a root-approved compatibility exception, not exact reproduction of a V8 stack limit:
+Node's limit depends on request frames and warmup, so no single faithful number exists.
+The boundary is the lowest first-refused depth in two cold and two warm loopback HTTP searches
+using the preserved route and production `server/http.cjs` async-iterator `readJson`, in the
+pinned web image `sha256:4018d741e3e56c274268d55d606410d756c50268c4d476ff0d3b0890c4cb3d8c`.
+Runtime: Linux x64, Node v22.23.3, V8 12.4.254.21-node.57, default stack and no extra flags.
+All four searches first refused 3086; another Node stack context may accept that input.
+Exact runtime measurements are qualification-only (`deploy/tools/qualify-machines-depth.sh`
+in the release repo); floating Core CI checks ordinary observable cases, not exact V8 numbers.
+Requalification does not automatically raise the Rust boundary: changing the exception requires
+an explicit contract decision. Synthetic data only; disposable containers, external network disabled.
+## Code egress issuer (row V)
+
+`rust-code-egress-issuer` makes the front the only issuer of the code-sandbox egress proxy's control
+key and of the signed task grants (`bins/noevia-server/src/code_egress.rs`, `crates/egress-issuer`).
+It is not a public route: Node asks it over the internal store listener (`POST /v1/egress/{status,
+grant,activity,revoke,forget}`, header `x-noevia-store-token`). The shared proxy key keeps its
+published contract (`CODE_EGRESS_CONTROL_KEY_FILE`, mode 0440, owner `CODE_EGRESS_KEY_UID`/`_GID`,
+64 hex digits and LF, replaced by rename); new private issuer state is `code-egress-issuer.json` in an `issuer/` directory
+inside the key directory (a real directory of the issuer, mode exactly 0700 with no group or other bit, checked on every open and so also when it already existed or was loosened later: refused by name, never repaired; created by the issuer; override `CODE_EGRESS_ISSUER_STATE_FILE`; never
+`UI_DATA_DIR`, whose owner is whatever the host made it), mode 0600, and a restart keeps the key
+and replaces its own session. The private state is only read or published through a trusted
+directory chain, anchored to a held directory descriptor: no symlinked component, ancestors owned by
+root or the issuer and not group/other-writable (except root-owned sticky directories), the state
+directory itself owned by the issuer with mode exactly 0700, the file a regular single-link
+0600 file of the issuer. Anything else (including a destination swapped after start) is refused and
+never repaired. The first publication creates the proxy key exclusively and never replaces a key another issuer
+published. **Takeover of the retired Node issuer's key** (no operator step): Node kept no private
+state (its key is `HMAC(master, random nonce)`, the nonce was never stored, the session lived in
+memory), so the published `current.key` is the only artifact. On a start with no private state of
+ours, a published key is adopted unchanged (no rotation) when it passes the checks Node's own
+publisher applied before touching the file: a real 0750-class directory of the web uid/gid
+(no link, not group/other-writable), a regular single-link file of that uid/gid with mode exactly
+0440, content 64 lowercase hex digits and LF, the process running as that uid. Only the issuer's own
+state is written (atomically, 0600, through the trusted directory chain); Node's file and directory
+are not touched, so a rollback to Node works on the same files. A key that fails a check is refused
+with the check named in the start log (`egress.issuer_unavailable`, `reason=legacy_key_*`) and
+nothing is written or repaired. A key that later differs from the one held is another web's:
+superseded, never overwritten; with a persisted candidate only an exact match is adopted. The paired Core
+carries `noevia-code-egress-client/1` (`server/code-egress-client.cjs`) and publishes no key; it
+drops its reference to a grant once the one-shot cleanup flight has settled.

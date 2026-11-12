@@ -77,7 +77,7 @@ async fn exact_get_requires_admin_and_builds_view_from_single_snapshot() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn writer_other_methods_and_trailing_path_still_proxy() {
+async fn writer_methods_still_proxy_and_trailing_path_is_native_missing() {
     let (_d, f, up) = rig().await;
     for (method, path) in [
         ("PUT", PATH),
@@ -86,8 +86,12 @@ async fn writer_other_methods_and_trailing_path_still_proxy() {
         ("GET", "/api/models/preset/"),
     ] {
         let (status, headers, _) = raw_text(f.addr, method, path, ADMIN, "", b"").await;
-        assert_eq!(status, 202, "{method} {path}");
-        assert!(headers.contains("x-node-method: yes"));
+        assert_eq!(
+            status,
+            if path.ends_with('/') { 404 } else { 202 },
+            "{method} {path}"
+        );
+        assert_eq!(headers.contains("x-node-method: yes"), !path.ends_with('/'));
     }
     assert!(up.seen().iter().all(|r| r.path != FACTS));
 }

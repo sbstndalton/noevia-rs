@@ -120,8 +120,11 @@ pub enum Native {
     /// GET /api/health (sbstndalton/noevia#2190 close-out, `rust-health`): health_routes.rs.
     Health,
     /// GET /api/auto-roles (sbstndalton/noevia#2190 close-out, `rust-auto-roles`):
-    /// auto_roles_routes.rs. The PUT stays Node's.
+    /// auto_roles_routes.rs. GET and PUT share the native user fence.
     AutoRoles,
+    /// The six /api/specialists and /api/spaces routes (sbstndalton/noevia#2446 slice 1,
+    /// `rust-specialists`): specialists_routes.rs.
+    Specialists,
     /// /api/mcp-keys/* and /api/mcp-oauth/* (sbstndalton/noevia#2202): mcp_routes.rs.
     McpCredentials,
     /// Every method of /api/admin/mcp-directory* (sbstndalton/noevia#2202 round 2):
@@ -481,6 +484,7 @@ pub fn native_for(route: &Route) -> Option<Native> {
         "/api/usage" | "/api/usage/aggregate" if auth => return Some(Native::Usage),
         EXPORT if auth => return Some(Native::Export),
         p if auth && DIARY_ROUTES.contains(&p) => return Some(Native::Diary),
+        p if auth && p == crate::reranker_routes::PATH => return Some(Native::Models),
         p if auth && p == crate::model_manager_scan::PATH => return Some(Native::Models),
         p if auth
             && (crate::model_routes::ROUTES.contains(&p)
@@ -502,6 +506,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && STORAGE_INTEGRATIONS.contains(&p) => return Some(Native::StorageIntegrations),
         crate::health_routes::PATH if auth => return Some(Native::Health),
         crate::auto_roles_routes::PATH if auth => return Some(Native::AutoRoles),
+        p if auth && crate::specialists_routes::ROUTES.contains(&p) => {
+            return Some(Native::Specialists)
+        }
         PROVIDER_TEST if auth => return Some(Native::ProviderTest),
         p if auth && CHATGPT_OAUTH.contains(&p) => return Some(Native::ChatgptOAuth),
         PROVIDER_MODELS if auth => return Some(Native::ProviderModels),
@@ -645,7 +652,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
         || route.path == server_account::vault_mirror::PATH
         || route.path == crate::model_manager_scan::PATH
         || route.path == crate::model_downloads_read::PATH
-        || route.path == crate::preset_read_routes::PATH)
+        || route.path == crate::preset_read_routes::PATH
+        || route.path == crate::reranker_routes::PATH)
         && path != route.path
     {
         return None;
@@ -968,7 +976,8 @@ mod tests {
         assert_eq!(dispatch("GET", "/api/health"), Some(Native::Health));
         assert_eq!(dispatch("POST", "/api/health"), None);
         assert_eq!(dispatch("GET", "/api/auto-roles"), Some(Native::AutoRoles));
-        for m in ["PUT", "POST", "DELETE", "HEAD"] {
+        assert_eq!(dispatch("PUT", "/api/auto-roles"), Some(Native::AutoRoles));
+        for m in ["POST", "DELETE", "HEAD"] {
             assert_eq!(dispatch(m, "/api/auto-roles"), None, "{m}");
         }
         assert_eq!(dispatch("GET", "/api/workspace"), Some(Native::Projects));
@@ -1390,6 +1399,9 @@ mod tests {
     fn model_reads_are_rusts_for_get_only_and_the_other_model_routes_stay_nodes() {
         let on = Switches::default();
         for p in crate::model_routes::ROUTES {
+            if *p == crate::inference_machines::PATH {
+                continue;
+            }
             assert_eq!(
                 dispatch_under("GET", p, on),
                 Some(Native::Models),
@@ -1452,8 +1464,11 @@ mod tests {
         for p in [
             "/api/model-manager",
             "/api/models/delete",
+            "/api/models/mtp-artifact",
+            "/api/models/pull",
+            "/api/models/reranker/",
+            "/api/models/rerankerx",
             "/api/models/load",
-            "/api/models/machines",
             "/api/models/preset/",
             "/api/models/downloads/",
             "/api/models/capabilitiesx",
@@ -1468,6 +1483,13 @@ mod tests {
         }
         assert!(crate::FEATURES.contains(&"rust-model-downloads-read"));
         assert!(crate::FEATURES.contains(&"rust-preset-read"));
+        assert!(crate::FEATURES.contains(&"reranker-settings-v1"));
+        for method in ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+            assert_eq!(
+                dispatch_under(method, crate::reranker_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
         // All native model routes appear in the contract with exactly their owned methods.
         let rust: Vec<_> = ROUTES
             .iter()
@@ -1500,8 +1522,10 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::inference_machines::PATH, &[][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
+                (crate::reranker_routes::PATH, &[][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]
         );
