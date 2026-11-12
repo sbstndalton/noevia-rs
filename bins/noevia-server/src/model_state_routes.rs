@@ -396,6 +396,49 @@ pub(crate) async fn installed_now(
         .map_err(|_| ())
 }
 
+/// The installed list read now with Core's own scan (`modelsInstalledNow`), for a delete's existence check.
+/// `Err`: the engine's list or Core's facts could not be had.
+pub(crate) async fn installed_cached(app: &crate::App) -> Result<Vec<JValue>, ()> {
+    let sizing = Arc::clone(&app.config.sizing);
+    if sizing.kind() != server_stats::Kind::LlamaCpp {
+        return Err(());
+    }
+    let listing = sizing.listing().await;
+    installed_list_with(app, &sizing, &listing, None)
+        .await
+        .map_err(|_| ())
+}
+
+/// The model names a live sidecar (embedding or reranker) depends on, from Core's facts (`sidecarModelNames`).
+/// `None` when Core did not answer: the caller fails closed.
+pub(crate) async fn sidecar_names(app: &crate::App) -> Option<HashSet<String>> {
+    let facts = node_facts(
+        app,
+        &json!({ "want": "installed", "ids": [], "scan": false }),
+        INSTALLED_DEADLINE,
+    )
+    .await?;
+    match facts.get("sidecarNames") {
+        JValue::Arr(_) => Some(strings(facts.get("sidecarNames"))),
+        _ => None,
+    }
+}
+
+/// `modelPathFromArgs` of a router listing row (`status.args`, serde form).
+pub(crate) fn listing_row_path(row: &serde_json::Value) -> Option<String> {
+    let args: Vec<String> = row
+        .get("status")
+        .and_then(|s| s.get("args"))
+        .and_then(|a| a.as_array())
+        .map(|a| {
+            a.iter()
+                .map(|x| x.as_str().unwrap_or_default().to_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    model_path(&args).map(str::to_owned)
+}
+
 async fn installed_list_with(
     app: &crate::App,
     sizing: &Arc<Sizing>,
