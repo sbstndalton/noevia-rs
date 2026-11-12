@@ -743,6 +743,20 @@ pub fn router_with_app(
             }),
         );
     }
+    // sbstndalton/noevia#2446 slice 4b: the coworker conversation's `space_page_save` tool, same secret.
+    let page_store = store.clone();
+    router = router.route(
+        "/v1/specialists/page-save",
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let store = page_store.clone();
+            async move {
+                if !authorised(&store, &headers) {
+                    return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                }
+                crate::specialists_routes::page_save_internal(store.data_dir.clone(), &raw).await
+            }
+        }),
+    );
     // Row V: the code-sandbox egress control (code_egress.rs), same secret.
     for op in ["status", "grant", "activity", "revoke", "forget"] {
         let (store, app) = (store.clone(), app.clone());

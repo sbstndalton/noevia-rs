@@ -23,6 +23,7 @@
 pub mod backing;
 mod lists;
 mod pages;
+pub mod tools;
 
 pub use backing::Backing;
 
@@ -265,3 +266,5 @@ impl Store {
 mod backing_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tools_tests;

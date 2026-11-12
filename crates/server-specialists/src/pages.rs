@@ -240,7 +240,19 @@ impl Store {
             .as_deref()
             .map(|t| clean_line("title", t, MAX_TITLE_CHARS))
             .transpose()?;
-        self.locked(|| {
+        self.locked(|| self.put_page_held(space, page, put, title, saved_by))
+    }
+
+    /// [`Store::put_page`] after its checks, with the account's lock already held by the caller.
+    pub(crate) fn put_page_held(
+        &self,
+        space: &str,
+        page: &str,
+        put: PagePut,
+        title: Option<String>,
+        saved_by: &str,
+    ) -> Result<PageWrite, Error> {
+        {
             self.require_space(space)?;
             let mut index = self.page_index(space)?;
             let at = index.pages.iter().position(|p| p.id == page);
@@ -327,7 +339,7 @@ impl Store {
                 changed: true,
                 created: false,
             })
-        })
+        }
     }
 
     pub fn delete_page(&self, space: &str, page: &str) -> Result<(), Error> {
