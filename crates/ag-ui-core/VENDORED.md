@@ -12,7 +12,7 @@
 Only this crate was copied (`src/`, `tests/`, `README.md`, and the licence). The sibling
 `ag-ui-client` crate and the upstream `Cargo.lock` were not.
 
-The crate reaches no network and no filesystem: its sources use `serde`, `serde_json`, `thiserror`
+The crate reaches no network and opens no file or path (`uuid`'s `v4` reads the OS random source): its sources use `serde`, `serde_json`, `thiserror`
 and `uuid` (random ids) and nothing else.
 
 ## Local changes
@@ -32,7 +32,8 @@ are denied here).
    infallible `FromStr`; dropped `From<$name> for Uuid`, `AsRef<Uuid>` and `PartialEq<Uuid>`;
    `PartialEq<str>` compares strings. `ToolCallId` gains `new`, `From<String>`, `From<&str>` and
    `Display`, and its `random()` takes the first eight characters without slicing (the
-   `indexing_slicing` lint).
+   `indexing_slicing` lint). The macro's second arm (extra derives) is removed. Deserializing an id
+   now accepts any string; upstream rejected a non-UUID.
 3. `src/event.rs`: `EventType::Interrupt`, `InterruptEvent`, `InterruptReason` and
    `Event::Interrupt` (the approval-request shape upstream lacks; the other event kinds are
    unchanged), plus the two arms of `event_type()` and `timestamp()`.

@@ -85,6 +85,12 @@ fn after_the_last_message_is_an_empty_replay_and_an_unknown_one_is_refused() {
         r#"[{"id":"a","role":"user","content":"QA q"},{"id":"b","role":"assistant","content":"QA a"}]"#,
     );
     assert_eq!(translate(THREAD, &h, Some("b")).unwrap(), vec![]);
+    // A trailing user message gets a run of its own.
+    let t = lines(
+        &history(r#"[{"id":"a","role":"user","content":"QA q"}]"#),
+        None,
+    );
+    assert!(t.starts_with(r#"{"type":"RUN_STARTED""#) && t.contains(r#""awaitingReply":true"#));
     assert_eq!(translate(THREAD, &h, Some("zz")), Err(UnknownAfter));
     assert_eq!(translate(THREAD, &[], None).unwrap(), vec![]);
 }
@@ -126,6 +132,44 @@ fn a_pending_call_a_stopped_reply_a_pause_and_a_failure_say_so() {
     assert!(got.contains(r#""message":"QA old failure sentence","code":"failed""#));
     // The older failure sentence is not message text.
     assert!(!got.contains(r#""delta":"QA old failure sentence""#));
+}
+
+#[test]
+fn every_fixture_follows_the_run_lifecycle() {
+    // The protocol's verifier: the first event is RUN_STARTED, a run opens only when none is
+    // open, and a run ends with RUN_FINISHED or RUN_ERROR.
+    for entry in std::fs::read_dir(dir()).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.to_string_lossy().ends_with(".events.jsonl") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let mut open = false;
+        for (n, line) in text.lines().enumerate() {
+            let v: serde_json::Value = serde_json::from_str(line).unwrap();
+            match v.get("type").and_then(serde_json::Value::as_str).unwrap() {
+                "RUN_STARTED" => {
+                    assert!(!open, "{path:?}");
+                    open = true;
+                }
+                "RUN_FINISHED" | "RUN_ERROR" => {
+                    assert!(open, "{path:?}");
+                    open = false;
+                }
+                _ => assert!(open, "{path:?} line {n}"),
+            }
+        }
+        assert!(!open, "{path:?}");
+    }
+}
+
+#[test]
+fn a_stopped_pause_keeps_both_marks() {
+    let h = history(
+        r#"[{"id":"s","role":"assistant","content":"QA","stopped":true,"paused":{"reason":"stopped","applied":1}}]"#,
+    );
+    assert!(lines(&h, None)
+        .contains(r#""result":{"paused":{"applied":1,"reason":"stopped"},"stopped":true}"#));
 }
 
 #[test]

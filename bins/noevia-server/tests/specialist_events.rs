@@ -349,18 +349,18 @@ async fn the_stored_conversation_is_replayed_as_frames_in_order() {
     assert_eq!(
         types(&ev),
         [
+            "RUN_STARTED",
             "TEXT_MESSAGE_START",
             "TEXT_MESSAGE_CONTENT",
             "TEXT_MESSAGE_END",
-            "RUN_STARTED",
             "TEXT_MESSAGE_START",
             "TEXT_MESSAGE_CONTENT",
             "TEXT_MESSAGE_END",
             "RUN_FINISHED",
+            "RUN_STARTED",
             "TEXT_MESSAGE_START",
             "TEXT_MESSAGE_CONTENT",
             "TEXT_MESSAGE_END",
-            "RUN_STARTED",
             "TOOL_CALL_START",
             "TOOL_CALL_ARGS",
             "TOOL_CALL_END",
@@ -372,8 +372,8 @@ async fn the_stored_conversation_is_replayed_as_frames_in_order() {
             "RUN_FINISHED",
         ]
     );
-    assert_eq!(ev[3]["threadId"], id);
-    assert_eq!(ev[3]["runId"], "qa-a1");
+    assert_eq!(ev[0]["threadId"], id);
+    assert_eq!(ev[0]["runId"], "qa-a1");
     let saved = ev.iter().find(|e| e["type"] == "CUSTOM").unwrap();
     assert_eq!(
         saved["value"],
@@ -394,7 +394,8 @@ async fn after_replays_only_what_follows_and_an_unknown_cursor_is_400() {
         .await;
     assert_eq!(a.status, 200);
     let ev = frames(&a);
-    assert_eq!(ev[0]["messageId"], "qa-u2");
+    assert_eq!(ev[0]["type"], "RUN_STARTED");
+    assert_eq!(ev[1]["messageId"], "qa-u2");
     assert!(!a.body.contains("qa-a1"));
     let last = r
         .go("GET", &format!("{path}?after=qa-a2"), COOKIE_A, None)

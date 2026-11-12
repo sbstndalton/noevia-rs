@@ -10,12 +10,12 @@
 //! # Mapping
 //!
 //! The thread is the coworker's id. A message's id is its stored `id` (or `message-<position>`
-//! for an entry saved without one, the position counted in the whole history). A tool call has no
+//! for an entry saved without one, the position counted in the history as read, at most the cap). A tool call has no
 //! stored id, so its id is `<message id>-call-<n>` for the n-th call of that message.
 //!
 //! | Stored | Events |
 //! |---|---|
-//! | user message | `TEXT_MESSAGE_START` (role user), `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`, outside any run |
+//! | user message | `TEXT_MESSAGE_START` (role user), `TEXT_MESSAGE_CONTENT`, `TEXT_MESSAGE_END`, inside the run of the reply that follows (every stream starts with `RUN_STARTED`); a user message with no reply yet gets its own run, finished with `{awaitingReply: true}` |
 //! | assistant message | `RUN_STARTED` (run id = the message id) … one terminal event |
 //! | its `reasoning` | `THINKING_START`, `THINKING_TEXT_MESSAGE_START`/`CONTENT`/`END`, `THINKING_END` |
 //! | each of its `toolCalls` | `TOOL_CALL_START`, `TOOL_CALL_ARGS`, `TOOL_CALL_END`, then one of the three below |
@@ -206,33 +206,37 @@ fn tool_calls(out: &mut Vec<Event>, message: &str, calls: &[JValue]) {
 
 /// What a finished reply says about how it ended, for `RUN_FINISHED`'s `result`.
 fn finish_result(m: &JValue) -> Option<Value> {
+    let mut out = serde_json::Map::new();
     if m.get("stopped").as_bool() == Some(true) {
-        return Some(json!({"stopped": true}));
+        out.insert("stopped".into(), json!(true));
     }
     let paused = m.get("paused");
-    if !paused.is_object() {
-        return None;
+    if paused.is_object() {
+        let mut p = serde_json::Map::new();
+        p.insert(
+            "reason".into(),
+            json!(paused.get("reason").as_str().unwrap_or("")),
+        );
+        let applied = paused.get("applied").as_num().unwrap_or(0.0);
+        p.insert("applied".into(), json!(applied.max(0.0) as u64));
+        if let JValue::Arr(names) = paused.get("declined") {
+            let names: Vec<&str> = names.iter().filter_map(JValue::as_str).collect();
+            p.insert("declined".into(), json!(names));
+        }
+        out.insert("paused".into(), Value::Object(p));
     }
-    let mut out = serde_json::Map::new();
-    out.insert(
-        "reason".into(),
-        json!(paused.get("reason").as_str().unwrap_or("")),
-    );
-    let applied = paused.get("applied").as_num().unwrap_or(0.0);
-    out.insert("applied".into(), json!(applied.max(0.0) as u64));
-    if let JValue::Arr(names) = paused.get("declined") {
-        let names: Vec<&str> = names.iter().filter_map(JValue::as_str).collect();
-        out.insert("declined".into(), json!(names));
-    }
-    Some(json!({ "paused": Value::Object(out) }))
+    (!out.is_empty()).then_some(Value::Object(out))
 }
 
-fn assistant(out: &mut Vec<Event>, thread: &str, id: &str, m: &JValue) {
+fn run_started(out: &mut Vec<Event>, thread: &str, id: &str) {
     out.push(Event::RunStarted(RunStartedEvent {
         base: base(),
         thread_id: ThreadId::new(thread),
         run_id: RunId::new(id),
     }));
+}
+
+fn assistant(out: &mut Vec<Event>, thread: &str, id: &str, m: &JValue) {
     if let Some(reasoning) = text_of(m.get("reasoning")) {
         thinking(out, reasoning);
     }
@@ -292,17 +296,39 @@ pub fn translate(
         }
     };
     let mut out = Vec::new();
+    // User turns wait here for the run of the reply that follows, so every run starts the stream
+    // or follows a finished one, as the protocol requires.
+    let mut pending: Vec<(String, &str)> = Vec::new();
     for (i, m) in history.iter().enumerate().skip(from) {
         let id = message_id(m, i);
         match m.get("role").as_str() {
             Some("user") => {
                 if let Some(text) = text_of(m.get("content")) {
-                    text_message(&mut out, &id, Role::User, text);
+                    pending.push((id, text));
                 }
             }
-            Some("assistant") => assistant(&mut out, thread_id, &id, m),
+            Some("assistant") => {
+                run_started(&mut out, thread_id, &id);
+                for (uid, text) in pending.drain(..) {
+                    text_message(&mut out, &uid, Role::User, text);
+                }
+                assistant(&mut out, thread_id, &id, m);
+            }
             _ => {}
         }
+    }
+    if let Some((last, _)) = pending.last() {
+        let last = last.clone();
+        run_started(&mut out, thread_id, &last);
+        for (uid, text) in pending.drain(..) {
+            text_message(&mut out, &uid, Role::User, text);
+        }
+        out.push(Event::RunFinished(RunFinishedEvent {
+            base: base(),
+            thread_id: ThreadId::new(thread_id),
+            run_id: RunId::new(last),
+            result: Some(json!({"awaitingReply": true})),
+        }));
     }
     Ok(out)
 }
