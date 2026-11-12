@@ -16,6 +16,7 @@ pub mod calibration_routes;
 pub mod chat_activity;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
+pub mod chat_turn;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -423,6 +424,11 @@ use std::sync::Arc;
 /// keeps only the user's lists and the decision behind `/internal/chat-framing/suggest`. The
 /// supervisor pairs them.
 ///
+/// `rust-chat-turn`: this build answers `POST /api/chat` (chat_turn.rs, chat port S5) as a
+/// transparent relay: the session gate, then the request unread to Core's loopback
+/// `/internal/chat/turn`, whose unchanged pipeline answers byte for byte; Core refuses any other
+/// POST /api/chat (rust-chat-turn.cjs). The supervisor and assemble-release pair them.
+///
 /// `chat-activity`: this build records each authenticated request's account in
 /// `UI_DATA_DIR/chat-activity.json` (chat_activity.rs, chat port S3), which core's change journal
 /// reader merges as request starts (chat-activity.cjs). Either side alone keeps today's behaviour.
@@ -557,6 +563,7 @@ pub const FEATURES: &[&str] = &[
     "rust-specialists",
     "rust-workspace",
     "rust-chat-framing-suggest",
+    "rust-chat-turn",
     "chat-activity",
     // GET /api/chats/search (#1450) and GET /api/chats/{chatId}/export (#1471): core rust-chat-search.cjs
     // `RUST_CHAT_SEARCH_OWNED` and rust-chat-export.cjs `RUST_CHAT_EXPORT_OWNED` refuse them.
@@ -885,6 +892,7 @@ async fn handle(
                     | routes::Native::ToolboxesPermitted
                     | routes::Native::ToolApprovals
                     | routes::Native::ChatFramingSuggest
+                    | routes::Native::ChatTurn
             )
         ) {
             native = on_whatwg;
@@ -929,7 +937,8 @@ async fn handle(
             | routes::Native::ToolboxPicker
             | routes::Native::ToolboxesPermitted
             | routes::Native::ToolApprovals
-            | routes::Native::ChatFramingSuggest,
+            | routes::Native::ChatFramingSuggest
+            | routes::Native::ChatTurn,
         )
         | None => false,
     };
@@ -1140,6 +1149,12 @@ async fn handle(
                 return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
             };
             chat_framing_suggest::serve(&app, req, p).await
+        }
+        Some(routes::Native::ChatTurn) => {
+            let Some(p) = whatwg else {
+                return reply::error(StatusCode::BAD_REQUEST, "invalid URL", true);
+            };
+            chat_turn::serve(&app, conn, req, p).await
         }
         Some(routes::Native::ToolboxPicker) => {
             let Some(p) = whatwg else {
