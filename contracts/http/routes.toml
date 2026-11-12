@@ -666,9 +666,18 @@ path = "/api/models/installed"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2291: load and unload, the front's (bins/noevia-server load_model.rs): the gate's lease queue,
+# Core's budget decision and the router's fence stand under the load. Other methods keep Node's answers (405,
+# through the residual fallback).
 [[route]]
 path = "/api/models/load"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
+
+[[route]]
+path = "/api/models/unload"
+owner = "rust"
+methods = ["POST"]
 
 # #1638: Settings → Inference machines (noevia-core routes/inference-machines.cjs), administrators only.
 [[route]]
