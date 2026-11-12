@@ -1346,11 +1346,13 @@ impl Maint {
         let Some(router) = self.router.as_ref() else {
             return Err(message(404, "This engine does not use a preset file"));
         };
-        let busy = || {
-            out(
-                409,
-                &json!({"error": PRESETS_BUSY, "code": "maintenance_held", "retryable": true}),
-            )
+        // Node's key order: `error`, `code`, `retryable`.
+        let busy = || Outcome {
+            status: 409,
+            body: format!(
+                r#"{{"error":{},"code":"maintenance_held","retryable":true}}"#,
+                json!(PRESETS_BUSY)
+            ),
         };
         let hold = match self.acquire("", Duration::from_secs(300), false).await {
             Ok(h) => h,

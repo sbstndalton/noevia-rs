@@ -25,15 +25,13 @@ pub struct Answer {
     pub body: String,
 }
 
+/// Node's key order: `error`, then `code`.
 fn refuse(status: u16, error: &str, code: Option<&str>) -> Answer {
     let body = match code {
-        Some(code) => json!({"error": error, "code": code}),
-        None => json!({"error": error}),
+        Some(code) => format!(r#"{{"error":{},"code":{}}}"#, json!(error), json!(code)),
+        None => format!(r#"{{"error":{}}}"#, json!(error)),
     };
-    Answer {
-        status,
-        body: body.to_string(),
-    }
+    Answer { status, body }
 }
 
 /// An ordinary preset: not Laya, not a sidecar's model, not served elsewhere, a preset (or no source).
@@ -68,7 +66,7 @@ pub async fn run(app: &Arc<App>, user: &str) -> Answer {
     if candidates.is_empty() {
         return Answer {
             status: 200,
-            body: json!({"removed": [], "kept": [], "reloaded": false}).to_string(),
+            body: r#"{"removed":[],"kept":[],"reloaded":false}"#.to_owned(),
         };
     }
     // The sections go and the router re-reads models.ini inside one hold (#2219).
@@ -90,12 +88,18 @@ pub async fn run(app: &Arc<App>, user: &str) -> Answer {
         .await
     {
         Ok(done) => done,
-        Err(o) => return Answer { status: o.status, body: o.body },
+        Err(o) => {
+            return Answer {
+                status: o.status,
+                body: o.body,
+            }
+        }
     };
     if let Some(data_dir) = app.config.data_dir.as_deref() {
         for name in &removed {
             // Core awaits clearRoleReferences; the section is gone either way, so a failure is not an answer.
-            let _ = crate::auto_roles_routes::clear_role_references(app, data_dir, user, name).await;
+            let _ =
+                crate::auto_roles_routes::clear_role_references(app, data_dir, user, name).await;
         }
     }
     for name in &removed {
@@ -103,6 +107,10 @@ pub async fn run(app: &Arc<App>, user: &str) -> Answer {
     }
     Answer {
         status: 200,
-        body: json!({"removed": removed, "kept": kept, "reloaded": reloaded}).to_string(),
+        body: format!(
+            r#"{{"removed":{},"kept":{},"reloaded":{reloaded}}}"#,
+            json!(removed),
+            json!(kept)
+        ),
     }
 }

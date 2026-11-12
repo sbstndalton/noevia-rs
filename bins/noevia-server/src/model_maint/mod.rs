@@ -59,7 +59,13 @@ pub const EVIDENCE: &str = "/api/models/evidence";
 pub const EVIDENCE_IMPORT: &str = "/api/models/evidence/import";
 
 /// The maintenance routes this front answers.
-pub const ROUTES: &[&str] = &[RELOAD, PRUNE, EVIDENCE, EVIDENCE_IMPORT, evidence_recheck::PATH];
+pub const ROUTES: &[&str] = &[
+    RELOAD,
+    PRUNE,
+    EVIDENCE,
+    EVIDENCE_IMPORT,
+    evidence_recheck::PATH,
+];
 
 const MISSING_TOKEN_WARNING: &str = "[inference-gate] INFERENCE_GATE_ADMIN_TOKEN is not set: the memory watchdog cannot unload a model that is answering a request, and \"unload anyway\" on the Models page is unavailable. Set it to the admin token of the gate.";
 
@@ -644,11 +650,7 @@ pub async fn serve(
         PRUNE => {
             // `!modelManager.enabled` precedes the work; the route reads no body.
             if app.config.sizing.kind() != server_stats::Kind::LlamaCpp {
-                return reply::error(
-                    StatusCode::NOT_FOUND,
-                    "model management is disabled",
-                    true,
-                );
+                return reply::error(StatusCode::NOT_FOUND, "model management is disabled", true);
             }
             // The work outlives the request: a client that leaves does not strand a half-done prune.
             let (app, user) = (Arc::clone(app), id.user.id.clone());
