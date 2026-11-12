@@ -239,7 +239,7 @@ proxy = "http://127.0.0.1:1"
         std::fs::read_to_string(self.logdir().join("router-events.jsonl"))
             .unwrap_or_default()
             .lines()
-            .map(|l| serde_json::from_str(l).unwrap())
+            .filter_map(|l| serde_json::from_str(l).ok())
             .collect()
     }
 
