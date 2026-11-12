@@ -747,6 +747,8 @@ pub fn router_with_app(
     let page_store = store.clone();
     router = router.route(
         "/v1/specialists/page-save",
+        // The layer above only wraps the routes added before it; a page of 512 KiB of control characters is
+        // 3 MiB of JSON, past the extractor's own 2 MiB default.
         post(move |headers: HeaderMap, raw: Bytes| {
             let store = page_store.clone();
             async move {
@@ -755,7 +757,8 @@ pub fn router_with_app(
                 }
                 crate::specialists_routes::page_save_internal(store.data_dir.clone(), &raw).await
             }
-        }),
+        })
+        .layer(DefaultBodyLimit::max(BODY_LIMIT)),
     );
     // Row V: the code-sandbox egress control (code_egress.rs), same secret.
     for op in ["status", "grant", "activity", "revoke", "forget"] {

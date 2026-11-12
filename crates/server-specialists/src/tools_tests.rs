@@ -341,3 +341,17 @@ fn a_space_deleted_after_the_grant_is_refused() {
         Err(Error::Invalid(_))
     ));
 }
+
+#[test]
+fn an_unreadable_ledger_does_not_stop_saves() {
+    let r = rig();
+    let a = r.save(&draft(None, "QA t", "one")).unwrap();
+    std::fs::write(r.store.dir().join("page-saves.json"), "{").unwrap();
+    // The page is found by its row, and the ledger is rewritten.
+    let b = r.save(&draft(None, "QA t", "one")).unwrap();
+    assert_eq!((b.page_id.as_str(), b.created), (a.page_id.as_str(), false));
+    let c = r.save(&draft(None, "QA t", "two")).unwrap();
+    assert!(c.created);
+    let text = std::fs::read_to_string(r.store.dir().join("page-saves.json")).unwrap();
+    assert!(serde_json::from_str::<serde_json::Value>(&text).is_ok());
+}

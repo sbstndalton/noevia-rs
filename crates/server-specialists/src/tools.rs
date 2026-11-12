@@ -20,7 +20,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 const LEDGER: &str = "page-saves.json";
-/// Drafts remembered; the oldest go first.
+/// Drafts remembered; the oldest go first. A draft past it is still found by its page's row while that page is
+/// unedited; an edited page of a forgotten draft would be saved again (bounded: only past this many saves).
 pub const MAX_LEDGER: usize = 2000;
 
 /// What the model asked for. Any other field is ignored here, never read as a grant.
@@ -129,7 +130,9 @@ impl Store {
             let key = draft_key(&who.id, space, &title, &req.content);
             let version = version_of(&req.content);
             let index = self.page_index(space)?;
-            let mut ledger: Ledger = self.read(self.dir(), LEDGER)?;
+            // The ledger is a cache of what the pages already say (see the fallback below): a file this code cannot
+            // read counts as empty and is rewritten by the save, so it never stops the account's saves.
+            let mut ledger: Ledger = self.read(self.dir(), LEDGER).unwrap_or_default();
             let live = |id: &str| index.pages.iter().find(|p| p.id == id);
             if let Some(row) = ledger
                 .saves

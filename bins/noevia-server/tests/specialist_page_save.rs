@@ -173,6 +173,16 @@ async fn the_loop_saves_a_page_for_the_conversations_coworker_only() {
     }
     assert_eq!(mine.list_pages(&space, None, None, 0).unwrap().total, 1);
 
+    // A page of control characters is 6 JSON bytes each: 3 MiB on the wire, still a normal save.
+    let heavy = "\u{1}".repeat(server_specialists::MAX_PAGE_BYTES);
+    let (status, body) = post(
+        addr,
+        Some(TOKEN),
+        &call(A, &project, &chat, json!({"content": heavy})),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+
     // Limits: an empty title and an oversized page.
     let (status, _) = post(
         addr,
