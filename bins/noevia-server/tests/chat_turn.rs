@@ -746,10 +746,22 @@ async fn each_line_is_flushed_as_its_frame_and_the_client_leaving_closes_cores_s
         .expect("Core's socket stayed open after the client left")
         .unwrap();
     assert!(closed - left < Duration::from_secs(1));
-    assert!(tx
-        .send_data(Bytes::from_static(b"{\"type\":\"delta\"}\n"))
-        .await
-        .is_err());
+    // The socket's close is seen a moment before the upstream body's receiver is dropped, so the
+    // channel may still take a line or two into its buffer; within the same second it refuses.
+    let refused = tokio::time::timeout(Duration::from_secs(1), async {
+        while tx
+            .send_data(Bytes::from_static(b"{\"type\":\"delta\"}\n"))
+            .await
+            .is_ok()
+        {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    assert!(
+        refused.is_ok(),
+        "Core's body was still read after the client left"
+    );
 }
 
 /// The headers on the wire, as a client reads them (chat.cjs's four, and no NDJSON type), sent with
