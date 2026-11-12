@@ -40,7 +40,14 @@ const server = http.createServer(async (req, res) => {
       client = load('project-store-client').createClient({ port:config.port, token:SECRET });
       wiring = load('mcp-wiring').createMcpWiring({
         servers:[{ id:'local', url:`http://127.0.0.1:${server.address().port}/mcp`, auth:'personal', addedBy:config.user }],
-        mcp:load('mcp'), bindBoxes:load('mcp-boxes').bindBoxes,
+        mcp:load('mcp'),
+        // Discovery is the front's (mcp-native-discovery.cjs): a synthetic snapshot offering the one write tool.
+        discovery:{ discover:async () => ({ version:1, incarnation:'qa-synthetic', generation:1, enabled:true, error:null,
+          discoveredAt:Date.now(), failedAt:0, remoteFailStreak:0,
+          servers:[{ id:'local', url:`http://127.0.0.1:${server.address().port}/mcp`, auth:'personal', error:null, discoveredAt:Date.now(), toolCount:1 }],
+          offers:[{ name:TOOL, server:'local', readOnly:false,
+            tool:{ type:'function', function:{ name:TOOL, description:'synthetic write', parameters:{ type:'object', properties:{} } } } }],
+          boxes:[] }) },
         directoryMcp:{ signal:() => 0, asServers:() => [] }, mcpOAuth:{},
         mcpKeys:{ hasKey:() => true, headers:async () => {
           if (pause) { credentialEntered(); await credential; }
