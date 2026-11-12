@@ -530,3 +530,49 @@ fn concurrent_creates_and_reads_keep_one_project_per_coworker() {
         assert_eq!(chat_ids(p), vec![s.chat_id.clone().unwrap()]);
     }
 }
+
+#[test]
+fn a_missing_record_file_never_makes_every_conversation_an_orphan() {
+    let r = rig();
+    let made = r.make("QA", "b", &[]);
+    let pid = made.project_id.unwrap();
+    std::fs::remove_file(r.dir().join("specialists.json")).unwrap();
+    // Lost or not yet restored: nothing is swept, however often it is read.
+    assert!(r.store.list_specialists().unwrap().specialists.is_empty());
+    assert!(r.store.list_specialists().unwrap().specialists.is_empty());
+    assert!(r.project(&pid).is_some());
+    assert!(!r.tombstones().contains(&made.chat_id.unwrap()));
+}
+
+#[test]
+fn a_chat_the_project_no_longer_lists_is_still_tombstoned_and_swept_with_the_coworker() {
+    let r = rig();
+    let made = r.make("QA", "b", &[]);
+    let (cid, pid) = (
+        made.chat_id.clone().unwrap(),
+        made.project_id.clone().unwrap(),
+    );
+    let hist = server_projects::history::history_file(&r.dir(), &cid);
+    std::fs::write(&hist, r#"{"history":[{"role":"user","content":"hi"}]}"#).unwrap();
+    // The project's chat list lost it.
+    let mut ps = r.projects();
+    projects::set(
+        projects::find_mut(&mut ps, &pid).unwrap(),
+        "chats",
+        JValue::Arr(Vec::new()),
+    );
+    std::fs::write(r.dir().join("projects.json"), projects::serialise(ps)).unwrap();
+    let rev = r.store.list_specialists().unwrap().revision;
+    // (the read above re-listed it; take it out again to model the half-made state at delete)
+    let mut ps = r.projects();
+    projects::set(
+        projects::find_mut(&mut ps, &pid).unwrap(),
+        "chats",
+        JValue::Arr(Vec::new()),
+    );
+    std::fs::write(r.dir().join("projects.json"), projects::serialise(ps)).unwrap();
+    r.store.delete_specialist(&made.id, rev).unwrap();
+    assert!(r.project(&pid).is_none());
+    assert!(r.tombstones().contains(&cid), "{}", r.tombstones());
+    assert!(!hist.exists());
+}

@@ -473,14 +473,8 @@ async fn the_chat_id_is_exclusive_to_the_coworkers_project() {
     assert_eq!(into_free.status, 200, "{}", into_free.json);
     let free = r.a("GET", "/api/freechats", None).await;
     assert!(!mentions(&free.json, &cid), "{}", free.json);
-    let hidden = r
-        .a(
-            "GET",
-            &format!("/api/projects/{}/chats", s["projectId"].as_str().unwrap()),
-            None,
-        )
-        .await;
-    assert!(mentions(&hidden.json, &cid), "{}", hidden.json);
+    let own = r.project(A, s["projectId"].as_str().unwrap()).unwrap();
+    assert_eq!(own["chats"][0]["id"], cid.as_str());
 }
 
 #[tokio::test]
@@ -589,4 +583,60 @@ async fn two_coworkers_and_two_accounts_stay_apart() {
         404
     );
     assert!(r.project(A, a1["projectId"].as_str().unwrap()).is_some());
+}
+
+#[tokio::test]
+async fn no_project_route_may_name_the_hidden_project_in_any_spelling() {
+    let r = rig().await;
+    let s = r.coworker("QA Scribe", "Write short notes.").await;
+    let pid = s["projectId"].as_str().unwrap().to_owned();
+    let cid = s["chatId"].as_str().unwrap().to_owned();
+    let before = std::fs::read(r.user_dir(A).join("projects.json")).unwrap();
+    let encoded = pid.replacen('s', "%73", 1);
+    for p in [&pid, &encoded] {
+        for (m, tail, body) in [
+            (
+                "PATCH",
+                "",
+                json!({"instructions": "taken over", "toolboxes": ["core"]}),
+            ),
+            (
+                "POST",
+                "/config",
+                json!({"instructions": "taken over", "toolboxes": ["core"]}),
+            ),
+            ("POST", "/chats", json!({"chats": []})),
+            ("GET", "/chats", json!(null)),
+            ("POST", "/assets", json!({})),
+            ("DELETE", "", json!(null)),
+            ("PUT", "/instruction-skills", json!({"skills": []})),
+        ] {
+            let a = r
+                .a(
+                    m,
+                    &format!("/api/projects/{p}{tail}"),
+                    (!body.is_null()).then_some(body),
+                )
+                .await;
+            assert_eq!(a.status, 404, "{m} {p}{tail}: {}", a.json);
+        }
+    }
+    // Nothing moved: the project is as the coworker's write left it.
+    assert_eq!(
+        before,
+        std::fs::read(r.user_dir(A).join("projects.json")).unwrap()
+    );
+    let p = r.project(A, &pid).unwrap();
+    assert_eq!(p["instructions"], "Write short notes.");
+    assert_eq!(p["chats"][0]["id"], cid.as_str());
+    // The conversation itself is unaffected.
+    assert_eq!(
+        r.a("GET", &format!("/api/chats/{cid}/history"), None)
+            .await
+            .status,
+        200
+    );
+    // An ordinary project id is still routed (404 here only because it does not exist).
+    let ord = r.a("GET", "/api/projects/proj-9-zzzzzz/chats", None).await;
+    assert_ne!(ord.status, 502, "ordinary ids still reach their handler");
 }

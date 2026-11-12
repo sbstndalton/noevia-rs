@@ -152,7 +152,18 @@ pub(crate) fn apply(projects: &mut Vec<JValue>, s: &Specialist, now: i64) -> boo
 }
 
 /// The `specialist-*` projects no coworker of `live` owns: the project id and its chat ids.
-fn orphans(projects: &[JValue], live: &HashSet<&str>) -> Vec<(String, Vec<String>)> {
+/// `recorded` is whether `specialists.json` exists: without it nothing is an orphan, because a
+/// record file that is missing (or was lost) must never be taken for "no coworkers" and wipe
+/// every conversation. (Restoring an older `specialists.json` over newer projects is a backup
+/// problem this cannot tell apart: the coworkers it lacks are then removed.)
+fn orphans(
+    projects: &[JValue],
+    live: &HashSet<&str>,
+    recorded: bool,
+) -> Vec<(String, Vec<String>)> {
+    if !recorded {
+        return Vec::new();
+    }
     projects
         .iter()
         .filter_map(|p| {
@@ -238,14 +249,25 @@ impl Store {
     fn remove_backing(&self, project: &str, chats: &[String]) {
         let Some(b) = self.backing() else { return };
         for chat in chats {
-            if let Err(e) = chat_delete::delete(
-                &b.data_dir,
-                &b.user_id,
-                chat,
-                Kind::Project(project),
-                Origin::Remove,
-                RustProjects::owned(),
-            ) {
+            let gone = |kind| {
+                chat_delete::delete(
+                    &b.data_dir,
+                    &b.user_id,
+                    chat,
+                    kind,
+                    Origin::Remove,
+                    RustProjects::owned(),
+                )
+            };
+            // Out of the project's list, tombstoned, files removed. A chat the list no longer
+            // holds (a half-made project) is tombstoned and swept as an unlisted one, so its
+            // history never outlives the coworker.
+            let done = match gone(Kind::Project(project)) {
+                Ok(o) if o.deleted || o.swept => Ok(()),
+                Ok(_) => gone(Kind::Unlisted).map(|_| ()),
+                Err(e) => Err(e),
+            };
+            if let Err(e) = done {
                 eprintln!("noevia-server: a coworker's chat was not removed: {e:?}");
                 // The project stays too: removing it first would strand the chat's files.
                 return;
@@ -265,13 +287,18 @@ impl Store {
         }
     }
 
+    /// Whether the record file exists.
+    fn recorded(&self) -> bool {
+        self.dir().join(SPECIALISTS).exists()
+    }
+
     /// Whether [`Store::repair_locked`] has anything to do, from an unlocked look: projects
     /// first, then the record.
     fn repair_needed(&self) -> Result<bool, Error> {
         let projects = store::read(self.dir()).map_err(conv)?;
         let list: SpecialistList = self.read(self.dir(), SPECIALISTS)?;
         let live: HashSet<&str> = list.specialists.iter().map(|s| s.id.as_str()).collect();
-        if !orphans(&projects, &live).is_empty() {
+        if !orphans(&projects, &live, self.recorded()).is_empty() {
             return Ok(true);
         }
         let mut copy = projects.clone();
@@ -301,13 +328,14 @@ impl Store {
                 self.write(self.dir(), SPECIALISTS, &list)?;
             }
             let live: HashSet<&str> = list.specialists.iter().map(|s| s.id.as_str()).collect();
+            let recorded = self.recorded();
             let now = now_ms();
             let strays = store::update(self.dir(), RustProjects::owned(), |projects| {
                 let mut changed = false;
                 for s in &list.specialists {
                     changed |= apply(projects, s, now);
                 }
-                (orphans(projects, &live), changed)
+                (orphans(projects, &live, recorded), changed)
             })
             .map_err(conv)?;
             for (project, chats) in strays {
