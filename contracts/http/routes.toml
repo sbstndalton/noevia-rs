@@ -620,9 +620,12 @@ path = "/api/models/capabilities"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2291: the delete, the front's (bins/noevia-server delete_model.rs). Other methods keep
+# Node's answers (405, through the residual fallback).
 [[route]]
 path = "/api/models/delete"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/models/downloads"

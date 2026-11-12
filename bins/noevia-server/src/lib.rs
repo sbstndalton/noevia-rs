@@ -26,6 +26,7 @@ pub mod code_net;
 pub mod config;
 pub mod connector_routes;
 pub mod decision_settings_routes;
+pub mod delete_model;
 pub mod diary_backup;
 pub mod diary_routes;
 pub mod embedding_background;

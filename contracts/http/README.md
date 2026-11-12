@@ -1039,7 +1039,7 @@ leaves it unset (https://huggingface.co).
   deleted model's file is gone may be filed under the old identity (Core cleared its cache on delete).
 - **Kept on Node, and why.** `POST /api/models/evidence/recheck` runs an image probe that may load the model after
   Node's admission check (the inference budget, the memory-watchdog quarantine and the probe cache are Node memory);
-  `/api/model-manager`, load/unload/delete/pull/downloads, the preset GET/PUT, machines, reranker, assignments,
+  `/api/model-manager`, load/unload/pull/downloads, the preset GET/PUT, machines, reranker, assignments,
   idle-unload are chat-bound or engine-live (roles, last-loaded, leases, the load gate).
 - **Tests.** `tests/model_reload.rs` replays 38 answers Core gave (`tests/fixtures/model-maint/record-reload.cjs`) and
   `tests/model_evidence.rs` 26 scenarios (`record-evidence.cjs`), both recorded at Core `b6113b57`.
