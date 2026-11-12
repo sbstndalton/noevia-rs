@@ -130,7 +130,8 @@ that same lock.
     The port refuses to start while a member is alive.
 
 Other differences from the prototype: a wrong method on a known route gets a JSON 405, not a 404,
-and trailing slashes are not stripped (`/v1/models/` is a 404).
+and trailing slashes are not stripped (a GET of `/v1/models/` matches `POST /v1/*`, so it gets
+the 405).
 
 ## Tests
 `tests/router.rs` runs the binary against fake backends (`tests/support/fake_backend.py`) and a
@@ -159,5 +160,8 @@ The other tests cover:
 - A package (image or service unit) with docker socket access.
 - A translation of the production model presets into `[[models]]` entries.
 - A side-by-side replay against the current endpoint.
+- Process reaping when packaged. The process-group check counts zombies as alive, and the router
+  reaps only its direct children. Run it with an init process (`docker run --init`), not as PID 1
+  or as a subreaper, or every stop would report its group as left.
 - Tying backends to the router's lifetime. A router killed with SIGKILL leaves its backend running
   in its own process group, and a later start could pass its health check against that orphan.

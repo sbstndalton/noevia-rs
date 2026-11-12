@@ -48,6 +48,22 @@ fn port_open(port: u16) -> bool {
     TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(200)).is_ok()
 }
 
+fn router_answers(port: u16) -> bool {
+    use std::io::{Read, Write};
+    let Ok(mut c) =
+        TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(200))
+    else {
+        return false;
+    };
+    let _ = c.set_read_timeout(Some(Duration::from_millis(500)));
+    if c.write_all(b"GET /health HTTP/1.0\r\n\r\n").is_err() {
+        return false;
+    }
+    let mut buf = String::new();
+    let _ = c.read_to_string(&mut buf);
+    buf.starts_with("HTTP/1.") && buf.contains("\"status\":\"ok\"")
+}
+
 /// Wait (bounded) for a condition that a background task makes true.
 async fn eventually(what: &str, limit: Duration, mut f: impl FnMut() -> bool) {
     let t0 = Instant::now();
@@ -159,8 +175,10 @@ proxy = "http://127.0.0.1:1"
             .spawn()
             .unwrap();
         self.child = Some(child);
+        // Ready means the router answers /health: a bare TCP connect can succeed against a port
+        // the kernel just used as its own ephemeral source port (a loopback self-connect).
         let t0 = Instant::now();
-        while !port_open(self.port) {
+        while !router_answers(self.port) {
             assert!(
                 t0.elapsed() < Duration::from_secs(20),
                 "router did not listen: {}",
@@ -266,6 +284,13 @@ proxy = "http://127.0.0.1:1"
 
 impl Drop for Harness {
     fn drop(&mut self) {
+        if std::thread::panicking() {
+            eprintln!(
+                "--- router stderr ---\n{}\n--- events ---\n{:?}",
+                self.router_err(),
+                self.events()
+            );
+        }
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();

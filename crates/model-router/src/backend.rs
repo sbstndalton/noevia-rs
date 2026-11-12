@@ -199,7 +199,12 @@ impl Backend {
         let _ = self.signal(Signal::SIGKILL);
         if let Some(pgid) = self.pgid {
             let deadline = Instant::now() + Duration::from_secs(10);
-            while group_alive(pgid) {
+            loop {
+                // Reap our own child each pass: its zombie would count as a live member.
+                let _ = self.exited();
+                if !group_alive(pgid) {
+                    break;
+                }
                 if Instant::now() >= deadline {
                     report.group_left = Some(pgid.as_raw());
                     break;
