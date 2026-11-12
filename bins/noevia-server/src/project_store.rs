@@ -673,6 +673,8 @@ pub fn router_with_app(
         store.clone(),
         app.as_ref().map(|a| a.config.maint.guard.clone()),
     ));
+    // Port contract row H: Node's session with the inference admission lease authority.
+    router = router.merge(inference_admission_routes(store.clone()));
     // Port contract row J: the maintenance lease authority, for Node's maintenance gate.
     router = router.merge(maintenance_lease_routes(
         store.clone(),
@@ -743,6 +745,23 @@ pub fn router_with_app(
             }),
         );
     }
+    // sbstndalton/noevia#2446 slice 4b: the coworker conversation's `space_page_save` tool, same secret.
+    let page_store = store.clone();
+    router = router.route(
+        "/v1/specialists/page-save",
+        // The layer above only wraps the routes added before it; a page of 512 KiB of control characters is
+        // 3 MiB of JSON, past the extractor's own 2 MiB default.
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let store = page_store.clone();
+            async move {
+                if !authorised(&store, &headers) {
+                    return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                }
+                crate::specialists_routes::page_save_internal(store.data_dir.clone(), &raw).await
+            }
+        })
+        .layer(DefaultBodyLimit::max(BODY_LIMIT)),
+    );
     // Row V: the code-sandbox egress control (code_egress.rs), same secret.
     for op in ["status", "grant", "activity", "revoke", "forget"] {
         let (store, app) = (store.clone(), app.clone());
@@ -822,6 +841,33 @@ async fn egress_op(
 /// The bodies of the preset baseline bridge: two preset texts and the router's rows.
 pub const PRESET_BASELINE_LIMIT: usize =
     2 * preset_reload::MAX_INPUT_BYTES + 16 * 1024 * 1024 + 64 * 1024;
+
+/// `POST /v1/inference-admission/session` (engine_admission::authority): a Node process start
+/// registers with this process's one inference admission authority and is issued its incarnation.
+pub fn inference_admission_routes(store: Store) -> Router {
+    use engine_admission::authority;
+    Router::new()
+        .route(
+            authority::SESSION_ROUTE,
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let store = store.clone();
+                async move {
+                    if !authorised(&store, &headers) {
+                        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                    }
+                    let Ok(body @ Value::Object(_)) = serde_json::from_slice::<Value>(&raw) else {
+                        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+                    };
+                    let (status, answer) = authority::global().answer_session(&body);
+                    reply(
+                        StatusCode::from_u16(status).unwrap_or(StatusCode::SERVICE_UNAVAILABLE),
+                        &answer,
+                    )
+                }
+            }),
+        )
+        .layer(DefaultBodyLimit::max(authority::BODY_LIMIT))
+}
 
 /// `POST /v1/maintenance-lease/{op}` (model_maint/lease.rs), answered by `authority` (`None`: 503,
 /// so Node's holds fail closed).

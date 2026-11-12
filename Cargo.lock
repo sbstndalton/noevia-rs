@@ -46,6 +46,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ag-ui-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -89,6 +99,12 @@ dependencies = [
  "cpufeatures 0.2.17",
  "password-hash",
 ]
+
+[[package]]
+name = "arraydeque"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
 
 [[package]]
 name = "atomic-waker"
@@ -741,6 +757,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-operator"
+version = "0.1.0"
+dependencies = [
+ "diary-backup-format",
+ "num-bigint-dig",
+ "regex",
+ "serde_json",
+ "tempfile",
+ "yaml-rust2",
+]
+
+[[package]]
 name = "diary-score-gap"
 version = "0.1.0"
 
@@ -1002,6 +1030,7 @@ version = "0.1.0"
 dependencies = [
  "js-json",
  "model-stream",
+ "rand_core 0.6.4",
  "reqwest",
  "serde_json",
  "tokio",
@@ -2143,6 +2172,7 @@ dependencies = [
  "num-iter",
  "num-traits",
  "rand 0.8.8",
+ "serde",
  "smallvec",
  "zeroize",
 ]
@@ -2572,6 +2602,7 @@ version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c"
 dependencies = [
+ "libc",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
 ]
@@ -3352,6 +3383,7 @@ dependencies = [
 name = "server-specialists"
 version = "0.1.0"
 dependencies = [
+ "ag-ui-core",
  "js-json",
  "serde",
  "serde_json",
@@ -4423,6 +4455,16 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "yaml-rust2"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57e5b818a27a4cd30884ea380857a5e56f7ec3ba24a3990a3cc0b95af3238e18"
+dependencies = [
+ "arraydeque",
+ "hashlink",
+]
 
 [[package]]
 name = "yasna"

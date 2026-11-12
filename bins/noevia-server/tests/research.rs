@@ -25,7 +25,14 @@ const CODE: &str = "synthetic-research-code";
 const ORIGIN: &str = "http://127.0.0.1:18021";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
 const START: &str = "0123456789abcdef0123456789abcdef";
-const LEASE: &str = "0123456789abcdef0123456789abcdef";
+const LEASE_PATH: &str = "/internal/inference-admission/lease/";
+
+/// Row H: this process issues the lease id and Node's latch takes it at `PUT <path>/<id>` (the one request
+/// with a body; the renewal and the give-back have none), answering the id it latched.
+fn take_id<'a>(path: &'a str, body: &str) -> Option<&'a str> {
+    let id = path.strip_prefix(LEASE_PATH)?;
+    (!body.is_empty() && !id.contains('/')).then_some(id)
+}
 const UNREACHABLE: &str = "Research could not reach this server's search tools (the bridge to the web process did not answer). Try again shortly; if it keeps happening, ask an administrator to check the server.";
 
 #[derive(Clone)]
@@ -129,8 +136,8 @@ fn sse(text: &str) -> String {
 /// Node: lease granted, both tools there; extra behaviour by path.
 fn node_answer(path: &str, body: &str) -> Answer {
     let ok = |v: Value| Answer::Now(200, v.to_string());
-    if path == "/internal/inference-admission/lease" {
-        return Answer::Now(201, json!({"lease": LEASE, "ttlMs": 30000}).to_string());
+    if let Some(id) = take_id(path, body) {
+        return Answer::Now(201, json!({"lease": id, "ttlMs": 30000}).to_string());
     }
     if path.ends_with("/renew") {
         return ok(json!({"ttlMs": 30000}));
@@ -177,6 +184,10 @@ struct Front {
 }
 
 async fn front(flag: Option<&str>, node: Responder, engine: Responder) -> Front {
+    // A Node start is registered with this process's admission authority before any lease is issued.
+    engine_admission::authority::global()
+        .node_session("research-test", 1)
+        .unwrap();
     let (node, engine) = (Stub::start(node).await, Stub::start(engine).await);
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
@@ -565,20 +576,17 @@ async fn a_plan_runs_under_a_lease_streams_and_gives_the_lease_back() {
         (&body["model"], &body["stream"]),
         (&json!("synthetic-model"), &json!(true))
     );
-    assert_eq!(f.node.count("POST /internal/inference-admission/lease"), 1);
+    assert_eq!(f.node.count("PUT /internal/inference-admission/lease/"), 1);
     let enter = f
         .node
         .seen()
         .into_iter()
-        .find(|l| l.starts_with("POST /internal/inference-admission/lease"))
+        .find(|l| l.starts_with("PUT /internal/inference-admission/lease/"))
         .unwrap();
     assert!(enter.contains(&format!("x-noevia-store-token: {STORE_TOKEN}")));
     assert!(enter.contains(r#"{"model":"synthetic-model"}"#), "{enter}");
     assert!(
-        settle(|| f.node.count(&format!(
-            "DELETE /internal/inference-admission/lease/{LEASE}"
-        )) == 1)
-        .await,
+        settle(|| f.node.count("DELETE /internal/inference-admission/lease/") == 1).await,
         "released"
     );
 }
@@ -586,7 +594,7 @@ async fn a_plan_runs_under_a_lease_streams_and_gives_the_lease_back() {
 #[tokio::test]
 async fn a_refused_lease_sends_nothing_to_the_engine_and_keeps_its_words() {
     let node: Responder = Arc::new(|_m, p, b| {
-        if p == "/internal/inference-admission/lease" {
+        if take_id(p, b).is_some() {
             Answer::Now(
                 409,
                 json!({"error":"Over the inference budget.","code":"overBudget"}).to_string(),
@@ -676,7 +684,7 @@ async fn a_job_runs_to_its_end_after_the_client_left_and_keeps_every_cap() {
     // Every lease back.
     let f2 = &f;
     assert!(
-        settle(|| f2.node.count("POST /internal/inference-admission/lease")
+        settle(|| f2.node.count("PUT /internal/inference-admission/lease/")
             == f2.node.count("DELETE /internal/inference-admission/lease/"))
         .await,
         "{:?}",
@@ -751,8 +759,8 @@ async fn a_lost_lease_stops_the_step() {
     // Renewals say the lease ended: the step must not keep the engine.
     let hang: Responder = Arc::new(|_m, _p, _b| Answer::Hang("engine-dropped"));
     let node: Responder = Arc::new(|_m, p, b| {
-        if p == "/internal/inference-admission/lease" {
-            return Answer::Now(201, json!({"lease": LEASE, "ttlMs": 300}).to_string());
+        if let Some(id) = take_id(p, b) {
+            return Answer::Now(201, json!({"lease": id, "ttlMs": 300}).to_string());
         }
         if p.ends_with("/renew") {
             return Answer::Now(404, "{}".into());
@@ -765,7 +773,10 @@ async fn a_lost_lease_stops_the_step() {
         .await
         .expect("a lost lease ends the step at once");
     assert!(s >= 500, "{s} {v}");
-    assert_eq!(f.engine.count("engine-dropped"), 1);
+    assert!(
+        settle(|| f.engine.count("engine-dropped") == 1).await,
+        "the engine call was dropped"
+    );
 }
 
 #[tokio::test]
@@ -814,7 +825,7 @@ async fn smart_on_a_machine_runs_there_keyless_and_the_row_is_only_read() {
         .node
         .seen()
         .into_iter()
-        .find(|l| l.starts_with("POST /internal/inference-admission/lease"))
+        .find(|l| l.starts_with("PUT /internal/inference-admission/lease/"))
         .unwrap();
     assert!(
         enter.contains(r#""machine":"m1""#) && enter.contains(r#""role":"smart""#),
@@ -833,7 +844,7 @@ async fn a_machine_address_off_this_network_never_gets_a_connection_and_redirect
     assert!(v["error"].as_str().unwrap().contains("Synthetic Pi"), "{v}");
     assert_eq!(f.engine.seen().len(), 0);
     assert_eq!(
-        f.node.count("POST /internal/inference-admission/lease"),
+        f.node.count("PUT /internal/inference-admission/lease/"),
         0,
         "no turn counted"
     );

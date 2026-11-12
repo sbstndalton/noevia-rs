@@ -268,6 +268,13 @@ owner = "rust"
 path = "/api/specialists/{id}"
 owner = "rust"
 
+# Slice 5: the coworker's conversation as AG-UI events (replay form). Every method is Rust's and the
+# path answers its own 405 with Allow. The web client does not call it yet, so client = false.
+[[route]]
+path = "/api/specialists/{id}/events"
+owner = "rust"
+client = false
+
 [[route]]
 path = "/api/spaces"
 owner = "rust"
@@ -613,9 +620,12 @@ path = "/api/models/capabilities"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2291: the delete, the front's (bins/noevia-server delete_model.rs). Other methods keep
+# Node's answers (405, through the residual fallback).
 [[route]]
 path = "/api/models/delete"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/models/downloads"
@@ -689,9 +699,12 @@ path = "/api/models/preset/suggest"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#1695: the missing-file prune, the front's (bins/noevia-server prune_missing.rs).
+# Other methods keep Node's answers (405, through the residual fallback).
 [[route]]
 path = "/api/models/prune-missing"
-owner = "node"
+owner = "rust"
+methods = ["POST"]
 
 [[route]]
 path = "/api/models/reranker"

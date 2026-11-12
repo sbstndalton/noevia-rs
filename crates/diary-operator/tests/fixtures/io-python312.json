@@ -1,0 +1,82 @@
+[
+  {
+    "case": "directory",
+    "args": [
+      "folder"
+    ],
+    "env": {},
+    "exit": 1,
+    "stdout": "",
+    "stderr": "IsADirectoryError: [Errno 21] Is a directory: 'folder'\n"
+  },
+  {
+    "case": "empty-path",
+    "args": [
+      ""
+    ],
+    "env": {},
+    "exit": 1,
+    "stdout": "",
+    "stderr": "IsADirectoryError: [Errno 21] Is a directory: '.'\n"
+  },
+  {
+    "case": "empty-env",
+    "args": [],
+    "env": {
+      "DIARY_CONFIG": ""
+    },
+    "exit": 1,
+    "stdout": "",
+    "stderr": "IsADirectoryError: [Errno 21] Is a directory: '.'\n"
+  },
+  {
+    "case": "missing",
+    "args": [
+      "missing"
+    ],
+    "env": {},
+    "exit": 0,
+    "stdout": "{}\n",
+    "stderr": ""
+  },
+  {
+    "case": "missing-env",
+    "args": [],
+    "env": {
+      "DIARY_CONFIG": "missing"
+    },
+    "exit": 0,
+    "stdout": "{}\n",
+    "stderr": ""
+  },
+  {
+    "case": "denied",
+    "args": [
+      "denied.yaml"
+    ],
+    "env": {},
+    "exit": 1,
+    "stdout": "",
+    "stderr": "PermissionError: [Errno 13] Permission denied: 'denied.yaml'\n"
+  },
+  {
+    "case": "closed-parent",
+    "args": [
+      "closed/config.yaml"
+    ],
+    "env": {},
+    "exit": 1,
+    "stdout": "",
+    "stderr": "PermissionError: [Errno 13] Permission denied: 'closed/config.yaml'\n"
+  },
+  {
+    "case": "broken-link",
+    "args": [
+      "broken"
+    ],
+    "env": {},
+    "exit": 0,
+    "stdout": "{}\n",
+    "stderr": ""
+  }
+]

@@ -1,0 +1,324 @@
+[
+  {
+    "case": "value-first",
+    "input_hex": "6c6c6d3a207b636861745f6d6f64656c3a202121737472207b3d3a206c6f63616c2d6d6f64656c2c206e6f74653a2069676e6f7265647d7d0a",
+    "exit": 0,
+    "stdout": "{\n  \"llm\": {\n    \"chat_model\": \"local-model\",\n    \"aux\": {\n      \"model\": \"local-model\"\n    }\n  }\n}\n",
+    "stderr": "DIARY_AUX_MODEL is unset (or 'default'); falling back to the chat model 'local-model'. Set DIARY_AUX_MODEL to a smaller model the endpoint serves to make summarising and skip-classification cheaper.\n"
+  },
+  {
+    "case": "value-last",
+    "input_hex": "6c6c6d3a207b636861745f6d6f64656c3a202121737472207b6e6f74653a2069676e6f7265642c203d3a206c6f63616c2d6d6f64656c7d7d0a",
+    "exit": 0,
+    "stdout": "{\n  \"llm\": {\n    \"chat_model\": \"local-model\",\n    \"aux\": {\n      \"model\": \"local-model\"\n    }\n  }\n}\n",
+    "stderr": "DIARY_AUX_MODEL is unset (or 'default'); falling back to the chat model 'local-model'. Set DIARY_AUX_MODEL to a smaller model the endpoint serves to make summarising and skip-classification cheaper.\n"
+  },
+  {
+    "case": "value-middle",
+    "input_hex": "783a202121737472207b6265666f72653a205b612c207b623a20637d5d2c203d3a2063686f73656e2c2061667465723a207b643a205b655d7d7d0a793a2072657461696e65640a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\",\n  \"y\": \"retained\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "first-value-wins",
+    "input_hex": "783a202121737472207b3d3a2066697273742c206e6f74653a2069676e6f7265642c203d3a206c6173747d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"first\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "nested-first",
+    "input_hex": "783a202121737472207b3d3a207b3d3a2063686f73656e2c206e6f74653a2069676e6f7265647d2c206e6f74653a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "nested-last",
+    "input_hex": "783a202121737472207b6e6f74653a2069676e6f7265642c203d3a207b6e6f74653a2069676e6f7265642c203d3a2063686f73656e7d7d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "nested-tag-ignored",
+    "input_hex": "783a202121737472207b3d3a202121696e74207b3d3a20303132332c2065787472613a2069676e6f7265647d2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"0123\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "ignored-unknown-tag",
+    "input_hex": "783a202121737472207b6e6f74653a2021756e6b6e6f776e2069676e6f7265642c203d3a2063686f73656e7d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "ignored-unhashable-key",
+    "input_hex": "783a202121737472207b3f205b612c20625d3a2069676e6f7265642c203d3a2063686f73656e7d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "ignored-merge",
+    "input_hex": "783a202121737472207b3c3c3a206e6f742d612d6d617070696e672c203d3a2063686f73656e7d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "selected-tag-ignored",
+    "input_hex": "783a202121737472207b3d3a2021756e6b6e6f776e2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "explicit-value-key",
+    "input_hex": "783a202121737472207b212176616c756520273d273a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "uri-value-key",
+    "input_hex": "783a202121737472207b213c7461673a79616d6c2e6f72672c323030323a76616c75653e20273d273a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "sequence-value-key",
+    "input_hex": "783a202121737472207b3f20212176616c7565205b615d3a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "mapping-value-key",
+    "input_hex": "783a202121737472207b3f20212176616c7565207b613a20627d3a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "quoted-equals-refused",
+    "input_hex": "783a202121737472207b273d273a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found mapping\n  in \"<unicode string>\", line 1, column 4:\n    x: !!str {'=': chosen, extra: ignored}\n       ^\n"
+  },
+  {
+    "case": "string-tag-equals-refused",
+    "input_hex": "783a202121737472207b212173747220273d273a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found mapping\n  in \"<unicode string>\", line 1, column 4:\n    x: !!str {!!str '=': chosen, extra: ... \n       ^\n"
+  },
+  {
+    "case": "no-value-refused",
+    "input_hex": "783a202121737472207b65787472613a2069676e6f7265647d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found mapping\n  in \"<unicode string>\", line 1, column 4:\n    x: !!str {extra: ignored}\n       ^\n"
+  },
+  {
+    "case": "nested-no-value-refused",
+    "input_hex": "783a202121737472207b3d3a207b65787472613a2069676e6f7265647d2c2065787472613a2069676e6f7265647d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found mapping\n  in \"<unicode string>\", line 1, column 14:\n    x: !!str {=: {extra: ignored}, extra: ignored}\n                 ^\n"
+  },
+  {
+    "case": "selected-sequence-refused",
+    "input_hex": "783a202121737472207b65787472613a2069676e6f7265642c203d3a205b63686f73656e5d7d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found sequence\n  in \"<unicode string>\", line 1, column 30:\n    x: !!str {extra: ignored, =: [chosen]}\n                                 ^\n"
+  },
+  {
+    "case": "nested-sequence-refused",
+    "input_hex": "783a202121737472207b3d3a207b3d3a205b63686f73656e5d7d2c2065787472613a2069676e6f7265647d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found sequence\n  in \"<unicode string>\", line 1, column 18:\n    x: !!str {=: {=: [chosen]}, extra: ignored}\n                     ^\n"
+  },
+  {
+    "case": "anchor-octal-lexeme",
+    "input_hex": "736f757263653a20266e756d62657220303132330a783a202121737472207b65787472613a2069676e6f7265642c203d3a202a6e756d6265727d0a",
+    "exit": 0,
+    "stdout": "{\n  \"source\": 83,\n  \"x\": \"0123\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "anchor-bool-lexeme",
+    "input_hex": "736f757263653a2026626f6f6c65616e205945530a783a202121737472207b3d3a202a626f6f6c65616e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"source\": true,\n  \"x\": \"YES\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "anchor-float-lexeme",
+    "input_hex": "736f757263653a2026666c6f617420312e3030652b30330a783a202121737472207b3d3a202a666c6f61742c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"source\": 1000.0,\n  \"x\": \"1.00e+03\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "anchor-null-lexeme",
+    "input_hex": "736f757263653a20266e696c207e0a783a202121737472207b3d3a202a6e696c2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"source\": null,\n  \"x\": \"~\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "anchor-nested-mapping",
+    "input_hex": "736f757263653a20266d617070696e67207b3d3a207b3d3a20303132332c2065787472613a2069676e6f7265647d2c2065787472613a2069676e6f7265647d0a783a202121737472207b3d3a202a6d617070696e672c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"source\": {\n    \"=\": {\n      \"=\": 83,\n      \"extra\": \"ignored\"\n    },\n    \"extra\": \"ignored\"\n  },\n  \"x\": \"0123\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "ignored-anchor-before-value",
+    "input_hex": "783a202121737472207b65787472613a20266e756d62657220303132332c203d3a202a6e756d6265727d0a793a202a6e756d6265720a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"0123\",\n  \"y\": 83\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "ignored-anchor-after-value",
+    "input_hex": "783a202121737472207b3d3a2063686f73656e2c2065787472613a20266e756d62657220303132337d0a793a202a6e756d6265720a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\",\n  \"y\": 83\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "ignored-collection-anchor",
+    "input_hex": "783a202121737472207b3d3a2063686f73656e2c2065787472613a2026636f6c6c656374696f6e207b613a205b622c20635d7d7d0a793a202a636f6c6c656374696f6e0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\",\n  \"y\": {\n    \"a\": [\n      \"b\",\n      \"c\"\n    ]\n  }\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "ignored-nested-anchor",
+    "input_hex": "783a202121737472207b65787472613a207b613a205b26776f72642063686f73656e5d7d2c203d3a202a776f72647d0a793a202a776f72640a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\",\n  \"y\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "selected-anchor",
+    "input_hex": "783a202121737472207b3d3a2026776f72642063686f73656e2c2065787472613a2069676e6f7265647d0a793a202a776f72640a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\",\n  \"y\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "wrapper-anchor",
+    "input_hex": "783a202677726170706572202121737472207b3d3a2063686f73656e2c2065787472613a2069676e6f7265647d0a793a202a777261707065720a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\",\n  \"y\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "ignored-wrapper-anchor",
+    "input_hex": "783a202121737472207b3d3a2066697273742c2065787472613a202677726170706572202121737472207b3d3a207365636f6e642c2065787472613a2069676e6f7265647d7d0a793a202a777261707065720a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"first\",\n  \"y\": \"second\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "selected-sequence-alias-refused",
+    "input_hex": "736f757263653a202673657175656e6365205b615d0a783a202121737472207b3d3a202a73657175656e63652c2065787472613a2069676e6f7265647d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found sequence\n  in \"<unicode string>\", line 1, column 9:\n    source: &sequence [a]\n            ^\n"
+  },
+  {
+    "case": "normal-value-key",
+    "input_hex": "783a207b3d3a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": {\n    \"=\": \"chosen\",\n    \"extra\": \"ignored\"\n  }\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "normal-explicit-value-key",
+    "input_hex": "783a207b212176616c756520273d273a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": {\n    \"=\": \"chosen\",\n    \"extra\": \"ignored\"\n  }\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "deferred-key-alias",
+    "input_hex": "736f757263653a207b26657175616c73203d3a2069676e6f7265647d0a783a202121737472207b2a657175616c73203a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"source\": {\n    \"=\": \"ignored\"\n  },\n  \"x\": \"chosen\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "wrapper-key-alias",
+    "input_hex": "783a202121737472207b26657175616c73203d3a2063686f73656e2c2065787472613a2069676e6f7265647d0a793a202121737472207b2a657175616c73203a207365636f6e642c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"chosen\",\n  \"y\": \"second\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "retagged-root-key-alias",
+    "input_hex": "26657175616c73203d3a2069676e6f7265640a783a202121737472207b2a657175616c73203a2063686f73656e2c2065787472613a2069676e6f7265647d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found mapping\n  in \"<unicode string>\", line 2, column 4:\n    x: !!str {*equals : chosen, extra:  ... \n       ^\n"
+  },
+  {
+    "case": "int-wrapper",
+    "input_hex": "783a202121696e74207b65787472613a2069676e6f7265642c203d3a20303132337d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": 83\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "float-wrapper",
+    "input_hex": "783a202121666c6f6174207b3d3a20312e3235652b30332c2065787472613a2069676e6f7265647d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": 1250.0\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "bool-wrapper",
+    "input_hex": "783a202121626f6f6c207b65787472613a2069676e6f7265642c203d3a205945537d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": true\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "bool-wrapper-invalid",
+    "input_hex": "783a202121626f6f6c207b65787472613a2069676e6f7265642c203d3a20696e76616c69647d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "KeyError: 'invalid'\n"
+  },
+  {
+    "case": "null-wrapper",
+    "input_hex": "783a2021216e756c6c207b65787472613a2069676e6f7265642c203d3a20616e797468696e677d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": null\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "binary-wrapper-padding",
+    "input_hex": "783a20212162696e617279207b65787472613a2069676e6f7265642c203d3a206162637d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: failed to decode base64 data: Incorrect padding\n  in \"<unicode string>\", line 1, column 4:\n    x: !!binary {extra: ignored, =: abc}\n       ^\n"
+  },
+  {
+    "case": "timestamp-wrapper-invalid",
+    "input_hex": "783a20212174696d657374616d70207b65787472613a2069676e6f7265642c203d3a20323032362d31332d30317d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "TypeError: expected string or bytes-like object, got 'list'\n"
+  }
+]

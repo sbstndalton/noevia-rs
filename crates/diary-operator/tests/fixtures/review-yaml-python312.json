@@ -1,0 +1,233 @@
+[
+  {
+    "case": "set-key",
+    "input_hex": "3f202121736574207b7d0a3a2076616c75650a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: while constructing a mapping\n  in \"<unicode string>\", line 1, column 1:\n    ? !!set {}\n    ^\nfound unhashable key\n  in \"<unicode string>\", line 1, column 3:\n    ? !!set {}\n      ^\n"
+  },
+  {
+    "case": "binary-map-padding",
+    "input_hex": "783a20212162696e617279207b3d3a206162637d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: failed to decode base64 data: Incorrect padding\n  in \"<unicode string>\", line 1, column 4:\n    x: !!binary {=: abc}\n       ^\n"
+  },
+  {
+    "case": "timezone-plus",
+    "input_hex": "783a20212174696d657374616d7020323032362d30312d30325430333a30343a30352b32343a30300a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not datetime.timedelta(days=1).\n"
+  },
+  {
+    "case": "timezone-minus",
+    "input_hex": "783a20212174696d657374616d7020323032362d30312d30325430333a30343a30352d32353a30300a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not datetime.timedelta(days=-2, seconds=82800).\n"
+  },
+  {
+    "case": "timestamp-trailing",
+    "input_hex": "783a20323032362d30312d30325430333a30343a3035676172626167650a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"2026-01-02T03:04:05garbage\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "binary-stray-padding",
+    "input_hex": "783a20212162696e61727920593d574a6a0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "TypeError: Object of type bytes is not JSON serializable\n"
+  },
+  {
+    "case": "int-part-invalid",
+    "input_hex": "783a202121696e7420313a6f6f70730a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: invalid literal for int() with base 10: 'oops'\n"
+  },
+  {
+    "case": "float-part-invalid",
+    "input_hex": "783a202121666c6f617420313a6f6f70730a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: could not convert string to float: 'oops'\n"
+  },
+  {
+    "case": "int-part-spaces",
+    "input_hex": "783a202121696e742022313a2032220a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": 62\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "float-part-spaces",
+    "input_hex": "783a202121666c6f61742022313a20322e35220a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": 62.5\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "bool-bad",
+    "input_hex": "783a202121626f6f6c20676172626167650a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "KeyError: 'garbage'\n"
+  },
+  {
+    "case": "scalar-map-value",
+    "input_hex": "783a202121737472207b3d3a20747275657d0a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": \"true\"\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "bool-case",
+    "input_hex": "783a202121626f6f6c20745275450a",
+    "exit": 0,
+    "stdout": "{\n  \"x\": true\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "str-map",
+    "input_hex": "636f727075733a202121737472207b696e6465785f656e61626c65643a20747275657d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found mapping\n  in \"<unicode string>\", line 1, column 9:\n    corpus: !!str {index_enabled: true}\n            ^\n"
+  },
+  {
+    "case": "bool-seq",
+    "input_hex": "783a202121626f6f6c205b747275655d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found sequence\n  in \"<unicode string>\", line 1, column 4:\n    x: !!bool [true]\n       ^\n"
+  },
+  {
+    "case": "int-map",
+    "input_hex": "783a202121696e74207b613a20317d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a scalar node, but found mapping\n  in \"<unicode string>\", line 1, column 4:\n    x: !!int {a: 1}\n       ^\n"
+  },
+  {
+    "case": "seq-map",
+    "input_hex": "783a202121736571207b613a20317d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a sequence node, but found mapping\n  in \"<unicode string>\", line 1, column 4:\n    x: !!seq {a: 1}\n       ^\n"
+  },
+  {
+    "case": "map-seq",
+    "input_hex": "783a2021216d6170205b615d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a mapping node, but found sequence\n  in \"<unicode string>\", line 1, column 4:\n    x: !!map [a]\n       ^\n"
+  },
+  {
+    "case": "map-scalar",
+    "input_hex": "783a2021216d617020746578740a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a mapping node, but found scalar\n  in \"<unicode string>\", line 1, column 4:\n    x: !!map text\n       ^\n"
+  },
+  {
+    "case": "set-seq",
+    "input_hex": "783a202121736574205b615d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: expected a mapping node, but found sequence\n  in \"<unicode string>\", line 1, column 4:\n    x: !!set [a]\n       ^\n"
+  },
+  {
+    "case": "int-invalid",
+    "input_hex": "783a202121696e7420676172626167650a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: invalid literal for int() with base 10: 'garbage'\n"
+  },
+  {
+    "case": "int-empty",
+    "input_hex": "783a202121696e742022220a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "IndexError: string index out of range\n"
+  },
+  {
+    "case": "float-invalid",
+    "input_hex": "783a202121666c6f617420676172626167650a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: could not convert string to float: 'garbage'\n"
+  },
+  {
+    "case": "binary-padding",
+    "input_hex": "783a20212162696e617279206162630a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: failed to decode base64 data: Incorrect padding\n  in \"<unicode string>\", line 1, column 4:\n    x: !!binary abc\n       ^\n"
+  },
+  {
+    "case": "binary-unicode",
+    "input_hex": "783a20212162696e61727920c3a90a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.constructor.ConstructorError: failed to convert base64 data into ascii: 'ascii' codec can't encode character '\\xe9' in position 0: ordinal not in range(128)\n  in \"<unicode string>\", line 1, column 4:\n    x: !!binary \u00e9\n       ^\n"
+  },
+  {
+    "case": "timestamp-text",
+    "input_hex": "783a20212174696d657374616d7020676172626167650a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "AttributeError: 'NoneType' object has no attribute 'groupdict'\n"
+  },
+  {
+    "case": "timestamp-month",
+    "input_hex": "783a20212174696d657374616d7020323032362d31332d30310a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: month must be in 1..12\n"
+  },
+  {
+    "case": "timestamp-day",
+    "input_hex": "783a20212174696d657374616d7020323032362d30322d33300a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: day is out of range for month\n"
+  },
+  {
+    "case": "timestamp-hour",
+    "input_hex": "783a20212174696d657374616d7020323032362d30312d30325432353a30303a30305a0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ValueError: hour must be in 0..23\n"
+  },
+  {
+    "case": "flow-eof",
+    "input_hex": "783a205b312c20320a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.parser.ParserError: while parsing a flow sequence\n  in \"<unicode string>\", line 1, column 4:\n    x: [1, 2\n       ^\nexpected ',' or ']', but got '<stream end>'\n  in \"<unicode string>\", line 2, column 1:\n    \n    ^\n"
+  },
+  {
+    "case": "quote-eof",
+    "input_hex": "783a2022756e7465726d696e617465640a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.scanner.ScannerError: while scanning a quoted scalar\n  in \"<unicode string>\", line 1, column 4:\n    x: \"unterminated\n       ^\nfound unexpected end of stream\n  in \"<unicode string>\", line 2, column 1:\n    \n    ^\n"
+  },
+  {
+    "case": "bad-flow",
+    "input_hex": "783a205b3120322c7d0a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.parser.ParserError: while parsing a flow node\nexpected the node content, but found '}'\n  in \"<unicode string>\", line 1, column 9:\n    x: [1 2,}\n            ^\n"
+  },
+  {
+    "case": "unknown-alias",
+    "input_hex": "783a202a616273656e740a",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "yaml.composer.ComposerError: found undefined alias 'absent'\n  in \"<unicode string>\", line 1, column 4:\n    x: *absent\n       ^\n"
+  }
+]
