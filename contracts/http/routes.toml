@@ -259,36 +259,30 @@ methods = ["GET", "PUT"]
 
 # sbstndalton/noevia#2446 slice 1 (rust-specialists): Coworkers and Spaces, native from the start. Every
 # method is Rust's and each path answers its own 405 with Allow (bins/noevia-server specialists_routes.rs).
-# client = false until the web slices (#2446 slices 2 and 3) name these paths; remove it then.
+# The web client (noevia-web slices 2 and 3) calls these paths, so they are checked against it.
 [[route]]
 path = "/api/specialists"
 owner = "rust"
-client = false
 
 [[route]]
 path = "/api/specialists/{id}"
 owner = "rust"
-client = false
 
 [[route]]
 path = "/api/spaces"
 owner = "rust"
-client = false
 
 [[route]]
 path = "/api/spaces/{id}"
 owner = "rust"
-client = false
 
 [[route]]
 path = "/api/spaces/{id}/pages"
 owner = "rust"
-client = false
 
 [[route]]
 path = "/api/spaces/{id}/pages/{pageId}"
 owner = "rust"
-client = false
 
 [[route]]
 path = "/api/chat"
