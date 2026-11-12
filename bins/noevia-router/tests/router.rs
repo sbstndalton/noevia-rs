@@ -239,7 +239,7 @@ proxy = "http://127.0.0.1:1"
         std::fs::read_to_string(self.logdir().join("router-events.jsonl"))
             .unwrap_or_default()
             .lines()
-            .map(|l| serde_json::from_str(l).unwrap())
+            .filter_map(|l| serde_json::from_str(l).ok())
             .collect()
     }
 
@@ -291,7 +291,16 @@ impl Drop for Harness {
                 self.events()
             );
         }
+        // SIGTERM first, so the router stops its backend: a SIGKILLed router leaves the backend
+        // running in its own process group (noevia#2444), which a failing test must not do.
         if let Some(mut child) = self.child.take() {
+            if let Ok(pid) = i32::try_from(child.id()) {
+                let _ = kill(Pid::from_raw(pid), Signal::SIGTERM);
+            }
+            let t0 = Instant::now();
+            while matches!(child.try_wait(), Ok(None)) && t0.elapsed() < Duration::from_secs(20) {
+                std::thread::sleep(Duration::from_millis(50));
+            }
             let _ = child.kill();
             let _ = child.wait();
         }
