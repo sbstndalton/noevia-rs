@@ -505,7 +505,7 @@ async fn request_body_cap() {
     // any other Node route shows the proxy's default cap.
     check_request_body_cap(
         "default-cap",
-        "/api/models/load",
+        "/api/models/pull",
         "/api/import",
         noevia_server::legacy_proxy::BODY_CAP,
     )
