@@ -67,6 +67,7 @@ pub mod model_manager_scan;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
+pub mod prune_missing;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
 pub mod offsite_engine;

@@ -1475,6 +1475,7 @@ mod tests {
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
                 (crate::reranker_routes::PATH, &[][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
+                (crate::model_maint::PRUNE, &["POST"][..]),
             ]
         );
         // #2210: the maintenance routes are the front's for their one method only; every other

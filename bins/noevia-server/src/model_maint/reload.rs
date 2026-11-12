@@ -49,6 +49,9 @@ const NEEDS_TOKEN: &str = "An inference gate fronts the engine and INFERENCE_GAT
 /// `POST /models/unload` and `GET /models?reload=1`, as the router client bounds them, plus the rest.
 const UNLOAD_LIMIT: Duration = Duration::from_secs(60);
 const RELOAD_LIMIT: Duration = Duration::from_secs(120);
+/// llamacpp-manager.cjs `PRESET_STEP_MS`: the lease a models.ini write needs left.
+const PRESET_STEP: Duration = Duration::from_millis(150_000);
+const PRESETS_BUSY: &str = "Models are busy, so nothing was changed. Try again shortly.";
 const OTHER_STEPS: Duration = Duration::from_secs(60);
 
 /// The worst case of unloading `models` models one by one and then reloading.
@@ -1326,6 +1329,49 @@ impl Maint {
         let outcome = self.reload_inner(router, &hold, unload).await;
         hold.release().await;
         outcome
+    }
+
+    /// `writePresets(write, reloadIf)` (#2219): a models.ini write and its reload under one hold, so no other
+    /// reload runs between them. `Err` with nothing written when the hold is refused (409 `maintenance_held`,
+    /// retryable) or cannot be taken or covered; otherwise the written value and, when `reload_if` asked for
+    /// one, whether the reload applied (the write stands whatever the reload does).
+    pub async fn write_presets_held<T, F>(
+        &self,
+        write: impl FnOnce() -> F,
+        reload_if: impl FnOnce(&T) -> bool,
+    ) -> Result<(T, bool), Outcome>
+    where
+        F: std::future::Future<Output = T>,
+    {
+        let Some(router) = self.router.as_ref() else {
+            return Err(message(404, "This engine does not use a preset file"));
+        };
+        let busy = || {
+            out(
+                409,
+                &json!({"error": PRESETS_BUSY, "code": "maintenance_held", "retryable": true}),
+            )
+        };
+        let hold = match self.acquire("", Duration::from_secs(300), false).await {
+            Ok(h) => h,
+            Err(HoldError::Busy) => return Err(busy()),
+            Err(HoldError::Gate { status: 409, .. }) => return Err(busy()),
+            Err(HoldError::Gate { status, message: m }) => return Err(message(status, &m)),
+            Err(HoldError::NeedsGate) => return Err(message(503, NEEDS_TOKEN)),
+            Err(HoldError::NodeUnavailable) => return Err(message(503, NO_ARBITER)),
+        };
+        if !hold.may_start(PRESET_STEP) {
+            hold.release().await;
+            return Err(message(503, LEASE_LOST));
+        }
+        let written = write().await;
+        let reloaded = if reload_if(&written) {
+            self.reload_inner(router, &hold, false).await.status == 200
+        } else {
+            false
+        };
+        hold.release().await;
+        Ok((written, reloaded))
     }
 
     async fn reload_inner(&self, router: &Router, holding: &Hold, unload: bool) -> Outcome {

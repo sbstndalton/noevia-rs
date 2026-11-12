@@ -700,7 +700,7 @@ pub async fn clear_role_references(
 /// `POST /v1/model-state/forget` {name}: the one writer of the last-loaded model and the identity
 /// cache (model_maint/model_state.rs). Clears the front's copies, then asks Core to clear its own;
 /// `nodeCleared` is false when Core did not answer (an older Core keeps its copy until restart).
-async fn forget_model(app: &App, name: &str) -> serde_json::Value {
+pub(crate) async fn forget_model(app: &App, name: &str) -> serde_json::Value {
     let cleared = app.config.maint.forget_model_local(name);
     let node_cleared = app
         .config
