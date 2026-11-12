@@ -68,13 +68,14 @@ struct LiveCore {
 }
 
 impl LiveCore {
-    fn start(core: &std::path::Path, data: &std::path::Path) -> LiveCore {
+    fn start(core: &std::path::Path, data: &std::path::Path, session_port: u16) -> LiveCore {
         let script =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/research_core_live.cjs");
         // The paired Core's embedding owner asks this front's own build for its features at boot
         // (core rust-embedding-background.cjs createOwner), as the web image's /usr/local/bin one is.
         let mut child = Command::new("node")
             .env("NOEVIA_SERVER_BIN", env!("CARGO_BIN_EXE_noevia-server"))
+            .env("NOEVIA_SESSION_PORT", session_port.to_string())
             .arg(script)
             .arg(core)
             .arg(data)
@@ -131,6 +132,70 @@ impl Drop for LiveCore {
     }
 }
 
+/// Row H: the front's `POST /v1/inference-admission/session`, answered by this process's real authority (what the
+/// front's project-store route does), for the paired Core's registration; the driver forwards that one route here.
+async fn answer_sessions() -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut s, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                let body = loop {
+                    let n = s.read(&mut chunk).await.unwrap_or(0);
+                    if n == 0 {
+                        return;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&buf).into_owned();
+                    if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                        let size = head
+                            .lines()
+                            .find_map(|l| {
+                                l.to_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .and_then(|n| n.trim().parse::<usize>().ok())
+                            })
+                            .unwrap_or(0);
+                        if body.len() >= size {
+                            break body.to_owned();
+                        }
+                    }
+                };
+                let (status, answer) = match serde_json::from_str::<Value>(&body) {
+                    Ok(v) => engine_admission::authority::global().answer_session(&v),
+                    Err(_) => (400, json!({"error": "invalid JSON"})),
+                };
+                let text = answer.to_string();
+                let _ = s
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{text}",
+                            text.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+            });
+        }
+    });
+    port
+}
+
+/// Core registers its start at boot; wait (bounded) until the authority has it.
+async fn session_registered() {
+    let authority = engine_admission::authority::global();
+    for _ in 0..100 {
+        if let Some(ticket) = authority.issue() {
+            authority.end(&ticket.id);
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    panic!("Core never registered its start with the admission authority");
+}
+
 struct Front {
     _dir: tempfile::TempDir,
     addr: SocketAddr,
@@ -140,9 +205,10 @@ struct Front {
 async fn front(core_dir: &std::path::Path) -> Front {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
+    let session_port = answer_sessions().await;
     let live = tokio::task::spawn_blocking({
         let (core_dir, data) = (core_dir.to_path_buf(), data.clone());
-        move || LiveCore::start(&core_dir, &data)
+        move || LiveCore::start(&core_dir, &data, session_port)
     })
     .await
     .unwrap();
@@ -206,6 +272,7 @@ async fn a_real_core_answers_the_fronts_bridge_and_lease_calls() {
         return;
     };
     let f = front(&core_dir).await;
+    session_registered().await;
 
     // The bridge: Core's own availability answer comes back (this synthetic Core has no search tools).
     let (s, v) = get(&f, "/api/projects/p1/research").await;

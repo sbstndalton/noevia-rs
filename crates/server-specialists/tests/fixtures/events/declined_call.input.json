@@ -1,0 +1,6 @@
+{"after": null, "history": [
+  {"id": "qa-u1", "role": "user", "content": "QA save a page"},
+  {"id": "qa-a1", "role": "assistant", "content": "", "paused": {"reason": "declined", "applied": 0, "declined": ["space_page_save"]}, "toolCalls": [
+    {"name": "space_page_save", "args": "{\"title\":\"QA page\",\"content\":\"QA body\"}", "status": "denied", "once": true}
+  ]}
+]}

@@ -77,13 +77,11 @@ async fn regression_p3_admission_wait_does_not_inflate_duty_pause() {
         default_reply(path)
     })
     .await;
-    let core = server(|path, _| {
-        if path == "/internal/inference-admission/lease" {
+    node_session();
+    let core = server(|path, body| {
+        if let Some(take) = lease_take(path, body) {
             std::thread::sleep(Duration::from_millis(200));
-            (
-                201,
-                r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":30000}"#.into(),
-            )
+            take
         } else {
             (204, "null".into())
         }
@@ -114,6 +112,7 @@ async fn regression_p3_stop_cancels_pending_admission() {
     use tokio::{io::AsyncReadExt, net::TcpListener};
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
+    node_session();
     let (send, recv) = tokio::sync::oneshot::channel();
     let server = tokio::spawn(async move {
         let (mut peer, _) = listener.accept().await.unwrap();

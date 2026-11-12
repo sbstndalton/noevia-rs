@@ -6,6 +6,7 @@
 //! |---|---|
 //! | `/api/specialists` | GET, POST |
 //! | `/api/specialists/{id}` | GET, PATCH, DELETE |
+//! | `/api/specialists/{id}/events` | GET (slice 5: the conversation as AG-UI events, replay form) |
 //! | `/api/spaces` | GET, POST |
 //! | `/api/spaces/{id}` | GET, PATCH, DELETE |
 //! | `/api/spaces/{id}/pages` | GET, POST |
@@ -31,7 +32,8 @@ pub const SPACES: &str = "/api/spaces";
 pub const SPACE: &str = "/api/spaces/{id}";
 pub const PAGES: &str = "/api/spaces/{id}/pages";
 pub const PAGE: &str = "/api/spaces/{id}/pages/{pageId}";
-pub const ROUTES: &[&str] = &[SPECIALISTS, SPECIALIST, SPACES, SPACE, PAGES, PAGE];
+pub const EVENTS: &str = "/api/specialists/{id}/events";
+pub const ROUTES: &[&str] = &[SPECIALISTS, SPECIALIST, EVENTS, SPACES, SPACE, PAGES, PAGE];
 
 /// Bodies other than a page's: a few small fields.
 const SMALL_BODY: usize = 64 * 1024;
@@ -42,6 +44,7 @@ const PAGE_BODY: usize = 1024 * 1024 + 64 * 1024;
 enum Target {
     Specialists,
     Specialist(String),
+    Events(String),
     Spaces,
     Space(String),
     Pages(String),
@@ -52,6 +55,7 @@ impl Target {
     fn allowed(&self) -> &'static [Method] {
         match self {
             Target::Specialists | Target::Spaces | Target::Pages(_) => &[Method::GET, Method::POST],
+            Target::Events(_) => &[Method::GET],
             Target::Specialist(_) | Target::Space(_) => {
                 &[Method::GET, Method::PATCH, Method::DELETE]
             }
@@ -71,6 +75,7 @@ fn target(path: &str) -> Option<Target> {
     match seg.as_slice() {
         ["specialists"] => Some(Target::Specialists),
         ["specialists", id] => Some(Target::Specialist((*id).to_owned())),
+        ["specialists", id, "events"] => Some(Target::Events((*id).to_owned())),
         ["spaces"] => Some(Target::Spaces),
         ["spaces", id] => Some(Target::Space((*id).to_owned())),
         ["spaces", id, "pages"] => Some(Target::Pages((*id).to_owned())),
@@ -82,7 +87,9 @@ fn target(path: &str) -> Option<Target> {
 fn ids_ok(t: &Target) -> bool {
     match t {
         Target::Specialists | Target::Spaces => true,
-        Target::Specialist(a) | Target::Space(a) | Target::Pages(a) => server_specialists::is_id(a),
+        Target::Specialist(a) | Target::Events(a) | Target::Space(a) | Target::Pages(a) => {
+            server_specialists::is_id(a)
+        }
         Target::Page(a, b) => server_specialists::is_id(a) && server_specialists::is_id(b),
     }
 }
@@ -263,6 +270,7 @@ pub async fn serve(
     let method = parts.method;
     // A client that goes away cannot cancel a write half-way: the blocking task runs to its end.
     let result = match (target, method) {
+        (Target::Events(id), _) => events(store, id, q_get(&q, "after")).await,
         (Target::Specialists, Method::GET) => {
             run(store, |s| {
                 let l = s.list_specialists()?;
@@ -551,6 +559,49 @@ pub async fn page_save_internal(data_dir: std::path::PathBuf, raw: &[u8]) -> Res
     .await
 }
 
+/// The conversation of coworker `id` as `text/event-stream`, the replay form (slice 5). The
+/// whole body is built inside the blocking task, from a read that holds no lock, so nothing the
+/// client does while receiving it can hold the account's lock. There is no live tail: the chat
+/// loop is still Node's, so a reply under way shows up here once it is saved.
+async fn events(store: Store, id: String, after: Option<&str>) -> Response<Body> {
+    let after = after.map(str::to_owned);
+    let built = tokio::task::spawn_blocking(move || {
+        let history = store.conversation(&id)?;
+        let events = server_specialists::events::translate(&id, &history, after.as_deref());
+        Ok::<_, Error>(events.map(|events| {
+            events
+                .iter()
+                .filter_map(server_specialists::events::frame)
+                .collect::<String>()
+        }))
+    })
+    .await;
+    let text = match built {
+        Ok(Ok(Ok(text))) => text,
+        Ok(Ok(Err(server_specialists::events::UnknownAfter))) => {
+            return invalid("after is not a message of this conversation")
+        }
+        Ok(Err(e)) => return answer(&e),
+        Err(_) => return reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error", true),
+    };
+    let mut res = Response::new(Body::from(text));
+    let h = res.headers_mut();
+    reply::security_headers(h, true);
+    h.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/event-stream"),
+    );
+    h.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-cache, no-transform"),
+    );
+    h.insert(
+        header::HeaderName::from_static("x-accel-buffering"),
+        HeaderValue::from_static("no"),
+    );
+    res
+}
+
 async fn run(
     store: Store,
     f: impl FnOnce(&Store) -> Result<(StatusCode, Value), Error> + Send + 'static,
@@ -571,6 +622,11 @@ mod tests {
     #[test]
     fn paths_name_targets_exactly() {
         assert_eq!(target("/api/specialists"), Some(Target::Specialists));
+        assert_eq!(
+            target("/api/specialists/x/events"),
+            Some(Target::Events("x".into()))
+        );
+        assert_eq!(target("/api/specialists/x/events/"), None);
         assert_eq!(
             target("/api/spaces/x/pages/y"),
             Some(Target::Page("x".into(), "y".into()))
