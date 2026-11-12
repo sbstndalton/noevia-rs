@@ -1252,8 +1252,8 @@ async fn handle(
                     reply::error(StatusCode::INTERNAL_SERVER_ERROR, "read error", false)
                 })
         }
-        // Chat port S6: the Diary local exchange counts its call on the shared budget first.
-        _ => chat_edge::forward_node(&app, conn, req, whatwg.as_deref()).await,
+        // Node-owned: forwarded without a client-named lease (#2485).
+        _ => chat_edge::forward_node(&app, conn, req).await,
     }
 }
 

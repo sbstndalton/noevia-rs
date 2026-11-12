@@ -822,3 +822,26 @@ fn the_oracle_core_is_pinned_and_the_capability_is_listed() {
     );
     assert!(noevia_server::FEATURES.contains(&"rust-chat-edge"));
 }
+
+/// #2485: a Node-owned request is forwarded as is, except that a lease the client names never
+/// reaches Core (only the front names one). Before, only the local exchange dropped it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_node_owned_request_never_carries_a_client_named_lease() {
+    let f = front(&[]).await;
+    f.account(Account {
+        admin: false,
+        diary: true,
+        harness: false,
+    });
+    for method in ["GET", "POST"] {
+        f.clear();
+        let got = send(&f, method, "/api/qa-node-owned", Vec::new(), Who::SignedIn).await;
+        assert_eq!(
+            f.hits(),
+            [format!("{method} /api/qa-node-owned")],
+            "{}",
+            got.text()
+        );
+        assert!(!f.core.seen.lock().unwrap().headers.contains_key(LEASE));
+    }
+}
