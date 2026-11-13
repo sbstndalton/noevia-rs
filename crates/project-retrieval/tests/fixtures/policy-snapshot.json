@@ -1,0 +1,84 @@
+{
+ "sources": {
+  "server/rag.cjs": "227d0b739858237554fe366269ef5926e76ac2275731f83f0fb19e3d31e6c024",
+  "server/rerank-target.cjs": "66f4a7f2b60e54737b0af78683ed74dcb2ff1e2e0fce762cf3bc5940bc192084",
+  "server/embedding-service.cjs": "1266640492aea8841d73d25ec22dba1fe2daa962c04dd415df81c7dfed4468dd",
+  "server/rust-embedding-background.cjs": "c45fc4a2402a8bb2c8825ef26f3ab978425c099bfdd1f7f7cf2bb72afd28df2c"
+ },
+ "source": "server/rust-embedding-background.cjs createOwner snapshot() :30-35",
+ "now": 1800000000000,
+ "cases": [
+  {
+   "name": "current",
+   "text": "{\"protocol\":\"rust-embedding-worker-v1\",\"start\":\"qa-start-1\",\"at\":1799999999000,\"service\":{\"managed\":true,\"enabled\":true},\"serviceAt\":1799999998000}",
+   "start": "qa-start-1",
+   "accepted": true
+  },
+  {
+   "name": "15 s old",
+   "text": "{\"protocol\":\"rust-embedding-worker-v1\",\"start\":\"qa-start-1\",\"at\":1799999985000,\"service\":{\"managed\":true,\"enabled\":true},\"serviceAt\":1799999998000}",
+   "start": "qa-start-1",
+   "accepted": true
+  },
+  {
+   "name": "15.001 s old",
+   "text": "{\"protocol\":\"rust-embedding-worker-v1\",\"start\":\"qa-start-1\",\"at\":1799999984999,\"service\":{\"managed\":true,\"enabled\":true},\"serviceAt\":1799999998000}",
+   "start": "qa-start-1",
+   "accepted": false
+  },
+  {
+   "name": "written in the future",
+   "text": "{\"protocol\":\"rust-embedding-worker-v1\",\"start\":\"qa-start-1\",\"at\":1800000000001,\"service\":{\"managed\":true,\"enabled\":true},\"serviceAt\":1799999998000}",
+   "start": "qa-start-1",
+   "accepted": false
+  },
+  {
+   "name": "at now",
+   "text": "{\"protocol\":\"rust-embedding-worker-v1\",\"start\":\"qa-start-1\",\"at\":1800000000000,\"service\":{\"managed\":true,\"enabled\":true},\"serviceAt\":1799999998000}",
+   "start": "qa-start-1",
+   "accepted": true
+  },
+  {
+   "name": "another start",
+   "text": "{\"protocol\":\"rust-embedding-worker-v1\",\"start\":\"qa-start-0\",\"at\":1799999999000,\"service\":{\"managed\":true,\"enabled\":true},\"serviceAt\":1799999998000}",
+   "start": "qa-start-1",
+   "accepted": false
+  },
+  {
+   "name": "another protocol",
+   "text": "{\"protocol\":\"rust-embedding-worker-v2\",\"start\":\"qa-start-1\",\"at\":1799999999000,\"service\":{\"managed\":true,\"enabled\":true},\"serviceAt\":1799999998000}",
+   "start": "qa-start-1",
+   "accepted": false
+  },
+  {
+   "name": "at a string",
+   "text": "{\"protocol\":\"rust-embedding-worker-v1\",\"start\":\"qa-start-1\",\"at\":\"1799999999000\",\"service\":{\"managed\":true,\"enabled\":true},\"serviceAt\":1799999998000}",
+   "start": "qa-start-1",
+   "accepted": false
+  },
+  {
+   "name": "at missing",
+   "text": "{\"protocol\":\"rust-embedding-worker-v1\",\"start\":\"qa-start-1\",\"service\":{\"managed\":true,\"enabled\":true},\"serviceAt\":1799999998000}",
+   "start": "qa-start-1",
+   "accepted": false
+  },
+  {
+   "name": "not JSON",
+   "text": "{\"protocol\":",
+   "start": "qa-start-1",
+   "accepted": false
+  },
+  {
+   "name": "JSON null",
+   "text": "null",
+   "start": "qa-start-1",
+   "accepted": false
+  },
+  {
+   "name": "missing file",
+   "text": null,
+   "start": "qa-start-1",
+   "accepted": false
+  }
+ ]
+}
