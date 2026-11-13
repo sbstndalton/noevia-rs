@@ -207,6 +207,11 @@ impl Default for Script {
 
 type Shared = Arc<Mutex<Script>>;
 
+/// How many of the recorded engine requests core made before the hand-off.
+fn pre_cut_requests(case: &JValue) -> usize {
+    case.get("handoff").get("requests").as_num().map_or(0, |n| n as usize)
+}
+
 /// Every model lease the turn took was given back (a DELETE of its id).
 fn model_lease_released(sc: &Script) -> bool {
     !sc.model_leases.is_empty()
@@ -1117,6 +1122,8 @@ async fn run_case(
         loaded: input.get("loaded") != &JValue::Bool(false),
         bridge: arr(case.get("bridge")),
         stubs,
+        // The engine requests core made before the cut (a Vision role's description) are core's own.
+        round: pre_cut_requests(case),
         ..Script::default()
     }));
     *current.lock().unwrap() = Some(Arc::clone(&script));
@@ -1251,7 +1258,10 @@ async fn run_case(
     }
 
     // (b) The engine request bodies, each with the turn's lease.
-    let recorded = arr(case.get("requests"));
+    let recorded: Vec<JValue> = arr(case.get("requests"))
+        .into_iter()
+        .skip(pre_cut_requests(case))
+        .collect();
     if sc.engine_bodies.len() != recorded.len() {
         return Err(format!(
             "{} engine requests, recorded {}",
