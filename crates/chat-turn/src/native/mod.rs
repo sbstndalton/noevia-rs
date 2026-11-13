@@ -681,6 +681,14 @@ impl<H: Host> Turn<'_, H> {
     async fn close(&mut self, s: &Rounds) -> Ended {
         let host = self.host;
         let p = self.p;
+        // #1793: an injected whole file the answer quoted is a source too; the list is sent again.
+        if s.last.has_content {
+            if let Some(list) =
+                crate::sources::reattributed(&p.sources, &s.last.content, &p.message)
+            {
+                host.emit(&event("sources", vec![("sources", JValue::Arr(list))]));
+            }
+        }
         if !s.paused && !s.last.has_content && s.final_pass {
             host.emit(&event(
                 "delta",

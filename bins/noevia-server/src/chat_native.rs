@@ -2,11 +2,16 @@
 //! the turn run by `crates/chat-turn` after core prepared it.
 //!
 //! [`serve`] relays the turn to core's `/internal/chat/turn` as chat_turn.rs does, with one more header
-//! (`x-noevia-chat-handoff`, the per-start secret; any copy the client sent is removed). Core runs its
-//! preparation as always and, for a turn the native executor can run, ends it with one `prepared` frame
-//! (rust-chat-native.cjs); any other turn core runs to the end on the same stream. Every frame before
-//! `prepared` reaches the client as core wrote it; from there [`chat_turn::native::run`] continues with
-//! [`FrontHost`], and [`chat_turn::after::Saving`] keeps what the turn leaves.
+//! (`x-noevia-chat-handoff`, the per-start secret; any copy the client sent is removed). Core answers a
+//! relayed turn as NDJSON (chat port S7, core rust-chat-wire.cjs), runs its preparation as always and,
+//! for a turn the native executor can run, ends it with one `prepared` line (rust-chat-native.cjs); any
+//! other turn core runs to the end on the same stream. The answer [`serve`] gives chat_turn.rs is that
+//! NDJSON body with core's own headers: core's lines as core wrote them until `prepared`, then the lines
+//! [`chat_turn::native::run`] writes with [`FrontHost`] (`JSON.stringify(event) + "\n"`, as core's wire
+//! writes each event). So chat_wire.rs writes the client's event stream (the headers, the heartbeat, the
+//! frames, the checks, the failure frame) and chat_admission.rs holds the gate's lease (S8) for both
+//! executors alike; when either drops the body (the client left, or the lease was lost), the native turn
+//! sees the client gone. [`chat_turn::after::Saving`] keeps what the turn leaves.
 //!
 //! Switch: `NOEVIA_CHAT_EXECUTOR` (config.rs): unset or `node` is today's relay; `native:<user id>,...`
 //! names accounts; `native` is everyone. The switch engages only on a front that holds the approval
@@ -14,8 +19,9 @@
 //! A Diary space and a Cowork start are never handed off (chat_turn.rs only calls here for a turn).
 //!
 //! What the turn needs of this process, and where it comes from:
-//! - the client's stream: SSE frames into the response body ([`Wire`]), a 5 s keep-alive, the 4 s partial
-//!   saver (chat-partial.cjs), the turn record fed with every frame sent;
+//! - the client's stream: NDJSON lines into the response body ([`Wire`]), which chat_wire.rs frames (its
+//!   5 s keep-alive included); the 4 s partial saver (chat-partial.cjs); the turn record fed with every
+//!   event sent;
 //! - the engine: the prepared `upstreamUrl`, with the model's admission lease (engine-admission
 //!   `Ask::Engine`) on every request;
 //! - core, through its loopback bridges (rust-chat-native.cjs): tool runs and Drive write targets, the
@@ -49,7 +55,8 @@ use crate::App;
 
 /// The header core reads to hand the turn off (rust-chat-native.cjs HANDOFF_HEADER).
 pub const HANDOFF_HEADER: &str = "x-noevia-chat-handoff";
-const KEEP_ALIVE: &[u8] = b": keep-alive\n\n";
+/// The longest line before the hand-off the turn record reads (an event line past it still passes on).
+const OBSERVE_CAP: usize = crate::chat_wire::HOLDBACK;
 const BRIDGE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Tool runs can take long (a browser task, a large Drive read); core's own call has no deadline either.
 const TOOL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -149,7 +156,7 @@ pub(crate) fn wanted(app: &Arc<App>, user: &str) -> bool {
     app.config.chat_executor.names(user) && approvals(app).is_some()
 }
 
-/// The client's body: frames pushed as the turn writes them, ended when the sender goes.
+/// The NDJSON body chat_wire.rs reads: core's bytes, then the native turn's lines, ended when the sender goes.
 struct Wire(mpsc::UnboundedReceiver<Bytes>);
 
 impl http_body::Body for Wire {
@@ -164,13 +171,6 @@ impl http_body::Body for Wire {
     }
 }
 
-fn is_event_stream(res: &Response<Body>) -> bool {
-    res.headers()
-        .get(header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.starts_with("text/event-stream"))
-}
-
 /// Relays the turn with the hand-off asked for, and runs it natively from the `prepared` frame.
 /// `extra` is what chat_turn.rs sends core (token, user, the gate's lease); `relay` sends it.
 pub(crate) async fn serve<F, Fut>(app: &Arc<App>, user: String, relay: F) -> Option<Response<Body>>
@@ -181,10 +181,13 @@ where
     let token = HeaderValue::from_str(app.config.research.front_token()?).ok()?;
     let approvals = approvals(app)?;
     let res = relay(token).await?;
-    if !is_event_stream(&res) {
+    // A JSON refusal, or a core that is not this front's pair (chat_turn.rs answers those).
+    if !crate::chat_wire::is_ndjson(res.headers()) {
         return Some(res);
     }
-    let (parts, core) = res.into_parts();
+    let (mut parts, core) = res.into_parts();
+    // The body is no longer core's own: its length (if core named one) is not this body's.
+    parts.headers.remove(header::CONTENT_LENGTH);
     let (tx, rx) = mpsc::unbounded_channel();
     tokio::spawn(drive(Arc::clone(app), user, core, tx, approvals));
     Some(Response::from_parts(parts, Body::new(Wire(rx))))
@@ -210,7 +213,7 @@ async fn drive(
     use http_body_util::BodyExt;
     let mut frames = Frames::new();
     let mut core = core;
-    let mut forwarded: Vec<JValue> = Vec::new();
+    let mut lines = Lines::default();
     let prepared = loop {
         let Some(frame) = core.frame().await else {
             break None;
@@ -223,13 +226,7 @@ async fn drive(
         for piece in frames.feed(&data) {
             match piece {
                 Piece::Forward(bytes) => {
-                    for text in String::from_utf8_lossy(&bytes).split("\n\n") {
-                        if let Some(json) = text.strip_prefix("data: ") {
-                            if let Ok(v) = wtf16::parse(json) {
-                                forwarded.push(v);
-                            }
-                        }
-                    }
+                    lines.feed(&bytes);
                     if tx.send(Bytes::from(bytes)).is_err() {
                         // The client left: closing core's stream ends its turn, which keeps it (#679).
                         return;
@@ -244,20 +241,21 @@ async fn drive(
         }
     };
     if !frames.handed_off() {
-        // Core ran the turn itself; what it left without a blank line goes out as it is.
+        // Core ran the turn itself (or its stream broke): what it held back goes on, chat_wire.rs judges it.
         let rest = frames.rest();
         if !rest.is_empty() {
             let _ = tx.send(Bytes::from(rest));
         }
         return;
     }
+    let forwarded = lines.events;
     drop(core);
     let failed = |tx: &mpsc::UnboundedSender<Bytes>| {
         let e = js::obj([
             ("type", js::s("error")),
             ("text", js::s(native::FAILED_TEXT)),
         ]);
-        let _ = tx.send(Bytes::from(format!("data: {}\n\n", js::stringify(&e))));
+        let _ = tx.send(Bytes::from(format!("{}\n", js::stringify(&e))));
     };
     let Some(frame) = prepared else {
         eprintln!("chat native: core's prepared frame does not parse");
@@ -327,27 +325,64 @@ async fn drive(
     .await;
 }
 
-/// The keep-alive (5 s) and the partial saver (4 s) while the native part runs.
+/// The partial saver (4 s) while the native part runs (chat_wire.rs writes the keep-alive).
 async fn ticks(host: Arc<FrontHost>, chat: Option<String>) {
-    let mut beat = tokio::time::interval(Duration::from_secs(5));
+    let Some(c) = chat else { return };
     let mut save = tokio::time::interval(Duration::from_secs(4));
-    beat.tick().await;
     save.tick().await;
     loop {
-        tokio::select! {
-            _ = beat.tick() => {
-                if host.tx.send(Bytes::from_static(KEEP_ALIVE)).is_err() { return; }
+        save.tick().await;
+        if host.left() {
+            return;
+        }
+        let entry = host.saving.lock().ok().and_then(|s| s.record.partial_entry());
+        if let Some(entry) = entry {
+            let mut file = chat_turn::record::partial_file(&entry, crate::identity::now_ms());
+            if let Some(start) = host.app.config.start_id.clone() {
+                js::set(&mut file, "running", js::obj([("start", js::s(start))]));
             }
-            _ = save.tick() => {
-                let Some(c) = &chat else { continue };
-                let entry = host.saving.lock().ok().and_then(|s| s.record.partial_entry());
-                if let Some(entry) = entry {
-                    let mut file = chat_turn::record::partial_file(&entry, crate::identity::now_ms());
-                    if let Some(start) = host.app.config.start_id.clone() {
-                        js::set(&mut file, "running", js::obj([("start", js::s(start))]));
-                    }
-                    host.write_partial(&chat_turn::after::safe_chat_id(c), &file);
+            host.write_partial(&chat_turn::after::safe_chat_id(&c), &file);
+        }
+    }
+}
+
+/// Core's lines before the hand-off, read for the turn record (object lines only; a line longer than
+/// [`OBSERVE_CAP`] is not read, it still passes on).
+#[derive(Default)]
+struct Lines {
+    held: Vec<u8>,
+    skipping: bool,
+    events: Vec<JValue>,
+}
+
+impl Lines {
+    fn feed(&mut self, bytes: &[u8]) {
+        let mut rest = bytes;
+        while !rest.is_empty() {
+            let end = rest.iter().position(|b| *b == b'\n');
+            let take = end.map_or(rest.len(), |at| at + 1);
+            let (part, after) = rest.split_at(take);
+            rest = after;
+            if !self.skipping {
+                self.held.extend_from_slice(part);
+                if self.held.len() > OBSERVE_CAP {
+                    self.held = Vec::new();
+                    self.skipping = true;
                 }
+            }
+            if end.is_some() {
+                if !self.skipping {
+                    let line = std::mem::take(&mut self.held);
+                    let text = line.strip_suffix(b"\n").unwrap_or(&line);
+                    if let Some(v) = std::str::from_utf8(text)
+                        .ok()
+                        .and_then(|t| wtf16::parse(t).ok())
+                        .filter(|v| matches!(v, JValue::Obj(_)))
+                    {
+                        self.events.push(v);
+                    }
+                }
+                self.skipping = false;
             }
         }
     }
@@ -454,7 +489,7 @@ impl Host for FrontHost {
         if !left {
             let _ = self
                 .tx
-                .send(Bytes::from(format!("data: {}\n\n", js::stringify(event))));
+                .send(Bytes::from(format!("{}\n", js::stringify(event))));
         }
     }
 
