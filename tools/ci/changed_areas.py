@@ -18,7 +18,7 @@ Prints a JSON decision and, under GitHub Actions, writes `full=true|false` to $G
 
 Everything else (bins/, contracts/, tools/, .github/, a crate another member depends on, toolchain
 or cargo config, any file not listed above) runs everything, and so does any error: when in doubt,
-run. --head must be the checked-out tree (--repo), since `cargo metadata` reads it.
+run. The workflow also runs everything for a pull request into a branch other than main. --head must be the checked-out tree (--repo), since `cargo metadata` reads it.
 """
 import argparse
 import json
@@ -32,8 +32,10 @@ import tomllib
 DOCS = ("README.md", "AGENTS.md")
 DOCS_DIRS = ("docs/",)
 # Where a job could reach a crate by name or path. Markdown is prose; the root manifest and lock
-# are checked structurally below.
+# are checked structurally below; tools/ci (this decision and its recorded samples) only reads
+# manifests and git history, never builds, runs or reads a crate.
 SKIP_SCAN = ("Cargo.toml", "Cargo.lock")
+SKIP_SCAN_DIRS = ("tools/ci",)
 
 
 def git(repo, *args):
@@ -92,7 +94,8 @@ def mentions(repo, crate_dir, names):
     pats = sorted({crate_dir, *names})
     alt = "|".join(re.escape(p) for p in pats)
     rx = f"(^|[^A-Za-z0-9_-])({alt})($|[^A-Za-z0-9_-])"
-    excl = [f":(exclude){crate_dir}/**", ":(exclude)*.md", *(f":(exclude,top){p}" for p in SKIP_SCAN)]
+    excl = [f":(exclude){crate_dir}/**", ":(exclude)*.md", *(f":(exclude){p}" for p in SKIP_SCAN),
+            *(f":(exclude){d}/**" for d in SKIP_SCAN_DIRS)]
     r = subprocess.run(["git", "-C", str(repo), "grep", "-I", "-l", "-E", rx, "--", ".", *excl],
                        capture_output=True, text=True)
     if r.returncode not in (0, 1):

@@ -106,11 +106,16 @@ class Synthetic(unittest.TestCase):
         self.assertFalse(d["full"], d["reasons"])
 
     def test_crate_named_by_a_workflow_runs_everything(self):
-        def edit(wt):
-            self.new_crate(wt)
+        def base(wt):
             f = wt / ".github" / "workflows" / "ci.yml"
             f.write_text(f.read_text() + "# cargo test -p qa-leaf-crate\n")
-        self.assertTrue(self.run_edit(edit)["full"])
+        d = self.run_edit(self.new_crate, base_edit=base)
+        self.assertTrue(d["full"])
+        self.assertTrue(any(".github/workflows/ci.yml" in r for r in d["reasons"]), d["reasons"])
+
+    def test_this_tool_and_its_samples_do_not_count_as_naming_a_crate(self):
+        # This file and changed_areas_samples.json name crates; they never build or read one.
+        self.assertEqual(changed_areas.mentions(REPO, "crates/embedding-admin", {"embedding-admin"}), [])
 
     def test_crate_named_outside_it_runs_everything(self):
         # The base already has a tool naming the crate (as a path or by package name); the pull
@@ -121,8 +126,8 @@ class Synthetic(unittest.TestCase):
                     (wt / "tools" / "qa-ref.sh").write_text(ref + "\n")
                 d = self.run_edit(self.new_crate, base_edit=base)
                 self.assertTrue(d["full"])
-                self.assertTrue(any("named outside its crate in tools/qa-ref.sh" in r for r in d["reasons"]),
-                                d["reasons"])
+                self.assertTrue(any("named outside its crate" in r and "tools/qa-ref.sh" in r
+                                    for r in d["reasons"]), d["reasons"])
 
     def test_existing_crate_named_by_a_tool(self):
         hits = changed_areas.mentions(REPO, "crates/docx-text", {"docx-text", "docx_text"})

@@ -13,12 +13,12 @@ concurrency:
 jobs:
   # tools/ci/changed_areas.py: on a pull request that only changes leaf crates nobody depends on
   # or names (and docs), the jobs below are skipped (a skipped job satisfies a required check);
-  # anything else runs them all.
+  # anything else runs them all, and so does a detect job that failed.
   changes:
     uses: ./.github/workflows/changed-areas.yml
   chat-lists-native:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Required native chat search and download contracts (#1450, #1471)
     runs-on: ubuntu-latest
     timeout-minutes: 40

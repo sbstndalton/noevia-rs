@@ -17,7 +17,7 @@ concurrency:
 jobs:
   # tools/ci/changed_areas.py: on a pull request that only changes leaf crates nobody depends on
   # or names (and docs), the jobs below are skipped (a skipped job satisfies a required check);
-  # anything else runs them all.
+  # anything else runs them all, and so does a detect job that failed.
   changes:
     uses: ./.github/workflows/changed-areas.yml
 
@@ -79,7 +79,7 @@ jobs:
 
   ci-scope-selftest:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # tools/ci/changed_areas.py replays five merged pull requests at their own merge commits
     # (tools/ci/changed_areas_samples.json) and a set of synthetic edits, and prints the job table.
     name: CI scoping decides recorded pull requests as expected
@@ -93,7 +93,7 @@ jobs:
 
   laya-native:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native Laya HTTP and retained worker lifecycle
     runs-on: ubuntu-latest
     env:
@@ -126,7 +126,7 @@ jobs:
 
   docling-native:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native Docling HTTP and real worker transport
     runs-on: ubuntu-latest
     env:
@@ -159,7 +159,7 @@ jobs:
 
   routes-check:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # Full-Rust migration M0: every /api/ path the web client names (noevia-web src/ at the ref in
     # contracts/http/web.ref) must be listed in contracts/http/routes.toml with an owner. Bump
     # web.ref (and add the new paths) when the client grows a route. A second, advisory step checks
@@ -192,7 +192,7 @@ jobs:
 
   corpus-replay-node:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # /api/usage's hour-of-day histogram (hours, peakHour.hour) follows the wall clock of the replay,
     # not the server: those two body paths are left out of every replay (--ignore-body).
     # Full-Rust migration M0: the committed contract corpus must replay clean against the Node
@@ -263,7 +263,7 @@ jobs:
 
   corpus-replay-front:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # Full-Rust migration M1: the same corpus, replayed through bins/noevia-server in front of the
     # same Node (tools/front/replay-front.sh: Node on UI_PORT+1000, the front on UI_PORT, as the web
     # image runs them with NOEVIA_FRONT=rust). Zero response differences, and the data dir the run
@@ -369,7 +369,7 @@ jobs:
 
   corpus-replay-front-rust-auth:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # Full-Rust migration M3: the same corpus through the front with the deployment switch on.
     # The front answers sign-in and the account itself (crates/server-account), Node behind it
     # refuses to write the account tables (core server/rust-auth.cjs), and the replay must still
@@ -483,7 +483,7 @@ jobs:
 
   corpus-replay-front-rust-projects:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # Full-Rust migration M4, permanent since sbstndalton/noevia#1071 (NOEVIA_RUST_PROJECTS is
     # retired): the front always answers a project's image routes, its chat list and
     # GET/POST /api/freechats itself (crates/server-projects) and is the only writer of
@@ -607,7 +607,7 @@ jobs:
 
   dav-parse-wasm:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # noevia#967 (+ #976 s3-list-parse, #978 storage-path, #977 upload-sniff, #979 secret-envelope, #980 mcp-frame, #1002 chat-template-caps and provider-error, #1003 autotune-plan, #1062 tune-contention, #769/#740 prompt-framing, #1079 long-profile, s3-sign, #795 ssrf-policy, #516/#704 stream-guard, gguf-meta, policy-leaves, review-verdict, tool-exchange, mcp-servers, decision, code-net-guard, role-context, completeness-report, task-lifecycle, llamacpp-autoconfig, code-actions, project-file-names, provider-egress, browser-policy, tool-gate, toolboxes-permitted, llamacpp-presets, project-edit-target in the same module): dav-parse.wasm is consumed by noevia-core at a pinned sha256, so the build must be
     # reproducible. Build it twice from clean target dirs, require identical bytes, and record the
     # digest in the job summary (compare it with DAV_PARSE_WASM_SHA256 in noevia-core's
@@ -646,7 +646,7 @@ jobs:
 
   sandbox-bridge-wasm:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # noevia#999: sandbox-bridge.wasm (the code sandbox bridge's framing, toolCallFor, start line and
     # containment rules) is consumed by noevia-core at a pinned sha256 (code-sandbox/sandbox-bridge.lock),
     # so the build must be reproducible. Build it twice from clean target dirs, require identical
@@ -685,7 +685,7 @@ jobs:
 
   passkey-compat:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # Full-Rust migration M3: passkeys registered under Node must sign in under Rust and the
     # reverse. tools/gen-passkey-fixtures.cjs builds registrations and assertions with a software
     # authenticator and has noevia-core's own @simplewebauthn/server v14 (at contracts/http/core.ref)
@@ -725,7 +725,7 @@ jobs:
 
   auth-differential:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     # Full-Rust migration M2: crates/server-auth must give Node's verdicts. tools/gen-auth-fixtures.cjs
     # runs noevia-core's own auth code (at contracts/http/core.ref) over synthetic databases and
     # requests; the committed fixture must equal that output byte for byte, and the Rust
@@ -768,7 +768,7 @@ jobs:
 
   native-model-manager:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native model-manager policy, bounded Docker transport and omission
     runs-on: ubuntu-latest
     steps:
@@ -825,7 +825,7 @@ jobs:
 
   native-prompts:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native prompt CRUD, seed, actual Python differential and omission
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -938,7 +938,7 @@ jobs:
 
   native-settings:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native settings read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -982,7 +982,7 @@ jobs:
 
   native-downloads:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native downloads, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -1020,7 +1020,7 @@ jobs:
 
   native-model-delete:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native model delete, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -1065,7 +1065,7 @@ jobs:
 
   native-draft-heads:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native draft-head read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -1116,7 +1116,7 @@ jobs:
 
   native-search:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native search reads, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -1169,7 +1169,7 @@ jobs:
 
   native-benchmark-overview:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native benchmark overview, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1211,7 +1211,7 @@ jobs:
 
   native-check-updates:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native model update check, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1254,7 +1254,7 @@ jobs:
 
   native-benchmark-runner:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native benchmark runner (prompt suite, sweeps, startup cleanup), actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1304,7 +1304,7 @@ jobs:
 
   validation-422-order:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: FastAPI 422 bodies byte for byte, actual Python (#1908)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1335,7 +1335,7 @@ jobs:
 
   native-settings-write:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native settings write, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1379,7 +1379,7 @@ jobs:
 
   native-backends:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native backend sampler and GET /backends, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1429,7 +1429,7 @@ jobs:
 
   native-backend-control:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native backend restart and test, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1473,7 +1473,7 @@ jobs:
 
   native-model-updates:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native model update status read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1521,7 +1521,7 @@ jobs:
 
   native-model-detail:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native model detail read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1571,7 +1571,7 @@ jobs:
 
   native-model-list:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native model list and overview reads, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -1621,7 +1621,7 @@ jobs:
 
   native-section-autoconfig:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native section autoconfig read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -1681,7 +1681,7 @@ jobs:
 
   native-telemetry:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native section autoconfig telemetry ingest, actual Python differential (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -1722,7 +1722,7 @@ jobs:
 
   native-bench-observe:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native benchmark observations, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -1769,7 +1769,7 @@ jobs:
 
   native-download-targets:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native download targets read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1817,7 +1817,7 @@ jobs:
 
   native-badges:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native badge writes, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1868,7 +1868,7 @@ jobs:
 
   native-bench-runs:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native benchmark run read, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1925,7 +1925,7 @@ jobs:
 
   native-section-writes:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native models.ini writers, actual Python differential and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -1985,7 +1985,7 @@ jobs:
 
   native-diagnose:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native diagnosis closed transport, actual oracles and ownership
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -2158,7 +2158,7 @@ jobs:
 
   native-ocr:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native OCR matches the pinned Python sidecar (real engines)
     runs-on: ubuntu-latest
     steps:
@@ -2190,7 +2190,7 @@ jobs:
 
   reasoning-native:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Required native reasoning default contracts
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -2278,7 +2278,7 @@ jobs:
 
   backend-telemetry:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Backend telemetry parser, actual Python differential (#1318 step 3c)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -2308,7 +2308,7 @@ jobs:
 
   native-token-test:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native stored-token validator matches actual Python
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -2342,7 +2342,7 @@ jobs:
 
   native-db-init:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native database bootstrap, actual Python schema and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -2384,7 +2384,7 @@ jobs:
 
   native-safe-defaults:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native safe-default plans, actual Python oracle and omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -2421,7 +2421,7 @@ jobs:
 
   native-runtime-integration:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Combined native runtime helpers and real capability omission (#1318)
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -2476,7 +2476,7 @@ jobs:
 
   native-download-plan:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native download planning, actual Python oracle and omission (#1318)
     runs-on: ubuntu-latest
     steps:
@@ -2509,7 +2509,7 @@ jobs:
 
   native-routing:
     needs: changes
-    if: needs.changes.outputs.full != 'false'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
     name: Native public ASGI routing, actual framework oracle and omission (#1318)
     runs-on: ubuntu-latest
     steps:
