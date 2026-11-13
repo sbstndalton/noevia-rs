@@ -2465,6 +2465,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "project-retrieval"
+version = "0.1.0"
+dependencies = [
+ "prompt-framing",
+ "serde_json",
+]
+
+[[package]]
 name = "prompt-framing"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,233 @@
+{
+  "source": "server/embedding-profile.cjs frame :60-68, format :20-68",
+  "cases": [
+    {
+      "profile": "nomic-v1",
+      "kind": "query",
+      "texts": [
+        "first text",
+        "second | text\nwith newline"
+      ],
+      "titles": null,
+      "out": [
+        "first text",
+        "second | text\nwith newline"
+      ]
+    },
+    {
+      "profile": "nomic-v1",
+      "kind": "query",
+      "texts": [
+        "first text",
+        "second | text\nwith newline",
+        "t3",
+        "t4",
+        "t5"
+      ],
+      "titles": [
+        "Plain title",
+        "Has | pipe",
+        "Multi\nline\r\ntitle",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        ""
+      ],
+      "out": [
+        "first text",
+        "second | text\nwith newline",
+        "t3",
+        "t4",
+        "t5"
+      ]
+    },
+    {
+      "profile": "nomic-v1",
+      "kind": "document",
+      "texts": [
+        "first text",
+        "second | text\nwith newline"
+      ],
+      "titles": null,
+      "out": [
+        "first text",
+        "second | text\nwith newline"
+      ]
+    },
+    {
+      "profile": "nomic-v1",
+      "kind": "document",
+      "texts": [
+        "first text",
+        "second | text\nwith newline",
+        "t3",
+        "t4",
+        "t5"
+      ],
+      "titles": [
+        "Plain title",
+        "Has | pipe",
+        "Multi\nline\r\ntitle",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        ""
+      ],
+      "out": [
+        "first text",
+        "second | text\nwith newline",
+        "t3",
+        "t4",
+        "t5"
+      ]
+    },
+    {
+      "profile": "nomic-v1",
+      "kind": "similarity",
+      "texts": [
+        "first text",
+        "second | text\nwith newline"
+      ],
+      "titles": null,
+      "out": [
+        "first text",
+        "second | text\nwith newline"
+      ]
+    },
+    {
+      "profile": "nomic-v1",
+      "kind": "similarity",
+      "texts": [
+        "first text",
+        "second | text\nwith newline",
+        "t3",
+        "t4",
+        "t5"
+      ],
+      "titles": [
+        "Plain title",
+        "Has | pipe",
+        "Multi\nline\r\ntitle",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        ""
+      ],
+      "out": [
+        "first text",
+        "second | text\nwith newline",
+        "t3",
+        "t4",
+        "t5"
+      ]
+    },
+    {
+      "profile": "embeddinggemma-2",
+      "kind": "query",
+      "texts": [
+        "first text",
+        "second | text\nwith newline"
+      ],
+      "titles": null,
+      "out": [
+        "task: search result | query: first text",
+        "task: search result | query: second | text\nwith newline"
+      ]
+    },
+    {
+      "profile": "embeddinggemma-2",
+      "kind": "query",
+      "texts": [
+        "first text",
+        "second | text\nwith newline",
+        "t3",
+        "t4",
+        "t5"
+      ],
+      "titles": [
+        "Plain title",
+        "Has | pipe",
+        "Multi\nline\r\ntitle",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        ""
+      ],
+      "out": [
+        "task: search result | query: first text",
+        "task: search result | query: second | text\nwith newline",
+        "task: search result | query: t3",
+        "task: search result | query: t4",
+        "task: search result | query: t5"
+      ]
+    },
+    {
+      "profile": "embeddinggemma-2",
+      "kind": "document",
+      "texts": [
+        "first text",
+        "second | text\nwith newline"
+      ],
+      "titles": null,
+      "out": [
+        "title: none | text: first text",
+        "title: none | text: second | text\nwith newline"
+      ]
+    },
+    {
+      "profile": "embeddinggemma-2",
+      "kind": "document",
+      "texts": [
+        "first text",
+        "second | text\nwith newline",
+        "t3",
+        "t4",
+        "t5"
+      ],
+      "titles": [
+        "Plain title",
+        "Has | pipe",
+        "Multi\nline\r\ntitle",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        ""
+      ],
+      "out": [
+        "title: Plain title | text: first text",
+        "title: Has pipe | text: second | text\nwith newline",
+        "title: Multi line title | text: t3",
+        "title: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | text: t4",
+        "title: none | text: t5"
+      ]
+    },
+    {
+      "profile": "embeddinggemma-2",
+      "kind": "similarity",
+      "texts": [
+        "first text",
+        "second | text\nwith newline"
+      ],
+      "titles": null,
+      "out": [
+        "task: sentence similarity | query: first text",
+        "task: sentence similarity | query: second | text\nwith newline"
+      ]
+    },
+    {
+      "profile": "embeddinggemma-2",
+      "kind": "similarity",
+      "texts": [
+        "first text",
+        "second | text\nwith newline",
+        "t3",
+        "t4",
+        "t5"
+      ],
+      "titles": [
+        "Plain title",
+        "Has | pipe",
+        "Multi\nline\r\ntitle",
+        "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        ""
+      ],
+      "out": [
+        "task: sentence similarity | query: first text",
+        "task: sentence similarity | query: second | text\nwith newline",
+        "task: sentence similarity | query: t3",
+        "task: sentence similarity | query: t4",
+        "task: sentence similarity | query: t5"
+      ]
+    }
+  ]
+}

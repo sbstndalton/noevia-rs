@@ -1,0 +1,65 @@
+{
+  "source": "server/rag.cjs questionNames :1271-1277 (inside filesContext)",
+  "cases": [
+    {
+      "name": "data.md",
+      "query": "what is in data.md?",
+      "named": true
+    },
+    {
+      "name": "data.md",
+      "query": "what is in mydata.md?",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "see data.md.bak",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "DATA.MD please",
+      "named": true
+    },
+    {
+      "name": "docs/data.md",
+      "query": "open data.md now",
+      "named": true
+    },
+    {
+      "name": "docs/data.md",
+      "query": "open docs/data.md now",
+      "named": true
+    },
+    {
+      "name": "notes-alpha.txt",
+      "query": "summarise notes-alpha.txt.",
+      "named": true
+    },
+    {
+      "name": "notes-alpha.txt",
+      "query": "notes-alpha.txt2 is other",
+      "named": false
+    },
+    {
+      "name": "a.b",
+      "query": "the file a.b, yes",
+      "named": true
+    },
+    {
+      "name": "a.b",
+      "query": "the file a.bc",
+      "named": false
+    },
+    {
+      "name": "x-y_z",
+      "query": "x-y_z-more",
+      "named": false
+    },
+    {
+      "name": "x-y_z",
+      "query": "pre_x-y_z",
+      "named": false
+    }
+  ]
+}

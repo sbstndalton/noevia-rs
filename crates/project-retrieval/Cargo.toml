@@ -1,0 +1,17 @@
+[package]
+name = "project-retrieval"
+version = "0.1.0"
+description = "The pure rules of the project retrieval path in Rust (R4 head start): the #1457 question-naming token rule, the search post-processing and version filter of core's rag.cjs, and the no-index filesContext assembly, checked against recorded Node outputs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+prompt-framing = { path = "../prompt-framing" }
+
+[dev-dependencies]
+serde_json = "1"
