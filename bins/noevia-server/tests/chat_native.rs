@@ -2,14 +2,24 @@
 //! the recorded Node turns (`crates/chat-turn/tests/fixtures/node-turns.v1.json`). A fake Core on a local
 //! port answers the turn with the recorded hand-off (`handoff.raw`, its `prepared` frame pointed at a fake
 //! engine), the loopback bridges and the admission latch from the recording; the fake engine answers each
-//! round with the recorded bytes. The client's SSE frames, the engine request bodies and the account's
-//! state files must be the recording's.
+//! round with the recorded bytes. The client's SSE frames, the engine request bodies, the approval cards,
+//! the tool runs and the account's state files must be the recording's.
 //!
-//! Clock and ids: the front runs on the real clock and real uuids, the recording on a fixed one. Before
-//! comparing, a time field the front wrote (`updatedAt`, `observedAt`, `compactedAt`, `savedAt`) that lies
-//! inside this test's run is read as the recording's fixed instant, a `timeToFirstToken`/`elapsedMs` under
-//! a minute as 0, an `ap-<uuid v4>` id as the recorded one, and the signed-in user's id as `qa-user`.
-//! Nothing else is rewritten. Synthetic data only; local ports only; no model runs.
+//! What is the front's own and not stubbed: the tool policy (the account's `tool_policies` rows, set
+//! from the case's `input.policy`), the tombstones, the transcript (seeded with the turn's user message,
+//! as core's preparation leaves it), the state and partial files, the lease's lifetime.
+//! What the stubs answer, from the case's `stubs`: the chat-wide grant and the approval card's answer
+//! (this test's [`Approvals`]), the template tools gate and the engine-busy signal (core's bridges).
+//!
+//! The rewrite before comparing, applied to what the front produced (the recording ran on a fixed clock,
+//! counted uuids and user `qa-user`; the front runs on the real ones). Nothing else is rewritten:
+//! - a number under `updatedAt`, `observedAt`, `compactedAt`, `savedAt` or `startedAt` that lies inside
+//!   this case's run reads as the recording's fixed instant;
+//! - a number under `timeToFirstToken` or `elapsedMs` below a minute reads as 0;
+//! - the signed-in user's id reads as `qa-user`;
+//! - a uuid v4 string, bare or after `ap-`, reads as `<uuid>` (on both sides).
+//!
+//! Synthetic data only; local ports only; no model runs.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -27,84 +37,36 @@ use noevia_server::chat_native::Approvals;
 use noevia_server::config::Config;
 use noevia_server::serve::{serve, Limits};
 use server_store::rusqlite::Connection;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap};
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Notify;
 
 const FIXTURE: &str = include_str!("../../../crates/chat-turn/tests/fixtures/node-turns.v1.json");
 const SCHEMA: &str = include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql");
+const POLICIES: &str = "CREATE TABLE IF NOT EXISTS tool_policies(user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, tool TEXT NOT NULL, mode TEXT NOT NULL CHECK(mode IN ('allow','ask','block')), updated_at INTEGER NOT NULL, PRIMARY KEY(user_id, tool))";
 const CODE: &str = "synthetic-chat-native-code";
 const ORIGIN: &str = "http://127.0.0.1:18021";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
 const START: &str = "0123456789abcdef0123456789abcdef";
 const FIXED_NOW: f64 = 1_794_571_200_000.0;
 const LEASE: &str = "qalease1";
+const LEASE_PATH: &str = "/internal/inference-admission/lease/";
+/// How long the client keeps reading after the recording says it leaves: what the front sends before it
+/// sees the client go is still the client's.
+const QUIET: Duration = Duration::from_millis(300);
 
-/// The cases run end to end.
-const CASES: &[&str] = &[
-    "plain",
-    "plain_split_frames",
-    "astral_split_bytes",
-    "no_project",
-    "reasoning",
-    "reasoning_only",
-    "engine_http_500",
-    "engine_stream_error",
-    "empty_stream_fallback",
-    "length_cut",
-    "title",
-    "title_renamed",
-    "title_still_derived",
-    "title_failed",
-    "tool_read",
-    "tool_streamed_args",
-    "tool_approved",
-    "tool_declined",
-    "tool_approval_timeout",
-    "tool_write_target_refused",
-    "tool_unknown",
-    "final_pass",
-    "final_pass_no_answer",
-    "fallback_fails_then_final_pass",
-    "auto_fast",
-    "context_compacted",
-    "context_too_full",
-    "thinking_cut",
-    "thinking_cut_forced_fails",
-    "model_loads",
-    "gate_refuses",
-    "template_refuses_tools",
-    "continuation_compacted",
-    "effort_rejected",
-];
-
-/// Recorded prepared cases this test does not run, and why.
-const SKIPPED: &[(&str, &str)] = &[
-    (
-        "stopped_mid_stream",
-        "`leave`: the client disconnects mid-stream; this harness reads the whole response",
-    ),
-    (
-        "stopped_before_output",
-        "`leave`: the client disconnects mid-stream; this harness reads the whole response",
-    ),
-    (
-        "stopped_store_refuses",
-        "`leave` plus a refusing transcript store, which the front's own store cannot be told to do",
-    ),
-    (
-        "engine_unreachable",
-        "`throws` with a recorded Node error text (ECONNREFUSED on qa-engine.invalid); a closed local socket gives the HTTP client's own wording",
-    ),
-    (
-        "engine_stalls",
-        "`stall` waits on the prepared stream-idle limit; the front's read honours it, but the recorded case also depends on Node's abort wording",
-    ),
-];
+/// Recorded prepared cases this test does not run, and why. Every other recorded prepared case runs.
+const SKIPPED: &[(&str, &str)] = &[(
+    "engine_unreachable",
+    "`throws` carries Node's own transport error text (connect ECONNREFUSED qa-engine.invalid); a refused local socket gives the front's HTTP client's wording, which the event quotes",
+)];
 
 type UpBody = http_body_util::combinators::BoxBody<Bytes, std::io::Error>;
 
@@ -151,26 +113,85 @@ fn base64(text: &str) -> Vec<u8> {
     out
 }
 
+/// The client going away, as the recording has it: `leave` is fired by the fake that reaches the
+/// recorded leaving point, `gone` once the client's connection is closed.
+#[derive(Default)]
+struct Leaving {
+    leave: Notify,
+    gone: Notify,
+    is_gone: AtomicBool,
+}
+
+impl Leaving {
+    async fn wait_gone(&self) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while !self.is_gone.load(Ordering::SeqCst) {
+            if tokio::time::timeout_at(deadline, self.gone.notified())
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+        // The front notices the closed socket a moment later.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
 /// What the fakes answer for the case under test, and what they saw.
 #[derive(Default)]
 struct Script {
     case: JValue,
     engine: String,
     started: f64,
+    user: String,
+    data: PathBuf,
     loaded: bool,
     round: usize,
-    bridge: VecDeque<JValue>,
+    bridge: Vec<JValue>,
+    /// The stubs the fakes answer (see the module doc); the rest of `stubs` is the front's own.
+    stubs: Vec<JValue>,
     /// "METHOD path" of every call to the fake Core.
     calls: Vec<String>,
+    /// Contract breaks seen by the fakes (a fake answering in a server task cannot fail the test).
+    errors: Vec<String>,
     handoff_header: Option<String>,
     engine_bodies: Vec<String>,
     engine_leases: Vec<Option<String>>,
     asked: Vec<JValue>,
-    /// Engine streams held open by a `stall`.
-    stalled: Vec<http_body_util::channel::Sender<Bytes, std::io::Error>>,
+    executions: Vec<String>,
+    /// Engine streams held open by a `stall` or `leave`.
+    held: Vec<http_body_util::channel::Sender<Bytes, std::io::Error>>,
+    leaving: Arc<Leaving>,
 }
 
 type Shared = Arc<Mutex<Script>>;
+
+/// The stubs this test's fakes answer.
+const ANSWERED: &[&str] = &[
+    "chatWideApproved",
+    "awaitApproval",
+    "allowsTools",
+    "inferenceBusy",
+];
+
+impl Script {
+    /// The next recorded stub `op`, or a contract break.
+    fn stub(&mut self, op: &str) -> Option<JValue> {
+        match self
+            .stubs
+            .iter()
+            .position(|s| s.get("op").as_str() == Some(op))
+        {
+            Some(at) => Some(self.stubs.remove(at)),
+            None => {
+                self.errors
+                    .push(format!("{op} asked more often than Node asked it"));
+                None
+            }
+        }
+    }
+}
 
 async fn listen<F, Fut>(f: F) -> SocketAddr
 where
@@ -193,7 +214,7 @@ where
     addr
 }
 
-async fn read_body(req: Request<Incoming>) -> (String, String, HashMap<String, String>, String) {
+async fn read_req(req: Request<Incoming>) -> (String, String, HashMap<String, String>, String) {
     let method = req.method().to_string();
     let path = req.uri().path().to_string();
     let headers = req
@@ -220,15 +241,127 @@ async fn read_body(req: Request<Incoming>) -> (String, String, HashMap<String, S
     )
 }
 
-async fn core_service(
-    s: Shared,
-    req: Request<Incoming>,
-) -> Result<Response<UpBody>, std::io::Error> {
+/// The hand-off: the recorded frames, the `prepared` one pointed at the fake engine and started now.
+fn handoff(sc: &Script) -> Response<UpBody> {
+    let mut lines: Vec<String> = arr(sc.case.get("handoff").get("raw"))
+        .iter()
+        .map(|l| l.as_str().unwrap().to_string())
+        .collect();
+    let last = lines.pop().unwrap();
+    let mut prepared = wtf16::parse(last.strip_prefix("data: ").unwrap().trim_end()).unwrap();
+    js::set(&mut prepared, "upstreamUrl", js::s(sc.engine.clone()));
+    js::set(&mut prepared, "startedAt", js::n(sc.started));
+    lines.push(format!("data: {}\n\n", js::stringify(&prepared)));
+    let (mut tx, b) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(64);
+    tokio::spawn(async move {
+        for l in lines {
+            if tx.send_data(Bytes::from(l)).await.is_err() {
+                return;
+            }
+        }
+    });
+    Response::builder()
+        .status(200)
+        .header("content-type", "text/event-stream")
+        .header("cache-control", "no-cache, no-transform")
+        .header("x-accel-buffering", "no")
+        .body(b.boxed())
+        .unwrap()
+}
+
+fn health(sc: &Script) -> JValue {
+    let input = sc.case.get("input");
+    let model = input
+        .get("project")
+        .get("model")
+        .as_str()
+        .unwrap_or("qa-model")
+        .to_string();
+    let rows = if sc.loaded {
+        vec![js::obj([
+            ("model_name", js::s(model)),
+            ("loaded", JValue::Bool(true)),
+            (
+                "recipe_options",
+                js::obj([("ctx_size", input.get("ctxSize").clone())]),
+            ),
+        ])]
+    } else {
+        Vec::new()
+    };
+    js::obj([
+        ("ok", JValue::Bool(true)),
+        (
+            "body",
+            js::obj([("all_models_loaded", JValue::Arr(rows))]),
+        ),
+    ])
+}
+
+/// The recorded tool bridge call: every field Node passed, the user's id read as `qa-user`.
+fn tool_bridge(sc: &mut Script, op: &str, sent: &JValue) -> Option<JValue> {
+    if sc.bridge.is_empty() {
+        sc.errors
+            .push(format!("an unrecorded {op}: {}", js::stringify(sent)));
+        return None;
+    }
+    let next = sc.bridge.remove(0);
+    if next.get("op").as_str() != Some(op) {
+        sc.errors.push(format!(
+            "{op} asked where Node asked {}",
+            js::stringify(&next)
+        ));
+        return None;
+    }
+    if let JValue::Obj(fields) = &next {
+        for (k, v) in fields {
+            if matches!(
+                k.as_str(),
+                "op" | "text" | "failed" | "threw" | "left" | "found"
+            ) {
+                continue;
+            }
+            let mut got = sent.get(k).clone();
+            settle(&mut got, &sc.user, (0.0, 0.0));
+            let mut want = v.clone();
+            settle(&mut want, "", (0.0, 0.0));
+            if js::stringify(&got) != js::stringify(&want) {
+                sc.errors.push(format!(
+                    "{op} {k}: front {} node {}",
+                    js::stringify(&got),
+                    js::stringify(&want)
+                ));
+            }
+        }
+    }
+    Some(next)
+}
+
+async fn core_service(s: Shared, req: Request<Incoming>) -> Result<Response<UpBody>, std::io::Error> {
     let hold = req.uri().query() == Some("hold=1");
-    let (method, path, headers, body) = read_body(req).await;
+    let (method, path, headers, body) = read_req(req).await;
+    let sent = if body.is_empty() {
+        JValue::Null
+    } else {
+        wtf16::parse(&body).unwrap_or(JValue::Null)
+    };
     let mut sc = s.lock().unwrap();
     sc.calls.push(format!("{method} {path}"));
     let input = sc.case.get("input").clone();
+    // The bridge contract (rust-chat-native.cjs): every native, usage and prefill body names the user.
+    let bridged = path.starts_with("/internal/chat/native/")
+        || path == "/internal/chat/usage"
+        || path == "/internal/chat/prefill"
+        || path.starts_with("/internal/chat/tools/");
+    if bridged {
+        if headers.get("x-noevia-store-token").map(String::as_str) != Some(STORE_TOKEN) {
+            sc.errors.push(format!("{path}: without the store token"));
+        }
+        if sent.get("user").as_str() != Some(sc.user.as_str()) {
+            sc.errors
+                .push(format!("{path}: user {}", js::stringify(sent.get("user"))));
+        }
+    }
     if path == "/internal/chat/gate" {
         if hold {
             let (mut tx, b) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
@@ -246,7 +379,7 @@ async fn core_service(
         }
         return Ok(empty(204));
     }
-    if let Some(rest) = path.strip_prefix("/internal/inference-admission/lease/") {
+    if let Some(rest) = path.strip_prefix(LEASE_PATH) {
         if method == "PUT" {
             let refusal = input.get("leaseRefusal");
             if refusal.is_object() {
@@ -277,106 +410,79 @@ async fn core_service(
     match path.as_str() {
         "/internal/chat/turn" => {
             sc.handoff_header = headers.get("x-noevia-chat-handoff").cloned();
-            let mut lines: Vec<String> = arr(sc.case.get("handoff").get("raw"))
-                .iter()
-                .map(|l| l.as_str().unwrap().to_string())
-                .collect();
-            let last = lines.pop().unwrap();
-            let mut prepared =
-                wtf16::parse(last.strip_prefix("data: ").unwrap().trim_end()).unwrap();
-            js::set(&mut prepared, "upstreamUrl", js::s(sc.engine.clone()));
-            js::set(&mut prepared, "startedAt", js::n(sc.started));
-            lines.push(format!("data: {}\n\n", js::stringify(&prepared)));
-            let (mut tx, b) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(64);
-            tokio::spawn(async move {
-                for l in lines {
-                    if tx.send_data(Bytes::from(l)).await.is_err() {
-                        return;
-                    }
-                }
-                // Core's stream ends once the turn is handed off (rust-chat-native.cjs).
-            });
-            Ok(Response::builder()
-                .status(200)
-                .header("content-type", "text/event-stream")
-                .header("cache-control", "no-cache, no-transform")
-                .header("x-accel-buffering", "no")
-                .body(b.boxed())
-                .unwrap())
+            Ok(handoff(&sc))
         }
-        "/internal/chat/native/health" => {
-            let model = input
-                .get("project")
-                .get("model")
-                .as_str()
-                .unwrap_or("qa-model")
-                .to_string();
-            let rows = if sc.loaded {
-                vec![js::obj([
-                    ("model_name", js::s(model)),
-                    ("loaded", JValue::Bool(true)),
-                    (
-                        "recipe_options",
-                        js::obj([("ctx_size", input.get("ctxSize").clone())]),
-                    ),
-                ])]
-            } else {
-                Vec::new()
-            };
-            ok(js::obj([
-                ("ok", JValue::Bool(true)),
-                (
-                    "body",
-                    js::obj([("all_models_loaded", JValue::Arr(rows))]),
-                ),
-            ]))
-        }
+        "/internal/chat/native/health" => ok(health(&sc)),
         "/internal/chat/native/load" => {
+            if sent.get("lease").as_str() != Some(LEASE) {
+                sc.errors.push(format!(
+                    "load: lease {}",
+                    js::stringify(sent.get("lease"))
+                ));
+            }
             sc.loaded = true;
             ok(js::obj([("ok", JValue::Bool(true))]))
         }
-        "/internal/chat/native/tools-allowed" => ok(js::obj([("allowed", JValue::Bool(true))])),
-        "/internal/chat/native/busy" => ok(js::obj([("busy", JValue::Bool(false))])),
+        "/internal/chat/native/tools-allowed" => {
+            let allowed = sc
+                .stub("allowsTools")
+                .is_none_or(|s| s.get("answer") != &JValue::Bool(false));
+            ok(js::obj([("allowed", JValue::Bool(allowed))]))
+        }
+        "/internal/chat/native/busy" => {
+            let busy = sc
+                .stub("inferenceBusy")
+                .is_some_and(|s| s.get("answer") == &JValue::Bool(true));
+            ok(js::obj([("busy", JValue::Bool(busy))]))
+        }
         "/internal/chat/native/title-auto-named" => {
             let named = input.get("titles").get("autoNamed") != &JValue::Bool(false);
             ok(js::obj([("autoNamed", JValue::Bool(named))]))
         }
-        "/internal/chat/tools/target" | "/internal/chat/tools/execute" => {
-            let sent = wtf16::parse(&body).unwrap();
-            let op = if path.ends_with("target") {
-                "target"
-            } else {
-                "execute"
+        "/internal/chat/tools/target" => {
+            let Some(next) = tool_bridge(&mut sc, "target", &sent) else {
+                return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
             };
-            let next = sc
-                .bridge
-                .pop_front()
-                .unwrap_or_else(|| panic!("an unrecorded bridge call: {op} {body}"));
-            assert_eq!(
-                (
-                    next.get("op").as_str(),
-                    next.get("name").as_str(),
-                    next.get("args").as_str()
-                ),
-                (Some(op), sent.get("name").as_str(), sent.get("args").as_str()),
-                "bridge call"
-            );
-            if op == "target" {
-                let found = next.get("found");
-                ok(if found.is_object() {
-                    found.clone()
-                } else {
-                    js::obj(Vec::<(String, JValue)>::new())
-                })
+            let found = next.get("found");
+            ok(if found.is_object() {
+                found.clone()
             } else {
-                ok(js::obj([
-                    ("text", next.get("text").clone()),
-                    (
-                        "failed",
-                        JValue::Bool(next.get("failed") == &JValue::Bool(true)),
-                    ),
-                ]))
+                js::obj(Vec::<(String, JValue)>::new())
+            })
+        }
+        "/internal/chat/tools/execute" => {
+            let Some(next) = tool_bridge(&mut sc, "execute", &sent) else {
+                return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
+            };
+            sc.executions
+                .push(next.get("name").as_str().unwrap_or("").to_string());
+            if let Some(message) = next.get("threw").as_str() {
+                return Ok(json(500, &js::obj([("error", js::s(message))])));
             }
+            let answer = js::obj([
+                ("text", next.get("text").clone()),
+                (
+                    "failed",
+                    JValue::Bool(next.get("failed") == &JValue::Bool(true)),
+                ),
+            ]);
+            if next.get("left") == &JValue::Bool(true) {
+                // The client leaves while the tool runs; the run still finishes and answers.
+                let leaving = Arc::clone(&sc.leaving);
+                drop(sc);
+                let (mut tx, b) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+                tokio::spawn(async move {
+                    leaving.leave.notify_one();
+                    leaving.wait_gone().await;
+                    let _ = tx.send_data(Bytes::from(js::stringify(&answer))).await;
+                });
+                return Ok(Response::builder()
+                    .status(200)
+                    .header("content-type", "application/json")
+                    .body(b.boxed())
+                    .unwrap());
+            }
+            ok(answer)
         }
         "/internal/chat/usage"
         | "/internal/chat/prefill"
@@ -390,18 +496,19 @@ async fn engine_service(
     s: Shared,
     req: Request<Incoming>,
 ) -> Result<Response<UpBody>, std::io::Error> {
-    let (_, _, headers, body) = read_body(req).await;
+    let (_, _, headers, body) = read_req(req).await;
     let (round, chunks) = {
         let mut sc = s.lock().unwrap();
         sc.engine_bodies.push(body);
-        sc.engine_leases.push(headers.get("x-noevia-lease").cloned());
+        sc.engine_leases
+            .push(headers.get("x-noevia-lease").cloned());
         let i = sc.round;
         sc.round += 1;
         let input = sc.case.get("input").clone();
-        let round = arr(input.get("rounds"))
-            .get(i)
-            .cloned()
-            .unwrap_or_else(|| panic!("no engine round {}", i + 1));
+        let Some(round) = arr(input.get("rounds")).get(i).cloned() else {
+            sc.errors.push(format!("no engine round {}", i + 1));
+            return Err(std::io::Error::other("no such round"));
+        };
         let chunks = arr(input.get("chunks")).get(i).cloned().unwrap_or(JValue::Null);
         (round, chunks)
     };
@@ -424,8 +531,13 @@ async fn engine_service(
                 JValue::Str(m) if m == "wait" => {
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
-                JValue::Str(m) if m == "stall" => {
-                    s2.lock().unwrap().stalled.push(tx);
+                JValue::Str(m) if m == "stall" || m == "leave" => {
+                    let mut sc = s2.lock().unwrap();
+                    if m == "leave" {
+                        sc.leaving.leave.notify_one();
+                    }
+                    // Held open: nothing more is sent.
+                    sc.held.push(tx);
                     return;
                 }
                 JValue::Str(_) => return,
@@ -448,9 +560,16 @@ async fn engine_service(
         .unwrap())
 }
 
-/// The approval registry the test installs: native_turns.rs's binding, never chat-wide, and the case's
-/// decision.
+/// The approval registry the test installs: native_turns.rs's binding; the chat-wide grant and the
+/// card's answer from the case's stubs. A card the recording left open (`left`) makes the client leave
+/// and never answers; a policy the case turns to `block` on the card is written as the card answers.
 struct TestApprovals(Arc<Mutex<Option<Shared>>>);
+
+impl TestApprovals {
+    fn script(&self) -> Shared {
+        self.0.lock().unwrap().clone().unwrap()
+    }
+}
 
 impl Approvals for TestApprovals {
     fn binding(&self, user: &str, chat: &str, scope: &str, _holder: &JValue) -> Result<JValue, ()> {
@@ -469,8 +588,19 @@ impl Approvals for TestApprovals {
         ]))
     }
 
-    fn chat_wide(&self, _user: &str, _chat: Option<&str>, _scope: &str, _b: &JValue) -> bool {
-        false
+    fn chat_wide(&self, _user: &str, chat: Option<&str>, scope: &str, _b: &JValue) -> bool {
+        let s = self.script();
+        let mut sc = s.lock().unwrap();
+        let Some(stub) = sc.stub("chatWideApproved") else {
+            return false;
+        };
+        if stub.get("chatId").as_str() != chat || stub.get("scope").as_str() != Some(scope) {
+            sc.errors.push(format!(
+                "chatWideApproved asked for {chat:?} {scope}, Node asked {}",
+                js::stringify(&stub)
+            ));
+        }
+        stub.get("answer") == &JValue::Bool(true)
     }
 
     fn ask(
@@ -478,26 +608,45 @@ impl Approvals for TestApprovals {
         _user: &str,
         request: &JValue,
     ) -> Pin<Box<dyn std::future::Future<Output = String> + Send>> {
-        let script = self.0.lock().unwrap().clone().unwrap();
-        let decision = {
-            let mut sc = script.lock().unwrap();
-            sc.asked.push(request.clone());
-            sc.case
-                .get("input")
-                .get("decision")
-                .as_str()
-                .unwrap_or("approve")
-                .to_string()
-        };
-        Box::pin(async move { decision })
+        let s = self.script();
+        let mut sc = s.lock().unwrap();
+        sc.asked.push(request.clone());
+        let stub = sc.stub("awaitApproval").unwrap_or(JValue::Null);
+        if stub.get("left") == &JValue::Bool(true)
+            || stub.get("answer").as_str() == Some("aborted")
+        {
+            sc.leaving.leave.notify_one();
+            return Box::pin(std::future::pending());
+        }
+        // A policy that changes while the card is open (`input.policy[tool]: [before, after]`).
+        if let JValue::Obj(policy) = sc.case.get("input").get("policy").clone() {
+            for (tool, modes) in policy {
+                if let Some(after) = arr(&modes).get(1).and_then(|m| m.as_str()) {
+                    set_policy(&sc.data, &sc.user, &tool, after);
+                }
+            }
+        }
+        let answer = stub.get("answer").as_str().unwrap_or("approve").to_string();
+        Box::pin(async move { answer })
     }
 
     fn revoke(&self, _user: &str, _chat: Option<&str>) {}
 }
 
+fn set_policy(data: &Path, user: &str, tool: &str, mode: &str) {
+    let c = Connection::open(server_store::db_path(data)).unwrap();
+    c.busy_timeout(Duration::from_secs(5)).unwrap();
+    c.execute_batch(POLICIES).unwrap();
+    c.execute(
+        "INSERT INTO tool_policies(user_id,tool,mode,updated_at) VALUES(?1,?2,?3,1) ON CONFLICT(user_id,tool) DO UPDATE SET mode=excluded.mode",
+        [user, tool, mode],
+    )
+    .unwrap();
+}
+
 struct Front {
     _dir: tempfile::TempDir,
-    data: std::path::PathBuf,
+    data: PathBuf,
     addr: SocketAddr,
     jar: String,
     csrf: String,
@@ -509,6 +658,7 @@ async fn front(core: SocketAddr) -> Front {
     let data = dir.path().to_path_buf();
     let c = Connection::open(server_store::db_path(&data)).unwrap();
     c.execute_batch(SCHEMA).unwrap();
+    c.execute_batch(POLICIES).unwrap();
     c.execute(
         "INSERT INTO settings VALUES('setup_code_hash', ?1)",
         [server_auth::js::digest(CODE)],
@@ -564,8 +714,9 @@ async fn front(core: SocketAddr) -> Front {
     }
 }
 
-/// POST /api/chat and the whole SSE body.
-async fn chat(f: &Front, body: &str) -> (u16, String) {
+/// POST /api/chat and its SSE body: all of it, or what came until the client left (`leave` fired and
+/// then [`QUIET`] without a frame).
+async fn chat(f: &Front, body: &str, leaving: &Leaving) -> (u16, String) {
     let stream = TcpStream::connect(f.addr).await.unwrap();
     let (mut send, conn) =
         hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
@@ -586,13 +737,40 @@ async fn chat(f: &Front, body: &str) -> (u16, String) {
         .unwrap();
     let res = send.send_request(req).await.unwrap();
     let status = res.status().as_u16();
-    let bytes = tokio::time::timeout(Duration::from_secs(60), res.into_body().collect())
-        .await
-        .expect("the turn did not end within 60 s")
-        .unwrap()
-        .to_bytes();
+    let mut body = res.into_body();
+    let mut out = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+    let mut left = false;
+    loop {
+        let next = if left {
+            match tokio::time::timeout(QUIET, body.frame()).await {
+                Ok(f) => f,
+                Err(_) => break,
+            }
+        } else {
+            tokio::select! {
+                f = body.frame() => f,
+                () = leaving.leave.notified() => { left = true; continue; }
+                () = tokio::time::sleep_until(deadline) => panic!("the turn did not end within 60 s"),
+            }
+        };
+        match next {
+            Some(Ok(frame)) => {
+                if let Ok(data) = frame.into_data() {
+                    out.extend_from_slice(&data);
+                }
+            }
+            _ => break,
+        }
+    }
+    drop(body);
+    drop(send);
     conn.abort();
-    (status, String::from_utf8(bytes.to_vec()).unwrap())
+    if left {
+        leaving.is_gone.store(true, Ordering::SeqCst);
+        leaving.gone.notify_one();
+    }
+    (status, String::from_utf8(out).unwrap())
 }
 
 /// The `data:` frames, keep-alives and other comments removed.
@@ -611,8 +789,8 @@ fn is_uuid_v4(s: &str) -> bool {
         && s.bytes().all(|c| c == b'-' || c.is_ascii_hexdigit())
 }
 
-/// The clock, uuid and user-id rewrites the module doc names, on what the front produced.
-fn settle(v: &mut JValue, user: &str, window: (f64, f64), recorded_ap: &str) {
+/// The rewrite the module doc lists. `user` empty: the recorded side (uuids only).
+fn settle(v: &mut JValue, user: &str, window: (f64, f64)) {
     match v {
         JValue::Obj(pairs) => {
             for (k, x) in pairs.iter_mut() {
@@ -627,52 +805,50 @@ fn settle(v: &mut JValue, user: &str, window: (f64, f64), recorded_ap: &str) {
                     if matches!(k.as_str(), "timeToFirstToken" | "elapsedMs")
                         && *n >= 0.0
                         && *n < 60_000.0
+                        && !user.is_empty()
                     {
                         *n = 0.0;
                     }
                 } else {
-                    settle(x, user, window, recorded_ap);
+                    settle(x, user, window);
                 }
             }
         }
-        JValue::Arr(items) => items
-            .iter_mut()
-            .for_each(|x| settle(x, user, window, recorded_ap)),
+        JValue::Arr(items) => items.iter_mut().for_each(|x| settle(x, user, window)),
         JValue::Str(s) => {
-            if s == user {
+            if !user.is_empty() && s == user {
                 *s = "qa-user".into();
-            } else if s.strip_prefix("ap-").is_some_and(is_uuid_v4) && !recorded_ap.is_empty() {
-                *s = recorded_ap.to_string();
+            } else if is_uuid_v4(s) {
+                *s = "<uuid>".into();
+            } else if s.strip_prefix("ap-").is_some_and(is_uuid_v4) {
+                *s = "ap-<uuid>".into();
             }
         }
         _ => {}
     }
 }
 
-/// The recorded `ap-...` id of the case, if any (one approval card per recorded case).
-fn recorded_ap(case: &JValue) -> String {
-    arr(case.get("approvals"))
-        .first()
-        .and_then(|a| a.get("id").as_str().map(str::to_string))
-        .unwrap_or_default()
-}
-
-/// The state files the turn left in the account's directory: `context-*.json` and `chat-partials/*`.
-fn state_files(dir: &std::path::Path) -> BTreeMap<String, JValue> {
+/// The state files in the account's directory: `context-*.json` and `chat-partials/*`.
+fn state_files(dir: &Path, user: &str, window: (f64, f64)) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let Ok(entries) = std::fs::read_dir(dir) else {
         return out;
     };
+    let mut add = |name: String, path: &Path| {
+        let mut v = wtf16::parse(&std::fs::read_to_string(path).unwrap()).unwrap();
+        settle(&mut v, user, window);
+        out.insert(name, js::stringify(&v));
+    };
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
         if name.starts_with("context-") && name.ends_with(".json") {
-            let text = std::fs::read_to_string(e.path()).unwrap();
-            out.insert(name, wtf16::parse(&text).unwrap());
+            add(name, &e.path());
         } else if name == "chat-partials" {
             for p in std::fs::read_dir(e.path()).unwrap().flatten() {
                 let n = p.file_name().to_string_lossy().into_owned();
-                let text = std::fs::read_to_string(p.path()).unwrap();
-                out.insert(format!("chat-partials/{n}"), wtf16::parse(&text).unwrap());
+                if n.ends_with(".json") {
+                    add(format!("chat-partials/{n}"), &p.path());
+                }
             }
         }
     }
@@ -686,22 +862,28 @@ fn now_ms() -> f64 {
         .as_millis() as f64
 }
 
+fn texts(list: &[JValue], user: &str, window: (f64, f64)) -> Vec<String> {
+    list.iter()
+        .map(|v| {
+            let mut v = v.clone();
+            settle(&mut v, user, window);
+            js::stringify(&v)
+        })
+        .collect()
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_native_executor_answers_as_the_recorded_node_turns() {
     let fixture = wtf16::parse(FIXTURE).unwrap();
-    let cases = arr(fixture.get("cases"));
-    // Every recorded prepared case is either run or named as skipped.
-    for c in cases
-        .iter()
+    let cases: Vec<JValue> = arr(fixture.get("cases"))
+        .into_iter()
         .filter(|c| c.get("handoff").get("prepared").is_object())
-    {
-        let name = c.get("name").as_str().unwrap();
-        assert!(
-            CASES.contains(&name) || SKIPPED.iter().any(|(n, _)| *n == name),
-            "{name}: neither run nor skipped"
-        );
-    }
+        .collect();
     for (name, why) in SKIPPED {
+        assert!(
+            cases.iter().any(|c| c.get("name").as_str() == Some(*name)),
+            "{name}: skipped but not recorded"
+        );
         eprintln!("SKIPPED {name}: {why}");
     }
     // The front's admission authority needs a Node start to issue leases under.
@@ -711,19 +893,27 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
     let current: Arc<Mutex<Option<Shared>>> = Arc::default();
     noevia_server::chat_native::install_approvals(Arc::new(TestApprovals(Arc::clone(&current))));
 
+    let only = std::env::var("CHAT_NATIVE_CASE").ok();
+    let mut ran = Vec::new();
     let mut failures = Vec::new();
-    for name in CASES {
-        let case = cases
-            .iter()
-            .find(|c| c.get("name").as_str() == Some(*name))
-            .unwrap_or_else(|| panic!("{name}: not in the recording"))
-            .clone();
-        if let Err(e) = run_case(&fixture, &case, &current).await {
-            eprintln!("DIFFERS {name}: {e}");
-            failures.push(format!("{name}: {e}"));
+    for case in &cases {
+        let name = case.get("name").as_str().unwrap().to_string();
+        if SKIPPED.iter().any(|(n, _)| *n == name) || only.as_ref().is_some_and(|o| *o != name) {
+            continue;
+        }
+        match run_case(&fixture, case, &current).await {
+            Ok(()) => ran.push(name),
+            Err(e) => {
+                eprintln!("DIFFERS {name}: {e}");
+                failures.push(format!("{name}: {e}"));
+            }
         }
     }
-    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+    eprintln!("ran and matched ({}): {ran:?}", ran.len());
+    assert!(failures.is_empty(), "{} differ:\n{}", failures.len(), failures.join("\n\n"));
+    if only.is_none() {
+        assert_eq!(ran.len() + SKIPPED.len(), cases.len());
+    }
 }
 
 async fn run_case(
@@ -731,10 +921,16 @@ async fn run_case(
     case: &JValue,
     current: &Arc<Mutex<Option<Shared>>>,
 ) -> Result<(), String> {
+    let input = case.get("input").clone();
+    let stubs = arr(case.get("stubs"))
+        .into_iter()
+        .filter(|s| ANSWERED.contains(&s.get("op").as_str().unwrap_or("")))
+        .collect();
     let script: Shared = Arc::new(Mutex::new(Script {
         case: case.clone(),
-        loaded: case.get("input").get("loaded") != &JValue::Bool(false),
-        bridge: arr(case.get("bridge")).into(),
+        loaded: input.get("loaded") != &JValue::Bool(false),
+        bridge: arr(case.get("bridge")),
+        stubs,
         ..Script::default()
     }));
     *current.lock().unwrap() = Some(Arc::clone(&script));
@@ -743,23 +939,87 @@ async fn run_case(
     let s = Arc::clone(&script);
     let engine = listen(move |r| engine_service(Arc::clone(&s), r)).await;
     let f = front(core).await;
+
+    // The account as core's preparation leaves it: its directory, its tool policies, the turn's user
+    // message last in the transcript (unless the case records a store that does not have it).
+    server_projects::store::ensure_user_dir(&f.data, &f.user).unwrap();
+    if let JValue::Obj(policy) = input.get("policy") {
+        for (tool, mode) in policy {
+            let first = match mode {
+                JValue::Arr(m) => m[0].as_str().unwrap().to_string(),
+                m => m.as_str().unwrap().to_string(),
+            };
+            set_policy(&f.data, &f.user, tool, &first);
+        }
+    }
+    let body = input.get("body").clone();
+    let chat_id = body.get("chatId").as_str().map(str::to_string);
+    if let Some(chat) = &chat_id {
+        if input.get("appendOutcome").as_str().is_none() {
+            let mut history = arr(body.get("history"));
+            history.push(js::obj([
+                ("role", js::s("user")),
+                ("content", body.get("message").clone()),
+            ]));
+            server_projects::transcript::write(
+                &f.data,
+                &f.user,
+                chat,
+                &history,
+                &server_projects::transcript::Base::Any,
+                None,
+            )
+            .unwrap();
+        }
+    }
+
     let t0 = now_ms();
-    {
+    let leaving = {
         let mut sc = script.lock().unwrap();
         sc.engine = format!("http://{engine}/v1/chat/completions");
         sc.started = t0;
+        sc.user = f.user.clone();
+        sc.data = f.data.clone();
         sc.calls.clear();
-    }
-    let body = js::stringify(case.get("input").get("body"));
-    let (status, sse) = chat(&f, &body).await;
-    // The turn's after-work (saving, the lease back) runs as the stream ends.
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    let t1 = now_ms();
-    let window = (t0, t1);
-    let ap = recorded_ap(case);
+        Arc::clone(&sc.leaving)
+    };
+    let (status, sse) = chat(&f, &js::stringify(&body), &leaving).await;
     if status != 200 {
         return Err(format!("status {status}: {sse}"));
     }
+
+    // The turn's end (the lease back, the save) runs as the stream ends, or after the client left;
+    // wait for the files to settle, at most 5 s.
+    let dir = server_projects::store::user_dir(&f.data, &f.user).unwrap();
+    let want_files: BTreeMap<String, String> = match case.get("files") {
+        JValue::Obj(files) => files
+            .iter()
+            .map(|(k, v)| {
+                let mut v = v.clone();
+                settle(&mut v, "", (0.0, 0.0));
+                (k.clone(), js::stringify(&v))
+            })
+            .collect(),
+        _ => BTreeMap::new(),
+    };
+    let leased = !input.get("leaseRefusal").is_object();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let got_files = loop {
+        let window = (t0, now_ms());
+        let got = state_files(&dir, &f.user, window);
+        let released = !leased
+            || script
+                .lock()
+                .unwrap()
+                .calls
+                .iter()
+                .any(|c| c.starts_with("DELETE ") && c.contains(LEASE_PATH));
+        if (got == want_files && released) || tokio::time::Instant::now() >= deadline {
+            break got;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    let window = (t0, now_ms());
     let sc = script.lock().unwrap();
     if sc.handoff_header.as_deref() != Some(STORE_TOKEN) {
         return Err(format!(
@@ -769,12 +1029,12 @@ async fn run_case(
     }
 
     // (a) The client's frames, before and after the cut.
-    let want: Vec<String> = arr(case.get("events")).iter().map(js::stringify).collect();
+    let want = texts(&arr(case.get("events")), "", (0.0, 0.0));
     let got: Vec<String> = frames(&sse)
         .iter()
         .map(|t| {
             let mut v = wtf16::parse(t).unwrap_or_else(|_| js::s(format!("<unparsed> {t}")));
-            settle(&mut v, &f.user, window, &ap);
+            settle(&mut v, &f.user, window);
             js::stringify(&v)
         })
         .collect();
@@ -793,7 +1053,7 @@ async fn run_case(
         ));
     }
 
-    // (b) The engine request bodies.
+    // (b) The engine request bodies, each with the turn's lease.
     let recorded = arr(case.get("requests"));
     if sc.engine_bodies.len() != recorded.len() {
         return Err(format!(
@@ -822,46 +1082,69 @@ async fn run_case(
         }
     }
 
-    // Every recorded bridge answer was asked for, and the approval cards are the recording's.
-    if !sc.bridge.is_empty() {
-        return Err(format!("{} bridge answers never asked for", sc.bridge.len()));
+    // The fakes' contract checks, the approval cards, the tools run, every recorded answer asked for.
+    if !sc.errors.is_empty() {
+        return Err(format!("bridge contract: {:?}", sc.errors));
     }
-    let asked: Vec<String> = sc
-        .asked
-        .iter()
-        .map(|a| {
-            let mut a = a.clone();
-            settle(&mut a, &f.user, window, &ap);
-            js::stringify(&a)
-        })
-        .collect();
-    let want: Vec<String> = arr(case.get("approvals")).iter().map(js::stringify).collect();
+    let asked = texts(&sc.asked, &f.user, window);
+    let want = texts(&arr(case.get("approvals")), "", (0.0, 0.0));
     if asked != want {
         return Err(format!(
             "approval requests:\n front: {asked:?}\n node:  {want:?}"
         ));
     }
+    let want: Vec<String> = arr(case.get("executions"))
+        .iter()
+        .map(|e| e.as_str().unwrap().to_string())
+        .collect();
+    if sc.executions != want {
+        return Err(format!(
+            "tools run: front {:?} node {want:?}",
+            sc.executions
+        ));
+    }
+    if !sc.bridge.is_empty() || !sc.stubs.is_empty() {
+        return Err(format!(
+            "never asked for: bridge {:?} stubs {:?}",
+            texts(&sc.bridge, "", (0.0, 0.0)),
+            texts(&sc.stubs, "", (0.0, 0.0))
+        ));
+    }
+    if leased
+        && !sc
+            .calls
+            .iter()
+            .any(|c| c.starts_with("DELETE ") && c.contains(LEASE_PATH))
+    {
+        return Err(format!("the lease was never given back: {:?}", sc.calls));
+    }
 
     // (c) The account's state files.
-    let dir = server_projects::store::user_dir(&f.data, &f.user).unwrap();
-    let got: BTreeMap<String, String> = state_files(&dir)
-        .into_iter()
-        .map(|(k, mut v)| {
-            settle(&mut v, &f.user, window, &ap);
-            (k, js::stringify(&v))
-        })
-        .collect();
-    let want: BTreeMap<String, String> = match case.get("files") {
-        JValue::Obj(files) => files
-            .iter()
-            .map(|(k, v)| (k.clone(), js::stringify(v)))
-            .collect(),
-        _ => BTreeMap::new(),
-    };
-    if got != want {
+    if got_files != want_files {
         return Err(format!(
-            "workspace files:\n front: {got:?}\n node:  {want:?}"
+            "workspace files:\n front: {got_files:?}\n node:  {want_files:?}"
         ));
+    }
+
+    // The reply a leaving client's turn kept, where Node's store took it.
+    let kept = arr(case.get("stores"))
+        .into_iter()
+        .find(|s| s.get("op").as_str() == Some("transcripts.appendIfLast"));
+    if let (Some(kept), Some(chat), true) = (
+        kept,
+        &chat_id,
+        input.get("appendOutcome").as_str().is_none(),
+    ) {
+        let now = server_projects::transcript::read(&f.data, &f.user, chat)
+            .map_err(|e| format!("the transcript: {e:?}"))?;
+        let last = arr(&now.history).last().cloned().unwrap_or(JValue::Null);
+        let got = texts(&[last], &f.user, window);
+        let want = texts(&[kept.get("entry").clone()], "", (0.0, 0.0));
+        if got != want {
+            return Err(format!(
+                "the kept reply:\n front: {got:?}\n node:  {want:?}"
+            ));
+        }
     }
     Ok(())
 }

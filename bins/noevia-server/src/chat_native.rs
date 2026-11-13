@@ -284,6 +284,7 @@ async fn drive(
         tx,
         saving: Mutex::new(Saving::new(TurnRecord::new(crate::identity::now_ms))),
         lease: tokio::sync::Mutex::new(None),
+        lease_token: Mutex::new(None),
         approvals,
         client: reqwest::Client::new(),
     });
@@ -380,6 +381,8 @@ pub(crate) struct FrontHost {
     tx: mpsc::UnboundedSender<Bytes>,
     saving: Mutex<Saving>,
     lease: tokio::sync::Mutex<Option<engine_admission::Lease>>,
+    /// The turn's `x-noevia-lease` value, as [`Host::lease`] returned it (the load bridge carries it).
+    lease_token: Mutex<Option<String>>,
     approvals: Arc<dyn Approvals>,
     client: reqwest::Client,
 }
@@ -475,6 +478,13 @@ impl Host for FrontHost {
         {
             Ok(lease) => {
                 let headers = lease.headers().to_vec();
+                let token = headers
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case("x-noevia-lease"))
+                    .map(|(_, v)| v.clone());
+                if let Ok(mut t) = self.lease_token.lock() {
+                    *t = token;
+                }
                 *self.lease.lock().await = Some(lease);
                 Ok(Some(headers))
             }
@@ -493,11 +503,13 @@ impl Host for FrontHost {
         }
     }
 
+    // Core answers health and load 409 `{enabled:false}` when the model manager is off; the turn
+    // never asks then (the prepared frame's `managerEnabled`), and either is read as not ok.
     async fn health(&self) -> Option<JValue> {
         let (status, v) = self
             .core(
                 "/internal/chat/native/health",
-                &js::obj(Vec::<(String, JValue)>::new()),
+                &js::obj([("user", js::s(self.user.clone()))]),
                 BRIDGE_TIMEOUT,
             )
             .await?;
@@ -505,10 +517,15 @@ impl Host for FrontHost {
     }
 
     async fn load(&self, model: &str) -> bool {
+        let lease = self.lease_token.lock().ok().and_then(|t| t.clone());
         let r = self
             .core(
                 "/internal/chat/native/load",
-                &js::obj([("model", js::s(model))]),
+                &js::obj([
+                    ("user", js::s(self.user.clone())),
+                    ("model", js::s(model)),
+                    ("lease", lease.map_or(JValue::Null, js::s)),
+                ]),
                 Duration::from_secs(600),
             )
             .await;
@@ -520,7 +537,7 @@ impl Host for FrontHost {
         let r = self
             .core(
                 "/internal/chat/native/tools-allowed",
-                &js::obj([("model", js::s(model))]),
+                &js::obj([("user", js::s(self.user.clone())), ("model", js::s(model))]),
                 BRIDGE_TIMEOUT,
             )
             .await;
@@ -626,7 +643,7 @@ impl Host for FrontHost {
     fn mark_tools_unsupported(&self, model: &str) {
         self.core_later(
             "/internal/chat/native/tools-unsupported",
-            js::obj([("model", js::s(model))]),
+            js::obj([("user", js::s(self.user.clone())), ("model", js::s(model))]),
         );
     }
 
@@ -634,7 +651,7 @@ impl Host for FrontHost {
         let r = self
             .core(
                 "/internal/chat/native/busy",
-                &js::obj(Vec::<(String, JValue)>::new()),
+                &js::obj([("user", js::s(self.user.clone()))]),
                 BRIDGE_TIMEOUT,
             )
             .await;
@@ -686,6 +703,7 @@ impl Host for FrontHost {
         self.core_later(
             "/internal/chat/prefill",
             js::obj([
+                ("user", js::s(self.user.clone())),
                 ("model", js::s(model)),
                 ("promptTokens", js::n(prompt)),
                 ("firstTokenMs", js::n(first_token_ms)),
