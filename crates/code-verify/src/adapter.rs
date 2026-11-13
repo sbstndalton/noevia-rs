@@ -93,10 +93,17 @@ impl Adapter {
             }
             Status::Passed | Status::Failed => {
                 let measured = outcome.report.as_ref().is_some_and(|r| {
-                    catch_unwind(AssertUnwindSafe(|| {
-                        verify.is_measured(r, request.task_id, request.head_sha, request.revision)
-                    }))
-                    .unwrap_or(false)
+                    // The verifier's own say, and this crate's binding to the request.
+                    crate::is_measured(r, request.task_id, request.head_sha, request.revision)
+                        && catch_unwind(AssertUnwindSafe(|| {
+                            verify.is_measured(
+                                r,
+                                request.task_id,
+                                request.head_sha,
+                                request.revision,
+                            )
+                        }))
+                        .unwrap_or(false)
                 });
                 match outcome.report {
                     Some(report) if measured => Outcome {

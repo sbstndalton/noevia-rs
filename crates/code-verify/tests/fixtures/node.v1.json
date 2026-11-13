@@ -17261,7 +17261,7 @@
    "adapter": {
     "mode": "copied-report"
    },
-   "nodeOnly": "a copy of a report ({...report}, a different object in Node) cannot be built in Rust: Report has no public constructor",
+   "nodeOnly": "Node tells a copy ({...report}) from the original by object identity and refuses the copy; a Rust Report clone is itself a genuine Report and stays measured (named difference 9 in the crate doc; tests/replay.rs checks the clone)",
    "server": "unix",
    "options": {
     "timeoutMs": 3000,

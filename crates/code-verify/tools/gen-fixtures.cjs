@@ -24,7 +24,7 @@
 //     String values may be { "$repeat": [text, n] } or { "$cat": [...] } (expanded by both sides).
 //   cancelBefore  the signal is aborted before run()
 //   adapter   { mode, ... } runs createVerifyAdapter over the verifier (see `buildVerify`)
-//   nodeOnly  why the Rust replay skips it (cannot be expressed with the Rust types)
+//   nodeOnly  why the Rust replay skips it (cannot be expressed in Rust: see the text)
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -277,7 +277,7 @@ S['adapter-stub-unavailable-without-error-object'] = A({ mode: 'stub', stub: { s
 S['adapter-verifier-throws'] = A({ mode: 'threw' }, { server: 'none' });
 S['adapter-available-throws'] = A({ mode: 'available-throws' }, { server: 'none' });
 S['adapter-unknown-status'] = A({ mode: 'stub', stub: { status: 'weird', error: null } }, { server: 'none', nodeOnly: 'an outcome with a status outside the four cannot be written with the Rust Outcome type' });
-S['adapter-copied-report'] = A({ mode: 'copied-report' }, { connections: answered(), nodeOnly: 'a copy of a report ({...report}, a different object in Node) cannot be built in Rust: Report has no public constructor' });
+S['adapter-copied-report'] = A({ mode: 'copied-report' }, { connections: answered(), nodeOnly: 'Node tells a copy ({...report}) from the original by object identity and refuses the copy; a Rust Report clone is itself a genuine Report and stays measured (named difference 9 in the crate doc; tests/replay.rs checks the clone)' });
 
 // ---- defaults ---------------------------------------------------------------------------------
 function norm(sc) {

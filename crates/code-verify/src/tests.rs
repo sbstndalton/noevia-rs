@@ -307,3 +307,57 @@ fn log_and_event_json_match_nodes_shapes() {
         r#"{"id":"tests","title":"Run the tests"}"#
     );
 }
+
+#[test]
+fn a_full_listen_backlog_is_busy_not_a_hang() {
+    use rustix::net::{
+        bind, connect, listen, socket_with, AddressFamily, SocketAddrUnix, SocketFlags, SocketType,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("full.sock");
+    let addr = SocketAddrUnix::new(path.as_path()).unwrap();
+    let listener = socket_with(
+        AddressFamily::UNIX,
+        SocketType::STREAM,
+        SocketFlags::CLOEXEC,
+        None,
+    )
+    .unwrap();
+    bind(&listener, &addr).unwrap();
+    listen(&listener, 0).unwrap();
+    // Fill the queue; the listener never accepts.
+    let mut held = Vec::new();
+    let mut full = false;
+    for _ in 0..16 {
+        let c = socket_with(
+            AddressFamily::UNIX,
+            SocketType::STREAM,
+            SocketFlags::NONBLOCK | SocketFlags::CLOEXEC,
+            None,
+        )
+        .unwrap();
+        match connect(&c, &addr) {
+            Ok(()) => held.push(c),
+            Err(e) => {
+                assert_eq!(e, rustix::io::Errno::AGAIN);
+                full = true;
+                break;
+            }
+        }
+    }
+    assert!(full, "the backlog never filled");
+    let mut o = options(Some(format!("unix:{}", path.display())));
+    o.timeout = Duration::from_secs(30);
+    o.connect_retry = Duration::from_millis(400);
+    let v = Verify::new(o);
+    let started = Instant::now();
+    let (out, _) = run(&v, "qa-repo", SHA, 1.0);
+    let e = out.error.unwrap();
+    assert_eq!((out.status, e.code.as_str()), (Status::Unavailable, "busy"));
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        started.elapsed()
+    );
+    drop(held);
+}

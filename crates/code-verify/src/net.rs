@@ -236,9 +236,15 @@ impl Gate<'_> {
 
 type Reached = Result<Conn, AskError>;
 
-/// Connects on a helper thread so a blocked connect never holds up the deadline or a cancel (a
-/// connect still blocked then is abandoned, and its socket closed when it finishes).
+/// A unix socket is connected non-blocking, on this thread: a listener whose backlog is full
+/// answers `EAGAIN` at once (retried as `not_listening`, as Node's connect does). A TCP connect
+/// (name lookup included) runs on a helper thread so a blocked one never holds up the deadline
+/// or a cancel; one still blocked then is abandoned, and its socket closed when it finishes.
 fn reach(target: Target, gate: &Gate<'_>) -> Reached {
+    let (host, port) = match target {
+        Target::Unix(path) => return connect_unix(&path),
+        Target::Tcp(host, port) => (host, port),
+    };
     let budget = gate
         .deadline
         .map_or(Duration::from_secs(3600), |d| {
@@ -247,7 +253,7 @@ fn reach(target: Target, gate: &Gate<'_>) -> Reached {
         .max(Duration::from_millis(1));
     let (tx, rx) = mpsc::channel::<Reached>();
     let spawned = std::thread::Builder::new().spawn(move || {
-        let _ = tx.send(connect_blocking(&target, budget));
+        let _ = tx.send(connect_tcp(&host, port, budget));
     });
     if let Err(e) = spawned {
         return Err(fail(
@@ -270,60 +276,90 @@ fn reach(target: Target, gate: &Gate<'_>) -> Reached {
     }
 }
 
-fn connect_blocking(target: &Target, budget: Duration) -> Reached {
-    match target {
-        Target::Unix(path) => match UnixStream::connect(path) {
-            Ok(s) => Ok(Conn::Unix(s)),
-            // std refuses a path longer than sun_path before connecting; libuv cuts it short and
-            // Node's connect then fails ENOENT (retried).
-            Err(e) if e.raw_os_error().is_none() && e.kind() == io::ErrorKind::InvalidInput => {
-                Err(socket_error(
-                    &io::Error::from_raw_os_error(2),
+fn connect_unix(path: &str) -> Reached {
+    use rustix::net::{
+        connect, socket_with, AddressFamily, SocketAddrUnix, SocketFlags, SocketType,
+    };
+    let as_error = |e: rustix::io::Errno| {
+        socket_error(
+            &io::Error::from_raw_os_error(e.raw_os_error()),
+            "connect",
+            Some(path),
+            0,
+        )
+    };
+    // A path longer than sun_path: libuv cuts it short and Node's connect then fails ENOENT.
+    let addr = SocketAddrUnix::new(path).map_err(|e| {
+        as_error(if e == rustix::io::Errno::NAMETOOLONG {
+            rustix::io::Errno::NOENT
+        } else {
+            e
+        })
+    })?;
+    let fd = socket_with(
+        AddressFamily::UNIX,
+        SocketType::STREAM,
+        SocketFlags::NONBLOCK | SocketFlags::CLOEXEC,
+        None,
+    )
+    .map_err(as_error)?;
+    connect(&fd, &addr).map_err(as_error)?;
+    let stream = UnixStream::from(fd);
+    stream
+        .set_nonblocking(false)
+        .map_err(|e| socket_error(&e, "connect", Some(path), 0))?;
+    Ok(Conn::Unix(stream))
+}
+
+/// Node's text for a failed name lookup: `getaddrinfo ENOTFOUND host` for a genuine not-found,
+/// `getaddrinfo EAI_AGAIN host` for a temporary failure, Rust's own text for anything else.
+fn lookup_error(host: &str, e: &io::Error) -> AskError {
+    let text = e.to_string();
+    let detail =
+        if text.contains("Name or service not known") || text.contains("No address associated") {
+            format!("getaddrinfo ENOTFOUND {host}")
+        } else if text.contains("Temporary failure in name resolution") {
+            format!("getaddrinfo EAI_AGAIN {host}")
+        } else {
+            text
+        };
+    fail(
+        AskCode::Unreachable,
+        format!("The verifier is unreachable ({detail})."),
+    )
+}
+
+fn connect_tcp(host: &str, port: u16, budget: Duration) -> Reached {
+    let addrs = match (host, port).to_socket_addrs() {
+        Ok(a) => a,
+        Err(e) => return Err(lookup_error(host, &e)),
+    };
+    let mut last: Option<AskError> = None;
+    for addr in addrs {
+        match TcpStream::connect_timeout(&addr, budget) {
+            Ok(s) => return Ok(Conn::Tcp(s)),
+            Err(e) if e.raw_os_error().is_none() && e.kind() == io::ErrorKind::TimedOut => {
+                return Err(fail(
+                    AskCode::Timeout,
+                    "The verifier did not answer in time.",
+                ))
+            }
+            Err(e) => {
+                last = Some(socket_error(
+                    &e,
                     "connect",
-                    Some(path.as_str()),
+                    Some(&format!("{}:{}", addr.ip(), addr.port())),
                     0,
                 ))
             }
-            Err(e) => Err(socket_error(&e, "connect", Some(path.as_str()), 0)),
-        },
-        Target::Tcp(host, port) => {
-            let addrs = match (host.as_str(), *port).to_socket_addrs() {
-                Ok(a) => a,
-                Err(_) => {
-                    return Err(fail(
-                        AskCode::Unreachable,
-                        format!("The verifier is unreachable (getaddrinfo ENOTFOUND {host})."),
-                    ))
-                }
-            };
-            let mut last: Option<AskError> = None;
-            for addr in addrs {
-                match TcpStream::connect_timeout(&addr, budget) {
-                    Ok(s) => return Ok(Conn::Tcp(s)),
-                    Err(e) if e.raw_os_error().is_none() && e.kind() == io::ErrorKind::TimedOut => {
-                        return Err(fail(
-                            AskCode::Timeout,
-                            "The verifier did not answer in time.",
-                        ))
-                    }
-                    Err(e) => {
-                        last = Some(socket_error(
-                            &e,
-                            "connect",
-                            Some(&format!("{}:{}", addr.ip(), addr.port())),
-                            0,
-                        ))
-                    }
-                }
-            }
-            Err(last.unwrap_or_else(|| {
-                fail(
-                    AskCode::Unreachable,
-                    format!("The verifier is unreachable (getaddrinfo ENOTFOUND {host})."),
-                )
-            }))
         }
     }
+    Err(last.unwrap_or_else(|| {
+        fail(
+            AskCode::Unreachable,
+            format!("The verifier is unreachable (getaddrinfo ENOTFOUND {host})."),
+        )
+    }))
 }
 
 /// The deadline `timeout` from now, or `None` when that is not representable.

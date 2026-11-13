@@ -13,6 +13,9 @@ workspace = true
 [dependencies]
 code-acp = { path = "../code-acp" }
 js-json = { path = "../js-json" }
+# Non-blocking connect to the verifier's unix socket (a full backlog is EAGAIN, as in Node). Already
+# in the workspace (code-acp); pinned exactly.
+rustix = { version = "=1.1.5", features = ["net"] }
 
 [dev-dependencies]
 tempfile = "3"

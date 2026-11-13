@@ -29,9 +29,22 @@
 //! * The verifier's answer is read as ONE line of at most [`MAX_ANSWER_BYTES`]. Its commit id
 //!   must equal the one asked for, and its nonce (fresh per request) the one sent.
 //!
-//! ```compile_fail
-//! // A report cannot be built outside this crate.
-//! let _ = code_verify::Report { passed: true };
+//! ```compile_fail,E0451
+//! // A report cannot be built outside this crate: its fields are private.
+//! let _ = code_verify::Report {
+//!     passed: true,
+//!     exit_code: Some(0.0),
+//!     signal: None,
+//!     timed_out: false,
+//!     tail: String::new(),
+//!     total_bytes: None,
+//!     truncated: false,
+//!     task_id: String::new(),
+//!     head_sha: String::new(),
+//!     revision: 0.0,
+//!     repo: String::new(),
+//!     duration_ms: 0.0,
+//! };
 //! ```
 //!
 //! # Retrying
@@ -63,13 +76,14 @@
 //!    connects; Node connected and hung up at once. A cancel wakes the wait at once (Node let the
 //!    250 ms pass, then cancelled). Reads, writes and connects look at the cancel and the
 //!    deadline every 10 ms; the outcome is the same.
-//! 4. A connect that is blocked (a unix socket whose backlog is full: Node's non-blocking connect
-//!    answered `EAGAIN` and was retried) is abandoned at the deadline or cancel, not interrupted;
-//!    its helper thread ends when the kernel finishes it. A unix path longer than `sun_path` is
-//!    `ENOENT` (retried), as Node's connect finds it. Whether a peer that closed before the
-//!    request went out shows as `write EPIPE` (an `error`, `unreachable`) or as a read that
-//!    resets or ends (`not_listening`) depends on thread timing in both; the replay pins the
-//!    deterministic forms (closed after reading the request, or with it unread).
+//! 4. A unix socket is connected non-blocking (rustix), so a listener whose backlog is full
+//!    answers `EAGAIN` at once and is retried, as in Node; a TCP connect (name lookup included)
+//!    runs on a helper thread, and one still blocked at the deadline or cancel is abandoned, not
+//!    interrupted (its thread ends when the kernel finishes it). A unix path longer than
+//!    `sun_path` is `ENOENT` (retried), as Node's connect finds it. Whether a peer that closed
+//!    before the request went out shows as `write EPIPE` (an `error`, `unreachable`) or as a
+//!    read that resets or ends (`not_listening`) depends on thread timing in both; the replay
+//!    pins the deterministic forms (closed after reading the request, or with it unread).
 //! 5. The answer limit counts the bytes of the decoded text as Node does, but chunk boundaries
 //!    (64 KiB reads) follow the platform: a single read that pushes the total past the limit is
 //!    refused even when it holds the newline, in both.
@@ -82,6 +96,13 @@
 //!    `crypto.randomBytes(16).toString('hex')`); when that cannot be read the outcome is `error`
 //!    with code `nonce` (Node cannot fail here).
 //! 8. `durationMs` is a JS number: with a clock that goes backwards it is `0`.
+//! 9. Node's `isMeasured` is object identity: a copy (`{...report}`) is not measured (fixture
+//!    `adapter-copied-report`). A [`Report`] is `Clone`, and a clone of a genuine one is itself
+//!    genuine and stays measured (it still cannot be forged or altered: no public constructor,
+//!    no mutation, no deserializer). The adapter additionally requires [`is_measured`] itself,
+//!    besides the verifier's.
+//! 10. A name lookup that fails is `getaddrinfo ENOTFOUND host` only for a genuine not-found
+//!     (`EAI_AGAIN` for a temporary failure); any other failure shows Rust's text.
 
 #![forbid(unsafe_code)]
 
