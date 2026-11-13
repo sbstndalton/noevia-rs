@@ -33,7 +33,7 @@ fn no_store(mut res: Response<Body>) -> Response<Body> {
     res
 }
 async fn call(app: &App, path: &str, body: &serde_json::Value) -> Option<(u16, JValue)> {
-    let (status, bytes) = app.config.research.node_call(path, body, DEADLINE).await?;
+    let (status, bytes) = crate::autotune_runner::call(app, path, body, DEADLINE).await?;
     if bytes.len() > MAX_FACTS {
         return None;
     }

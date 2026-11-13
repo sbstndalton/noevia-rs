@@ -134,12 +134,16 @@ version = "0.1.0"
 dependencies = [
  "autotune-plan",
  "autotune-start",
+ "chat-template-caps",
  "js-json",
  "llamacpp-autoconfig",
  "llamacpp-presets",
+ "load-verdict",
+ "long-profile",
  "regex",
  "sha2",
  "tokio",
+ "tune-contention",
 ]
 
 [[package]]
@@ -2223,6 +2227,7 @@ name = "noevia-server"
 version = "0.1.0"
 dependencies = [
  "autotune-plan",
+ "autotune-runner",
  "axum",
  "base64 0.22.1",
  "brotli",

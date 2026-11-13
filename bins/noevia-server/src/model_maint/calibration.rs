@@ -534,32 +534,81 @@ impl Maint {
         options: &[(String, Option<String>)],
         backup: bool,
     ) -> Applied {
+        self.apply_unlocked_with_status(holding, model, base_revision, options, backup)
+            .await
+            .0
+    }
+
+    /// [`Maint::apply_unlocked`] with the HTTP status Node's `applyUnlocked` answers (200 written,
+    /// 404 not installed, 409 something loaded, 503 a reload or restore failure; a thrown write is
+    /// 500): the native auto-tune runner treats a 409 as fatal, as Node's does. `(status, error)`.
+    pub async fn apply_unlocked_reply(
+        &self,
+        holding: &super::Hold,
+        model: &str,
+        base_revision: &str,
+        options: &[(String, Option<String>)],
+        backup: bool,
+    ) -> (u16, Option<String>) {
+        let (applied, status) = self
+            .apply_unlocked_with_status(holding, model, base_revision, options, backup)
+            .await;
+        match applied {
+            Applied::Ok => (200, None),
+            Applied::Refused(e) => (
+                status,
+                Some(e.unwrap_or_else(|| {
+                    "Could not save settings; the profile may have changed.".into()
+                })),
+            ),
+            Applied::Threw(e) => (500, Some(e)),
+        }
+    }
+
+    async fn apply_unlocked_with_status(
+        &self,
+        holding: &super::Hold,
+        model: &str,
+        base_revision: &str,
+        options: &[(String, Option<String>)],
+        backup: bool,
+    ) -> (Applied, u16) {
         let (Some(router), Some(ini)) = (self.router.as_ref(), self.ini.clone()) else {
-            return Applied::Threw("Native preset editing; configure LLAMACPP_PRESET_PATH".into());
+            return (
+                Applied::Threw("Native preset editing; configure LLAMACPP_PRESET_PATH".into()),
+                500,
+            );
         };
         let token = holding.token();
         let listing = match router.models(token.as_deref()).await {
             Ok(r) => r,
-            Err(_) => return Applied::Threw("fetch failed".into()),
+            Err(_) => return (Applied::Threw("fetch failed".into()), 500),
         };
         if !listing.ok {
-            return Applied::Refused(
-                listing
-                    .body
-                    .as_ref()
-                    .and_then(|b| b.get("error"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned),
+            let status = listing.status;
+            return (
+                Applied::Refused(
+                    listing
+                        .body
+                        .as_ref()
+                        .and_then(|b| b.get("error"))
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                ),
+                status,
             );
         }
         let Some(rows) = super::router::rows(&listing.body) else {
-            return Applied::Threw("Invalid router model listing".into());
+            return (Applied::Threw("Invalid router model listing".into()), 500);
         };
         if !rows
             .iter()
             .any(|m| m.get("id").and_then(Value::as_str) == Some(model))
         {
-            return Applied::Refused(Some("Choose an installed model".into()));
+            return (
+                Applied::Refused(Some("Choose an installed model".into())),
+                404,
+            );
         }
         let status = |m: &Value| {
             m.get("status")
@@ -571,7 +620,7 @@ impl Maint {
             .iter()
             .any(|m| status(m).as_deref() != Some("unloaded"))
         {
-            return Applied::Refused(Some(UNLOAD_FIRST.into()));
+            return (Applied::Refused(Some(UNLOAD_FIRST.into())), 409);
         }
         let limits = self.sizing.cache_ram_limits();
         let (file, m, base, opts) = (
@@ -586,19 +635,19 @@ impl Maint {
         .await
         {
             Ok(Ok(c)) => c,
-            Ok(Err(t)) => return Applied::Threw(t.message),
-            Err(_) => return Applied::Threw("Internal error".into()),
+            Ok(Err(t)) => return (Applied::Threw(t.message), t.status.unwrap_or(500)),
+            Err(_) => return (Applied::Threw("Internal error".into()), 500),
         };
         if let Err(e) = ini.commit(&candidate, backup).await {
             // A settled Model Loader outcome carries its own message; nothing was reloaded.
             if e.status >= 500 {
-                return Applied::Refused(Some(e.message));
+                return (Applied::Refused(Some(e.message)), e.status);
             }
-            return Applied::Threw(e.message);
+            return (Applied::Threw(e.message), e.status);
         }
         if let Ok(Ok(reply)) = self.router_reload(router, holding, None).await {
             if reply.ok {
-                return Applied::Ok;
+                return (Applied::Ok, 200);
             }
         }
         // Restore only our own version; never overwrite an operator's later edit.
@@ -608,13 +657,33 @@ impl Maint {
             before: candidate.text.clone(),
         };
         match ini.commit(&restore, true).await {
-            Err(e) if e.status == 409 => Applied::Refused(Some(RELOAD_UNCERTAIN.into())),
-            Err(e) if e.retryable => Applied::Refused(Some(RELOAD_STUCK.into())),
-            Err(_) => Applied::Refused(Some(RELOAD_UNCONFIRMED.into())),
+            Err(e) if e.status == 409 => (Applied::Refused(Some(RELOAD_UNCERTAIN.into())), 503),
+            Err(e) if e.retryable => (Applied::Refused(Some(RELOAD_STUCK.into())), 503),
+            Err(_) => (Applied::Refused(Some(RELOAD_UNCONFIRMED.into())), 503),
             Ok(()) => {
                 let _ = self.router_reload(router, holding, None).await;
-                Applied::Refused(Some(RELOAD_RESTORED.into()))
+                (Applied::Refused(Some(RELOAD_RESTORED.into())), 503)
             }
+        }
+    }
+}
+
+impl Maint {
+    /// The manager's `routerReload(120000)` for the native auto-tune runner: the router's reply,
+    /// or `None` where the request did not answer.
+    pub(super) async fn router_reload_reply(
+        &self,
+        router: &super::router::Router,
+        holding: &super::Hold,
+    ) -> Option<super::router::Reply> {
+        match self.router_reload(router, holding, None).await {
+            Ok(Ok(reply)) => Some(reply),
+            Ok(Err(_)) => Some(super::router::Reply {
+                ok: false,
+                status: 409,
+                body: None,
+            }),
+            Err(()) => None,
         }
     }
 }

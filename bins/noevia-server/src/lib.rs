@@ -11,6 +11,7 @@ pub mod autotune_cancel_routes;
 pub mod autotune_clear_routes;
 pub mod autotune_read_routes;
 pub mod autotune_resume_routes;
+pub mod autotune_runner;
 pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;

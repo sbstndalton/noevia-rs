@@ -36,11 +36,8 @@ fn opaque<'a>(facts: &'a JValue, key: &str) -> Option<&'a str> {
 }
 async fn call(app: &App, path: &str, body: &serde_json::Value) -> Option<(u16, JValue)> {
     let timeout = if path == PREPARE { 125 } else { 5 };
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(path, body, Duration::from_secs(timeout))
-        .await?;
+    let (status, bytes) =
+        crate::autotune_runner::call(app, path, body, Duration::from_secs(timeout)).await?;
     if bytes.len() > MAX {
         return None;
     }
