@@ -448,6 +448,8 @@ dependencies = [
  "js-json",
  "prompt-framing",
  "regex",
+ "sha2",
+ "toolboxes-permitted",
 ]
 
 [[package]]

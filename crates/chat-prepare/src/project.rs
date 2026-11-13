@@ -42,8 +42,8 @@ pub struct ProjectTurn<'a> {
     pub not_ready: &'a [NotReady],
     /// `partialSources(readable, injected)` of what retrieval placed (#1513).
     pub partial_reads: &'a [Partial],
-    /// The skill index, the auto-loaded skill block and the pinned skill block, in that order (a
-    /// later slice computes them; empty for none).
+    /// The skill index, the auto-loaded skill block and the pinned skill block, in that order
+    /// ([`crate::skills::parts`]; empty for none).
     pub skills: &'a [(PartKind, String)],
 }
 

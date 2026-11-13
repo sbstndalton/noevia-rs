@@ -11,6 +11,7 @@
 //! - [`history`]: the filter, `HISTORY_CAP` cut and map of `body.history`, then
 //!   `normalizeReplayHistory`.
 //! - [`names`]: `quoted-name.cjs` `quoteName` and `quotedNames`.
+//! - [`skills`] (slice P3a): the instruction-skill parts, [`project::ProjectTurn::skills`].
 //! - [`shared`]: `shared-context.cjs` `read` and `forChat` (the recent Code tasks part).
 //! - [`sources`]: `source-readability.cjs` (`isUnreadable`, `isWaiting`, `readable`,
 //!   `waitingNotice`), `source-coverage.cjs` `coverageNote`, and chat.cjs's not-ready and
@@ -69,6 +70,7 @@ pub mod memory;
 pub mod names;
 pub mod project;
 pub mod shared;
+pub mod skills;
 pub mod sources;
 pub mod time;
 

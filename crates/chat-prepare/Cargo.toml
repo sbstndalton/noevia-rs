@@ -18,3 +18,7 @@ regex = "=1.13.1"
 # The IANA zones the time part states the day in (Intl.DateTimeFormat's timeZone). MIT OR Apache-2.0; already in Cargo.lock.
 chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 chrono-tz = "=0.10.4"
+# instruction-skills.cjs hash (sha256 of a skill's text). MIT OR Apache-2.0; already in Cargo.lock.
+sha2 = "=0.10.9"
+# projectToolboxIds: the port core's dav-parse.wasm runs (workspace crate, depends on prompt-framing only).
+toolboxes-permitted = { path = "../toolboxes-permitted" }
