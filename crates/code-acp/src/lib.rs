@@ -32,8 +32,9 @@
 //!    this crate does not allow); its exit, not its stdout closing, ends the connection, and it is
 //!    reaped.
 //!
-//! Writes go through a queue and a writer thread, as Node's socket buffers them: a write blocked
-//! on an agent that stopped reading never holds up a cancel. A stop gives queued lines (a
+//! Writes go through a queue and a writer thread, as Node's socket buffers them (unbounded, as
+//! there: an agent that stops reading while flooding requests grows it): a write blocked on an
+//! agent that stopped reading never holds up a cancel. A stop gives queued lines (a
 //! `session/cancel`) a moment to go out, then closes. Dropping a [`Connection`] stops the agent.
 //!
 //! Requests from the agent are each answered on their own thread, as Node's async handlers run
@@ -338,22 +339,18 @@ impl Shared {
                 let _ = stream.shutdown(Shutdown::Both);
             }
             Stopper::Spawn { pid, grace } => {
+                // The whole group, as Node signals `-pid`, even once the leader has exited: what it
+                // started may still run, and while the group has a member its id cannot be reused.
                 let pid = *pid;
-                if self.exited.load(Ordering::SeqCst) {
-                    return;
-                }
                 if rustix::process::kill_process_group(pid, rustix::process::Signal::TERM).is_err()
+                    && !self.exited.load(Ordering::SeqCst)
                 {
                     let _ = rustix::process::kill_process(pid, rustix::process::Signal::TERM);
                 }
-                let (grace, exited) = (*grace, self.exited.clone());
+                let grace = *grace;
                 let _ = std::thread::Builder::new().spawn(move || {
                     std::thread::sleep(grace);
-                    // Only a group whose leader has not been reaped: its id cannot have been reused.
-                    if !exited.load(Ordering::SeqCst) {
-                        let _ =
-                            rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
-                    }
+                    let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
                 });
             }
         }
@@ -447,6 +444,14 @@ impl Shared {
         let spawned = std::thread::Builder::new()
             .name("code-acp request".into())
             .spawn(move || {
+                // Given back however the handler ends, a panic included.
+                struct Slot(Arc<Shared>);
+                impl Drop for Slot {
+                    fn drop(&mut self) {
+                        self.0.in_flight.fetch_sub(1, Ordering::SeqCst);
+                    }
+                }
+                let _slot = Slot(me.clone());
                 let handlers = me.handlers.clone();
                 let answer = match which {
                     0 => handlers
@@ -486,7 +491,6 @@ impl Shared {
                         );
                     }
                 }
-                me.in_flight.fetch_sub(1, Ordering::SeqCst);
             });
         if spawned.is_err() {
             self.in_flight.fetch_sub(1, Ordering::SeqCst);
@@ -896,38 +900,62 @@ pub fn connect(
             }
         }
     }
-    {
+    // A spawned child is reaped by its waiter; until that runs, a failure to start a thread
+    // stops and reaps it here.
+    let (child, stderr) = match child_parts {
+        Some((child, stderr)) => (Some(child), stderr),
+        None => (None, None),
+    };
+    let slot = Arc::new(Mutex::new(child));
+    let give_up = |e: Error| {
+        shared.stop();
+        if let Some(mut child) = slot.lock().ok().and_then(|mut c| c.take()) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        e
+    };
+    let shared2 = shared.clone();
+    start(
+        "writer",
+        Box::new(move || write_loop(shared2, out_rx, writer, done_tx)),
+    )
+    .map_err(give_up)?;
+    let shared2 = shared.clone();
+    start("reader", Box::new(move || read_loop(shared2, reader))).map_err(give_up)?;
+    if let Some(mut stderr) = stderr {
+        // What the agent writes to stderr is logged, a chunk at a time, as Node's onLog.
         let shared2 = shared.clone();
         start(
-            "writer",
-            Box::new(move || write_loop(shared2, out_rx, writer, done_tx)),
-        )?;
-        let shared2 = shared.clone();
-        start("reader", Box::new(move || read_loop(shared2, reader)))?;
-    }
-    if let Some((child, stderr)) = child_parts {
-        if let Some(mut stderr) = stderr {
-            // What the agent writes to stderr is logged, a chunk at a time, as Node's onLog.
-            let shared2 = shared.clone();
-            start(
-                "stderr",
-                Box::new(move || {
-                    let mut buf = [0u8; 8192];
-                    let mut text = Utf8Stream { carry: Vec::new() };
-                    while let Ok(n) = stderr.read(&mut buf) {
-                        if n == 0 {
-                            break;
-                        }
-                        let chunk = text.push(buf.get(..n).unwrap_or(&[]));
-                        if !chunk.is_empty() {
-                            (shared2.log)(&wtf16::slice(&chunk, 2000));
-                        }
+            "stderr",
+            Box::new(move || {
+                let mut buf = [0u8; 8192];
+                let mut text = Utf8Stream { carry: Vec::new() };
+                while let Ok(n) = stderr.read(&mut buf) {
+                    if n == 0 {
+                        break;
                     }
-                }),
-            )?;
-        }
+                    let chunk = text.push(buf.get(..n).unwrap_or(&[]));
+                    if !chunk.is_empty() {
+                        (shared2.log)(&wtf16::slice(&chunk, 2000));
+                    }
+                }
+            }),
+        )
+        .map_err(give_up)?;
+    }
+    if slot.lock().map(|c| c.is_some()).unwrap_or(false) {
         let shared2 = shared.clone();
-        start("waiter", Box::new(move || wait_loop(shared2, child)))?;
+        let taken = slot.clone();
+        start(
+            "waiter",
+            Box::new(move || {
+                if let Some(child) = taken.lock().ok().and_then(|mut c| c.take()) {
+                    wait_loop(shared2, child);
+                }
+            }),
+        )
+        .map_err(give_up)?;
     }
 
     // Cancellation is wired before the handshake: an agent that never answers has no session
@@ -939,8 +967,10 @@ pub fn connect(
             if let Some(id) = session.lock().ok().and_then(|s| s.clone()) {
                 shared.notify("session/cancel", JValue::obj([("sessionId", id)]));
             }
-            shared.stop();
+            // Failed first, so the waiting prompt hears "Cancelled", not the broken pipe the stop
+            // causes; the queued `session/cancel` still goes out as the queue drains.
             shared.fail(cancelled());
+            shared.stop();
         }))
     };
     let abandon = |e: Error| {
