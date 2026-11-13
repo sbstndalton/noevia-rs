@@ -35,6 +35,7 @@ pub mod export_routes;
 pub mod extraction;
 pub mod feature_context;
 pub mod gdrive;
+pub mod gdrive_tools;
 pub mod health;
 pub mod health_routes;
 pub mod identity;

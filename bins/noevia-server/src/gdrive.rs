@@ -112,6 +112,9 @@ pub struct Settings {
     pub oauth_base: String,
     pub api_base: String,
     pub upload_base: String,
+    /// `NOEVIA_RUST_DRIVE_TOOLS=1` (track R5, off by default): this front runs the chat's Drive tools for
+    /// Node (`POST /v1/gdrive/tool` and `/target`, gdrive_tools.rs). Off, those operations are 404s.
+    pub tools: bool,
 }
 
 impl std::fmt::Debug for Settings {
@@ -151,6 +154,7 @@ impl Settings {
             oauth_base: base("GOOGLE_OAUTH_BASE_URL", OAUTH),
             api_base: base("GOOGLE_DRIVE_API_BASE_URL", API),
             upload_base: base("GOOGLE_DRIVE_UPLOAD_BASE_URL", UPLOAD),
+            tools: get("NOEVIA_RUST_DRIVE_TOOLS").as_deref() == Some("1"),
         }
     }
 
@@ -419,6 +423,8 @@ pub struct Drive {
     /// Whether an account still has a row (set by the app; unset means every account does). A
     /// personal sign-in that finishes for an account the front deleted meanwhile is not saved.
     account_exists: std::sync::OnceLock<AccountCheck>,
+    /// What the chat's Drive tools keep between calls (gdrive_tools.rs: the reads, #659).
+    pub(crate) tools: crate::gdrive_tools::State,
 }
 
 /// See [`Drive::guard_accounts`].
@@ -494,6 +500,7 @@ impl Drive {
                 std::sync::atomic::AtomicU64::new(TRANSFER.as_millis() as u64),
             ],
             account_exists: std::sync::OnceLock::new(),
+            tools: crate::gdrive_tools::State::default(),
         })
     }
 
@@ -516,6 +523,11 @@ impl Drive {
                 std::sync::atomic::Ordering::Relaxed,
             );
         }
+    }
+
+    /// The transfer budget (300 s; shortened by tests): also the most one chat Drive tool may take in all.
+    pub(crate) fn transfer_budget(&self) -> Duration {
+        self.budget(Budget::Transfer)
     }
 
     fn budget(&self, b: Budget) -> Duration {
@@ -1529,6 +1541,37 @@ impl Drive {
             .await
             .map_err(|_| Fail::new("Google Drive could not be reached.", 502))?;
         Ok(ApiReply {
+            status,
+            body,
+            capped,
+        })
+    }
+
+    /// One Drive API request for the chat's tools (gdrive_tools.rs) with the access token given (the tools
+    /// handle a refused token themselves), on the same client, address rules and transfer budget.
+    pub(crate) async fn tool_send(
+        &self,
+        req: crate::gdrive_tools::Http,
+        bearer: &str,
+    ) -> Result<crate::gdrive_tools::Reply, ()> {
+        let client = self.client.as_ref().ok_or(())?;
+        let method = reqwest::Method::from_bytes(req.method.as_bytes()).map_err(|_| ())?;
+        let mut builder = client.request(method, req.url.as_str()).bearer_auth(bearer);
+        for (k, v) in &req.headers {
+            // A header value is a ByteString to fetch: characters up to U+00FF are its bytes, anything
+            // above is refused (the request does not go).
+            let bytes = v
+                .chars()
+                .map(|c| u8::try_from(u32::from(c)).map_err(|_| ()))
+                .collect::<Result<Vec<u8>, ()>>()?;
+            let value = reqwest::header::HeaderValue::from_bytes(&bytes).map_err(|_| ())?;
+            builder = builder.header(k.as_str(), value);
+        }
+        if let Some(body) = req.body {
+            builder = builder.body(body);
+        }
+        let (status, body, capped) = self.send(builder, req.cap, Budget::Transfer).await?;
+        Ok(crate::gdrive_tools::Reply {
             status,
             body,
             capped,

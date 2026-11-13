@@ -80,3 +80,25 @@ jobs:
         run: cargo test --locked -p noevia-server --test mcp_discovery_actor
       - name: The catalogue and the picker the front composes
         run: cargo test --locked -p noevia-server --lib mcp_discovery
+      - name: Read the Drive tools oracle's core pin (track R5)
+        id: core_r5_drive
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < bins/noevia-server/tests/fixtures/gdrive-tools-oracle.core-ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core_r5_drive.outputs.sha }}
+          path: core-r5-drive
+      - name: Core's Drive tools reproduce the committed steps, and the front replays them (track R5)
+        # core's own gdrive-tools, gdrive-files and gdrive-broker over a scripted Drive API and broker.
+        env:
+          NOEVIA_CORE_REF: ${{ steps.core_r5_drive.outputs.sha }}
+          NOEVIA_GDRIVE_TOOLS_FIXTURE: ${{ runner.temp }}/gdrive-tools-node.json
+        run: |
+          set -euo pipefail
+          node bins/noevia-server/tests/gdrive-tools-oracle.cjs "$PWD/core-r5-drive" "$NOEVIA_GDRIVE_TOOLS_FIXTURE"
+          cmp "$NOEVIA_GDRIVE_TOOLS_FIXTURE" bins/noevia-server/tests/fixtures/gdrive-tools-node.v1.json
+          cargo test --locked -p noevia-server --test gdrive_tools_oracle --test gdrive_tools
