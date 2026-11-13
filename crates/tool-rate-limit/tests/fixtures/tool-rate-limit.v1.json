@@ -2769,6 +2769,78 @@
   {
    "value": "2026-11-13T04:00:00Z",
    "ms": 0
+  },
+  {
+   "value": "Sat, 13 Nov 2027 04:31:60 GMT",
+   "ms": 31536060000
+  },
+  {
+   "value": "Wed, 31 Feb 2027 00:00:00 GMT",
+   "ms": 9487800000
+  },
+  {
+   "value": "Fri, 13 nov 2026 04:31:00 gmt",
+   "ms": 60000
+  },
+  {
+   "value": "Mon, 13 Nov 2026 04:31:00 GMT",
+   "ms": 60000
+  },
+  {
+   "value": "Fri, 13 Nov 2026 24:00:00 GMT",
+   "ms": 70200000
+  },
+  {
+   "value": "Fri, 13 Nov 2026 23:60:00 GMT",
+   "ms": null
+  },
+  {
+   "value": "Fri, 32 Nov 2026 00:00:00 GMT",
+   "ms": null
+  },
+  {
+   "value": "Fri, 00 Nov 2026 00:00:00 GMT",
+   "ms": null
+  },
+  {
+   "value": "Fri, 13 Nov 2026 04:31:00 UTC",
+   "ms": 60000
+  },
+  {
+   "value": "Fri, 13 Nov 2026 24:00:01 GMT",
+   "ms": null
+  },
+  {
+   "value": "2027-02-31T00:00:00Z",
+   "ms": 9487800000
+  },
+  {
+   "value": "2026-11-13T04:31:60Z",
+   "ms": null
+  },
+  {
+   "value": "2026-11-13T24:00:00Z",
+   "ms": 70200000
+  },
+  {
+   "value": "2026-11-13T24:00:01Z",
+   "ms": null
+  },
+  {
+   "value": "2026-13-01T00:00:00Z",
+   "ms": null
+  },
+  {
+   "value": "Fri, 13 Nov 2026 04:31:75 GMT",
+   "ms": 60000
+  },
+  {
+   "value": "Fri, 13 Nov 2026 24:00:60 GMT",
+   "ms": 70200000
+  },
+  {
+   "value": "Fri, 13 Xyz 2026 00:00:00 GMT",
+   "ms": null
   }
  ],
  "sequences": [
@@ -16024,6 +16096,36 @@
    "ms": 300000,
    "limited": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 300 s before calling it again. Answer from the results you already have, or say the search is rate limited.",
    "cooling": "ERROR: tavily_search was not called: its provider is rate limiting requests (HTTP 429), retry in about 300 s. Answer from the results you already have, or say the search is rate limited."
+  },
+  {
+   "name": "tavily_search",
+   "ms": -5,
+   "limited": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 1 s before calling it again. Answer from the results you already have, or say the search is rate limited.",
+   "cooling": "ERROR: tavily_search was not called: its provider is rate limiting requests (HTTP 429), retry in about 1 s. Answer from the results you already have, or say the search is rate limited."
+  },
+  {
+   "name": "tavily_search",
+   "ms": "NaN",
+   "limited": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about NaN s before calling it again. Answer from the results you already have, or say the search is rate limited.",
+   "cooling": "ERROR: tavily_search was not called: its provider is rate limiting requests (HTTP 429), retry in about NaN s. Answer from the results you already have, or say the search is rate limited."
+  },
+  {
+   "name": "tavily_search",
+   "ms": "Infinity",
+   "limited": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about Infinity s before calling it again. Answer from the results you already have, or say the search is rate limited.",
+   "cooling": "ERROR: tavily_search was not called: its provider is rate limiting requests (HTTP 429), retry in about Infinity s. Answer from the results you already have, or say the search is rate limited."
+  },
+  {
+   "name": "tavily_search",
+   "ms": 1e+30,
+   "limited": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 1e+27 s before calling it again. Answer from the results you already have, or say the search is rate limited.",
+   "cooling": "ERROR: tavily_search was not called: its provider is rate limiting requests (HTTP 429), retry in about 1e+27 s. Answer from the results you already have, or say the search is rate limited."
+  },
+  {
+   "name": "tavily_search",
+   "ms": 1e+24,
+   "limited": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 1e+21 s before calling it again. Answer from the results you already have, or say the search is rate limited.",
+   "cooling": "ERROR: tavily_search was not called: its provider is rate limiting requests (HTTP 429), retry in about 1e+21 s. Answer from the results you already have, or say the search is rate limited."
   }
  ]
 }

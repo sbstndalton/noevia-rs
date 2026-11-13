@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+js-json = { path = "../js-json" }
 policy-leaves = { path = "../policy-leaves" }
 
 [dev-dependencies]

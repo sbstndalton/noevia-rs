@@ -110,8 +110,6 @@ pub struct Reply {
     pub content_type: String,
     /// The `mcp-session-id` header, if the server sent one.
     pub session: Option<String>,
-    /// The `retry-after` header, if the server sent one (core `res.headers.get('retry-after')`).
-    pub retry_after: Option<String>,
     pub text: Option<String>,
 }
 
@@ -255,10 +253,6 @@ impl Egress {
             let (www_authenticate, content_type) =
                 (header("www-authenticate"), header("content-type"));
             let session = Some(header("mcp-session-id")).filter(|s| !s.is_empty());
-            let retry_after = response
-                .headers()
-                .get("retry-after")
-                .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned());
             let mut body = Vec::new();
             let mut over = false;
             loop {
@@ -282,7 +276,6 @@ impl Egress {
                 www_authenticate,
                 content_type,
                 session,
-                retry_after,
                 text: (!over).then(|| String::from_utf8_lossy(&body).into_owned()),
             })
         };
@@ -524,12 +517,23 @@ async fn list(
     .await
     .unwrap_or_else(|_| Err("MCP: listing the tools took too long".to_string()));
     // Closed whatever happened (a session that never got an id has nothing to close).
-    close(egress, url, headers, session.take(), CLOSE_DEADLINE).await;
+    if let Some(id) = session.take() {
+        let mut request = egress
+            .client
+            .delete(url)
+            .header("mcp-protocol-version", PROTOCOL_VERSION)
+            .header("mcp-session-id", id);
+        for (k, v) in headers.iter().filter(|(k, _)| !reserved(k)) {
+            request = request.header(k.as_str(), v.as_str());
+        }
+        let _ = egress
+            .send(request, url, Duration::from_secs(5), 4096)
+            .await;
+    }
     outcome
 }
 
-/// One JSON-RPC round trip (core mcp.cjs `rpc`), as a listing words its failures. A notification has
-/// no id and expects no body.
+/// One JSON-RPC round trip (core mcp.cjs `rpc`). A notification has no id and expects no body.
 async fn rpc(
     egress: &Egress,
     url: &str,
@@ -539,111 +543,6 @@ async fn rpc(
     method: &str,
     params: JValue,
 ) -> Result<Option<JValue>, String> {
-    exchange(
-        egress,
-        url,
-        headers,
-        session,
-        id,
-        method,
-        params,
-        RPC_DEADLINE,
-    )
-    .await
-    .map_err(|f| f.listing_text())
-}
-
-/// core mcp.cjs `rpc`'s default `timeoutMs` (30 s), and `callTool`'s (60 s).
-const RPC_DEADLINE: Duration = Duration::from_secs(30);
-const CALL_DEADLINE: Duration = Duration::from_secs(60);
-/// core `disconnect`'s default, and its `ABORTED_DISCONNECT_MS` once the caller has gone.
-const CLOSE_DEADLINE: Duration = Duration::from_secs(5);
-const ABORTED_CLOSE_DEADLINE: Duration = Duration::from_secs(1);
-
-/// Why one JSON-RPC round trip failed, before it is worded.
-#[derive(Debug, Clone, PartialEq)]
-pub enum RpcFailure {
-    /// The request did not happen or did not finish: the address was refused, the connection failed, a
-    /// redirect came back (core's undici `fetch failed`).
-    Refused,
-    /// The request's own deadline passed (core's `AbortController` timer).
-    TimedOut,
-    /// A non-2xx answer: its status, the start of its body (for the operator's log only) and its
-    /// `Retry-After`.
-    Http {
-        status: u16,
-        detail: String,
-        retry_after: Option<String>,
-    },
-    /// The body was over [`MCP_CAP`], or was cut off.
-    TooLarge,
-    /// Plain JSON whose own id is another request's (`reply_id` as core's template literal writes it).
-    Mismatch {
-        id: i64,
-        reply_id: String,
-    },
-    NoMessage,
-    OtherTraffic {
-        id: i64,
-    },
-    /// What `mcp-frame` refused, or a plain body that is not JSON.
-    Unchecked,
-    /// The JSON-RPC `error` member, as core's template literal writes its `code` and `message`.
-    Rpc {
-        code: String,
-        message: String,
-    },
-}
-
-impl RpcFailure {
-    /// The text a listing has always used (discovery and key checks; unchanged).
-    fn listing_text(&self) -> String {
-        match self {
-            RpcFailure::Refused | RpcFailure::TimedOut => "fetch failed".into(),
-            RpcFailure::Http { status, detail, .. } => {
-                let snippet: String = detail.chars().take(200).collect();
-                format!("MCP {status}: {snippet}")
-            }
-            RpcFailure::Mismatch { id, .. } => format!("MCP: reply id does not match request {id}"),
-            other => other.call_text(),
-        }
-    }
-
-    /// core mcp.cjs's own error message for this failure (what `executeMcpToolCall` puts after
-    /// `ERROR calling <name>: `). Named difference: a plain body `JSON.parse` rejects is V8's own
-    /// `SyntaxError` text in core; here it is `MCP response could not be checked`.
-    pub fn call_text(&self) -> String {
-        match self {
-            RpcFailure::Refused => "fetch failed".into(),
-            RpcFailure::TimedOut => "This operation was aborted".into(),
-            RpcFailure::Http { status, detail, .. } => {
-                format!("MCP {status}: {}", js_json::js_slice(detail, 200))
-            }
-            RpcFailure::TooLarge => "MCP: response body exceeded the 8 MB limit".into(),
-            RpcFailure::Mismatch { id, reply_id } => {
-                format!("MCP: reply id {reply_id} does not match request {id}")
-            }
-            RpcFailure::NoMessage => "MCP: no JSON-RPC message in event stream".into(),
-            RpcFailure::OtherTraffic { id } => format!("MCP: no reply to request {id} in event stream (the server sent other traffic; noevia does not implement server-initiated requests)"),
-            RpcFailure::Unchecked => "MCP response could not be checked".into(),
-            RpcFailure::Rpc { code, message } => format!("MCP error {code}: {message}"),
-        }
-    }
-}
-
-/// One JSON-RPC round trip under `deadline` (core mcp.cjs `rpc`). A notification has no id and expects
-/// no body.
-#[allow(clippy::too_many_arguments)]
-async fn exchange(
-    egress: &Egress,
-    url: &str,
-    headers: &[(String, String)],
-    session: &mut Option<String>,
-    id: Option<i64>,
-    method: &str,
-    params: JValue,
-    deadline: Duration,
-) -> Result<Option<JValue>, RpcFailure> {
     let body = rpc_body(
         id,
         method,
@@ -664,36 +563,250 @@ async fn exchange(
     if let Some(s) = session.as_deref() {
         request = request.header("mcp-session-id", s);
     }
-    // The request's own deadline is told apart from a failed exchange (core's timer aborts the fetch).
-    let reply = match tokio::time::timeout(
-        deadline,
-        egress.send(
-            request.body(body),
-            url,
-            deadline + Duration::from_secs(1),
-            MCP_CAP,
-        ),
-    )
-    .await
-    {
-        Err(_) => return Err(RpcFailure::TimedOut),
-        Ok(Err(Refused)) => return Err(RpcFailure::Refused),
-        Ok(Ok(reply)) => reply,
-    };
+    let reply = egress
+        .send(request.body(body), url, Duration::from_secs(30), MCP_CAP)
+        .await
+        .map_err(|Refused| "fetch failed".to_string())?;
     if let Some(sid) = reply.session.clone().filter(|s| !s.is_empty()) {
         *session = Some(sid);
     }
     if !reply.ok() {
+        let detail = reply.text.as_deref().unwrap_or("");
+        let snippet: String = detail.chars().take(200).collect();
+        return Err(format!("MCP {}: {snippet}", reply.status));
+    }
+    let Some(id) = id else { return Ok(None) };
+    let text = reply
+        .text
+        .ok_or_else(|| "MCP: response body exceeded the 8 MB limit".to_string())?;
+    let units: Vec<u16> = text.encode_utf16().collect();
+    let sse = reply.content_type.contains("text/event-stream");
+    let outcome = mcp_frame::parse_rpc_body(sse, &units, &mcp_frame::Expected::Number(id as f64))
+        .map_err(|_| "MCP: response body exceeded the 8 MB limit".to_string())?;
+    let span = match outcome {
+        mcp_frame::Outcome::Reply(r) => r,
+        mcp_frame::Outcome::Mismatch(_) => {
+            return Err(format!("MCP: reply id does not match request {id}"))
+        }
+        mcp_frame::Outcome::NoMessage => {
+            return Err("MCP: no JSON-RPC message in event stream".into())
+        }
+        mcp_frame::Outcome::OtherTraffic => {
+            return Err(format!("MCP: no reply to request {id} in event stream (the server sent other traffic; noevia does not implement server-initiated requests)"))
+        }
+        mcp_frame::Outcome::InvalidJson => return Err("MCP response could not be checked".into()),
+    };
+    let slice = units.get(span).unwrap_or(&[]);
+    let message = js_json::parse(&String::from_utf16_lossy(slice))
+        .map_err(|_| "MCP response could not be checked".to_string())?;
+    if message.get("error").truthy() {
+        let e = message.get("error");
+        let code = js_json::to_js_string(e.get("code")).unwrap_or_default();
+        let text = js_json::to_js_string(e.get("message")).unwrap_or_default();
+        return Err(format!("MCP error {code}: {text}"));
+    }
+    Ok(Some(message.get("result").clone()))
+}
+
+// ── one tool call (track R5: core mcp.cjs `connect` + `callTool` + `disconnect`) ──
+//
+// The listing above keeps its own round trip and texts unchanged. A call reads the answer's head first, as
+// core's fetch does: the session id is kept the moment it arrives (so a session is closed even when its
+// body never finishes), and a refusal's status stands whatever its body does.
+
+/// core mcp.cjs `rpc`'s default `timeoutMs` (30 s), and `callTool`'s (60 s).
+const RPC_DEADLINE: Duration = Duration::from_secs(30);
+const CALL_DEADLINE: Duration = Duration::from_secs(60);
+/// core `disconnect`'s default, and its `ABORTED_DISCONNECT_MS` once the caller has gone.
+const CLOSE_DEADLINE: Duration = Duration::from_secs(5);
+const ABORTED_CLOSE_DEADLINE: Duration = Duration::from_secs(1);
+
+/// Why one JSON-RPC round trip of a call failed, before it is worded.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RpcFailure {
+    /// The request did not happen: the address was refused, the connection failed, a redirect came back
+    /// (core's undici `fetch failed`).
+    Refused,
+    /// The request's own deadline passed (core's `AbortController` timer).
+    TimedOut,
+    /// A non-2xx answer: its status, the start of its body (empty if it did not arrive in time) and its
+    /// `Retry-After` (several are joined with `", "`, as `Headers.get` joins them).
+    Http {
+        status: u16,
+        detail: String,
+        retry_after: Option<String>,
+    },
+    /// The body was over [`MCP_CAP`].
+    TooLarge,
+    /// The connection ended before the body did (undici's `terminated`).
+    Truncated,
+    /// Plain JSON whose own id is another request's (`reply_id` as core's template literal writes it).
+    Mismatch {
+        id: i64,
+        reply_id: String,
+    },
+    NoMessage,
+    OtherTraffic {
+        id: i64,
+    },
+    /// What `mcp-frame` refused, or a plain body that is not JSON.
+    Unchecked,
+    /// The reply was JSON `null` (core reads `msg.error` of it and throws).
+    NullReply,
+    /// The JSON-RPC `error` member, as core's template literal writes its `code` and `message`.
+    Rpc {
+        code: String,
+        message: String,
+    },
+}
+
+impl RpcFailure {
+    /// core mcp.cjs's own error message for this failure (what `executeMcpToolCall` puts after
+    /// `ERROR calling <name>: `). Named difference: a plain body `JSON.parse` rejects is V8's own
+    /// `SyntaxError` text in core; here it is `MCP response could not be checked`.
+    pub fn call_text(&self) -> String {
+        match self {
+            RpcFailure::Refused => "fetch failed".into(),
+            RpcFailure::TimedOut => "This operation was aborted".into(),
+            RpcFailure::Http { status, detail, .. } => {
+                format!("MCP {status}: {}", js_json::js_slice(detail, 200))
+            }
+            RpcFailure::TooLarge => "MCP: response body exceeded the 8 MB limit".into(),
+            RpcFailure::Truncated => "terminated".into(),
+            RpcFailure::Mismatch { id, reply_id } => {
+                format!("MCP: reply id {reply_id} does not match request {id}")
+            }
+            RpcFailure::NoMessage => "MCP: no JSON-RPC message in event stream".into(),
+            RpcFailure::OtherTraffic { id } => format!("MCP: no reply to request {id} in event stream (the server sent other traffic; noevia does not implement server-initiated requests)"),
+            RpcFailure::Unchecked => "MCP response could not be checked".into(),
+            RpcFailure::NullReply => "Cannot read properties of null (reading 'error')".into(),
+            RpcFailure::Rpc { code, message } => format!("MCP error {code}: {message}"),
+        }
+    }
+}
+
+/// The head of an answer: what a call reads before the body.
+struct Head {
+    status: u16,
+    content_type: String,
+    session: Option<String>,
+    retry_after: Option<String>,
+}
+
+/// Sends `request` (the caller has checked the address) and reads the head. A redirect is refused.
+async fn head(request: reqwest::RequestBuilder) -> Result<(Head, reqwest::Response), RpcFailure> {
+    let response = request.send().await.map_err(|_| RpcFailure::Refused)?;
+    let status = response.status().as_u16();
+    // undici's `redirect: 'error'` throws on a redirect answer.
+    if matches!(status, 301 | 302 | 303 | 307 | 308) {
+        return Err(RpcFailure::Refused);
+    }
+    let headers = response.headers();
+    let one = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_owned()
+    };
+    let all: Vec<String> = headers
+        .get_all("retry-after")
+        .iter()
+        .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned())
+        .collect();
+    let head = Head {
+        status,
+        content_type: one("content-type"),
+        session: Some(one("mcp-session-id")).filter(|s| !s.is_empty()),
+        retry_after: (!all.is_empty()).then(|| all.join(", ")),
+    };
+    Ok((head, response))
+}
+
+/// The body up to `cap` bytes (core `readBodyCapped`).
+async fn body(response: &mut reqwest::Response, cap: usize) -> Result<String, RpcFailure> {
+    let mut out = Vec::new();
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                if out.len() + chunk.len() > cap {
+                    return Err(RpcFailure::TooLarge);
+                }
+                out.extend_from_slice(&chunk);
+            }
+            Ok(None) => return Ok(String::from_utf8_lossy(&out).into_owned()),
+            Err(_) => return Err(RpcFailure::Truncated),
+        }
+    }
+}
+
+/// One JSON-RPC round trip of a call under `deadline` (core mcp.cjs `rpc`). A notification (`id` `None`)
+/// sends no `params` and reads no body.
+#[allow(clippy::too_many_arguments)]
+async fn exchange(
+    egress: &Egress,
+    url: &str,
+    headers: &[(String, String)],
+    session: &mut Option<String>,
+    id: Option<i64>,
+    method: &str,
+    params: Option<JValue>,
+    deadline: Duration,
+) -> Result<Option<JValue>, RpcFailure> {
+    let until = tokio::time::Instant::now() + deadline;
+    if !matches!(
+        tokio::time::timeout_at(until, egress.url_allowed(url)).await,
+        Ok(true)
+    ) {
+        return Err(RpcFailure::Refused);
+    }
+    let mut pairs = vec![("jsonrpc", JValue::Str("2.0".into()))];
+    if let Some(id) = id {
+        pairs.push(("id", JValue::Num(id as f64)));
+    }
+    pairs.push(("method", JValue::Str(method.into())));
+    if let Some(params) = params {
+        pairs.push(("params", params));
+    }
+    let mut request = egress.client.post(url);
+    for (k, v) in headers.iter().filter(|(k, _)| !reserved(k)) {
+        request = request.header(k.as_str(), v.as_str());
+    }
+    request = request
+        .header("content-type", "application/json")
+        .header("accept", "application/json, text/event-stream")
+        .header("mcp-protocol-version", PROTOCOL_VERSION);
+    if let Some(s) = session.as_deref() {
+        request = request.header("mcp-session-id", s);
+    }
+    let request = request.body(js_json::stringify(&JValue::obj(pairs)).unwrap_or_default());
+    let (head, mut response) = match tokio::time::timeout_at(until, head(request)).await {
+        Err(_) => return Err(RpcFailure::TimedOut),
+        Ok(answer) => answer?,
+    };
+    if let Some(sid) = head.session.clone() {
+        *session = Some(sid);
+    }
+    if !(200..300).contains(&head.status) {
+        // core `readBodyCapped(res, controller).catch(() => '')`: a body that fails or runs out the clock
+        // is no detail; the status stands.
+        let detail = match tokio::time::timeout_at(until, body(&mut response, MCP_CAP)).await {
+            Ok(Ok(text)) => text,
+            _ => String::new(),
+        };
         return Err(RpcFailure::Http {
-            status: reply.status,
-            detail: reply.text.unwrap_or_default(),
-            retry_after: reply.retry_after,
+            status: head.status,
+            detail,
+            retry_after: head.retry_after,
         });
     }
     let Some(id) = id else { return Ok(None) };
-    let text = reply.text.ok_or(RpcFailure::TooLarge)?;
+    let text = match tokio::time::timeout_at(until, body(&mut response, MCP_CAP)).await {
+        Err(_) => return Err(RpcFailure::TimedOut),
+        Ok(text) => text?,
+    };
     let units: Vec<u16> = text.encode_utf16().collect();
-    let sse = reply.content_type.contains("text/event-stream");
+    let sse = head.content_type.contains("text/event-stream");
     let outcome = mcp_frame::parse_rpc_body(sse, &units, &mcp_frame::Expected::Number(id as f64))
         .map_err(|_| RpcFailure::TooLarge)?;
     let message_at = |span: std::ops::Range<usize>| {
@@ -714,28 +827,31 @@ async fn exchange(
         mcp_frame::Outcome::InvalidJson => return Err(RpcFailure::Unchecked),
     };
     let message = message_at(span)?;
+    if matches!(message, JValue::Null) {
+        return Err(RpcFailure::NullReply);
+    }
     if message.get("error").truthy() {
         let e = message.get("error");
-        let code = js_json::to_js_string(e.get("code")).unwrap_or_default();
-        let text = js_json::to_js_string(e.get("message")).unwrap_or_default();
         return Err(RpcFailure::Rpc {
-            code,
-            message: text,
+            code: js_json::to_js_string(e.get("code")).unwrap_or_default(),
+            message: js_json::to_js_string(e.get("message")).unwrap_or_default(),
         });
     }
     Ok(Some(message.get("result").clone()))
 }
 
-/// core `disconnect`: `DELETE` with the session id, best effort (a server may refuse it; a session that
-/// never got an id has nothing to close).
-async fn close(
+/// core `disconnect`: `DELETE` with the session id, best effort, done when the answer's head arrives (a
+/// server may refuse it; a session that never got an id has nothing to close).
+async fn close_call(
     egress: &Egress,
     url: &str,
     headers: &[(String, String)],
     session: Option<String>,
-    deadline: Duration,
 ) {
     let Some(id) = session else { return };
+    if !egress.url_allowed(url).await {
+        return;
+    }
     let mut request = egress
         .client
         .delete(url)
@@ -744,7 +860,7 @@ async fn close(
     for (k, v) in headers.iter().filter(|(k, _)| !reserved(k)) {
         request = request.header(k.as_str(), v.as_str());
     }
-    let _ = egress.send(request, url, deadline, 4096).await;
+    let _ = head(request).await;
 }
 
 /// Why one tool call ended without a result.
@@ -767,12 +883,12 @@ impl CallFailure {
 }
 
 /// One tool call as core's executor makes it (mcp.cjs `connect` + `callTool` + `disconnect`):
-/// `initialize`, the `initialized` notification and `tools/call { name, arguments }`, then the session is
-/// closed whatever happened. Deadlines are core's: 30 s per handshake request, 60 s for the call, 5 s for
-/// the close (1 s once `stopped` has fired). `headers` are the server's credential (never the reserved
-/// names). `Ok(result)` is the JSON-RPC `result` as the server sent it (`undefined` when it had none);
-/// an `isError` result is a result, not a failure. Every request is checked against the client's address
-/// rules first (and, for the guarded client, at connect time).
+/// `initialize`, the `initialized` notification and `tools/call { name, arguments: args || {} }`, then the
+/// session is closed whatever happened. Deadlines are core's: 30 s per handshake request, 60 s for the
+/// call, 5 s for the close, cut to 1 s once `stopped` has fired (also during the close). `headers` are the
+/// server's credential (never the reserved names). `Ok(result)` is the JSON-RPC `result` as the server
+/// sent it (`undefined` when it had none); an `isError` result is a result, not a failure. Every request
+/// is checked against the client's address rules first (and, for the guarded client, at connect time).
 pub async fn call_tool(
     egress: &Egress,
     url: &str,
@@ -783,22 +899,17 @@ pub async fn call_tool(
     stopped: impl std::future::Future<Output = ()>,
 ) -> Result<JValue, CallFailure> {
     let mut session: Option<String> = None;
-    // `args || {}`: anything falsy is an empty object.
     let arguments = if arguments.truthy() {
         arguments.clone()
     } else {
         JValue::obj::<&str>([])
     };
-    let work = async {
-        let init = next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        exchange(
-            egress,
-            url,
-            headers,
-            &mut session,
-            Some(init),
-            "initialize",
-            JValue::obj([
+    let next = || next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    tokio::pin!(stopped);
+    let mut gone = false;
+    let outcome = {
+        let work = async {
+            let initialize = JValue::obj([
                 ("protocolVersion", JValue::Str(PROTOCOL_VERSION.into())),
                 ("capabilities", JValue::obj::<&str>([])),
                 (
@@ -808,47 +919,69 @@ pub async fn call_tool(
                         ("version", JValue::Str("1".into())),
                     ]),
                 ),
-            ]),
-            RPC_DEADLINE,
-        )
-        .await?;
-        exchange(
-            egress,
-            url,
-            headers,
-            &mut session,
-            None,
-            "notifications/initialized",
-            JValue::Undefined,
-            RPC_DEADLINE,
-        )
-        .await?;
-        let id = next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        let result = exchange(
-            egress,
-            url,
-            headers,
-            &mut session,
-            Some(id),
-            "tools/call",
-            JValue::obj([
+            ]);
+            let (url, h, s) = (url, headers, &mut session);
+            exchange(
+                egress,
+                url,
+                h,
+                s,
+                Some(next()),
+                "initialize",
+                Some(initialize),
+                RPC_DEADLINE,
+            )
+            .await?;
+            exchange(
+                egress,
+                url,
+                h,
+                s,
+                None,
+                "notifications/initialized",
+                None,
+                RPC_DEADLINE,
+            )
+            .await?;
+            let params = JValue::obj([
                 ("name", JValue::Str(name.to_owned())),
                 ("arguments", arguments),
-            ]),
-            CALL_DEADLINE,
-        )
-        .await?;
-        Ok(result.unwrap_or(JValue::Undefined))
-    };
-    let (outcome, close_deadline) = {
+            ]);
+            let result = exchange(
+                egress,
+                url,
+                h,
+                s,
+                Some(next()),
+                "tools/call",
+                Some(params),
+                CALL_DEADLINE,
+            )
+            .await?;
+            Ok(result.unwrap_or(JValue::Undefined))
+        };
         tokio::pin!(work);
-        tokio::pin!(stopped);
         tokio::select! {
-            r = &mut work => (r.map_err(CallFailure::Rpc), CLOSE_DEADLINE),
-            () = &mut stopped => (Err(CallFailure::Stopped), ABORTED_CLOSE_DEADLINE),
+            r = &mut work => r.map_err(CallFailure::Rpc),
+            () = &mut stopped => {
+                gone = true;
+                Err(CallFailure::Stopped)
+            }
         }
     };
-    close(egress, url, headers, session, close_deadline).await;
+    // core `disconnect`: 5 s, or 1 s from the moment the caller is gone.
+    let closing = close_call(egress, url, headers, session);
+    tokio::pin!(closing);
+    if gone {
+        let _ = tokio::time::timeout(ABORTED_CLOSE_DEADLINE, &mut closing).await;
+    } else {
+        tokio::select! {
+            _ = tokio::time::timeout(CLOSE_DEADLINE, &mut closing) => {}
+            () = &mut stopped => {
+                let _ = tokio::time::timeout(ABORTED_CLOSE_DEADLINE, &mut closing).await;
+            }
+        }
+    }
     outcome
 }
 
@@ -1207,21 +1340,31 @@ mod tests {
         }
     }
 
-    /// A synthetic MCP server on loopback that answers `tools/call` with `answer(id)` (a whole HTTP
-    /// response; `None` holds the request open until the client goes). Every request is recorded.
-    async fn serve_call(
-        answer: impl Fn(&str) -> Option<String> + Send + Sync + 'static,
-    ) -> (String, Arc<std::sync::Mutex<Vec<Seen>>>) {
+    /// What the synthetic server does with one request.
+    enum Act {
+        /// Write this whole response and close.
+        Send(String),
+        /// Write these bytes, then hold the connection until the client goes.
+        SendThenHold(String),
+        /// Write these bytes and close (a body shorter than its Content-Length is cut off).
+        SendThenClose(String),
+    }
+
+    type Script = Box<dyn Fn(&Seen, &str) -> Option<Act> + Send + Sync>;
+
+    /// A synthetic MCP server on loopback. `script(request, id)` answers; `None` is the default: a session
+    /// for `initialize`, 405 for `DELETE`, 202 for anything else. Every request is recorded.
+    async fn serve_call(script: Script) -> (String, Arc<std::sync::Mutex<Vec<Seen>>>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/mcp", listener.local_addr().unwrap());
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let (answer, log) = (Arc::new(answer), Arc::clone(&seen));
+        let (script, log) = (Arc::new(script), Arc::clone(&seen));
         tokio::spawn(async move {
             loop {
                 let Ok((mut socket, _)) = listener.accept().await else {
                     return;
                 };
-                let (answer, log) = (Arc::clone(&answer), Arc::clone(&log));
+                let (script, log) = (Arc::clone(&script), Arc::clone(&log));
                 tokio::spawn(async move {
                     let mut buf = Vec::new();
                     let mut chunk = [0u8; 8192];
@@ -1267,30 +1410,25 @@ mod tests {
                                 .collect::<String>()
                         })
                         .unwrap_or_default();
-                    let plain = |extra: &str, message: String| {
-                        format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{message}", message.len())
-                    };
-                    let out = if one.verb == "DELETE" {
-                        Some("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string())
-                    } else if one.rpc() == "initialize" {
-                        Some(plain(
-                            "mcp-session-id: sess-1\r\n",
-                            format!(
-                                r#"{{"jsonrpc":"2.0","id":{id},"result":{{"serverInfo":{{"name":"qa"}}}}}}"#
-                            ),
-                        ))
-                    } else if one.rpc() == "tools/call" {
-                        answer(&id)
-                    } else {
-                        Some("HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string())
-                    };
-                    match out {
-                        Some(out) => {
+                    let act = script(&one, &id).unwrap_or_else(|| {
+                        Act::Send(if one.verb == "DELETE" {
+                            status_reply("405 Method Not Allowed", "", "")
+                        } else if one.rpc() == "initialize" {
+                            plain_reply(
+                                "mcp-session-id: sess-1\r\n",
+                                &format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{{"serverInfo":{{"name":"qa"}}}}}}"#),
+                            )
+                        } else {
+                            status_reply("202 Accepted", "", "")
+                        })
+                    });
+                    match act {
+                        Act::Send(out) | Act::SendThenClose(out) => {
                             let _ = socket.write_all(out.as_bytes()).await;
                             let _ = socket.shutdown().await;
                         }
-                        None => {
-                            // Held: read until the client hangs up.
+                        Act::SendThenHold(out) => {
+                            let _ = socket.write_all(out.as_bytes()).await;
                             while matches!(socket.read(&mut chunk).await, Ok(n) if n > 0) {}
                         }
                     }
@@ -1300,18 +1438,21 @@ mod tests {
         (url, seen)
     }
 
-    fn json_reply(message: String) -> Option<String> {
-        Some(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{message}", message.len()))
+    fn plain_reply(extra: &str, message: &str) -> String {
+        format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{message}", message.len())
     }
 
-    fn status_reply(status: &str, extra: &str, body: &str) -> Option<String> {
-        Some(format!(
+    fn status_reply(status: &str, extra: &str, body: &str) -> String {
+        format!(
             "HTTP/1.1 {status}\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
-        ))
+        )
     }
 
-    type Answer = Box<dyn Fn(&str) -> Option<String> + Send + Sync>;
+    /// A script that answers only `tools/call`.
+    fn on_call(answer: impl Fn(&str) -> Act + Send + Sync + 'static) -> Script {
+        Box::new(move |s: &Seen, id: &str| (s.rpc() == "tools/call").then(|| answer(id)))
+    }
 
     async fn never() {
         std::future::pending::<()>().await;
@@ -1331,22 +1472,38 @@ mod tests {
             .count()
     }
 
+    fn egress() -> Egress {
+        egress_with(Duration::from_secs(60), Duration::from_secs(5))
+    }
+
+    async fn call(url: &str) -> Result<JValue, CallFailure> {
+        call_tool(
+            &egress(),
+            url,
+            &[],
+            "t",
+            &JValue::Null,
+            &AtomicI64::new(0),
+            never(),
+        )
+        .await
+    }
+
     #[tokio::test]
     async fn a_call_initializes_calls_with_its_arguments_and_closes_the_session() {
-        let (url, seen) = serve_call(|id| {
-            json_reply(format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{{"content":[{{"type":"text","text":"qa note"}}]}}}}"#))
-        })
+        let (url, seen) = serve_call(on_call(|id| {
+            Act::Send(plain_reply("", &format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{{"content":[{{"type":"text","text":"qa note"}}]}}}}"#)))
+        }))
         .await;
-        let egress = egress_with(Duration::from_secs(60), Duration::from_secs(5));
         let counter = AtomicI64::new(41);
         let headers = vec![
             ("Authorization".to_string(), "Bearer qa-token".to_string()),
             ("Accept".to_string(), "text/html".to_string()),
             ("MCP-Session-Id".to_string(), "hijack".to_string()),
         ];
-        let args = js_json::parse(r#"{"q":"qa \u00e9 😀"}"#).unwrap();
+        let args = js_json::parse(r#"{"q":"qa é 😀"}"#).unwrap();
         let result = call_tool(
-            &egress,
+            &egress(),
             &url,
             &headers,
             "nc_notes_search_notes",
@@ -1403,18 +1560,34 @@ mod tests {
                 "{s:?}"
             );
         }
+        // core's bodies: the notification has no params.
+        assert_eq!(
+            seen[0].body,
+            r#"{"jsonrpc":"2.0","id":42,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"noevia","version":"1"}}}"#
+        );
+        assert_eq!(
+            seen[1].body,
+            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#
+        );
         assert_eq!(
             seen[2].body,
             r#"{"jsonrpc":"2.0","id":43,"method":"tools/call","params":{"name":"nc_notes_search_notes","arguments":{"q":"qa é 😀"}}}"#
         );
-        assert_eq!(seen[0].body.split(',').nth(1), Some(r#""id":42"#));
+        // The DELETE carries the credential and the session, not the transport headers (the client's
+        // default `*/*`, as undici's, is all it accepts).
+        assert_eq!(seen[3].header("accept").as_deref(), Some("*/*"));
+        assert_eq!(seen[3].header("content-type"), None);
     }
 
     #[tokio::test]
     async fn missing_arguments_are_an_empty_object_and_a_result_less_reply_is_undefined() {
-        let (url, seen) =
-            serve_call(|id| json_reply(format!(r#"{{"jsonrpc":"2.0","id":{id}}}"#))).await;
-        let egress = egress_with(Duration::from_secs(60), Duration::from_secs(5));
+        let (url, seen) = serve_call(on_call(|id| {
+            Act::Send(plain_reply(
+                "",
+                &format!(r#"{{"jsonrpc":"2.0","id":{id}}}"#),
+            ))
+        }))
+        .await;
         let counter = AtomicI64::new(0);
         for args in [
             JValue::Null,
@@ -1422,7 +1595,7 @@ mod tests {
             JValue::Bool(false),
             JValue::Str(String::new()),
         ] {
-            let r = call_tool(&egress, &url, &[], "t", &args, &counter, never()).await;
+            let r = call_tool(&egress(), &url, &[], "t", &args, &counter, never()).await;
             assert_eq!(r, Ok(JValue::Undefined));
         }
         let calls: Vec<String> = seen
@@ -1443,112 +1616,150 @@ mod tests {
 
     #[tokio::test]
     async fn every_failure_is_worded_as_core_words_it() {
-        let egress = egress_with(Duration::from_secs(60), Duration::from_secs(5));
-        let counter = AtomicI64::new(0);
-        let cases: Vec<(Answer, CallFailure, &str)> = vec![
+        let sse = |body: &str| status_reply("200 OK", "Content-Type: text/event-stream\r\n", body);
+        let cases: Vec<(Script, RpcFailure, &str)> = vec![
             (
-                Box::new(|_| {
-                    status_reply(
+                on_call(|_| {
+                    Act::Send(status_reply(
                         "401 Unauthorized",
                         "WWW-Authenticate: Bearer\r\n",
                         "token expired",
-                    )
+                    ))
                 }),
-                CallFailure::Rpc(RpcFailure::Http {
+                RpcFailure::Http {
                     status: 401,
                     detail: "token expired".into(),
                     retry_after: None,
-                }),
+                },
                 "MCP 401: token expired",
             ),
             (
-                Box::new(|_| status_reply("429 Too Many Requests", "Retry-After: 7\r\n", "")),
-                CallFailure::Rpc(RpcFailure::Http {
+                on_call(|_| {
+                    Act::Send(status_reply(
+                        "429 Too Many Requests",
+                        "Retry-After: 7\r\nRetry-After: 9\r\n",
+                        "",
+                    ))
+                }),
+                RpcFailure::Http {
                     status: 429,
                     detail: String::new(),
-                    retry_after: Some("7".into()),
-                }),
+                    retry_after: Some("7, 9".into()),
+                },
                 "MCP 429: ",
             ),
             (
-                Box::new(|id| {
-                    json_reply(format!(
-                        r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32602,"message":"bad qa args"}}}}"#
+                on_call(|id| {
+                    Act::Send(plain_reply(
+                        "",
+                        &format!(
+                            r#"{{"jsonrpc":"2.0","id":{id},"error":{{"code":-32602,"message":"bad qa args"}}}}"#
+                        ),
                     ))
                 }),
-                CallFailure::Rpc(RpcFailure::Rpc {
+                RpcFailure::Rpc {
                     code: "-32602".into(),
                     message: "bad qa args".into(),
-                }),
+                },
                 "MCP error -32602: bad qa args",
             ),
             (
-                Box::new(|_| json_reply(r#"{"jsonrpc":"2.0","id":"x7","result":{}}"#.into())),
-                CallFailure::Rpc(RpcFailure::Mismatch {
+                on_call(|_| {
+                    Act::Send(plain_reply(
+                        "",
+                        r#"{"jsonrpc":"2.0","id":"x7","result":{}}"#,
+                    ))
+                }),
+                RpcFailure::Mismatch {
                     id: 0,
                     reply_id: "x7".into(),
-                }),
+                },
                 "MCP: reply id x7 does not match request ",
             ),
             (
-                Box::new(|_| json_reply("not json".into())),
-                CallFailure::Rpc(RpcFailure::Unchecked),
+                on_call(|_| Act::Send(plain_reply("", "not json"))),
+                RpcFailure::Unchecked,
                 "MCP response could not be checked",
             ),
             (
-                Box::new(|_| status_reply("302 Found", "Location: http://127.0.0.1:1/x\r\n", "")),
-                CallFailure::Rpc(RpcFailure::Refused),
+                on_call(|_| Act::Send(plain_reply("", "null"))),
+                RpcFailure::NullReply,
+                "Cannot read properties of null (reading 'error')",
+            ),
+            (
+                on_call(|_| {
+                    Act::Send(status_reply(
+                        "302 Found",
+                        "Location: http://127.0.0.1:1/x\r\n",
+                        "",
+                    ))
+                }),
+                RpcFailure::Refused,
                 "fetch failed",
             ),
             (
-                Box::new(|_| {
-                    let sse = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n";
-                    status_reply("200 OK", "Content-Type: text/event-stream\r\n", sse)
+                on_call(move |_| {
+                    Act::Send(sse("event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n"))
                 }),
-                CallFailure::Rpc(RpcFailure::NoMessage),
+                RpcFailure::NoMessage,
                 "MCP: no JSON-RPC message in event stream",
             ),
+            (
+                on_call(|_| {
+                    Act::SendThenClose("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n{\"jsonrpc\"".into())
+                }),
+                RpcFailure::Truncated,
+                "terminated",
+            ),
+            (
+                // A refusal at initialize: the call is never sent.
+                Box::new(|s: &Seen, _: &str| {
+                    (s.rpc() == "initialize")
+                        .then(|| Act::Send(status_reply("503 Service Unavailable", "", "busy")))
+                }),
+                RpcFailure::Http {
+                    status: 503,
+                    detail: "busy".into(),
+                    retry_after: None,
+                },
+                "MCP 503: busy",
+            ),
         ];
-        for (answer, want, text) in cases {
-            let (url, seen) = serve_call(answer).await;
-            let got = call_tool(&egress, &url, &[], "t", &JValue::Null, &counter, never())
-                .await
-                .unwrap_err();
-            // The request id is whatever the counter gave; compare the rest.
-            let got_fixed = match &got {
-                CallFailure::Rpc(RpcFailure::Mismatch { reply_id, .. }) => {
-                    CallFailure::Rpc(RpcFailure::Mismatch {
-                        id: 0,
-                        reply_id: reply_id.clone(),
-                    })
-                }
-                other => other.clone(),
+        for (script, want, text) in cases {
+            let (url, seen) = serve_call(script).await;
+            let got = call(&url).await.unwrap_err();
+            let mut got = match got {
+                CallFailure::Rpc(f) => f,
+                CallFailure::Stopped => RpcFailure::Refused,
             };
-            assert_eq!(got_fixed, want);
-            assert!(got.text().starts_with(text), "{} vs {text}", got.text());
-            assert_eq!(deleted(&seen).await, 1, "closed after {text}");
+            // The request id is whatever the counter gave; compare the rest.
+            if let RpcFailure::Mismatch { id, .. } = &mut got {
+                *id = 0;
+            }
+            assert_eq!(got, want);
+            assert!(
+                got.call_text().starts_with(text),
+                "{} vs {text}",
+                got.call_text()
+            );
+            assert!(!seen.lock().unwrap().is_empty());
+            let expect_close = !matches!(want, RpcFailure::Http { status: 503, .. });
+            assert_eq!(
+                deleted(&seen).await,
+                usize::from(expect_close),
+                "after {text}"
+            );
         }
     }
 
     #[tokio::test]
     async fn an_event_stream_reply_is_unwrapped() {
-        let (url, _) = serve_call(|id| {
+        let (url, _) = serve_call(on_call(|id| {
             let sse = format!("event: message\ndata: {{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{{\"isError\":true,\"content\":[]}}}}\n\n");
-            status_reply("200 OK", "Content-Type: text/event-stream\r\n", &sse)
-        })
+            Act::Send(status_reply("200 OK", "Content-Type: text/event-stream\r\n", &sse))
+        }))
         .await;
-        let egress = egress_with(Duration::from_secs(60), Duration::from_secs(5));
-        let r = call_tool(
-            &egress,
-            &url,
-            &[],
-            "t",
-            &JValue::Null,
-            &AtomicI64::new(0),
-            never(),
-        )
-        .await
-        .unwrap();
+        let r = call(&url).await.unwrap();
         assert_eq!(
             js_json::stringify(&r).unwrap(),
             r#"{"isError":true,"content":[]}"#
@@ -1556,12 +1767,71 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_caller_that_goes_away_stops_the_call_and_the_session_is_still_closed_quickly() {
-        let (url, seen) = serve_call(|_| None).await;
-        let egress = egress_with(Duration::from_secs(60), Duration::from_secs(5));
+    async fn a_session_whose_initialize_body_never_ends_is_still_closed_when_the_caller_goes() {
+        // The head (with the session id) arrives; the body never does. core keeps the id from the head.
+        let (url, seen) = serve_call(Box::new(|s: &Seen, _: &str| {
+            (s.rpc() == "initialize").then(|| Act::SendThenHold("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nmcp-session-id: sess-held\r\nContent-Length: 500\r\n\r\n{".into()))
+        }))
+        .await;
         let started = std::time::Instant::now();
         let r = call_tool(
-            &egress,
+            &egress(),
+            &url,
+            &[],
+            "t",
+            &JValue::Null,
+            &AtomicI64::new(0),
+            tokio::time::sleep(Duration::from_millis(300)),
+        )
+        .await;
+        assert_eq!(r, Err(CallFailure::Stopped));
+        assert_eq!(deleted(&seen).await, 1);
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(
+            seen.last().unwrap().header("mcp-session-id").as_deref(),
+            Some("sess-held")
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refusal_whose_body_stalls_keeps_its_status_and_retry_after() {
+        let (url, _) = serve_call(on_call(|_| {
+            Act::SendThenHold("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 12\r\nContent-Length: 500\r\n\r\nslow".into())
+        }))
+        .await;
+        let mut session = None;
+        let r = exchange(
+            &egress(),
+            &url,
+            &[],
+            &mut session,
+            Some(1),
+            "tools/call",
+            Some(JValue::obj::<&str>([])),
+            Duration::from_millis(500),
+        )
+        .await;
+        assert_eq!(
+            r,
+            Err(RpcFailure::Http {
+                status: 429,
+                detail: String::new(),
+                retry_after: Some("12".into())
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_caller_that_goes_away_stops_the_call_and_the_session_is_still_closed_quickly() {
+        let (url, seen) = serve_call(on_call(|_| Act::SendThenHold(String::new()))).await;
+        let started = std::time::Instant::now();
+        let r = call_tool(
+            &egress(),
             &url,
             &[],
             "t",
@@ -1581,18 +1851,52 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_round_trip_past_its_deadline_is_aborted_not_failed() {
-        let (url, _) = serve_call(|_| None).await;
-        let egress = egress_with(Duration::from_secs(60), Duration::from_secs(5));
+    async fn a_close_that_hangs_is_cut_short_once_the_caller_goes() {
+        let (url, _) = serve_call(Box::new(|s: &Seen, id: &str| {
+            if s.verb == "DELETE" {
+                Some(Act::SendThenHold(String::new()))
+            } else if s.rpc() == "tools/call" {
+                Some(Act::Send(plain_reply(
+                    "",
+                    &format!(r#"{{"jsonrpc":"2.0","id":{id},"result":{{}}}}"#),
+                )))
+            } else {
+                None
+            }
+        }))
+        .await;
+        let started = std::time::Instant::now();
+        // The call answers at once; the close hangs; the caller goes 300 ms in, so the close has 1 s more.
+        let r = call_tool(
+            &egress(),
+            &url,
+            &[],
+            "t",
+            &JValue::Null,
+            &AtomicI64::new(0),
+            tokio::time::sleep(Duration::from_millis(300)),
+        )
+        .await;
+        assert!(r.is_ok(), "{r:?}");
+        let took = started.elapsed();
+        assert!(
+            took >= Duration::from_millis(1200) && took < Duration::from_millis(3500),
+            "{took:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_round_trip_past_its_deadline_is_aborted() {
+        let (url, _) = serve_call(on_call(|_| Act::SendThenHold(String::new()))).await;
         let mut session = Some("s".to_string());
         let r = exchange(
-            &egress,
+            &egress(),
             &url,
             &[],
             &mut session,
             Some(1),
             "tools/call",
-            JValue::obj::<&str>([]),
+            Some(JValue::obj::<&str>([])),
             Duration::from_millis(300),
         )
         .await;
@@ -1601,8 +1905,6 @@ mod tests {
             RpcFailure::TimedOut.call_text(),
             "This operation was aborted"
         );
-        // A listing words it as it always did.
-        assert_eq!(RpcFailure::TimedOut.listing_text(), "fetch failed");
     }
 
     #[tokio::test]
@@ -1622,15 +1924,12 @@ mod tests {
     }
 
     #[test]
-    fn an_http_detail_is_cut_at_200_utf16_units_for_a_call() {
-        let detail = "😀".repeat(150);
+    fn an_http_detail_is_cut_at_200_utf16_units() {
         let f = RpcFailure::Http {
             status: 500,
-            detail: detail.clone(),
+            detail: "😀".repeat(150),
             retry_after: None,
         };
         assert_eq!(f.call_text(), format!("MCP 500: {}", "😀".repeat(100)));
-        // A listing keeps its own cut (characters), unchanged.
-        assert_eq!(f.listing_text(), format!("MCP 500: {}", "😀".repeat(150)));
     }
 }

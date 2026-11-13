@@ -1,6 +1,11 @@
 //! Replays `fixtures/tool-rate-limit.v1.json`, recorded from core's own `server/tool-rate-limit.cjs` by
 //! `gen-fixtures.cjs` (see its header).
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 use serde_json::Value;
 use tool_rate_limit::*;
 
@@ -18,6 +23,10 @@ fn the_constants_are_cores() {
     assert_eq!(f["version"], 1);
     assert_eq!(f["source"]["path"], "server/tool-rate-limit.cjs");
     assert_eq!(f["source"]["sha256"].as_str().unwrap().len(), 64);
+    // CI regenerates this fixture from the pinned core and compares it byte for byte
+    // (.github/workflows/mcp-discovery.yml); this checks the pin is the one recorded.
+    let pin = include_str!("fixtures/core-ref").trim();
+    assert_eq!(f["source"]["coreRef"].as_str(), Some(pin));
     assert_eq!(num(&f["constants"]["baseMs"]), Some(BASE_MS));
     assert_eq!(num(&f["constants"]["maxMs"]), Some(MAX_MS));
 }
@@ -101,7 +110,12 @@ fn the_limiter_replays_every_recorded_sequence() {
 fn the_models_texts_are_cores() {
     let f = fixture();
     for c in f["messages"].as_array().unwrap() {
-        let (name, ms) = (c["name"].as_str().unwrap(), num(&c["ms"]).unwrap());
+        // NaN and Infinity travel as text (JSON has no such numbers).
+        let ms = match &c["ms"] {
+            Value::String(s) => s.parse::<f64>().unwrap(),
+            v => num(v).unwrap(),
+        };
+        let name = c["name"].as_str().unwrap();
         assert_eq!(rate_limited_text(name, ms), c["limited"].as_str().unwrap());
         assert_eq!(cooling_down_text(name, ms), c["cooling"].as_str().unwrap());
     }
