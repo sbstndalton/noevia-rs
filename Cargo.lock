@@ -505,6 +505,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-verify"
+version = "0.1.0"
+dependencies = [
+ "code-acp",
+ "js-json",
+ "tempfile",
+]
+
+[[package]]
 name = "code-verify-native"
 version = "0.1.0"
 dependencies = [
