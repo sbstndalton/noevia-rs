@@ -12,8 +12,16 @@
 //! - Turns are `serde_json::Value` objects, the shape `context::completed_exchanges` returns. A turn
 //!   that is not an object is skipped (Python would raise on it); only `{"role": "user", "content":
 //!   <string>}` turns count, as in Python.
-//! - Entity focus refuses text over its 1 MiB cap, so `resolve` returns [`Error::Capacity`] where
-//!   Python would simply run longer. `mentions` and `safe_name` have no cap.
+//! - Known difference, capacity: `resolve` returns [`Error::Capacity`] where Python would simply
+//!   run longer, in these named cases, all raised by entity focus and not by this module:
+//!   (1) any text it reads (the name phrase, the previous question) over 1 MiB (`MAX_QUERY_BYTES`);
+//!   (2) a name phrase whose whitespace-separated words total over 1 MiB;
+//!   (3) more than 8,192 words, or a word over 256 characters, in text entity focus reads;
+//!   (4) in the near-spelling check, a name key over 256 characters after NFKD expansion (`near_word`),
+//!   e.g. a key of 90 "\u{fb03}" ligatures expands to 270 characters: Python resolves with
+//!   `near = True`, Rust returns the error (unit test `a_key_over_the_near_word_cap_is_a_capacity_error`).
+//!   A message that does not match the elliptical pattern is never an error, however large.
+//!   `mentions` and `safe_name` have no cap.
 //! - Python strings may hold lone surrogates; a Rust `&str` cannot, so those are not representable.
 //! - Unicode data (case folding, general category) is pinned to Unicode 15.0.0, the version of the
 //!   Python 3.12 service, not the toolchain's.
@@ -22,6 +30,7 @@ use crate::context::is_python_space;
 use crate::unicode15;
 use diary_entity_focus::{asked_entities, name_keys, near_word, Entity, Error};
 use serde_json::Value;
+use std::collections::HashSet;
 
 /// The standalone form of an elliptical follow-up about a different name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +92,23 @@ fn spaces(chars: &[char], at: usize) -> Option<usize> {
 /// tail accepts. `$` also matches before a final newline, but that newline is whitespace and the
 /// tail's last `\s*` takes it anyway, so the end of the tail is simply the end of the text.
 pub fn elliptical_name(text: &str) -> Option<&str> {
+    // Every alternative opens with and/what/how and a whitespace character. Test that on the &str
+    // first so a large non-matching text allocates nothing.
+    let rest = text.trim_start_matches(is_python_space);
+    let word_len = rest
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(rest.len());
+    let opener = rest.get(..word_len).unwrap_or_default();
+    let followed_by_space = rest
+        .get(word_len..)
+        .and_then(|after| after.chars().next())
+        .is_some_and(is_python_space);
+    let opens = ["and", "what", "how"]
+        .iter()
+        .any(|word| opener.eq_ignore_ascii_case(word));
+    if !opens || !followed_by_space {
+        return None;
+    }
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
     // Byte offset of every character index, plus the end.
@@ -188,9 +214,11 @@ fn only_name(text: &str) -> Result<Option<Entity>, Error> {
     Ok(Some(entity))
 }
 
+/// Python `set(a.keys) <= set(b.keys) or set(b.keys) <= set(a.keys)`.
 fn same_person(a: &Entity, b: &Entity) -> bool {
-    let subset = |x: &Entity, y: &Entity| x.keys.iter().all(|key| y.keys.contains(key));
-    subset(a, b) || subset(b, a)
+    let left: HashSet<&str> = a.keys.iter().map(String::as_str).collect();
+    let right: HashSet<&str> = b.keys.iter().map(String::as_str).collect();
+    left.is_subset(&right) || right.is_subset(&left)
 }
 
 fn near(a: &Entity, b: &Entity) -> Result<bool, Error> {
@@ -402,6 +430,110 @@ mod tests {
         let no_end = format!("And Tamsin{}Fenimore, later", " Fenimore".repeat(100_000));
         assert_eq!(elliptical_name(&no_end), None);
         assert!(started.elapsed() < std::time::Duration::from_secs(20));
+        Ok(())
+    }
+
+    #[test]
+    fn a_large_non_elliptical_text_is_rejected_before_any_table_is_built() {
+        let started = std::time::Instant::now();
+        for lead in ["", "   ", "Andy ", "wh at ", "Which "] {
+            let text = format!("{lead}{}", "x ".repeat(2_000_000));
+            assert_eq!(elliptical_name(&text), None);
+        }
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn same_person_is_linear_on_hostile_key_sets() -> TestResult {
+        // 4000 words of 128 hyphen-joined keys each, per side: over half a million keys. The values
+        // in the assertions were recorded from the Python module on this same input.
+        let word = |part: &str| format!("Ab{}", format!("-{part}").repeat(127));
+        let asked = format!("And what about {}?", format!("{} ", word("b")).repeat(4000));
+        let earlier = format!("{} ?", format!("{} ", word("c")).repeat(4000));
+        assert_eq!((asked.len(), earlier.len()), (1_028_016, 1_028_002));
+        let turns = [json!({"role": "user", "content": earlier})];
+        let started = std::time::Instant::now();
+        let res = resolve(&asked, &turns)?.ok_or("resolves")?;
+        // Entity focus reads both 1 MiB texts (about a second each in a debug build); the bound only
+        // guards against the quadratic key-set comparison, which would take minutes.
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(15),
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(!res.near);
+        assert_eq!(res.standalone.len(), 1_028_002);
+        assert_eq!(res.earlier_name.len(), 1_027_999);
+        assert_eq!(res.asked_name.len(), 1_027_999);
+        assert!(res.standalone.starts_with(&res.asked_name));
+        let entity = |keys: &[&str]| Entity {
+            name: "N".to_owned(),
+            keys: keys.iter().map(|k| (*k).to_owned()).collect(),
+        };
+        let many: Vec<String> = (0..60_000).map(|i| format!("k{i}")).collect();
+        let big = Entity {
+            name: "N".to_owned(),
+            keys: many.clone(),
+        };
+        let other = Entity {
+            name: "N".to_owned(),
+            keys: many.iter().rev().cloned().collect(),
+        };
+        let started = std::time::Instant::now();
+        assert!(same_person(&big, &other));
+        assert!(same_person(
+            &entity(&["a", "a", "b"]),
+            &entity(&["b", "a", "c"])
+        ));
+        assert!(same_person(&entity(&["a"]), &entity(&["a", "b"])));
+        assert!(!same_person(&entity(&["a", "c"]), &entity(&["a", "b"])));
+        assert!(same_person(&entity(&[]), &entity(&["a"])));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        Ok(())
+    }
+
+    #[test]
+    fn a_key_over_the_near_word_cap_is_a_capacity_error() {
+        // Python resolves this with near = True; the 90 ligatures NFKD-expand to 270 characters.
+        let ligatures = "\u{fb03}".repeat(90);
+        let turns = [json!({
+            "role": "user",
+            "content": format!("Which map does Qa C{ligatures} prefer?")
+        })];
+        let message = format!("And what about Qa B{ligatures}?");
+        assert_eq!(resolve(&message, &turns), Err(Error::Capacity));
+    }
+
+    #[test]
+    fn is_python_space_matches_the_recorded_re_s_and_isspace_sets() -> TestResult {
+        let fx: Value = serde_json::from_str(include_str!("../tests/follow-up-fixtures.json"))?;
+        let list = |key: &str| -> Result<Vec<u32>, String> {
+            fx.get("whitespace")
+                .and_then(|w| w.get(key))
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("missing {key}"))?
+                .iter()
+                .map(|v| {
+                    v.as_u64()
+                        .and_then(|n| u32::try_from(n).ok())
+                        .ok_or("code point".to_owned())
+                })
+                .collect()
+        };
+        let re_s = list("re_s")?;
+        assert_eq!(re_s, list("isspace")?);
+        let ours: Vec<u32> = (0..=0x10_ffff_u32)
+            .filter(|&cp| char::from_u32(cp).is_some_and(is_python_space))
+            .collect();
+        assert_eq!(ours, re_s);
+        // Whitespace-looking characters that Python 3.12 does not treat as whitespace.
+        for cp in [0x200b_u32, 0x180e, 0xfeff, 0x2060] {
+            assert!(!re_s.contains(&cp));
+        }
+        // Category C whitespace.
+        for cp in [0x85_u32, 0x1c, 0x1d, 0x1e, 0x1f] {
+            assert!(re_s.contains(&cp));
+        }
         Ok(())
     }
 

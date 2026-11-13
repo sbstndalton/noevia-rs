@@ -346,6 +346,16 @@ def elliptical_cases(follow_up):
     return out
 
 
+def whitespace_probe():
+    """Code points Python treats as whitespace: re `\\s` (str patterns) and str.isspace, over every scalar."""
+    pattern = re.compile(r"\s")
+    scalars = [cp for cp in range(0x110000) if not 0xD800 <= cp <= 0xDFFF]
+    re_s = [cp for cp in scalars if pattern.fullmatch(chr(cp)) is not None]
+    isspace = [cp for cp in scalars if chr(cp).isspace()]
+    assert re_s == isspace
+    return {"re_s": re_s, "isspace": isspace}
+
+
 def digest(function):
     h = hashlib.sha256()
     for cp in range(0x110000):
@@ -406,6 +416,7 @@ def main():
         "elliptical_flags": int(follow_up._ELLIPTICAL.flags),
         "ci_literal_matches": probe,
         "elliptical": elliptical_cases(follow_up),
+        "whitespace": whitespace_probe(),
         "resolve": resolve_cases,
         "notes": note_cases,
         "safe_name": safe_cases,
