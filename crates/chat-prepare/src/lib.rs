@@ -46,6 +46,12 @@
 //!   writes a number; an `updatedAt` that is a non-empty string, an array or an object sorts here
 //!   as 0, where Node coerces it (`ToNumber`; a `NaN` leaves the order to V8's sort internals).
 //!
+//! - A project record (a name, goal, memory or file name) holding a character of
+//!   U+10F800..U+10FFFF: `JSON.parse` reads it, `wtf16::parse` refuses it, so the caller cannot
+//!   hand such a record here (it reads as no project record); the reader of the record (P2b)
+//!   decides, and keeps such a turn in Node. `NotReady.name` and `Partial.name` must come from
+//!   wtf16 text, never from lossy Rust text.
+//!
 //! Node behaviour kept as is: a `null` entry in `project.files` makes the stored-only line throw
 //! (`f.attachment?.state` of `null`), so such a turn is [`PrepareError::Thrown`] as in Node, where
 //! retrieval's skill check throws on it even earlier.
@@ -101,7 +107,7 @@ pub enum PartKind {
     Waiting,
     Coverage,
     StoredOnly,
-    /// A part a later slice adds, named by the chat.cjs block it ports (a project line, a frame
+    /// A part a later slice adds, named by the chat.cjs block it ports (a frame block, the brain
     /// block, ...).
     Other(&'static str),
 }
@@ -232,7 +238,9 @@ pub fn prepare(turn: &Turn<'_>) -> Result<Prepared, PrepareError> {
             {
                 parts.push(kind, text);
             }
-            let block = p.files_block.filter(|b| !b.is_empty());
+            let block = p
+                .files_block
+                .filter(|b| project::retrieval_ran(p.project) && !b.is_empty());
             if let (Some(block), Some(message), true) = (
                 block,
                 turn.message,

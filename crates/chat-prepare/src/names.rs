@@ -21,6 +21,7 @@ fn raw(c: char) -> bool {
 
 /// `quoteName(name)` of a name already through `String(name)`.
 pub fn quote_name(name: &str) -> String {
+    // A string always stringifies (only numbers and nesting can fail): the default is never taken.
     let quoted = wtf16::stringify(&JValue::Str(name.to_string())).unwrap_or_default();
     let mut out = String::with_capacity(quoted.len());
     for c in quoted.chars() {

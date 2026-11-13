@@ -47,6 +47,12 @@ pub struct ProjectTurn<'a> {
     pub skills: &'a [(PartKind, String)],
 }
 
+/// chat.cjs asks retrieval only for `Array.isArray(project.files) && project.files.length`; without
+/// files `filesBlock` stays null and `partialReads` empty, whatever a caller passes (P2a review).
+pub fn retrieval_ran(project: &JValue) -> bool {
+    matches!(project.get("files"), JValue::Arr(f) if !f.is_empty())
+}
+
 /// `String(project.id).startsWith('cowork-chat-context-')`.
 pub fn is_chat_attachments(project: &JValue) -> Result<bool, Thrown> {
     Ok(string_of(project.get("id"))?.starts_with(CHAT_CONTEXT_PREFIX))
@@ -98,7 +104,8 @@ pub fn parts(
             out.push((PartKind::SharedCode, p));
         }
     }
-    if let Some(block) = turn.files_block.filter(|b| !b.is_empty()) {
+    let ran = retrieval_ran(project);
+    if let Some(block) = turn.files_block.filter(|b| ran && !b.is_empty()) {
         if !attachments || compact {
             out.push((
                 PartKind::Knowledge,
@@ -114,7 +121,7 @@ pub fn parts(
     if let Some(p) = sources::waiting_notice(project.get("files"))? {
         out.push((PartKind::Waiting, p));
     }
-    if let Some(p) = sources::coverage_note(turn.partial_reads) {
+    if let Some(p) = sources::coverage_note(if ran { turn.partial_reads } else { &[] }) {
         out.push((PartKind::Coverage, p));
     }
     Ok(out)
@@ -158,6 +165,34 @@ pub fn attach_files_block(history: &mut [JValue], block: &str, message: &str) {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_block_for_a_project_without_files_is_not_used() {
+        for files in ["[]", "null", "{}"] {
+            let project = js_json::wtf16::parse(&format!(
+                r#"{{"id":"qa-project","name":"QA","files":{files}}}"#
+            ))
+            .unwrap();
+            let partial = [Partial {
+                name: "qa-a.txt".into(),
+                length: 2,
+                read: 1,
+            }];
+            let turn = ProjectTurn {
+                project: &project,
+                code_tasks: &[],
+                files_block: Some("QA block"),
+                not_ready: &[],
+                partial_reads: &partial,
+                skills: &[],
+            };
+            let out = parts(&turn, None, false).unwrap();
+            assert!(
+                out.iter().all(|(k, _)| !matches!(k, PartKind::Knowledge | PartKind::Coverage)),
+                "{files}: {out:?}"
+            );
+        }
+    }
 
     fn wire(entries: &[(&str, &str)]) -> Vec<JValue> {
         entries
