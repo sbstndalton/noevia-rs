@@ -167,11 +167,10 @@ pub fn js_string(value: Option<&Value>) -> String {
     match value {
         None | Some(Value::Null) => String::new(),
         Some(Value::Bool(flag)) => flag.to_string(),
-        // JavaScript prints an integral number without a fraction (`1.0` is `"1"`).
-        Some(Value::Number(number)) => match number.as_f64() {
-            Some(n) if n.fract() == 0.0 && n.is_finite() => format!("{n:.0}"),
-            _ => number.to_string(),
-        },
+        // JavaScript reads every JSON number as a double and prints it with Number::toString.
+        Some(Value::Number(number)) => number
+            .as_f64()
+            .map_or_else(|| number.to_string(), js_number_string),
         Some(Value::String(text)) => text.clone(),
         Some(Value::Array(items)) => items
             .iter()
@@ -182,9 +181,78 @@ pub fn js_string(value: Option<&Value>) -> String {
     }
 }
 
+/// ECMAScript `Number::toString(10)` of a finite double: the shortest round-trip digits, plain
+/// for decimal exponents from -7 to 20 and in exponent form (`1e+21`, `1e-7`) outside them.
+fn js_number_string(n: f64) -> String {
+    if n == 0.0 {
+        return "0".to_string(); // also -0
+    }
+    if !n.is_finite() {
+        return if n.is_nan() {
+            "NaN"
+        } else if n > 0.0 {
+            "Infinity"
+        } else {
+            "-Infinity"
+        }
+        .to_string();
+    }
+    let sign = if n < 0.0 { "-" } else { "" };
+    // `{:e}` prints the shortest round-trip digits as `d[.ddd]e<exp>`.
+    let sci = format!("{:e}", n.abs());
+    let (mantissa, exp) = sci.split_once('e').unwrap_or((sci.as_str(), "0"));
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let k = i64::try_from(digits.len()).unwrap_or(i64::MAX);
+    let point = exp.parse::<i64>().unwrap_or(0).saturating_add(1); // `n` in the spec
+    let body = if k <= point && point <= 21 {
+        let zeros = usize::try_from(point - k).unwrap_or(0);
+        format!("{digits}{}", "0".repeat(zeros))
+    } else if 0 < point && point <= 21 {
+        let (int, frac) = digits.split_at(usize::try_from(point).unwrap_or(0));
+        format!("{int}.{frac}")
+    } else if -6 < point && point <= 0 {
+        let zeros = usize::try_from(-point).unwrap_or(0);
+        format!("0.{}{digits}", "0".repeat(zeros))
+    } else {
+        let (first, rest) = digits.split_at(1);
+        let e = point - 1;
+        let e_sign = if e < 0 { '-' } else { '+' };
+        let dot = if rest.is_empty() { "" } else { "." };
+        format!("{first}{dot}{rest}e{e_sign}{}", e.unsigned_abs())
+    };
+    format!("{sign}{body}")
+}
+
+/// JavaScript `String.prototype.trim`: strips the ECMAScript WhiteSpace and LineTerminator code
+/// points. Unlike `str::trim` it strips U+FEFF and keeps U+0085.
+fn js_trim(text: &str) -> &str {
+    const fn js_space(c: char) -> bool {
+        matches!(
+            c,
+            '\u{9}'
+                | '\u{a}'
+                | '\u{b}'
+                | '\u{c}'
+                | '\u{d}'
+                | ' '
+                | '\u{a0}'
+                | '\u{1680}'
+                | '\u{2000}'
+                ..='\u{200a}'
+                    | '\u{2028}'
+                    | '\u{2029}'
+                    | '\u{202f}'
+                    | '\u{205f}'
+                    | '\u{3000}'
+                    | '\u{feff}'
+        )
+    }
+    text.trim_matches(js_space)
+}
+
 /// `addr(v)` in apply(): the trimmed text, or `None` when it is empty.
 fn address(text: &str) -> Option<String> {
-    let trimmed = text.trim();
+    let trimmed = js_trim(text);
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
@@ -255,7 +323,7 @@ fn read_target(value: Option<&Value>) -> Result<Target, Reply> {
         String::new()
     };
     Ok(Target {
-        model: model.trim().to_string(),
+        model: js_trim(&model).to_string(),
         base_url: address(&js_string(base_url)),
         diary_base_url: address(&js_string(diary_source)),
     })
