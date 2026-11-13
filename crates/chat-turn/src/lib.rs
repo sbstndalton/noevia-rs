@@ -3,7 +3,7 @@
 //! Node turns (`tests/record_turns.cjs`, `tests/native_turns.rs`). Nothing calls it yet: the front's
 //! executor, behind a per-account switch that is off by default, is the next step.
 //!
-//! - [`prepared`]: the hand-off frame, read strictly;
+//! - [`prepared`]: the hand-off frame, read strictly; [`handoff`]: core's stream split into frames until it;
 //! - [`native`]: the continuation: the model's lease, the runtime limit and the context fit, the rounds
 //!   (request with reasoning effort and thinking cap, stream, fallback, tool rounds), the close and the
 //!   title; [`host`] is what it asks of the process that runs it;
@@ -26,6 +26,7 @@ pub mod effort;
 pub mod event;
 pub mod gate;
 pub mod guard;
+pub mod handoff;
 pub mod helpers;
 pub mod host;
 pub mod js;

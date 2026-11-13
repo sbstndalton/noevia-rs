@@ -255,11 +255,12 @@ async function runTurn(c, { handoff = false } = {}) {
     });
 
     const res = new EventEmitter();
-    const out = { http: null, refusal: null, events: [], keepAlives: 0 };
+    const out = { http: null, refusal: null, events: [], keepAlives: 0, raw: [] };
     res.writableEnded = false;
     res.destroyed = false;
     res.writeHead = (status, headers) => { out.http = { status, headers }; };
     res.write = (line) => {
+      out.raw.push(line);
       if (line.startsWith(': ')) { out.keepAlives++; return true; }
       if (!line.startsWith('data: ') || !line.endsWith('\n\n')) throw new Error(`unexpected frame ${JSON.stringify(line)}`);
       out.events.push(JSON.parse(line.slice(6)));
@@ -354,7 +355,9 @@ async function runTurn(c, { handoff = false } = {}) {
       const last = out.events[out.events.length - 1];
       const prepared = last?.type === 'prepared' ? last : null;
       const refused = logged.map((l) => /^\[chat\] native executor not used for this turn: (.+)$/.exec(l)?.[1]).find(Boolean) || null;
-      return { prepared, refused, before: prepared ? out.events.length - 1 : null, requests: prepared ? log.requests.length : null };
+      return { prepared, refused, before: prepared ? out.events.length - 1 : null, requests: prepared ? log.requests.length : null,
+        // What core wrote on the wire for it, frame by frame as res.write got them (the front's frame splitter reads these).
+        raw: prepared ? out.raw : null };
     }
     // The script is exact: every round it names is asked for, and no other.
     if (!process.env.RECORD_LOOSE && upstream.used() !== (c.rounds || []).length) throw new Error(`${c.name}: the turn made ${upstream.used()} engine requests, the script has ${(c.rounds || []).length}`);

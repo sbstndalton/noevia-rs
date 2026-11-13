@@ -746,3 +746,54 @@ fn the_native_turn_can_be_spawned() {
     let turn = native::run(&script, &process, &helpers, &prepared);
     spawnable(&turn);
 }
+
+/// What core wrote for each hand-off, split by the front's frame reader at several chunk sizes: the
+/// frames before `prepared` are forwarded as written, and the `prepared` frame is the recorded one.
+#[test]
+fn the_frame_reader_finds_every_recorded_hand_off() {
+    use chat_turn::handoff::{Frames, Piece};
+    let f = fixture();
+    let JValue::Arr(cases) = f.get("cases") else {
+        panic!()
+    };
+    for c in cases
+        .iter()
+        .filter(|c| c.get("handoff").get("prepared").is_object())
+    {
+        let JValue::Arr(raw) = c.get("handoff").get("raw") else {
+            panic!()
+        };
+        let lines: Vec<String> = raw
+            .iter()
+            .map(|l| l.as_str().unwrap().to_string())
+            .collect();
+        let bytes = lines.concat().into_bytes();
+        let before: Vec<u8> = lines[..lines.len() - 1].concat().into_bytes();
+        for size in [1, 7, 64, 4096, bytes.len()] {
+            let mut frames = Frames::new();
+            let mut forwarded = Vec::new();
+            let mut prepared = None;
+            for chunk in bytes.chunks(size) {
+                for piece in frames.feed(chunk) {
+                    match piece {
+                        Piece::Forward(b) => forwarded.extend(b),
+                        Piece::Prepared(p) => prepared = Some(p),
+                        Piece::Unreadable => {
+                            panic!("{}: unreadable", c.get("name").as_str().unwrap())
+                        }
+                    }
+                }
+            }
+            assert_eq!(
+                forwarded,
+                before,
+                "{} at {size}",
+                c.get("name").as_str().unwrap()
+            );
+            assert_eq!(
+                js::stringify(&prepared.unwrap()),
+                js::stringify(c.get("handoff").get("prepared"))
+            );
+        }
+    }
+}
