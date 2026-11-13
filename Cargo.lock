@@ -427,6 +427,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-turn"
+version = "0.1.0"
+dependencies = [
+ "context-fit",
+ "js-json",
+ "prompt-framing",
+ "provider-error",
+ "regex",
+ "serde_json",
+ "sha2",
+ "stream-guard",
+ "tool-exchange",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
