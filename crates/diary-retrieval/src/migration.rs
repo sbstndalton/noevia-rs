@@ -42,6 +42,10 @@ pub trait Embed {
 }
 
 /// Python `tenant_writer.hold(tenant_of(path))` + `index_publication(path)` around one write.
+///
+/// The Python connection also carries `tenant_writer`'s SQLite authorizer (no `ATTACH`, no write
+/// while a backup effect is pending, no write to a writer tenant's index without its lock). Here
+/// that is the managed implementation's job: it must refuse (`Error::Busy`) in those states.
 pub trait FileGuard {
     fn write(&self, path: &Path, write: &mut dyn FnMut() -> crate::Result<()>)
         -> crate::Result<()>;
@@ -207,8 +211,8 @@ impl Default for Options {
 
 pub struct Migration<'a> {
     pub config: &'a Mutex<EmbeddingConfig>,
-    embed: &'a dyn Embed,
-    guard: &'a dyn FileGuard,
+    embed: &'a (dyn Embed + Sync),
+    guard: &'a (dyn FileGuard + Sync),
     service_db: PathBuf,
     pub duty: f64,
     pub batch: i64,
@@ -230,22 +234,32 @@ fn locked<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// The Python exception class a Rust error stands for in a pass's `error` text.
-fn class_of(e: &Error) -> &'static str {
-    match e {
-        Error::Sqlite(_) => "OperationalError",
+/// The pass's `error` text: the Python exception class a Rust error stands for, then the SQLite
+/// error code (known difference: Python's text carries sqlite3's own message there).
+fn error_text(e: &Error) -> String {
+    let class = match e {
+        Error::Sqlite(code) => match code.as_str() {
+            "ConstraintViolation" | "TypeMismatch" => "IntegrityError",
+            "NotADatabase" | "DatabaseCorrupt" | "AuthorizationForStatementDenied" => {
+                "DatabaseError"
+            }
+            "TooBig" => "DataError",
+            "ParameterOutOfRange" | "ApiMisuse" => "ProgrammingError",
+            _ => "OperationalError",
+        },
         Error::BadWidth(_) => "ValueError",
         Error::Busy(_) => "WriterBusy",
         Error::Value(_) => "OverflowError",
-    }
+    };
+    format!("{class}: {e}")
 }
 
 impl<'a> Migration<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: &'a Mutex<EmbeddingConfig>,
-        embed: &'a dyn Embed,
-        guard: &'a dyn FileGuard,
+        embed: &'a (dyn Embed + Sync),
+        guard: &'a (dyn FileGuard + Sync),
         service_db: &Path,
         options: Options,
         skip_user: Box<dyn Fn(&str) -> bool + Send + Sync + 'a>,
@@ -326,9 +340,12 @@ impl<'a> Migration<'a> {
         Some(conn)
     }
 
-    /// Python `_coverage`.
-    pub fn coverage(&self, target: Option<&Target>) -> Option<Coverage> {
-        let target = target?;
+    /// Python `_coverage`: a file that cannot be opened counts as unavailable; a read error in an
+    /// open file is an error, as the Python raises it.
+    pub fn coverage(&self, target: Option<&Target>) -> crate::Result<Option<Coverage>> {
+        let Some(target) = target else {
+            return Ok(None);
+        };
         let files = self.files();
         let active = self.active();
         let (mut chunks, mut vectors, mut unavailable, mut behind) = (0i64, 0i64, 0usize, 0usize);
@@ -349,25 +366,21 @@ impl<'a> Migration<'a> {
                 };
                 Ok((c, a))
             };
-            match read() {
-                Ok((c, a)) => {
-                    chunks += c.chunks;
-                    vectors += c.vectors;
-                    if a.is_some_and(|a| c.vectors < a.vectors) {
-                        behind += 1;
-                    }
-                }
-                Err(_) => unavailable += 1,
+            let (c, a) = read()?;
+            chunks += c.chunks;
+            vectors += c.vectors;
+            if a.is_some_and(|a| c.vectors < a.vectors) {
+                behind += 1;
             }
         }
-        Some(Coverage {
+        Ok(Some(Coverage {
             files: files.len(),
             chunks,
             vectors,
             unavailable,
             complete: unavailable == 0 && vectors >= chunks,
             ready: unavailable == 0 && behind == 0,
-        })
+        }))
     }
 
     /// (id, hash, vector) for the rows the server embeds; a refused chunk is skipped this pass.
@@ -482,6 +495,7 @@ impl<'a> Migration<'a> {
                 *b -= i64::try_from(rows.len()).unwrap_or(i64::MAX);
             }
             let started = (self.now)();
+            let refused_before = refused.len();
             let done = self.embed_rows(target, &rows, &mut refused);
             if active {
                 self.note_refused(path, &rows, &refused);
@@ -557,7 +571,10 @@ impl<'a> Migration<'a> {
                 });
             }
             out.embedded += i64::try_from(n).unwrap_or(i64::MAX);
-            if n == 0 && refused.is_empty() {
+            // Known difference (a Python defect): when nothing was written and no new chunk was
+            // refused in this round, the next round would read the same rows again, for ever.
+            // Python only stops when nothing was ever refused; here the fill reports stuck.
+            if n == 0 && (refused.is_empty() || refused.len() == refused_before) {
                 return Ok(Fill { stuck: true, ..out });
             }
             let busy = (self.now)() - started;
@@ -587,7 +604,7 @@ impl<'a> Migration<'a> {
                     Ok(r) => r,
                     Err(e) => {
                         out.failed += 1;
-                        out.error = Some(class_of(&e).to_owned());
+                        out.error = Some(error_text(&e));
                         continue;
                     }
                 };
@@ -609,11 +626,12 @@ impl<'a> Migration<'a> {
         out
     }
 
-    /// One `_run` round: a pass, its record, and the timers to start. `at` is the wall clock.
-    pub fn run_once(&self, at: f64) -> Timers {
+    /// One `_run` round: a pass, its record (stamped with `wall()` read after the pass, Python's
+    /// `time.time()`), and the timers to start.
+    pub fn run_once(&self, wall: &dyn Fn() -> f64) -> Timers {
         let r = self.pass();
         let mut record = Map::new();
-        record.insert("at".into(), json!(at));
+        record.insert("at".into(), json!(wall()));
         if let Some(obj) = r.to_json().as_object() {
             record.extend(obj.clone());
         }
@@ -672,12 +690,18 @@ impl<'a> Migration<'a> {
     }
 
     /// Python `status()`; `running` is the caller's (whether a pass is under way).
-    pub fn status(&self, running: bool) -> Value {
+    pub fn status(&self, running: bool) -> Result<Value, MigrationError> {
         let snap = locked(self.config).get();
         let mut out = snap.to_json();
         if let Some(map) = out.as_object_mut() {
-            let active = self.coverage(Some(&snap.active)).map(|c| c.to_json());
-            let next = self.coverage(snap.next.as_ref()).map(|c| c.to_json());
+            let active = self
+                .coverage(Some(&snap.active))
+                .map_err(MigrationError::Index)?
+                .map(|c| c.to_json());
+            let next = self
+                .coverage(snap.next.as_ref())
+                .map_err(MigrationError::Index)?
+                .map(|c| c.to_json());
             map.insert("coverage".into(), json!({"active": active, "next": next}));
             map.insert("running".into(), json!(running));
             map.insert(
@@ -687,7 +711,7 @@ impl<'a> Migration<'a> {
             map.insert("duty".into(), json!(self.duty));
             map.insert("batch".into(), json!(self.batch));
         }
-        out
+        Ok(out)
     }
 
     fn drop_everywhere(&self, target: &Target) {
@@ -753,7 +777,7 @@ impl<'a> Migration<'a> {
                 self.drop_everywhere(before);
             }
         }
-        Ok(self.status(false))
+        self.status(false)
     }
 
     pub fn clear_next(&self) -> Result<Value, MigrationError> {
@@ -767,7 +791,7 @@ impl<'a> Migration<'a> {
                 self.drop_everywhere(&before);
             }
         }
-        Ok(self.status(false))
+        self.status(false)
     }
 
     /// Python `switch` (the caller kicks a pass afterwards).
@@ -806,7 +830,7 @@ impl<'a> Migration<'a> {
                 ));
             }
         } else if !force {
-            let cov = self.coverage(Some(&next));
+            let cov = self.coverage(Some(&next)).map_err(MigrationError::Index)?;
             if !cov.is_some_and(|c| c.ready) {
                 return Err(MigrationError::Config(
                     EmbeddingConfigError::new(
@@ -822,14 +846,14 @@ impl<'a> Migration<'a> {
         Self::change(locked(self.config).switch_to_next(Some(&next)))?;
         // An older rollback target is displaced by the new one: its vectors would never be read.
         self.drop_if_orphaned(displaced.as_ref());
-        Ok(self.status(false))
+        self.status(false)
     }
 
     pub fn rollback(&self) -> Result<Value, MigrationError> {
         let abandoned = self.next();
         Self::change(locked(self.config).rollback())?;
         self.drop_if_orphaned(abandoned.as_ref());
-        Ok(self.status(false))
+        self.status(false)
     }
 
     pub fn finish(&self) -> Result<Value, MigrationError> {
@@ -850,7 +874,7 @@ impl<'a> Migration<'a> {
         {
             self.drop_everywhere(&old);
         }
-        Ok(self.status(false))
+        self.status(false)
     }
 }
 
@@ -860,4 +884,6 @@ impl<'a> Migration<'a> {
 pub enum MigrationError {
     Config(EmbeddingConfigError, Option<Value>),
     Change(ChangeError),
+    /// An index file could not be read (Python raises the sqlite3 error out of `_coverage`).
+    Index(Error),
 }

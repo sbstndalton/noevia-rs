@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use diary_retrieval::embedding::config::EmbeddingConfig;
 use diary_retrieval::index::{Embedder, Kind, Options as IndexOptions, Retriever};
-use diary_retrieval::migration::{Embed, Migration, MigrationError, Options, Unguarded};
+use diary_retrieval::migration::{Embed, FileGuard, Migration, MigrationError, Options};
 use diary_retrieval::{NoGuard, Target};
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
@@ -45,6 +45,8 @@ struct FakeState {
     refuse: Option<String>,
     fail_all: bool,
     calls: Vec<Value>,
+    /// change_text_on: (marker, the index files, done)
+    change_text: Option<(String, Vec<PathBuf>, bool)>,
 }
 
 #[derive(Default)]
@@ -59,6 +61,23 @@ impl Fake {
             .collect();
         s.calls
             .push(json!([target.model, target.base_url, "document", hashes]));
+        if let Some((marker, files, done)) = s.change_text.as_mut() {
+            if let Some(t) = texts
+                .iter()
+                .find(|t| t.contains(marker.as_str()))
+                .filter(|_| !*done)
+            {
+                *done = true;
+                for f in files.iter() {
+                    if let Ok(c) = Connection::open(f) {
+                        let _ = c.execute(
+                            "UPDATE chunks SET content_hash = 'qa-changed' WHERE body = ?",
+                            [t],
+                        );
+                    }
+                }
+            }
+        }
         if s.fail_all
             || s.refuse
                 .as_ref()
@@ -213,6 +232,30 @@ fn dump(conn: &Connection) -> rusqlite::Result<Value> {
     }))
 }
 
+/// The guard of the scenario: none, but it can change the configuration once just before a
+/// write runs (the configuration changing while the write waited for its guard).
+struct Guard<'a> {
+    config: &'a Mutex<EmbeddingConfig>,
+    bump: Mutex<Option<Value>>,
+}
+
+impl FileGuard for Guard<'_> {
+    fn write(
+        &self,
+        _path: &Path,
+        write: &mut dyn FnMut() -> diary_retrieval::Result<()>,
+    ) -> diary_retrieval::Result<()> {
+        if let Some(target) = self.bump.lock().unwrap_or_else(|p| p.into_inner()).take() {
+            let _ = self
+                .config
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .set_next(&target);
+        }
+        write()
+    }
+}
+
 fn mask(mut status: Value) -> Value {
     if let Some(lp) = status.get_mut("last_pass").and_then(Value::as_object_mut) {
         lp.remove("at");
@@ -226,6 +269,7 @@ fn error_json(e: MigrationError) -> Value {
             json!({"error": c.code, "status": c.status, "message": c.message, "coverage": coverage})
         }
         MigrationError::Change(c) => json!({"error": "change", "message": c.to_string()}),
+        MigrationError::Index(e) => json!({"error": "index", "message": e.to_string()}),
     }
 }
 
@@ -267,20 +311,33 @@ fn run_scenario(name: &str, steps: &[Value], tenants: &[Value], options: &Value)
     let sleeps: Arc<Mutex<Vec<f64>>> = Arc::new(Mutex::new(Vec::new()));
     let c = clock.clone();
     let sl = sleeps.clone();
+    let guard = Guard {
+        config: &config,
+        bump: Mutex::new(None),
+    };
+    let duty = match &options["duty"] {
+        Value::String(s) if s == "nan" => f64::NAN,
+        v => v.as_f64().unwrap_or(0.5),
+    };
+    let skip = options["skip"]
+        .as_u64()
+        .and_then(|i| tenants.get(i as usize))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     let m = Migration::new(
         &config,
         &fake,
-        &Unguarded,
+        &guard,
         &service_db,
         Options {
-            duty: Some(options["duty"].as_f64().unwrap_or(0.5)),
-            batch: Some(2.0),
+            duty: Some(duty),
+            batch: Some(options["batch"].as_f64().unwrap_or(2.0)),
             retry_s: options["retry_s"].as_f64().unwrap_or(60.0),
             cooldown_s: 600.0,
             max_cooldown_s: 86400.0,
             active_budget: 6,
         },
-        Box::new(|_| false),
+        Box::new(move |u| skip.as_deref() == Some(u)),
         Box::new(move || {
             let mut t = c.lock().unwrap_or_else(|p| p.into_inner());
             *t += 0.5;
@@ -299,9 +356,31 @@ fn run_scenario(name: &str, steps: &[Value], tenants: &[Value], options: &Value)
             .calls
             .clear();
         let result: Value = match op {
-            "status" => mask(m.status(false)),
+            "status" => m.status(false).map(mask).unwrap_or_else(error_json),
+            "recheck_fired" => {
+                m.recheck_fired();
+                Value::Null
+            }
+            "retry_fired" => {
+                m.retry_fired();
+                Value::Null
+            }
+            "bump_in_guard" => {
+                *guard.bump.lock().unwrap_or_else(|p| p.into_inner()) =
+                    Some(step["target"].clone());
+                Value::Null
+            }
+            "change_text_on" => {
+                let all: Vec<PathBuf> = files.iter().map(|(p, _)| p.clone()).collect();
+                fake.0.lock().unwrap_or_else(|p| p.into_inner()).change_text = Some((
+                    step["marker"].as_str().ok_or("marker")?.to_owned(),
+                    all,
+                    false,
+                ));
+                Value::Null
+            }
             "run" => {
-                let t = m.run_once(0.0);
+                let t = m.run_once(&|| 0.0);
                 if let Some(s) = t.retry {
                     timers.borrow_mut().push(json!(["retry", s]));
                 }
@@ -332,7 +411,7 @@ fn run_scenario(name: &str, steps: &[Value], tenants: &[Value], options: &Value)
             "clear_next" => m.clear_next().map(mask).unwrap_or_else(error_json),
             "retry_missing" => {
                 m.clear_refusals();
-                mask(m.status(false))
+                m.status(false).map(mask).unwrap_or_else(error_json)
             }
             "refuse" => {
                 fake.0.lock().unwrap_or_else(|p| p.into_inner()).refuse =
@@ -417,7 +496,7 @@ fn every_scenario_matches_python() -> TestResult {
     let fx: Value = serde_json::from_str(include_str!("migration-fixtures.json"))?;
     let tenants = fx["tenants"].as_array().ok_or("tenants")?;
     let scenarios = fx["scenarios"].as_object().ok_or("scenarios")?;
-    assert!(scenarios.len() >= 5);
+    assert!(scenarios.len() >= 10);
     for (name, steps) in scenarios {
         run_scenario(
             name,
@@ -426,5 +505,81 @@ fn every_scenario_matches_python() -> TestResult {
             &fx["options"][name],
         )?;
     }
+    Ok(())
+}
+
+#[test]
+fn a_migration_can_be_shared_between_threads() {
+    fn shared<T: Sync>() {}
+    shared::<Migration<'static>>();
+}
+
+/// Known difference (a Python defect): after one refusal, an endpoint that starts answering vectors
+/// of another width writes nothing; Python's fill would read the same rows again for ever. Here the
+/// fill reports stuck and the pass ends.
+#[test]
+fn a_fill_that_writes_nothing_and_refuses_nothing_new_ends() -> TestResult {
+    struct Shifting(Mutex<usize>);
+    impl Embed for Shifting {
+        fn embed(&self, target: &Target, texts: &[String]) -> Result<Vec<Vec<f64>>, String> {
+            if texts.iter().any(|t| t.contains("QAREFUSE")) {
+                return Err("refused".into());
+            }
+            let mut calls = self.0.lock().unwrap_or_else(|p| p.into_inner());
+            *calls += 1;
+            let dim = if *calls == 1 { 8 } else { 4 };
+            Ok(texts
+                .iter()
+                .map(|t| fake_vector(&target.profile, t, dim))
+                .collect())
+        }
+    }
+    let dir = tempfile::tempdir()?;
+    let service_db = dir.path().join("index.db");
+    let fake = Fake::default();
+    let mut r = Retriever::open(
+        &service_db,
+        Builder(&fake),
+        NoGuard,
+        IndexOptions::default(),
+    )?;
+    // Day 0 sub 3 and day 1 sub 2 carry the refusal marker: the first batch of two holds one.
+    r.reindex_file("2031-03.md", Some(&corpus(4, "service")))?;
+    drop(r);
+    let cfg = json!({"llm": {"embed_model": "qa-embed-a"}, "retrieval": {"db_path": service_db.to_string_lossy()}});
+    let config = Mutex::new(EmbeddingConfig::new(&cfg, None)?);
+    let embed = Shifting(Mutex::new(0));
+    let guard = Guard {
+        config: &config,
+        bump: Mutex::new(None),
+    };
+    let m = Migration::new(
+        &config,
+        &embed,
+        &guard,
+        &service_db,
+        Options {
+            batch: Some(16.0),
+            ..Options::default()
+        },
+        Box::new(|_| false),
+        Box::new(|| 0.0),
+        Box::new(|_| {}),
+    );
+    m.set_next(&json!({"model": "qa-embed-b", "profile": "embeddinggemma-2"}))
+        .map_err(|e| format!("{e:?}"))?;
+    let _ = m.run_once(&|| 0.0);
+    let last = m
+        .last_pass
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone()
+        .ok_or("no pass")?;
+    assert_eq!(last["failed"], json!(1), "{last}");
+    // One batch, its one-by-one retry, and one more round that writes nothing: then stuck.
+    assert!(
+        *embed.0.lock().unwrap_or_else(|p| p.into_inner()) <= 40,
+        "bounded number of embedding calls"
+    );
     Ok(())
 }

@@ -71,9 +71,12 @@ class Embedder:
         self.refuse = None
         self.fail_all = False
         self.calls = []
+        self.hook = None  # called with the texts before answering (a test's side effect)
 
     def embed(self, target, texts, kind="document", titles=None):
         self.calls.append([target.model, target.base_url, kind, [hashlib.sha256(t.encode()).hexdigest()[:10] for t in texts]])
+        if self.hook is not None:
+            self.hook(texts)
         if self.fail_all or (self.refuse and any(self.refuse in t for t in texts)):
             raise RuntimeError("synthetic embed refusal")
         dim = 8 if target.profile == "embeddinggemma-2" else 16
@@ -105,9 +108,27 @@ T_A_MOVED = {"base_url": "http://qa-embed-twin.invalid", "model": "qa-embed-a", 
 T_A_PERTURBED = {"base_url": "http://qa-embed-perturbed.invalid", "model": "qa-embed-a", "profile": "nomic-v1"}
 
 # Per-scenario options (duty, retry_s); default 0.5 and 60.
-OPTIONS = {"floors": {"duty": 1.0, "retry_s": 0.25}}
+OPTIONS = {"floors": {"duty": 1.0, "retry_s": 0.25},
+           "options_and_skip": {"duty": "nan", "batch": 20, "skip": 0},
+           "batch_floor": {"batch": 0}}
 
 SCENARIOS = {
+    "timers_fire": [
+        {"op": "refuse", "marker": "QAREFUSE"}, {"op": "reset_active_vectors"}, {"op": "run"},
+        {"op": "advance", "seconds": 30}, {"op": "recheck_fired"}, {"op": "run"}, {"op": "set_next", "target": T_B},
+        {"op": "break_tenant"}, {"op": "run"}, {"op": "run"}, {"op": "retry_fired"}, {"op": "run"}, {"op": "recheck_fired"},
+        {"op": "advance", "seconds": 600}, {"op": "run"},
+    ],
+    "options_and_skip": [{"op": "status"}, {"op": "set_next", "target": T_B}, {"op": "run"}, {"op": "status"}],
+    "batch_floor": [{"op": "set_next", "target": T_B}, {"op": "run"}, {"op": "status"}],
+    "version_change_inside_the_write": [
+        {"op": "set_next", "target": T_B}, {"op": "bump_in_guard", "target": T_A_MOVED}, {"op": "run"}, {"op": "status"},
+        {"op": "dump"}, {"op": "run"}, {"op": "dump"},
+    ],
+    "text_changes_while_embedding": [
+        {"op": "set_next", "target": T_B}, {"op": "change_text_on", "marker": "service 1 1"}, {"op": "run"}, {"op": "dump"},
+        {"op": "status"},
+    ],
     "floors": [
         {"op": "set_next", "target": T_B}, {"op": "run"}, {"op": "status"},
         {"op": "reset_active_vectors"}, {"op": "run"}, {"op": "run"}, {"op": "status"},
@@ -207,9 +228,11 @@ def run(name, ops, mods):
         sqlite_vec.load(conn)
         return True
     opts = OPTIONS.get(name, {})
-    m = em.EmbeddingMigration(shared, service_db, duty=opts.get("duty", 0.5), batch=2, load_vec=load_vec, sleep=sleeps.append,
-                              now=now, retry_s=opts.get("retry_s", 60.0), cooldown_s=600.0, max_cooldown_s=86400.0,
-                              active_budget=6)
+    duty = float(opts["duty"]) if isinstance(opts.get("duty"), str) else opts.get("duty", 0.5)
+    skip = (lambda u: u == TENANTS[opts["skip"]]) if "skip" in opts else (lambda _u: False)
+    m = em.EmbeddingMigration(shared, service_db, duty=duty, batch=opts.get("batch", 2), load_vec=load_vec,
+                              skip_user=skip, sleep=sleeps.append, now=now, retry_s=opts.get("retry_s", 60.0),
+                              cooldown_s=600.0, max_cooldown_s=86400.0, active_budget=6)
     m.kick = lambda: None
 
     def mask(status):
@@ -236,6 +259,38 @@ def run(name, ops, mods):
                 result = mask(getattr(m, kind)())
             elif kind == "refuse":
                 embedder.refuse = op["marker"]
+            elif kind == "recheck_fired":
+                m._recheck()
+            elif kind == "retry_fired":
+                m._retry()
+            elif kind == "bump_in_guard":
+                # The configuration changes while a write waits for its guard: the write must abort.
+                import contextlib
+                real = em.tenant_writer.index_publication
+                fired = []
+
+                @contextlib.contextmanager
+                def bumping(path, real=real, fired=fired, target=op["target"]):
+                    if not fired:
+                        fired.append(True)
+                        config.set_next(target)
+                    with real(path):
+                        yield
+                em.tenant_writer.index_publication = bumping
+            elif kind == "change_text_on":
+                marker = op["marker"]
+                done = []
+
+                def change(texts, marker=marker, done=done):
+                    for t in texts:
+                        if marker in t and not done:
+                            done.append(True)
+                            for path, _ in files:
+                                c = sqlite3.connect(path)
+                                c.execute("UPDATE chunks SET content_hash = 'qa-changed' WHERE body = ?", (t,))
+                                c.commit()
+                                c.close()
+                embedder.hook = change
             elif kind == "fail_all":
                 embedder.fail_all = op["on"]
             elif kind == "advance":
