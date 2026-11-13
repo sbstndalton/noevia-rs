@@ -2,9 +2,10 @@
 //! one Diary exchange for Python to call.
 //!
 //! Python keeps the `/v1/chat/completions` route, the sessions, the log pipeline's save and the
-//! tenant writer lock. With `DIARY_RUST_ANSWER` (not wired yet) its `_run_exchange` asks this
-//! endpoint for the context and the companion's answer instead of building them itself; for the
-//! shadow comparison it asks for the context only (`mode: "context"`) and compares the messages.
+//! tenant writer lock. With `DIARY_RUST_ANSWER=on` its `_run_exchange` asks this endpoint for the
+//! context and the companion's answer instead of building them itself; for the shadow comparison
+//! (`DIARY_RUST_ANSWER=shadow`) it asks for the context only (`mode: "context"`) and compares the
+//! messages.
 //! This endpoint writes nothing: no corpus, no journal, no index (the chunk index is opened with
 //! a guard that refuses every write), and it refuses a request carrying the writer header.
 //!
@@ -19,17 +20,20 @@
 //!   "extra_context", "trace": bool, "max_answer_tokens", "cfg": {"context": {...}, "retrieval":
 //!   {...}}, "system_prompt", "stream": bool, "embedding": {Python's live embedding config}}`.
 //! Replies: `context` → `{"messages", "trace"}`; `answer` → `{"visible", "marker", "truncated",
-//! "trace"}`, or with `stream` an event stream of the model's events and a final
-//! `{"type": "answered", ...}` or `{"type": "failed", "failure": ...}` event.
+//! "trace"}`, or with `stream` an event stream of the model's events, relayed as the model sends
+//! them, and a final `{"type": "answered", ...}` or `{"type": "failed", "failure": ...}` event.
+//! A caller that closes the connection ends the model call (the upstream request is dropped).
 
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
-use axum::body::Body;
+use axum::body::{Body, Bytes};
 use axum::http::{HeaderMap, Response};
 use chrono::NaiveDate;
 use diary_answer::deadline::Budget;
 use diary_answer::embedder::HttpEmbedder;
-use diary_answer::exchange::{Exchange, ExchangeError};
+use diary_answer::exchange::{answer_messages, Answered, Exchange, ExchangeError};
 use diary_answer::model::{Client, Config as ClientConfig};
 use diary_answer::search::{IndexSearch, Shared};
 use diary_core::assembler::{Assembler, Store, StoreError};
@@ -226,7 +230,10 @@ pub async fn internal(
         return json_reply(400, &json!({"detail": "unknown mode"}));
     }
     let handle = tokio::runtime::Handle::current();
-    let task = tokio::task::spawn_blocking(move || serve(&app, &cfg, &uid, req, day, &handle));
+    // Held until the reply is ready: dropped with this handler when the caller goes away.
+    let (_caller, gone) = tokio::sync::oneshot::channel::<()>();
+    let task =
+        tokio::task::spawn_blocking(move || serve(&app, &cfg, &uid, req, day, &handle, gone));
     task.await.unwrap_or_else(|_| status(500))
 }
 
@@ -239,6 +246,7 @@ fn serve(
     req: AnswerRequest,
     day: NaiveDate,
     handle: &tokio::runtime::Handle,
+    mut gone: tokio::sync::oneshot::Receiver<()>,
 ) -> Response<Body> {
     let root = app.data_root.join("users").join(uid);
     let Ok(Some((store, settings))) = managed::ready(&root, uid) else {
@@ -357,30 +365,59 @@ fn serve(
     };
     // Python starts the exchange deadline after the context is built.
     let budget = Budget::new(None, None);
+    let trace = trace.as_ref().map(RetrievalTrace::to_json);
+    let cap = req.max_answer_tokens;
     if !req.stream {
-        let out = handle.block_on(exchange.answer(&messages, &budget, None));
+        // A caller that gives up (Python's own deadline closes the connection) drops the handler,
+        // and with it `gone`'s sender: the model call is dropped too, which closes it upstream.
+        let out = handle.block_on(async {
+            tokio::select! {
+                out = answer_messages(&main, cap, &messages, &budget, None) => Some(out),
+                _ = &mut gone => None,
+            }
+        });
         return match out {
-            Ok(a) => json_reply(
+            Some(Ok(a)) => json_reply(
                 200,
-                &json!({"visible": a.visible, "marker": a.marker, "truncated": a.truncated,
-                        "trace": trace.as_ref().map(RetrievalTrace::to_json)}),
+                &json!({"visible": a.visible, "marker": a.marker, "truncated": a.truncated, "trace": trace}),
             ),
-            Err(e) => json_reply(200, &json!({"failed": failure_json(&e)})),
+            Some(Err(e)) => json_reply(200, &json!({"failed": failure_json(&e)})),
+            None => status(503),
         };
     }
-    // The streamed answer: every model event, then the outcome. Collected into one body here
-    // (step 1); the incremental relay comes with the Python caller.
-    let mut frames: Vec<String> = Vec::new();
-    let mut sink = |e: Value| {
-        if streaming::shown(&e) {
-            frames.push(streaming::frame(&e));
-        }
-    };
-    let out = handle.block_on(exchange.answer(&messages, &budget, Some(&mut sink)));
-    let last = match out {
+    // The streamed answer: each model event is relayed as it comes, then the outcome. The reply
+    // starts now (the context is built, so a decline can no longer happen); the model call runs on
+    // its own blocking thread and ends when the caller closes the stream.
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
+    let worker = handle.clone();
+    handle.spawn_blocking(move || {
+        worker.block_on(async move {
+            let sink_tx = &tx;
+            let mut sink = |e: Value| {
+                if streaming::shown(&e) {
+                    let _ = sink_tx.send(Bytes::from(streaming::frame(&e)));
+                }
+            };
+            let out = tokio::select! {
+                out = answer_messages(&main, cap, &messages, &budget, Some(&mut sink)) => out,
+                () = tx.closed() => return,
+            };
+            let _ = tx.send(Bytes::from(streaming::frame(&outcome_event(out, trace))));
+        });
+    });
+    let mut resp = Response::builder().status(200);
+    for (k, v) in streaming::HEADERS {
+        resp = resp.header(k, v);
+    }
+    resp.body(Body::new(Frames(rx))).unwrap_or_default()
+}
+
+/// The last event of a streamed answer: `answered` with the outcome, or `failed`.
+fn outcome_event(out: Result<Answered, ExchangeError>, trace: Option<Value>) -> Value {
+    match out {
         Ok(a) => {
             json!({"type": "answered", "visible": a.visible, "marker": a.marker, "truncated": a.truncated,
-                        "trace": trace.as_ref().map(RetrievalTrace::to_json)})
+                   "trace": trace})
         }
         Err(e) => {
             let failure = match &e {
@@ -392,11 +429,23 @@ fn serve(
             };
             json!({"type": "failed", "failure": failure_json(&e), "event": streaming::error_event(failure)})
         }
-    };
-    frames.push(streaming::frame(&last));
-    let mut resp = Response::builder().status(200);
-    for (k, v) in streaming::HEADERS {
-        resp = resp.header(k, v);
     }
-    resp.body(Body::from(frames.concat())).unwrap_or_default()
+}
+
+/// The streamed reply's body: the frames the model call sends, until it drops its sender. Dropping
+/// the body (the caller went away) closes the channel, which ends the model call.
+struct Frames(tokio::sync::mpsc::UnboundedReceiver<Bytes>);
+
+impl http_body::Body for Frames {
+    type Data = Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<http_body::Frame<Bytes>, Self::Error>>> {
+        self.0
+            .poll_recv(cx)
+            .map(|frame| frame.map(|b| Ok(http_body::Frame::data(b))))
+    }
 }
