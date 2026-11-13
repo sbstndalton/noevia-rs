@@ -15,11 +15,12 @@ use diary_retrieval::embedding::config::{ChangeError, Snapshot};
 use diary_retrieval::embedding::guard::CheckFailure;
 use diary_retrieval::embedding::pystr::{is_space, str_or_empty};
 use diary_retrieval::embedding::{
-    check_embedding_address, clean_title, embed_fitting, frame, guard_seeded_addresses, mean,
-    model_matches, non_local_reason, normalize_base_url, normalize_target, recheck_seeded,
-    seed_from_cfg, seed_warning, split_text, state_path_for, AddressCheck, EmbeddingConfig,
-    EmbeddingConfigError, FitError, Kinds, LogLevel, LogLine, Pending, RecheckNext, ResolveError,
-    SeededReasons, SendError, Source, Which, KINDS, PROFILES, RECHECK_S, RETRY_DELAYS_S,
+    apply_recheck, check_embedding_address, clean_title, embed_fitting, frame,
+    guard_seeded_addresses, mean, model_matches, non_local_reason, normalize_base_url,
+    normalize_target, recheck_check, seed_from_cfg, seed_warning, split_text, state_path_for,
+    AddressCheck, EmbeddingConfig, EmbeddingConfigError, FitError, Kinds, LogLevel, LogLine,
+    Pending, RecheckNext, ResolveError, SeededReasons, SendError, Source, Which, KINDS, PROFILES,
+    RECHECK_S, RETRY_DELAYS_S,
 };
 use diary_retrieval::Target;
 use serde_json::{json, Value};
@@ -459,6 +460,12 @@ fn address_classification_matches_python() -> TestResult {
     assert!(reasons.len() >= 400, "{} addresses", reasons.len());
     for case in reasons {
         let got = non_local_reason(case["address"].as_str().unwrap_or(""));
+        if case.get("known_difference").is_some() {
+            // 6to4 and local-use NAT64 (known difference 10): Python accepts them as local
+            assert!(case["reason"].is_null(), "{}", case["address"]);
+            assert_eq!(got, Some("a reserved address"), "{}", case["address"]);
+            continue;
+        }
         assert_eq!(json!(got), case["reason"], "{}", case["address"]);
     }
     for case in arr(&fx["addresses"]["ip_address"]) {
@@ -828,7 +835,19 @@ fn run_guard_scenario(name: &str, spec: &Value) -> TestResult {
             assert_eq!(step["queue_empty"], json!(true), "{name}: step {n}");
             continue;
         };
-        let result = recheck_seeded(&mut config, &pending, &mut check);
+        // Python skips the check once an administrator has chosen
+        let result = if config.source() == Source::Environment {
+            let checked = recheck_check(&pending, &mut check);
+            apply_recheck(&mut config, &pending, checked)
+        } else {
+            apply_recheck(
+                &mut config,
+                &pending,
+                Err(CheckFailure {
+                    type_name: String::new(),
+                }),
+            )
+        };
         let scheduled = usize::from(result.next == RecheckNext::Again);
         if result.next == RecheckNext::Again {
             // Python reschedules `again`, a closure variable that the start-up loop has rebound to
@@ -913,7 +932,8 @@ fn every_held_back_address_is_rechecked_on_its_own() -> TestResult {
     while let Some(pending) = queue.pop_front() {
         rounds += 1;
         assert!(rounds < 40, "never settles");
-        if recheck_seeded(&mut config, &pending, &mut check).next == RecheckNext::Again {
+        let checked = recheck_check(&pending, &mut check);
+        if apply_recheck(&mut config, &pending, checked).next == RecheckNext::Again {
             queue.push_back(pending);
         }
     }
@@ -924,6 +944,122 @@ fn every_held_back_address_is_rechecked_on_its_own() -> TestResult {
         "the active address was released"
     );
     assert!(end.next.is_some(), "the next address was released");
+    Ok(())
+}
+
+/// The DNS call of a re-check runs with the shared configuration unlocked, and the locked half
+/// reads the source again: a choice made during the check wins.
+#[test]
+fn recheck_checks_without_the_config_lock() -> TestResult {
+    use std::sync::Mutex;
+    let dir = tempfile::tempdir()?;
+    let file = dir.path().join("embedding-config.json");
+    let cfg = json!({"llm": {"embed_model": "qa-embed-a", "embed_next_model": "qa-embed-b",
+        "embed_next_profile": "embeddinggemma-2", "embed_next_base_url": "http://qa-next.invalid"}});
+    let shared = Mutex::new(EmbeddingConfig::new(&cfg, Some(&file))?);
+    let pending = Pending {
+        which: Which::Next,
+        url: "http://qa-next.invalid".to_owned(),
+    };
+    let held = |reason: &str| -> TestResult {
+        let mut c = shared.lock().map_err(|e| e.to_string())?;
+        c.refuse_seeded(&SeededReasons::only(Which::Next, reason), true);
+        Ok(())
+    };
+    held("not used yet")?;
+    let mut locked_during_check = 0;
+    let mut check = |_: &str| -> Result<AddressCheck, CheckFailure> {
+        assert!(
+            shared.try_lock().is_ok(),
+            "the config lock is held during the check"
+        );
+        locked_during_check += 1;
+        Ok(AddressCheck::ok())
+    };
+    // the flow a caller runs: look under the lock, check unlocked, apply under the lock
+    let still_seeded = shared.lock().map_err(|e| e.to_string())?.source() == Source::Environment;
+    assert!(still_seeded);
+    let checked = recheck_check(&pending, &mut check);
+    // an administrator chooses while the check runs
+    shared
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clear_next()
+        .map_err(|e| e.to_string())?;
+    let step = apply_recheck(
+        &mut *shared.lock().map_err(|e| e.to_string())?,
+        &pending,
+        checked,
+    );
+    assert_eq!(step.next, RecheckNext::Stop);
+    assert!(
+        step.logs.is_empty(),
+        "nothing is released over the administrator's choice"
+    );
+    assert_eq!(locked_during_check, 1);
+    let c = shared.lock().map_err(|e| e.to_string())?;
+    assert!(
+        c.next().is_none(),
+        "the held next is not restored over the administrator's choice"
+    );
+    Ok(())
+}
+
+/// Two instances in one process writing one path never clobber each other's temp file: every
+/// write ends with a complete, readable file and no temp file is left.
+#[test]
+fn two_instances_writing_one_path_leave_a_valid_file() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let file = dir.path().join("state/embedding-config.json");
+    std::thread::scope(|scope| -> TestResult {
+        let mut handles = Vec::new();
+        for who in ["a", "b"] {
+            let file = file.clone();
+            handles.push(scope.spawn(move || -> Result<(), String> {
+                let mut c =
+                    EmbeddingConfig::new(&json!({}), Some(&file)).map_err(|e| e.to_string())?;
+                for n in 0..60 {
+                    let raw = json!({"model": format!("qa-embed-{who}-{}", n % 7)});
+                    c.set_next(&raw).map_err(|e| e.to_string())?;
+                    let reread =
+                        EmbeddingConfig::new(&json!({}), Some(&file)).map_err(|e| e.to_string())?;
+                    if reread.get().damaged.is_some() {
+                        return Err("a reader saw a damaged file".to_owned());
+                    }
+                }
+                Ok(())
+            }));
+        }
+        for h in handles {
+            h.join().map_err(|_| "thread panicked")??;
+        }
+        Ok(())
+    })?;
+    let end = EmbeddingConfig::new(&json!({}), Some(&file))?.get();
+    assert!(end.damaged.is_none());
+    assert!(end.next.is_some_and(|t| t.model.starts_with("qa-embed-")));
+    let mut left = Vec::new();
+    tmp_files(dir.path(), &mut left);
+    assert!(left.is_empty(), "{left:?}");
+    Ok(())
+}
+
+/// An existing temp name (a stale file or a planted symlink) is never written through.
+#[cfg(unix)]
+#[test]
+fn a_planted_symlink_is_not_followed() -> TestResult {
+    let dir = tempfile::tempdir()?;
+    let file = dir.path().join("embedding-config.json");
+    let victim = dir.path().join("victim.txt");
+    std::fs::write(&victim, "keep")?;
+    // plant a symlink on each temp name the next writes could use
+    for n in 0..4096u32 {
+        let name = format!("embedding-config.json.{}.{n}.tmp", std::process::id());
+        let _ = std::os::unix::fs::symlink(&victim, dir.path().join(name));
+    }
+    let mut c = EmbeddingConfig::new(&json!({}), Some(&file))?;
+    let _ = c.set_next(&json!({"model": "qa-embed-b"}));
+    assert_eq!(std::fs::read_to_string(&victim)?, "keep");
     Ok(())
 }
 

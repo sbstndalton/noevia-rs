@@ -61,11 +61,33 @@
 //!    through the name `again`, which the start-up loop has rebound to the last held-back address
 //!    by then. With both addresses held back, the first one is re-checked once and never again
 //!    (the last one is checked twice per round), so it can stay refused until a restart even after
-//!    it resolves. [`guard::recheck_seeded`] steps one address and the caller re-schedules that
-//!    same address; the differential test reproduces Python's loop to compare the recorded runs
+//!    it resolves. [`guard::recheck_check`] and [`guard::apply_recheck`] step one address and the
+//!    caller re-schedules that same address; the differential test reproduces Python's loop to compare the recorded runs
 //!    and has a separate test for the sound loop.
 //! 9. **Vectors are `f64`.** Python's `_mean` also accepts `int` vector items (and sums them
 //!    exactly); the fixtures and the callers use floats.
+//! 10. **6to4 and local-use NAT64 are refused (a Python security gap, not ported).** Python treats
+//!     `2002::/16` and `64:ff9b:1::/48` as private, so they are "local", but both carry an IPv4
+//!     address (`2002:808:808::1` reaches `8.8.8.8`). Here they join the reserved IPv6 list and
+//!     answer "a reserved address". The fixtures keep Python's answers for these addresses
+//!     (`known_difference` entries); the test asserts the Rust refusal and that Python accepts.
+//! 11. **`system_resolver` and internationalised names.** Python's `getaddrinfo` IDNA-encodes a
+//!     non-ASCII host; `system_resolver` passes the UTF-8 name through, which the platform
+//!     resolver does not resolve, so such a name is a transient "does not resolve". It fails
+//!     closed. Callers that inject their own resolver are unaffected.
+//! 12. **State temp file name.** Python writes `<name>.<pid>.tmp` with `O_CREAT | O_TRUNC`. Here
+//!     the name is `<name>.<pid>.<n>.tmp` (`n` from a process-wide counter) and the file is
+//!     created with `create_new` (`O_EXCL`, mode 0600), which does not follow a planted symlink
+//!     and cannot be clobbered by a second instance in the same process. A name that already
+//!     exists is skipped (the next counter value is tried, a few times); any other failure is
+//!     returned as the `io::Error` Python's `OSError` is, and the temp file is removed.
+//!
+//! # Behaviour kept from Python
+//!
+//! * The guard applies its permanent refusals only after the whole back-off loop (about half a
+//!   minute for a name that does not resolve) has finished: a public answer found in the first
+//!   round is not refused until then, and `guard_seeded_addresses` decides nothing at all when
+//!   a check raises. [`guard::GuardOutcome::apply`] makes the refusals together.
 
 pub mod address;
 pub mod config;
@@ -81,8 +103,8 @@ pub use config::{
     state_path_for, ChangeError, EmbeddingConfig, SeededReasons, Snapshot, Source, State, Which,
 };
 pub use guard::{
-    guard_seeded_addresses, recheck_seeded, CheckFailure, GuardOutcome, GuardRefusal, LogLevel,
-    LogLine, Pending, RecheckNext, RecheckStep, RECHECK_S, RETRY_DELAYS_S,
+    apply_recheck, guard_seeded_addresses, recheck_check, CheckFailure, GuardOutcome, GuardRefusal,
+    LogLevel, LogLine, Pending, RecheckNext, RecheckStep, RECHECK_S, RETRY_DELAYS_S,
 };
 pub use target::{
     model_matches, normalize_base_url, normalize_target, normalize_target_from, seed_from_cfg,
