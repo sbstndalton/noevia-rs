@@ -61,6 +61,19 @@ jobs:
           node crates/tool-rate-limit/tests/gen-fixtures.cjs "$PWD/core-r5" "$RUNNER_TEMP/tool-rate-limit.json"
           cmp "$RUNNER_TEMP/tool-rate-limit.json" crates/tool-rate-limit/tests/fixtures/tool-rate-limit.v1.json
           cargo test --locked -p tool-rate-limit
+      - name: Core's executeMcpToolCall reproduces the committed call scenarios (track R5)
+        # core's own createMcpWiring executor, tool-rate-limit, resultToText and mintToken over a scripted
+        # transport and broker; the front's executor replays the result.
+        env:
+          NOEVIA_CORE_REF: ${{ steps.core_r5.outputs.sha }}
+          NOEVIA_MCP_CALL_FIXTURE: ${{ runner.temp }}/mcp-call-node.json
+        run: |
+          set -euo pipefail
+          [ "$(tr -d ' \n' < bins/noevia-server/tests/fixtures/mcp-call-oracle.core-ref)" = "$NOEVIA_CORE_REF" ]
+          node bins/noevia-server/tests/mcp-call-oracle.cjs "$PWD/core-r5" "$NOEVIA_MCP_CALL_FIXTURE"
+          cmp "$NOEVIA_MCP_CALL_FIXTURE" bins/noevia-server/tests/fixtures/mcp-call-node.v1.json
+          cargo test --locked -p noevia-server --test mcp_call_oracle --test mcp_call
+          cargo test --locked -p noevia-server --lib mcp_call
       - name: The actor replays every scenario, the manifest, the token and the cancellation cases
         env:
           NOEVIA_MCP_DISCOVERY_FIXTURE: ${{ runner.temp }}/mcp-discovery-node.json

@@ -701,7 +701,10 @@ mod tests {
             (r.user.as_str(), r.workspace_user, r.write),
             ("u", None, true)
         );
-        assert_eq!(r.nextcloud.unwrap()[0].0, "Authorization");
+        assert_eq!(
+            r.nextcloud,
+            Some(vec![("Authorization".to_string(), "Basic x".to_string())])
+        );
         for bad in [
             r#"{"name":"t"}"#,
             r#"{"server":"s"}"#,
