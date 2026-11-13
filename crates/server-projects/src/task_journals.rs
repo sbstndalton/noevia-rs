@@ -648,6 +648,19 @@ pub(crate) fn bound_review(kind: &str, data: &JValue) -> JValue {
 
 /// core task-lifecycle.cjs `foldInput`: only what the fold reads, then the shared Rust fold.
 fn lifecycle_state(rows: &[JValue], authoritative: bool) -> JValue {
+    match fold_lifecycle(rows, authoritative) {
+        Some(Ok(state)) => s(state.name()),
+        _ => JValue::Null,
+    }
+}
+
+/// core task-lifecycle.cjs `foldEvents(rows, INITIAL_STATE, { authoritative })` over a journal's
+/// rows: the state, or what the fold throws; `None` when the port refuses the input (the JS
+/// confirmation's `impl_refused`).
+pub(crate) fn fold_lifecycle(
+    rows: &[JValue],
+    authoritative: bool,
+) -> Option<task_lifecycle::Outcome> {
     let mut input = Vec::new();
     for row in rows {
         let Some(kind) = row.get("type").as_str() else {
@@ -672,21 +685,26 @@ fn lifecycle_state(rows: &[JValue], authoritative: bool) -> JValue {
         }
         input.push(obj(event));
     }
-    let Some(text) = wtf16::stringify(&JValue::Arr(input)) else {
-        return JValue::Null;
-    };
-    let Some(events) = lifecycle_json::parse_utf8(text.as_bytes(), LIFECYCLE_DEPTH) else {
-        return JValue::Null;
-    };
+    let text = wtf16::stringify(&JValue::Arr(input))?;
+    let events = lifecycle_json::parse_utf8(text.as_bytes(), LIFECYCLE_DEPTH)?;
     let from = lifecycle_json::Value::Str(
         task_lifecycle::INITIAL_STATE
             .name()
             .encode_utf16()
             .collect(),
     );
-    match task_lifecycle::fold(&events, &from, authoritative) {
-        Ok(Ok(state)) => s(state.name()),
-        _ => JValue::Null,
+    task_lifecycle::fold(&events, &from, authoritative).ok()
+}
+
+/// `a === b` on plain data: scalars by value (`NaN !== NaN`, `0 === -0`), an object or array is
+/// never `===` to another decoded value (each JSON row decodes to fresh objects).
+fn strict_eq(a: &JValue, b: &JValue) -> bool {
+    match (a, b) {
+        (JValue::Undefined, JValue::Undefined) | (JValue::Null, JValue::Null) => true,
+        (JValue::Bool(x), JValue::Bool(y)) => x == y,
+        (JValue::Num(x), JValue::Num(y)) => x == y,
+        (JValue::Str(x), JValue::Str(y)) => x == y,
+        _ => false,
     }
 }
 
@@ -749,7 +767,7 @@ pub fn derive(rows: &[JValue]) -> Job {
             "step.completed" => {
                 let id = d.get("id");
                 let running = |x: &&mut JValue| {
-                    x.get("id") == id && x.get("status").as_str() == Some("running")
+                    strict_eq(x.get("id"), id) && x.get("status").as_str() == Some("running")
                 };
                 let found = if authoritative {
                     job.steps.iter_mut().rev().find(running).is_some()
@@ -764,7 +782,7 @@ pub fn derive(rows: &[JValue]) -> Job {
                 let step = if found {
                     job.steps.iter_mut().rev().find(running)
                 } else {
-                    job.steps.iter_mut().find(|x| x.get("id") == id)
+                    job.steps.iter_mut().find(|x| strict_eq(x.get("id"), id))
                 };
                 if let Some(JValue::Obj(items)) = step {
                     wtf16::set(items, "status", s(done));
