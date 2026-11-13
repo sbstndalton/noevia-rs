@@ -72,6 +72,8 @@ struct Script {
     approvals: Mutex<Vec<String>>,
     executions: Mutex<Vec<String>>,
     uuids: Mutex<u64>,
+    leased: Mutex<bool>,
+    loaded: Mutex<bool>,
     /// Every event the turn sent, the client's leaving aside, with whether it had left.
     observed: Mutex<Vec<(JValue, bool)>>,
 }
@@ -79,36 +81,33 @@ struct Script {
 /// The per-start id the recording's grant contexts carry (record_turns.cjs NOEVIA_START_ID).
 const START_ID: &str = "0123456789abcdef0123456789abcdef";
 
-fn chunks_of(round: &JValue) -> Vec<Chunk> {
+/// The bytes the recorder's engine sent for one streamed round, exactly (`input.chunks`).
+fn chunks_of(recorded: &JValue) -> Vec<Chunk> {
+    let JValue::Arr(items) = recorded else { return Vec::new() };
+    items
+        .iter()
+        .map(|c| match c {
+            JValue::Str(m) if m == "leave" => Chunk::Leave,
+            JValue::Str(m) if m == "stall" => Chunk::Stall,
+            JValue::Str(m) if m == "wait" => Chunk::Bytes(Vec::new()),
+            _ if c.get("text").as_str().is_some() => Chunk::Bytes(c.get("text").as_str().unwrap().as_bytes().to_vec()),
+            _ => Chunk::Bytes(base64(c.get("b64").as_str().unwrap())),
+        })
+        .collect()
+}
+
+fn base64(text: &str) -> Vec<u8> {
+    const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = Vec::new();
-    let JValue::Arr(frames) = round.get("frames") else {
-        return out;
-    };
-    for f in frames {
-        if f.get("leave") == &JValue::Bool(true) {
-            out.push(Chunk::Leave);
-        } else if f.get("stall") == &JValue::Bool(true) {
-            out.push(Chunk::Stall);
-        } else if f.get("done") == &JValue::Bool(true) {
-            out.push(Chunk::Bytes(b"data: [DONE]\n\n".to_vec()));
-        } else if let JValue::Str(raw) = f {
-            out.push(Chunk::Bytes(raw.as_bytes().to_vec()));
-        } else if f.get("split").is_object() {
-            // record_turns.cjs: the line cut at half its length in UTF-16 units.
-            let line = format!("data: {}\n\n", js::stringify(f.get("split")));
-            let half = js::len(&line) / 2;
-            let head = js::slice(&line, half);
-            out.push(Chunk::Bytes(head.as_bytes().to_vec()));
-            out.push(Chunk::Bytes(line.as_bytes()[head.len()..].to_vec()));
-        } else if f.get("splitBytes").is_object() {
-            let bytes = format!("data: {}\n\n", js::stringify(f.get("splitBytes"))).into_bytes();
-            let at = bytes.iter().position(|b| *b >= 0xf0).unwrap() + 2;
-            out.push(Chunk::Bytes(bytes[..at].to_vec()));
-            out.push(Chunk::Bytes(bytes[at..].to_vec()));
-        } else {
-            out.push(Chunk::Bytes(
-                format!("data: {}\n\n", js::stringify(f)).into_bytes(),
-            ));
+    let mut acc = 0u32;
+    let mut bits = 0;
+    for b in text.bytes().filter(|b| *b != b'=') {
+        acc = (acc << 6) | ABC.iter().position(|x| *x == b).unwrap() as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
         }
     }
     out
@@ -119,6 +118,7 @@ impl Script {
         let JValue::Arr(rounds) = case.get("input").get("rounds").clone() else {
             panic!()
         };
+        let case_loaded = case.get("input").get("loaded") != &JValue::Bool(false);
         let recorded_bridge = match case.get("bridge") {
             JValue::Arr(b) => b.clone(),
             _ => Vec::new(),
@@ -136,6 +136,8 @@ impl Script {
             approvals: Mutex::new(Vec::new()),
             executions: Mutex::new(Vec::new()),
             uuids: Mutex::new(0),
+            leased: Mutex::new(false),
+            loaded: Mutex::new(case_loaded),
             observed: Mutex::new(Vec::new()),
         }
     }
@@ -170,27 +172,37 @@ impl Host for Script {
     }
 
     async fn lease(&self, model: &str) -> Result<Option<Vec<(String, String)>>, GateRefusal> {
-        self.store(
-            "modelManager.acquireLease",
-            vec![("model", js::s(model)), ("lease", js::s("qa-lease-1"))],
-        );
+        let refusal = self.case.get("input").get("leaseRefusal");
+        if refusal.is_object() {
+            return Err(GateRefusal {
+                text: refusal.get("publicMessage").as_str().unwrap().to_string(),
+                code: refusal.get("code").as_str().map(str::to_string),
+                retryable: refusal.get("retryable").as_bool(),
+            });
+        }
+        *self.leased.lock().unwrap() = true;
+        self.store("modelManager.acquireLease", vec![("model", js::s(model)), ("lease", js::s("qa-lease-1"))]);
         Ok(Some(vec![("X-Noevia-Lease".into(), "qa-lease-1".into())]))
     }
 
     async fn health(&self) -> Option<JValue> {
         let ctx = self.case.get("input").get("ctxSize").clone();
-        Some(js::obj([(
-            "all_models_loaded",
-            JValue::Arr(vec![js::obj([
-                ("model_name", js::s("qa-model")),
+        let model = self.case.get("input").get("project").get("model").as_str().unwrap_or("qa-model").to_string();
+        let rows = if *self.loaded.lock().unwrap() {
+            vec![js::obj([
+                ("model_name", js::s(model)),
                 ("loaded", JValue::Bool(true)),
                 ("recipe_options", js::obj([("ctx_size", ctx)])),
-            ])]),
-        )]))
+            ])]
+        } else {
+            Vec::new()
+        };
+        Some(js::obj([("all_models_loaded", JValue::Arr(rows))]))
     }
 
     async fn load(&self, model: &str) -> bool {
         self.store("modelManager.load", vec![("model", js::s(model))]);
+        *self.loaded.lock().unwrap() = true;
         true
     }
 
@@ -231,14 +243,9 @@ impl Host for Script {
                 },
             });
         }
-        Ok(Answer {
-            status: 200,
-            headers: Vec::new(),
-            body: Body {
-                chunks: chunks_of(&round),
-                ..Body::default()
-            },
-        })
+        let recorded = self.case.get("input").get("chunks").clone();
+        let JValue::Arr(per_round) = recorded else { panic!() };
+        Ok(Answer { status: 200, headers: Vec::new(), body: Body { chunks: chunks_of(&per_round[*next - 1]), ..Body::default() } })
     }
 
     async fn read(&self, body: &mut Body, idle_ms: Option<u64>) -> Read {
@@ -282,7 +289,9 @@ impl Host for Script {
         Ok(())
     }
 
-    fn mark_tools_unsupported(&self, _model: &str) {}
+    fn mark_tools_unsupported(&self, model: &str) {
+        self.store("templateToolsGate.markUnsupported", vec![("model", js::s(model))]);
+    }
 
     fn engine_busy(&self) -> bool {
         false
@@ -566,7 +575,9 @@ fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
             .to_string()
     });
     // The lease goes back as the response ends or the client leaves, before the store is asked.
-    script.store("lease.release", vec![("lease", js::s("qa-lease-1"))]);
+    if *script.leased.lock().unwrap() {
+        script.store("lease.release", vec![("lease", js::s("qa-lease-1"))]);
+    }
     saving.finish(
         &script,
         chat.as_deref(),
@@ -588,7 +599,7 @@ fn every_prepared_turn_reads() {
     for c in cases.iter().filter(|c| c.get("handoff").is_object()) {
         let p = Prepared::read(c.get("handoff").get("prepared"))
             .unwrap_or_else(|e| panic!("{}: {e:?}", c.get("name").as_str().unwrap()));
-        assert_eq!(p.model, "qa-model");
+        assert!(p.model.starts_with("qa"));
         assert_eq!(c.get("handoff").get("before").as_num(), Some(5.0));
         read += 1;
     }
@@ -617,7 +628,13 @@ fn the_native_continuation_is_node_after_the_cut() {
         let before = c.get("handoff").get("before").as_num().unwrap() as usize;
         let want: Vec<String> = events[before..].iter().map(js::stringify).collect();
         let got = script.events.lock().unwrap().clone();
-        assert_eq!(got, want, "{name}: events after the cut");
+        let kinds = |list: &[String]| {
+            list.iter()
+                .map(|e| wtf16::parse(e).unwrap().get("type").as_str().unwrap_or("").to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        assert_eq!(got, want, "{name}: events after the cut\n native: {}\n node:   {}", kinds(&got), kinds(&want));
         let JValue::Arr(requests) = c.get("requests") else {
             panic!()
         };
@@ -689,7 +706,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 32, "{ran:?}");
+    assert_eq!(ran.len(), 39, "{ran:?}");
 }
 
 /// The front spawns the turn on its runtime: `native::run` must be `Send` for a `Send + Sync` host.

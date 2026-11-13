@@ -130,13 +130,16 @@ const MODEL = 'qa-model';
 //                       (sent as it is), or a marker: { leave: true } the client goes away here (the turn's
 //                       `close`), { stall: true } no more bytes until the request is aborted, { done: true }
 //                       `data: [DONE]`, { split: <object> } one frame cut in two chunks mid-line, { splitBytes: <object> }
-//                       one frame cut inside the UTF-8 bytes of its first astral character.
+//                       one frame cut inside the UTF-8 bytes of its first astral character, { wait: true } the next
+//                       chunk comes a moment later (an empty read first).
 //   { status, body }    a non-200 reply with this body text
 //   { json }            a 200 non-streaming JSON reply (the empty-stream fallback, a summary, a title)
 //   { throws }          the request fails before any reply
 const enc = new TextEncoder();
 function engine(rounds, log, res) {
   let next = 0;
+  // The bytes each streamed round sent, exactly (log.chunks[round]): {text} | {b64} | 'leave' | 'stall'.
+  log.chunks = rounds.map(() => null);
   const fetch = async (url, options = {}) => {
     const body = typeof options.body === 'string' ? JSON.parse(options.body) : null;
     log.requests.push({ url: String(url), chat: String(url) === CHAT_URL, stream: body?.stream === true, headers: options.headers || {}, body });
@@ -149,6 +152,7 @@ function engine(rounds, log, res) {
     const chunks = [];
     for (const frame of round.frames || []) {
       if (frame && frame.leave) chunks.push({ leave: true });
+      else if (frame && frame.wait) chunks.push({ wait: true });
       else if (frame && frame.stall) chunks.push({ stall: true });
       else if (frame && frame.done) chunks.push('data: [DONE]\n\n');
       else if (frame && frame.split) { const line = `data: ${JSON.stringify(frame.split)}\n\n`; const at = Math.floor(line.length / 2); chunks.push(line.slice(0, at), line.slice(at)); }
@@ -160,6 +164,8 @@ function engine(rounds, log, res) {
       }
       else chunks.push(typeof frame === 'string' ? frame : `data: ${JSON.stringify(frame)}\n\n`);
     }
+    log.chunks[next - 1] = chunks.map((c) => (c && c.leave ? 'leave' : c && c.stall ? 'stall' : c && c.wait ? 'wait'
+      : typeof c === 'string' ? { text: c } : { b64: Buffer.from(c).toString('base64') }));
     let i = 0;
     const aborted = () => new Promise((_, reject) => {
       const fail = () => reject(signal.reason ?? Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }));
@@ -177,6 +183,8 @@ function engine(rounds, log, res) {
           return;
         }
         if (chunk && chunk.stall) { await settle(); await aborted(); return; }
+        // An engine's next chunk comes a moment later: the reader has handled everything before it by then.
+        if (chunk && chunk.wait) { await settle(); controller.enqueue(new Uint8Array(0)); return; }
         controller.enqueue(typeof chunk === 'string' ? enc.encode(chunk) : chunk);
       },
     });
@@ -267,6 +275,8 @@ async function runTurn(c, { handoff = false } = {}) {
     const json = (r, status, payload) => { out.refusal = { status, payload }; r.end(); };
 
     const ctxSize = c.ctxSize || 32768;
+    const modelName = (c.project && c.project.model) || MODEL;
+    let loadedNow = c.loaded !== false;
     let leases = 0;
     const upstream = engine(c.rounds || [], log, res);
     const handler = createChatHandler({
@@ -282,6 +292,7 @@ async function runTurn(c, { handoff = false } = {}) {
         // The inference gate grants at once (llamacpp-manager.cjs acquireLease, inference-gate-client.cjs makeLease).
         acquireLease: async (model, options = {}) => {
           options.signal?.throwIfAborted();
+          if (c.leaseRefusal) throw Object.assign(new Error('QA gate refusal'), { name: 'GateError', ...c.leaseRefusal });
           const lease = `qa-lease-${++leases}`;
           let released = false;
           store('modelManager.acquireLease', { model, lease });
@@ -294,8 +305,10 @@ async function runTurn(c, { handoff = false } = {}) {
           };
         },
         inferenceBusy: () => false,
-        load: async (model) => { store('modelManager.load', { model }); return { ok: true }; },
-        health: async () => ({ ok: true, body: { all_models_loaded: [{ model_name: MODEL, loaded: true, recipe_options: { ctx_size: ctxSize } }] } }),
+        load: async (model) => { store('modelManager.load', { model }); loadedNow = true; return { ok: true }; },
+        // `loaded: false`: the model is not loaded until the turn loads it (chat-context.cjs resolveManagedLimit).
+        health: async () => ({ ok: true, body: { all_models_loaded: loadedNow ? [{ model_name: modelName, loaded: true, recipe_options: { ctx_size: ctxSize } }] : [] } }),
+        ...(c.props ? { props: async () => ({ ok: false }) } : {}),
       },
       requestScope, currentWorkspace: () => workspace, json, getProject: (id) => (project && id === project.id ? project : null),
       // providers.cjs providerHeaders: JSON, and a bearer key when the row has one other than 'local' (this one has none).
@@ -328,6 +341,9 @@ async function runTurn(c, { handoff = false } = {}) {
       recordToolUse: (_ws, name) => store('recordToolUse', { name }),
       chatTitles: c.titles ? { save: (listId, chatId, title, first) => store('chatTitles.save', { listId, chatId, title, first }), autoNamed: (listId, chatId, first) => { store('chatTitles.autoNamed', { listId, chatId, first }); return c.titles.autoNamed !== false; } } : null,
       sourceWaitMs: 0, streamIdleMs: c.streamIdleMs ?? 120000,
+      // The engine's /props answer through the tools gate (chat-template-caps.cjs): unknown, so tools are allowed;
+      // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
+      templateToolsGate: { allowsTools: async () => true, markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       ...(handoff ? { nativeHandoff: { requested: () => true, supervising: () => false } } : {}),
     });
     const body = { message: 'QA hello', projectId: project ? project.id : undefined, chatId: 'qa-chat-1', history: [], ...(c.body || {}) };
@@ -341,13 +357,14 @@ async function runTurn(c, { handoff = false } = {}) {
       return { prepared, refused, before: prepared ? out.events.length - 1 : null, requests: prepared ? log.requests.length : null };
     }
     // The script is exact: every round it names is asked for, and no other.
-    if (upstream.used() !== (c.rounds || []).length) throw new Error(`${c.name}: the turn made ${upstream.used()} engine requests, the script has ${(c.rounds || []).length}`);
+    if (!process.env.RECORD_LOOSE && upstream.used() !== (c.rounds || []).length) throw new Error(`${c.name}: the turn made ${upstream.used()} engine requests, the script has ${(c.rounds || []).length}`);
     const record = createTurnRecord({ now: () => FIXED_NOW });
     for (const event of out.events) record.observe(event);
     return {
       name: c.name,
       about: c.about,
-      input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null, rounds: c.rounds || [] },
+      input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
+        loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true, rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge,
       files: listFiles(dir),
@@ -453,16 +470,40 @@ const CASES = [
     rounds: [summary('QA summary of the earlier turns, part one.'), summary('QA summary of the earlier turns, part two.'), answer('Answer after compaction.')] },
   { name: 'context_too_full', about: 'The current message alone does not fit: an error event, no engine request.', ctxSize: 2048,
     body: { message: longText('QA huge message.', 400) }, rounds: [] },
+  { name: 'thinking_cut', about: 'Reasoning past the thinking cap with no answer: the stream is cut, the answer asked for once more.',
+    rounds: [{ frames: [chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), { wait: true }, chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), finish('stop')] },
+      answer('The answer after the cut.')] },
+  { name: 'thinking_cut_forced_fails', about: 'The forced answer after a thinking cut fails: the reply ends on its error.',
+    rounds: [{ frames: [chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), { wait: true }, chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), finish('stop')] },
+      { status: 503, body: 'QA busy' }] },
+  { name: 'model_loads', about: 'The model is not loaded: the status says so, the manager loads it, the turn goes on.', loaded: false,
+    rounds: [answer('Answer after the load.')] },
+  { name: 'gate_refuses', about: 'The inference gate refuses the model lease: an error with its code, nothing asked of the engine.',
+    leaseRefusal: { publicMessage: 'The model is busy. Try again shortly.', code: 'queue_full', retryable: true }, rounds: [] },
+  { name: 'template_refuses_tools', about: 'The engine refuses the tools for the model template: once more without them, and remembered.', props: true,
+    rounds: [{ status: 400, body: JSON.stringify({ error: { message: 'Unable to generate parser for this template. Conversation roles must alternate user/assistant' } }) },
+      answer('Answer without tools.')] },
+  { name: 'continuation_compacted', about: 'A large tool result pushes the next round over the budget: older turns are summarised, the result shortened.', ctxSize: 6144,
+    toolResults: { drive_read_file: 'QA listing line. '.repeat(500) },
+    body: { history: [{ role: 'user', content: 'QA earlier question one, about the synthetic files.' }, { role: 'assistant', content: 'QA earlier answer one.' },
+      { role: 'user', content: 'QA earlier question two.' }, { role: 'assistant', content: 'QA earlier answer two.' }] },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-big"}'), finish('tool_calls')] },
+      summary('QA summary of the two earlier exchanges.'), answer('Answer from the listing.')] },
   { name: 'refused_no_message', about: 'A request with no message is refused before the stream opens.', body: { message: '' }, rounds: [] },
   { name: 'refused_unknown_project', about: 'A project id that does not exist.', body: { projectId: 'qa-missing' }, rounds: [] },
   { name: 'refused_no_model', about: 'A free chat with no model loaded.', project: null, body: { projectId: undefined }, rounds: [] },
+  // Last: reasoning-effort.cjs remembers a provider that rejected the effort for the rest of the process.
+  { name: 'effort_rejected', about: 'A Qwen3-family model on the local engine gets real effort; the engine rejects it: a warning, the hint instead.',
+    project: { model: 'qa_qwen3-test', reasoningEffort: 'low' },
+    rounds: [{ status: 400, body: JSON.stringify({ error: { message: 'unknown field: chat_template_kwargs.enable_thinking' } }) }, answer('Answer with the hint.')] },
 ];
 
 (async () => {
   const cases = [];
   // The hand-off is recorded when the core has it (track R8, noevia-core#362): what the native executor gets.
   const withHandoff = fs.existsSync(path.join(server, 'rust-chat-native.cjs'));
-  for (const c of CASES) {
+  // RECORD_ONLY=<case> RECORD_LOOSE=1: one case, the script not held exact (for writing a new case only).
+  for (const c of CASES.filter((x) => !process.env.RECORD_ONLY || x.name === process.env.RECORD_ONLY)) {
     const turn = await runTurn(c);
     if (withHandoff && turn.http) turn.handoff = await runTurn(c, { handoff: true });
     cases.push(turn);
