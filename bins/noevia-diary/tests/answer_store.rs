@@ -375,13 +375,50 @@ fn recorded_bytes(v: &Value) -> Vec<u8> {
     data_of(v)
 }
 
-#[test]
-fn log_exchange_matches_python_for_every_recorded_case() {
+/// Compare journal rows with their recorded state (`swap` maps our xid onto Python's).
+fn assert_rows(
+    name: &str,
+    what: &str,
+    rows: &[Row],
+    want: &[Value],
+    swap: impl Fn(&str) -> String,
+) {
+    assert_eq!(rows.len(), want.len(), "{name}: {what} rows");
+    for (row, want) in rows.iter().zip(want) {
+        assert_eq!(row.kind, want["kind"].as_str().unwrap(), "{name}: {what}");
+        assert_eq!(
+            swap(&row.payload),
+            want["payload"].as_str().unwrap(),
+            "{name}: {what}"
+        );
+        assert_eq!(
+            row.applied,
+            want["applied"].as_i64().unwrap(),
+            "{name}: {what}"
+        );
+        assert_eq!(
+            row.attempts,
+            want["attempts"].as_i64().unwrap(),
+            "{name}: {what}"
+        );
+        assert_eq!(
+            row.last_error.as_deref(),
+            want["last_error"].as_str(),
+            "{name}: {what}"
+        );
+    }
+}
+
+/// Replay one recorded set of `log_exchange` cases. `native`: the set was recorded with
+/// DIARY_CORPUS_WRITE_IMPL=rust, where Python raises `NativeWriteUnavailable` for a pending row
+/// exactly as this side returns `Err((true, ..))`; in the default mode Python returns the xid
+/// instead (module doc). Returns (logged, pending, refused).
+fn replay_log_exchange(set: &str, native: bool) -> (usize, usize, usize) {
     let f = fixtures();
     let uid = tenant_uid(&f);
     let (mut logged, mut pending, mut refused) = (0, 0, 0);
-    for case in f["log_exchange"].as_array().unwrap() {
-        let name = case["name"].as_str().unwrap();
+    for case in f[set].as_array().unwrap() {
+        let name = &format!("{set}/{}", case["name"].as_str().unwrap());
         let dir = tempfile::tempdir().unwrap();
         build_tenant(dir.path(), &uid, case);
         let args = &case["args"];
@@ -398,7 +435,8 @@ fn log_exchange_matches_python_for_every_recorded_case() {
         });
         let expected = &case["expected"];
         let skip = case["journal_before"].as_array().unwrap().len();
-        let rows = journal_rows(dir.path(), &uid, skip);
+        let all_rows = journal_rows(dir.path(), &uid, 0);
+        let (earlier, rows) = all_rows.split_at(skip);
         let files = files_of(dir.path(), &uid);
         // Python's xid is a counter value; ours is random: compare with ours mapped onto it.
         let py_xid = expected.get("xid").and_then(Value::as_str);
@@ -406,6 +444,12 @@ fn log_exchange_matches_python_for_every_recorded_case() {
             (Ok(xid), false) => (Some(xid.clone()), false),
             (Err((true, msg)), true) => {
                 assert!(msg.contains("pending"), "{name}: {msg}");
+                // Python's native mode raises with the same text; its default mode raises nothing.
+                assert_eq!(
+                    expected.get("native_unavailable").and_then(Value::as_str),
+                    native.then_some(msg.as_str()),
+                    "{name}"
+                );
                 // The xid is only in the journal row.
                 let payload: Value = serde_json::from_str(&rows[0].payload).unwrap();
                 (payload["xid"].as_str().map(str::to_string), true)
@@ -448,24 +492,24 @@ fn log_exchange_matches_python_for_every_recorded_case() {
                 "{name}: {path}"
             );
         }
-        // The journal row: kind, the payload (same keys, same order, same text), applied.
-        let want_rows = expected["journal"].as_array().unwrap();
-        assert_eq!(rows.len(), want_rows.len(), "{name}: journal rows");
-        for (row, want) in rows.iter().zip(want_rows) {
-            assert_eq!(row.kind, want["kind"].as_str().unwrap(), "{name}");
-            assert_eq!(
-                swap(&row.payload),
-                want["payload"].as_str().unwrap(),
-                "{name}"
-            );
-            assert_eq!(row.applied, want["applied"].as_i64().unwrap(), "{name}");
-            assert_eq!(row.attempts, want["attempts"].as_i64().unwrap(), "{name}");
-            assert_eq!(
-                row.last_error.as_deref(),
-                want["last_error"].as_str(),
-                "{name}"
-            );
-        }
+        // The new journal row: kind, the payload (same keys, same order, same text), applied,
+        // attempts and last error.
+        assert_rows(
+            name,
+            "new",
+            rows,
+            expected["journal"].as_array().unwrap(),
+            swap,
+        );
+        // The rows that were there before: an earlier pending row is applied first, and a failure
+        // there stops the pass (it gains an attempt and the error; the new row stays untried).
+        assert_rows(
+            name,
+            "earlier",
+            earlier,
+            expected["earlier"].as_array().unwrap(),
+            |t| t.to_string(),
+        );
         // Marked dirty before the write, as the append route does (Python reindexes afterwards).
         let payload: Value = serde_json::from_str(&rows[0].payload).unwrap();
         assert_eq!(
@@ -479,7 +523,17 @@ fn log_exchange_matches_python_for_every_recorded_case() {
             logged += 1;
         }
     }
-    assert_eq!((logged, pending, refused), (22, 3, 1));
+    (logged, pending, refused)
+}
+
+#[test]
+fn log_exchange_matches_python_for_every_recorded_case() {
+    assert_eq!(replay_log_exchange("log_exchange", false), (22, 5, 1));
+}
+
+#[test]
+fn log_exchange_matches_python_calling_the_native_transform() {
+    assert_eq!(replay_log_exchange("log_exchange_native", true), (22, 5, 1));
 }
 
 #[test]
