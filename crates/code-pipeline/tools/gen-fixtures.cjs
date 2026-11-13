@@ -23,8 +23,8 @@
 //
 // Values are written in a tagged JSON form (as crates/code-harness/tools/gen-fixtures.cjs):
 // {"$js":"undefined"|"NaN"|"Infinity"|"-Infinity"|"-0"} and {"$js":"repeat","s":text,"n":count}.
-// A thrown Error is {"name","message"}; a TypeError is {"name":"TypeError"} alone (V8's wording is
-// not part of the contract).
+// A thrown Error is {"name","message"} (and its own `status`, when it has one); a TypeError is
+// {"name":"TypeError"} alone (V8's wording is not part of the contract).
 const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -89,13 +89,21 @@ function dec(v) {
   return v;
 }
 const wire = (v) => JSON.parse(JSON.stringify(enc(v)));
-const thrown = (e) => (e instanceof TypeError ? { name: 'TypeError' } : e instanceof Error ? { name: e.name, message: e.message } : { value: enc(e) });
+const thrown = (e) => (e instanceof TypeError ? { name: 'TypeError' }
+  : e instanceof Error ? { name: e.name, message: e.message, ...(Object.hasOwn(e, 'status') ? { status: enc(e.status) } : {}) } : { value: enc(e) });
 function result(fn) { try { return { out: enc(fn()) }; } catch (e) { return { throws: thrown(e) }; } }
 const rows = [];
 /** One row: `fn` is called on the decoded wire form of `args`, as the Rust test will be. */
 function row(name, args, fn) {
   const a = wire(args);
   rows.push({ fn: name, args: a, ...result(() => fn(...dec(a))) });
+}
+/** A row over a copied expression: anything it throws but a TypeError (a copy that lost a free
+ * variable, a marker that cut the wrong text) stops the generator instead of being recorded. */
+function copiedRow(name, args, fn) {
+  row(name, args, fn);
+  const t = rows[rows.length - 1].throws;
+  if (t && t.name !== 'TypeError') throw Error(`copied expression ${name} threw ${JSON.stringify(t)}`);
 }
 async function rowAsync(name, args, fn) {
   const a = wire(args);
@@ -113,7 +121,7 @@ function grab(text, start, end) {
   if (j < 0) throw Error(`end marker not found: ${end}`);
   return text.slice(i, j + end.length);
 }
-const compile = (params, body) => new Function(...params, body);
+const compile = (params, body) => new Function(...params, `'use strict';\n${body}`);
 const BLOCKED_CLASS = grab(PIPE, 'class Blocked extends Error {', '\n}');
 const MINUTE_DEF = grab(PIPE, 'const MINUTE = ', ';');
 const MINUTES_DEF = grab(PIPE, 'const minutes = (ms) =>', '};');
@@ -135,6 +143,9 @@ const withheldFn = compile(['settings', 'report', 'workspaces', 'taskId', 'headS
   `${grab(PIPE, 'let into = null, withheld = null;', 'reason: `Merging is not offered: ${pre.reason}` };\n          }\n        }')}\nreturn { into, withheld };`);
 const acceptRequest = compile(['taskId', 'REVIEW_ACTION', 'files', 'into', 'n', 'withheld', 'branch', 'baseSha', 'headSha', 'jobs', 'judged', 'report', 'writeUp', 'planHash'],
   `${grab(PIPE, 'const request = {\n          taskId, action: REVIEW_ACTION,', 'mergeWithheld: withheld,\n        };')}\nreturn request;`);
+// Whether accepting goes on to merge: the result is returned early unless accepted and offered.
+const acceptStops = compile(['answer', 'n', 'branch', 'baseSha', 'headSha', 'judged', 'report', 't', 'network', 'withheld', 'into'],
+  `${grab(PIPE, 'const accepted = answer ===', 'if (!accepted || !into) return result;')}\nreturn null;`);
 const acceptResult = compile(['answer', 'n', 'branch', 'baseSha', 'headSha', 'judged', 'report', 't', 'network', 'withheld'],
   `${grab(PIPE, 'const accepted = answer ===', 'if (withheld) result.mergeWithheld = withheld.code;')}\nreturn result;`);
 const mergeOff = compile(['result'], grab(PIPE, "return { ...result, note: 'merge-turned-off',", "not merged.' };"));
@@ -249,7 +260,7 @@ for (const state of [
 }
 
 // ── planHashOf ──────────────────────────────────────────────────────────────────────────────
-const ph = (plan) => row('planHash', [plan], (p) => ({ serialized: roleContext.serializeProjection(p), hash: planHashOf(p) }));
+const ph = (plan) => copiedRow('planHash', [plan], (p) => ({ serialized: roleContext.serializeProjection(p), hash: planHashOf(p) }));
 ph(goodPlan());
 ph(Object.fromEntries(Object.entries(goodPlan()).reverse()));
 ph({ b: { d: 1, c: [{ z: 1, y: 2 }] }, a: null });
@@ -260,13 +271,13 @@ ph(JSON.parse('{"b":1,"__proto__":{"x":1},"s":[{"__proto__":5,"a":2}]}'));
 for (const v of [{}, [], 'x', null, 5, true, [{ b: 1, a: 2 }], undefined]) ph(v);
 
 // ── minutes, stage deadline ─────────────────────────────────────────────────────────────────
-for (const ms of [0, 1, 29_999, 30_000, 59_999, 60_000, 89_999, 90_000, 120_000, 150_000, 300_000, 2_700_000, 900_000, 180_000, 1e12, 2 ** 53 - 1]) row('minutes', [ms], minutes);
+for (const ms of [0, 1, 29_999, 30_000, 59_999, 60_000, 89_999, 90_000, 120_000, 150_000, 300_000, 2_700_000, 900_000, 180_000, 1e12, 2 ** 53 - 1]) copiedRow('minutes', [ms], minutes);
 for (const [name, ms] of [...Object.entries(pipeline.DEADLINES), ['plan', 1], ['verify', 90_000], ['review', 61_000], ['audit', 0]]) {
-  row('stageDeadline', [name, ms], (n, m) => stageDeadline(n, m, minutes));
+  copiedRow('stageDeadline', [name, ms], (n, m) => stageDeadline(n, m, minutes));
 }
 
 // ── Feedback ────────────────────────────────────────────────────────────────────────────────
-const tf = (n, report) => row('testsFeedback', [n, report], (k, r) => testsFeedback({ status: 'failed', report: r }, k));
+const tf = (n, report) => copiedRow('testsFeedback', [n, report], (k, r) => testsFeedback({ status: 'failed', report: r }, k));
 for (const report of [undefined, null, {}, 'x', 0, { exitCode: 1 }, { exitCode: -0 }, { exitCode: 2.5 }, { exitCode: '1' }, { exitCode: 1e21 }, { exitCode: -3 },
   { exitCode: NaN }, { exitCode: null }, { timedOut: true }, { timedOut: 'x' }, { timedOut: 0 }, { exitCode: 124, timedOut: true },
   { tail: '' }, { tail: '  \n ' }, { tail: 5 }, { tail: 'QA FAIL test/qa.test.js' }, { tail: '  QA padded output \n' }, { tail: new Rep('x', 600) },
@@ -276,8 +287,8 @@ for (const report of [undefined, null, {}, 'x', 0, { exitCode: 1 }, { exitCode: 
 }
 tf(3, { exitCode: 2, tail: 'QA end' });
 tf(2, { exitCode: 0, timedOut: false, tail: 'x' });
-row('testsFeedback', [1, { tail: new Rep('a\u{1F600}', 300) }], (k, r) => testsFeedback({ report: r }, k));
-const rf = (raw) => row('reviewFeedback', [raw], (r) => reviewFeedback({ verdict: readVerdict(r) }));
+copiedRow('testsFeedback', [1, { tail: new Rep('a\u{1F600}', 300) }], (k, r) => testsFeedback({ report: r }, k));
+const rf = (raw) => copiedRow('reviewFeedback', [raw], (r) => reviewFeedback({ verdict: readVerdict(r) }));
 rf({ verdict: 'request_changes', summary: 'QA needs work', findings: [{ severity: 'blocker', file: 'src/qa.js', message: 'QA crashes' }, { severity: 'minor', message: 'QA name' }] });
 rf({ verdict: 'request_changes', summary: 'QA', findings: [{ severity: 'major', file: '', message: 'QA empty file' }, { severity: 'note', file: '  ', message: '  QA trimmed \u0001 ' }] });
 rf({ verdict: 'request_changes', summary: 'QA', findings: [{ severity: 'major', file: 'é/\u{1F600}.rs', message: '\u{1F600} QA astral' }] });
@@ -287,13 +298,13 @@ rf({ verdict: 'approve', summary: 'QA fine', findings: [{ severity: 'note', mess
 // ── loop() ──────────────────────────────────────────────────────────────────────────────────
 for (const [why, loops, maxLoops] of [['Tests failed', 0, 2], ['Tests failed', 1, 2], ['Tests failed', 2, 2], ['Changes requested', 0, 2], ['Changes requested', 0, 0],
   ['Changes requested', 0, 1], ['Changes requested', 1, 1], ['QA why', 4, 5], ['QA why', 9, 5], ['', 0, 3]]) {
-  row('loop', [why, loops, maxLoops], (w, l, m) => { const t = { loops: l }; const r = loopFn(t, m, w); return { loops: t.loops, ...(r.blocked ? { blocked: r.blocked } : { reason: r.reason }) }; });
+  copiedRow('loop', [why, loops, maxLoops], (w, l, m) => { const t = { loops: l }; const r = loopFn(t, m, w); return { loops: t.loops, ...(r.blocked ? { blocked: r.blocked } : { reason: r.reason }) }; });
 }
 
 // ── The plan card ───────────────────────────────────────────────────────────────────────────
 for (const plan of [goodPlan(), { ...goodPlan(), steps: [step(1)] }, { ...goodPlan(), goal: undefined }, { goal: 5, steps: [{}, { do: null }, 'ab', [1]] },
   { steps: 'x' }, { steps: [null] }, null, { steps: {} }, { goal: 'g', steps: [] }]) {
-  row('planCard', ['qa-task-1', plan, PH], (id, p, h) => planRequest(id, pipeline.PLAN_ACTION, h, p));
+  copiedRow('planCard', ['qa-task-1', plan, PH], (id, p, h) => planRequest(id, pipeline.PLAN_ACTION, h, p));
 }
 
 // ── readAudit ───────────────────────────────────────────────────────────────────────────────
@@ -358,6 +369,9 @@ const AUDIT_INPUTS = [
   withJob((j) => { art('review-verdict')(j).verdict = 'request_changes'; }), withJob((j) => { delete art('review-verdict')(j).verdict; }),
   withJob((j) => { const r = art('review-verdict')(j); r.findings = 'x'; delete r.headSha; }), withJob((j) => { j.uncertain = [{ id: 'qa' }]; }), withJob((j) => { j.uncertain = 'ab'; }),
   withJob((j) => { j.uncertain = ''; }), withJob((j) => { j.uncertain = {}; }), withJob((j) => { j.uncertain = 5; }), withJob((j) => { delete j.uncertain; }),
+  // `.length` of whatever is there: an object's own member, undefined on a number or boolean.
+  ...[{ length: 1 }, { length: '0' }, { length: 0 }, { length: '' }, { length: null }, { length: [] }, { length: {} }, { a: 1, length: -0 }, 'x', 5, true, false, 0, []]
+    .map((uncertain) => withJob((j) => { j.uncertain = uncertain; })),
   withJob((j) => { j.pendingApproval = { action: 'execute_command' }; }), withJob((j) => { j.pendingApproval = 0; }), withJob((j) => { j.pendingApproval = 'x'; }),
   withJob((j) => { j.revision = { n: 2, headSha: H2 }; j.artifacts = []; j.stages = []; j.uncertain = [1]; }, { branchTip: H2, planHash: PH2 }),
   withJob((j) => { j.revision = { n: 2, headSha: 'x' + '\u{1F600}'.repeat(6) }; art('plan')(j).planHash = 'p' + '\u{1F600}'.repeat(6); },
@@ -404,14 +418,15 @@ const run = (s) => {
   }
   const refused = mergeRefused({ ok: false, code: 'base_moved', reason: 'QA main moved.' }, res);
   const refusedBlocked = blockedResult(Object.assign(Error(refused.message)), t, s.network, { result: refused.result });
-  return { into, withheld, request, result: res, mergeOff: mergeOff(res), merged, refused, refusedBlocked };
+  const shouldMerge = acceptStops(s.answer, s.n, s.branch, s.baseSha, s.headSha, judged, report, t, s.network, withheld, into) === null;
+  return { into, withheld, request, result: res, mergeOff: mergeOff(res), merged, refused, refusedBlocked, shouldMerge };
 };
-for (const s of SCENARIOS) row('accept', [s], run);
+for (const s of SCENARIOS) copiedRow('accept', [s], run);
 for (const [t, network, error] of [[{ revision: 0, headSha: null, loops: 0 }, [], {}], [{ revision: 2, headSha: H1, loops: 1 }, NET, {}],
   [{ revision: 1, headSha: H1, loops: 0 }, [], { result: undefined }], [{ revision: 1, headSha: H1, loops: 0 }, NET, { result: { network: [], extra: 'QA', revision: 9 } }]]) {
-  row('blockedResult', [t, network, error], (tt, nn, ee) => blockedResult(Error('QA blocked'), tt, nn, ee));
+  copiedRow('blockedResult', [t, network, error], (tt, nn, ee) => blockedResult(Error('QA blocked'), tt, nn, ee));
 }
-row('auditWithheld', [input({ branchTip: null, planHash: PH2 })], (i) => withheldFn({ merge: true }, auditor.buildAuditReport(i), { mergePreflight: () => PRE_OK }, 'qa', H1));
+copiedRow('auditWithheld', [input({ branchTip: null, planHash: PH2 })], (i) => withheldFn({ merge: true }, auditor.buildAuditReport(i), { mergePreflight: () => PRE_OK }, 'qa', H1));
 
 // ── FULL_SHA ────────────────────────────────────────────────────────────────────────────────
 for (const s of [H1, 'f'.repeat(64), 'a'.repeat(39), 'a'.repeat(41), 'a'.repeat(63), 'a'.repeat(65), 'A'.repeat(40), 'g'.repeat(40), '', H1 + '\n', ' ' + H1, '０'.repeat(40)]) {

@@ -260,6 +260,8 @@ pub enum AuditReportError {
 
 impl AuditReportError {
     pub const NOT_A_JOB: &'static str = "buildAuditReport requires a derived job";
+    /// The `status` Node's error carries for [`AuditReportError::NotAJob`].
+    pub const NOT_A_JOB_STATUS: u16 = 400;
 }
 
 impl From<TypeError> for AuditReportError {
@@ -449,12 +451,17 @@ pub fn build_audit_report(
         ),
     });
 
+    // `(job.uncertain || []).length || job.pendingApproval`: the truthiness of `.length` of
+    // whatever is there (an array's or string's length, an object's own `length` member, and
+    // `undefined` on a number or boolean).
     let uncertain = match job.get("uncertain") {
-        JValue::Arr(xs) => xs.len(),
-        JValue::Str(t) => wtf16::len(t),
-        _ => 0,
+        u if !u.truthy() => false,
+        JValue::Arr(xs) => !xs.is_empty(),
+        JValue::Str(t) => wtf16::len(t) > 0,
+        u @ JValue::Obj(_) => u.get("length").truthy(),
+        _ => false,
     };
-    checks.push(if uncertain > 0 || job.get("pendingApproval").truthy() {
+    checks.push(if uncertain || job.get("pendingApproval").truthy() {
         check(
             "nothing-unresolved",
             "fail",

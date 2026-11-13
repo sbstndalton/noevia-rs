@@ -6,8 +6,8 @@
 //! instructions and caps, `validatePlanArtifact` and its in-session failures ([`planner`]); from
 //! `server/code-review.cjs` the reviewer's ([`review`]); from `server/auditor-report.cjs`
 //! `readAudit` and `buildAuditReport` ([`audit`]). The async driver (`createCodePipeline`'s
-//! `drive`) is built on these later; nothing calls them yet. No async runtime, file system or
-//! network here, and no panics on any input.
+//! `drive`) is [`driver`], over traits for every effect, with the plan and review calls in
+//! [`sessions`]. No async runtime, file system or network here, and no panics on any input.
 //!
 //! Values are JS values as [`js_json`] holds them in its WTF-16 form (a lone surrogate kept as its
 //! mapped character, object keys in JS order), so every output keeps Node's key order, every
@@ -25,19 +25,37 @@
 //!
 //! # Differences from Node
 //!
-//! None in behaviour. The inputs are typed where Node's are by construction (shas, branch and
-//! file names are strings, revisions and loop counts integers, a merge preflight is a closure),
-//! and `undefined` passed to [`plan_hash`] is `None` where Node's hash throws. Kept as Node has
-//! them: "within 1 seconds" in the timeout reasons, and an own `__proto__` key dropped from the
-//! plan hash's canonical form (Node's copy sets a prototype instead).
+//! None in behaviour on the inputs the pipeline gives them. The inputs are typed where Node's are
+//! by construction (shas, branch and file names are strings, revisions and loop counts integers,
+//! a merge preflight is a closure), and `undefined` passed to [`plan_hash`] is `None` where Node's
+//! hash throws. Narrower than Node's by those types:
+//!
+//! - deadlines and timeouts are whole milliseconds (`u64`: [`minutes`],
+//!   [`stage_deadline_message`], the Planner's and reviewer's timeout reasons); Node takes any
+//!   number;
+//! - [`blocked_result`] spreads only an object `extra` and ignores any other value; Node's
+//!   `...(error.result || {})` spreads a string's characters (or an array's items) into index keys.
+//!
+//! Kept as Node has them: "within 1 seconds" in the timeout reasons, and an own `__proto__` key
+//! dropped from the plan hash's canonical form (Node's copy sets a prototype instead).
+//!
+//! # Strings
+//!
+//! Every `String` this crate returns, alone or inside a [`JValue`], is in [`js_json`]'s WTF-16
+//! form: a lone surrogate from the input is held as its mapped private-use character. Serialise
+//! them with [`js_json::wtf16::stringify`] only (which writes `\udxxx` back as `JSON.stringify`
+//! does); any other serialiser, or writing the text out as UTF-8 directly, turns a lone surrogate
+//! into that character instead.
 #![forbid(unsafe_code)]
 
 pub mod audit;
 pub mod brief;
+pub mod driver;
 mod js;
 pub mod pipeline;
 pub mod planner;
 pub mod review;
+pub mod sessions;
 
 pub use audit::{
     audit_schema, build_audit_report, is_full_sha, read_audit, AuditCheck, AuditEvidenceItem,
@@ -45,6 +63,10 @@ pub use audit::{
     AUDIT_SOURCES,
 };
 pub use brief::{canonicalize, plan_hash, render_executor_brief, serialize_projection};
+pub use driver::{
+    Approvals, Connect, Deadline, Deps, Fail, Harness, Host, JobCtx, Jobs, Pin, Pipeline, Roles,
+    RunHandle, Session, Signal, Started, Task, Verify, Workspaces,
+};
 pub use pipeline::{
     accept_card, accept_result, blocked, blocked_result, capability_text, is_accepted, merge_offer,
     merge_refused, merge_turned_off_result, merged_result, merged_stage_reason, minutes,
@@ -55,6 +77,7 @@ pub use pipeline::{
 pub use planner::validate_plan_artifact;
 pub use review::{read_verdict, REVIEW_ACTION};
 pub use review_verdict::{Finding, Invalid, Verdict};
+pub use sessions::{generate_in_session, review_in_session, RoleFail};
 
 /// sha256 of the `server/code-pipeline.cjs` this port follows.
 pub const CODE_PIPELINE_SHA256: &str =

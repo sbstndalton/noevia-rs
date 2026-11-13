@@ -13,4 +13,6 @@ workspace = true
 [dependencies]
 js-json = { path = "../js-json" }
 review-verdict = { path = "../review-verdict" }
+role-context = { path = "../role-context" }
+prompt-framing = { path = "../prompt-framing" }
 sha2 = "=0.10.9"

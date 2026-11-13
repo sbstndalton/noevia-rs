@@ -217,7 +217,6 @@ fn accept_row(sc: &JValue) -> JValue {
     }
     let (message, refused) = merge_refused(&result, "base_moved", "QA main moved.");
     let refused_blocked = blocked_result(a.revision, Some(head), a.loops, &network, Some(&refused));
-    let _ = should_merge(&a);
     obj([
         ("into", into.as_deref().map_or(JValue::Null, s)),
         (
@@ -233,6 +232,7 @@ fn accept_row(sc: &JValue) -> JValue {
             obj([("message", s(&message)), ("result", refused)]),
         ),
         ("refusedBlocked", refused_blocked),
+        ("shouldMerge", JValue::Bool(should_merge(&a))),
     ])
 }
 
@@ -385,6 +385,10 @@ fn port(f: &str, a: &JValue) -> JValue {
                 obj([
                     ("name", s("Error")),
                     ("message", s(AuditReportError::NOT_A_JOB)),
+                    (
+                        "status",
+                        JValue::Num(f64::from(AuditReportError::NOT_A_JOB_STATUS)),
+                    ),
                 ]),
             )]),
             Err(AuditReportError::Type) => type_error(),
@@ -534,6 +538,61 @@ fn constants_match_node() {
     for (k, v) in mine {
         assert_eq!(text(c.get(k)), text(&v), "{k}");
     }
+    // Each module's exports as the port was written against them: one added or removed in Node
+    // fails here until the port follows.
+    let exports = obj([
+        (
+            "pipeline",
+            list(&[
+                "createCodePipeline",
+                "renderExecutorBrief",
+                "EXECUTOR_INSTRUCTIONS",
+                "PIPELINE_META",
+                "PLAN_ACTION",
+                "EXPECTED_ARTIFACTS",
+                "DEADLINES",
+                "MAX_LOOPS",
+            ]),
+        ),
+        (
+            "planner",
+            list(&[
+                "createPlannerPlan",
+                "validatePlanArtifact",
+                "INSTRUCTIONS",
+                "MAX_PLAN_TOKENS",
+                "DEFAULT_DEADLINE_MS",
+            ]),
+        ),
+        (
+            "review",
+            list(&[
+                "createPlannerReview",
+                "createEngineReviewer",
+                "REVIEW_ACTION",
+                "INSTRUCTIONS",
+                "DEFAULT_DEADLINE_MS",
+            ]),
+        ),
+        (
+            "auditor",
+            list(&[
+                "AUDIT_SCHEMA",
+                "AUDIT_INSTRUCTIONS",
+                "AUDIT_SOURCES",
+                "AuditWriteUpError",
+                "readAudit",
+                "buildAuditReport",
+                "pipelineView",
+                "FULL_SHA",
+            ]),
+        ),
+    ]);
+    assert_eq!(text(c.get("exports")), text(&exports), "exports");
+    let JValue::Obj(keys) = &c else {
+        panic!("constants")
+    };
+    assert_eq!(keys.len(), 22, "every recorded constant is compared");
     for (name, t) in CAPABILITY_TEXT {
         assert_eq!(capability_text(name), Some(t));
     }
