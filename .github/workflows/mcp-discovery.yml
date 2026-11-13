@@ -117,4 +117,8 @@ jobs:
       - name: Core's real wiring, store client and Drive tools hand their calls to the real front (track R5)
         env:
           NOEVIA_R5_CORE: ${{ github.workspace }}/core-r5-live
-        run: cargo test --locked -p noevia-server --test mcp_call --test gdrive_tools node_hands
+        run: |
+          set -euo pipefail
+          cargo test --locked -p noevia-server --test mcp_call --test gdrive_tools -- --ignored node_hands 2>&1 | tee "$RUNNER_TEMP/r5-live.txt"
+          # Both live tests ran (a renamed test would leave the filter matching nothing).
+          [ "$(grep -c '^test node_hands_.* \.\.\. ok$' "$RUNNER_TEMP/r5-live.txt")" = 2 ]

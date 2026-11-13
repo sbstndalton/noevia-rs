@@ -393,10 +393,13 @@ async fn a_tool_that_runs_out_of_its_time_answers_itself_and_sends_nothing_more(
     );
 }
 
-/// The core checkout with the native paths (`NOEVIA_R5_CORE`; CI: tests/fixtures/r5-live.core-ref). Unset:
-/// the live test is skipped (it needs a real `node` and that checkout).
-fn r5_core() -> Option<std::path::PathBuf> {
-    std::env::var_os("NOEVIA_R5_CORE").map(std::path::PathBuf::from)
+/// The core checkout with the native paths (`NOEVIA_R5_CORE`; CI: tests/fixtures/r5-live.core-ref). The live
+/// tests are `#[ignore]`d (they need a real `node` and that checkout) and run with `--ignored`; run that way
+/// without the checkout they fail rather than pass by doing nothing.
+fn r5_core() -> std::path::PathBuf {
+    std::env::var_os("NOEVIA_R5_CORE")
+        .map(std::path::PathBuf::from)
+        .expect("NOEVIA_R5_CORE names the core checkout for the live test")
 }
 
 /// One phase of `r5_node_live.cjs` in a real `node` process against the front's internal store.
@@ -406,6 +409,7 @@ async fn node_phase(
     store: std::net::SocketAddr,
 ) -> serde_json::Value {
     let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/r5_node_live.cjs");
+    let phase_name = phase.to_owned();
     let mut command = std::process::Command::new("node");
     command
         .arg(script)
@@ -414,11 +418,26 @@ async fn node_phase(
         .env("STORE_PORT", store.port().to_string())
         .env("STORE_TOKEN", STORE_TOKEN)
         .env("USER_ID", A);
-    // The front serves on this runtime: wait for node on a thread of its own.
-    let out = tokio::task::spawn_blocking(move || command.output())
-        .await
-        .unwrap()
-        .unwrap();
+    command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    // The front serves on this runtime: wait for node on a thread of its own, for 60 s at most; a node
+    // that is still running then is killed (never left behind).
+    let out = tokio::task::spawn_blocking(move || {
+        let mut child = command.spawn().unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        while child.try_wait().unwrap().is_none() {
+            if std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("node {phase_name} did not finish in 60 s");
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        child.wait_with_output().unwrap()
+    })
+    .await
+    .unwrap();
     assert!(
         out.status.success(),
         "node {phase} failed: {}",
@@ -428,10 +447,9 @@ async fn node_phase(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "live: needs node and NOEVIA_R5_CORE (CI runs it with --ignored)"]
 async fn node_hands_a_drive_tool_to_the_real_front() {
-    let Some(core) = r5_core() else {
-        return;
-    };
+    let core = r5_core();
     let (_d, up, f) = connected_front(true).await;
     let out = node_phase(&core, "drive", f.store).await;
     assert_eq!(out["list"], "- QA f1.txt (id f1) · text/plain · 5 bytes");
