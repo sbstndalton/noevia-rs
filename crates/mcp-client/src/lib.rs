@@ -55,22 +55,47 @@ const RESERVED_HEADERS: [&str; 4] = [
     "mcp-session-id",
 ];
 
-/// `positiveEnv`: the value as a JS `Number` (trimmed; empty is 0), floored when finite and
-/// above zero, else `fallback`. `None` is an unset variable (`Number(undefined)` is NaN).
-/// Not identical to JS for hex, octal or binary spellings (`0x10`), which Rust does not parse
-/// here and so take the fallback; the budgets are set in decimal in practice.
+/// `positiveEnv`: the value as a JS `Number` (trimmed with the JS whitespace set; empty is 0),
+/// floored when finite and above zero, else `fallback`. `None` is an unset variable
+/// (`Number(undefined)` is NaN). `0x`, `0o` and `0b` spellings are read as JS reads them.
 pub fn positive_env(value: Option<&str>, fallback: usize) -> usize {
-    let n = match value.map(str::trim) {
-        Some("") => 0.0,
-        Some(s) => s.parse::<f64>().unwrap_or(f64::NAN),
-        None => f64::NAN,
-    };
+    let n = value.map_or(f64::NAN, |raw| js_number(js_trim(raw)));
     if n.is_finite() && n > 0.0 {
         // Saturating float-to-int cast: an enormous setting caps at usize::MAX.
         n.floor() as usize
     } else {
         fallback
     }
+}
+
+/// `Number(text)` for already-trimmed text: empty is 0, a radix prefix reads its digits, and
+/// anything else is a decimal literal (`Infinity` included); NaN when it is none of these.
+fn js_number(text: &str) -> f64 {
+    if text.is_empty() {
+        return 0.0;
+    }
+    let radix = match text.get(..2).map(str::to_ascii_lowercase).as_deref() {
+        Some("0x") => Some(16),
+        Some("0o") => Some(8),
+        Some("0b") => Some(2),
+        _ => None,
+    };
+    if let Some(radix) = radix {
+        let digits = text.get(2..).unwrap_or("");
+        if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+            return f64::NAN;
+        }
+        return digits
+            .chars()
+            .filter_map(|c| c.to_digit(radix))
+            .fold(0.0, |n, d| n * f64::from(radix) + f64::from(d));
+    }
+    // Rust also accepts `inf`, `nan` and `infinity` in any case; JS knows only `Infinity`.
+    let bare = text.trim_start_matches(['+', '-']);
+    if bare.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) && bare != "Infinity" {
+        return f64::NAN;
+    }
+    text.parse::<f64>().unwrap_or(f64::NAN)
 }
 
 /// `withBuiltInHeaders(extra, builtIn)`: the caller's headers without the reserved names

@@ -255,12 +255,59 @@ const exec = async (name, args, scope = {}) => {
     const out = mcp.withBuiltInHeaders(extra, builtIn);
     return { extra: c.extra, builtIn: c.builtIn, expect: Object.entries(out) };
   });
+  // Transport bodies and the tools/list budget, through mcp.cjs with a recording fetch stub.
+  // Each page answers a plain JSON-RPC reply; the env budgets are read per listTools call.
+  const sent = [];
+  const pagesFor = (pages) => async (_url, init) => {
+    const body = JSON.parse(init.body);
+    sent.push(body);
+    const page = body.method === 'tools/list' ? pages[Math.min(sent.filter((b) => b.method === 'tools/list').length - 1, pages.length - 1)] : {};
+    if (body.id === undefined) return new Response(null, { status: 202 });
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: page }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const tool = (name, pad = 0) => ({ name, description: 'd'.repeat(pad), inputSchema: { type: 'object' } });
+  const listCases = [
+    { env: {}, pages: [{ tools: [tool('a'), tool('b')] }] },
+    { env: {}, pages: [{ tools: [tool('a')], nextCursor: 'p2' }, { tools: [tool('b')], nextCursor: '' }] },
+    { env: {}, pages: [{ tools: [tool('a')], nextCursor: 'p2' }, { tools: [tool('b')] }] },
+    { env: { MCP_LIST_TOOLS_MAX_PAGES: '2' }, pages: [{ tools: [tool('a')], nextCursor: 'p2' }, { tools: [tool('b')], nextCursor: 'p3' }, { tools: [tool('c')] }] },
+    { env: { MCP_LIST_TOOLS_MAX_PAGES: '1.9' }, pages: [{ tools: [tool('a')], nextCursor: 'p2' }, { tools: [tool('b')] }] },
+    { env: { MCP_LIST_TOOLS_MAX_PAGES: '0' }, pages: [{ tools: [tool('a')], nextCursor: 'p2' }, { tools: [tool('b')] }] },
+    { env: { MCP_LIST_TOOLS_MAX_BYTES: '120' }, pages: [{ tools: [tool('a'), tool('b'), tool('c'), tool('d')] }] },
+    { env: { MCP_LIST_TOOLS_MAX_BYTES: '200' }, pages: [{ tools: [tool('a', 10), tool('é', 30)], nextCursor: 'p2' }, { tools: [tool('z')] }] },
+    { env: { MCP_LIST_TOOLS_MAX_BYTES: '-5', MCP_LIST_TOOLS_MAX_PAGES: 'x' }, pages: [{ tools: [tool('a')], nextCursor: 'p2' }, { tools: [] }] },
+    { env: {}, pages: [{ tools: null, nextCursor: 'p2' }, {}] },
+  ];
+  const list = [];
+  for (const c of listCases) {
+    sent.length = 0;
+    const saved = { MCP_LIST_TOOLS_MAX_PAGES: process.env.MCP_LIST_TOOLS_MAX_PAGES, MCP_LIST_TOOLS_MAX_BYTES: process.env.MCP_LIST_TOOLS_MAX_BYTES };
+    delete process.env.MCP_LIST_TOOLS_MAX_PAGES; delete process.env.MCP_LIST_TOOLS_MAX_BYTES;
+    Object.assign(process.env, c.env);
+    const origWarn = console.warn; console.warn = () => {};
+    const kept = await mcp.listTools('http://mcp.synthetic.invalid/mcp', { id: 's1' }, {}, 1000, undefined, pagesFor(c.pages));
+    console.warn = origWarn;
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    list.push({ env: c.env, pages: c.pages, requests: sent.map((b) => b.params), kept: kept.map((t) => t.name), tool_bytes: c.pages.flatMap((p) => (p.tools || []).map((t) => [t.name, Buffer.byteLength(JSON.stringify(t))])) });
+  }
+  sent.length = 0;
+  await mcp.connect('http://mcp.synthetic.invalid/mcp', {}, 1000, undefined, pagesFor([{}]));
+  const callArgs = [{ q: 1 }, null, undefined, 0, '', false, [], { }];
+  for (const a of callArgs) await mcp.callTool('http://mcp.synthetic.invalid/mcp', { id: 's1' }, 'qa_tool', a, {}, 1000, undefined, pagesFor([{}]));
+  const bodies = sent.map(({ id, ...rest }) => ({ has_id: id !== undefined, ...rest }));
+  const envValues = [undefined, '', ' ', '12', ' 12 ', '12.9', '0', '-1', '1e3', '0x10', '0b11', '0o7', 'Infinity', '-Infinity', 'NaN', 'abc', '5.', '.5', '+7', '1_000', '\u00a012', '\ufeff12', '\u008512', '9007199254740993', '1e400'];
+  const positiveEnvSrc = fs.readFileSync(path.join(serverDir, 'mcp.cjs'), 'utf8').match(/function positiveEnv\(name, fallback\) \{[\s\S]*?\n\}/)[0];
+  const positiveEnv = new Function('process', positiveEnvSrc + '\nreturn positiveEnv;');
+  const envCases = envValues.map((v) => ({ value: v === undefined ? null : v, out: positiveEnv({ env: v === undefined ? {} : { K: v } })('K', 7) }));
   const mcpOracle = {
     oracle: 'noevia-core server/mcp.cjs resultToText and withBuiltInHeaders',
     sources: SOURCES,
     protocol_version: mcp.PROTOCOL_VERSION,
     result_to_text: rtt,
     built_in_headers: headers,
+    list_tools: list,
+    request_bodies: bodies,
+    positive_env: envCases,
   };
 
   fs.writeFileSync(path.join(crates, 'drive-tools', 'tests', 'fixtures', 'drive-oracle.v1.json'), `${JSON.stringify(drive, null, 2)}\n`);

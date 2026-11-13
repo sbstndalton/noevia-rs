@@ -291,5 +291,682 @@
         ]
       ]
     }
+  ],
+  "list_tools": [
+    {
+      "env": {},
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {}
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {},
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": ""
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {},
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_PAGES": "2"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p3"
+        },
+        {
+          "tools": [
+            {
+              "name": "c",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ],
+        [
+          "c",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_PAGES": "1.9"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {}
+      ],
+      "kept": [
+        "a"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_PAGES": "0"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_BYTES": "120"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "c",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "d",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {}
+      ],
+      "kept": [
+        "a"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ],
+        [
+          "c",
+          61
+        ],
+        [
+          "d",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_BYTES": "200"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "dddddddddd",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "é",
+              "description": "dddddddddddddddddddddddddddddd",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "z",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "é"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          71
+        ],
+        [
+          "é",
+          92
+        ],
+        [
+          "z",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_BYTES": "-5",
+        "MCP_LIST_TOOLS_MAX_PAGES": "x"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": []
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {},
+      "pages": [
+        {
+          "tools": null,
+          "nextCursor": "p2"
+        },
+        {}
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [],
+      "tool_bytes": []
+    }
+  ],
+  "request_bodies": [
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "noevia",
+          "version": "1"
+        }
+      }
+    },
+    {
+      "has_id": false,
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {
+          "q": 1
+        }
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": []
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    }
+  ],
+  "positive_env": [
+    {
+      "value": null,
+      "out": 7
+    },
+    {
+      "value": "",
+      "out": 7
+    },
+    {
+      "value": " ",
+      "out": 7
+    },
+    {
+      "value": "12",
+      "out": 12
+    },
+    {
+      "value": " 12 ",
+      "out": 12
+    },
+    {
+      "value": "12.9",
+      "out": 12
+    },
+    {
+      "value": "0",
+      "out": 7
+    },
+    {
+      "value": "-1",
+      "out": 7
+    },
+    {
+      "value": "1e3",
+      "out": 1000
+    },
+    {
+      "value": "0x10",
+      "out": 16
+    },
+    {
+      "value": "0b11",
+      "out": 3
+    },
+    {
+      "value": "0o7",
+      "out": 7
+    },
+    {
+      "value": "Infinity",
+      "out": 7
+    },
+    {
+      "value": "-Infinity",
+      "out": 7
+    },
+    {
+      "value": "NaN",
+      "out": 7
+    },
+    {
+      "value": "abc",
+      "out": 7
+    },
+    {
+      "value": "5.",
+      "out": 5
+    },
+    {
+      "value": ".5",
+      "out": 0
+    },
+    {
+      "value": "+7",
+      "out": 7
+    },
+    {
+      "value": "1_000",
+      "out": 7
+    },
+    {
+      "value": " 12",
+      "out": 12
+    },
+    {
+      "value": "﻿12",
+      "out": 12
+    },
+    {
+      "value": "12",
+      "out": 7
+    },
+    {
+      "value": "9007199254740993",
+      "out": 9007199254740992
+    },
+    {
+      "value": "1e400",
+      "out": 7
+    }
   ]
 }
