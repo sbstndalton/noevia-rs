@@ -12,7 +12,8 @@
 //!
 //! Named difference (tested in `tests/fixtures.rs`): `parseRetryAfter` hands a non-number to V8's
 //! `Date.parse`, which accepts many date spellings. Here an IMF-fixdate (`Wed, 21 Oct 2015 07:28:00
-//! GMT`, the form HTTP servers send: any weekday name, letters in any case, `GMT` or `UTC`, a day past
+//! GMT`, the form HTTP servers send: any three letters for the weekday, a year under 100 put into 19xx
+//! or 20xx, letters in any case, `GMT` or `UTC`, a day past
 //! the month's end rolling over, `24:00:00`, a second of 60 to 99 read as 0, as V8 reads it) and an ISO 8601 UTC date-time
 //! (`2015-10-21T07:28:00Z`, optional `.sss`) are dates; any other spelling (an RFC 850 or asctime date, ...) is no `Retry-After`, so the doubling back-off is used. Most of
 //! V8's extra spellings that a server could send land in the past (`"1."`, `"-1"`, `"1.25.3"` are years),
@@ -268,14 +269,14 @@ fn word_is(b: &[u8], at: usize, words: &[&[u8]]) -> Option<usize> {
     words.iter().position(|w| w.eq_ignore_ascii_case(part))
 }
 
-/// `Wed, 21 Oct 2015 07:28:00 GMT` (any weekday name, letters in any case, `GMT` or `UTC`).
+/// `Wed, 21 Oct 2015 07:28:00 GMT` (any three letters for the weekday, letters in any case, `GMT` or
+/// `UTC`, a year under 100 put into a century as V8 does).
 fn imf_fixdate(b: &[u8]) -> Option<f64> {
-    const DAYS: [&[u8]; 7] = [b"Mon", b"Tue", b"Wed", b"Thu", b"Fri", b"Sat", b"Sun"];
     const MONTHS: [&[u8]; 12] = [
         b"Jan", b"Feb", b"Mar", b"Apr", b"May", b"Jun", b"Jul", b"Aug", b"Sep", b"Oct", b"Nov",
         b"Dec",
     ];
-    if b.len() != 29 || word_is(b, 0, &DAYS).is_none() || b.get(3..5)? != b", " {
+    if b.len() != 29 || !b.get(0..3)?.iter().all(u8::is_ascii_alphabetic) || b.get(3..5)? != b", " {
         return None;
     }
     let mo = word_is(b, 8, &MONTHS)? as i64 + 1;
@@ -291,6 +292,12 @@ fn imf_fixdate(b: &[u8]) -> Option<f64> {
         return None;
     }
     let (d, y) = (fixed::<2>(b, 5)?, fixed::<4>(b, 12)?);
+    // V8's legacy parser puts a year under 100 into a century: 0-49 is 20xx, 50-99 is 19xx.
+    let y = match y {
+        0..=49 => y + 2000,
+        50..=99 => y + 1900,
+        _ => y,
+    };
     // V8's legacy parser reads a second of 60 to 99 as 0.
     let s = fixed::<2>(b, 23)?;
     let s = if s >= 60 { 0 } else { s };
