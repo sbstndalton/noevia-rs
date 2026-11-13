@@ -19,7 +19,8 @@
 //! Preconditions (later slices): no routing modes (`routingModes` off, so no `routeTarget`, no cloud
 //! route and no `route_pending` question), no Inference machines (`chatMachines` null), and the
 //! provider passes the egress and ChatGPT checks chat.cjs runs between steps 1 and 2. The tool
-//! gate's move to a tool-capable role (#1550) and the long-context profile (#1079) come after.
+//! gate's move to a tool-capable role (#1550) and the long-context profile (#1079) come after
+//! ([`crate::reroute`]).
 //!
 //! Model names and role values are JS values (`JValue`), compared as `===` does: two JSON objects
 //! are never the same one. `autoRoles()` is read once: Node reads it again at each use, and gets the

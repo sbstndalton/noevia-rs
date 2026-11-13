@@ -451,6 +451,7 @@ dependencies = [
  "chrono-tz",
  "icu_properties",
  "js-json",
+ "long-profile",
  "prompt-framing",
  "regex",
  "sha2",
