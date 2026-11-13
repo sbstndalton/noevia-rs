@@ -525,6 +525,11 @@ impl Drive {
         }
     }
 
+    /// The transfer budget (300 s; shortened by tests): also the most one chat Drive tool may take in all.
+    pub(crate) fn transfer_budget(&self) -> Duration {
+        self.budget(Budget::Transfer)
+    }
+
     fn budget(&self, b: Budget) -> Duration {
         let i = usize::from(b == Budget::Transfer);
         Duration::from_millis(

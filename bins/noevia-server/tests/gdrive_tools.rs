@@ -348,3 +348,47 @@ async fn a_lone_surrogate_from_the_model_is_kept_as_core_keeps_it() {
     );
     assert_eq!(up.seen().len(), before);
 }
+
+#[tokio::test]
+async fn a_tool_that_runs_out_of_its_time_answers_itself_and_sends_nothing_more() {
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    // Each Drive answer takes 250 ms; the whole call may take 400 ms (two requests do not fit).
+    up.set(|r: &Seen| {
+        let path = r.path.split('?').next().unwrap_or("");
+        match path {
+            "/token" => reply("200 OK", r#"{"access_token":"access-1","expires_in":3600}"#),
+            _ => {
+                let (_, text) = reply("200 OK", FILE);
+                (Duration::from_millis(250), text)
+            }
+        }
+    });
+    let dir = d.path().join("google-drive-users");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join(format!("{A}.sealed")), NODE_FILE).unwrap();
+    let f = front(
+        d.path(),
+        &up.base(),
+        &[("NOEVIA_RUST_DRIVE_TOOLS", "1".to_string())],
+    )
+    .await;
+    noevia_server::gdrive::of(&f.app)
+        .unwrap()
+        .set_budgets(Duration::from_secs(5), Duration::from_millis(400));
+    let started = std::time::Instant::now();
+    let (_, body) = store(
+        f.store,
+        "gdrive/tool",
+        STORE_TOKEN,
+        &tool("drive_read_file", r#"{"fileId":"f1"}"#, "x"),
+    )
+    .await;
+    assert_eq!(body["text"], noevia_server::gdrive_tools::TOOK_TOO_LONG);
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        started.elapsed()
+    );
+}

@@ -40,6 +40,9 @@ const NOT_CONNECTED: &str =
 const NOT_A_FILE_ID_TAIL: &str = " is not a Google Drive file id. The Google Drive tools only change files in the connected Google Drive; to change a file uploaded to this project, use the project file tools (project_append_file or project_replace_text)";
 /// The longest chat or exchange key taken (Node's are ids).
 const MAX_KEY: usize = 256;
+/// What a tool says when it ran out of its time in all (the front's transfer budget, 300 s, under Node's
+/// 330 s wait): a request may have reached Drive, and none is made after this.
+pub const TOOK_TOO_LONG: &str = "ERROR: Google Drive took too long to answer, so the call may or may not have run. Check before calling it again.";
 
 /// The calling account, as Node's request scope names it.
 #[derive(Clone, Debug, PartialEq)]
@@ -857,8 +860,19 @@ pub async fn op(
         drive: std::sync::Arc::clone(&drive),
     };
     let args = body.get("arguments");
+    // One call in all may take the transfer budget; then it answers itself, before Node stops waiting.
+    let deadline = drive.transfer_budget();
     if op == "target" {
-        let target = describe_target(&b, user.as_ref(), &name, args).await;
+        let target =
+            match tokio::time::timeout(deadline, describe_target(&b, user.as_ref(), &name, args))
+                .await
+            {
+                Ok(t) => t,
+                Err(_) => JValue::obj([(
+                    "error",
+                    JValue::Str("Google Drive could not be reached".into()),
+                )]),
+            };
         return answer(JValue::obj([("target", target)]));
     }
     let cap = match body.get("cap") {
@@ -871,7 +885,10 @@ pub async fn op(
         chat_key: chat.as_deref(),
         exchange_key: exchange.as_deref(),
     };
-    let text = execute(&b, &drive.tools, user.as_ref(), &name, args, scope, cap).await;
+    let run = execute(&b, &drive.tools, user.as_ref(), &name, args, scope, cap);
+    let text = tokio::time::timeout(deadline, run)
+        .await
+        .unwrap_or_else(|_| TOOK_TOO_LONG.into());
     answer(JValue::obj([("text", JValue::Str(text))]))
 }
 
