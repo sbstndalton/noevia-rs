@@ -22,8 +22,13 @@
 // What a case records:
 //   http      the status and headers of the reply, or the JSON refusal sent instead of a stream
 //   events    every SSE `data:` object in order (a keep-alive comment fails the recording: no case runs 5 s)
-//   requests  every engine request: url, headers, the parsed body, and whether it was the chat endpoint
+//   requests  every engine request: url, headers, the parsed body, whether it was the chat endpoint, whether it
+//             streamed, and the deadline its signal carried (timeoutMs: AbortSignal.timeout's, or null)
 //   stores    the calls into the stores (saveChats, chatTitles.save, transcripts.appendIfLast, ...)
+//   bridge    the two tool bridges the native executor calls (execute: every field it sends, and the text, the
+//             failure flag, the error it threw or that the client left meanwhile; target: the card's target)
+//   stubs     after the hand-off's cut, every answer of the other stubs, in order: the tool policy, the chat-wide
+//             grant, the approval decision, the tombstones, the template tools gate and the engine's busy signal
 //   files     the workspace files after the turn (context state, partial), parsed, run-local ids out
 //   record    createTurnRecord() fed with the events: the transcript entry the client keeps
 //   handoff   (a core with rust-chat-native.cjs) the same turn asked for by the front's native executor:
@@ -106,6 +111,17 @@ let uuidCounter = 0;
 const nextUuid = () => `00000000-0000-4000-8000-${String(++uuidCounter).padStart(12, '0')}`;
 const fixedCrypto = Object.assign(Object.create(crypto), { randomUUID: nextUuid });
 let mathSeed = 0x2026;
+// Which deadline a request's signal carries (AbortSignal.timeout, through AbortSignal.any), for `requests[].timeoutMs`.
+const deadlines = new WeakMap();
+const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+const realAny = AbortSignal.any.bind(AbortSignal);
+AbortSignal.timeout = (ms) => { const signal = realTimeout(ms); deadlines.set(signal, ms); return signal; };
+AbortSignal.any = (signals) => {
+  const signal = realAny(signals);
+  const ms = [...signals].map((s) => deadlines.get(s)).filter((v) => v !== undefined);
+  if (ms.length) deadlines.set(signal, Math.min(...ms));
+  return signal;
+};
 Math.random = () => { mathSeed = (mathSeed * 1103515245 + 12345) % 2147483648; return mathSeed / 2147483648; };
 
 // The one Drive call a write makes before it runs is the metadata read that names the card's target
@@ -113,6 +129,11 @@ Math.random = () => { mathSeed = (mathSeed * 1103515245 + 12345) % 2147483648; r
 require(path.join(server, 'gdrive-files.cjs')).driveFiles = () => ({
   metadata: async ({ fileId }) => ({ id: fileId, name: `QA file ${fileId}` }),
 });
+// The account's tombstones are read from the workspace directory (none here); each read is logged as a stub answer.
+const chatLists = require(path.join(server, 'chat-lists.cjs'));
+const realReadTombstones = chatLists.readTombstones;
+let onTombstones = null;
+chatLists.readTombstones = (dir) => { const ids = realReadTombstones(dir); onTombstones?.(ids); return ids; };
 const { createChatHandler } = require(path.join(server, 'chat.cjs'));
 const { createToolboxes } = require(path.join(server, 'toolboxes.cjs'));
 const { createDriveTools } = require(path.join(server, 'gdrive-tools.cjs'));
@@ -142,7 +163,8 @@ function engine(rounds, log, res) {
   log.chunks = rounds.map(() => null);
   const fetch = async (url, options = {}) => {
     const body = typeof options.body === 'string' ? JSON.parse(options.body) : null;
-    log.requests.push({ url: String(url), chat: String(url) === CHAT_URL, stream: body?.stream === true, headers: options.headers || {}, body });
+    log.requests.push({ url: String(url), chat: String(url) === CHAT_URL, stream: body?.stream === true, timeoutMs: deadlines.get(options.signal) ?? null,
+      headers: options.headers || {}, body });
     const round = rounds[next++];
     if (!round) { log.overrun = true; throw new Error(`the script has no engine round ${next}`); }
     if (round.throws) throw new Error(round.throws);
@@ -229,8 +251,24 @@ async function runTurn(c, { handoff = false } = {}) {
     };
     // `bridge`: what the two calls the native executor makes through core's tool bridges answered
     // (rust-chat-native.cjs: executeToolCall, writeTargetFor), so its replay gets Node's own answers.
-    const log = { requests: [], stores: [], approvals: [], executions: [], bridge: [] };
+    // `stubs`: what the turn asked of the stubs after its preparation (from the line the hand-off would cut at,
+    // chat.cjs's createToolExchange) and what they answered, so the replay answers the same.
+    const log = { requests: [], stores: [], approvals: [], executions: [], bridge: [], stubs: [] };
     const store = (op, args) => log.stores.push({ op, ...args });
+    let cut = false;
+    const stub = (op, entry) => { if (cut) log.stubs.push({ op, ...entry }); return entry.answer; };
+    onTombstones = (ids) => stub('tombstones', { answer: [...ids].sort() });
+    // `policy`: tool name -> mode, or a list of modes for its calls after the cut (the last repeats; the
+    // preparation sees the first). Otherwise writes ask and reads run.
+    const policyCalls = new Map();
+    const policyFor = (tool, write) => {
+      const mode = c.policy && c.policy[tool];
+      if (mode === undefined) return write ? 'ask' : 'allow';
+      if (!Array.isArray(mode)) return mode;
+      const k = cut ? (policyCalls.get(tool) || 0) : 0;
+      if (cut) policyCalls.set(tool, k + 1);
+      return mode[Math.min(k, mode.length - 1)];
+    };
     const workspace = {
       userId: user.id, dir, assertActive() {},
       assetDir: () => path.join(dir, 'assets'),
@@ -246,6 +284,9 @@ async function runTurn(c, { handoff = false } = {}) {
     const definitions = createDriveTools({ accounts });
     const driveTools = { ...definitions, execute: async (_user, tool) => {
       log.executions.push(tool);
+      if (c.executeThrows) throw new Error(c.executeThrows);
+      // `leaveInTool`: the client goes away while this tool runs; the tool still returns.
+      if (c.leaveInTool === tool) { res.destroyed = true; res.emit('close'); }
       return (c.toolResults && c.toolResults[tool]) || `QA ${tool} result: synthetic-file.txt (1 KB)`;
     } };
     const toolbox = createToolboxes({
@@ -282,12 +323,14 @@ async function runTurn(c, { handoff = false } = {}) {
     const upstream = engine(c.rounds || [], log, res);
     const handler = createChatHandler({
       fs, path, crypto: fixedCrypto, fetch: upstream.fetch,
-      reasoningEffort: require(path.join(server, 'reasoning-effort.cjs')), createToolExchange,
+      reasoningEffort: require(path.join(server, 'reasoning-effort.cjs')),
+      // The first line after the hand-off's cut: what the turn asks from here on is the native executor's to ask.
+      createToolExchange: (options) => { cut = true; return createToolExchange(options); },
       rag: { filesContext: async () => null }, prefill: { recordSample() {} },
       reduceToolResult: require(path.join(server, 'tool-result-reduce.cjs')).reduceToolResult,
       HISTORY_CAP: 20, DEFAULT_PROVIDER_ID: 'default', DIARY_BASE: 'http://qa-diary.invalid', TOOL_RESULT_CAP: 8000,
       authService: { audit: (event, actor, subject, details) => store('audit', { event, actor, subject, details }), diaryEnabled: () => false },
-      toolPolicy: { mode: (_user, _tool, write) => (write ? 'ask' : 'allow') },
+      toolPolicy: { mode: (_user, tool, write) => stub('policy', { name: tool, write, answer: policyFor(tool, write) }) },
       modelManager: {
         enabled: true,
         // The inference gate grants at once (llamacpp-manager.cjs acquireLease, inference-gate-client.cjs makeLease).
@@ -305,7 +348,7 @@ async function runTurn(c, { handoff = false } = {}) {
             fetch: (baseFetch) => (url, init = {}) => baseFetch(url, { ...init, headers: withLease(init.headers) }),
           };
         },
-        inferenceBusy: () => false,
+        inferenceBusy: (n) => stub('inferenceBusy', { n, answer: false }),
         load: async (model) => { store('modelManager.load', { model }); loadedNow = true; return { ok: true }; },
         // `loaded: false`: the model is not loaded until the turn loads it (chat-context.cjs resolveManagedLimit).
         health: async () => ({ ok: true, body: { all_models_loaded: loadedNow ? [{ model_name: modelName, loaded: true, recipe_options: { ctx_size: ctxSize } }] : [] } }),
@@ -324,14 +367,26 @@ async function runTurn(c, { handoff = false } = {}) {
       visionProbe: async () => ({ supported: false, reason: 'none' }), visionDescriptions: new Map(), skillsIndexFor: () => [],
       chatSkillRouter: { select: async () => ({ loaded: [] }) }, chatToolRouter: { select: async (ids) => ({ ids, routed: false }) },
       ...toolbox, oauthServerIds: () => new Set(), accountReady: () => true,
+      // The bridge call as the native executor makes it: every field of its request (rust-chat-native.cjs EXECUTE_PATH).
       executeToolCall: async (proj, name, args, allowed, signal, outcome, options) => {
-        const text = await toolbox.executeToolCall(proj, name, args, allowed, signal, outcome, options);
-        log.bridge.push({ op: 'execute', name, args, text, failed: outcome.failed === true });
+        const asked = { op: 'execute', projectId: proj ? proj.id : null, name, args, allowed: [...allowed], routes: [...(options.routes || [])],
+          chatKey: options.chatKey ?? null, exchangeKey: options.exchangeKey ?? null };
+        const wasLeft = res.destroyed;
+        let text;
+        try { text = await toolbox.executeToolCall(proj, name, args, allowed, signal, outcome, options); }
+        catch (error) { log.bridge.push({ ...asked, threw: String(error?.message || error) }); throw error; }
+        log.bridge.push({ ...asked, text, failed: outcome.failed === true, ...(!wasLeft && res.destroyed ? { left: true } : {}) });
         return text;
       },
       grantContext: async (raw) => grantFixture.context(raw, { holder: { kind: 'absent' } }),
-      chatWideApproved: () => false,
-      awaitApproval: async (request) => { const { abortSignal: _signal, ...asked } = request; log.approvals.push(asked); return c.decision || 'approve'; },
+      chatWideApproved: (userId, chatId, scope) => stub('chatWideApproved', { chatId, scope, answer: c.chatWide === true }),
+      // `leaveOnCard`: the client goes away while the card is open; the gate answers 'aborted' as its abortSignal fires.
+      awaitApproval: async (request) => {
+        const { abortSignal: _signal, ...asked } = request;
+        log.approvals.push(asked);
+        if (c.leaveOnCard) { res.destroyed = true; res.emit('close'); return stub('awaitApproval', { left: true, answer: 'aborted' }); }
+        return stub('awaitApproval', { answer: c.decision || 'approve' });
+      },
       // index.cjs: Drive writes are described before their card and again before dispatch (gdrive-tools describeTarget).
       writeTargetFor: async (name, rawArgs, { user: who }) => {
         const found = driveTools.names.has(name) ? await driveTools.describeTarget(who, name, rawArgs) : null;
@@ -344,7 +399,7 @@ async function runTurn(c, { handoff = false } = {}) {
       sourceWaitMs: 0, streamIdleMs: c.streamIdleMs ?? 120000,
       // The engine's /props answer through the tools gate (chat-template-caps.cjs): unknown, so tools are allowed;
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
-      templateToolsGate: { allowsTools: async () => true, markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
+      templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       ...(handoff ? { nativeHandoff: { requested: () => true, supervising: () => false } } : {}),
     });
     const body = { message: 'QA hello', projectId: project ? project.id : undefined, chatId: 'qa-chat-1', history: [], ...(c.body || {}) };
@@ -367,9 +422,11 @@ async function runTurn(c, { handoff = false } = {}) {
       name: c.name,
       about: c.about,
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
-        loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true, rounds: c.rounds || [], chunks: log.chunks },
+        loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
+        policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
+        rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
-      requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge,
+      requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
       files: listFiles(dir),
       record: { assistantEntry: record.assistantEntry(), partialEntry: record.partialEntry() },
     };
@@ -492,6 +549,36 @@ const CASES = [
       { role: 'user', content: 'QA earlier question two.' }, { role: 'assistant', content: 'QA earlier answer two.' }] },
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-big"}'), finish('tool_calls')] },
       summary('QA summary of the two earlier exchanges.'), answer('Answer from the listing.')] },
+  { name: 'tool_chat_wide_grant', about: 'A write under "Allow for this chat": no card, the grant is checked again before the call runs.', chatWide: true,
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-6"}'), finish('tool_calls')] }, answer('Trashed it under the chat grant.')] },
+  { name: 'tool_two_writes_first_declined', about: 'Two writes in one round, the first declined: the second is not run (earlier decline), then the pause.', decision: 'deny',
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-7"}', 'qa-w1', 0), toolCall('drive_trash_file', '{"fileId":"qa-file-8"}', 'qa-w2', 1), finish('tool_calls')] }] },
+  { name: 'tool_repeat_flag', about: 'A write matching one the history says was applied: its card carries repeatOf.', decision: 'approve',
+    body: { history: [{ role: 'user', content: 'QA trash the old file' },
+      { role: 'tool', applied: true, name: 'drive_trash_file', target: 'QA file qa-file-9 (id qa-file-9)', args: '{"fileId":"qa-file-9"}', content: 'QA drive_trash_file result: synthetic-file.txt (1 KB)' },
+      { role: 'assistant', content: 'QA trashed it.' }] },
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-9"}'), finish('tool_calls')] }, answer('Trashed it again.')] },
+  { name: 'tool_cache_hit', about: 'The same read twice in one round: the second answer comes from the exchange cache, nothing runs again.',
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-10"}', 'qa-c1', 0), toolCall('drive_read_file', '{"fileId":"qa-file-10"}', 'qa-c2', 1), finish('tool_calls')] }, answer('Read it once.')] },
+  { name: 'tool_execute_throws', about: 'The tool engine throws: the result is the exchange error text, nothing counted.', executeThrows: 'QA drive backend exploded',
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-11"}'), finish('tool_calls')] }, answer('The read failed.')] },
+  { name: 'tool_policy_block', about: 'A read tool the account blocks is not offered; the model calls it anyway and the exchange refuses it.', policy: { drive_get_metadata: 'block' },
+    rounds: [{ frames: [toolCall('drive_get_metadata', '{"fileId":"qa-file-12"}'), finish('tool_calls')] }, answer('That tool is blocked.')] },
+  { name: 'tool_policy_block_on_card', about: 'A write whose policy becomes block while its card is open: approved, then refused as blocked.', decision: 'approve',
+    policy: { drive_trash_file: ['ask', 'block'] },
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-13"}'), finish('tool_calls')] }, answer('It was blocked after all.')] },
+  { name: 'announced_retry', about: 'A reply that ends announcing a read with no call: kept as a preamble, one retry with the note, then the answer.',
+    rounds: [answer('I will read the file now.'), answer('Here is the answer without reading.')] },
+  { name: 'final_pass_call_not_run', about: 'The final-answer round writes a tool call anyway: not run, and the fallback text closes.',
+    rounds: [
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-a"}', 'qa-r1'), finish('tool_calls')] },
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-b"}', 'qa-r2'), finish('tool_calls')] },
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-c"}', 'qa-r3'), finish('tool_calls')] },
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-d"}', 'qa-r4'), finish('tool_calls')] }] },
+  { name: 'approval_left', about: 'The client leaves while a card is open: the write is not run and the reply is kept as stopped.', leaveOnCard: true,
+    rounds: [{ frames: [chunk({ content: 'I will trash it. ' }), toolCall('drive_trash_file', '{"fileId":"qa-file-14"}'), finish('tool_calls')] }] },
+  { name: 'left_during_tool', about: 'The client leaves while a read runs: the read returns, nothing more is sent, the reply is kept as stopped.', leaveInTool: 'drive_read_file',
+    rounds: [{ frames: [chunk({ content: 'Reading. ' }), toolCall('drive_read_file', '{"fileId":"qa-file-15"}'), finish('tool_calls')] }] },
   { name: 'refused_no_message', about: 'A request with no message is refused before the stream opens.', body: { message: '' }, rounds: [] },
   { name: 'refused_unknown_project', about: 'A project id that does not exist.', body: { projectId: 'qa-missing' }, rounds: [] },
   { name: 'refused_no_model', about: 'A free chat with no model loaded.', project: null, body: { projectId: undefined }, rounds: [] },

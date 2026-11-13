@@ -285,8 +285,14 @@ fn every_whole_turn_record_replays() {
         let JValue::Arr(stores) = c.get("stores") else {
             panic!("{name}: no stores")
         };
+        // A client that left while a card was open or a tool ran: the turn still records the call's
+        // result it no longer sends, so the stream alone does not rebuild the appended entry (the
+        // native replay, native_turns.rs, checks those appends byte for byte).
+        let left_mid_call = c.get("input").get("leaveOnCard") == &JValue::Bool(true)
+            || c.get("input").get("leaveInTool").as_str().is_some();
         for store in stores
             .iter()
+            .filter(|_| !left_mid_call)
             .filter(|s| s.get("op").as_str() == Some("transcripts.appendIfLast"))
         {
             assert_bytes(

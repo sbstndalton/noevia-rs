@@ -26,15 +26,18 @@ pub fn case(name: &str) -> Value {
         .unwrap_or_else(|| panic!("no recorded case {name}"))
 }
 
-/// Whether the client went away during the case (its script has a `leave` marker).
+/// Whether the client went away during the case (its script has a `leave` marker, or it leaves while a
+/// card is open or a tool runs).
 pub fn client_left(case: &Value) -> bool {
-    case["input"]["rounds"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|r| r["frames"].as_array())
-        .flatten()
-        .any(|f| f["leave"] == true)
+    case["input"]["leaveOnCard"] == true
+        || case["input"]["leaveInTool"].is_string()
+        || case["input"]["rounds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r["frames"].as_array())
+            .flatten()
+            .any(|f| f["leave"] == true)
 }
 
 /// A request body with its `{ "$tools": key }` reference replaced by the recorded tool list.

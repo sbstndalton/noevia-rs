@@ -1,7 +1,16 @@
-//! The native continuation replayed against the recorded Node turns: each case's `prepared` frame
-//! (recorded from core's hand-off) is run by `chat_turn::native::run` against a host that answers as
-//! the recording's script did, and everything after the cut must be Node's, byte for byte: the
-//! events, the engine requests (url, headers, body), the store calls and the workspace files.
+//! The native continuation replayed against the recorded Node turns (`record_turns.cjs`): each case's
+//! `prepared` frame (recorded from core's hand-off) is run by `chat_turn::native::run`, then the turn's
+//! end ([`Saving::finish`]), against a host that answers only what the recording says Node's edges
+//! answered: the engine's rounds and bytes, the model manager, the tool bridges (`bridge`), and the
+//! other stubs after the cut (`stubs`: the tool policy, the chat-wide grant, the approval decision, the
+//! tombstones, the template tools gate, the engine's busy signal), each asked in Node's order per stub.
+//!
+//! Everything after the cut must be Node's, byte for byte: the events, the engine requests (url,
+//! headers, body, whether streamed, the deadline), the approval requests, every field of each tool run,
+//! the tools run, the store calls and the workspace files; and every recorded answer must be asked for.
+//!
+//! The host gives the lease back the moment the client leaves, as Node's `close` handler does, so what
+//! the turn still does after that (an audit, the bridge's count of a tool that was running) follows it.
 //!
 //! Every recorded prepared turn runs; a case not covered yet would be named in `NOT_YET`, with why.
 #![allow(
@@ -68,6 +77,8 @@ struct Script {
     stores: Mutex<Vec<JValue>>,
     files: Mutex<BTreeMap<String, String>>,
     bridge: Mutex<Vec<JValue>>,
+    /// The other stubs' recorded answers after the cut, asked in order per stub.
+    stubs: Mutex<Vec<JValue>>,
     approvals: Mutex<Vec<String>>,
     executions: Mutex<Vec<String>>,
     uuids: Mutex<u64>,
@@ -122,10 +133,11 @@ impl Script {
             panic!()
         };
         let case_loaded = case.get("input").get("loaded") != &JValue::Bool(false);
-        let recorded_bridge = match case.get("bridge") {
+        let recorded = |key: &str| match case.get(key) {
             JValue::Arr(b) => b.clone(),
             _ => Vec::new(),
         };
+        let (recorded_bridge, recorded_stubs) = (recorded("bridge"), recorded("stubs"));
         Script {
             case,
             rounds,
@@ -136,6 +148,7 @@ impl Script {
             stores: Mutex::new(Vec::new()),
             files: Mutex::new(BTreeMap::new()),
             bridge: Mutex::new(recorded_bridge),
+            stubs: Mutex::new(recorded_stubs),
             approvals: Mutex::new(Vec::new()),
             executions: Mutex::new(Vec::new()),
             uuids: Mutex::new(0),
@@ -152,6 +165,30 @@ impl Script {
 
     fn file_name(id: &str) -> String {
         format!("context-{}.json", context_fit::fingerprint(&js::s(id)))
+    }
+
+    /// The next recorded answer of stub `op`, whose recorded question must be `asked`.
+    fn answer(&self, op: &str, asked: &[(&str, JValue)]) -> JValue {
+        let mut stubs = self.stubs.lock().unwrap();
+        let at = stubs
+            .iter()
+            .position(|s| s.get("op").as_str() == Some(op))
+            .unwrap_or_else(|| panic!("Node's {op} was not asked this often (asked {asked:?})"));
+        let entry = stubs.remove(at);
+        for (k, v) in asked {
+            assert_eq!(
+                js::stringify(entry.get(k)),
+                js::stringify(v),
+                "{op}: the question's {k}"
+            );
+        }
+        entry.get("answer").clone()
+    }
+
+    /// The client goes away: the front gives the lease back at once, as Node's `close` handler does.
+    fn leave(&self) {
+        *self.left.lock().unwrap() = true;
+        self.release_lease();
     }
 }
 
@@ -219,8 +256,8 @@ impl Host for Script {
         true
     }
 
-    async fn template_allows_tools(&self, _model: &str) -> bool {
-        true
+    async fn template_allows_tools(&self, model: &str) -> bool {
+        self.answer("allowsTools", &[("model", js::s(model))]) == JValue::Bool(true)
     }
 
     async fn request(&self, request: &EngineRequest) -> Result<Answer<Body>, String> {
@@ -281,7 +318,7 @@ impl Host for Script {
         match chunk {
             Chunk::Bytes(b) => Read::Chunk(b),
             Chunk::Leave => {
-                *self.left.lock().unwrap() = true;
+                self.leave();
                 Read::Aborted
             }
             Chunk::Stall => match idle_ms {
@@ -325,7 +362,7 @@ impl Host for Script {
     }
 
     fn engine_busy(&self) -> bool {
-        false
+        self.answer("inferenceBusy", &[("n", js::n(1.0))]) == JValue::Bool(true)
     }
 
     fn title_auto_named(&self, list: Option<&str>, chat: &str, first: &str) -> bool {
@@ -369,9 +406,14 @@ impl Host for Script {
         format!("00000000-0000-4000-8000-{:012}", *n)
     }
 
-    fn tool_policy(&self, _name: &str, write: bool) -> String {
-        // record_turns.cjs toolPolicy: writes ask, reads run.
-        if write { "ask" } else { "allow" }.into()
+    fn tool_policy(&self, name: &str, write: bool) -> String {
+        self.answer(
+            "policy",
+            &[("name", js::s(name)), ("write", JValue::Bool(write))],
+        )
+        .as_str()
+        .unwrap()
+        .to_string()
     }
 
     async fn write_target(&self, name: &str, args: &str, _chat_key: Option<&str>) -> Target {
@@ -421,18 +463,31 @@ impl Host for Script {
         ]))
     }
 
-    fn chat_wide_approved(&self, _chat_id: Option<&str>, _scope: &str, _binding: &JValue) -> bool {
-        false
+    fn chat_wide_approved(&self, chat_id: Option<&str>, scope: &str, _binding: &JValue) -> bool {
+        self.answer(
+            "chatWideApproved",
+            &[
+                ("chatId", chat_id.map_or(JValue::Null, js::s)),
+                ("scope", js::s(scope)),
+            ],
+        ) == JValue::Bool(true)
     }
 
     async fn await_approval(&self, request: &JValue) -> String {
         self.approvals.lock().unwrap().push(js::stringify(request));
-        self.case
-            .get("input")
-            .get("decision")
-            .as_str()
-            .unwrap_or("approve")
-            .to_string()
+        let left = self
+            .stubs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|s| s.get("op").as_str() == Some("awaitApproval"))
+            .is_some_and(|s| s.get("left") == &JValue::Bool(true));
+        let decision = self.answer("awaitApproval", &[]);
+        if left {
+            // The card was open when the client left: the gate's abortSignal answers 'aborted'.
+            self.leave();
+        }
+        decision.as_str().unwrap().to_string()
     }
 
     fn revoke_grant(&self, _chat_id: Option<&str>) {}
@@ -451,19 +506,46 @@ impl Host for Script {
 
     async fn execute_tool(&self, run: &ToolRun) -> Result<(String, bool), String> {
         let next = self.bridge.lock().unwrap().remove(0);
-        assert_eq!(
+        // Every field the bridge request carries, as Node passed it to executeToolCall.
+        let opt = |v: &Option<String>| v.clone().map_or(JValue::Null, js::s);
+        let asked = js::obj([
+            ("op", js::s("execute")),
+            ("projectId", opt(&run.project_id)),
+            ("name", js::s(run.name.clone())),
+            ("args", js::s(run.args.clone())),
             (
-                next.get("op").as_str(),
-                next.get("name").as_str(),
-                next.get("args").as_str()
+                "allowed",
+                JValue::Arr(run.allowed.iter().cloned().map(js::s).collect()),
             ),
             (
-                Some("execute"),
-                Some(run.name.as_str()),
-                Some(run.args.as_str())
-            )
-        );
+                "routes",
+                JValue::Arr(
+                    run.routes
+                        .iter()
+                        .map(|(n, s)| JValue::Arr(vec![js::s(n.clone()), js::s(s.clone())]))
+                        .collect(),
+                ),
+            ),
+            ("chatKey", opt(&run.chat_key)),
+            ("exchangeKey", js::s(run.exchange_key.clone())),
+        ]);
+        let JValue::Obj(fields) = &asked else {
+            panic!()
+        };
+        for (k, v) in fields {
+            assert_eq!(
+                js::stringify(next.get(k)),
+                js::stringify(v),
+                "the tool run's {k}"
+            );
+        }
         self.executions.lock().unwrap().push(run.name.clone());
+        if let Some(message) = next.get("threw").as_str() {
+            return Err(message.to_string());
+        }
+        if next.get("left") == &JValue::Bool(true) {
+            self.leave();
+        }
         // The bridge counts the call as chat.cjs does.
         self.store("recordToolUse", vec![("name", js::s(run.name.clone()))]);
         Ok((
@@ -508,8 +590,11 @@ impl Keep for Script {
         self.files.lock().unwrap().remove(&partial_name(chat));
     }
 
-    fn tombstoned(&self, _chat: &str) -> bool {
-        false
+    fn tombstoned(&self, chat: &str) -> bool {
+        let JValue::Arr(ids) = self.answer("tombstones", &[]) else {
+            panic!("tombstones: not a list")
+        };
+        ids.iter().any(|id| id.as_str() == Some(chat))
     }
 
     fn delete_unlisted(&self, chat: &str) {
@@ -668,6 +753,16 @@ fn the_native_continuation_is_node_after_the_cut() {
                 js::set(&mut body, "tools", tools);
             }
             assert_eq!(s.body, js::stringify(&body), "{name} request {i} body");
+            assert_eq!(
+                JValue::Bool(s.stream),
+                *r.get("stream"),
+                "{name} request {i} streamed"
+            );
+            assert_eq!(
+                s.timeout_ms.map_or(JValue::Null, |ms| js::n(ms as f64)),
+                *r.get("timeoutMs"),
+                "{name} request {i} deadline"
+            );
         }
         let JValue::Arr(approvals) = c.get("approvals") else {
             panic!()
@@ -693,6 +788,11 @@ fn the_native_continuation_is_node_after_the_cut() {
         assert!(
             script.bridge.lock().unwrap().is_empty(),
             "{name}: every bridge answer was asked for"
+        );
+        assert_eq!(
+            *script.stubs.lock().unwrap(),
+            Vec::<JValue>::new(),
+            "{name}: every stub answer was asked for"
         );
 
         {
@@ -721,7 +821,53 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 39, "{ran:?}");
+    assert_eq!(ran.len(), 50, "{ran:?}");
+}
+
+/// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
+/// the exchange's refusal (it is not in the allowed set), before any policy read.
+#[test]
+fn a_blocked_tool_is_not_offered_and_its_call_is_refused() {
+    let f = fixture();
+    let JValue::Arr(cases) = f.get("cases") else {
+        panic!()
+    };
+    let c = cases
+        .iter()
+        .find(|c| c.get("name").as_str() == Some("tool_policy_block"))
+        .unwrap();
+    assert_eq!(
+        js::stringify(c.get("input").get("policy")),
+        r#"{"drive_get_metadata":"block"}"#
+    );
+    let JValue::Arr(requests) = c.get("requests") else {
+        panic!()
+    };
+    assert!(!requests.is_empty());
+    for r in requests {
+        let key = r.get("body").get("tools").get("$tools").as_str().unwrap();
+        let JValue::Arr(tools) = f.get("tools").get(key) else {
+            panic!()
+        };
+        let names: Vec<&str> = tools
+            .iter()
+            .filter_map(|t| t.get("function").get("name").as_str())
+            .collect();
+        assert!(names.contains(&"drive_read_file"), "{names:?}");
+        assert!(!names.contains(&"drive_get_metadata"), "{names:?}");
+    }
+    let JValue::Arr(events) = c.get("events") else {
+        panic!()
+    };
+    let result = events
+        .iter()
+        .find(|e| e.get("type").as_str() == Some("tool_result"))
+        .unwrap();
+    assert_eq!(
+        result.get("text").as_str(),
+        Some(r#"ERROR: tool "drive_get_metadata" is not enabled for this project"#)
+    );
+    assert!(!js::stringify(c.get("stubs")).contains(r#""op":"policy""#));
 }
 
 /// The front spawns the turn on its runtime: `native::run` must be `Send` for a `Send + Sync` host.

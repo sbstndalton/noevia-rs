@@ -635,8 +635,10 @@ impl<'a> Tools<'a> {
         if host.left() {
             return Some(CANCELLED.into());
         }
-        let now = host.tool_policy(name, write);
-        if now == "block" || (permission != "ask" && now == "ask") {
+        // Read as chat.cjs reads it: once for `block`, and again for `ask` when the call was not asked about.
+        if host.tool_policy(name, write) == "block"
+            || (permission != "ask" && host.tool_policy(name, write) == "ask")
+        {
             return Some(PERMISSION_CHANGED.into());
         }
         None
