@@ -585,6 +585,7 @@ fn every_git_call_on_a_held_tree_switches_off_what_the_tree_could_run() {
             noevia: Some(run.me),
             mode: None,
             epoch: "qa".into(),
+            change_max_buffer: None,
         },
         Box::new(move || clock.fetch_add(1, Ordering::SeqCst) as f64),
         git,
