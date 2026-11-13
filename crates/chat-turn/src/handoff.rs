@@ -23,8 +23,9 @@ pub const PREPARED_CAP: usize = 40 * 1024 * 1024;
 /// rust-chat-native.cjs `CAPS_HEADER`; read only with the hand-off secret).
 pub const HANDOFF_CAPS_HEADER: &str = "x-noevia-chat-handoff-caps";
 /// What this executor runs beyond the first hand-off step, for [`HANDOFF_CAPS_HEADER`]: `skills`, the
-/// instruction skills checks ([`crate::skills`]). Without it core keeps a turn whose project has skills.
-pub const HANDOFF_CAPS: &str = "skills";
+/// instruction skills checks ([`crate::skills`]); `once`, the coworker page save's per-call card (#2446,
+/// [`crate::gate`]). Without them core keeps a turn whose project has skills, or that offers the page save.
+pub const HANDOFF_CAPS: &str = "skills,once";
 
 /// What a chunk of core's stream gives.
 #[derive(Debug, Clone, PartialEq)]

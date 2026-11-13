@@ -1,7 +1,7 @@
 [package]
 name = "chat-prepare"
 version = "0.1.0"
-description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, replayed byte for byte on recorded Node output. Nothing calls it yet."
+description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, a project turn's knowledge-file retrieval around its seams (the file-job wait and the retrieval call: what is asked, the reply's sources, partial reads and the frame's sources), the chat frame block, a turn's reasoning effort, Fast thinking-off and sampling presets, which model answers it as which role (manual pick or Automatic: the roles check, classification and refusals), and the tools it offers with the per-tool facts the native executor's frame carries, Automatic's move to a tool-capable role and the long-context profile with the tools resolved again for the new model, replayed byte for byte on recorded Node output. Nothing calls it yet."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -13,8 +13,26 @@ workspace = true
 [dependencies]
 js-json = { path = "../js-json" }
 prompt-framing = { path = "../prompt-framing" }
+# chat-frame-steering.cjs safeTag's /[\p{L}\p{N}_-]/u: ICU4X's General_Category, the Unicode release Node's ICU
+# states (the NFKC before it is prompt-framing's, also ICU4X). Unicode-3.0; already in Cargo.lock.
+icu_properties = "=2.3.0"
 # account-instructions.cjs cleanLanguage's /^[\p{L}][\p{L}\p{M} ()'-]*$/u. MIT OR Apache-2.0; already in Cargo.lock.
 regex = "=1.13.1"
+# The long-context profile's pick (#1079): the crate dav-parse.wasm runs for long-profile.cjs (workspace crate;
+# preset-reload and serde_json, both already in Cargo.lock; no rusqlite).
+long-profile = { path = "../long-profile" }
 # The IANA zones the time part states the day in (Intl.DateTimeFormat's timeZone). MIT OR Apache-2.0; already in Cargo.lock.
 chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 chrono-tz = "=0.10.4"
+# instruction-skills.cjs hash (sha256 of a skill's text). MIT OR Apache-2.0; already in Cargo.lock.
+sha2 = "=0.10.9"
+# tool-gate.cjs prefetchableSearch, which tools-mode.cjs wantsWeb asks: the port core's dav-parse.wasm runs
+# (workspace crate; prompt-framing, ssrf-policy, url).
+tool-gate = { path = "../tool-gate" }
+# projectToolboxIds and selectedToolboxIds: the port core's dav-parse.wasm runs (workspace crate, depends on
+# prompt-framing only).
+toolboxes-permitted = { path = "../toolboxes-permitted" }
+# reasoning-effort.cjs localEngine's `new URL(value).href` (the WHATWG URL Standard). MIT OR Apache-2.0; already in
+# Cargo.lock (prompt-framing uses it).
+url = "=2.5.8"
+

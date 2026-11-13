@@ -1,8 +1,9 @@
 //! The native chat turn's preparation (track R8, phase 2): the system message and the replayed
 //! history of a turn, as noevia-core's `server/chat.cjs` `handleChat` builds them before routing
 //! (its `sysParts`, `msgs` and `wire`). Slice P1: a turn without a project; slice P2a: what a
-//! project turn adds that needs neither retrieval nor tools nor skills to be computed. Pure: the
-//! caller reads the account files, the project record and the clock and passes them in.
+//! project turn adds that needs neither retrieval nor tools to be computed; slice P3a: its
+//! instruction skills ([`skills`]). Pure: the caller reads the account files, the project record
+//! and the clock and passes them in.
 //!
 //! - [`account`]: `account-instructions.cjs` `read` and `systemPart` (style, advanced controls,
 //!   response language, the custom text).
@@ -11,12 +12,71 @@
 //! - [`history`]: the filter, `HISTORY_CAP` cut and map of `body.history`, then
 //!   `normalizeReplayHistory`.
 //! - [`names`]: `quoted-name.cjs` `quoteName` and `quotedNames`.
+//! - [`skills`] (slice P3a): the instruction-skill parts, [`project::ProjectTurn::skills`].
 //! - [`shared`]: `shared-context.cjs` `read` and `forChat` (the recent Code tasks part).
 //! - [`sources`]: `source-readability.cjs` (`isUnreadable`, `isWaiting`, `readable`,
 //!   `waitingNotice`), `source-coverage.cjs` `coverageNote`, and chat.cjs's not-ready and
 //!   stored-only lines.
 //! - [`project`]: the project parts in chat.cjs's order and a shadow project's knowledge block in
 //!   front of the user's message.
+//! - [`frame`] (slice P4a): `chat-frame-steering.cjs` `storedFrame`, `frameBlock` and `gateBias`,
+//!   and chat.cjs's rules for reading the frame; [`frame::frame_part`] is the first
+//!   [`Turn::trailing`] part (recorded in `tests/fixtures/node-frame.v1.json`, written by
+//!   `tests/record_frame.cjs`).
+//! - [`route`] (slice P5a): what a routed turn asks of the model besides its messages: the
+//!   reasoning effort ([`effort`], `reasoning-effort.cjs`), the Fast route's thinking switch and
+//!   the task-aware sampling presets ([`sampling`], `sampling-presets.cjs` in full), as chat.cjs
+//!   ~1405-1430 computes them (recorded in `tests/fixtures/node-route.v1.json`, written by
+//!   `tests/record_route.cjs`, which runs those lines of the pinned chat.cjs). `wantsAuto`,
+//!   `routedRole` and the provider row come from [`roles`] (P5b) and the later routing slices. Named
+//!   differences: two hosts Node's URL parser and the `url` crate read apart (a Unicode 16
+//!   letter, a mixed-direction label), see [`effort::local_engine`]; every other recorded case
+//!   (8,466 URL pairs and rows among them) replays byte for byte.
+//! - [`roles`] (slice P5b): which model answers the turn and as which role, before P5a's lines:
+//!   `wantsAuto`, the Automatic roles check (400/409), the classification and its fallbacks, the
+//!   Creative move, the pre-load target, the Manual pick and its loaded-model default, and the 400
+//!   and 409 refusals of a turn with no or a non-chat model. The classification is
+//!   [`system_one`] (`system-one-router.cjs`) over [`router`] (`auto-router.cjs`). Recorded in
+//!   `tests/fixtures/node-roles.v1.json`, written by `tests/record_roles.cjs`, which runs those
+//!   modules and chat.cjs's own lines; no named differences. Routing modes, Inference machines, the
+//!   egress and ChatGPT checks are later slices; the tool-capable move and the long-context profile
+//!   are [`reroute`].
+//! - [`offer`] (slice P6a): the tools a turn offers the model and the per-tool facts the native
+//!   executor's frame carries (`tools`, `routes`, `writes`, `public`, `automaticOnlyWrites`,
+//!   `editTools`, `routeNote`, `templateGate`): the turn's boxes and Automatic's additions
+//!   ([`tools_mode`], `tools-mode.cjs`), the provider and ungranted-cloud strips, the routing
+//!   merge, the account's blocks and `resolveTools` with its count cap and token budget
+//!   ([`toolboxes`], `toolboxes.cjs`), and the route notes ([`route_notes`],
+//!   `tool-route-notes.cjs`). The MCP discovery, connections, policy, prefill measurement, tool
+//!   router and tool gate are the caller's answers. Recorded in `tests/fixtures/node-tools.v1.json`,
+//!   written by `tests/record_tools.cjs`; one named difference: a tool whose name is truthy but not
+//!   text is refused ([`toolboxes::NameNotText`], the turn stays in Node) where Node offers it. The hybrid route's
+//!   private-tools move, Inference machines, the
+//!   prompt edits of the ungranted cloud route and the executor's refusal inputs are later slices.
+//! - [`reroute`] (slice P5c): the rest of the turn's model routing after [`roles`] and [`offer`]:
+//!   Automatic's move to a tool-capable role when the tool gate says a tool is needed and the
+//!   routed model's template cannot take tools (#1550, `toolCapableRoute`; the template verdict
+//!   is the caller's seam), the long-context profile of Context: High (#1079, `<model>-long`, the
+//!   `long-profile` crate's pick over `servedCatalogue()`), the status line and meta fields they
+//!   set, and the offered tools resolved again for a changed model ([`offer::offer`]). Recorded in
+//!   `tests/fixtures/node-reroute.v1.json`, written by `tests/record_reroute.cjs` (whole turns
+//!   through `createChatHandler`); no named differences. Inference machines and routing modes are
+//!   later slices.
+//! - [`retrieval`] (slice P2b): a project turn's knowledge-file retrieval around its two seams (the
+//!   file-job wait and `rag.filesContext`): the project id, whether and how the turn waits, the
+//!   request (the readable files, the question, `attached`, multimodal `images`), and what chat.cjs
+//!   keeps of the answer: the block, the reply's sources (`chat-sources.cjs` `buildSources`), the
+//!   partial reads (`source-coverage.cjs` `partialSources`, `coverageWarning`) and the prepared
+//!   frame's `sources` (`rust-chat-native.cjs` `injectedSources`). Recorded in
+//!   `tests/fixtures/node-retrieval.v1.json`, written by `tests/record_retrieval.cjs` (whole turns
+//!   through `createChatHandler` with the seams stubbed). One named difference: a turn whose
+//!   request asks for images ([`retrieval::Stopped::Images`]) stays in Node until the images
+//!   multimodal retrieval finds are ported (a later slice). A source whose text is in its own file
+//!   is explicit: [`retrieval::load`] marks it as projects.cjs's loader does.
+//! - [`vision`] (slice P2c): a project's attached images and the vision pass after the stream
+//!   opened (the image notes and warning, the Vision role's description or the answering model's
+//!   probe, the image parts), recorded in `tests/fixtures/node-vision.v1.json` (`record_vision.cjs`);
+//!   named differences: an asset id that is not a plain file name is never read, one line's text.
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!
@@ -56,21 +116,37 @@
 //! (`f.attachment?.state` of `null`), so such a turn is [`PrepareError::Thrown`] as in Node, where
 //! retrieval's skill check throws on it even earlier.
 //!
-//! Later slices: the retrieval itself and `partialSources` (P2b, which pass `filesBlock` and
-//! `partialReads` in here); the skill index, auto-loaded and pinned skill blocks and the history's
-//! skill scrub (they arrive through [`project::ProjectTurn::skills`]); the frame and brain blocks
-//! ([`Turn::trailing`]); image assets; and what happens to the wire once the route is known
-//! (off-box zone and history filter, the hybrid route's read-file hint, vision, route notes).
+//! Later slices: the images of multimodal retrieval (#1726; [`retrieval`] gives `filesBlock`,
+//! `sourcesNotReady` and `partialReads` to [`ProjectTurn`]); the history's skill scrub and the automatic skill selection itself
+//! (its picks go to [`skills::parts`]); the brain block
+//! ([`Turn::trailing`], after the frame block) and the tool gate's use of [`frame::gate_bias`];
+//! and what happens to the wire once the route is known (off-box zone and history filter, the
+//! hybrid route's read-file hint, route notes; the vision pass is [`vision`]).
 
 pub mod account;
+pub mod effort;
+pub mod frame;
 pub mod history;
 pub mod js;
 pub mod memory;
 pub mod names;
+pub mod offer;
 pub mod project;
+pub mod reroute;
+pub mod retrieval;
+pub mod roles;
+pub mod route;
+pub mod route_notes;
+pub mod router;
+pub mod sampling;
 pub mod shared;
+pub mod skills;
 pub mod sources;
+pub mod system_one;
 pub mod time;
+pub mod toolboxes;
+pub mod tools_mode;
+pub mod vision;
 
 pub use history::{Entry, ReplayOptions};
 use js_json::JValue;
@@ -153,10 +229,12 @@ impl SystemParts {
 /// - `project` is what chat.cjs resolves from `body.projectId` and a free chat's diary-extras
 ///   context project (`diaryExtras.chatProjectId`): `None` when that is null. A free chat with
 ///   attachments has a hidden shadow project (`cowork-chat-context-*`), so it is a project turn.
-///   [`ProjectTurn`] lists what a project turn must not hold yet (image assets, skills).
-/// - Chat framing off for this turn: chat.cjs ~735-755 pushes the confirmed frame's block and the
-///   linked brain block after everything else (the P4 slice). Chat framing is on live, so a live
-///   turn with a confirmed frame is not covered yet; such blocks go in `trailing` once ported.
+///   [`ProjectTurn`] lists what a project turn must not hold yet; its skills come
+///   from [`skills::parts`] in [`ProjectTurn::skills`].
+/// - Chat framing: chat.cjs ~745-765 pushes the confirmed frame's block and the linked brain
+///   block after everything else. The frame block is [`frame::frame_part`] of
+///   [`frame::chat_frame`], passed in `trailing`; the brain block (`features.brainContext`, off by
+///   default) is not ported yet, so a turn with it on is not covered.
 /// - No Diary space and no `compactOnly` side effects beyond the replay and the parts
 ///   (`message: None`).
 pub struct Turn<'a> {

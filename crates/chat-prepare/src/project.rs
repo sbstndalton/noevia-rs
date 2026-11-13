@@ -25,25 +25,29 @@ pub const CHAT_CONTEXT_PREFIX: &str = "cowork-chat-context-";
 
 /// What a project turn is prepared from, beyond [`crate::Turn`].
 ///
-/// Preconditions (the rest is a later slice): the project has no image assets (`project.assets`:
-/// the vision notes come after routing), no instruction skill reaches the turn except through
+/// Preconditions (the rest is a later slice): no instruction skill reaches the turn except through
 /// [`ProjectTurn::skills`] and the history holds no revoked skill text (the skill-history scrub),
-/// and no Diary space.
+/// and no Diary space. The project's image assets are [`crate::vision`]'s (no part here reads
+/// them).
 pub struct ProjectTurn<'a> {
     /// `getProject(projectId)` after `instruction-skills.cjs` `snapshot`: the stored record, each
-    /// file's `content` the text Node's accessor reads.
+    /// file's `content` the text Node's accessor reads (a source left as stored, a `textRef` and
+    /// no `content`, reads as a missing text: see [`crate::skills`]).
     pub project: &'a JValue,
     /// `codeTasksFor(project) || []` (`[]` when it throws); read only when the project shares
     /// into Chat.
     pub code_tasks: &'a [JValue],
-    /// `rag.filesContext(...)`'s result (track R4); `None` or empty: no block.
+    /// `rag.filesContext(...)`'s result ([`crate::retrieval::Retrieved::files_block`]); `None` or
+    /// empty: no block.
     pub files_block: Option<&'a str>,
-    /// `sourceJobs.settle(...).notReady`; ignored on `compactOnly`, where Node does not wait.
+    /// `sourceJobs.settle(...).notReady` ([`crate::retrieval::Settled`]); ignored on `compactOnly`,
+    /// where Node does not wait.
     pub not_ready: &'a [NotReady],
-    /// `partialSources(readable, injected)` of what retrieval placed (#1513).
+    /// `partialSources(readable, injected)` of what retrieval placed (#1513,
+    /// [`crate::retrieval::Retrieved::partial_reads`]).
     pub partial_reads: &'a [Partial],
-    /// The skill index, the auto-loaded skill block and the pinned skill block, in that order (a
-    /// later slice computes them; empty for none).
+    /// The skill index, the auto-loaded skill block and the pinned skill block, in that order
+    /// ([`crate::skills::parts`]; empty for none).
     pub skills: &'a [(PartKind, String)],
 }
 

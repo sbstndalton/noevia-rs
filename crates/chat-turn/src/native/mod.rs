@@ -388,6 +388,7 @@ impl<H: Host> Turn<'_, H> {
             self.helpers.tool_result_cap,
         );
         gate.edit_tools = names(&p.edit_tools);
+        gate.once_tools = names(&p.once_tools);
         gate.skills = Some(self.skills);
         let mut round: i32 = 0;
         loop {

@@ -449,9 +449,15 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "icu_properties",
  "js-json",
+ "long-profile",
  "prompt-framing",
  "regex",
+ "sha2",
+ "tool-gate",
+ "toolboxes-permitted",
+ "url",
 ]
 
 [[package]]

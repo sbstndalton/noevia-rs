@@ -34,7 +34,7 @@ use std::task::{Context, Poll, Waker};
 
 use chat_turn::after::{Keep, Saving};
 use chat_turn::host::{
-    Answer, EditTarget, EngineRequest, GateRefusal, Host, Read, Scrub, Skill, Target, ToolRun,
+    Answer, EditTarget, EngineRequest, GateRefusal, Host, Ran, Read, Scrub, Skill, Target, ToolRun,
 };
 use chat_turn::js;
 use chat_turn::native::{self, Ended, Helpers, Process};
@@ -90,6 +90,8 @@ struct Script {
     approvals: Mutex<Vec<String>>,
     executions: Mutex<Vec<String>>,
     uuids: Mutex<u64>,
+    /// The policy reads past the recording in a redeem-refusal case (D17: exactly one).
+    extra_policy_reads: Mutex<u32>,
     leased: Mutex<bool>,
     /// The turn's lease: the recorder's gate counts the leases taken before the cut (a Vision role's description).
     lease: String,
@@ -189,6 +191,7 @@ impl Script {
             approvals: Mutex::new(Vec::new()),
             executions: Mutex::new(Vec::new()),
             uuids: Mutex::new(0),
+            extra_policy_reads: Mutex::new(0),
             leased: Mutex::new(false),
             lease: format!("qa-lease-{}", earlier + 1),
             loaded: Mutex::new(case_loaded),
@@ -488,6 +491,29 @@ impl Host for Script {
     }
 
     fn tool_policy(&self, name: &str, write: bool) -> String {
+        // Named difference (D17): the native gate reads the policy for dispatch before core's execute bridge
+        // redeems the grant; chat.cjs redeems first and stops there when the redeem is refused or unchecked, so
+        // its recording has one policy read fewer. Those cases' writes ask (the default).
+        let redeem_refused = self
+            .case
+            .get("input")
+            .get("approvalFront")
+            .get("redeem")
+            .as_str()
+            .is_some();
+        let left = self
+            .stubs
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| s.get("op").as_str() == Some("policy"));
+        if redeem_refused && !left {
+            // Exactly one read more than Node's.
+            let mut extra = self.extra_policy_reads.lock().unwrap();
+            *extra += 1;
+            assert_eq!(*extra, 1, "more than the one extra policy read");
+            return "ask".into();
+        }
         self.answer(
             "policy",
             &[("name", js::s(name)), ("write", JValue::Bool(write))],
@@ -568,14 +594,35 @@ impl Host for Script {
         ]))
     }
 
-    fn chat_wide_approved(&self, chat_id: Option<&str>, scope: &str, _binding: &JValue) -> bool {
-        self.answer(
+    async fn chat_wide_approved(
+        &self,
+        chat_id: Option<&str>,
+        scope: &str,
+        _binding: &JValue,
+        _exchange_key: &str,
+    ) -> Option<String> {
+        // `leaveInGrant`: the client goes away while the grant check is out; its answer still comes.
+        if self
+            .case
+            .get("input")
+            .get("approvalFront")
+            .get("leaveInGrant")
+            == &JValue::Bool(true)
+        {
+            self.leave();
+        }
+        (self.answer(
             "chatWideApproved",
             &[
                 ("chatId", chat_id.map_or(JValue::Null, js::s)),
                 ("scope", js::s(scope)),
             ],
-        ) == JValue::Bool(true)
+        ) == JValue::Bool(true))
+        .then(|| "0123456789abcdef0123456789abcdef".to_string())
+    }
+
+    async fn open_approval(&self, _request: &JValue) -> bool {
+        self.answer("openApproval", &[]) == JValue::Bool(true)
     }
 
     async fn await_approval(&self, request: &JValue) -> String {
@@ -595,7 +642,7 @@ impl Host for Script {
         decision.as_str().unwrap().to_string()
     }
 
-    fn revoke_grant(&self, chat_id: Option<&str>) {
+    async fn revoke_grant(&self, chat_id: Option<&str>) {
         self.store(
             "revokeChatGrant",
             vec![
@@ -617,8 +664,23 @@ impl Host for Script {
         );
     }
 
-    async fn execute_tool(&self, run: &ToolRun) -> Result<(String, bool), String> {
+    async fn execute_tool(&self, run: &ToolRun) -> Ran {
+        // A grant is redeemed by the execute bridge itself: Node's redeem answer comes first (D17).
+        if let Some(grant) = &run.grant {
+            assert_eq!(grant.chat, "qa-chat-1", "the grant's chat");
+            let redeemed = self.answer("redeemChatGrant", &[("scope", js::s(grant.scope.clone()))]);
+            match redeemed.as_str() {
+                Some("refused") => return Ran::Refused,
+                Some("unavailable") => return Ran::Unavailable,
+                _ => {}
+            }
+        }
         let next = self.bridge.lock().unwrap().remove(0);
+        assert_eq!(
+            next.get("fenced") == &JValue::Bool(true),
+            run.grant.is_some(),
+            "the tool run under a redeemed grant"
+        );
         // Every field the bridge request carries, as Node passed it to executeToolCall.
         let opt = |v: &Option<String>| v.clone().map_or(JValue::Null, js::s);
         let asked = js::obj([
@@ -658,21 +720,27 @@ impl Host for Script {
             );
         }
         // The recorder lists what the Drive and MCP tool engines ran; core's built-in tools run in its toolboxes.
-        if !["read_project_file", "get_current_time"].contains(&run.name.as_str()) {
+        if !["read_project_file", "get_current_time", "space_page_save"]
+            .contains(&run.name.as_str())
+        {
             self.executions.lock().unwrap().push(run.name.clone());
         }
         if let Some(message) = next.get("threw").as_str() {
-            return Err(message.to_string());
+            return Ran::Threw(message.to_string());
         }
         if next.get("left") == &JValue::Bool(true) {
             self.leave();
         }
-        // The bridge counts the call as chat.cjs does.
-        self.store("recordToolUse", vec![("name", js::s(run.name.clone()))]);
-        Ok((
-            next.get("text").as_str().unwrap().to_string(),
-            next.get("failed") == &JValue::Bool(true),
-        ))
+        let not_run = next.get("notRun") == &JValue::Bool(true);
+        // The bridge counts the call as chat.cjs does (not one its fence stopped).
+        if !not_run {
+            self.store("recordToolUse", vec![("name", js::s(run.name.clone()))]);
+        }
+        Ran::Done {
+            text: next.get("text").as_str().unwrap().to_string(),
+            failed: next.get("failed") == &JValue::Bool(true),
+            not_run,
+        }
     }
 
     async fn skills_revoked(
@@ -970,8 +1038,8 @@ fn every_prepared_turn_reads() {
         read += 1;
     }
     assert!(read >= 30);
-    // The coworker page save (#2446) is the one recorded turn still kept in Node.
-    assert_eq!(refused, ["page_save_stays_in_node: page-save"]);
+    // The coworker page save (#2446) is handed off too now (the `once` capability): no recorded turn stays in Node.
+    assert_eq!(refused, Vec::<String>::new());
 }
 
 #[test]
@@ -1104,7 +1172,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 84, "{ran:?}");
+    assert_eq!(ran.len(), 95, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
