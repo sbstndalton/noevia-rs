@@ -133,8 +133,9 @@ pub async fn internal(
         }) else {
             return status(400, json!({"detail": "plan_only needs the documents"}));
         };
-        let task =
-            tokio::task::spawn_blocking(move || plans(&app, &cfg, &uid, active, &documents, handle));
+        let task = tokio::task::spawn_blocking(move || {
+            plans(&app, &cfg, &uid, active, &documents, handle)
+        });
         return task.await.unwrap_or_else(|_| status(500, json!({})));
     }
     // A plan writes nothing; a re-index needs the writer lock Python holds.

@@ -358,3 +358,89 @@ async fn d4b_files_and_status_are_native_and_unreproducible_states_decline() {
     assert_eq!(s, 200);
     assert!(body.starts_with(r#"{"ok":true"#) && !body.contains("journal_pending"));
 }
+
+async fn start_with(root: &std::path::Path, sources: Option<Vec<String>>) -> std::net::SocketAddr {
+    let mut cfg: serde_json::Value = serde_json::from_str(&config(root)).unwrap();
+    if let Some(s) = sources {
+        cfg["external_sources"] = serde_json::json!(s);
+    }
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&cfg.to_string()).unwrap(),
+    ));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(noevia_diary::serve(listener, app));
+    addr
+}
+
+#[tokio::test]
+async fn external_sources_scan_in_python_key_order() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[], "{}");
+    // Without the start-up list the route is Python's.
+    let addr = start_with(dir.path(), None).await;
+    assert_eq!(
+        get(addr, "/api/external-sources", &forwarded()).await.0,
+        421
+    );
+    // An empty list: not configured.
+    let addr = start_with(dir.path(), Some(vec![])).await;
+    let (s, d, body) = get(addr, "/api/external-sources", &forwarded()).await;
+    assert_eq!((s, d), (200, None));
+    assert_eq!(body, r#"{"configured":false,"sources":[],"total":0}"#);
+    // A source folder with a dated and an undated note, a missing path and a file path.
+    let src = dir.path().join("qa-source");
+    std::fs::create_dir_all(src.join("sub")).unwrap();
+    std::fs::write(src.join("2030-01-06 walk.md"), "QA synthetic note").unwrap();
+    std::fs::write(src.join("sub").join("notes.txt"), "QA").unwrap();
+    std::fs::write(src.join("skip.bin"), "x").unwrap();
+    let file = dir.path().join("qa-file.md");
+    std::fs::write(&file, "x").unwrap();
+    let src_s = src.to_str().unwrap().to_string();
+    let missing = dir.path().join("qa-missing").to_str().unwrap().to_string();
+    let file_s = file.to_str().unwrap().to_string();
+    let addr = start_with(
+        dir.path(),
+        Some(vec![src_s.clone(), missing.clone(), file_s.clone()]),
+    )
+    .await;
+    let (s, d, body) = get(addr, "/api/external-sources", &forwarded()).await;
+    assert_eq!((s, d), (200, None), "{body}");
+    let first = body.find(r#""name":"2030-01-06 walk.md","rel_path":"2030-01-06 walk.md","size":17,"date":"2030-01-06","date_source":"filename""#);
+    assert!(first.is_some(), "{body}");
+    assert!(body.starts_with(&format!(
+        r#"{{"configured":true,"sources":[{{"path":{},"exists":true,"files":["#,
+        serde_json::json!(src_s)
+    )), "{body}");
+    assert!(body.contains(&format!(
+        r#"{{"path":{},"exists":false,"files":[],"total":0,"truncated":false}}"#,
+        serde_json::json!(missing)
+    )));
+    assert!(body.contains(&format!(
+        r#"{{"path":{},"exists":true,"error":"not a directory","files":[],"total":0,"truncated":false}}"#,
+        serde_json::json!(file_s)
+    )));
+    assert!(body.ends_with(r#""total":2}"#), "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    // Sorted by date (the undated-by-name note takes its modification day, today), then path.
+    assert_eq!(v["sources"][0]["files"][0]["rel_path"], "sub/notes.txt");
+    assert_eq!(v["sources"][0]["files"][0]["date_source"], "mtime");
+    // Python's 401 shape, and the usual tenant refusals.
+    let (s, _, body) = get(
+        addr,
+        "/api/external-sources",
+        &with(forwarded(), "authorization", "Bearer wrong"),
+    )
+    .await;
+    assert_eq!((s, body.as_str()), (401, r#"{"error":"unauthorized"}"#));
+    assert_eq!(
+        get(
+            addr,
+            "/api/external-sources",
+            &without(forwarded(), "x-noevia-diary-recovered")
+        )
+        .await
+        .0,
+        421
+    );
+}
