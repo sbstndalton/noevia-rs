@@ -124,7 +124,10 @@ pub fn generate_in_session(
         ("maxBytes", JValue::from(planner::MAX_PLAN_BYTES as u32)),
     ]);
     let unreachable = || Err(planner::PLAN_UNREACHABLE.into());
-    let Ok(r) = session.call(&req, &deadline.signal) else {
+    let called = session.call(&req, &deadline.signal);
+    // The deadline counts only if it fired before the answer came (as in Node).
+    deadline.finish();
+    let Ok(r) = called else {
         return unreachable();
     };
     if r.is_nullish() {
@@ -216,7 +219,9 @@ pub fn review_in_session(
         ("constrain", JValue::Bool(true)),
         ("maxBytes", JValue::from(review::MAX_VERDICT_BYTES as u32)),
     ]);
-    let Ok(r) = session.call(&req, &deadline.signal) else {
+    let called = session.call(&req, &deadline.signal);
+    deadline.finish();
+    let Ok(r) = called else {
         return Err(review::REVIEW_UNREACHABLE.into());
     };
     if deadline.timed_out() {

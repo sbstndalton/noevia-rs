@@ -16,31 +16,56 @@
 //!
 //! A [`Signal`] stands for an `AbortSignal`: the job's own (the caller's, cancelled by the host)
 //! and, per stage, one that fires on the job's cancel OR the stage's deadline ([`Deadline`]).
-//! Every trait method that can wait takes the signal it must stop on.
+//! Every trait method that can wait takes the signal it must stop on (the Executor: its
+//! [`JobCtx::signal`]).
 //!
-//! jobs.cjs `run` is mirrored here (`job.started`, then `job.completed {result}`,
-//! `job.failed {error, result}` or `job.cancelled`) through [`Jobs::append`], so the journal is the
-//! one Node writes. The Planner's plan and the review are [`crate::sessions`]' in-session calls
-//! over the pinned session; the audit write-up is a session call too.
+//! jobs.cjs `run` is mirrored here: `job.started` is written by [`Pipeline::start`] before it
+//! returns; then `job.completed {result}` (or `job.cancelled {result}`), and when the work threw or
+//! that row could not be written, `job.failed {error, result}` (or `job.cancelled`); when that
+//! fails too, start's catch gives the live claim back (and fails a job still queued). All through
+//! [`Jobs::append`], so the journal is the one Node writes. A panic in any host trait is caught: the
+//! live claim is released and the job fails with "failed" (the Executor's precedent); a flag reader
+//! or the engine key that panics answers false / none, as Node's `flag()` and `credentials()` do
+//! for a throw. The Planner's plan and the review are [`crate::sessions`]' in-session calls over
+//! the pinned session; the audit write-up is a session call too.
+//!
+//! Lifecycle authority: `task.stage` / `task.revision` go only through
+//! [`Jobs::append_authority`], which nothing outside this module can reach. A harness or the
+//! verifier gets a [`JobCtx`] (`event`, `checkpoint`, `artifact`: Node's two-argument closures),
+//! whose `event` refuses both kinds with jobs.cjs's 403.
 //!
 //! The behaviour is pinned by `tests/fixtures/code-pipeline-driver.v1.json`, recorded from Node's
 //! createCodePipeline with the real jobs.cjs, createPlannerPlan and createPlannerReview over
 //! scripted stand-ins by `tools/gen-driver-fixtures.cjs`; `tests/driver.rs` replays every
-//! scenario and compares each dependency call (name, arguments, order) and the start result.
+//! scenario and compares each dependency call (name, arguments, order), the start result, and the
+//! journal and job the appends make.
 //!
 //! # Differences from Node
 //!
 //! - Node's `abandonOn` lets the pin's promise run on after its signal fires; a blocking call
 //!   cannot be left behind, so [`Roles::pin_model`] must return once its signal fires (its answer
 //!   is then ignored, as in Node).
-//! - [`Harness::release_run`] cannot fail (Node's would replace the task's own error).
+//! - [`Harness::release_run`] cannot fail (Node's would replace the task's own error); a panic in
+//!   it is caught.
+//! - Threads, where Node has one: a deadline counts only when it fired before the stage's work
+//!   returned (Node cannot observe a later one), and a cancel is checked again right before
+//!   `mergeVerified` (tightening: in Node nothing can run between the check after the card and
+//!   the merge). It is not checked between a merge that went through and the `merged` stage: the
+//!   base has moved by then, so the stage is recorded and the late cancel lands as
+//!   `job.cancelled {result}`, as jobs.cjs records a cancel that comes once the work returned.
 //! - Inputs Node takes untyped are typed: the task's fields, a run handle's head must be a string
 //!   (any other value is "no change"), a merge base branch that is not a string is "" (not
-//!   offered), a snapshot or change whose `files` is not an array stops the pipeline with a fixed
-//!   message where Node throws V8's TypeError text; a job that `buildAuditReport` refuses stops
-//!   it with that refusal's text (a TypeError there is "TypeError").
+//!   offered); a job that `buildAuditReport` refuses stops the pipeline with that refusal's text
+//!   (a TypeError there is "TypeError"), a plan whose steps or a listed file name Node's
+//!   `String()` refuses stops it with a fixed "TypeError: …" text. Untyped answers Node reads
+//!   property by property keep V8's TypeError texts: a `null`/`undefined` snapshot, its `files`,
+//!   a change, its `files` or one of them, a verifier or audit answer ("Cannot read properties of
+//!   null (reading 'status')"), and `files` that are not an array but have a length
+//!   ("snapshot.files.join is not a function", "change.files.map is not a function").
 //! - The Planner and the reviewer are always this crate's; Node's "planner or review missing"
 //!   check is the role engine's absence alone (`roles: None`).
+//! - The network list's 32-entry cap cannot be reached through jobs.cjs (its 64 `task.stage`
+//!   rows end a task after 21 rounds); it is kept and unit-tested.
 //!
 //! Strings are js_json's WTF-16 form (a lone surrogate held as its mapped character) throughout,
 //! and every value handed to a trait is a [`JValue`]: a host serialises them with
@@ -64,6 +89,7 @@ use crate::sessions::{
 use crate::{audit, planner, review};
 use js_json::{wtf16, JValue};
 use std::any::Any;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -85,7 +111,8 @@ type Hook = Box<dyn FnOnce() + Send>;
 struct SignalInner {
     aborted: Mutex<bool>,
     woken: Condvar,
-    hooks: Mutex<Vec<Hook>>,
+    /// The next hook id, and the hooks still waiting.
+    hooks: Mutex<(u64, Vec<(u64, Hook)>)>,
 }
 
 /// An `AbortSignal`: aborted once, for good; hooks run once when it is.
@@ -116,83 +143,153 @@ impl Signal {
             *a = true;
         }
         self.0.woken.notify_all();
-        let hooks =
-            std::mem::take(&mut *self.0.hooks.lock().unwrap_or_else(PoisonError::into_inner));
-        for hook in hooks {
+        let hooks = std::mem::take(
+            &mut self
+                .0
+                .hooks
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .1,
+        );
+        for (_, hook) in hooks {
             hook();
         }
     }
-    /// Runs `hook` once when this aborts (at once if it has).
-    pub fn on_abort(&self, hook: Hook) {
+    /// Runs `hook` once when this aborts (at once if it has). The id takes it off again
+    /// ([`Signal::off`]); `None` when it already ran.
+    pub fn on_abort(&self, hook: Hook) -> Option<u64> {
         let mut hooks = self.0.hooks.lock().unwrap_or_else(PoisonError::into_inner);
         if self.is_aborted() {
             drop(hooks);
             hook();
+            None
         } else {
-            hooks.push(hook);
+            let id = hooks.0;
+            hooks.0 = id.wrapping_add(1);
+            hooks.1.push((id, hook));
+            Some(id)
         }
     }
-    /// Waits until this aborts or `timeout` passes; true when it aborted.
+    /// `removeEventListener`: the hook `id` will not run.
+    pub fn off(&self, id: u64) {
+        let mut hooks = self.0.hooks.lock().unwrap_or_else(PoisonError::into_inner);
+        hooks.1.retain(|(h, _)| *h != id);
+    }
+    /// Waits until this aborts or `timeout` passes; true when it aborted. A timeout past what
+    /// [`Instant`] can hold waits for the abort alone.
     pub fn wait(&self, timeout: Duration) -> bool {
-        let end = Instant::now() + timeout;
+        let end = Instant::now().checked_add(timeout);
         let mut a = self
             .0
             .aborted
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         while !*a {
-            let left = end.saturating_duration_since(Instant::now());
-            if left.is_zero() {
-                return false;
-            }
-            a = match self.0.woken.wait_timeout(a, left) {
-                Ok((g, _)) => g,
-                Err(p) => p.into_inner().0,
+            a = match end {
+                Some(end) => {
+                    let left = end.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return false;
+                    }
+                    match self.0.woken.wait_timeout(a, left) {
+                        Ok((g, _)) => g,
+                        Err(p) => p.into_inner().0,
+                    }
+                }
+                None => self.0.woken.wait(a).unwrap_or_else(PoisonError::into_inner),
             };
         }
         true
     }
 }
 
+/// `setTimeout`'s delay: one past `2^31 - 1` ms, or under 1, is 1 ms (Node's rule).
+fn timer_ms(ms: u64) -> u64 {
+    if (1..=0x7FFF_FFFF).contains(&ms) {
+        ms
+    } else {
+        1
+    }
+}
+
+/// Whether the stage's work has returned, and whether the timer fired first.
+#[derive(Default)]
+struct Fire {
+    finished: bool,
+    fired: bool,
+}
+
 /// One deadline joined to a parent signal (`AbortSignal.any([parent, timer])`): [`Deadline::signal`]
-/// fires when the parent does or when `ms` pass, and [`Deadline::timed_out`] says which. Dropping
-/// it stops (and joins) its timer thread.
+/// fires when the parent does or when `ms` pass (Node's `setTimeout` clamp: over `2^31 - 1` or
+/// under 1 is 1 ms). [`Deadline::finish`] marks the work returned: a timer that had not fired by
+/// then never counts, as in Node, where nothing runs between an awaited answer and the check.
+/// If no timer thread can be started the deadline counts as passed at once (the stage is
+/// blocked, never run without a deadline). Dropping it takes its hook off the parent and stops
+/// (and joins) the timer thread.
 pub struct Deadline {
     pub signal: Signal,
-    timer: Signal,
+    parent: Signal,
+    hook: Option<u64>,
+    fire: Arc<Mutex<Fire>>,
     done: Signal,
     thread: Option<JoinHandle<()>>,
 }
 
 impl Deadline {
     pub fn start(parent: &Signal, ms: u64) -> Deadline {
-        let (signal, timer, done) = (Signal::new(), Signal::new(), Signal::new());
+        let (signal, done) = (Signal::new(), Signal::new());
+        let fire = Arc::new(Mutex::new(Fire::default()));
         let s2 = signal.clone();
-        parent.on_abort(Box::new(move || s2.abort()));
-        let (s3, t, d) = (signal.clone(), timer.clone(), done.clone());
+        let hook = parent.on_abort(Box::new(move || s2.abort()));
+        let (s3, f, d) = (signal.clone(), Arc::clone(&fire), done.clone());
+        let ms = timer_ms(ms);
         let thread = std::thread::Builder::new()
             .name("code-pipeline-deadline".into())
             .spawn(move || {
                 if !d.wait(Duration::from_millis(ms)) {
-                    t.abort();
-                    s3.abort();
+                    let mut st = f.lock().unwrap_or_else(PoisonError::into_inner);
+                    if !st.finished {
+                        st.fired = true;
+                        drop(st);
+                        s3.abort();
+                    }
                 }
             })
             .ok();
+        if thread.is_none() {
+            fire.lock().unwrap_or_else(PoisonError::into_inner).fired = true;
+            signal.abort();
+        }
         Deadline {
             signal,
-            timer,
+            parent: parent.clone(),
+            hook,
+            fire,
             done,
             thread,
         }
     }
+    /// The work returned: from now on the timer cannot fire. True when it already had.
+    pub fn finish(&self) -> bool {
+        let mut st = self.fire.lock().unwrap_or_else(PoisonError::into_inner);
+        st.finished = true;
+        st.fired
+    }
+    /// Whether the timer fired (before [`Deadline::finish`], once that is called).
     pub fn timed_out(&self) -> bool {
-        self.timer.is_aborted()
+        self.fire
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .fired
     }
 }
 
 impl Drop for Deadline {
     fn drop(&mut self) {
+        self.finish();
+        if let Some(id) = self.hook.take() {
+            self.parent.off(id);
+        }
         self.done.abort();
         if let Some(t) = self.thread.take() {
             let _ = t.join();
@@ -236,36 +333,88 @@ impl Fail {
             _ => self.text(),
         }
     }
+    /// jobs.cjs `run`'s `error?.publicMessage || error?.message || 'failed'`.
+    fn run_text(&self) -> String {
+        match &self.public_message {
+            Some(p) if !p.is_empty() => p.clone(),
+            _ if self.message.is_empty() => "failed".into(),
+            _ => self.message.clone(),
+        }
+    }
+}
+
+/// A host call that may panic, as a throw: the Executor's precedent (code-harness `run`), a panic
+/// is the error "failed".
+fn guarded<T>(f: impl FnOnce() -> Result<T, Fail>) -> Result<T, Fail> {
+    catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|_| Err(Fail::new("failed")))
+}
+
+/// Node's `flag(read)`: a reader that throws (here: panics) answers false.
+fn flag(read: impl FnOnce() -> bool) -> bool {
+    catch_unwind(AssertUnwindSafe(read)).unwrap_or(false)
+}
+
+/// `releaseRun(handle)`, which must not take the pipeline down with it.
+fn release(d: &Deps, handle: RunHandle) {
+    let _ = catch_unwind(AssertUnwindSafe(|| d.harness.release_run(handle)));
 }
 
 /// The job store (jobs.cjs over the front's task store).
 pub trait Jobs: Send + Sync {
     /// `create({ kind: 'code', projectId, capabilities })` (`req` is that object): the job id.
     fn create(&self, req: &JValue) -> Result<String, Fail>;
-    /// `append(id, type, data)`.
+    /// `append(id, type, data)`, without the lifecycle authority. The host MUST refuse
+    /// `task.stage` and `task.revision` here (jobs.cjs's 403 "Task lifecycle events are
+    /// server-only"): only [`Jobs::append_authority`] may write them. The pipeline never asks it
+    /// to, and [`JobCtx::event`] refuses them before they reach it.
     fn append(&self, id: &str, kind: &str, data: JValue) -> Result<(), Fail>;
     /// `append(id, type, data, LIFECYCLE)`: `task.stage` / `task.revision`, which only the pipeline
     /// may write; the store validates and rebuilds them (and may refuse, e.g. the completeness gate).
+    /// Never reachable from a [`JobCtx`].
     fn append_authority(&self, id: &str, kind: &str, data: JValue) -> Result<(), Fail>;
     /// `get(id)`: the derived job, or `null`.
     fn get(&self, id: &str) -> Result<JValue, Fail>;
 }
 
-/// The task's job context (jobs.cjs `run`'s `ctx`).
+/// jobs.cjs `AUTHORITY_TYPES`: the kinds [`JobCtx::event`] refuses.
+pub const AUTHORITY_TYPES: [&str; 2] = ["task.stage", "task.revision"];
+
+/// The job context a stage hands on (jobs.cjs `run`'s `ctx`, as `{ ...ctx, signal }`): the job id,
+/// the signal the holder must stop on, and the two-argument appends. It holds no way to the
+/// lifecycle authority: `event` refuses `task.stage` / `task.revision` as jobs.cjs's `append`
+/// does without the token.
 pub struct JobCtx<'a> {
-    pub id: &'a str,
-    pub jobs: &'a dyn Jobs,
-    /// The job's own signal (its cancel).
-    pub signal: &'a Signal,
+    id: &'a str,
+    jobs: &'a dyn Jobs,
+    signal: &'a Signal,
 }
 
-impl JobCtx<'_> {
+impl<'a> JobCtx<'a> {
+    fn new(id: &'a str, jobs: &'a dyn Jobs, signal: &'a Signal) -> JobCtx<'a> {
+        JobCtx { id, jobs, signal }
+    }
+    pub fn id(&self) -> &str {
+        self.id
+    }
+    /// The job's cancel, or within a stage the stage's signal (the cancel or its deadline).
+    pub fn signal(&self) -> &Signal {
+        self.signal
+    }
+    /// `ctx.event(type, data)`.
     pub fn event(&self, kind: &str, data: JValue) -> Result<(), Fail> {
+        if AUTHORITY_TYPES.contains(&kind) {
+            return Err(Fail {
+                status: Some(403),
+                ..Fail::new("Task lifecycle events are server-only")
+            });
+        }
         self.jobs.append(self.id, kind, data)
     }
+    /// `ctx.checkpoint(data)`.
     pub fn checkpoint(&self, data: JValue) -> Result<(), Fail> {
         self.jobs.append(self.id, "checkpoint.created", data)
     }
+    /// `ctx.artifact(data)`.
     pub fn artifact(&self, data: JValue) -> Result<(), Fail> {
         self.jobs.append(self.id, "artifact.created", data)
     }
@@ -302,14 +451,15 @@ pub trait Harness: Send + Sync {
     /// { token } | null, network, cleanupConfirmed, released: { status, headSha, error } }`
     /// (`runExecutor` and the release update them).
     fn handle(&self, handle: RunHandle) -> JValue;
-    /// `runExecutor({ ...ctx, signal }, handle, opts)`; `opts` is Node's without `connect`.
+    /// `runExecutor({ ...ctx, signal }, handle, opts)`: `job` carries the implement stage's
+    /// signal (the job's cancel or the stage deadline), which the run must stop on; `opts` is
+    /// Node's without `connect`.
     fn run_executor(
         &self,
         job: &JobCtx,
         handle: RunHandle,
         opts: &JValue,
         connect: &Connect,
-        signal: &Signal,
     ) -> Result<(), Fail>;
     /// `releaseRun(handle)`: idempotent.
     fn release_run(&self, handle: RunHandle);
@@ -449,7 +599,8 @@ pub struct Started {
     /// The workspace's `branch` and `path`, as the handle has them.
     pub branch: JValue,
     pub workspace: JValue,
-    /// `None` only when no thread could be spawned (the job is then failed and the claim given back).
+    /// `None` when `job.started` could not be written or no thread could be spawned: the claim is
+    /// then given back and the job failed (when still queued, for the first).
     pub thread: Option<JoinHandle<()>>,
 }
 
@@ -500,7 +651,7 @@ impl Pipeline {
             ("projectId", opt(task.project_id.as_deref())),
             ("capabilities", strs(&unique)),
         ]))?;
-        let harness_id = task.harness.clone().unwrap_or_else(|| "opencode".into());
+        let harness_id = harness_id(&task);
         let claim = obj(vec![
             ("taskId", s(&task_id)),
             ("repoPath", s(&task.repo_path)),
@@ -519,14 +670,33 @@ impl Pipeline {
             }
         };
         let settings = Settings {
-            merge: d.host.merge(),
-            guarded: d.host.guard(),
+            merge: flag(|| d.host.merge()),
+            guarded: flag(|| d.host.guard()),
         };
-        let facts = d.harness.handle(handle);
+        let facts = catch_unwind(AssertUnwindSafe(|| d.harness.handle(handle)))
+            .unwrap_or(JValue::Undefined);
         let (branch, workspace) = (
             facts.get("workspace").get("branch").clone(),
             facts.get("workspace").get("path").clone(),
         );
+        let out = |thread| {
+            Ok(Started {
+                task_id: task_id.clone(),
+                branch: branch.clone(),
+                workspace: workspace.clone(),
+                thread,
+            })
+        };
+        // jobs.cjs `run`: `job.started` is written before `start` returns, so a cancel right
+        // after it finds the job running. If it cannot be, the work never runs (start's catch).
+        let started = guarded(|| {
+            d.jobs
+                .append(&task_id, "job.started", obj(Vec::<(&str, JValue)>::new()))
+        });
+        if started.is_err() {
+            not_started(d, &task_id, handle);
+            return out(None);
+        }
         let deps = Arc::clone(&self.deps);
         let id = task_id.clone();
         let thread = std::thread::Builder::new()
@@ -534,24 +704,45 @@ impl Pipeline {
             .spawn(move || {
                 run_job(&deps, &id, &signal, handle, &task, &connect, settings);
             });
-        let thread = match thread {
-            Ok(t) => Some(t),
+        match thread {
+            Ok(t) => out(Some(t)),
             Err(_) => {
-                d.harness.release_run(handle);
-                let _ = d.jobs.append(
-                    &task_id,
-                    "job.failed",
-                    obj(vec![("error", s("Code pipeline could not start."))]),
-                );
-                None
+                release(d, handle);
+                let _ = guarded(|| {
+                    d.jobs.append(
+                        &task_id,
+                        "job.failed",
+                        obj(vec![("error", s("Code pipeline could not start."))]),
+                    )
+                });
+                out(None)
             }
-        };
-        Ok(Started {
-            task_id,
-            branch,
-            workspace,
-            thread,
-        })
+        }
+    }
+}
+
+/// `task.harness || 'opencode'`.
+fn harness_id(task: &Task) -> String {
+    match task.harness.as_deref() {
+        Some(h) if !h.is_empty() => h.into(),
+        _ => "opencode".into(),
+    }
+}
+
+/// start's `.catch` on `jobs.run`: the run could not record its start or its end, so give the
+/// claim back, and fail the job if it is still queued.
+fn not_started(d: &Deps, id: &str, handle: RunHandle) {
+    release(d, handle);
+    let queued =
+        guarded(|| d.jobs.get(id)).is_ok_and(|j| j.get("status").as_str() == Some("queued"));
+    if queued {
+        let _ = guarded(|| {
+            d.jobs.append(
+                id,
+                "job.failed",
+                obj(vec![("error", s("Code pipeline could not start."))]),
+            )
+        });
     }
 }
 
@@ -562,7 +753,10 @@ struct Settings {
     guarded: bool,
 }
 
-/// jobs.cjs `run(id, work)` around `drive`.
+/// jobs.cjs `run(id, work)` around `drive`, after `job.started`: the try writes the terminal row
+/// for what the work answered; the catch writes `job.failed` (or `job.cancelled`) for a work that
+/// threw or a terminal row that could not be written; if that fails too, start's catch.
+/// A panic in a host trait is the work throwing "failed" (the live claim is given back first).
 fn run_job(
     d: &Deps,
     id: &str,
@@ -572,50 +766,51 @@ fn run_job(
     connect: &Connect,
     settings: Settings,
 ) {
-    if d.jobs
-        .append(id, "job.started", obj(Vec::<(&str, JValue)>::new()))
-        .is_err()
-    {
-        // The work never ran: give the claim back, and fail the job if it is still queued.
-        d.harness.release_run(handle);
-        if d.jobs
-            .get(id)
-            .is_ok_and(|j| j.get("status").as_str() == Some("queued"))
-        {
-            let _ = d.jobs.append(
-                id,
-                "job.failed",
-                obj(vec![("error", s("Code pipeline could not start."))]),
-            );
-        }
-        return;
-    }
-    let ctx = JobCtx {
-        id,
-        jobs: d.jobs.as_ref(),
-        signal,
-    };
+    let ctx = JobCtx::new(id, d.jobs.as_ref(), signal);
     let mut run = Run::new(d, &ctx, task, connect, settings, handle);
-    let out = run.drive();
-    let (kind, data) = match (signal.is_aborted(), out) {
-        (true, Ok(result)) => ("job.cancelled", obj(vec![("result", result)])),
-        (true, Err(_)) => ("job.cancelled", obj(Vec::<(&str, JValue)>::new())),
-        (false, Ok(result)) => ("job.completed", obj(vec![("result", result)])),
-        (false, Err(e)) => {
-            let result = if e.result.is_nullish() {
-                JValue::Null
+    let out = match catch_unwind(AssertUnwindSafe(|| run.drive())) {
+        Ok(out) => out,
+        Err(_) => {
+            release(d, run.handle);
+            Err(Fail::new("failed"))
+        }
+    };
+    let live = run.handle;
+    let aborted = signal.is_aborted();
+    let caught = match out {
+        Ok(result) => {
+            let kind = if aborted {
+                "job.cancelled"
             } else {
-                e.result.clone()
+                "job.completed"
             };
-            let error = wtf16::slice(&e.public(), 500);
-            (
+            guarded(|| d.jobs.append(id, kind, obj(vec![("result", result)]))).err()
+        }
+        Err(e) => Some(e),
+    };
+    let Some(e) = caught else { return };
+    let written = if aborted {
+        guarded(|| {
+            d.jobs
+                .append(id, "job.cancelled", obj(Vec::<(&str, JValue)>::new()))
+        })
+    } else {
+        let result = if e.result.is_nullish() {
+            JValue::Null
+        } else {
+            e.result.clone()
+        };
+        let error = wtf16::slice(&e.run_text(), 500);
+        guarded(|| {
+            d.jobs.append(
+                id,
                 "job.failed",
                 obj(vec![("error", s(&error)), ("result", result)]),
             )
-        }
+        })
     };
-    if d.jobs.append(id, kind, data).is_err() {
-        d.harness.release_run(run.handle);
+    if written.is_err() {
+        not_started(d, id, live);
     }
 }
 
@@ -640,6 +835,48 @@ fn raw(f: Fail) -> Stop {
 
 fn type_error(what: &str) -> Stop {
     Stop::Raw(Fail::new(format!("TypeError: {what}")))
+}
+
+/// V8's TypeError message for `<v>.<prop>` on `null` / `undefined`, else the property.
+fn read<'v>(v: &'v JValue, prop: &str) -> Result<&'v JValue, Stop> {
+    let what = match v {
+        JValue::Null => "null",
+        JValue::Undefined => "undefined",
+        _ => return Ok(v.get(prop)),
+    };
+    Err(raw(Fail::new(format!(
+        "Cannot read properties of {what} (reading '{prop}')"
+    ))))
+}
+
+/// `v.length` (after [`read`] has ruled out `null` / `undefined`): a string's UTF-16 length, an
+/// array's, an object's own `length`, otherwise `undefined`.
+fn length(v: &JValue) -> JValue {
+    match v {
+        JValue::Str(t) => JValue::Num(crate::js::units(t).len() as f64),
+        JValue::Arr(a) => JValue::Num(a.len() as f64),
+        JValue::Obj(_) => v.get("length").clone(),
+        _ => JValue::Undefined,
+    }
+}
+
+/// V8's `<expr> is not a function`.
+fn not_a_function(expr: &str) -> Stop {
+    raw(Fail::new(format!("{expr} is not a function")))
+}
+
+/// Sets `path` inside `v` (objects only) to `value`.
+fn set_in(v: &mut JValue, path: &[&str], value: JValue) {
+    let JValue::Obj(items) = v else { return };
+    match path {
+        [last] => wtf16::set(items, last, value),
+        [first, rest @ ..] => {
+            if let Some((_, inner)) = items.iter_mut().find(|(k, _)| k == first) {
+                set_in(inner, rest, value);
+            }
+        }
+        [] => {}
+    }
 }
 
 /// `${v}` (a value `String()` refuses as "").
@@ -740,10 +977,14 @@ impl<'a> Run<'a> {
     ) -> Result<T, Stop> {
         let deadline = Deadline::start(self.ctx.signal, ms);
         let out = work(&deadline.signal);
+        // Whether the deadline fired before the work returned, decided now: one that fires after
+        // this cannot block a stage that has finished.
+        let timed_out = deadline.finish();
+        drop(deadline);
         self.live()?;
         match out {
-            Ok(_) if deadline.timed_out() => Err(block(stage_deadline_message(name, ms))),
-            Err(e) if deadline.timed_out() && !matches!(e, Stop::Blocked(..)) => {
+            Ok(_) if timed_out => Err(block(stage_deadline_message(name, ms))),
+            Err(e) if timed_out && !matches!(e, Stop::Blocked(..)) => {
                 Err(block(stage_deadline_message(name, ms)))
             }
             other => other,
@@ -751,7 +992,7 @@ impl<'a> Run<'a> {
     }
 
     fn credentials(&self) -> JValue {
-        match self.d.host.engine_key() {
+        match catch_unwind(AssertUnwindSafe(|| self.d.host.engine_key())).unwrap_or(None) {
             Some(key) if !key.is_empty() => obj(vec![("engine", s(&key))]),
             _ => JValue::Undefined,
         }
@@ -845,7 +1086,7 @@ impl<'a> Run<'a> {
             JValue::Str(b) if is_full_sha(b) => b.clone(),
             _ => return Err(block(blocked::NO_BASE_COMMIT)),
         };
-        let harness_id = task.harness.clone().unwrap_or_else(|| "opencode".into());
+        let harness_id = harness_id(task);
         let tenant = opt(task.tenant_id.as_deref());
         let context = if task.context.is_empty() {
             JValue::Undefined
@@ -918,11 +1159,13 @@ impl<'a> Run<'a> {
             }
         };
         let snapshot = d.workspaces.project_snapshot(id).map_err(raw)?;
-        let JValue::Arr(files) = snapshot.get("files") else {
-            return Err(type_error("snapshot.files is not an array"));
-        };
+        let files = read(&snapshot, "files")?;
+        read(files, "length")?;
         let mut snippets = Vec::new();
-        if !files.is_empty() {
+        if length(files).truthy() {
+            let JValue::Arr(files) = files else {
+                return Err(not_a_function("snapshot.files.join"));
+            };
             let mut list = Vec::with_capacity(files.len());
             for f in files {
                 list.push(join_part(f).map_err(|_| type_error("a file name"))?);
@@ -988,7 +1231,7 @@ impl<'a> Run<'a> {
                 &plan_state,
                 sig,
                 d.plan_deadline_ms,
-                &|| host.plan_constrain(),
+                &|| flag(|| host.plan_constrain()),
                 &log,
             ))
         })?;
@@ -1154,8 +1397,9 @@ impl<'a> Run<'a> {
             let opts = obj(opts);
             let handle = self.handle;
             let ran = self.within("implement", limits.implement, |sig| {
+                let stage_ctx = JobCtx::new(id, d.jobs.as_ref(), sig);
                 d.harness
-                    .run_executor(ctx, handle, &opts, self.connect, sig)
+                    .run_executor(&stage_ctx, handle, &opts, self.connect)
                     .map_err(raw)
             });
             self.push_network(n);
@@ -1244,7 +1488,7 @@ impl<'a> Run<'a> {
             let verified = self.within("verify", limits.verify, |sig| {
                 verify.run(&req, &mut emit, sig).map_err(raw)
             })?;
-            let status = verified.get("status").as_str().unwrap_or("");
+            let status = read(&verified, "status")?.as_str().unwrap_or("");
             let message = verified.get("error").get("message");
             let message = message.truthy().then(|| text(message));
             if status == "unavailable" {
@@ -1284,19 +1528,25 @@ impl<'a> Run<'a> {
                     wtf16::slice(&e.text(), 200)
                 ))
             })?;
-            let JValue::Arr(changed) = change.get("files") else {
-                return Err(type_error("change.files is not an array"));
-            };
-            let paths: Vec<JValue> = changed.iter().map(|f| f.get("path").clone()).collect();
+            let changed = read(&change, "files")?;
+            read(changed, "length")?;
+            let count = length(changed);
             ctx.event(
                 "review.requested",
                 obj(vec![
                     ("baseSha", s(&base_sha)),
                     ("headSha", s(&head)),
-                    ("files", JValue::Num(changed.len() as f64)),
+                    ("files", count),
                 ]),
             )
             .map_err(raw)?;
+            let JValue::Arr(changed) = changed else {
+                return Err(not_a_function("change.files.map"));
+            };
+            let mut paths: Vec<JValue> = Vec::with_capacity(changed.len());
+            for f in changed {
+                paths.push(read(f, "path")?.clone());
+            }
             let execution = obj(vec![
                 ("headSha", s(&head)),
                 ("changedFiles", JValue::Arr(paths.clone())),
@@ -1432,7 +1682,7 @@ impl<'a> Run<'a> {
                         ("instructions", s(audit::AUDIT_INSTRUCTIONS)),
                         ("schema", audit::audit_schema()),
                         ("schemaName", s("auditor_report")),
-                        ("constrain", JValue::Bool(host.constrain())),
+                        ("constrain", JValue::Bool(flag(|| host.constrain()))),
                         (
                             "state",
                             state_with(vec![
@@ -1445,10 +1695,7 @@ impl<'a> Run<'a> {
                     ]);
                     session.call(&req, sig).map_err(raw)
                 })?;
-                if r.is_nullish() {
-                    return Err(type_error("the audit answer"));
-                }
-                if r.get("ok").truthy() {
+                if read(&r, "ok")?.truthy() {
                     match crate::js::tpl(r.get("text"))
                         .ok()
                         .and_then(|t| wtf16::parse(&t).ok())
@@ -1525,7 +1772,19 @@ impl<'a> Run<'a> {
                 loops: self.loops,
                 network: &self.network,
             };
-            let card = accept_card(&a);
+            // Node's card carries the paths (and the branch) as change() and the handle gave them.
+            let mut card = accept_card(&a);
+            set_in(
+                &mut card,
+                &["paths"],
+                JValue::Arr(paths.iter().take(50).cloned().collect()),
+            );
+            set_in(
+                &mut card,
+                &["arguments", "files"],
+                JValue::Arr(paths.clone()),
+            );
+            set_in(&mut card, &["arguments", "branch"], branch.clone());
             ctx.event("approval.requested", card.clone()).map_err(raw)?;
             let answer = d.approvals.ask(&card, ctx.signal).map_err(raw)?;
             ctx.event(
@@ -1547,13 +1806,17 @@ impl<'a> Run<'a> {
             ]);
             self.live()?;
             a.decision = &answer;
-            let result = accept_result(&a);
+            let mut result = accept_result(&a);
+            set_in(&mut result, &["branch"], branch.clone());
             if !should_merge(&a) {
                 return Ok(result);
             }
-            if !host.merge() {
+            if !flag(|| host.merge()) {
                 return Ok(merge_turned_off_result(&result));
             }
+            // Tighter than Node, where nothing can run between the check after the card and
+            // here: a cancel that came since never merges.
+            self.live()?;
             let merged = d.workspaces.merge_verified(id, &head).map_err(raw)?;
             if !merged.get("ok").truthy() {
                 let (message, result) = merge_refused(

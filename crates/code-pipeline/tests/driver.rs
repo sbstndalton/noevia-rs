@@ -2,8 +2,12 @@
 //! createCodePipeline by tools/gen-driver-fixtures.cjs, replayed through `Pipeline::start` with a
 //! stand-in for every dependency that answers as Node's stub did. Each call the port makes is
 //! checked against the next recorded one (name and arguments, as JSON text in the fixture's
-//! tagged form), and the start result too; the job's journal follows from the `jobs.append`
-//! calls, which include jobs.run's `job.started` and final event.
+//! tagged form), and the start result too. The appends the store took (jobs.run's own
+//! `job.started` and terminal rows among them, recorded from the store's writes) must make the
+//! recorded journal, and the job's status, error, result, revision and stages must follow from
+//! them as they do in the recorded job. Below the replay, stand-in tests for what Node cannot
+//! show: a panicking host, a harness reaching for the lifecycle authority, the stage signal, and
+//! the network list's cap.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -83,6 +87,8 @@ struct Replay {
     handles: Mutex<HashMap<u64, JValue>>,
     last: Mutex<u64>,
     cancel: Signal,
+    /// The appends the store took, in order (`job.created` first).
+    journal: Mutex<Vec<(String, JValue)>>,
 }
 
 impl Replay {
@@ -178,6 +184,10 @@ impl Replay {
         self.set(&beh, None);
         Self::settle(&beh)
     }
+
+    fn appended(&self, kind: &str, data: JValue) {
+        self.journal.lock().unwrap().push((kind.into(), data));
+    }
 }
 
 /// An array element (`undefined` past the end).
@@ -197,22 +207,24 @@ struct R(Arc<Replay>);
 
 impl Jobs for R {
     fn create(&self, req: &JValue) -> Result<String, Fail> {
-        Ok(self
-            .0
-            .sync("jobs.create", arr(vec![req.clone()]))?
-            .as_str()
-            .unwrap_or("")
-            .into())
+        let id = self.0.sync("jobs.create", arr(vec![req.clone()]))?;
+        self.0.appended("job.created", JValue::Undefined);
+        Ok(id.as_str().unwrap_or("").into())
     }
     fn append(&self, id: &str, kind: &str, data: JValue) -> Result<(), Fail> {
+        if kind == "task.stage" || kind == "task.revision" {
+            self.0.fail(format!("{kind} reached the plain append"));
+        }
         self.0
-            .sync("jobs.append", arr(vec![s(id), s(kind), data]))
-            .map(|_| ())
+            .sync("jobs.append", arr(vec![s(id), s(kind), data.clone()]))?;
+        self.0.appended(kind, data);
+        Ok(())
     }
     fn append_authority(&self, id: &str, kind: &str, data: JValue) -> Result<(), Fail> {
         self.0
-            .sync("jobs.appendAuthority", arr(vec![s(id), s(kind), data]))
-            .map(|_| ())
+            .sync("jobs.appendAuthority", arr(vec![s(id), s(kind), data.clone()]))?;
+        self.0.appended(kind, data);
+        Ok(())
     }
     fn get(&self, id: &str) -> Result<JValue, Fail> {
         self.0.sync("jobs.get", arr(vec![s(id)]))
@@ -269,11 +281,11 @@ impl Harness for R {
         h: RunHandle,
         opts: &JValue,
         _connect: &Connect,
-        signal: &Signal,
     ) -> Result<(), Fail> {
         let args = arr(vec![JValue::Num(h.0 as f64), opts.clone()]);
         let beh = self.0.next("harness.runExecutor", args);
-        self.0.act(&beh, Some(signal), Some(job), None, Some(h.0))?;
+        self.0
+            .act(&beh, Some(job.signal()), Some(job), None, Some(h.0))?;
         Replay::settle(&beh).map(|_| ())
     }
     fn release_run(&self, h: RunHandle) {
@@ -391,6 +403,7 @@ fn replay(sc: &JValue) -> Result<(), String> {
         handles: Mutex::new(HashMap::new()),
         last: Mutex::new(0),
         cancel: cancel.clone(),
+        journal: Mutex::new(Vec::new()),
     });
     let o = decode(sc.get("options"));
     let mut deps = Deps::new(
@@ -495,6 +508,111 @@ fn replay(sc: &JValue) -> Result<(), String> {
             .unwrap_or_default();
         return Err(format!("{left} recorded calls never made; next {next}"));
     }
+    let journal = r.journal.lock().unwrap().clone();
+    check_journal(sc, &journal)
+}
+
+/// The kinds the store rebuilds (or makes) before writing: only their type is compared.
+const REBUILT: [&str; 6] = [
+    "job.created",
+    "task.stage",
+    "task.revision",
+    "review.requested",
+    "review.completed",
+    "review.failed",
+];
+
+/// The appends the port made against the recorded journal, and the recorded job's terminal and
+/// lifecycle fields against what those appends fold to (jobs.cjs `foldEvent`).
+fn check_journal(sc: &JValue, got: &[(String, JValue)]) -> Result<(), String> {
+    let want = match sc.get("journal") {
+        JValue::Arr(rows) => rows.clone(),
+        JValue::Undefined => {
+            return if got.is_empty() {
+                Ok(())
+            } else {
+                Err(format!("{} appends, but Node made no job", got.len()))
+            }
+        }
+        _ => return Err("journal is not a list".into()),
+    };
+    if want.len() != got.len() {
+        let kinds: Vec<&str> = got.iter().map(|(k, _)| k.as_str()).collect();
+        return Err(format!(
+            "journal: {} rows recorded, {} appended: {kinds:?}",
+            want.len(),
+            got.len()
+        ));
+    }
+    for (i, (row, (kind, data))) in want.iter().zip(got).enumerate() {
+        if row.get("type").as_str() != Some(kind) {
+            return Err(format!(
+                "journal row {i}: {} recorded, {kind} appended",
+                text(row.get("type"))
+            ));
+        }
+        if !REBUILT.contains(&kind.as_str()) && text(row.get("data")) != text(data) {
+            return Err(format!(
+                "journal row {i} ({kind}): {} recorded\n          {} appended",
+                text(row.get("data")),
+                text(data)
+            ));
+        }
+    }
+    let (mut status, mut result, mut error) = (s("queued"), JValue::Null, JValue::Null);
+    let (mut revision, mut stages) = (None, Vec::new());
+    for (kind, data) in got {
+        let or_null = |v: &JValue| {
+            if v.is_nullish() {
+                JValue::Null
+            } else {
+                v.clone()
+            }
+        };
+        match kind.as_str() {
+            "job.started" => status = s("running"),
+            "job.completed" | "job.cancelled" => {
+                status = s(&kind[4..]);
+                result = or_null(data.get("result"));
+            }
+            "job.failed" => {
+                status = s("failed");
+                error = if data.get("error").is_nullish() {
+                    s("failed")
+                } else {
+                    data.get("error").clone()
+                };
+                result = or_null(data.get("result"));
+            }
+            "task.revision" => revision = Some((data.get("n").clone(), data.get("headSha").clone())),
+            "task.stage" => stages.push(data.get("to").clone()),
+            _ => {}
+        }
+    }
+    let job = decode(sc.get("job"));
+    for (field, folded) in [("status", &status), ("result", &result), ("error", &error)] {
+        if text(job.get(field)) != text(folded) {
+            return Err(format!(
+                "job.{field}: {} recorded, {} from the appends",
+                text(job.get(field)),
+                text(folded)
+            ));
+        }
+    }
+    let recorded: Vec<String> = match job.get("stages") {
+        JValue::Arr(st) => st.iter().map(|x| text(x.get("to"))).collect(),
+        _ => Vec::new(),
+    };
+    let folded: Vec<String> = stages.iter().map(text).collect();
+    if recorded != folded {
+        return Err(format!("job.stages: {recorded:?} recorded, {folded:?} appended"));
+    }
+    if let Some((n, head)) = revision {
+        let rev = job.get("revision");
+        if text(rev.get("n")) != text(&n) || text(rev.get("headSha")) != text(&head) {
+            return Err(format!("job.revision: {} recorded", text(rev)));
+        }
+    }
     Ok(())
 }
 
@@ -504,7 +622,7 @@ fn every_scenario_replays() {
     let JValue::Arr(scenarios) = f.get("scenarios") else {
         panic!("no scenarios")
     };
-    assert!(scenarios.len() >= 70, "{} scenarios", scenarios.len());
+    assert!(scenarios.len() >= 95, "{} scenarios", scenarios.len());
     let mut failures = Vec::new();
     for sc in scenarios {
         if let Err(e) = replay(sc) {
@@ -554,5 +672,299 @@ fn a_stage_deadline_fires_its_signal_and_a_cancel_reaches_it() {
     let d = Deadline::start(&job, 60_000);
     job.abort();
     assert!(d.signal.wait(Duration::from_secs(5)));
+    assert!(!d.timed_out());
+}
+
+// ── Stand-ins for what Node cannot show ─────────────────────────────────────────────────────
+
+const PLAN: &str = r#"{"goal":"Add the QA greeting","context":["The QA project."],"constraints":["Keep it small."],"investigation":["Read src/qa.js."],"steps":[{"n":1,"do":"Edit src/qa.js","done_when":"The QA greeting prints"}],"capabilities":["read_repository","edit_file"],"approval_boundaries":["Every write asks."],"verification":["Run the QA tests."],"completion":"The QA greeting prints.","non_goals":["No other QA files."]}"#;
+
+type Exec = fn(&JobCtx) -> Result<(), Fail>;
+
+/// A plain host: every append is taken, the tests always fail, and the executor does `exec`.
+struct Plain {
+    journal: Mutex<Vec<(String, JValue)>>,
+    released: Mutex<Vec<u64>>,
+    handles: Mutex<HashMap<u64, JValue>>,
+    panic_pin: bool,
+    exec: Exec,
+}
+
+impl Plain {
+    fn new(panic_pin: bool, exec: Exec) -> Arc<Plain> {
+        Arc::new(Plain {
+            journal: Mutex::new(Vec::new()),
+            released: Mutex::new(Vec::new()),
+            handles: Mutex::new(HashMap::new()),
+            panic_pin,
+            exec,
+        })
+    }
+    fn last(&self) -> (String, JValue) {
+        self.journal.lock().unwrap().last().cloned().unwrap()
+    }
+}
+
+struct P(Arc<Plain>);
+
+impl Jobs for P {
+    fn create(&self, _: &JValue) -> Result<String, Fail> {
+        Ok("00000000-0000-4000-8000-0000000000aa".into())
+    }
+    fn append(&self, _: &str, kind: &str, data: JValue) -> Result<(), Fail> {
+        assert!(kind != "task.stage" && kind != "task.revision");
+        self.0.journal.lock().unwrap().push((kind.into(), data));
+        Ok(())
+    }
+    fn append_authority(&self, _: &str, kind: &str, data: JValue) -> Result<(), Fail> {
+        self.0.journal.lock().unwrap().push((kind.into(), data));
+        Ok(())
+    }
+    fn get(&self, _: &str) -> Result<JValue, Fail> {
+        Ok(JValue::obj([("status", s("running"))]))
+    }
+}
+
+impl Workspaces for P {
+    fn project_snapshot(&self, _: &str) -> Result<JValue, Fail> {
+        Ok(JValue::obj([
+            ("files", arr(vec![s("README.md")])),
+            ("readme", JValue::Null),
+        ]))
+    }
+    fn change(&self, _: &str) -> Result<JValue, Fail> {
+        Ok(JValue::Null)
+    }
+    fn branch_tip(&self, _: &str) -> Result<JValue, Fail> {
+        Ok(JValue::Null)
+    }
+    fn merge_preflight(&self, _: &str, _: &str) -> Result<JValue, Fail> {
+        Ok(JValue::Null)
+    }
+    fn merge_verified(&self, _: &str, _: &str) -> Result<JValue, Fail> {
+        Ok(JValue::Null)
+    }
+}
+
+impl Harness for P {
+    fn claim_run(&self, _: &JValue) -> Result<RunHandle, Fail> {
+        let mut hs = self.0.handles.lock().unwrap();
+        let id = hs.len() as u64 + 1;
+        let ws = JValue::obj([
+            ("branch", s("noevia/qa-plain")),
+            ("path", s("/qa/work/plain")),
+            ("baseSha", s(&"b".repeat(40))),
+        ]);
+        hs.insert(
+            id,
+            JValue::obj([("workspace", ws), ("cleanupConfirmed", JValue::Bool(true))]),
+        );
+        Ok(RunHandle(id))
+    }
+    fn handle(&self, h: RunHandle) -> JValue {
+        self.0.handles.lock().unwrap().get(&h.0).cloned().unwrap_or(JValue::Undefined)
+    }
+    fn run_executor(&self, job: &JobCtx, h: RunHandle, _: &JValue, _: &Connect) -> Result<(), Fail> {
+        (self.0.exec)(job)?;
+        let head = format!("{:040x}", h.0);
+        let mut hs = self.0.handles.lock().unwrap();
+        if let Some(JValue::Obj(fields)) = hs.get_mut(&h.0) {
+            let released = JValue::obj([("status", s("released")), ("headSha", s(&head))]);
+            wtf16::set(fields, "released", released);
+            let network = JValue::obj([("allowed", JValue::Num(h.0 as f64))]);
+            wtf16::set(fields, "network", network);
+        }
+        Ok(())
+    }
+    fn release_run(&self, h: RunHandle) {
+        self.0.released.lock().unwrap().push(h.0);
+    }
+}
+
+struct PSession;
+
+impl Session for PSession {
+    fn call(&self, _: &JValue, _: &Signal) -> Result<JValue, Fail> {
+        Ok(JValue::obj([
+            ("ok", JValue::Bool(true)),
+            ("text", s(PLAN)),
+            ("corrected", JValue::Bool(false)),
+        ]))
+    }
+}
+
+impl Roles for P {
+    fn pin_model(&self, _: &JValue, _: &Signal) -> Result<Pin, Fail> {
+        assert!(!self.0.panic_pin, "QA host panics in pinModel");
+        Ok(Pin::Pinned {
+            model: s("qa-model"),
+            machine: JValue::Undefined,
+            session: Arc::new(PSession),
+        })
+    }
+}
+
+impl Verify for P {
+    fn available(&self) -> bool {
+        true
+    }
+    fn run(
+        &self,
+        _: &JValue,
+        _: &mut dyn FnMut(&str, JValue) -> Result<(), Fail>,
+        _: &Signal,
+    ) -> Result<JValue, Fail> {
+        Ok(JValue::obj([
+            ("status", s("failed")),
+            ("report", JValue::obj([("exitCode", JValue::Num(1.0))])),
+        ]))
+    }
+}
+
+impl Approvals for P {
+    fn ask(&self, _: &JValue, _: &Signal) -> Result<JValue, Fail> {
+        Ok(s("deny"))
+    }
+}
+
+impl Host for P {
+    fn merge(&self) -> bool {
+        false
+    }
+    fn constrain(&self) -> bool {
+        false
+    }
+    fn guard(&self) -> bool {
+        false
+    }
+    fn plan_constrain(&self) -> bool {
+        false
+    }
+    fn engine_key(&self) -> Option<String> {
+        None
+    }
+    fn log(&self, _: JValue) {}
+    fn now(&self) -> f64 {
+        0.0
+    }
+}
+
+fn plain_run(p: &Arc<Plain>, tune: impl FnOnce(&mut Deps)) -> Signal {
+    let mut deps = Deps::new(
+        Arc::new(P(Arc::clone(p))),
+        Arc::new(P(Arc::clone(p))),
+        Arc::new(P(Arc::clone(p))),
+        Some(Arc::new(P(Arc::clone(p)))),
+        Some(Arc::new(P(Arc::clone(p)))),
+        Arc::new(P(Arc::clone(p))),
+        Arc::new(P(Arc::clone(p))),
+    );
+    tune(&mut deps);
+    let task = Task {
+        repo_id: "qa-repo".into(),
+        repo_path: "/qa/repos/qa".into(),
+        prompt: "Add the QA greeting.".into(),
+        capabilities: vec!["read_repository".into(), "edit_file".into()],
+        connect: Some(Arc::new(()) as Connect),
+        project_id: Some("qa-project".into()),
+        tenant_id: Some("qa-tenant".into()),
+        ..Task::default()
+    };
+    let cancel = Signal::new();
+    let started = Pipeline::new(deps).start(task, cancel.clone()).unwrap();
+    started.thread.unwrap().join().unwrap();
+    cancel
+}
+
+fn ok_exec(_: &JobCtx) -> Result<(), Fail> {
+    Ok(())
+}
+
+#[test]
+fn a_panicking_host_fails_the_job_and_gives_the_claim_back() {
+    let p = Plain::new(true, ok_exec);
+    plain_run(&p, |_| {});
+    let (kind, data) = p.last();
+    assert_eq!(kind, "job.failed");
+    assert_eq!(
+        text(&data),
+        r#"{"error":"failed","result":null}"#,
+        "the Executor's precedent"
+    );
+    assert_eq!(*p.released.lock().unwrap(), vec![1]);
+}
+
+fn grabs_authority(job: &JobCtx) -> Result<(), Fail> {
+    let r = job.event("task.stage", JValue::obj([("to", s("merged"))]));
+    let e = r.expect_err("refused");
+    assert_eq!(e.status, Some(403));
+    assert_eq!(e.message, "Task lifecycle events are server-only");
+    job.event("task.revision", JValue::obj([("n", JValue::Num(9.0))]))
+}
+
+#[test]
+fn a_harness_cannot_write_the_lifecycle() {
+    let p = Plain::new(false, grabs_authority);
+    plain_run(&p, |_| {});
+    let journal = p.journal.lock().unwrap().clone();
+    let stages: Vec<String> = journal
+        .iter()
+        .filter(|(k, _)| k == "task.stage")
+        .map(|(_, d)| text(d.get("to")))
+        .collect();
+    assert_eq!(stages, [r#""planned""#, r#""implementing""#, r#""blocked""#]);
+    assert!(!journal.iter().any(|(k, _)| k == "task.revision"));
+    let (kind, data) = p.last();
+    assert_eq!(kind, "job.failed");
+    assert_eq!(
+        data.get("error").as_str(),
+        Some("The coding agent stopped: Task lifecycle events are server-only")
+    );
+}
+
+fn waits_on_its_signal(job: &JobCtx) -> Result<(), Fail> {
+    if job.signal().wait(Duration::from_secs(10)) {
+        Err(Fail::new("aborted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn the_executor_gets_the_stage_signal() {
+    let p = Plain::new(false, waits_on_its_signal);
+    let cancel = plain_run(&p, |d| d.deadlines.implement = 30);
+    assert!(!cancel.is_aborted(), "the job itself was never cancelled");
+    let (kind, data) = p.last();
+    assert_eq!(kind, "job.failed");
+    assert_eq!(
+        data.get("error").as_str(),
+        Some("The implement stage did not finish within 1 minute.")
+    );
+}
+
+#[test]
+fn the_network_list_keeps_the_last_32_rounds() {
+    let p = Plain::new(false, ok_exec);
+    plain_run(&p, |d| d.max_loops = 40);
+    let (kind, data) = p.last();
+    assert_eq!(kind, "job.failed");
+    let JValue::Arr(net) = data.get("result").get("network") else {
+        panic!("no network list: {}", text(&data))
+    };
+    assert_eq!(net.len(), 32);
+    assert_eq!(net[0].get("revision").as_num(), Some(10.0));
+    assert_eq!(net[31].get("revision").as_num(), Some(41.0));
+    assert_eq!(net[31].get("allowed").as_num(), Some(41.0));
+}
+
+#[test]
+fn a_deadline_past_the_timer_range_fires_at_once_as_in_node() {
+    let job = Signal::new();
+    let d = Deadline::start(&job, u64::MAX);
+    assert!(d.signal.wait(Duration::from_secs(5)));
+    assert!(d.timed_out());
+    let d = Deadline::start(&job, 60_000);
+    assert!(!d.finish(), "finished before it fired");
     assert!(!d.timed_out());
 }

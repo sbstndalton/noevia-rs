@@ -20,9 +20,13 @@
 //   handle: {…}    claimRun's new handle (its number is `ret`)
 //   ret: value | throw: {message, publicMessage?, result?}
 // The real store's calls are recorded the same way, with what the store returned or threw (an
-// append records no return value). jobs.run's own `job.started` and final event are recorded as
-// the `jobs.append` calls they are, from the journal. Then `start` (its return or throw), the
-// whole journal (type, data, at) and the final job.
+// append records no return value). jobs.run's own appends (`job.started`, the terminal rows) are
+// not reachable from outside the store: they are recorded as the `jobs.append` calls they are
+// when the store writes their row (a hook on fs.writeFileSync, which jobs.cjs writes each row
+// with), so an own append the store refused before writing would go unrecorded (no scenario
+// has one). The same hook fails chosen writes (`failWrite(row)`: the write throws
+// "QA journal write failed", so jobs.cjs's append throws it). Then `start` (its return or throw),
+// the whole journal (type, data, at) and the final job.
 //
 // Values are written in the tagged JSON form of crates/code-harness/tools/gen-fixtures.cjs:
 // {"$js":"undefined"|"NaN"|"Infinity"|"-Infinity"|"-0"}.
@@ -51,6 +55,15 @@ const { SHARED_FRAME } = require(file('role-engine.cjs'));
 const { DOSSIER_ROLES } = require(file('role-context.cjs'));
 const { PLAN_ARTIFACT_SCHEMA } = require(file('plan-constrained-decoding.cjs'));
 const { VERDICT_SCHEMA } = require(file('code-review-verdict.cjs'));
+
+// ── Journal writes ──────────────────────────────────────────────────────────────────────────
+const WRITE_FAILED = 'QA journal write failed';
+const originalWrite = fs.writeFileSync;
+let onRow = null;
+fs.writeFileSync = function writeFileSync(target, data, ...rest) {
+  if (onRow && typeof target === 'number' && typeof data === 'string') onRow(JSON.parse(data));
+  return originalWrite.call(this, target, data, ...rest);
+};
 
 // ── Tagged values ───────────────────────────────────────────────────────────────────────────
 const TAG = '$js';
@@ -87,6 +100,7 @@ const hex = (c) => c.repeat(40);
 const BASE = hex('b');
 const HEADS = [hex('1'), hex('2'), hex('3'), hex('4'), hex('5')];
 const OTHER = hex('e');
+const headN = (i) => (i + 1).toString(16).padStart(40, '0');
 const PLAN = { goal: 'Add the QA greeting to the QA project', context: ['The QA project prints a greeting.'],
   constraints: ['Keep the change small.'], investigation: ['Read src/qa.js.'],
   steps: [{ n: 1, do: 'Edit src/qa.js to print the QA greeting', done_when: 'The QA greeting is printed' },
@@ -177,11 +191,19 @@ async function runScenario(sc) {
     return settle(b);
   }
   // The real store, recorded.
+  let depth = 0;
   const real = (call, args, fn, keep = true) => {
     let out;
-    try { out = fn(); } catch (e) { record(call, args, { throw: thrownOf(e) }); throw e; }
+    depth += 1;
+    try { out = fn(); } catch (e) { record(call, args, { throw: thrownOf(e) }); throw e; } finally { depth -= 1; }
     record(call, args, keep ? { ret: clone(out) } : {});
     return out;
+  };
+  // A row about to be written: jobs.run's own appends are recorded here; chosen writes fail.
+  onRow = (row) => {
+    const fail = !!(sc.failWrite && sc.failWrite(row));
+    if (depth === 0) calls.push({ call: 'jobs.append', args: enc([row.job, row.type, row.data]), beh: fail ? { throw: { message: WRITE_FAILED } } : {} });
+    if (fail) throw Error(WRITE_FAILED);
   };
   const journal = (id) => fs.readFileSync(path.join(tmp, 'jobs', `${id}.jsonl`), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
   const runs = [];
@@ -193,18 +215,14 @@ async function runScenario(sc) {
     get: (id) => real('jobs.get', [id], () => store.get(id)),
     run: (id, work) => {
       const p = store.run(id, (ctx) => {
-        calls.push({ call: 'jobs.append', args: enc([id, 'job.started', {}]), beh: {} });
         const c = { ...ctx };
         for (const [k, type] of [['event', null], ['checkpoint', 'checkpoint.created'], ['artifact', 'artifact.created']]) {
           c[k] = type ? (data) => real('jobs.append', [id, type, data], () => ctx[k](data), false)
             : (t, data) => real('jobs.append', [id, t, data], () => ctx.event(t, data), false);
         }
         return work(c);
-      }).then(() => {
-        const last = journal(id).at(-1);
-        calls.push({ call: 'jobs.append', args: enc([id, last.type, last.data]), beh: {} });
       });
-      runs.push(p);
+      runs.push(p.catch(() => {}));
       return p;
     },
   };
@@ -258,6 +276,9 @@ async function runScenario(sc) {
   try { start = { ret: await pipeline.start({ ...task, ...(sc.noConnect ? {} : { connect: () => {} }) }) }; }
   catch (e) { start = { throw: { ...thrownOf(e), ...(e.status !== undefined ? { status: e.status } : {}) } }; }
   await Promise.all(runs);
+  // start's own catch on a run that could not record its start or end runs after that.
+  await new Promise((resolve) => { setTimeout(resolve, 20); });
+  onRow = null;
   const out = { name: sc.name, task: enc(task), options: enc({ noRoles: !!sc.noRoles, deadlines: sc.deadlines ?? null, maxLoops: sc.maxLoops ?? null,
     auditWriteUp: sc.auditWriteUp ?? null, connect: !sc.noConnect, planDeadlineMs: sc.planDeadlineMs ?? null, reviewDeadlineMs: sc.reviewDeadlineMs ?? null }), start: enc(start), calls };
   if (st.taskId) {
@@ -349,6 +370,36 @@ const SCENARIOS = [
     'session.call:reviewer': [ok({ ...CHANGES, summary: 'QA \uD800 summary', findings: [{ severity: 'major', file: 'src/qa\uDC00.js', message: 'QA \uDBFF message' }] }), ok({ ...APPROVE, summary: 'QA ok \uDFFF' })],
     'session.call:auditor': [ok({ ...WRITE_UP, summary: 'QA audit \uD83D', gaps: ['QA gap \uDE00'] })] } },
   { name: 'lone surrogate in the prompt', task: { prompt: 'Add the QA greeting \uD800 now.' } },
+  { name: 'cancel while the pin waits', script: { 'roles.pinModel': [{ cancel: true, wait: true, ret: { ok: true, session: { model: 'qa-model' } } }] } },
+  { name: 'cancel on the plan card', task: { approvePlan: true }, script: { askApproval: [{ cancel: true, ret: 'approve' }] } },
+  { name: 'tokens across three rounds', maxLoops: 3, script: {
+    'harness.claimRun': [1, 2, 3].map((k) => ({ handle: { workspace: { branch: 'noevia/qa-task', path: '/qa/work/qa-task', baseSha: BASE }, grant: { token: `qa-grant-token-${k}` }, cleanupConfirmed: true } })),
+    'verify.run': [failTests()], 'session.call:reviewer': [ok(CHANGES), ok(APPROVE)] } },
+  { name: 'many rounds reach the stage limit', maxLoops: 30, script: {
+    'verify.run': Array.from({ length: 30 }, () => failTests()),
+    'harness.runExecutor': Array.from({ length: 30 }, (_, i) => released(headN(i), { network: { allowed: i } })) } },
+  { name: 'resume claim from round 3 throws', script: { 'verify.run': [failTests(), failTests()],
+    'harness.claimRun': [DEFAULTS['harness.claimRun'](), DEFAULTS['harness.claimRun'](), { throw: { message: 'The QA branch is gone in round 3.' } }] } },
+  { name: 'snapshot.files an object', script: { 'workspaces.projectSnapshot': [{ ret: { files: {}, truncated: true, readme: null } }] } },
+  { name: 'snapshot.files null', script: { 'workspaces.projectSnapshot': [{ ret: { files: null, readme: null } }] } },
+  { name: 'snapshot.files a string', script: { 'workspaces.projectSnapshot': [{ ret: { files: 'QA', readme: null } }] } },
+  { name: 'snapshot null', script: { 'workspaces.projectSnapshot': [{ ret: null }] } },
+  { name: 'change.files a string', script: { 'workspaces.change': [{ ret: { files: 'QA' } }] } },
+  { name: 'change.files with a null entry', script: { 'workspaces.change': [{ ret: { files: [null, { path: 'src/qa.js' }] } }] } },
+  { name: 'change paths null and missing', script: { 'workspaces.change': [{ ret: { files: [{ path: null }, { status: 'A' }, { path: 'src/qa.js' }], diff: 'QA diff' } }] } },
+  { name: 'verifier answers null', script: { 'verify.run': [{ ret: null }] } },
+  { name: 'audit answers null', script: { 'session.call:auditor': [{ ret: null }] } },
+  { name: 'merged stage write fails, record-failed note', script: { ...MERGE_ON }, failWrite: (row) => row.type === 'task.stage' && row.data.to === 'merged' },
+  { name: 'final job.completed write fails', failWrite: (row) => row.type === 'job.completed' },
+  { name: 'final job.completed and job.failed writes fail', failWrite: (row) => row.type === 'job.completed' || row.type === 'job.failed' },
+  { name: 'cancel at the release, after the work', script: { 'harness.releaseRun': [{ cancel: true }] } },
+  { name: 'cancel at the release, job.cancelled {result} write fails once', script: { 'harness.releaseRun': [{ cancel: true }] },
+    failWrite: (() => { let n = 0; return (row) => row.type === 'job.cancelled' && (n += 1) === 1; })() },
+  { name: 'cancel on the accept card, job.cancelled write fails', script: { askApproval: [{ cancel: true, ret: 'approve' }] },
+    failWrite: (row) => row.type === 'job.cancelled' },
+  { name: 'job.failed write fails after a block', script: { 'verify.available': [{ ret: false }] }, failWrite: (row) => row.type === 'job.failed' },
+  { name: 'job.started write fails', failWrite: (row) => row.type === 'job.started' },
+  { name: 'empty harness string', task: { harness: '' } },
   { name: 'start: no prompt', task: { prompt: '   ' } },
   { name: 'start: no transport', noConnect: true },
   { name: 'start: claim fails', script: { 'harness.claimRun': [{ throw: { message: 'The QA repository is not a git repository.' } }] } },
