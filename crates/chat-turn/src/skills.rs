@@ -111,15 +111,18 @@ impl Skills {
             Some(Some(_)) => return false,
             _ => return true,
         };
-        let gone = host.skills_revoked(project, &loaded).await.unwrap_or_else(|| {
-            loaded
-                .iter()
-                .map(|k| {
-                    let name = if k.name.is_empty() { &k.file } else { &k.name };
-                    (k.file.clone(), name.clone())
-                })
-                .collect()
-        });
+        let gone = host
+            .skills_revoked(project, &loaded)
+            .await
+            .unwrap_or_else(|| {
+                loaded
+                    .iter()
+                    .map(|k| {
+                        let name = if k.name.is_empty() { &k.file } else { &k.name };
+                        (k.file.clone(), name.clone())
+                    })
+                    .collect()
+            });
         if gone.is_empty() {
             return false;
         }
@@ -157,7 +160,10 @@ impl Skills {
             "tool.denied",
             &js::obj([("tool", js::s(name)), ("reason", js::s("skill-revoked"))]),
         );
-        format!("ERROR: {} {name} was not run. Do not retry it.", self.text())
+        format!(
+            "ERROR: {} {name} was not run. Do not retry it.",
+            self.text()
+        )
     }
 
     /// The result of a call streamed in a round the revocation cut off (chat.cjs, at most 300 UTF-16 units).
@@ -198,14 +204,14 @@ impl Skills {
     }
 
     /// The round-0 scrub (chat.cjs before its first round): whether the messages changed, and the warning to
-    /// send when it took out a skill not named before. `Err` when the bridge gave no answer.
+    /// send when it took out a skill not named before. `None` when the bridge gave no answer.
     pub async fn scrub<H: Host>(
         &self,
         host: &H,
         messages: &mut [JValue],
-    ) -> Result<(bool, Option<String>), ()> {
+    ) -> Option<(bool, Option<String>)> {
         let Some(project) = self.project_id.as_deref().filter(|_| self.scrubs) else {
-            return Ok((false, None));
+            return Some((false, None));
         };
         let view: Vec<JValue> = messages
             .iter()
@@ -218,10 +224,9 @@ impl Skills {
             .collect();
         let scrub = host
             .skills_scrub(project, self.chat_id.as_deref(), &view)
-            .await
-            .ok_or(())?;
+            .await?;
         if scrub.removed.is_empty() {
-            return Ok((false, None));
+            return Some((false, None));
         }
         for (i, content) in scrub.changed {
             if let Some(m) = messages.get_mut(i) {
@@ -241,7 +246,11 @@ impl Skills {
                 }
                 s.in_history.extend(fresh);
                 let note = history_note(&s.in_history);
-                let parts = [self.image_warning.as_str(), note.as_str(), self.coverage_warning.as_str()];
+                let parts = [
+                    self.image_warning.as_str(),
+                    note.as_str(),
+                    self.coverage_warning.as_str(),
+                ];
                 Some(
                     parts
                         .iter()
@@ -252,7 +261,7 @@ impl Skills {
                 )
             })
             .flatten();
-        Ok((true, warning))
+        Some((true, warning))
     }
 }
 

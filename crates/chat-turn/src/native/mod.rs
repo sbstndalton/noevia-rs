@@ -401,13 +401,13 @@ impl<H: Host> Turn<'_, H> {
             // #546: a skill disabled while the turn was prepared is taken out of the earlier turns too.
             if round == 0 {
                 match self.skills.scrub(host, &mut s.messages).await {
-                    Ok((changed, warning)) => {
+                    Some((changed, warning)) => {
                         s.changed |= changed;
                         if let Some(w) = warning {
                             host.emit(&event("warning", vec![("text", js::s(w))]));
                         }
                     }
-                    Err(()) => {
+                    None => {
                         host.emit(&event("error", vec![("text", js::s(FAILED_TEXT))]));
                         return Ended::Error;
                     }

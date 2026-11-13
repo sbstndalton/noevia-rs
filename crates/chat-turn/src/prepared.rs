@@ -143,7 +143,9 @@ fn skill_list(v: &JValue, key: &str) -> Result<Vec<Skill>, Unreadable> {
                 hash: hash.clone(),
                 name: name.clone(),
             }),
-            _ => Err(Unreadable(format!("prepared.skills.{key} holds a bad skill"))),
+            _ => Err(Unreadable(format!(
+                "prepared.skills.{key} holds a bad skill"
+            ))),
         })
         .collect()
 }

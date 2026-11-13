@@ -654,7 +654,10 @@ impl Host for Script {
                 "the tool run's {k}"
             );
         }
-        self.executions.lock().unwrap().push(run.name.clone());
+        // The recorder lists what the Drive and MCP tool engines ran; core's built-in tools run in its toolboxes.
+        if !["read_project_file", "get_current_time"].contains(&run.name.as_str()) {
+            self.executions.lock().unwrap().push(run.name.clone());
+        }
         if let Some(message) = next.get("threw").as_str() {
             return Err(message.to_string());
         }
@@ -669,7 +672,11 @@ impl Host for Script {
         ))
     }
 
-    async fn skills_revoked(&self, project_id: &str, loaded: &[Skill]) -> Option<Vec<(String, String)>> {
+    async fn skills_revoked(
+        &self,
+        project_id: &str,
+        loaded: &[Skill],
+    ) -> Option<Vec<(String, String)>> {
         if self.skills_down {
             return None;
         }
@@ -678,7 +685,11 @@ impl Host for Script {
             Some(project_id),
             self.case.get("input").get("project").get("id").as_str()
         );
-        assert_eq!(loaded, Script::skill_list(next.get("loaded")), "the loaded skills checked");
+        assert_eq!(
+            loaded,
+            Script::skill_list(next.get("loaded")),
+            "the loaded skills checked"
+        );
         let JValue::Arr(gone) = next.get("gone") else {
             panic!()
         };
@@ -711,20 +722,33 @@ impl Host for Script {
             self.case.get("input").get("project").get("id").as_str()
         );
         self.chat_asked(&JValue::Undefined, chat_id);
-        assert_eq!(candidates, Script::skill_list(next.get("candidates")), "the read's candidates");
+        assert_eq!(
+            candidates,
+            Script::skill_list(next.get("candidates")),
+            "the read's candidates"
+        );
         assert_eq!(Some(args), next.get("args").as_str(), "the read's args");
-        assert_eq!(Some(result), next.get("result").as_str(), "the read's result");
+        assert_eq!(
+            Some(result),
+            next.get("result").as_str(),
+            "the read's result"
+        );
         // Core records each loaded version in the account's skill ledger.
         if next.get("ledger").is_object() {
-            self.files
-                .lock()
-                .unwrap()
-                .insert("skill-history.json".into(), js::stringify(next.get("ledger")));
+            self.files.lock().unwrap().insert(
+                "skill-history.json".into(),
+                js::stringify(next.get("ledger")),
+            );
         }
         Some(Script::skill_list(next.get("loaded")))
     }
 
-    async fn skills_scrub(&self, project_id: &str, chat_id: Option<&str>, messages: &[JValue]) -> Option<Scrub> {
+    async fn skills_scrub(
+        &self,
+        project_id: &str,
+        chat_id: Option<&str>,
+        messages: &[JValue],
+    ) -> Option<Scrub> {
         if self.skills_down {
             return None;
         }
@@ -739,7 +763,9 @@ impl Host for Script {
             js::stringify(next.get("messages")),
             "the messages the scrub reads"
         );
-        let (JValue::Arr(changed), JValue::Arr(removed)) = (next.get("changed"), next.get("removed")) else {
+        let (JValue::Arr(changed), JValue::Arr(removed)) =
+            (next.get("changed"), next.get("removed"))
+        else {
             panic!()
         };
         Some(Scrub {
@@ -747,10 +773,16 @@ impl Host for Script {
                 .iter()
                 .map(|c| {
                     let JValue::Arr(pair) = c else { panic!() };
-                    (pair[0].as_num().unwrap() as usize, pair[1].as_str().unwrap().to_string())
+                    (
+                        pair[0].as_num().unwrap() as usize,
+                        pair[1].as_str().unwrap().to_string(),
+                    )
                 })
                 .collect(),
-            removed: removed.iter().map(|n| n.as_str().unwrap().to_string()).collect(),
+            removed: removed
+                .iter()
+                .map(|n| n.as_str().unwrap().to_string())
+                .collect(),
         })
     }
 
@@ -1065,7 +1097,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 77, "{ran:?}");
+    assert_eq!(ran.len(), 84, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
@@ -1196,7 +1228,8 @@ fn a_skills_bridge_without_an_answer_fails_closed() {
             .find(|c| c.get("name").as_str() == Some(name))
             .unwrap()
     };
-    let last = |script: &Script| wtf16::parse(script.events.lock().unwrap().last().unwrap()).unwrap();
+    let last =
+        |script: &Script| wtf16::parse(script.events.lock().unwrap().last().unwrap()).unwrap();
     let (pinned, ended) = replay_with(&f, case("skills_pinned"), true);
     assert_eq!(ended, Ended::Error);
     assert_eq!(

@@ -233,8 +233,9 @@ function engine(rounds, log, res) {
     });
     const stream = new ReadableStream({
       async pull(controller) {
-        // The clock moves on before the next chunk is read (the engine sent it a moment later).
-        while (i < chunks.length && chunks[i] && chunks[i].tick !== undefined) clockOffset += chunks[i++].tick;
+        // The clock moves on before the next chunk (the engine sent it later): once the reader, which reads ahead,
+        // has handled everything before it, as for leaving.
+        while (i < chunks.length && chunks[i] && chunks[i].tick !== undefined) { await settle(); clockOffset += chunks[i++].tick; }
         if (i >= chunks.length) { controller.close(); return; }
         const chunk = chunks[i++];
         if (chunk && chunk.leave) {
