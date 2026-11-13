@@ -4,8 +4,11 @@
 //! text: `Command failed: git <args>` and, when git said anything, a newline and its stderr.
 
 use std::io::Read;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// code-workspace.cjs `GIT_ENV_KEYS` (#1916): what git needs of the server's environment, and
@@ -78,25 +81,38 @@ pub fn js_trim(s: &str) -> &str {
     })
 }
 
-fn read_capped(mut from: impl Read, cap: usize) -> (Vec<u8>, bool) {
+/// Reads a pipe up to `cap` bytes; past it, says so through `over` (the runner then kills git, as
+/// execFileSync does) and keeps draining so nothing blocks on a full pipe.
+fn read_capped(mut from: impl Read, cap: usize, over: &AtomicBool) -> Vec<u8> {
     let mut out = Vec::new();
     let mut buf = [0u8; 8192];
-    let mut over = false;
     loop {
         match from.read(&mut buf) {
             Ok(0) | Err(_) => break,
             Ok(n) => {
                 let chunk = buf.get(..n).unwrap_or(&[]);
                 if out.len() + chunk.len() > cap {
-                    over = true;
-                    // Keep draining so the child is never blocked on a full pipe.
+                    over.store(true, Ordering::SeqCst);
                     continue;
                 }
                 out.extend_from_slice(chunk);
             }
         }
     }
-    (out, over)
+    out
+}
+
+/// Node's `spawnSync git <code>` name for a failed start.
+fn errno_name(e: &std::io::Error) -> String {
+    match e.raw_os_error() {
+        Some(2) => "ENOENT".into(),
+        Some(13) => "EACCES".into(),
+        Some(20) => "ENOTDIR".into(),
+        Some(7) => "E2BIG".into(),
+        Some(12) => "ENOMEM".into(),
+        Some(n) => format!("E{n}"),
+        None => "EUNKNOWN".into(),
+    }
 }
 
 impl Git {
@@ -145,47 +161,64 @@ impl Git {
         if let Some(cwd) = cwd {
             command.current_dir(cwd);
         }
+        // Its own process group, so a deadline or the buffer cap stops whatever git started too
+        // (a filter, upload-pack) and no pipe is left held open.
+        command.process_group(0);
         let mut child = command
             .spawn()
-            .map_err(|e| failed(String::new(), false, Some(&format!("{}", e.kind()))))?;
+            .map_err(|e| failed(String::new(), false, Some(&errno_name(&e))))?;
+        let group = rustix::process::Pid::from_child(&child);
+        let kill = || {
+            let _ = rustix::process::kill_process_group(group, rustix::process::Signal::KILL);
+        };
         let cap = options.max_buffer.unwrap_or(DEFAULT_MAX_BUFFER);
-        let out = child
-            .stdout
-            .take()
-            .map(|o| std::thread::spawn(move || read_capped(o, cap)));
-        let err = child
-            .stderr
-            .take()
-            .map(|e| std::thread::spawn(move || read_capped(e, cap)));
+        let over = Arc::new(AtomicBool::new(false));
+        let out = child.stdout.take().map(|o| {
+            let over = over.clone();
+            std::thread::spawn(move || read_capped(o, cap, &over))
+        });
+        let err = child.stderr.take().map(|e| {
+            let over = over.clone();
+            std::thread::spawn(move || read_capped(e, cap, &over))
+        });
         let deadline = Instant::now() + self.timeout;
+        let mut timed_out = false;
         let status = loop {
+            if over.load(Ordering::SeqCst) {
+                kill();
+                let _ = child.wait();
+                break None;
+            }
             match child.try_wait() {
                 Ok(Some(status)) => break Some(status),
                 Ok(None) if Instant::now() >= deadline => {
-                    let _ = child.kill();
+                    timed_out = true;
+                    kill();
                     let _ = child.wait();
                     break None;
                 }
                 Ok(None) => std::thread::sleep(Duration::from_millis(5)),
                 Err(_) => {
-                    let _ = child.kill();
+                    kill();
                     let _ = child.wait();
                     break None;
                 }
             }
         };
-        let join = |h: Option<std::thread::JoinHandle<(Vec<u8>, bool)>>| {
+        // Whatever git left running in its group goes too, so the readers see their pipes close.
+        kill();
+        let join = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
             h.and_then(|h| h.join().ok()).unwrap_or_default()
         };
-        let (stdout, out_over) = join(out);
-        let (stderr, err_over) = join(err);
-        let stderr = String::from_utf8_lossy(&stderr).into_owned();
-        let Some(status) = status else {
-            return Err(failed(stderr, false, Some("ETIMEDOUT")));
-        };
-        if out_over || err_over {
+        let stdout = join(out);
+        let stderr = String::from_utf8_lossy(&join(err)).into_owned();
+        if over.load(Ordering::SeqCst) {
             return Err(failed(stderr, true, Some("ENOBUFS")));
         }
+        let Some(status) = status else {
+            let why = if timed_out { "ETIMEDOUT" } else { "EUNKNOWN" };
+            return Err(failed(stderr, false, Some(why)));
+        };
         if !status.success() {
             return Err(failed(stderr, false, None));
         }

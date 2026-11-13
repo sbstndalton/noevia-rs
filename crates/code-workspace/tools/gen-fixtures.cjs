@@ -78,6 +78,9 @@ const SCENARIOS = {
     { op: 'release', ws: 'w', taskId: T2, removeBranch: true },
     { op: 'claim', ws: 'w', taskId: T3, repo: 'repos/qa-repo', branch: 'feature/x' },
     { op: 'release', ws: 'w', taskId: T6 },
+    // An empty branch is no branch: the task's own.
+    { op: 'claim', ws: 'w', taskId: T4, repo: 'repos/qa-repo', branch: '' },
+    { op: 'release', ws: 'w', taskId: T4 },
     { op: 'get', ws: 'w', taskId: T3 },
     { op: 'get', ws: 'w', taskId: T6 },
     { op: 'get', ws: 'w', taskId: 'bad' },
@@ -190,6 +193,27 @@ const SCENARIOS = {
     { op: 'write', path: 'tenant/code-workspaces/stray.json', text: '{}' },
     { op: 'claim', ws: 'c', taskId: T3, repo: 'repos/qa-repo', branch: 'qa/x' },
     { op: 'list', ws: 'c' },
+    // Commit signing names a program; Node's release commit runs it.
+    { op: 'claim', ws: 'c', taskId: T4, repo: 'repos/qa-repo', branch: 'qa/sign' },
+    { op: 'write', path: 'qa-sign.sh', text: '#!/bin/sh\ntouch <BASE>/pwned\nexit 1\n', mode: 0o755 },
+    { op: 'git', cwd: CL(T4), args: ['config', 'commit.gpgsign', 'true'] },
+    { op: 'git', cwd: CL(T4), args: ['config', 'gpg.program', '<BASE>/qa-sign.sh'] },
+    { op: 'write', path: `${CL(T4)}/a.txt`, text: 'changed\n' },
+    { op: 'release', ws: 'c', taskId: T4 },
+    { op: 'rm', path: 'pwned' },
+    // A filter defined in .git/config.worktree (a file Node's check never reads), named by a
+    // .gitattributes only the index holds. Node releases such a clone; the Rust port refuses it.
+    { op: 'claim', ws: 'c', taskId: T5, repo: 'repos/qa-repo', branch: 'qa/wtconfig' },
+    { op: 'git', cwd: CL(T5), args: ['config', 'core.repositoryformatversion', '1'] },
+    { op: 'git', cwd: CL(T5), args: ['config', 'extensions.worktreeConfig', 'true'] },
+    { op: 'git', cwd: CL(T5), args: ['config', '--worktree', 'filter.qa.clean', 'sh -c "touch <BASE>/pwned; cat"'] },
+    { op: 'write', path: `${CL(T5)}/.gitattributes`, text: '* filter=qa\n' },
+    { op: 'git', cwd: CL(T5), args: ['add', '.gitattributes'] },
+    { op: 'rm', path: `${CL(T5)}/.gitattributes` },
+    { op: 'write', path: `${CL(T5)}/a.txt`, text: 'changed\n' },
+    // (The harness's own `git add` above ran the filter as the harness; only noevia's run counts.)
+    { op: 'rm', path: 'pwned' },
+    { op: 'release', ws: 'c', taskId: T5 },
   ],
 };
 
@@ -266,6 +290,7 @@ function runScenario(steps) {
       }
       case 'dir': fs.mkdirSync(at(s.path), { recursive: true }); break;
       case 'write': fs.writeFileSync(at(s.path), s.text.split('<BASE>').join(base), s.mode !== undefined ? { mode: s.mode } : {}); if (s.mode !== undefined) fs.chmodSync(at(s.path), s.mode); break;
+      case 'rm': fs.rmSync(at(s.path), { force: true }); break;
       case 'symlink': fs.symlinkSync(s.target.split('<BASE>').join(base), at(s.path)); break;
       case 'git': shell(s.args.map((a) => a.split('<BASE>').join(base)), at(s.cwd)); break;
       case 'clock': clock = s.t; break;
