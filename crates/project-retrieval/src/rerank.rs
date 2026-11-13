@@ -202,10 +202,11 @@ pub fn request(config: &Config, question: &str, pool: &[Hit]) -> Request {
     }
 }
 
-/// `request.items[row.index]` for llama.cpp's rows: a property lookup, so `3`, `-0` and `"3"` find
-/// item 3 and `1.5`, `"03"` or `-1` find nothing.
+/// `request.items[row.index]` for llama.cpp's rows: a property lookup, so `3`, `-0`, `"3"` and
+/// `[3]` (whose string is `"3"`) find item 3 and `1.5`, `"03"`, `-1` or `[1, 2]` find nothing.
 fn llama_index(v: Option<&Value>, n: usize) -> Option<usize> {
     let i = match v? {
+        Value::Array(a) if a.len() == 1 => return llama_index(a.first(), n),
         Value::Number(x) => {
             let f = x.as_f64()?;
             (f.fract() == 0.0 && f >= 0.0 && f < n as f64).then_some(f as usize)?
@@ -251,6 +252,10 @@ pub fn parse_value(backend: Backend, items: usize, status: u16, body: &Value) ->
                 .cloned()
                 .unwrap_or_default();
             for row in &rows {
+                // `row.index` of null throws in JS: the backend fails and the cosine order answers.
+                if row.is_null() {
+                    return None;
+                }
                 if let (Some(i), Some(s)) = (
                     llama_index(row.get("index"), items),
                     finite(row.get("relevance_score")),
@@ -319,6 +324,25 @@ pub fn needed(pool: &[Hit]) -> bool {
     pool.len() > 1
 }
 
+/// The reranker as last configured, with its bench: `initRerank` builds a new decision chain (and
+/// with it a fresh bench) whenever the configuration changes.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Chain {
+    config: Option<Config>,
+    bench: Bench,
+}
+
+impl Chain {
+    /// The bench of `config`, a fresh one when the configuration changed.
+    pub fn bench_for(&mut self, config: &Config) -> &mut Bench {
+        if self.config.as_ref() != Some(config) {
+            self.config = Some(config.clone());
+            self.bench = Bench::default();
+        }
+        &mut self.bench
+    }
+}
+
 /// The chain's deadline bench (`decision/index.cjs` `benched`, `misses`), one per process.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Bench {
@@ -349,7 +373,24 @@ impl Bench {
 
 #[cfg(test)]
 mod tests {
-    use super::{clamp_int, order, quote};
+    use super::{clamp_int, order, quote, Bench};
+
+    #[test]
+    fn misses_in_a_row_bench_and_an_answer_resets_them() {
+        let mut b = Bench::default();
+        b.missed(0.0);
+        b.missed(1.0);
+        b.answered();
+        b.missed(2.0);
+        b.missed(3.0);
+        assert!(!b.benched(3.0), "an answer in between: two misses in a row");
+        b.missed(4.0);
+        assert!(b.benched(4.0) && b.benched(60_003.0) && !b.benched(60_004.0));
+        // After the bench the count starts again.
+        b.missed(70_000.0);
+        b.missed(70_001.0);
+        assert!(!b.benched(70_001.0));
+    }
 
     #[test]
     fn parse_int_clamps() {

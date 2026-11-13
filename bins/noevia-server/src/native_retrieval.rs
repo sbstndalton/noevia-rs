@@ -41,7 +41,7 @@ use std::sync::Mutex;
 use embedding_worker::{http::Http, runtime, Config as EmbeddingConfig, Target};
 use project_retrieval::hits::Hit;
 use project_retrieval::policy::{current_snapshot, embedding_off, observe, Observation};
-use project_retrieval::rerank::{self, Bench};
+use project_retrieval::rerank::{self, Chain};
 use project_retrieval::search::{self, ImageSettings, Versions, WithImages};
 use prompt_framing::embedding_input::{self, Kind, Profile};
 use prompt_framing::js::units;
@@ -112,8 +112,8 @@ pub struct Retrieval {
     /// `RAG_RERANK_POOL`, `RAG_RERANK_KEEP`, `RAG_RERANK_DEADLINE_MS` and `RERANK_API_KEY` of this
     /// process (`rag.cjs` reads them from `process.env`).
     knobs: HashMap<String, String>,
-    /// The reranker's deadline bench, this process's.
-    bench: Mutex<Bench>,
+    /// The reranker's deadline bench, this process's (a fresh one when its configuration changes).
+    bench: Mutex<Chain>,
 }
 
 /// What a search reads besides its question.
@@ -121,7 +121,9 @@ pub struct Deps<'a> {
     pub seed: Option<&'a EmbeddingConfig>,
     pub service_url: Option<&'a str>,
     pub observed: &'a Mutex<Option<Observation>>,
-    pub bench: &'a Mutex<Bench>,
+    pub bench: &'a Mutex<Chain>,
+    /// Milliseconds since the epoch, read when the bench is asked and when a miss is recorded.
+    pub clock: &'a (dyn Fn() -> f64 + Sync),
     pub knobs: &'a HashMap<String, String>,
 }
 
@@ -176,7 +178,7 @@ impl Retrieval {
                 .iter()
                 .filter_map(|k| get(k).map(|v| ((*k).to_owned(), v)))
                 .collect(),
-            bench: Mutex::new(Bench::default()),
+            bench: Mutex::new(Chain::default()),
         })
     }
 
@@ -189,7 +191,7 @@ impl Retrieval {
             observed: Mutex::new(None),
             images: ImageSettings::from_env(None, None),
             knobs: HashMap::new(),
-            bench: Mutex::new(Bench::default()),
+            bench: Mutex::new(Chain::default()),
         }
     }
 
@@ -213,6 +215,7 @@ impl Retrieval {
             service_url: self.service_url.as_deref(),
             observed: &self.observed,
             bench: &self.bench,
+            clock: &|| crate::identity::now_ms() as f64,
             knobs: &self.knobs,
         };
         retrieve_with(
@@ -252,8 +255,12 @@ pub struct Inputs<'a> {
     pub rerank_env: Option<&'a HashMap<String, String>>,
     /// Node's wanted versions for the project's files (`rag.cjs` `fileVersions`); empty for research.
     pub versions: Versions,
-    /// At most this many hits: [`RESEARCH_HITS`] for research, [`TOP_K`] for Node's `searchProject`.
+    /// At most this many text hits: [`RESEARCH_HITS`] for research; no cut for Node's
+    /// `searchProject`, which answers the cosine top [`TOP_K`] or the reranker's `keep`.
     pub limit: usize,
+    /// When the caller stops waiting: the reranker is not waited for past it (and that counts as a
+    /// deadline miss, so a reranker slower than the caller is benched as Node benches it).
+    pub until: Option<std::time::Instant>,
 }
 
 /// `[a-zA-Z0-9_-]`-ish ids only: never a path. Node joins the id from the account's own project list.
@@ -404,14 +411,18 @@ where
     .unwrap_or_default();
     if let Some(cfg) = reranker {
         let hits = std::mem::take(&mut found.text);
-        let ranking = if !rerank::needed(&hits) || lock(deps.bench).benched(inputs.now_ms) {
+        let open = !lock(deps.bench).bench_for(&cfg).benched((deps.clock)());
+        let ranking = if !rerank::needed(&hits) || !open {
             None
         } else {
             let request = rerank::request(&cfg, inputs.question, &hits);
-            let deadline = std::time::Duration::from_millis(cfg.deadline_ms);
-            match tokio::time::timeout(deadline, send(request, cfg.api_key.clone())).await {
+            let mut wait = std::time::Duration::from_millis(cfg.deadline_ms);
+            if let Some(until) = inputs.until {
+                wait = wait.min(until.saturating_duration_since(std::time::Instant::now()));
+            }
+            match tokio::time::timeout(wait, send(request, cfg.api_key.clone())).await {
                 Err(_) => {
-                    lock(deps.bench).missed(inputs.now_ms + cfg.deadline_ms as f64);
+                    lock(deps.bench).bench_for(&cfg).missed((deps.clock)());
                     None
                 }
                 Ok(answer) => {
@@ -420,7 +431,7 @@ where
                     });
                     // Only an answer the backend accepts resets the misses (a throw leaves them).
                     if scores.is_some() {
-                        lock(deps.bench).answered();
+                        lock(deps.bench).bench_for(&cfg).answered();
                     }
                     scores.map(|s| rerank::order(&s))
                 }
@@ -438,7 +449,8 @@ pub const STORE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2
 /// `POST /v1/retrieval/search` on the store listener (`--features rust-retrieval-v1`): Node's own
 /// `rag.cjs` `searchProject` asking through core `rust-retrieval.cjs`. Body `{user, projectId, query,
 /// versions, images?}` (`versions`: Node's wanted versions of the project's files, a string or
-/// `null` each); answer `{hits: [{file, body, score}]}` (at most [`TOP_K`]), with `images: true`
+/// `null` each); answer `{hits: [{file, body, score}]}` (the cosine top [`TOP_K`], or the
+/// reranker's `RAG_RERANK_KEEP`), with `images: true`
 /// `searchProjectWithImages`' `{text, images, indexed}`, or `{defer: reason}`, on which Node
 /// searches itself. Node has resolved the project and run its own account and tombstone guards;
 /// an index without an account (the shared `RAG_DIR`) is Node's. The caller has checked the
@@ -446,9 +458,9 @@ pub const STORE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2
 /// used: this route answers while the front's switch is `on` or `shadow` and defers when it is
 /// `off`. It answers within [`STORE_DEADLINE`], under the client's 30 s, so a slow embedding
 /// service ends in a deferral here, not a second embed in Node after a timeout.
-pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, serde_json::Value) {
+pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, String) {
     use serde_json::{json, Value};
-    let bad = |why: &str| (400, json!({ "error": why }));
+    let bad = |why: &str| (400, json!({ "error": why }).to_string());
     let Ok(body) = serde_json::from_slice::<Value>(raw) else {
         return bad("invalid JSON");
     };
@@ -477,7 +489,7 @@ pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, 
         Some(Value::Bool(true)) => true,
         Some(_) => return bad("images must be a boolean"),
     };
-    let defer = |why: &str| (200, json!({ "defer": why }));
+    let defer = |why: &str| (200, json!({ "defer": why }).to_string());
     let retrieval = &app.config.retrieval;
     if retrieval.mode == Mode::Off {
         return defer("off");
@@ -506,7 +518,10 @@ pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, 
             maintenance_held: &held,
             rerank_env: rerank_env.as_ref(),
             versions,
-            limit: TOP_K,
+            limit: usize::MAX,
+            until: Some(
+                std::time::Instant::now() + STORE_DEADLINE - std::time::Duration::from_secs(1),
+            ),
         },
         images.then_some(retrieval.images),
     );
@@ -514,27 +529,47 @@ pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, 
         return defer("deadline");
     };
     let hit = |h: Hit| json!({ "file": h.file, "body": h.body, "score": h.score });
-    let row = |r: search::ImageRow| json!({ "file": r.file, "kind": "image", "meta": r.meta });
     match outcome {
-        Outcome::Hits(found) if images => (
-            200,
-            json!({
-                "text": found.text.into_iter().map(hit).collect::<Vec<_>>(),
-                "images": found.images.into_iter().map(|i| {
-                    let mut v = row(i.row);
-                    if let Some(o) = v.as_object_mut() {
-                        o.insert("label".into(), json!(i.label));
-                        o.insert("hash".into(), json!(i.hash));
-                        o.insert("score".into(), json!(i.score));
-                    }
-                    v
-                }).collect::<Vec<_>>(),
-                "indexed": found.indexed.into_iter().map(row).collect::<Vec<_>>(),
-            }),
-        ),
+        // Image meta goes out as the JSON text `mediaRow` gives (JS key order), not re-serialized.
+        Outcome::Hits(found) if images => {
+            let row = |file: &str, meta: &str| {
+                format!(
+                    "{{\"file\":{},\"kind\":\"image\",\"meta\":{meta}",
+                    json!(file)
+                )
+            };
+            let text: Vec<Value> = found.text.into_iter().map(hit).collect();
+            let images: Vec<String> = found
+                .images
+                .iter()
+                .map(|i| {
+                    format!(
+                        "{},\"label\":{},\"hash\":{},\"score\":{}}}",
+                        row(&i.row.file, &i.row.meta),
+                        json!(i.label),
+                        json!(i.hash),
+                        json!(i.score)
+                    )
+                })
+                .collect();
+            let indexed: Vec<String> = found
+                .indexed
+                .iter()
+                .map(|r| format!("{}}}", row(&r.file, &r.meta)))
+                .collect();
+            (
+                200,
+                format!(
+                    "{{\"text\":{},\"images\":[{}],\"indexed\":[{}]}}",
+                    Value::Array(text),
+                    images.join(","),
+                    indexed.join(",")
+                ),
+            )
+        }
         Outcome::Hits(found) => (
             200,
-            json!({ "hits": found.text.into_iter().map(hit).collect::<Vec<_>>() }),
+            json!({ "hits": found.text.into_iter().map(hit).collect::<Vec<_>>() }).to_string(),
         ),
         Outcome::Defer(why) => defer(why),
     }

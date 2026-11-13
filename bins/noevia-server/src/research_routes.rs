@@ -897,6 +897,7 @@ async fn native_retrieve(
             rerank_env: rerank_env.as_ref(),
             versions: Default::default(),
             limit: RESEARCH_HITS,
+            until: None,
         })
         .await
 }

@@ -61,14 +61,33 @@ fn every_recorded_image_search_matches_node() {
                 profile: q["target"]["profile"].as_str().unwrap(),
                 model: q["target"]["model"].as_str().unwrap(),
             };
-            let got = search_with_images(&conn, target, &query, TOP_K, &Versions::new(), settings)
-                .unwrap();
+            let found =
+                search_with_images(&conn, target, &query, TOP_K, &Versions::new(), settings)
+                    .unwrap();
+            let got_rows: Vec<String> = found
+                .images
+                .iter()
+                .map(|i| i.row.meta.clone())
+                .chain(found.indexed.iter().map(|i| i.meta.clone()))
+                .collect();
+            let got = found;
             let got = json!({
                 "text": got.text.iter().map(|h| json!({"file": h.file, "body": h.body, "score": h.score})).collect::<Vec<_>>(),
-                "images": got.images.iter().map(|i| json!({"file": i.row.file, "kind": "image", "meta": i.row.meta, "label": i.label, "hash": i.hash, "score": i.score})).collect::<Vec<_>>(),
-                "indexed": got.indexed.iter().map(|i| json!({"file": i.file, "kind": "image", "meta": i.meta})).collect::<Vec<_>>(),
+                "images": got.images.iter().map(|i| json!({"file": i.row.file, "kind": "image", "meta": serde_json::from_str::<Value>(&i.row.meta).unwrap(), "label": i.label, "hash": i.hash, "score": i.score})).collect::<Vec<_>>(),
+                "indexed": got.indexed.iter().map(|i| json!({"file": i.file, "kind": "image", "meta": serde_json::from_str::<Value>(&i.meta).unwrap()})).collect::<Vec<_>>(),
             });
             assert_eq!(norm(&got), norm(&q["out"]), "{ctx}");
+            // Node's JSON.stringify(JSON.parse(meta)) of a meta Node wrote is the stored text.
+            let stored: Vec<&str> = f["snapshots"][q["index"].as_str().unwrap()]["chunks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|c| c["meta"].as_str())
+                .collect();
+            let emitted = got_rows.iter().map(String::as_str);
+            for meta in emitted {
+                assert!(stored.contains(&meta), "{ctx}: {meta}");
+            }
             checked += 1;
         }
     }

@@ -176,10 +176,20 @@ fn f32_blob(vector: &[f32]) -> Vec<u8> {
     vector.iter().flat_map(|x| x.to_le_bytes()).collect()
 }
 
-/// `Math.round(score * 1000) / 1000`. Scores here are at or above [`MIN_SCORE`], so rounding half
-/// away from zero is rounding half up, as `Math.round` does.
+/// `Math.round(x)`: the nearest integer, a half towards +∞ (`-62.5` is `-62`), without the
+/// `floor(x + 0.5)` error at `0.49999999999999994`.
+fn js_round(x: f64) -> f64 {
+    let f = x.floor();
+    if x - f >= 0.5 {
+        f + 1.0
+    } else {
+        f
+    }
+}
+
+/// `Math.round(score * 1000) / 1000` (image scores can be negative: `RAG_IMAGE_MIN_SCORE` reaches -1).
 fn round3(score: f64) -> f64 {
-    (score * 1000.0).round() / 1000.0
+    js_round(score * 1000.0) / 1000.0
 }
 
 /// `textHitsConfigured` without the reranker (`rag.cjs:909-922`): at most `pool` text hits.
@@ -372,15 +382,18 @@ impl ImageSettings {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageRow {
     pub file: String,
-    pub meta: Value,
+    /// The row's meta as `JSON.stringify(JSON.parse(meta))` writes it: JS key order kept.
+    pub meta: String,
 }
 
 /// An image hit: the row, its label (`body`), its `img:` hash and its rounded cosine score.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageHit {
     pub row: ImageRow,
-    pub label: String,
-    pub hash: String,
+    /// `body` (`null` only in a row another writer damaged).
+    pub label: Option<String>,
+    /// `content_hash`, likewise.
+    pub hash: Option<String>,
     pub score: f64,
 }
 
@@ -393,13 +406,24 @@ pub struct WithImages {
     pub indexed: Vec<ImageRow>,
 }
 
-/// `mediaRow(row)`: `JSON.parse(row.meta || 'null')` must be an object (an array is one in JS).
-/// Named difference: a meta whose JSON holds a lone surrogate escape (`"\ud800"`), which
-/// `JSON.parse` takes, is unreadable here.
-fn media_row(file: String, meta: Option<String>) -> Option<ImageRow> {
-    let meta: Value =
-        serde_json::from_str(meta.as_deref().filter(|m| !m.is_empty()).unwrap_or("null")).ok()?;
-    matches!(meta, Value::Object(_) | Value::Array(_)).then_some(ImageRow { file, meta })
+/// `mediaRow(row)`: `JSON.parse(row.meta || 'null')` must be an object (an array is one in JS); a
+/// meta that is not text (`JSON.parse` of a number gives a number) is unreadable too. Parsed and
+/// written back with JS semantics (`js_json`), so the keys keep their order. Named difference: a
+/// meta whose JSON holds a lone surrogate escape (`"\ud800"`), which `JSON.parse` takes, is
+/// unreadable here.
+fn media_row(file: String, meta: rusqlite::types::Value) -> Option<ImageRow> {
+    let text = match meta {
+        rusqlite::types::Value::Text(t) if !t.is_empty() => t,
+        _ => return None,
+    };
+    let parsed = js_json::parse(&text).ok()?;
+    if !matches!(parsed, js_json::JValue::Obj(_) | js_json::JValue::Arr(_)) {
+        return None;
+    }
+    Some(ImageRow {
+        file,
+        meta: js_json::stringify(&parsed)?,
+    })
 }
 
 /// The image half of `searchProjectWithImagesNow` (`rag.cjs:957-967`): `indexed` (every image row
@@ -424,7 +448,10 @@ pub fn image_hits(
         .map_err(|_| Fault::Query)?;
     let indexed = stmt
         .query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, rusqlite::types::Value>(1)?,
+            ))
         })
         .map_err(|_| Fault::Query)?
         .collect::<Result<Vec<_>, _>>()
@@ -446,11 +473,17 @@ pub fn image_hits(
         .query_map(
             rusqlite::params![f32_blob(query), settings.min_score, limit],
             |r| {
+                // Only the bad row is dropped: a value of another type reads as no value.
+                let text = |i: usize| match r.get::<_, rusqlite::types::Value>(i) {
+                    Ok(rusqlite::types::Value::Text(t)) => Ok(Some(t)),
+                    Ok(_) => Ok(None),
+                    Err(e) => Err(e),
+                };
                 Ok((
                     r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, Option<String>>(3)?,
+                    text(1)?,
+                    text(2)?,
+                    r.get::<_, rusqlite::types::Value>(3)?,
                     r.get::<_, f64>(4)?,
                 ))
             },
@@ -570,6 +603,12 @@ mod tests {
 
     #[test]
     fn rounding_is_math_round() {
+        // Math.round: halves towards +∞, also below zero.
+        assert_eq!(round3(-0.0625), -0.062);
+        assert_eq!(round3(0.0625), 0.063);
+        assert_eq!(super::js_round(-62.5), -62.0);
+        assert_eq!(super::js_round(0.49999999999999994), 0.0);
+        assert_eq!(super::js_round(-0.4), 0.0);
         assert_eq!(round3(0.4445), (0.4445f64 * 1000.0).round() / 1000.0);
         assert_eq!(round3(1.0), 1.0);
     }

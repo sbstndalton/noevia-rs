@@ -257,6 +257,18 @@ async fn rig_on(
     }
 }
 
+async fn ask_text(r: &Rig, body: &str) -> String {
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/retrieval/search")
+        .header("content-type", "application/json")
+        .header(TOKEN_HEADER, TOKEN)
+        .body(Body::from(body.to_owned()))
+        .unwrap();
+    let res = r.router.clone().oneshot(req).await.unwrap();
+    String::from_utf8(res.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+}
+
 async fn ask(r: &Rig, token: Option<&str>, body: &str) -> (u16, Value) {
     let mut req = Request::builder()
         .method("POST")
@@ -435,6 +447,18 @@ async fn image_search_answers_nodes_text_images_and_indexed() {
         let (status, got) = ask(&r, Some(TOKEN), &body).await;
         assert_eq!(status, 200, "{got}");
         assert_eq!(norm(&got), norm(&q["out"]), "{}", s["name"]);
+        // The meta goes out in Node's key order (JSON.stringify of JSON.parse of the stored text).
+        let raw = ask_text(&r, &body).await;
+        assert!(
+            raw.contains(r#""meta":{"source":"qa-twin-a.png"}"#),
+            "{raw}"
+        );
+        if setting == 1 {
+            assert!(
+                raw.contains(r#""meta":{"source":"qa-photos.pdf","page":1,"figure":1}"#),
+                "{raw}"
+            );
+        }
         assert_eq!(
             ask(&r, Some(TOKEN), &body.replace("true", "1")).await.0,
             400

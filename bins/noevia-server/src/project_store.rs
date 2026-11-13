@@ -684,9 +684,9 @@ pub fn router_with_app(
                     return reply(StatusCode::OK, &json!({ "defer": "unavailable" }));
                 };
                 let (status, body) = crate::native_retrieval::store_answer(app, &raw).await;
-                reply(
+                reply_text(
                     StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                    &body,
+                    body,
                 )
             }
         }),

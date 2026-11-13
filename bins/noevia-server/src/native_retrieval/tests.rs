@@ -10,7 +10,7 @@
 //! front of the search.
 
 use super::*;
-use project_retrieval::rerank::{self, Bench};
+use project_retrieval::rerank::{self, Chain};
 use serde_json::{json, Value};
 use server_store::rusqlite;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -182,6 +182,7 @@ fn inputs<'a>(w: &'a World, env: &'a HashMap<String, String>) -> Inputs<'a> {
         rerank_env: Some(env),
         versions: Versions::new(),
         limit: RESEARCH_HITS,
+        until: None,
     }
 }
 
@@ -197,7 +198,7 @@ async fn run_seen(
 ) -> Outcome {
     let query = w.query.clone();
     let question = inputs.question.to_owned();
-    let (bench, knobs) = (Mutex::new(Bench::default()), HashMap::new());
+    let (bench, knobs) = (Mutex::new(Chain::default()), HashMap::new());
     retrieve_with(
         &deps(observed, &bench, &knobs),
         inputs,
@@ -222,7 +223,7 @@ async fn run_seen(
 
 fn deps<'a>(
     observed: &'a Mutex<Option<Observation>>,
-    bench: &'a Mutex<Bench>,
+    bench: &'a Mutex<Chain>,
     knobs: &'a HashMap<String, String>,
 ) -> Deps<'a> {
     Deps {
@@ -230,9 +231,15 @@ fn deps<'a>(
         service_url: Some("http://127.0.0.1:9"),
         observed,
         bench,
+        clock: &CLOCK,
         knobs,
     }
 }
+
+fn fixed_clock() -> f64 {
+    NOW
+}
+static CLOCK: fn() -> f64 = fixed_clock;
 
 async fn no_reranker(_: rerank::Request, _: Option<String>) -> Option<(u16, Value)> {
     panic!("the reranker is off")
@@ -313,7 +320,7 @@ async fn the_reranker_picks_the_kept_hits_and_falls_back_to_cosine() {
     .into_iter()
     .map(|(k, v)| (k.to_owned(), v.to_owned()))
     .collect();
-    let (observed, bench) = (Mutex::new(None), Mutex::new(Bench::default()));
+    let (observed, bench) = (Mutex::new(None), Mutex::new(Chain::default()));
     let search = |answer: Option<Value>, hang: bool| {
         let (query, observed, bench, knobs, env) =
             (w.query.clone(), &observed, &bench, &knobs, &env);
@@ -379,6 +386,53 @@ async fn the_reranker_picks_the_kept_hits_and_falls_back_to_cosine() {
     }
     let (got, sent) = search(None, true).await;
     assert_eq!((got, sent.len()), (w.want.clone(), 0));
+}
+
+/// `RAG_RERANK_KEEP` above six: Node's `searchProject` answers all the kept hits (only research cuts).
+#[tokio::test]
+async fn kept_hits_are_not_cut_to_six() {
+    let w = world_for("ties between the two duplicate files");
+    let env: HashMap<String, String> = [
+        ("NOEVIA_FEATURE_RAG_RERANK", "1"),
+        ("RERANK_BASE_URL", "http://qa-rerank:8080"),
+        ("RERANK_BACKEND", "tei"),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_owned(), v.to_owned()))
+    .collect();
+    let knobs: HashMap<String, String> = [("RAG_RERANK_POOL", "12"), ("RAG_RERANK_KEEP", "8")]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect();
+    let (observed, bench) = (Mutex::new(None), Mutex::new(Chain::default()));
+    let query = w.query.clone();
+    let i = Inputs {
+        question: "echo echo echo",
+        limit: usize::MAX,
+        ..inputs(&w, &env)
+    };
+    let got = retrieve_with(
+        &deps(&observed, &bench, &knobs),
+        i,
+        None,
+        |_, _| async move { Ok(query) },
+        |request: rerank::Request, _| async move {
+            let n = serde_json::from_str::<Value>(&request.body).unwrap()["texts"]
+                .as_array()
+                .unwrap()
+                .len();
+            Some((
+                200,
+                json!((0..n)
+                    .map(|i| json!({"index": i, "score": i}))
+                    .collect::<Vec<_>>()),
+            ))
+        },
+    )
+    .await
+    .text();
+    let got = pairs(got);
+    assert_eq!(got.len(), 8);
 }
 
 #[tokio::test]
@@ -491,7 +545,7 @@ async fn an_embedding_failure_or_a_wrong_width_is_no_hits() {
     let w = world();
     let env = HashMap::new();
     let seen = Mutex::new(None);
-    let (bench, knobs) = (Mutex::new(Bench::default()), HashMap::new());
+    let (bench, knobs) = (Mutex::new(Chain::default()), HashMap::new());
     let failed = retrieve_with(
         &deps(&seen, &bench, &knobs),
         inputs(&w, &env),
