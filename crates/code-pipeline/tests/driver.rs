@@ -221,8 +221,10 @@ impl Jobs for R {
         Ok(())
     }
     fn append_authority(&self, id: &str, kind: &str, data: JValue) -> Result<(), Fail> {
-        self.0
-            .sync("jobs.appendAuthority", arr(vec![s(id), s(kind), data.clone()]))?;
+        self.0.sync(
+            "jobs.appendAuthority",
+            arr(vec![s(id), s(kind), data.clone()]),
+        )?;
         self.0.appended(kind, data);
         Ok(())
     }
@@ -584,7 +586,9 @@ fn check_journal(sc: &JValue, got: &[(String, JValue)]) -> Result<(), String> {
                 };
                 result = or_null(data.get("result"));
             }
-            "task.revision" => revision = Some((data.get("n").clone(), data.get("headSha").clone())),
+            "task.revision" => {
+                revision = Some((data.get("n").clone(), data.get("headSha").clone()))
+            }
             "task.stage" => stages.push(data.get("to").clone()),
             _ => {}
         }
@@ -605,7 +609,9 @@ fn check_journal(sc: &JValue, got: &[(String, JValue)]) -> Result<(), String> {
     };
     let folded: Vec<String> = stages.iter().map(text).collect();
     if recorded != folded {
-        return Err(format!("job.stages: {recorded:?} recorded, {folded:?} appended"));
+        return Err(format!(
+            "job.stages: {recorded:?} recorded, {folded:?} appended"
+        ));
     }
     if let Some((n, head)) = revision {
         let rev = job.get("revision");
@@ -762,9 +768,21 @@ impl Harness for P {
         Ok(RunHandle(id))
     }
     fn handle(&self, h: RunHandle) -> JValue {
-        self.0.handles.lock().unwrap().get(&h.0).cloned().unwrap_or(JValue::Undefined)
+        self.0
+            .handles
+            .lock()
+            .unwrap()
+            .get(&h.0)
+            .cloned()
+            .unwrap_or(JValue::Undefined)
     }
-    fn run_executor(&self, job: &JobCtx, h: RunHandle, _: &JValue, _: &Connect) -> Result<(), Fail> {
+    fn run_executor(
+        &self,
+        job: &JobCtx,
+        h: RunHandle,
+        _: &JValue,
+        _: &Connect,
+    ) -> Result<(), Fail> {
         (self.0.exec)(job)?;
         let head = format!("{:040x}", h.0);
         let mut hs = self.0.handles.lock().unwrap();
@@ -912,7 +930,10 @@ fn a_harness_cannot_write_the_lifecycle() {
         .filter(|(k, _)| k == "task.stage")
         .map(|(_, d)| text(d.get("to")))
         .collect();
-    assert_eq!(stages, [r#""planned""#, r#""implementing""#, r#""blocked""#]);
+    assert_eq!(
+        stages,
+        [r#""planned""#, r#""implementing""#, r#""blocked""#]
+    );
     assert!(!journal.iter().any(|(k, _)| k == "task.revision"));
     let (kind, data) = p.last();
     assert_eq!(kind, "job.failed");
