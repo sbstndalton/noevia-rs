@@ -284,6 +284,7 @@ fn whole_turns_without_a_project_are_nodes() {
             message: case.get("message").as_str(),
             carry_orphan_tool: &carry,
             known_tool: &knows,
+            project: None,
             trailing: &[],
         };
         let prepared = chat_prepare::prepare(&turn).expect("prepared");
@@ -340,8 +341,12 @@ fn the_zone_data_releases_are_the_pair_the_differences_were_recorded_for() {
 /// Where chrono-tz's data (2025b) and Node's ICU data (2026c) give a different local date near
 /// midnight: (zone, cases, first ms, last ms) of the recorded edge cases that differ. Morocco: from
 /// 2026-09-20T23:59Z to the end of the recording, Node's data is at +00 where chrono-tz's is at +01.
-const ZONE_DATA_DIFFERENCES: &[(&str, usize, i64, i64)] =
-    &[("Africa/Casablanca", 432, 1_789_948_740_000, 1_830_211_140_000)];
+const ZONE_DATA_DIFFERENCES: &[(&str, usize, i64, i64)] = &[(
+    "Africa/Casablanca",
+    432,
+    1_789_948_740_000,
+    1_830_211_140_000,
+)];
 
 #[test]
 fn local_dates_near_midnight_are_nodes_except_the_named_zone_data_differences() {

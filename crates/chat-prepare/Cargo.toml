@@ -1,7 +1,7 @@
 [package]
 name = "chat-prepare"
 version = "0.1.0"
-description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project, replayed byte for byte on recorded Node output. Nothing calls it yet."
+description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, replayed byte for byte on recorded Node output. Nothing calls it yet."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
