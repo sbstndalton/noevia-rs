@@ -136,56 +136,9 @@ impl Exchange<'_> {
         &self,
         messages: &[Message],
         budget: &Budget,
-        mut emit: Option<&mut (dyn FnMut(Value) + Send)>,
+        emit: Option<&mut (dyn FnMut(Value) + Send)>,
     ) -> Result<Answered, ExchangeError> {
-        let messages = to_json(messages);
-        let cap = Some(self.max_answer_tokens);
-        let main = self.main;
-        let answered = match emit.as_mut() {
-            Some(f) => {
-                let mut forward = |e: Event| f(e.to_json());
-                let msgs = &messages;
-                budget
-                    .run(true, None, |p| async move {
-                        main.chat_stream(msgs, &mut forward, 0.7, cap, Some(&p))
-                            .await
-                    })
-                    .await
-            }
-            None => {
-                let msgs = &messages;
-                budget
-                    .run(false, None, |p| async move {
-                        main.chat(msgs, 0.7, cap, None, Some(&p)).await
-                    })
-                    .await
-            }
-        };
-        let reply = match answered {
-            Err(why) => {
-                return Err(ExchangeError::Timeout {
-                    nothing_saved: true,
-                    why,
-                })
-            }
-            Ok(Err(e)) => return Err(ExchangeError::Model(e)),
-            Ok(Ok(r)) => r,
-        };
-        let truncated = reply.truncated;
-        // #1505: inline reasoning is removed again, so neither the entry nor the reply carries it.
-        let (visible, marker) = llm::strip_log_marker(&llm::strip_reasoning(&reply.content, true));
-        if truncated && visible.is_empty() {
-            return Err(ExchangeError::Model(LlmError::LengthCap));
-        }
-        if visible.is_empty() {
-            return Err(ExchangeError::Model(LlmError::EmptyAnswer));
-        }
-        Ok(Answered {
-            messages,
-            visible,
-            marker,
-            truncated,
-        })
+        answer_messages(self.main, self.max_answer_tokens, messages, budget, emit).await
     }
 
     /// One exchange. `session` holds the replayable turns of this conversation and is updated;
@@ -276,4 +229,62 @@ impl Exchange<'_> {
         retrieval_trace::attach(&mut result, trace.as_deref());
         Ok(result)
     }
+}
+
+/// The companion's answer to built messages (Python `_run_exchange` from the model call to the
+/// marker split): what [`Exchange::answer`] runs, for a caller holding only the model client.
+pub async fn answer_messages(
+    main: &Client,
+    max_answer_tokens: i64,
+    messages: &[Message],
+    budget: &Budget,
+    mut emit: Option<&mut (dyn FnMut(Value) + Send)>,
+) -> Result<Answered, ExchangeError> {
+    let messages = to_json(messages);
+    let cap = Some(max_answer_tokens);
+    let answered = match emit.as_mut() {
+        Some(f) => {
+            let mut forward = |e: Event| f(e.to_json());
+            let msgs = &messages;
+            budget
+                .run(true, None, |p| async move {
+                    main.chat_stream(msgs, &mut forward, 0.7, cap, Some(&p))
+                        .await
+                })
+                .await
+        }
+        None => {
+            let msgs = &messages;
+            budget
+                .run(false, None, |p| async move {
+                    main.chat(msgs, 0.7, cap, None, Some(&p)).await
+                })
+                .await
+        }
+    };
+    let reply = match answered {
+        Err(why) => {
+            return Err(ExchangeError::Timeout {
+                nothing_saved: true,
+                why,
+            })
+        }
+        Ok(Err(e)) => return Err(ExchangeError::Model(e)),
+        Ok(Ok(r)) => r,
+    };
+    let truncated = reply.truncated;
+    // #1505: inline reasoning is removed again, so neither the entry nor the reply carries it.
+    let (visible, marker) = llm::strip_log_marker(&llm::strip_reasoning(&reply.content, true));
+    if truncated && visible.is_empty() {
+        return Err(ExchangeError::Model(LlmError::LengthCap));
+    }
+    if visible.is_empty() {
+        return Err(ExchangeError::Model(LlmError::EmptyAnswer));
+    }
+    Ok(Answered {
+        messages,
+        visible,
+        marker,
+        truncated,
+    })
 }

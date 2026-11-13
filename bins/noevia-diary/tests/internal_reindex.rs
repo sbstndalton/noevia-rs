@@ -289,3 +289,153 @@ async fn an_undrained_outbox_leaves_the_index_alone() {
     assert_eq!(dirty(root), vec![ENTRY_PATH.to_owned()], "the mark stays");
     assert_eq!(chunks(root, ENTRY_PATH), 0, "nothing was written");
 }
+
+async fn plan(app: &Arc<noevia_diary::server::App>, body: &Value) -> (StatusCode, Value) {
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/internal/reindex?tenant={UID}"))
+        .header("x-noevia-diary-control", "ctl")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let resp = noevia_diary::server::handle(app.clone(), req).await;
+    let status = resp.status();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 24)
+        .await
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_plan_only_call_returns_the_plans_and_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    build_tenant(root, true);
+    mark_dirty(root, ENTRY_PATH);
+    let (engine, _embed, seen) = stub_engines().await;
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(root, &engine, true)).unwrap(),
+    ));
+    let live = json!({"active": {"base_url": null, "model": "qa-embed-a", "profile": "nomic-v1"},
+                      "next": null, "previous": null, "source": "environment", "version": 0});
+    assert_eq!(
+        plan(&app, &json!({"embedding": live, "plan_only": true}))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    // No writer header needed: nothing is written.
+    let (status, v) = plan(
+        &app,
+        &json!({"embedding": live, "plan_only": true, "documents": [ENTRY_PATH, PAST_PATH, "../escape.md"]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{v}");
+    let docs = v["documents"].as_array().unwrap();
+    assert_eq!(docs.len(), 3);
+    // The dirty document: one new chunk, embedded with the live target.
+    let new = &docs[0];
+    assert_eq!(new["document"], json!(ENTRY_PATH));
+    let rows = new["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0][0], json!("2031-03-20"));
+    let hash = rows[0][2].as_str().unwrap();
+    let embeddings = new["embeddings"].as_object().unwrap();
+    assert_eq!(embeddings.keys().collect::<Vec<_>>(), vec![hash]);
+    let sent = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["path"] == json!("/v1/embeddings"))
+        .map(|r| r["body"]["input"][0].as_str().unwrap().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(sent.len(), 1, "only the new chunk is embedded");
+    assert_eq!(embeddings[hash], json!(fake_vector(&sent[0])));
+    assert_eq!(new["pending"], json!(false));
+    assert_eq!(
+        new["target"],
+        json!({"base_url": null, "model": "qa-embed-a", "profile": "nomic-v1"})
+    );
+    // The indexed document: its row, nothing to embed.
+    assert_eq!(docs[1]["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(docs[1]["embeddings"], json!({}));
+    // An invalid path is that document's error, not the call's.
+    assert_eq!(docs[2]["error"], json!("read"));
+    assert_eq!(dirty(root), vec![ENTRY_PATH.to_owned()], "the mark stays");
+    assert_eq!(chunks(root, ENTRY_PATH), 0, "nothing was written");
+
+    // Document names must all be strings.
+    assert_eq!(
+        plan(
+            &app,
+            &json!({"embedding": live, "plan_only": true, "documents": [ENTRY_PATH, 7]})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    // A pending journal row (Python replays it first) declines.
+    let idx =
+        rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db")).unwrap();
+    let tables_before = table_dump(&idx);
+    idx.execute(
+        "INSERT INTO journal (id, created_at, kind, payload) VALUES ('qa-pending', '2031-03-20', 'exchange', '{}')",
+        [],
+    )
+    .unwrap();
+    let (status, _) = plan(
+        &app,
+        &json!({"embedding": live, "plan_only": true, "documents": [ENTRY_PATH]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+    idx.execute("DELETE FROM journal WHERE id = 'qa-pending'", [])
+        .unwrap();
+    // Every index table is as it was (chunks, slots, journal, dirty marks).
+    assert_eq!(table_dump(&idx), tables_before);
+
+    // A tenant that is not ready is declined.
+    let dir2 = tempfile::tempdir().unwrap();
+    build_tenant(dir2.path(), false);
+    let app2 = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(dir2.path(), &engine, true)).unwrap(),
+    ));
+    let (status, _) = plan(
+        &app2,
+        &json!({"embedding": live, "plan_only": true, "documents": [ENTRY_PATH]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+}
+
+/// Every row of every non-virtual table of the index, for a nothing-was-written check.
+fn table_dump(c: &rusqlite::Connection) -> Vec<String> {
+    let mut names: Vec<String> = c
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND sql NOT LIKE '%VIRTUAL%'")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    names.sort();
+    let mut out = Vec::new();
+    for n in names {
+        let mut stmt = c.prepare(&format!("SELECT * FROM \"{n}\"")).unwrap();
+        let cols = stmt.column_count();
+        let mut rows: Vec<String> = stmt
+            .query_map([], |r| {
+                Ok((0..cols)
+                    .map(|i| format!("{:?}", r.get::<_, rusqlite::types::Value>(i).unwrap()))
+                    .collect::<Vec<_>>()
+                    .join("|"))
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        rows.sort();
+        out.push(format!("{n}: {}", rows.join("; ")));
+    }
+    out
+}
