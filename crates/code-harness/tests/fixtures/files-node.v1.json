@@ -1,0 +1,1273 @@
+{
+ "generator": "crates/code-harness/tools/gen-files-fixtures.cjs",
+ "sources": {
+  "code-harness.cjs": "ec017f978fbe11b4905e7964f5959a251db362de6f41b29c8a13d66cb03f6fe6"
+ },
+ "umask": "022",
+ "setup": [
+  {
+   "dir": "tree"
+  },
+  {
+   "dir": "tree/sub"
+  },
+  {
+   "dir": "outside"
+  },
+  {
+   "dir": "outside/deep"
+  },
+  {
+   "file": "tree/a.txt",
+   "text": "qa a\n"
+  },
+  {
+   "file": "tree/big.txt",
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+   "file": "tree/utf8.txt",
+   "text": "é😀\n"
+  },
+  {
+   "file": "outside/secret.txt",
+   "text": "synthetic secret"
+  },
+  {
+   "file": "tree/linked.txt",
+   "text": "linked"
+  },
+  {
+   "hard": "outside/other-name.txt",
+   "to": "tree/linked.txt"
+  },
+  {
+   "link": "tree/to-outside-file",
+   "to": "<BASE>/outside/secret.txt"
+  },
+  {
+   "link": "tree/dangling",
+   "to": "<BASE>/outside/authorized_keys"
+  },
+  {
+   "link": "tree/to-inside-file",
+   "to": "<BASE>/tree/a.txt"
+  },
+  {
+   "link": "tree/dirlink-out",
+   "to": "<BASE>/outside"
+  },
+  {
+   "link": "tree/dirlink-in",
+   "to": "<BASE>/tree/sub"
+  },
+  {
+   "link": "tree/dangling-dir",
+   "to": "<BASE>/nowhere/at/all"
+  },
+  {
+   "link": "treelink",
+   "to": "<BASE>/tree"
+  }
+ ],
+ "steps": [
+  {
+   "read": "tree/a.txt",
+   "max": 1000,
+   "result": {
+    "ok": "qa a\n"
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/big.txt",
+   "max": 99,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "File too large"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/big.txt",
+   "max": 100,
+   "result": {
+    "ok": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/utf8.txt",
+   "max": 100,
+   "result": {
+    "ok": "é😀\n"
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/missing.txt",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": null,
+     "message": "<os error>"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/sub",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Not a file"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/linked.txt",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Refusing a file with more than one hard link"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/to-outside-file",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Refusing to follow a symlink"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/to-inside-file",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Refusing to follow a symlink"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/dangling",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Refusing to follow a symlink"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/dirlink-out/secret.txt",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/dirlink-in/x.txt",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": null,
+     "message": "<os error>"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "outside/secret.txt",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/a.txt",
+   "max": 100,
+   "root": null,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/a.txt",
+   "max": 100,
+   "root": "treelink",
+   "result": {
+    "ok": "qa a\n"
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "treelink/a.txt",
+   "max": 100,
+   "result": {
+    "ok": "qa a\n"
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "read": "tree/../outside/secret.txt",
+   "max": 100,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/new.txt",
+   "text": "new file\n",
+   "result": {
+    "ok": null
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"qa a\\n\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/a.txt",
+   "text": "shorter",
+   "result": {
+    "ok": null
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/new/deep/ok.txt",
+   "text": "deep",
+   "result": {
+    "ok": null
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/sub/x/y.txt",
+   "text": "under sub",
+   "result": {
+    "ok": null
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/linked.txt",
+   "text": "overwritten",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Refusing a file with more than one hard link"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/to-outside-file",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Refusing to follow a symlink"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/to-inside-file",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Refusing to follow a symlink"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/dangling",
+   "text": "ssh-ed25519 AAAA",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Refusing to follow a symlink"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/dirlink-out/new.txt",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/dirlink-out/a/b/file",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/dirlink-in/inside.txt",
+   "text": "via an inside link",
+   "result": {
+    "ok": null
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/dirlink-in/made/here.txt",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/dangling-dir/x.txt",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/sub",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": null,
+     "message": "<os error>"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "outside/x.txt",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/x.txt",
+   "text": "x",
+   "root": null,
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/x.txt",
+   "text": "x",
+   "root": "missing-root",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/../outside/escape.txt",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": -32602,
+     "message": "Outside this task’s workspace"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/a.txt/child.txt",
+   "text": "x",
+   "result": {
+    "error": {
+     "code": null,
+     "message": "<os error>"
+    }
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/empty.txt",
+   "text": "",
+   "result": {
+    "ok": null
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/empty.txt = \"\" (644)",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  },
+  {
+   "write": "tree/lone.txt",
+   "text": "lone \ud800 surrogate",
+   "result": {
+    "ok": null
+   },
+   "tree": [
+    "outside/",
+    "outside/deep/",
+    "outside/other-name.txt = \"linked\" (644)",
+    "outside/secret.txt = \"synthetic secret\" (644)",
+    "tree/",
+    "tree/a.txt = \"shorter\" (644)",
+    "tree/big.txt = \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\" (644)",
+    "tree/dangling -> <BASE>/outside/authorized_keys",
+    "tree/dangling-dir -> <BASE>/nowhere/at/all",
+    "tree/dirlink-in -> <BASE>/tree/sub",
+    "tree/dirlink-out -> <BASE>/outside",
+    "tree/empty.txt = \"\" (644)",
+    "tree/linked.txt = \"linked\" (644)",
+    "tree/lone.txt = \"lone � surrogate\" (644)",
+    "tree/new/",
+    "tree/new/deep/",
+    "tree/new/deep/ok.txt = \"deep\" (644)",
+    "tree/new.txt = \"new file\\n\" (644)",
+    "tree/sub/",
+    "tree/sub/inside.txt = \"via an inside link\" (644)",
+    "tree/sub/x/",
+    "tree/sub/x/y.txt = \"under sub\" (644)",
+    "tree/to-inside-file -> <BASE>/tree/a.txt",
+    "tree/to-outside-file -> <BASE>/outside/secret.txt",
+    "tree/utf8.txt = \"é😀\\n\" (644)",
+    "treelink -> <BASE>/tree"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,18 @@
+[package]
+name = "code-harness"
+version = "0.1.0"
+description = "noevia-core's code-harness.cjs in Rust: the Code task session's file API (provisional manifest; the harness leaves and the session join it)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+rustix = { version = "=1.1.5", features = ["fs", "process"] }
+
+[dev-dependencies]
+tempfile = "3"
