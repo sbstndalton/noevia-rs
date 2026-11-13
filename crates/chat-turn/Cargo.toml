@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 serde_json = "1"
+js-json = { path = "../js-json" }
 stream-guard = { path = "../stream-guard" }
 
 [dev-dependencies]

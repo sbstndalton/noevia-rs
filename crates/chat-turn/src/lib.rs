@@ -7,13 +7,16 @@
 //! - [`tools`]: the dispatch trait the tool engines implement, and the 300-character result cut;
 //! - [`partial`]: the interrupted-turn record;
 //! - [`relay`]: one model round turned into events, with the reasoning-only note and the
-//!   telemetry the client needs.
+//!   telemetry the client needs;
+//! - [`helpers`]: the search-query cleaner, the announced-action check, the final-answer round's
+//!   helpers and the tool route notes.
 //!
 //! Not here: context and framing assembly, routing and decision calls, persistence through the
 //! store, approvals, the Diary stream, rounds with tool results fed back to the model.
 
 pub mod event;
 pub mod guard;
+pub mod helpers;
 pub mod partial;
 pub mod relay;
 pub mod sink;
