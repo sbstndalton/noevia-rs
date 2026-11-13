@@ -1,0 +1,5953 @@
+{
+ "version": 1,
+ "source": "noevia-core server/llamacpp-full-autotune.cjs exports, recorded by tests/pure/record-node.cjs",
+ "sourceSha256": "f53b8fd7826bd78390b84d8c077411c4629fe2a070caeb540dfe7cbc0f27d5f1",
+ "quality": [
+  {
+   "id": "arithmetic",
+   "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+   "expected": "59"
+  },
+  {
+   "id": "extraction",
+   "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+   "expected": "AX-417"
+  },
+  {
+   "id": "reasoning",
+   "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+   "expected": "no"
+  }
+ ],
+ "versionConst": 3,
+ "modes": {
+  "fast": {
+   "defaultSeconds": 120,
+   "maxSeconds": 1800
+  },
+  "long": {
+   "defaultSeconds": 1800,
+   "maxSeconds": 1800
+  }
+ },
+ "qualityCases": [
+  {
+   "name": "all right / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "all right / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "all right / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "all right / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "all right / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "all right / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "formatting accepted / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "**59**"
+    },
+    {
+     "text": "`AX-417`"
+    },
+    {
+     "text": "No."
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "formatting accepted / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "**59**"
+    },
+    {
+     "text": "`AX-417`"
+    },
+    {
+     "text": "No."
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "formatting accepted / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "**59**"
+    },
+    {
+     "text": "`AX-417`"
+    },
+    {
+     "text": "No."
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "formatting accepted / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "**59**"
+    },
+    {
+     "text": "`AX-417`"
+    },
+    {
+     "text": "No."
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "formatting accepted / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "**59**"
+    },
+    {
+     "text": "`AX-417`"
+    },
+    {
+     "text": "No."
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "formatting accepted / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "**59**"
+    },
+    {
+     "text": "`AX-417`"
+    },
+    {
+     "text": "No."
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "68 - 9 = 59"
+    },
+    {
+     "text": "ax-417"
+    },
+    {
+     "text": "NO!"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "68 - 9 = 59"
+    },
+    {
+     "text": "ax-417"
+    },
+    {
+     "text": "NO!"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "68 - 9 = 59"
+    },
+    {
+     "text": "ax-417"
+    },
+    {
+     "text": "NO!"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "68 - 9 = 59"
+    },
+    {
+     "text": "ax-417"
+    },
+    {
+     "text": "NO!"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "68 - 9 = 59"
+    },
+    {
+     "text": "ax-417"
+    },
+    {
+     "text": "NO!"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "68 - 9 = 59"
+    },
+    {
+     "text": "ax-417"
+    },
+    {
+     "text": "NO!"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with unicode operators / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "(17 × 4) − 9 = 68 − 9 = 59"
+    },
+    {
+     "text": " AX-417 "
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with unicode operators / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "(17 × 4) − 9 = 68 − 9 = 59"
+    },
+    {
+     "text": " AX-417 "
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with unicode operators / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "(17 × 4) − 9 = 68 − 9 = 59"
+    },
+    {
+     "text": " AX-417 "
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with unicode operators / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "(17 × 4) − 9 = 68 − 9 = 59"
+    },
+    {
+     "text": " AX-417 "
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with unicode operators / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "(17 × 4) − 9 = 68 − 9 = 59"
+    },
+    {
+     "text": " AX-417 "
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with unicode operators / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "(17 × 4) − 9 = 68 − 9 = 59"
+    },
+    {
+     "text": " AX-417 "
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "prose around the right answer / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "The answer is 59"
+    },
+    {
+     "text": "code AX-417"
+    },
+    {
+     "text": "no, never"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "The answer is 59"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "code AX-417"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no, never"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), extraction (mismatch), reasoning (mismatch). Answered arithmetic: \"The answer is 59\". Answered extraction: \"code AX-417\". Answered reasoning: \"no, never\"."
+  },
+  {
+   "name": "prose around the right answer / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "The answer is 59"
+    },
+    {
+     "text": "code AX-417"
+    },
+    {
+     "text": "no, never"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "The answer is 59"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "code AX-417"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no, never"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), extraction (mismatch), reasoning (mismatch). Answered arithmetic: \"The answer is 59\". Answered extraction: \"code AX-417\". Answered reasoning: \"no, never\"."
+  },
+  {
+   "name": "prose around the right answer / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "The answer is 59"
+    },
+    {
+     "text": "code AX-417"
+    },
+    {
+     "text": "no, never"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "The answer is 59"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no, never"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"The answer is 59\". Answered reasoning: \"no, never\"."
+  },
+  {
+   "name": "prose around the right answer / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "The answer is 59"
+    },
+    {
+     "text": "code AX-417"
+    },
+    {
+     "text": "no, never"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "The answer is 59"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no, never"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"The answer is 59\". Answered reasoning: \"no, never\"."
+  },
+  {
+   "name": "prose around the right answer / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "The answer is 59"
+    },
+    {
+     "text": "code AX-417"
+    },
+    {
+     "text": "no, never"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "prose around the right answer / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "The answer is 59"
+    },
+    {
+     "text": "code AX-417"
+    },
+    {
+     "text": "no, never"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "list of answers / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59 or 61"
+    },
+    {
+     "text": "AX-417, AX-418"
+    },
+    {
+     "text": "yes"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "59 or 61"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "AX-417, AX-418"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "yes"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), extraction (mismatch), reasoning (mismatch). Answered arithmetic: \"59 or 61\". Answered extraction: \"AX-417, AX-418\". Answered reasoning: \"yes\"."
+  },
+  {
+   "name": "list of answers / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59 or 61"
+    },
+    {
+     "text": "AX-417, AX-418"
+    },
+    {
+     "text": "yes"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "59 or 61"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "AX-417, AX-418"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "yes"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), extraction (mismatch), reasoning (mismatch). Answered arithmetic: \"59 or 61\". Answered extraction: \"AX-417, AX-418\". Answered reasoning: \"yes\"."
+  },
+  {
+   "name": "list of answers / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59 or 61"
+    },
+    {
+     "text": "AX-417, AX-418"
+    },
+    {
+     "text": "yes"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "59 or 61"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "yes"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"59 or 61\". Answered reasoning: \"yes\"."
+  },
+  {
+   "name": "list of answers / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59 or 61"
+    },
+    {
+     "text": "AX-417, AX-418"
+    },
+    {
+     "text": "yes"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "59 or 61"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "yes"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"59 or 61\". Answered reasoning: \"yes\"."
+  },
+  {
+   "name": "list of answers / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59 or 61"
+    },
+    {
+     "text": "AX-417, AX-418"
+    },
+    {
+     "text": "yes"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "list of answers / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59 or 61"
+    },
+    {
+     "text": "AX-417, AX-418"
+    },
+    {
+     "text": "yes"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "truncated / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59",
+     "finishReason": "length"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "truncated"
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (truncated)."
+  },
+  {
+   "name": "truncated / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59",
+     "finishReason": "length"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "truncated"
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (truncated)."
+  },
+  {
+   "name": "truncated / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59",
+     "finishReason": "length"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "truncated"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (truncated)."
+  },
+  {
+   "name": "truncated / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59",
+     "finishReason": "length"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "truncated"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (truncated)."
+  },
+  {
+   "name": "truncated / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59",
+     "finishReason": "length"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "truncated / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59",
+     "finishReason": "length"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "empty and missing text / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": ""
+    },
+    {
+     "gen": 1
+    },
+    {
+     "text": "   "
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "no response"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "no response"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "no response"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (no response), extraction (no response), reasoning (no response)."
+  },
+  {
+   "name": "empty and missing text / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": ""
+    },
+    {
+     "gen": 1
+    },
+    {
+     "text": "   "
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "no response"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "no response"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "no response"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (no response), extraction (no response), reasoning (no response)."
+  },
+  {
+   "name": "empty and missing text / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": ""
+    },
+    {
+     "gen": 1
+    },
+    {
+     "text": "   "
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "no response"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "no response"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (no response), reasoning (no response)."
+  },
+  {
+   "name": "empty and missing text / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": ""
+    },
+    {
+     "gen": 1
+    },
+    {
+     "text": "   "
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "no response"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "no response"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (no response), reasoning (no response)."
+  },
+  {
+   "name": "empty and missing text / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": ""
+    },
+    {
+     "gen": 1
+    },
+    {
+     "text": "   "
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "empty and missing text / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": ""
+    },
+    {
+     "gen": 1
+    },
+    {
+     "text": "   "
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "engine failures / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "failure": "HTTP 500"
+    },
+    {
+     "failure": "HTTP error"
+    },
+    {
+     "failure": "no response"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "HTTP 500"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "HTTP error"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "no response"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (HTTP 500), extraction (HTTP error), reasoning (no response)."
+  },
+  {
+   "name": "engine failures / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "failure": "HTTP 500"
+    },
+    {
+     "failure": "HTTP error"
+    },
+    {
+     "failure": "no response"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "HTTP 500"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "HTTP error"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "no response"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (HTTP 500), extraction (HTTP error), reasoning (no response)."
+  },
+  {
+   "name": "engine failures / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "failure": "HTTP 500"
+    },
+    {
+     "failure": "HTTP error"
+    },
+    {
+     "failure": "no response"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "HTTP 500"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "no response"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (HTTP 500), reasoning (no response)."
+  },
+  {
+   "name": "engine failures / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "failure": "HTTP 500"
+    },
+    {
+     "failure": "HTTP error"
+    },
+    {
+     "failure": "no response"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "HTTP 500"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "no response"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (HTTP 500), reasoning (no response)."
+  },
+  {
+   "name": "engine failures / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "failure": "HTTP 500"
+    },
+    {
+     "failure": "HTTP error"
+    },
+    {
+     "failure": "no response"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "engine failures / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "failure": "HTTP 500"
+    },
+    {
+     "failure": "HTTP error"
+    },
+    {
+     "failure": "no response"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "long wrong answer snippet / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "This answer goes on and on and on, far past the snippet limit"
+    },
+    {
+     "text": "x\ny\tz"
+    },
+    {
+     "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "This answer goes on and…"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "x y z"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\ud83d…"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), extraction (mismatch), reasoning (mismatch). Answered arithmetic: \"This answer goes on and…\". Answered extraction: \"x y z\". Answered reasoning: \"🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\ud83d…\"."
+  },
+  {
+   "name": "long wrong answer snippet / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "This answer goes on and on and on, far past the snippet limit"
+    },
+    {
+     "text": "x\ny\tz"
+    },
+    {
+     "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "This answer goes on and…"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "x y z"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\ud83d…"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), extraction (mismatch), reasoning (mismatch). Answered arithmetic: \"This answer goes on and…\". Answered extraction: \"x y z\". Answered reasoning: \"🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\ud83d…\"."
+  },
+  {
+   "name": "long wrong answer snippet / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "This answer goes on and on and on, far past the snippet limit"
+    },
+    {
+     "text": "x\ny\tz"
+    },
+    {
+     "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "This answer goes on and…"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\ud83d…"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"This answer goes on and…\". Answered reasoning: \"🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\ud83d…\"."
+  },
+  {
+   "name": "long wrong answer snippet / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "This answer goes on and on and on, far past the snippet limit"
+    },
+    {
+     "text": "x\ny\tz"
+    },
+    {
+     "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "This answer goes on and…"
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\ud83d…"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"This answer goes on and…\". Answered reasoning: \"🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂\ud83d…\"."
+  },
+  {
+   "name": "long wrong answer snippet / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "This answer goes on and on and on, far past the snippet limit"
+    },
+    {
+     "text": "x\ny\tz"
+    },
+    {
+     "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "long wrong answer snippet / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "This answer goes on and on and on, far past the snippet limit"
+    },
+    {
+     "text": "x\ny\tz"
+    },
+    {
+     "text": "🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "control characters in a wrong answer / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "a\u0000b c de"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "a b c d e"
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"a b c d e\"."
+  },
+  {
+   "name": "control characters in a wrong answer / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "a\u0000b c de"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "a b c d e"
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"a b c d e\"."
+  },
+  {
+   "name": "control characters in a wrong answer / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "a\u0000b c de"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "a b c d e"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"a b c d e\"."
+  },
+  {
+   "name": "control characters in a wrong answer / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "a\u0000b c de"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "a b c d e"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"a b c d e\"."
+  },
+  {
+   "name": "control characters in a wrong answer / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "a\u0000b c de"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "control characters in a wrong answer / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "a\u0000b c de"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "bold only on one side / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "**59"
+    },
+    {
+     "text": "AX-417__"
+    },
+    {
+     "text": "`no`"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "**59"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "AX-417__"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), extraction (mismatch). Answered arithmetic: \"**59\". Answered extraction: \"AX-417__\"."
+  },
+  {
+   "name": "bold only on one side / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "**59"
+    },
+    {
+     "text": "AX-417__"
+    },
+    {
+     "text": "`no`"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "**59"
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "AX-417__"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), extraction (mismatch). Answered arithmetic: \"**59\". Answered extraction: \"AX-417__\"."
+  },
+  {
+   "name": "bold only on one side / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "**59"
+    },
+    {
+     "text": "AX-417__"
+    },
+    {
+     "text": "`no`"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "**59"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"**59\"."
+  },
+  {
+   "name": "bold only on one side / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "**59"
+    },
+    {
+     "text": "AX-417__"
+    },
+    {
+     "text": "`no`"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "**59"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"**59\"."
+  },
+  {
+   "name": "bold only on one side / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "**59"
+    },
+    {
+     "text": "AX-417__"
+    },
+    {
+     "text": "`no`"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "bold only on one side / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "**59"
+    },
+    {
+     "text": "AX-417__"
+    },
+    {
+     "text": "`no`"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "nested formatting / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "**`59`**"
+    },
+    {
+     "text": "__AX-417__"
+    },
+    {
+     "text": "`` no ``"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "`` no ``"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: reasoning (mismatch). Answered reasoning: \"`` no ``\"."
+  },
+  {
+   "name": "nested formatting / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "**`59`**"
+    },
+    {
+     "text": "__AX-417__"
+    },
+    {
+     "text": "`` no ``"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "`` no ``"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: reasoning (mismatch). Answered reasoning: \"`` no ``\"."
+  },
+  {
+   "name": "nested formatting / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "**`59`**"
+    },
+    {
+     "text": "__AX-417__"
+    },
+    {
+     "text": "`` no ``"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "`` no ``"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: reasoning (mismatch). Answered reasoning: \"`` no ``\"."
+  },
+  {
+   "name": "nested formatting / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "**`59`**"
+    },
+    {
+     "text": "__AX-417__"
+    },
+    {
+     "text": "`` no ``"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "`` no ``"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: reasoning (mismatch). Answered reasoning: \"`` no ``\"."
+  },
+  {
+   "name": "nested formatting / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "**`59`**"
+    },
+    {
+     "text": "__AX-417__"
+    },
+    {
+     "text": "`` no ``"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "nested formatting / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "**`59`**"
+    },
+    {
+     "text": "__AX-417__"
+    },
+    {
+     "text": "`` no ``"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "trailing punctuation twice / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59.."
+    },
+    {
+     "text": "AX-417!"
+    },
+    {
+     "text": "no!."
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "59.."
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no!."
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"59..\". Answered reasoning: \"no!.\"."
+  },
+  {
+   "name": "trailing punctuation twice / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59.."
+    },
+    {
+     "text": "AX-417!"
+    },
+    {
+     "text": "no!."
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "59.."
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no!."
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"59..\". Answered reasoning: \"no!.\"."
+  },
+  {
+   "name": "trailing punctuation twice / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59.."
+    },
+    {
+     "text": "AX-417!"
+    },
+    {
+     "text": "no!."
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "59.."
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no!."
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"59..\". Answered reasoning: \"no!.\"."
+  },
+  {
+   "name": "trailing punctuation twice / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59.."
+    },
+    {
+     "text": "AX-417!"
+    },
+    {
+     "text": "no!."
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "59.."
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no!."
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch), reasoning (mismatch). Answered arithmetic: \"59..\". Answered reasoning: \"no!.\"."
+  },
+  {
+   "name": "trailing punctuation twice / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "59.."
+    },
+    {
+     "text": "AX-417!"
+    },
+    {
+     "text": "no!."
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "trailing punctuation twice / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "59.."
+    },
+    {
+     "text": "AX-417!"
+    },
+    {
+     "text": "no!."
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with equals spacing / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "17*4-9 =59"
+    },
+    {
+     "text": "=AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "=AX-417"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: extraction (mismatch). Answered extraction: \"=AX-417\"."
+  },
+  {
+   "name": "worked sum with equals spacing / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "17*4-9 =59"
+    },
+    {
+     "text": "=AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "=AX-417"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: extraction (mismatch). Answered extraction: \"=AX-417\"."
+  },
+  {
+   "name": "worked sum with equals spacing / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "17*4-9 =59"
+    },
+    {
+     "text": "=AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with equals spacing / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "17*4-9 =59"
+    },
+    {
+     "text": "=AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": true,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with equals spacing / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "17*4-9 =59"
+    },
+    {
+     "text": "=AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with equals spacing / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "17*4-9 =59"
+    },
+    {
+     "text": "=AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum wrong value / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "68 - 9 = 58"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "68 - 9 = 58"
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"68 - 9 = 58\"."
+  },
+  {
+   "name": "worked sum wrong value / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "68 - 9 = 58"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "68 - 9 = 58"
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"68 - 9 = 58\"."
+  },
+  {
+   "name": "worked sum wrong value / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "68 - 9 = 58"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "68 - 9 = 58"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"68 - 9 = 58\"."
+  },
+  {
+   "name": "worked sum wrong value / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "68 - 9 = 58"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "68 - 9 = 58"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"68 - 9 = 58\"."
+  },
+  {
+   "name": "worked sum wrong value / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "68 - 9 = 58"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum wrong value / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "68 - 9 = 58"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with letters / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "sixty-eight minus 9 = 59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "sixty-eight minus 9 = 59"
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"sixty-eight minus 9 = 59\"."
+  },
+  {
+   "name": "worked sum with letters / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "sixty-eight minus 9 = 59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "sixty-eight minus 9 = 59"
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"sixty-eight minus 9 = 59\"."
+  },
+  {
+   "name": "worked sum with letters / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "sixty-eight minus 9 = 59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "sixty-eight minus 9 = 59"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"sixty-eight minus 9 = 59\"."
+  },
+  {
+   "name": "worked sum with letters / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "sixty-eight minus 9 = 59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "sixty-eight minus 9 = 59"
+     },
+     {
+      "id": "reasoning",
+      "passed": true
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: arithmetic (mismatch). Answered arithmetic: \"sixty-eight minus 9 = 59\"."
+  },
+  {
+   "name": "worked sum with letters / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": "sixty-eight minus 9 = 59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "worked sum with letters / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": "sixty-eight minus 9 = 59"
+    },
+    {
+     "text": "AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "non-breaking spaces / baseline 0 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": " 59 "
+    },
+    {
+     "text": "﻿AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: reasoning (mismatch). Answered reasoning: \"no\"."
+  },
+  {
+   "name": "non-breaking spaces / baseline 0 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": " 59 "
+    },
+    {
+     "text": "﻿AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": null,
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "Record: name=Juniper; code=AX-417; colour=blue. Return only the code, without quotes.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "extraction",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no"
+     }
+    ]
+   },
+   "failure": "Quality checks failed: reasoning (mismatch). Answered reasoning: \"no\"."
+  },
+  {
+   "name": "non-breaking spaces / baseline 1 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": " 59 "
+    },
+    {
+     "text": "﻿AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 64
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 64
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: reasoning (mismatch). Answered reasoning: \"no\"."
+  },
+  {
+   "name": "non-breaking spaces / baseline 1 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": " 59 "
+    },
+    {
+     "text": "﻿AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "bf16",
+    "probes": [
+     "arithmetic",
+     "reasoning"
+    ],
+    "skipped": [
+     {
+      "id": "extraction",
+      "reason": "mismatch",
+      "answer": "AX-41"
+     }
+    ]
+   },
+   "asked": [
+    {
+     "prompt": "Compute (17 * 4) - 9. Reply with only the integer.",
+     "max": 512
+    },
+    {
+     "prompt": "All daxes are blue. No blue things are round. Can a dax be round? Reply with only yes or no.",
+     "max": 512
+    }
+   ],
+   "result": {
+    "passed": false,
+    "checks": [
+     {
+      "id": "arithmetic",
+      "passed": true
+     },
+     {
+      "id": "reasoning",
+      "passed": false,
+      "reason": "mismatch",
+      "answer": "no"
+     }
+    ],
+    "skipped": [
+     "extraction"
+    ]
+   },
+   "failure": "Quality checks failed: reasoning (mismatch). Answered reasoning: \"no\"."
+  },
+  {
+   "name": "non-breaking spaces / baseline 2 / qa-synthetic",
+   "model": "qa-synthetic",
+   "replies": [
+    {
+     "text": " 59 "
+    },
+    {
+     "text": "﻿AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  },
+  {
+   "name": "non-breaking spaces / baseline 2 / qa-gpt-oss-20b",
+   "model": "qa-gpt-oss-20b",
+   "replies": [
+    {
+     "text": " 59 "
+    },
+    {
+     "text": "﻿AX-417"
+    },
+    {
+     "text": "no"
+    }
+   ],
+   "baseline": {
+    "reference": "f16",
+    "probes": [],
+    "skipped": []
+   },
+   "asked": [],
+   "result": {
+    "passed": true,
+    "checks": []
+   },
+   "failure": "Quality checks failed: ."
+  }
+ ],
+ "kv": [
+  {
+   "env": null,
+   "allowQ5Kv": null,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": null,
+   "allowQ5Kv": false,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": null,
+   "allowQ5Kv": true,
+   "result": [
+    "bf16",
+    "q8_0",
+    "q5_1",
+    "q5_0"
+   ]
+  },
+  {
+   "env": null,
+   "allowQ5Kv": "true",
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": null,
+   "allowQ5Kv": 1,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "1",
+   "allowQ5Kv": null,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "1",
+   "allowQ5Kv": false,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "1",
+   "allowQ5Kv": true,
+   "result": [
+    "bf16",
+    "q8_0",
+    "q5_1",
+    "q5_0",
+    "q4_0"
+   ]
+  },
+  {
+   "env": "1",
+   "allowQ5Kv": "true",
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "1",
+   "allowQ5Kv": 1,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "TRUE",
+   "allowQ5Kv": null,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "TRUE",
+   "allowQ5Kv": false,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "TRUE",
+   "allowQ5Kv": true,
+   "result": [
+    "bf16",
+    "q8_0",
+    "q5_1",
+    "q5_0",
+    "q4_0"
+   ]
+  },
+  {
+   "env": "TRUE",
+   "allowQ5Kv": "true",
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "TRUE",
+   "allowQ5Kv": 1,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "yes",
+   "allowQ5Kv": null,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "yes",
+   "allowQ5Kv": false,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "yes",
+   "allowQ5Kv": true,
+   "result": [
+    "bf16",
+    "q8_0",
+    "q5_1",
+    "q5_0",
+    "q4_0"
+   ]
+  },
+  {
+   "env": "yes",
+   "allowQ5Kv": "true",
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "yes",
+   "allowQ5Kv": 1,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "On",
+   "allowQ5Kv": null,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "On",
+   "allowQ5Kv": false,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "On",
+   "allowQ5Kv": true,
+   "result": [
+    "bf16",
+    "q8_0",
+    "q5_1",
+    "q5_0",
+    "q4_0"
+   ]
+  },
+  {
+   "env": "On",
+   "allowQ5Kv": "true",
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "On",
+   "allowQ5Kv": 1,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "0",
+   "allowQ5Kv": null,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "0",
+   "allowQ5Kv": false,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "0",
+   "allowQ5Kv": true,
+   "result": [
+    "bf16",
+    "q8_0",
+    "q5_1",
+    "q5_0"
+   ]
+  },
+  {
+   "env": "0",
+   "allowQ5Kv": "true",
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "0",
+   "allowQ5Kv": 1,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "no",
+   "allowQ5Kv": null,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "no",
+   "allowQ5Kv": false,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "no",
+   "allowQ5Kv": true,
+   "result": [
+    "bf16",
+    "q8_0",
+    "q5_1",
+    "q5_0"
+   ]
+  },
+  {
+   "env": "no",
+   "allowQ5Kv": "true",
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": "no",
+   "allowQ5Kv": 1,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": " 1",
+   "allowQ5Kv": null,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": " 1",
+   "allowQ5Kv": false,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": " 1",
+   "allowQ5Kv": true,
+   "result": [
+    "bf16",
+    "q8_0",
+    "q5_1",
+    "q5_0"
+   ]
+  },
+  {
+   "env": " 1",
+   "allowQ5Kv": "true",
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  },
+  {
+   "env": " 1",
+   "allowQ5Kv": 1,
+   "result": [
+    "bf16",
+    "q8_0"
+   ]
+  }
+ ],
+ "prefer": [
+  {
+   "passed": [],
+   "ceilings": null,
+   "result": null
+  },
+  {
+   "passed": [
+    "bf16"
+   ],
+   "ceilings": null,
+   "result": "bf16"
+  },
+  {
+   "passed": [
+    "bf16",
+    "q8_0"
+   ],
+   "ceilings": null,
+   "result": "bf16"
+  },
+  {
+   "passed": [
+    "bf16",
+    "q8_0"
+   ],
+   "ceilings": {
+    "bf16": 8192,
+    "q8_0": 16384
+   },
+   "result": "q8_0"
+  },
+  {
+   "passed": [
+    "bf16",
+    "q8_0"
+   ],
+   "ceilings": {
+    "bf16": 8192,
+    "q8_0": 16383
+   },
+   "result": "bf16"
+  },
+  {
+   "passed": [
+    "bf16",
+    "q8_0",
+    "q5_1"
+   ],
+   "ceilings": {
+    "bf16": 4096,
+    "q8_0": 8192,
+    "q5_1": 16384
+   },
+   "result": "q5_1"
+  },
+  {
+   "passed": [
+    "bf16",
+    "q8_0",
+    "q5_1"
+   ],
+   "ceilings": {
+    "bf16": 4096,
+    "q8_0": 6000,
+    "q5_1": 8192
+   },
+   "result": "q5_1"
+  },
+  {
+   "passed": [
+    "bf16",
+    "q8_0"
+   ],
+   "ceilings": {
+    "bf16": null,
+    "q8_0": 4096
+   },
+   "result": "q8_0"
+  },
+  {
+   "passed": [
+    "bf16",
+    "q8_0"
+   ],
+   "ceilings": {
+    "q8_0": 4096
+   },
+   "result": "q8_0"
+  },
+  {
+   "passed": [
+    "bf16",
+    "q8_0"
+   ],
+   "ceilings": {
+    "bf16": null,
+    "q8_0": null
+   },
+   "result": "bf16"
+  },
+  {
+   "passed": [
+    "q8_0",
+    "bf16"
+   ],
+   "ceilings": {
+    "bf16": 65536,
+    "q8_0": 4096
+   },
+   "result": "bf16"
+  },
+  {
+   "passed": [
+    "f16",
+    "q8_0"
+   ],
+   "ceilings": {
+    "f16": 0,
+    "q8_0": 0
+   },
+   "result": "q8_0"
+  },
+  {
+   "passed": [
+    "bf16",
+    "q8_0"
+   ],
+   "ceilings": {},
+   "result": "bf16"
+  }
+ ],
+ "bf16": [
+  {
+   "text": null,
+   "result": false
+  },
+  {
+   "text": "",
+   "result": false
+  },
+  {
+   "text": "error: unsupported cache type bf16",
+   "result": true
+  },
+  {
+   "text": "Unsupported KV cache type",
+   "result": true
+  },
+  {
+   "text": "CACHE_TYPE-K bf16 not supported",
+   "result": true
+  },
+  {
+   "text": "cache type xxxxxxxxxxxxxxxxxxxxxxxxnot supported",
+   "result": true
+  },
+  {
+   "text": "cache type xxxxxxxxxxxxxxxxxxxxxxxxxnot supported",
+   "result": false
+  },
+  {
+   "text": "cache type 🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂not supported",
+   "result": true
+  },
+  {
+   "text": "cache type 🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂🙂not supported",
+   "result": false
+  },
+  {
+   "text": "bf16: missing op",
+   "result": true
+  },
+  {
+   "text": "no kernel for bf16 matmul",
+   "result": true
+  },
+  {
+   "text": "device supports bf16\nout of memory",
+   "result": false
+  },
+  {
+   "text": "bf16\r\nnot supported",
+   "result": false
+  },
+  {
+   "text": "bf16 not supported",
+   "result": false
+  },
+  {
+   "text": "does not support\tbf16",
+   "result": true
+  },
+  {
+   "text": "bf16                                                                                                    unsupported",
+   "result": true
+  },
+  {
+   "text": "bf16yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyunsupported",
+   "result": false
+  },
+  {
+   "text": "BF16_UNSUPPORTED",
+   "result": true
+  },
+  {
+   "text": "ggml: type bf16 is not supported by this backend",
+   "result": true
+  },
+  {
+   "text": "out of memory allocating KV cache",
+   "result": false
+  },
+  {
+   "text": "İbf16 not supported",
+   "result": true
+  }
+ ],
+ "models": [
+  {
+   "model": "qa-synthetic",
+   "planned": false,
+   "kv": [
+    "bf16",
+    "q8_0"
+   ],
+   "result": {
+    "model": "qa-synthetic",
+    "status": "pending",
+    "kv": [
+     "bf16",
+     "q8_0"
+    ],
+    "phases": [
+     {
+      "id": "sampling",
+      "label": "Sampling",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "apply",
+        "label": "Recommended sampling",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "kv",
+      "label": "KV cache",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "bf16",
+        "label": "bf16 KV cache",
+        "status": "pending"
+       },
+       {
+        "id": "q8_0",
+        "label": "q8_0 KV cache",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "context",
+      "label": "Context size",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "capacity",
+        "label": "Load and long-prompt recall",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "drafting",
+      "label": "Drafting",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "off",
+        "label": "Off",
+        "status": "pending"
+       },
+       {
+        "id": "mtp",
+        "label": "MTP (engine defaults)",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-deep",
+        "label": "MTP deep drafts",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-shallow",
+        "label": "MTP shallow drafts",
+        "status": "pending"
+       },
+       {
+        "id": "ngram",
+        "label": "N-gram",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "batch",
+      "label": "Batch and micro-batch",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "512",
+        "label": "Micro-batch 512",
+        "status": "pending"
+       },
+       {
+        "id": "1024",
+        "label": "Micro-batch 1024",
+        "status": "pending"
+       },
+       {
+        "id": "2048",
+        "label": "Micro-batch 2048",
+        "status": "pending"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "model": "qa-synthetic",
+   "planned": true,
+   "kv": [
+    "bf16",
+    "q8_0"
+   ],
+   "result": {
+    "model": "qa-synthetic",
+    "status": "pending",
+    "kv": [
+     "bf16",
+     "q8_0"
+    ],
+    "plan": {
+     "results": []
+    },
+    "phases": [
+     {
+      "id": "context",
+      "label": "Context and KV cache",
+      "status": "pending",
+      "steps": []
+     },
+     {
+      "id": "sampling",
+      "label": "Sampling",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "apply",
+        "label": "Recommended sampling",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "drafting",
+      "label": "Drafting",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "off",
+        "label": "Off",
+        "status": "pending"
+       },
+       {
+        "id": "mtp",
+        "label": "MTP (engine defaults)",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-deep",
+        "label": "MTP deep drafts",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-shallow",
+        "label": "MTP shallow drafts",
+        "status": "pending"
+       },
+       {
+        "id": "ngram",
+        "label": "N-gram",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "batch",
+      "label": "Batch and micro-batch",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "512",
+        "label": "Micro-batch 512",
+        "status": "pending"
+       },
+       {
+        "id": "1024",
+        "label": "Micro-batch 1024",
+        "status": "pending"
+       },
+       {
+        "id": "2048",
+        "label": "Micro-batch 2048",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "verify",
+      "label": "Final fill check",
+      "status": "pending",
+      "steps": []
+     }
+    ]
+   }
+  },
+  {
+   "model": "qa-synthetic-long",
+   "planned": true,
+   "kv": [
+    "bf16",
+    "q8_0",
+    "q5_1",
+    "q5_0"
+   ],
+   "result": {
+    "model": "qa-synthetic-long",
+    "status": "pending",
+    "kv": [
+     "bf16",
+     "q8_0",
+     "q5_1",
+     "q5_0"
+    ],
+    "plan": {
+     "results": []
+    },
+    "phases": [
+     {
+      "id": "context",
+      "label": "Context and KV cache",
+      "status": "pending",
+      "steps": []
+     },
+     {
+      "id": "sampling",
+      "label": "Sampling",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "apply",
+        "label": "Recommended sampling",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "drafting",
+      "label": "Drafting",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "off",
+        "label": "Off",
+        "status": "pending"
+       },
+       {
+        "id": "mtp",
+        "label": "MTP (engine defaults)",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-deep",
+        "label": "MTP deep drafts",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-shallow",
+        "label": "MTP shallow drafts",
+        "status": "pending"
+       },
+       {
+        "id": "ngram",
+        "label": "N-gram",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "batch",
+      "label": "Batch and micro-batch",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "512",
+        "label": "Micro-batch 512",
+        "status": "pending"
+       },
+       {
+        "id": "1024",
+        "label": "Micro-batch 1024",
+        "status": "pending"
+       },
+       {
+        "id": "2048",
+        "label": "Micro-batch 2048",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "verify",
+      "label": "Final fill check",
+      "status": "pending",
+      "steps": []
+     }
+    ]
+   }
+  },
+  {
+   "model": "qa-synthetic",
+   "planned": false,
+   "kv": [
+    "f16"
+   ],
+   "result": {
+    "model": "qa-synthetic",
+    "status": "pending",
+    "kv": [
+     "f16"
+    ],
+    "phases": [
+     {
+      "id": "sampling",
+      "label": "Sampling",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "apply",
+        "label": "Recommended sampling",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "kv",
+      "label": "KV cache",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "f16",
+        "label": "f16 KV cache",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "context",
+      "label": "Context size",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "capacity",
+        "label": "Load and long-prompt recall",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "drafting",
+      "label": "Drafting",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "off",
+        "label": "Off",
+        "status": "pending"
+       },
+       {
+        "id": "mtp",
+        "label": "MTP (engine defaults)",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-deep",
+        "label": "MTP deep drafts",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-shallow",
+        "label": "MTP shallow drafts",
+        "status": "pending"
+       },
+       {
+        "id": "ngram",
+        "label": "N-gram",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "batch",
+      "label": "Batch and micro-batch",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "512",
+        "label": "Micro-batch 512",
+        "status": "pending"
+       },
+       {
+        "id": "1024",
+        "label": "Micro-batch 1024",
+        "status": "pending"
+       },
+       {
+        "id": "2048",
+        "label": "Micro-batch 2048",
+        "status": "pending"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "model": "qa-synthetic",
+   "planned": true,
+   "kv": [],
+   "result": {
+    "model": "qa-synthetic",
+    "status": "pending",
+    "kv": [],
+    "plan": {
+     "results": []
+    },
+    "phases": [
+     {
+      "id": "context",
+      "label": "Context and KV cache",
+      "status": "pending",
+      "steps": []
+     },
+     {
+      "id": "sampling",
+      "label": "Sampling",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "apply",
+        "label": "Recommended sampling",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "drafting",
+      "label": "Drafting",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "off",
+        "label": "Off",
+        "status": "pending"
+       },
+       {
+        "id": "mtp",
+        "label": "MTP (engine defaults)",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-deep",
+        "label": "MTP deep drafts",
+        "status": "pending"
+       },
+       {
+        "id": "mtp-shallow",
+        "label": "MTP shallow drafts",
+        "status": "pending"
+       },
+       {
+        "id": "ngram",
+        "label": "N-gram",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "batch",
+      "label": "Batch and micro-batch",
+      "status": "pending",
+      "steps": [
+       {
+        "id": "512",
+        "label": "Micro-batch 512",
+        "status": "pending"
+       },
+       {
+        "id": "1024",
+        "label": "Micro-batch 1024",
+        "status": "pending"
+       },
+       {
+        "id": "2048",
+        "label": "Micro-batch 2048",
+        "status": "pending"
+       }
+      ]
+     },
+     {
+      "id": "verify",
+      "label": "Final fill check",
+      "status": "pending",
+      "steps": []
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -1,0 +1,3793 @@
+{
+ "sources": {
+  "server/rag.cjs": "227d0b739858237554fe366269ef5926e76ac2275731f83f0fb19e3d31e6c024",
+  "server/vector-slots.cjs": "aa56665f88b9631179baac90ecfd180849e0e9f1b956ccc4ebc0e5bb4819c6be",
+  "server/embedding-profile.cjs": "fa349dd5909a912335bb81e81b1e670e1ed774cbca626da30853e24c3743b740"
+ },
+ "source": "server/rag.cjs searchProjectWithImages/searchProjectWithImagesNow :934-970, mediaRow :973-979, IMAGE_TOP_K/IMAGE_MIN_SCORE :971-972, syncProjectMedia :1045-1123",
+ "settings": [
+  {
+   "name": "defaults",
+   "env": {},
+   "synced": {
+    "ok": true,
+    "embedded": 7,
+    "pending": 0,
+    "removed": 0,
+    "failed": []
+   },
+   "searches": [
+    {
+     "query": "alpha bravo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.028235293924808502
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.764
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.757
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.741
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.949
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "hotel golf",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0.0658823549747467
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-guide.md",
+        "body": "f hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel.",
+        "score": 0.763
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel alpha hotel golf hotel echo hotel charlie hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf.",
+        "score": 0.75
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel echo hotel charlie hotel alpha hotel golf hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel.",
+        "score": 0.746
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        },
+        "label": "qa figure hotel hotel golf",
+        "hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+        "score": 0.948
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "alpha echo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0.0941176488995552
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.753
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.752
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.749
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "zulu",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.0313725508749485
+     ],
+     "out": {
+      "text": [],
+      "images": [],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "charlie delta alpha",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0.051764704287052155
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.673
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.671
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.668
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        },
+        "label": "qa diagram alpha charlie delta",
+        "hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+        "score": 1
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.517
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "top 4, floor 0.5",
+   "env": {
+    "RAG_IMAGE_TOP_K": "4",
+    "RAG_IMAGE_MIN_SCORE": "0.5"
+   },
+   "synced": {
+    "ok": true,
+    "embedded": 7,
+    "pending": 0,
+    "removed": 0,
+    "failed": []
+   },
+   "searches": [
+    {
+     "query": "alpha bravo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.028235293924808502
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.764
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.757
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.741
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.949
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.5
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.5
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "hotel golf",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0.0658823549747467
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-guide.md",
+        "body": "f hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel.",
+        "score": 0.763
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel alpha hotel golf hotel echo hotel charlie hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf.",
+        "score": 0.75
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel echo hotel charlie hotel alpha hotel golf hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel.",
+        "score": 0.746
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        },
+        "label": "qa figure hotel hotel golf",
+        "hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+        "score": 0.948
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "alpha echo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0.0941176488995552
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.753
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.752
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.749
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.633
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        },
+        "label": "qa chart echo foxtrot",
+        "hash": "img:b45c7c81533beb02a6cb9f642a4e86f56a03b65baecf27845e521d67cca90133",
+        "score": 0.502
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "zulu",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.0313725508749485
+     ],
+     "out": {
+      "text": [],
+      "images": [],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "charlie delta alpha",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0.051764704287052155
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.673
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.671
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.668
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        },
+        "label": "qa diagram alpha charlie delta",
+        "hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+        "score": 1
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.517
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "top 0",
+   "env": {
+    "RAG_IMAGE_TOP_K": "0"
+   },
+   "synced": {
+    "ok": true,
+    "embedded": 7,
+    "pending": 0,
+    "removed": 0,
+    "failed": []
+   },
+   "searches": [
+    {
+     "query": "alpha bravo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.028235293924808502
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.764
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.757
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.741
+       }
+      ],
+      "images": [],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "hotel golf",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0.0658823549747467
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-guide.md",
+        "body": "f hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel.",
+        "score": 0.763
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel alpha hotel golf hotel echo hotel charlie hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf.",
+        "score": 0.75
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel echo hotel charlie hotel alpha hotel golf hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel.",
+        "score": 0.746
+       }
+      ],
+      "images": [],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "alpha echo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0.0941176488995552
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.753
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.752
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.749
+       }
+      ],
+      "images": [],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "zulu",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.0313725508749485
+     ],
+     "out": {
+      "text": [],
+      "images": [],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "charlie delta alpha",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0.051764704287052155
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.673
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.671
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.668
+       }
+      ],
+      "images": [],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "top 99 clamps to 8, floor -1",
+   "env": {
+    "RAG_IMAGE_TOP_K": "99",
+    "RAG_IMAGE_MIN_SCORE": "-1"
+   },
+   "synced": {
+    "ok": true,
+    "embedded": 7,
+    "pending": 0,
+    "removed": 0,
+    "failed": []
+   },
+   "searches": [
+    {
+     "query": "alpha bravo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.028235293924808502
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.764
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.757
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.741
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.949
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.5
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.5
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        },
+        "label": "qa diagram alpha charlie delta",
+        "hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+        "score": 0.409
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        },
+        "label": "qa chart echo foxtrot",
+        "hash": "img:b45c7c81533beb02a6cb9f642a4e86f56a03b65baecf27845e521d67cca90133",
+        "score": 0.001
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        },
+        "label": "qa figure hotel hotel golf",
+        "hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+        "score": 0
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "hotel golf",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0.0658823549747467
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-guide.md",
+        "body": "f hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel.",
+        "score": 0.763
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel alpha hotel golf hotel echo hotel charlie hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf.",
+        "score": 0.75
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel echo hotel charlie hotel alpha hotel golf hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel.",
+        "score": 0.746
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        },
+        "label": "qa figure hotel hotel golf",
+        "hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+        "score": 0.948
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        },
+        "label": "qa diagram alpha charlie delta",
+        "hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+        "score": 0.002
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        },
+        "label": "qa chart echo foxtrot",
+        "hash": "img:b45c7c81533beb02a6cb9f642a4e86f56a03b65baecf27845e521d67cca90133",
+        "score": 0.002
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.002
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.002
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.002
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "alpha echo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0.0941176488995552
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.753
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.752
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.749
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.633
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        },
+        "label": "qa chart echo foxtrot",
+        "hash": "img:b45c7c81533beb02a6cb9f642a4e86f56a03b65baecf27845e521d67cca90133",
+        "score": 0.502
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        },
+        "label": "qa diagram alpha charlie delta",
+        "hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+        "score": 0.41
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        },
+        "label": "qa figure hotel hotel golf",
+        "hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+        "score": 0
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "zulu",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.0313725508749485
+     ],
+     "out": {
+      "text": [],
+      "images": [
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        },
+        "label": "qa diagram alpha charlie delta",
+        "hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+        "score": 0.052
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        },
+        "label": "qa chart echo foxtrot",
+        "hash": "img:b45c7c81533beb02a6cb9f642a4e86f56a03b65baecf27845e521d67cca90133",
+        "score": 0.05
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.05
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.05
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.034
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        },
+        "label": "qa figure hotel hotel golf",
+        "hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+        "score": 0.005
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "charlie delta alpha",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0.051764704287052155
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.673
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.671
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.668
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        },
+        "label": "qa diagram alpha charlie delta",
+        "hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+        "score": 1
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.517
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.409
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 0.409
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        },
+        "label": "qa chart echo foxtrot",
+        "hash": "img:b45c7c81533beb02a6cb9f642a4e86f56a03b65baecf27845e521d67cca90133",
+        "score": 0.001
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        },
+        "label": "qa figure hotel hotel golf",
+        "hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+        "score": 0
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "unusable values fall back",
+   "env": {
+    "RAG_IMAGE_TOP_K": "many",
+    "RAG_IMAGE_MIN_SCORE": "1.5"
+   },
+   "synced": {
+    "ok": true,
+    "embedded": 7,
+    "pending": 0,
+    "removed": 0,
+    "failed": []
+   },
+   "searches": [
+    {
+     "query": "alpha bravo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.028235293924808502
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.764
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.757
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.741
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.949
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "hotel golf",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0.0658823549747467
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-guide.md",
+        "body": "f hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel.",
+        "score": 0.763
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel alpha hotel golf hotel echo hotel charlie hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf.",
+        "score": 0.75
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel echo hotel charlie hotel alpha hotel golf hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel.",
+        "score": 0.746
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        },
+        "label": "qa figure hotel hotel golf",
+        "hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+        "score": 0.948
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "alpha echo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0.0941176488995552
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.753
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.752
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.749
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "zulu",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.0313725508749485
+     ],
+     "out": {
+      "text": [],
+      "images": [],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "charlie delta alpha",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0.051764704287052155
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.673
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.671
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.668
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        },
+        "label": "qa diagram alpha charlie delta",
+        "hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+        "score": 1
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.517
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "top 2.9 parses as 2, floor as a number",
+   "env": {
+    "RAG_IMAGE_TOP_K": "2.9",
+    "RAG_IMAGE_MIN_SCORE": " 0.25 "
+   },
+   "synced": {
+    "ok": true,
+    "embedded": 7,
+    "pending": 0,
+    "removed": 0,
+    "failed": []
+   },
+   "searches": [
+    {
+     "query": "alpha bravo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.028235293924808502
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.764
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.757
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.741
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.949
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "hotel golf",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      0.0658823549747467
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-guide.md",
+        "body": "f hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel.",
+        "score": 0.763
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel alpha hotel golf hotel echo hotel charlie hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf.",
+        "score": 0.75
+       },
+       {
+        "file": "qa-guide.md",
+        "body": "hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel echo hotel charlie hotel alpha hotel golf hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel.",
+        "score": 0.746
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        },
+        "label": "qa figure hotel hotel golf",
+        "hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+        "score": 0.948
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "alpha echo",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0.0941176488995552
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.753
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.752
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.749
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        },
+        "label": "qa twin alpha echo",
+        "hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+        "score": 1
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "zulu",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.0313725508749485
+     ],
+     "out": {
+      "text": [],
+      "images": [],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "query": "charlie delta alpha",
+     "index": "ff488c1872c71d4b",
+     "target": {
+      "model": "qa-embed-mm",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "user": "qa-user-r4",
+     "project": "qa-proj-img",
+     "query_vector": [
+      1,
+      0,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0.051764704287052155
+     ],
+     "out": {
+      "text": [
+       {
+        "file": "qa-notes.md",
+        "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+        "score": 0.673
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+        "score": 0.671
+       },
+       {
+        "file": "qa-notes.md",
+        "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+        "score": 0.668
+       }
+      ],
+      "images": [
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        },
+        "label": "qa diagram alpha charlie delta",
+        "hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+        "score": 1
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        },
+        "label": "qa figure alpha alpha bravo",
+        "hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+        "score": 0.517
+       }
+      ],
+      "indexed": [
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 1,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-photos.pdf",
+        "kind": "image",
+        "meta": {
+         "source": "qa-photos.pdf",
+         "page": 2,
+         "figure": 1
+        }
+       },
+       {
+        "file": "qa-diagram.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-diagram.png"
+        }
+       },
+       {
+        "file": "qa-chart.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-chart.png",
+         "caption": "QA chart"
+        }
+       },
+       {
+        "file": "qa-twin-a.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-a.png"
+        }
+       },
+       {
+        "file": "qa-twin-b.png",
+        "kind": "image",
+        "meta": {
+         "source": "qa-twin-b.png"
+        }
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "snapshots": {
+  "ff488c1872c71d4b": {
+   "schema": [
+    "CREATE TABLE chunks (\n        id INTEGER PRIMARY KEY,\n        file TEXT NOT NULL,\n        chunk_no INTEGER NOT NULL,\n        body TEXT NOT NULL,\n        content_hash TEXT NOT NULL,\n        updated_at TEXT NOT NULL DEFAULT (datetime('now'))\n      , version TEXT, direct INTEGER, kind TEXT, meta TEXT)",
+    "CREATE UNIQUE INDEX idx_chunks_file_hash ON chunks(file, content_hash)",
+    "CREATE TABLE vec_meta (key TEXT PRIMARY KEY, value TEXT)",
+    "CREATE VIRTUAL TABLE vec_0bb9e0d31bf654d2 USING vec0(chunk_id INTEGER PRIMARY KEY, embedding float[9])",
+    "CREATE TABLE vecmap_0bb9e0d31bf654d2 (chunk_id INTEGER PRIMARY KEY, content_hash TEXT NOT NULL)"
+   ],
+   "chunks": [
+    {
+     "id": 1,
+     "file": "qa-notes.md",
+     "chunk_no": 0,
+     "body": "alpha echo alpha charlie alpha alpha alpha golf alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha. alpha golf alpha echo alpha charlie alpha alpha alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo.",
+     "content_hash": "727580f2c62fed969960287bee849b682b4fa69b9d3aa5d4178aa45128a6815f",
+     "version": "dae7521644c4eb84cfb487215dd025f89e81b10b3738e07545e3c6492ee9ea48",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 2,
+     "file": "qa-notes.md",
+     "chunk_no": 1,
+     "body": "alpha charlie alpha alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha. alpha alpha alpha golf alpha echo alpha charlie alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha alpha golf. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta.",
+     "content_hash": "1b75e3cbb1fb83fa8a31c465406fbbf603c1a7289db6d5ef329c54c376dd98bd",
+     "version": "dae7521644c4eb84cfb487215dd025f89e81b10b3738e07545e3c6492ee9ea48",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 3,
+     "file": "qa-notes.md",
+     "chunk_no": 2,
+     "body": "a alpha bravo alpha hotel alpha. alpha charlie alpha alpha alpha golf alpha echo alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha foxtrot alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta. alpha golf alpha echo alpha charlie alpha alpha alpha golf alpha echo alpha. alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha. alpha charlie alpha alpha alpha golf alpha echo alpha charlie alpha alpha. alpha delta alpha bravo alpha hotel alpha foxtrot alpha delta alpha bravo alpha.",
+     "content_hash": "e8f8da6275d1b57be1c7dd1609f89407c94c2476e78399cd4e2adbbaf47dac22",
+     "version": "dae7521644c4eb84cfb487215dd025f89e81b10b3738e07545e3c6492ee9ea48",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 4,
+     "file": "qa-guide.md",
+     "chunk_no": 0,
+     "body": "hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel. hotel echo hotel charlie hotel alpha hotel golf hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel.",
+     "content_hash": "71156350d82a61232079fd377b28b0d3c0798f9f4813114dbcb433206a9657c0",
+     "version": "875507e79a326aaaff3632118ce677fe6996464a28a18e420bc16142e0d4cc0f",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 5,
+     "file": "qa-guide.md",
+     "chunk_no": 1,
+     "body": "hotel foxtrot hotel delta hotel. hotel golf hotel echo hotel charlie hotel alpha hotel. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel. hotel alpha hotel golf hotel echo hotel charlie hotel. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf.",
+     "content_hash": "fbefdd4ba77ecb63c9171be87ebf141870f18c27d8fa816c9af7e696098ad8ea",
+     "version": "875507e79a326aaaff3632118ce677fe6996464a28a18e420bc16142e0d4cc0f",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 6,
+     "file": "qa-guide.md",
+     "chunk_no": 2,
+     "body": "f hotel echo hotel charlie hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel alpha hotel golf hotel echo hotel charlie hotel alpha hotel golf. hotel bravo hotel hotel hotel foxtrot hotel delta hotel bravo hotel hotel hotel. hotel charlie hotel alpha hotel golf hotel echo hotel. hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel. hotel foxtrot hotel delta hotel bravo hotel hotel hotel foxtrot hotel delta. hotel golf hotel echo hotel charlie hotel alpha hotel golf hotel echo hotel.",
+     "content_hash": "162e112f162d4916bd2355976eda45c0302bc581c0b32f6e79120305b92aa7b1",
+     "version": "875507e79a326aaaff3632118ce677fe6996464a28a18e420bc16142e0d4cc0f",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 7,
+     "file": "qa-photos.pdf",
+     "chunk_no": 0,
+     "body": "qa figure alpha alpha bravo",
+     "content_hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f",
+     "version": null,
+     "direct": 0,
+     "kind": "image",
+     "meta": "{\"source\":\"qa-photos.pdf\",\"page\":1,\"figure\":1}"
+    },
+    {
+     "id": 8,
+     "file": "qa-photos.pdf",
+     "chunk_no": 1,
+     "body": "qa figure hotel hotel golf",
+     "content_hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663",
+     "version": null,
+     "direct": 0,
+     "kind": "image",
+     "meta": "{\"source\":\"qa-photos.pdf\",\"page\":2,\"figure\":1}"
+    },
+    {
+     "id": 9,
+     "file": "qa-diagram.png",
+     "chunk_no": 2,
+     "body": "qa diagram alpha charlie delta",
+     "content_hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162",
+     "version": null,
+     "direct": 0,
+     "kind": "image",
+     "meta": "{\"source\":\"qa-diagram.png\"}"
+    },
+    {
+     "id": 10,
+     "file": "qa-chart.png",
+     "chunk_no": 3,
+     "body": "qa chart echo foxtrot",
+     "content_hash": "img:b45c7c81533beb02a6cb9f642a4e86f56a03b65baecf27845e521d67cca90133",
+     "version": null,
+     "direct": 0,
+     "kind": "image",
+     "meta": "{\"source\":\"qa-chart.png\",\"caption\":\"QA chart\"}"
+    },
+    {
+     "id": 11,
+     "file": "qa-twin-a.png",
+     "chunk_no": 4,
+     "body": "qa twin alpha echo",
+     "content_hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+     "version": null,
+     "direct": 0,
+     "kind": "image",
+     "meta": "{\"source\":\"qa-twin-a.png\"}"
+    },
+    {
+     "id": 12,
+     "file": "qa-twin-b.png",
+     "chunk_no": 5,
+     "body": "qa twin alpha echo",
+     "content_hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527",
+     "version": null,
+     "direct": 0,
+     "kind": "image",
+     "meta": "{\"source\":\"qa-twin-b.png\"}"
+    },
+    {
+     "id": 13,
+     "file": "qa-broken.png",
+     "chunk_no": 6,
+     "body": "qa broken alpha bravo",
+     "content_hash": "img:a8e98c04f798c370b08dc8053cf7cfbd2c4b0074c3afdb57ef83defc2a009286",
+     "version": null,
+     "direct": 0,
+     "kind": "image",
+     "meta": "not json"
+    }
+   ],
+   "vec_meta": [
+    {
+     "key": "slot:0bb9e0d31bf654d2",
+     "value": "{\"model\":\"qa-embed-mm\",\"profile\":\"embeddinggemma-2\",\"dim\":9,\"table\":\"vec_0bb9e0d31bf654d2\",\"map\":\"vecmap_0bb9e0d31bf654d2\"}"
+    }
+   ],
+   "vectors": {
+    "vec_0bb9e0d31bf654d2": [
+     {
+      "chunk_id": 1,
+      "embedding": [
+       109,
+       9,
+       12,
+       10,
+       11,
+       11,
+       11,
+       11,
+       0.04941176623106003
+      ]
+     },
+     {
+      "chunk_id": 2,
+      "embedding": [
+       110,
+       12,
+       11,
+       11,
+       11,
+       11,
+       11,
+       12,
+       0.07019607722759247
+      ]
+     },
+     {
+      "chunk_id": 3,
+      "embedding": [
+       68,
+       8,
+       6,
+       8,
+       7,
+       6,
+       6,
+       6,
+       0.03686274588108063
+      ]
+     },
+     {
+      "chunk_id": 4,
+      "embedding": [
+       11,
+       11,
+       11,
+       12,
+       9,
+       12,
+       10,
+       108,
+       0.08588235080242157
+      ]
+     },
+     {
+      "chunk_id": 5,
+      "embedding": [
+       11,
+       11,
+       12,
+       10,
+       12,
+       11,
+       11,
+       111,
+       0.06156862899661064
+      ]
+     },
+     {
+      "chunk_id": 6,
+      "embedding": [
+       6,
+       6,
+       6,
+       7,
+       8,
+       6,
+       8,
+       68,
+       0.0788235291838646
+      ]
+     },
+     {
+      "chunk_id": 7,
+      "embedding": [
+       2,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0.07607842981815338
+      ]
+     },
+     {
+      "chunk_id": 8,
+      "embedding": [
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       2,
+       0.012156862765550613
+      ]
+     },
+     {
+      "chunk_id": 9,
+      "embedding": [
+       1,
+       0,
+       1,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0.08941176533699036
+      ]
+     },
+     {
+      "chunk_id": 10,
+      "embedding": [
+       0,
+       0,
+       0,
+       0,
+       1,
+       1,
+       0,
+       0,
+       0.07058823853731155
+      ]
+     },
+     {
+      "chunk_id": 11,
+      "embedding": [
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0.07019607722759247
+      ]
+     },
+     {
+      "chunk_id": 12,
+      "embedding": [
+       1,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0.07019607722759247
+      ]
+     },
+     {
+      "chunk_id": 13,
+      "embedding": [
+       1,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0.0658823549747467
+      ]
+     }
+    ]
+   },
+   "maps": {
+    "vecmap_0bb9e0d31bf654d2": [
+     {
+      "chunk_id": 1,
+      "content_hash": "727580f2c62fed969960287bee849b682b4fa69b9d3aa5d4178aa45128a6815f"
+     },
+     {
+      "chunk_id": 2,
+      "content_hash": "1b75e3cbb1fb83fa8a31c465406fbbf603c1a7289db6d5ef329c54c376dd98bd"
+     },
+     {
+      "chunk_id": 3,
+      "content_hash": "e8f8da6275d1b57be1c7dd1609f89407c94c2476e78399cd4e2adbbaf47dac22"
+     },
+     {
+      "chunk_id": 4,
+      "content_hash": "71156350d82a61232079fd377b28b0d3c0798f9f4813114dbcb433206a9657c0"
+     },
+     {
+      "chunk_id": 5,
+      "content_hash": "fbefdd4ba77ecb63c9171be87ebf141870f18c27d8fa816c9af7e696098ad8ea"
+     },
+     {
+      "chunk_id": 6,
+      "content_hash": "162e112f162d4916bd2355976eda45c0302bc581c0b32f6e79120305b92aa7b1"
+     },
+     {
+      "chunk_id": 7,
+      "content_hash": "img:c2bcdc0ce89c73244950bcbc51ec697052a0b378cc8ed07c33d9360597ce423f"
+     },
+     {
+      "chunk_id": 8,
+      "content_hash": "img:1febf52aa14eeb70327f957a184a66347cd22f2f2fa240df5146d2b932bc6663"
+     },
+     {
+      "chunk_id": 9,
+      "content_hash": "img:e45e8adc9e5ce2ff2ef2e663bfc5a509e2ff9838a665d943129241ca6886a162"
+     },
+     {
+      "chunk_id": 10,
+      "content_hash": "img:b45c7c81533beb02a6cb9f642a4e86f56a03b65baecf27845e521d67cca90133"
+     },
+     {
+      "chunk_id": 11,
+      "content_hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527"
+     },
+     {
+      "chunk_id": 12,
+      "content_hash": "img:b30647846d33161963eaba1075e7405127db46d6d8ad01b7ea7496d4fe116527"
+     },
+     {
+      "chunk_id": 13,
+      "content_hash": "img:a8e98c04f798c370b08dc8053cf7cfbd2c4b0074c3afdb57ef83defc2a009286"
+     }
+    ]
+   }
+  }
+ }
+}
