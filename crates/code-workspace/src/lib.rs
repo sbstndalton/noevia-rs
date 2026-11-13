@@ -646,6 +646,11 @@ const ATTRIBUTES_FILE_MAX: usize = 4 * 1024 * 1024;
 /// The most all of a clone's attribute files may weigh together (bounds the time one release
 /// spends reading files a harness made large).
 const ATTRIBUTES_TOTAL_MAX: usize = 32 * 1024 * 1024;
+/// The most entries the attribute walk of a released clone visits, and the most bytes of
+/// `.gitattributes` paths it keeps, before it refuses the tree (a harness can make millions of
+/// empty files under long names; the read budget above does not count those).
+const ATTRIBUTES_WALK_ENTRIES: usize = 1_000_000;
+const ATTRIBUTES_WALK_PATHS: usize = 4 * 1024 * 1024;
 /// The most a clone's `.git/config` may weigh before the release refuses it.
 const CONFIG_MAX: usize = 1024 * 1024;
 
@@ -1617,7 +1622,7 @@ impl Workspaces {
             }
         };
         let mut attr_files = vec![b".git/info/attributes".to_vec()];
-        if let Err(why) = walk_attributes(&top, "", b"", 0, &mut attr_files) {
+        if let Err(why) = walk_attributes(&top, "", b"", 0, &mut attr_files, &mut (0, 0)) {
             return Some(why);
         }
         // Attributes only name drivers, and every driver lives in configuration refused above
@@ -1832,6 +1837,7 @@ fn walk_attributes(
     rel: &[u8],
     depth: usize,
     out: &mut Vec<Vec<u8>>,
+    seen: &mut (usize, usize),
 ) -> Result<(), String> {
     use rustix::fs::{fstat, openat, statat, AtFlags, Dir, FileType, Mode, OFlags};
     if depth > 64 {
@@ -1848,6 +1854,12 @@ fn walk_attributes(
     for entry in Dir::read_from(dir).map_err(|e| unread(&io::Error::from(e)))? {
         let entry = entry.map_err(|e| unread(&io::Error::from(e)))?;
         if !matches!(entry.file_name().to_bytes(), b"." | b"..") {
+            seen.0 += 1;
+            if seen.0 > ATTRIBUTES_WALK_ENTRIES {
+                return Err(format!(
+                    "the tree has more than {ATTRIBUTES_WALK_ENTRIES} entries to check for attributes"
+                ));
+            }
             named.push(entry.file_name().to_owned());
         }
     }
@@ -1887,8 +1899,14 @@ fn walk_attributes(
             if now.st_dev != st.st_dev || now.st_ino != st.st_ino {
                 return Err(format!("{label} could not be read (replaced)"));
             }
-            walk_attributes(&child, &label, &path, depth + 1, out)?;
+            walk_attributes(&child, &label, &path, depth + 1, out, seen)?;
         } else if bytes == b".gitattributes" {
+            seen.1 += path.len();
+            if seen.1 > ATTRIBUTES_WALK_PATHS {
+                return Err(format!(
+                    "the tree has too many attribute files to check (their paths pass {ATTRIBUTES_WALK_PATHS} bytes)"
+                ));
+            }
             out.push(path);
         }
     }

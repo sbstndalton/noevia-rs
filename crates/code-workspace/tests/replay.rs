@@ -1168,6 +1168,37 @@ fn an_attributes_file_that_is_not_a_plain_small_file_is_refused_not_read() {
     stuck_with(&release_n(&ws, 9), ".gitattributes names a filter driver");
 }
 
+/// Millions of empty `.gitattributes` under long names cost the read budget nothing: the walk
+/// bounds the paths it keeps (here 300 files whose paths are about 15 KB each, past 4 MiB).
+#[test]
+fn too_many_attribute_files_are_refused_before_they_are_listed() {
+    use rustix::fs::{mkdirat, openat, Mode, OFlags};
+    let mut run = Run::new();
+    let ws = clone_store(&mut run);
+    let tree = claim_n(&ws, &run, 1);
+    let dir_flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    // Relative to open directories: the whole path is far past PATH_MAX.
+    let mut at = openat(rustix::fs::CWD, &tree, dir_flags, Mode::empty()).unwrap();
+    let long = "n".repeat(250);
+    for _ in 0..60 {
+        mkdirat(&at, long.as_str(), Mode::from_raw_mode(0o755)).unwrap();
+        at = openat(&at, long.as_str(), dir_flags, Mode::empty()).unwrap();
+    }
+    for i in 0..300 {
+        let leaf = format!("d{i:03}");
+        mkdirat(&at, leaf.as_str(), Mode::from_raw_mode(0o755)).unwrap();
+        let d = openat(&at, leaf.as_str(), dir_flags, Mode::empty()).unwrap();
+        let _ = openat(
+            &d,
+            ".gitattributes",
+            OFlags::CREATE | OFlags::WRONLY | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o644),
+        )
+        .unwrap();
+    }
+    stuck_with(&release_n(&ws, 1), "too many attribute files to check");
+}
+
 #[test]
 fn a_huge_git_config_is_refused_not_read() {
     let mut run = Run::new();
