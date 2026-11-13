@@ -17,6 +17,18 @@
 //! is built only of values fixed before the card (the card's target, kind, edit file and account), so
 //! it cannot differ here and is not rebuilt.
 //!
+//! Port contract S9 (the front's approval registry): the card's question is opened before the card is shown
+//! (`notAsked` when it cannot be, or when its wait cannot be answered), the chat-wide grant is core's single-use
+//! handle for Node's grant check, and a refusal that revokes the grant waits for the revoke. The grant is redeemed
+//! by core's execute bridge in the same request that runs the call behind Node's dispatch fence (D17 in the
+//! track's progress file): a refused redeem revokes and refuses as a changed binding, an unchecked one refuses as
+//! `notChecked`, and a fence closed at the outbound write comes back as `notRun`.
+//!
+//! Named difference (D17): the last checks before the run (the edit's file once more, the client gone, the
+//! policy for dispatch) come before the redeem here and after it in chat.cjs. Only which refusal wins when the
+//! redeem and one of those checks both fail differs; markWriteAttempt and the round's write mark are set after a
+//! redeemed (or grant-less) call, as Node sets them only after its redeem.
+//!
 //! Named difference: a project file edit whose file the bridge gave no answer for at all
 //! ([`EditTarget::Failed`]: core unreachable, a timeout, a refusal of the call; Node has no bridge and
 //! `resolveEditTarget` never throws there, so this case is the executor's own) is refused with the
@@ -29,7 +41,7 @@ use std::sync::Mutex;
 
 use js_json::JValue;
 
-use crate::host::{EditTarget, Host, Target, ToolRun};
+use crate::host::{EditTarget, GrantRun, Host, Ran, Target, ToolRun};
 use crate::js;
 use crate::skills::Skills;
 
@@ -205,6 +217,8 @@ pub struct Tools<'a> {
     pub automatic_only_writes: HashSet<String>,
     /// The offered project file edit tools (chat.cjs `projectEditTool`).
     pub edit_tools: HashSet<String>,
+    /// #2446 `neverStanding`: asked about on every call, never under a chat-wide grant (the coworker page save).
+    pub once_tools: HashSet<String>,
     /// The turn's instruction skills (#272), when it has a project.
     pub skills: Option<&'a Skills>,
     pub routes: Vec<(String, String)>,
@@ -258,8 +272,9 @@ enum Gate {
         permission: String,
         card_target: Option<String>,
         kind: Option<String>,
-        /// For an asked call: the binding shown, whether a chat-wide grant was used, and whether it was asked.
-        binding: Option<(JValue, bool, bool)>,
+        /// For an asked call: the binding shown, the chat-wide grant's handle when one was used, and whether
+        /// the call was asked about.
+        binding: Option<(JValue, Option<String>, bool)>,
         edit: Option<Pin>,
     },
 }
@@ -295,6 +310,7 @@ impl<'a> Tools<'a> {
             public,
             automatic_only_writes,
             edit_tools: HashSet::new(),
+            once_tools: HashSet::new(),
             skills: None,
             routes,
             chat_id,
@@ -324,12 +340,23 @@ impl<'a> Tools<'a> {
     }
 
     fn is_write(&self, name: &str) -> bool {
-        self.writes.contains(name)
+        // chat.cjs isWriteTool: a once-only tool is always a write.
+        self.writes.contains(name) || self.once_tools.contains(name)
+    }
+
+    /// chat.cjs `policyMode`: the account's mode, an `allow` read as `ask` for a once-only tool (#2446).
+    fn policy<H: Host>(&self, host: &H, name: &str, write: bool) -> String {
+        let mode = host.tool_policy(name, write);
+        if mode == "allow" && self.once_tools.contains(name) {
+            "ask".into()
+        } else {
+            mode
+        }
     }
 
     /// Runs one call through the exchange and the gate and gives what the turn keeps of it.
     pub async fn call<H: Host>(&mut self, host: &H, call: &Call, offset: f64) -> Outcome {
-        let mut ran = false;
+        let mut ran_ok = false;
         let mut failed = false;
         let mut card_target = None;
         let mut write_print = None;
@@ -361,6 +388,11 @@ impl<'a> Tools<'a> {
                             binding,
                             edit,
                         } => {
+                            // A grant used without a card is redeemed by core's execute bridge (D17).
+                            let grant = binding
+                                .as_ref()
+                                .and_then(|(_, handle, asked)| handle.clone().filter(|_| !*asked));
+                            let mut final_binding = None;
                             match self
                                 .after_answer(
                                     host,
@@ -369,16 +401,12 @@ impl<'a> Tools<'a> {
                                     (shown.as_deref(), kind),
                                     binding,
                                     edit.as_ref(),
+                                    &mut final_binding,
                                 )
                                 .await
                             {
                                 Some(refused) => refused,
                                 None => {
-                                    // markWriteAttempt: a write may change what earlier reads saw.
-                                    if write {
-                                        self.cache.retain(|_, (_, w)| *w);
-                                        wrote = true;
-                                    }
                                     let run = ToolRun {
                                         project_id: self.project_id.clone(),
                                         name: call.name.clone(),
@@ -388,10 +416,62 @@ impl<'a> Tools<'a> {
                                         chat_key: self.chat_key.clone(),
                                         exchange_key: self.exchange_key.clone(),
                                         edit_target: edit.as_ref().map(|p| p.digest.clone()),
+                                        grant: None,
                                     };
-                                    match host.execute_tool(&run).await {
-                                        Ok((text, f)) => {
-                                            ran = true;
+                                    // A grant used without a card must reach core with the call; one that
+                                    // cannot be carried (no chat, no final binding) never runs unfenced.
+                                    let carried = match (grant, &self.chat_id, final_binding) {
+                                        (None, ..) => Ok(run),
+                                        (Some(handle), Some(chat), Some(binding)) => Ok(ToolRun {
+                                            grant: Some(GrantRun {
+                                                handle,
+                                                chat: chat.clone(),
+                                                scope: self.grant_scope.clone(),
+                                                binding,
+                                            }),
+                                            ..run
+                                        }),
+                                        _ => Err(()),
+                                    };
+                                    let ran = match &carried {
+                                        Ok(run) => host.execute_tool(run).await,
+                                        Err(()) => Ran::Unavailable,
+                                    };
+                                    // markWriteAttempt (a write may change what earlier reads saw) and the
+                                    // round's write mark (#1456): chat.cjs sets both just before the call,
+                                    // after the redeem, so a refused or unchecked redeem sets neither.
+                                    if write
+                                        && !matches!(
+                                            ran,
+                                            Ran::Refused | Ran::Unavailable | Ran::Aborted
+                                        )
+                                    {
+                                        self.cache.retain(|_, (_, w)| *w);
+                                        wrote = true;
+                                    }
+                                    match ran {
+                                        Ran::Refused => self
+                                            .revoked(host, BINDING_CHANGED)
+                                            .await
+                                            .unwrap_or_default(),
+                                        Ran::Unavailable => self.not_checked(host, &call.name),
+                                        // chat.cjs: the turn stopped between the redeem and the run.
+                                        Ran::Aborted => CANCELLED.to_string(),
+                                        Ran::Done {
+                                            text,
+                                            not_run: true,
+                                            ..
+                                        } => {
+                                            // The executor's fence closed at the outbound write: not run,
+                                            // not counted, not a decline.
+                                            self.not_run.insert(text.clone());
+                                            audit_denied(host, &call.name, "unavailable");
+                                            text
+                                        }
+                                        Ran::Done {
+                                            text, failed: f, ..
+                                        } => {
+                                            ran_ok = true;
                                             failed = f;
                                             if write {
                                                 let mut details = vec![
@@ -414,7 +494,7 @@ impl<'a> Tools<'a> {
                                             }
                                             text
                                         }
-                                        Err(message) => match tool_exchange::call_error(
+                                        Ran::Threw(message) => match tool_exchange::call_error(
                                             &name_units,
                                             &js::to_units(&message),
                                         ) {
@@ -441,7 +521,7 @@ impl<'a> Tools<'a> {
             && !result.get(5..).is_some_and(|rest| {
                 rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
             });
-        let applied = ran && write_print.is_some() && !failed && !is_error;
+        let applied = ran_ok && write_print.is_some() && !failed && !is_error;
         let user = host.user_id();
         if applied {
             if let Some(fp) = &write_print {
@@ -531,7 +611,7 @@ impl<'a> Tools<'a> {
                 js::slice(name, 64)
             ));
         }
-        let permission = host.tool_policy(name, write);
+        let permission = self.policy(host, name, write);
         if permission == "block" {
             audit_denied(host, name, "blocked");
             return Gate::Result(blocked_text(name));
@@ -605,9 +685,21 @@ impl<'a> Tools<'a> {
                 Ok(b) => b,
                 Err(()) => return Gate::Result(PERMISSION_UNVERIFIED.into()),
             };
-            let used_grant =
-                host.chat_wide_approved(self.chat_id.as_deref(), &self.grant_scope, &binding);
-            let asked = !used_grant || self.automatic_only_writes.contains(name);
+            // Port contract S9: core's grant bridge answers with a single-use handle for Node's grant (D17).
+            // #2446: "Allow for this chat" never covers a once-only tool; its grant is not even asked for.
+            let once = self.once_tools.contains(name);
+            let used_grant = if once {
+                None
+            } else {
+                host.chat_wide_approved(
+                    self.chat_id.as_deref(),
+                    &self.grant_scope,
+                    &binding,
+                    &self.exchange_key,
+                )
+                .await
+            };
+            let asked = used_grant.is_none() || self.automatic_only_writes.contains(name);
             if asked {
                 let id = format!("ap-{}", host.uuid());
                 let now = host.now_ms();
@@ -616,6 +708,19 @@ impl<'a> Tools<'a> {
                         .has(&user, self.chat_id.as_deref(), fp, now)
                         || self.recent.contains(fp)
                 });
+                // Port contract S9: the question is opened at the front's approval registry before the card is
+                // shown, so the person's answer always finds it.
+                let question = js::obj([
+                    ("id", js::s(id.clone())),
+                    ("userId", js::s(user.clone())),
+                    ("chatId", self.chat_id.clone().map_or(JValue::Null, js::s)),
+                    ("scope", js::s(self.grant_scope.clone())),
+                    ("binding", binding.clone()),
+                    ("once", JValue::Bool(once)),
+                ]);
+                if !host.open_approval(&question).await {
+                    return Gate::Result(self.not_asked(host, name));
+                }
                 let mut pending = vec![
                     ("type", js::s("tool_pending")),
                     ("id", js::s(id.clone())),
@@ -635,17 +740,15 @@ impl<'a> Tools<'a> {
                 if repeat {
                     pending.push(("repeatOf", JValue::Bool(true)));
                 }
+                if once {
+                    pending.push(("once", JValue::Bool(true)));
+                }
                 host.emit(&js::obj(pending));
-                let request = js::obj([
-                    ("id", js::s(id)),
-                    ("userId", js::s(user)),
-                    ("chatId", self.chat_id.clone().map_or(JValue::Null, js::s)),
-                    ("scope", js::s(self.grant_scope.clone())),
-                    ("binding", binding.clone()),
-                    ("once", JValue::Bool(false)),
-                ]);
-                let decision = host.await_approval(&request).await;
+                let decision = host.await_approval(&question).await;
                 if decision != "approve" {
+                    if decision == "unavailable" {
+                        return Gate::Result(self.not_asked(host, name));
+                    }
                     let r = match decision.as_str() {
                         "aborted" => {
                             let r = format!("ERROR: the reply was stopped before {name} was approved, so it was not run. Nothing was changed.");
@@ -681,21 +784,23 @@ impl<'a> Tools<'a> {
     }
 
     /// The checks after the card's answer, before the call: `Some(result)` when it does not run.
+    #[allow(clippy::too_many_arguments)]
     async fn after_answer<H: Host>(
         &mut self,
         host: &H,
         call: &Call,
         permission: &str,
         (shown, kind_was): (Option<&str>, Option<String>),
-        asked_binding: Option<(JValue, bool, bool)>,
+        asked_binding: Option<(JValue, Option<String>, bool)>,
         edit: Option<&Pin>,
+        final_binding: &mut Option<JValue>,
     ) -> Option<String> {
         let name = call.name.as_str();
         let write = self.is_write(name);
         if host.left() {
             return Some(CANCELLED.into());
         }
-        if host.tool_policy(name, write) == "block" {
+        if self.policy(host, name, write) == "block" {
             audit_denied(host, name, "blocked");
             return Some(blocked_text(name));
         }
@@ -728,7 +833,7 @@ impl<'a> Tools<'a> {
                 .write_target(name, &call.args, self.chat_key.as_deref())
                 .await
             {
-                Target::Refused(_) => return self.revoked(host, TARGET_CHANGED),
+                Target::Refused(_) => return self.revoked(host, TARGET_CHANGED).await,
                 Target::Found { target, kind } if !target.is_empty() => {
                     (Some(target), kind.filter(|k| !k.is_empty()))
                 }
@@ -736,11 +841,11 @@ impl<'a> Tools<'a> {
                 Target::None => (None, None),
             };
             if target.as_deref() != shown || kind != kind_was {
-                return self.revoked(host, TARGET_CHANGED);
+                return self.revoked(host, TARGET_CHANGED).await;
             }
         }
         if permission == "ask" {
-            let (binding, used_grant, asked) = asked_binding.unwrap_or((JValue::Null, false, true));
+            let (binding, _, _) = asked_binding.unwrap_or((JValue::Null, None, true));
             let fresh = host
                 .permission_binding(
                     self.chat_id.as_deref(),
@@ -752,22 +857,15 @@ impl<'a> Tools<'a> {
             let matches = |a: &JValue, b: &JValue| {
                 a.is_object() && b.is_object() && js::stringify(a) == js::stringify(b)
             };
+            // The grant itself is redeemed by core's execute bridge, with the binding read here (D17).
             let ok = match &fresh {
-                Ok(now) => {
-                    (self.chat_id.is_none() || matches(&binding, now))
-                        && !(used_grant
-                            && !asked
-                            && !host.chat_wide_approved(
-                                self.chat_id.as_deref(),
-                                &self.grant_scope,
-                                now,
-                            ))
-                }
+                Ok(now) => self.chat_id.is_none() || matches(&binding, now),
                 Err(()) => false,
             };
             if !ok {
-                return self.revoked(host, BINDING_CHANGED);
+                return self.revoked(host, BINDING_CHANGED).await;
             }
+            *final_binding = fresh.ok();
         }
         // The file may change during the final store read too.
         if let Some(pin) = edit {
@@ -776,15 +874,15 @@ impl<'a> Tools<'a> {
                 return Some(lookup_failed(host, name));
             }
             if !pin.same(&now) {
-                return self.revoked(host, EDIT_TARGET_MOVED);
+                return self.revoked(host, EDIT_TARGET_MOVED).await;
             }
         }
         if host.left() {
             return Some(CANCELLED.into());
         }
         // Read as chat.cjs reads it: once for `block`, and again for `ask` when the call was not asked about.
-        if host.tool_policy(name, write) == "block"
-            || (permission != "ask" && host.tool_policy(name, write) == "ask")
+        if self.policy(host, name, write) == "block"
+            || (permission != "ask" && self.policy(host, name, write) == "ask")
         {
             return Some(PERMISSION_CHANGED.into());
         }
@@ -801,9 +899,27 @@ impl<'a> Tools<'a> {
         None
     }
 
-    fn revoked<H: Host>(&self, host: &H, text: &str) -> Option<String> {
-        host.revoke_grant(self.chat_id.as_deref());
+    /// chat.cjs `await revokeChatGrant(...)` before the refusal returns, so the next call's grant check
+    /// cannot race it.
+    async fn revoked<H: Host>(&self, host: &H, text: &str) -> Option<String> {
+        host.revoke_grant(self.chat_id.as_deref()).await;
         Some(text.to_string())
+    }
+
+    /// S9's `notAsked`: the question could not be opened, or its wait could not be answered.
+    fn not_asked<H: Host>(&mut self, host: &H, name: &str) -> String {
+        let r = format!("ERROR: the approval for {name} could not be asked, so it was not run. Nothing was changed. Ask again.");
+        audit_denied(host, name, "unavailable");
+        self.not_run.insert(r.clone());
+        r
+    }
+
+    /// S9's `notChecked`: the grant could not be redeemed at the front (or too late to act on).
+    fn not_checked<H: Host>(&mut self, host: &H, name: &str) -> String {
+        let r = format!("ERROR: the permission for {name} could not be checked, so it was not run. Nothing was changed. Ask again.");
+        audit_denied(host, name, "unavailable");
+        self.not_run.insert(r.clone());
+        r
     }
 }
 

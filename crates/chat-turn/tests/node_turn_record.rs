@@ -289,7 +289,8 @@ fn every_whole_turn_record_replays() {
         // result it no longer sends, so the stream alone does not rebuild the appended entry (the
         // native replay, native_turns.rs, checks those appends byte for byte).
         let left_mid_call = c.get("input").get("leaveOnCard") == &JValue::Bool(true)
-            || c.get("input").get("leaveInTool").as_str().is_some();
+            || c.get("input").get("leaveInTool").as_str().is_some()
+            || c.get("input").get("approvalFront").get("leaveInGrant") == &JValue::Bool(true);
         for store in stores
             .iter()
             .filter(|_| !left_mid_call)

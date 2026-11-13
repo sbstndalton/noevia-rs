@@ -57,6 +57,10 @@ pub struct Prepared {
     /// The offered project file edit tools (chat.cjs `projectEditTool`; absent from an older core: none,
     /// as an older core never hands off a turn that offers one).
     pub edit_tools: Vec<String>,
+    /// #2446: the offered tools asked about on every call and never under a chat-wide grant (the coworker page
+    /// save; `onceTools`, present only when there are any; a core that offers one hands the turn off only to a
+    /// front naming the `once` capability).
+    pub once_tools: Vec<String>,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -227,6 +231,10 @@ impl Prepared {
             edit_tools: match frame.get("editTools") {
                 JValue::Undefined => Vec::new(),
                 _ => names(frame, "editTools")?,
+            },
+            once_tools: match frame.get("onceTools") {
+                JValue::Undefined => Vec::new(),
+                _ => names(frame, "onceTools")?,
             },
             route_note: opt_text(frame, "routeNote").unwrap_or_default(),
             template_gate: flag(frame, "templateGate"),
