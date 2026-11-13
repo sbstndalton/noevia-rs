@@ -35,14 +35,43 @@
 //!    a link or a file rather than a directory (the refusal that follows is the same answer):
 //!    Node wrote it, and renamed it over `config`, in whatever directory the link named.
 //!
+//! 6. A released clone's attribute files (`.git/info/attributes` and every `.gitattributes`) are
+//!    opened relative to the descriptor of the directory the walk holds, with `O_NOFOLLOW` and
+//!    `O_NONBLOCK`, checked with `fstat` and read through a cap (4 MiB each, 32 MiB together): one
+//!    that is a link, a FIFO, a device, a socket or too large is hostile and ends the release
+//!    `stuck` with that reason. Node read them by path with `readFileSync`, which follows a link
+//!    (`/dev/zero` is read until memory runs out) and blocks on a FIFO (the whole server's lock is
+//!    held meanwhile); a link that dangles was skipped there and is refused here.
+//! 7. The config copy that freezes a clone's `.git/config` is read from the descriptor whose
+//!    `fstat` was checked (the same device and inode as the `lstat` before it), through a cap of
+//!    1 MiB, and a larger config is refused (a sparse file of any length is not read into memory);
+//!    [`Workspaces::release`] also refuses one over the cap when no copy is made. Node reads it whole.
+//! 8. A partial clone cannot make noevia contact a remote the harness chose: the release's `status`,
+//!    `add` and `commit` run with `-c protocol.allow=never` (in [`CLONE_EXTRA`]), every git call
+//!    carries `GIT_NO_LAZY_FETCH=1`, and a config that sets `extensions.partialclone`,
+//!    `remote.<name>.promisor` or `remote.<name>.partialclonefilter` is refused (`HOSTILE_KEYS`). Node runs `status --porcelain` (rename detection reads blobs) and git fetches whatever
+//!    is missing from the promisor remote the config names.
+//! 9. Sealing a tree ([`seal_tree`]) also removes `system.posix_acl_access` from each directory,
+//!    file and FIFO, and `system.posix_acl_default` from each directory, through the open
+//!    descriptor (ENODATA and ENOTSUP are no error), before the modes are cut back: a default ACL
+//!    would give the harness user write on whatever noevia creates there, and an access ACL entry
+//!    for it survives a `chmod` of the group bits. Node leaves them.
+//! 10. Sealing strips group and other write from a FIFO (opened `O_NONBLOCK`, `fstat`-checked,
+//!     `fchmod`) and from a socket (an `O_PATH` descriptor, checked with `fstat`, changed through
+//!     `/proc/self/fd/<n>` where `/proc` is mounted, else left). Remaining gap: a device node, which
+//!     is neither opened nor changed (none can be made without CAP_MKNOD), and a FIFO or socket
+//!     with a second link, which keeps its mode (the other name may be anywhere; same as a file).
+//! 11. In worktree mode `branch -D` runs with [`HOSTILE_OFF`] (Node runs it bare).
+//!
 //! Parity with Node 0c294a3 that was a difference before: a released clone is refused when its
 //! config turns on commit signing or names any program, hook, further config file or repository
 //! (`HOSTILE_KEYS`), has `extensions.worktreeConfig`, `.git/config.worktree`, `.git/commondir` or
 //! a nested repository, or has attributes nested 65 levels down or unreadable (names are walked as
 //! bytes, a name that is not UTF-8 is no reason to refuse); `contains` answers false for a path
 //! that exists but cannot be resolved; an empty branch is no branch. No `/proc` is needed (Node
-//! refuses a hand-over without `/proc/self/fd`), and removing a clone is `std`'s descriptor-based
-//! `remove_dir_all`, which has no depth limit (Node's stops at 256 levels).
+//! refuses a hand-over without `/proc/self/fd`), and a tree or home is removed through directory
+//! descriptors that are never followed, stopping 256 levels down with an error ([`remove_all`];
+//! the release ignores it for a home, as Node does, and keeps the clone it cannot remove `stuck`).
 //!
 //! OS error texts: libuv's for the few the records can carry (`ENOENT: no such file or directory,
 //! lstat '<path>'`), Rust's for any other (an `lchown` that failed, an unremovable tree).
@@ -58,7 +87,7 @@ use js_json::{wtf16, JValue};
 use paths::{dirname, join, realpath, relative, resolve};
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Mutex;
 
 /// code-workspace.cjs `BRANCH_PREFIX`.
@@ -77,8 +106,10 @@ pub const HOSTILE_OFF: [&str; 10] = [
     "tag.gpgSign=false",
 ];
 /// What the release's own `status`, `add` and `commit` in a clone add to [`HOSTILE_OFF`]: no
-/// auto-maintenance (a commit starts it, and it reads the clone's config), no submodule recursion.
-pub const CLONE_EXTRA: [&str; 10] = [
+/// auto-maintenance (a commit starts it, and it reads the clone's config), no submodule recursion,
+/// and no transport at all (`protocol.allow=never`: a partial clone's lazy fetch, which a rename
+/// detection in `status` can start, would otherwise contact the remote the harness named).
+pub const CLONE_EXTRA: [&str; 12] = [
     "-c",
     "gc.auto=0",
     "-c",
@@ -89,6 +120,8 @@ pub const CLONE_EXTRA: [&str; 10] = [
     "submodule.recurse=false",
     "-c",
     "protocol.ext.allow=never",
+    "-c",
+    "protocol.allow=never",
 ];
 const COMMITTER_NAME: &str = "noevia";
 const COMMITTER_EMAIL: &str = "noevia@localhost";
@@ -410,6 +443,11 @@ fn hostile_key(k: &str) -> bool {
         ])
         // With this set git also reads `.git/config.worktree`, which nothing here reads.
         || k == "extensions.worktreeconfig"
+        // A partial clone fetches what is missing from its promisor remote, whatever git command
+        // wants the object (a rename detection in `status`).
+        || k == "extensions.partialclone"
+        || rest_ends("remote.", ".promisor")
+        || rest_ends("remote.", ".partialclonefilter")
         || one_of(&[
             "core.alternaterefscommand",
             "core.alternaterefsprefixes",
@@ -515,19 +553,101 @@ fn write_private(path: &str, bytes: &[u8]) -> io::Result<()> {
     options.open(path)?.write_all(bytes)
 }
 
-/// `fs.rmSync(target, { recursive: true, force: true })`: never follows a link.
+/// `removeTree`: `target` and everything under it removed, never following a link. The walk goes
+/// through directory descriptors opened with `O_NOFOLLOW` (`unlinkat` relative to each), so a
+/// directory swapped for a link while it runs is refused instead of followed and emptied, and it
+/// stops with an error 256 levels down ([`MAX_CHOWN_DEPTH`]: what Node's `removeTree` allows), leaving
+/// what it has not reached. A missing `target` is no error; a file or link is unlinked itself.
 pub fn remove_all(target: &str) -> io::Result<()> {
-    match fs::symlink_metadata(target) {
-        Ok(m) if m.is_dir() => fs::remove_dir_all(target),
-        Ok(_) => fs::remove_file(target),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e),
+    use rustix::fs::{open, Mode, OFlags};
+    use rustix::io::Errno;
+    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let top = match open(target, flags, Mode::empty()) {
+        Ok(top) => top,
+        Err(Errno::NOENT) => return Ok(()),
+        Err(Errno::NOTDIR | Errno::LOOP) => {
+            return match fs::remove_file(target) {
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+                other => other,
+            }
+        }
+        Err(e) => return Err(e.into()),
+    };
+    empty_dir(&top, 0)?;
+    drop(top);
+    fs::remove_dir(target)
+}
+
+/// Removes every entry of the open directory `fd` (see [`remove_all`]).
+fn empty_dir(fd: &rustix::fd::OwnedFd, depth: usize) -> io::Result<()> {
+    use rustix::fs::{fstat, openat, statat, unlinkat, AtFlags, Dir, FileType, Mode, OFlags};
+    use rustix::io::Errno;
+    if depth > MAX_CHOWN_DEPTH {
+        return Err(io::Error::other("the tree is nested too deeply to remove"));
     }
+    let mut names = Vec::new();
+    for entry in Dir::read_from(fd)? {
+        let entry = entry?;
+        if !matches!(entry.file_name().to_bytes(), b"." | b"..") {
+            names.push(entry.file_name().to_owned());
+        }
+    }
+    for name in names {
+        let st = match statat(fd, name.as_c_str(), AtFlags::SYMLINK_NOFOLLOW) {
+            Ok(st) => st,
+            Err(Errno::NOENT) => continue,
+            Err(e) => return Err(e.into()),
+        };
+        if FileType::from_raw_mode(st.st_mode) != FileType::Directory {
+            match unlinkat(fd, name.as_c_str(), AtFlags::empty()) {
+                Ok(()) | Err(Errno::NOENT) => {}
+                Err(e) => return Err(e.into()),
+            }
+            continue;
+        }
+        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+        let child = match openat(fd, name.as_c_str(), flags, Mode::empty()) {
+            Ok(child) => child,
+            Err(Errno::NOENT) => continue,
+            Err(Errno::LOOP | Errno::NOTDIR) => {
+                return Err(io::Error::other(format!(
+                    "{}: it was replaced while it was being removed",
+                    name.to_string_lossy()
+                )))
+            }
+            Err(e) => return Err(e.into()),
+        };
+        let now = fstat(&child)?;
+        if FileType::from_raw_mode(now.st_mode) != FileType::Directory
+            || now.st_dev != st.st_dev
+            || now.st_ino != st.st_ino
+        {
+            return Err(io::Error::other(format!(
+                "{}: it was replaced while it was being removed",
+                name.to_string_lossy()
+            )));
+        }
+        empty_dir(&child, depth + 1)?;
+        drop(child);
+        match unlinkat(fd, name.as_c_str(), AtFlags::REMOVEDIR) {
+            Ok(()) | Err(Errno::NOENT) => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(())
 }
 
 /// How deep [`chown_tree`] and [`seal_tree`] go before they refuse the tree (code-workspace.cjs
 /// `defaultChown`).
 const MAX_CHOWN_DEPTH: usize = 256;
+/// The most one attribute file of a released clone may weigh before it is refused (git's own limit
+/// is 100 MiB; a harness that wants more than this in a `.gitattributes` has no honest reason).
+const ATTRIBUTES_FILE_MAX: usize = 4 * 1024 * 1024;
+/// The most all of a clone's attribute files may weigh together (bounds the time one release
+/// spends reading files a harness made large).
+const ATTRIBUTES_TOTAL_MAX: usize = 32 * 1024 * 1024;
+/// The most a clone's `.git/config` may weigh before the release refuses it.
+const CONFIG_MAX: usize = 1024 * 1024;
 
 /// Node's error code for an OS error, as far as this crate names them.
 fn errno_code(e: &io::Error) -> Option<&'static str> {
@@ -639,6 +759,28 @@ pub fn walk_tree(
     walker.dir(&top, &name, 0)
 }
 
+/// Removes the ACLs of an open file or directory (`system.posix_acl_default` only a directory
+/// has): a default ACL gives its named users write on whatever is made in the directory, an
+/// access ACL entry survives `chmod`. "No such attribute" and "not supported here" are the usual
+/// answers and not errors.
+fn strip_acls(fd: &rustix::fd::OwnedFd, is_dir: bool) -> io::Result<()> {
+    use rustix::io::Errno;
+    let access = "system.posix_acl_access";
+    let default = "system.posix_acl_default";
+    let names: &[&str] = if is_dir {
+        &[default, access]
+    } else {
+        &[access]
+    };
+    for name in names {
+        match rustix::fs::fremovexattr(fd, *name) {
+            Ok(()) | Err(Errno::NODATA | Errno::NOTSUP) => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(())
+}
+
 /// One run of [`walk_tree`].
 struct TreeWalk<'a> {
     uid: Option<rustix::fs::Uid>,
@@ -648,10 +790,13 @@ struct TreeWalk<'a> {
 }
 
 impl TreeWalk<'_> {
-    /// Hand an open file or directory over; sealing also strips what must not outlive the hand-over.
-    fn take(&self, fd: &rustix::fd::OwnedFd, mode: u32) -> io::Result<()> {
+    /// Hand an open file or directory over; sealing also strips what must not outlive the hand-over:
+    /// the ACLs first (a `chmod` of the group bits would otherwise only move the ACL's mask), then
+    /// setuid, setgid, sticky and group/other write.
+    fn take(&self, fd: &rustix::fd::OwnedFd, mode: u32, is_dir: bool) -> io::Result<()> {
         rustix::fs::fchown(fd, self.uid, self.gid)?;
         if self.seal {
+            strip_acls(fd, is_dir)?;
             rustix::fs::fchmod(fd, rustix::fs::Mode::from_raw_mode(mode & 0o755))?;
         }
         Ok(())
@@ -660,13 +805,14 @@ impl TreeWalk<'_> {
     fn dir(&self, fd: &rustix::fd::OwnedFd, shown: &str, depth: usize) -> io::Result<()> {
         use rustix::fs::{fstat, openat, statat, AtFlags, Dir, FileType, Mode, OFlags};
         use rustix::io::Errno;
+        use std::os::fd::AsRawFd;
         if depth > MAX_CHOWN_DEPTH {
             return Err(io::Error::other(format!(
                 "{shown} is nested too deeply to hand over"
             )));
         }
         if self.seal {
-            self.take(fd, fstat(fd)?.st_mode)?;
+            self.take(fd, fstat(fd)?.st_mode, true)?;
         }
         let mut names = Vec::new();
         for entry in Dir::read_from(fd)? {
@@ -725,7 +871,57 @@ impl TreeWalk<'_> {
                         && now.st_ino == st.st_ino
                         && now.st_nlink == 1
                     {
-                        self.take(&file, now.st_mode)?;
+                        self.take(&file, now.st_mode, false)?;
+                    }
+                }
+                // A FIFO taken back: opened without blocking (and never through a link), so the
+                // mode and ACLs go through the descriptor of the very inode that was looked at.
+                FileType::Fifo if self.seal && st.st_nlink == 1 => {
+                    let flags =
+                        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
+                    let fifo = match openat(fd, name.as_c_str(), flags, Mode::empty()) {
+                        Ok(fifo) => fifo,
+                        Err(Errno::LOOP | Errno::NOTDIR) => return Err(replaced(&where_)),
+                        Err(e) => return Err(uv_error(&io::Error::from(e), "open", &where_)),
+                    };
+                    let now = fstat(&fifo)?;
+                    if FileType::from_raw_mode(now.st_mode) != FileType::Fifo
+                        || now.st_dev != st.st_dev
+                        || now.st_ino != st.st_ino
+                    {
+                        return Err(replaced(&where_));
+                    }
+                    self.take(&fifo, now.st_mode, false)?;
+                }
+                // A socket taken back: an `O_PATH` descriptor cannot be `fchmod`ed, but the magic
+                // link `/proc/self/fd/<n>` names exactly that inode (the entry itself is
+                // not followed, and nothing is changed unless `fstat` says it is the socket seen).
+                FileType::Socket if self.seal && st.st_nlink == 1 => {
+                    rustix::fs::chownat(
+                        fd,
+                        name.as_c_str(),
+                        self.uid,
+                        self.gid,
+                        AtFlags::SYMLINK_NOFOLLOW,
+                    )?;
+                    let flags = OFlags::PATH | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+                    match openat(fd, name.as_c_str(), flags, Mode::empty()) {
+                        Ok(sock) => {
+                            let now = fstat(&sock)?;
+                            if FileType::from_raw_mode(now.st_mode) != FileType::Socket
+                                || now.st_dev != st.st_dev
+                                || now.st_ino != st.st_ino
+                            {
+                                return Err(replaced(&where_));
+                            }
+                            // Where `/proc` is not mounted this fails and the mode is left.
+                            let _ = rustix::fs::chmod(
+                                format!("/proc/self/fd/{}", sock.as_raw_fd()),
+                                Mode::from_raw_mode(now.st_mode & 0o755),
+                            );
+                        }
+                        Err(Errno::LOOP | Errno::NOTDIR) => return Err(replaced(&where_)),
+                        Err(e) => return Err(uv_error(&io::Error::from(e), "open", &where_)),
                     }
                 }
                 // A link, fifo or socket: the entry itself, never what it names.
@@ -739,7 +935,7 @@ impl TreeWalk<'_> {
             }
         }
         if !self.seal {
-            self.take(fd, 0)?;
+            self.take(fd, 0, true)?;
         }
         Ok(())
     }
@@ -831,6 +1027,9 @@ impl Workspaces {
             env: vec![
                 ("GIT_CONFIG_GLOBAL".into(), self.trust_file.clone()),
                 ("GIT_CONFIG_SYSTEM".into(), "/dev/null".into()),
+                // A partial clone's promisor remote is the harness's to name (git 2.44 and newer
+                // honour this; `protocol.allow=never` covers the release's own calls either way).
+                ("GIT_NO_LAZY_FETCH".into(), "1".into()),
             ],
             ..RunOptions::default()
         }
@@ -1349,6 +1548,11 @@ impl Workspaces {
         }
         let config = join(&git_dir, "config");
         match fs::symlink_metadata(&config) {
+            Ok(m) if m.is_file() && m.len() > CONFIG_MAX as u64 => {
+                return Some(format!(
+                    "the clone\u{2019}s .git/config is larger than {CONFIG_MAX} bytes"
+                ))
+            }
             Ok(m) if m.is_file() => {}
             Ok(_) => return Some("the clone\u{2019}s .git/config is not a plain file".into()),
             Err(_) => return Some("the clone has no .git/config".into()),
@@ -1398,22 +1602,39 @@ impl Workspaces {
         }
         // Names are walked as bytes: a directory whose name is not valid UTF-8 has no string
         // spelling, and skipping it would hide a `.gitattributes`. Anything the walk cannot
-        // finish is refused.
-        let mut attr_files = vec![PathBuf::from(join(&git_dir, "info/attributes"))];
-        if let Err(why) = walk_attributes(Path::new(tree), "", 0, &mut attr_files) {
+        // finish is refused. Everything is reached through descriptors opened with `O_NOFOLLOW`.
+        let flags = rustix::fs::OFlags::RDONLY
+            | rustix::fs::OFlags::DIRECTORY
+            | rustix::fs::OFlags::NOFOLLOW
+            | rustix::fs::OFlags::CLOEXEC;
+        let top = match rustix::fs::open(tree, flags, rustix::fs::Mode::empty()) {
+            Ok(top) => top,
+            Err(e) => {
+                return Some(format!(
+                    "the tree could not be read ({})",
+                    errno_code(&io::Error::from(e)).unwrap_or("error")
+                ))
+            }
+        };
+        let mut attr_files = vec![b".git/info/attributes".to_vec()];
+        if let Err(why) = walk_attributes(&top, "", b"", 0, &mut attr_files) {
             return Some(why);
         }
         // Attributes only name drivers, and every driver lives in configuration refused above
         // (and the global attributes file is /dev/null), so this is a second line, not the only one.
-        for file in attr_files {
-            let Ok(bytes) = fs::read(&file) else {
-                continue;
-            };
-            if names_filter(&String::from_utf8_lossy(&bytes)) {
-                return Some(format!(
-                    "{} names a filter driver",
-                    relative(tree, &file.to_string_lossy())
-                ));
+        let mut budget = ATTRIBUTES_TOTAL_MAX;
+        for rel in attr_files {
+            match read_attributes(&top, &rel, &mut budget) {
+                Ok(None) => {}
+                Ok(Some(body)) => {
+                    if names_filter(&String::from_utf8_lossy(&body)) {
+                        return Some(format!(
+                            "{} names a filter driver",
+                            String::from_utf8_lossy(&rel)
+                        ));
+                    }
+                }
+                Err(why) => return Some(why),
             }
         }
         None
@@ -1601,15 +1822,18 @@ impl Workspaces {
     }
 }
 
-/// Every `.gitattributes` under `dir`, at most 64 levels down, `.git` skipped at the top and a
-/// nested one refused, links not followed. `shown` is `dir` relative to the tree, for the reason.
+/// Every `.gitattributes` under the open directory `dir`, at most 64 levels down, `.git` skipped at
+/// the top and a nested one refused, links not followed (each directory is opened relative to its
+/// parent with `O_NOFOLLOW`). `shown` is `dir` relative to the tree, for the reason; `rel` the same
+/// as bytes, and what goes into `out` is the file's own path as bytes, for [`read_attributes`].
 fn walk_attributes(
-    dir: &Path,
+    dir: &rustix::fd::OwnedFd,
     shown: &str,
+    rel: &[u8],
     depth: usize,
-    out: &mut Vec<PathBuf>,
+    out: &mut Vec<Vec<u8>>,
 ) -> Result<(), String> {
-    use std::os::unix::ffi::OsStrExt;
+    use rustix::fs::{fstat, openat, statat, AtFlags, Dir, FileType, Mode, OFlags};
     if depth > 64 {
         return Err(format!("{shown} is nested too deeply to check"));
     }
@@ -1621,19 +1845,21 @@ fn walk_attributes(
         )
     };
     let mut named = Vec::new();
-    for entry in fs::read_dir(dir).map_err(|e| unread(&e))? {
-        let entry = entry.map_err(|e| unread(&e))?;
-        let kind = entry.file_type().map_err(|e| unread(&e))?;
-        named.push((entry.file_name(), kind));
+    for entry in Dir::read_from(dir).map_err(|e| unread(&io::Error::from(e)))? {
+        let entry = entry.map_err(|e| unread(&io::Error::from(e)))?;
+        if !matches!(entry.file_name().to_bytes(), b"." | b"..") {
+            named.push(entry.file_name().to_owned());
+        }
     }
-    named.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
-    for (name, kind) in named {
+    named.sort_by(|a, b| a.to_bytes().cmp(b.to_bytes()));
+    for name in named {
+        let bytes = name.to_bytes();
         let label = if shown.is_empty() {
             name.to_string_lossy().into_owned()
         } else {
             format!("{shown}/{}", name.to_string_lossy())
         };
-        if name.as_bytes() == b".git" {
+        if bytes == b".git" {
             // A repository inside the tree has a config of its own, and `git add` runs its filters.
             if depth > 0 {
                 return Err(format!(
@@ -1642,14 +1868,131 @@ fn walk_attributes(
             }
             continue;
         }
-        let full = dir.join(&name);
-        if kind.is_dir() {
-            walk_attributes(&full, &label, depth + 1, out)?;
-        } else if name.as_bytes() == b".gitattributes" {
-            out.push(full);
+        let mut path = rel.to_vec();
+        if !path.is_empty() {
+            path.push(b'/');
+        }
+        path.extend_from_slice(bytes);
+        let at = |e: rustix::io::Errno| {
+            format!(
+                "{label} could not be read ({})",
+                errno_code(&io::Error::from(e)).unwrap_or("error")
+            )
+        };
+        let st = statat(dir, name.as_c_str(), AtFlags::SYMLINK_NOFOLLOW).map_err(at)?;
+        if FileType::from_raw_mode(st.st_mode) == FileType::Directory {
+            let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+            let child = openat(dir, name.as_c_str(), flags, Mode::empty()).map_err(at)?;
+            let now = fstat(&child).map_err(at)?;
+            if now.st_dev != st.st_dev || now.st_ino != st.st_ino {
+                return Err(format!("{label} could not be read (replaced)"));
+            }
+            walk_attributes(&child, &label, &path, depth + 1, out)?;
+        } else if bytes == b".gitattributes" {
+            out.push(path);
         }
     }
     Ok(())
+}
+
+/// The body of the attribute file `rel` (a path of names below `top`), or `None` when there is
+/// none. It must be a regular file: each directory on the way is opened with `O_NOFOLLOW`, the
+/// file itself with `O_NOFOLLOW` and `O_NONBLOCK` (a FIFO never blocks the open), `fstat` says
+/// regular and the same inode as the `lstat` before it, and it is read through a cap
+/// ([`ATTRIBUTES_FILE_MAX`], and `budget` for all of a tree's together). Anything else is an `Err`
+/// with the reason the release is refused.
+fn read_attributes(
+    top: &rustix::fd::OwnedFd,
+    rel: &[u8],
+    budget: &mut usize,
+) -> Result<Option<Vec<u8>>, String> {
+    use rustix::fs::{fstat, openat, statat, AtFlags, FileType, Mode, OFlags};
+    use rustix::io::Errno;
+    use std::io::Read;
+    let label = String::from_utf8_lossy(rel).into_owned();
+    let unread = |e: Errno| {
+        format!(
+            "{label} could not be read ({})",
+            errno_code(&io::Error::from(e)).unwrap_or("error")
+        )
+    };
+    let not_plain = || format!("{label} is not a regular file, so noevia did not read it");
+    let parts: Vec<&[u8]> = rel.split(|b| *b == b'/').collect();
+    let Some((last, dirs)) = parts.split_last() else {
+        return Ok(None);
+    };
+    let to_c = |name: &[u8]| {
+        std::ffi::CString::new(name).map_err(|_| format!("{label} has a name with a NUL in it"))
+    };
+    let dflags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let mut held: Option<rustix::fd::OwnedFd> = None;
+    for part in dirs {
+        let name = to_c(part)?;
+        let from = held.as_ref().unwrap_or(top);
+        let next = match openat(from, name.as_c_str(), dflags, Mode::empty()) {
+            Ok(next) => next,
+            // Nothing there: git finds no attributes either.
+            Err(Errno::NOENT) => return Ok(None),
+            // `O_NOFOLLOW | O_DIRECTORY` answers a link with ENOTDIR as it does a file. A link on
+            // the way is refused (git would follow it); a file where a directory should be is not.
+            Err(Errno::LOOP) => return Err(not_plain()),
+            Err(Errno::NOTDIR) => {
+                return match statat(from, name.as_c_str(), AtFlags::SYMLINK_NOFOLLOW) {
+                    Ok(st) if FileType::from_raw_mode(st.st_mode) == FileType::Symlink => {
+                        Err(not_plain())
+                    }
+                    _ => Ok(None),
+                }
+            }
+            Err(e) => return Err(unread(e)),
+        };
+        held = Some(next);
+    }
+    let from = held.as_ref().unwrap_or(top);
+    let name = to_c(last)?;
+    let seen = match statat(from, name.as_c_str(), AtFlags::SYMLINK_NOFOLLOW) {
+        Ok(st) => st,
+        Err(Errno::NOENT | Errno::NOTDIR) => return Ok(None),
+        Err(e) => return Err(unread(e)),
+    };
+    // A FIFO, device, socket or link is looked at and refused, never opened for reading.
+    if FileType::from_raw_mode(seen.st_mode) != FileType::RegularFile {
+        return Err(not_plain());
+    }
+    let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
+    let file = match openat(from, name.as_c_str(), flags, Mode::empty()) {
+        Ok(file) => file,
+        Err(Errno::NOENT) => return Ok(None),
+        Err(Errno::LOOP) => return Err(not_plain()),
+        Err(e) => return Err(unread(e)),
+    };
+    let now = fstat(&file).map_err(unread)?;
+    if FileType::from_raw_mode(now.st_mode) != FileType::RegularFile
+        || now.st_dev != seen.st_dev
+        || now.st_ino != seen.st_ino
+    {
+        return Err(not_plain());
+    }
+    let cap = ATTRIBUTES_FILE_MAX.min(*budget);
+    let mut body = Vec::new();
+    std::fs::File::from(file)
+        .take(cap as u64 + 1)
+        .read_to_end(&mut body)
+        .map_err(|e| {
+            format!(
+                "{label} could not be read ({})",
+                errno_code(&e).unwrap_or("error")
+            )
+        })?;
+    if body.len() > cap {
+        return Err(if cap < ATTRIBUTES_FILE_MAX {
+            format!("the attribute files together are larger than {ATTRIBUTES_TOTAL_MAX} bytes, so noevia did not read {label}")
+        } else {
+            format!("{label} is larger than {ATTRIBUTES_FILE_MAX} bytes, so noevia did not read it")
+        });
+    }
+    *budget = budget.saturating_sub(body.len());
+    Ok(Some(body))
 }
 
 /// Replace the clone's `.git/config` with a copy only noevia has open (noevia-core#2529). A harness
@@ -1657,10 +2000,15 @@ fn walk_attributes(
 /// inode, so the configuration checked next is the one git reads. The tree is sealed by then, so
 /// nothing can put another file in its place. A `.git` that is not a plain directory is not
 /// written through (the check that follows refuses it); Node wrote the copy into whatever
-/// directory such a link named.
+/// directory such a link named. The config is read from the descriptor of the very file that was
+/// looked at (same device and inode as the `lstat`), through a cap of [`CONFIG_MAX`]; a larger one
+/// is refused (Node read it whole, and a sparse file of any size would be read into memory). The
+/// copy is made and renamed relative to the descriptor of `.git`.
 fn freeze_config(tree: &str) -> io::Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
+    use rustix::fs::{fstat, open, openat, renameat, unlinkat, AtFlags, FileType, Mode, OFlags};
+    use rustix::io::Errno;
+    use std::io::{Read, Write};
+    use std::os::unix::fs::MetadataExt;
     let git_dir = join(tree, ".git");
     let file = join(&git_dir, "config");
     let plain = fs::symlink_metadata(&file).map_err(|e| uv_error(&e, "lstat", &file))?;
@@ -1669,21 +2017,48 @@ fn freeze_config(tree: &str) -> io::Result<()> {
             "the clone\u{2019}s .git/config is not a plain file",
         ));
     }
-    if !fs::symlink_metadata(&git_dir).is_ok_and(|m| m.is_dir()) {
-        return Ok(());
+    let dflags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let dir = match open(git_dir.as_str(), dflags, Mode::empty()) {
+        Ok(dir) => dir,
+        // A link or a file: no copy (the check that follows refuses it).
+        Err(Errno::LOOP | Errno::NOTDIR) => return Ok(()),
+        Err(e) => return Err(uv_error(&io::Error::from(e), "open", &git_dir)),
+    };
+    let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
+    let source = openat(&dir, "config", flags, Mode::empty())
+        .map_err(|e| uv_error(&io::Error::from(e), "open", &file))?;
+    let now = fstat(&source).map_err(io::Error::from)?;
+    if FileType::from_raw_mode(now.st_mode) != FileType::RegularFile
+        || now.st_dev != plain.dev()
+        || now.st_ino != plain.ino()
+    {
+        return Err(io::Error::other(
+            "the clone\u{2019}s .git/config is not a plain file",
+        ));
     }
-    let body = fs::read(&file).map_err(|e| uv_error(&e, "open", &file))?;
-    let copy = join(&git_dir, &format!("config.noevia-{}", std::process::id()));
-    let _ = fs::remove_file(&copy);
-    let mut out = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
-        .mode(0o644)
-        .open(&copy)
-        .map_err(|e| uv_error(&e, "open", &copy))?;
-    out.write_all(&body)
+    let mut body = Vec::new();
+    fs::File::from(source)
+        .take(CONFIG_MAX as u64 + 1)
+        .read_to_end(&mut body)
+        .map_err(|e| uv_error(&e, "read", &file))?;
+    if body.len() > CONFIG_MAX {
+        return Err(io::Error::other(format!(
+            "the clone\u{2019}s .git/config is larger than {CONFIG_MAX} bytes"
+        )));
+    }
+    let name = format!("config.noevia-{}", std::process::id());
+    let copy = join(&git_dir, &name);
+    let _ = unlinkat(&dir, name.as_str(), AtFlags::empty());
+    let out = openat(
+        &dir,
+        name.as_str(),
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::from_raw_mode(0o644),
+    )
+    .map_err(|e| uv_error(&io::Error::from(e), "open", &copy))?;
+    fs::File::from(out)
+        .write_all(&body)
         .map_err(|e| uv_error(&e, "write", &copy))?;
-    drop(out);
-    fs::rename(&copy, &file).map_err(|e| uv_error(&e, "rename", &copy))
+    renameat(&dir, name.as_str(), &dir, "config")
+        .map_err(|e| uv_error(&io::Error::from(e), "rename", &copy))
 }

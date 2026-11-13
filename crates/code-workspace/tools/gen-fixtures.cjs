@@ -356,6 +356,19 @@ const SCENARIOS = {
     { op: 'symlink', target: '<BASE>/outside', path: `${CL(T4)}/.git` },
     { op: 'release', ws: 'c', taskId: T4 },
     { op: 'mode', path: 'outside/config' },
+    // A partial clone whose promisor remote is a repository the harness chose (here a local one; a
+    // harness could name any address): the tree has none of its objects, so `git status` in the
+    // release fetches them from that remote, and Node's release goes through (and commits the
+    // harness's change). The port refuses the config before any git call, and runs status/add/commit
+    // with `protocol.allow=never` and `GIT_NO_LAZY_FETCH=1`: nothing is contacted.
+    { op: 'claim', ws: 'c', taskId: T5, repo: 'repos/qa-repo', branch: 'qa/partial' },
+    { op: 'git', cwd: CL(T5), args: ['config', 'core.repositoryformatversion', '1'] },
+    { op: 'git', cwd: CL(T5), args: ['config', 'extensions.partialclone', 'origin'] },
+    { op: 'git', cwd: CL(T5), args: ['config', 'remote.origin.url', '<BASE>/repos/qa-repo'] },
+    { op: 'git', cwd: CL(T5), args: ['config', 'remote.origin.promisor', 'true'] },
+    { op: 'rm', path: `${CL(T5)}/.git/objects/info/alternates` },
+    { op: 'write', path: `${CL(T5)}/a.txt`, text: 'changed by the harness\n' },
+    { op: 'release', ws: 'c', taskId: T5 },
   ],
 };
 

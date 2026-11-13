@@ -576,25 +576,79 @@ fn every_node_scenario_replays() {
     assert_eq!(seen, 10);
 }
 
-/// What the port must do with an empty repository whatever git does with its unborn branch: a
-/// claim either holds a tree with no base commit, or fails with git's own words and leaves nothing.
+/// What the port must do with an empty repository whatever git does with its unborn branch. The
+/// answer is chosen by probing this git, not by reading the claim's own output: if this git makes a
+/// worktree on an unborn branch, the claim must hold one with `baseSha: null`, the release must say
+/// `released`, and no tree (or home) may be left; if it refuses, the claim must be git's own refusal
+/// and leave no record, tree or home behind.
 fn empty_repo_without_the_recorded_answer(script: &[JValue]) {
+    let makes_it = git_makes_worktree_on_unborn_branch();
     let mut run = Run::new();
+    let mut claimed = false;
     for s in script {
         let Some(got) = run.step(s) else { continue };
         match s.get("op").as_str() {
+            Some("claim") if makes_it => {
+                assert_eq!(
+                    got.get("ok").get("baseSha"),
+                    &JValue::Null,
+                    "{}",
+                    text(&got)
+                );
+                assert_eq!(
+                    got.get("ok").get("status").as_str(),
+                    Some("held"),
+                    "{}",
+                    text(&got)
+                );
+                claimed = true;
+            }
             Some("claim") => {
                 let t = text(&got);
                 assert!(
-                    t.contains(r#""baseSha":null"#)
-                        || t.contains("Command failed: git worktree add -B noevia/task-"),
+                    got.get("error").is_object()
+                        && got
+                            .get("error")
+                            .get("message")
+                            .as_str()
+                            .is_some_and(|m| m
+                                .starts_with("Command failed: git worktree add -B noevia/task-")),
                     "{t}"
                 );
             }
             Some("headSha") => assert_eq!(text(&got), r#"{"ok":null}"#),
+            Some("release") if makes_it => {
+                assert!(claimed);
+                assert_eq!(
+                    got.get("ok").get("status").as_str(),
+                    Some("released"),
+                    "{}",
+                    text(&got)
+                );
+            }
             _ => {}
         }
     }
+    let snap = snapshot(&run.base, &run.repos);
+    let id = "00000000-0000-4000-8000-000000000001";
+    // Released, or never made: no tree is left, and the home (made before git is asked, and kept
+    // by Node too) holds nothing.
+    let tree = run.base.join("tenant/code-workspaces").join(id);
+    assert!(!tree.exists(), "the tree was left: {}", text(&snap));
+    let home = run
+        .base
+        .join("tenant/code-workspaces/.harness-home")
+        .join(id);
+    assert!(
+        !home.exists() || fs::read_dir(&home).unwrap().next().is_none(),
+        "the home holds something: {}",
+        text(&snap)
+    );
+    let JValue::Obj(records) = snap.get("records") else {
+        panic!("{}", text(&snap))
+    };
+    let kept = records.iter().filter(|(n, _)| n.ends_with(".json")).count();
+    assert_eq!(kept, usize::from(makes_it), "{}", text(&snap));
 }
 
 #[test]
@@ -613,6 +667,10 @@ fn differences_from_node() {
     // Node's frozen copy of the config was written into the directory the `.git` link names, and
     // renamed over the file in it: mode 0644 where the harness left 0600.
     assert_eq!(node[6], r#"{"ok":"644"}"#);
+    // Node's release of a partial clone with none of its objects went through and committed the
+    // harness's change: `git status` fetched them from the remote the config named.
+    assert!(node[8].contains(r#""status":"released""#), "{}", node[8]);
+    assert!(node[8].contains(r#""headSha":""#), "{}", node[8]);
 
     let mut run = Run::new();
     let mut got = Vec::new();
@@ -642,6 +700,20 @@ fn differences_from_node() {
     let refusal = |t: &str| t[t.find("\"error\":").unwrap()..].to_string();
     assert_eq!(refusal(&got[5]), refusal(&node[5]));
     assert_eq!(got[6], r#"{"ok":"600"}"#);
+    // The port refuses the partial clone's config before any git call is made on the tree, and
+    // keeps the tree: nothing was fetched from the remote it names.
+    assert!(
+        got[8].contains(r#""status":"stuck""#)
+            && got[8].contains("its .git/config sets ")
+            && got[8].contains("extensions.partialclone")
+            && got[8].contains("remote.origin.promisor"),
+        "{}",
+        got[8]
+    );
+    assert!(run
+        .base
+        .join("trees/00000000-0000-4000-8000-000000000005/.git")
+        .exists());
     assert!(!run.base.join("pwned").exists(), "a planted command ran");
 }
 
@@ -679,7 +751,8 @@ fn logging_git(dir: &Path) -> (Git, std::path::PathBuf) {
     fs::write(
         &script,
         format!(
-            "#!/bin/sh\necho \"$(pwd) | $*\" >> '{}'\nexec '{}' \"$@\"\n",
+            "#!/bin/sh\necho \"$(pwd) | $*\" >> '{}'\necho \"GIT_NO_LAZY_FETCH=$GIT_NO_LAZY_FETCH\" >> '{}.env'\nexec '{}' \"$@\"\n",
+            log.display(),
             log.display(),
             real.trim()
         ),
@@ -757,7 +830,7 @@ fn every_git_call_on_a_held_tree_switches_off_what_the_tree_could_run() {
         }
         // The release's own status, add and commit also run without auto-maintenance, submodule
         // recursion or the ext transport; the fetch without the ext transport.
-        let clone_off = "-c gc.auto=0 -c maintenance.auto=false -c diff.ignoreSubmodules=all -c submodule.recurse=false -c protocol.ext.allow=never ";
+        let clone_off = "-c gc.auto=0 -c maintenance.auto=false -c diff.ignoreSubmodules=all -c submodule.recurse=false -c protocol.ext.allow=never -c protocol.allow=never ";
         for verb in [" status ", " add ", " commit "] {
             if on_tree && cmd.contains(verb) {
                 assert!(cmd.contains(clone_off), "{line}");
@@ -770,6 +843,10 @@ fn every_git_call_on_a_held_tree_switches_off_what_the_tree_could_run() {
         }
     }
     assert!(seen >= 5 && released_with >= 4, "{lines}");
+    // No git call lazily fetches a missing object from a promisor remote the harness named.
+    let envs = fs::read_to_string(log.with_extension("log.env")).unwrap();
+    assert!(envs.lines().count() >= 8, "{envs}");
+    assert!(envs.lines().all(|l| l == "GIT_NO_LAZY_FETCH=1"), "{envs}");
 }
 
 #[test]
@@ -947,4 +1024,333 @@ fn the_runner_stops_git_at_its_buffer_cap_and_its_deadline() {
     };
     let e = git.run(&[], None, &Default::default()).unwrap_err();
     assert!(e.message.ends_with(" ENOENT"), "{e:?}");
+}
+
+// ── What the harness plants in a tree it held (review of noevia-rs#367) ─────────────────────────
+
+fn task_id(n: u32) -> String {
+    format!("00000000-0000-4000-8000-{n:012}")
+}
+
+/// A clone-mode store (owner: this user) on a fresh QA repository, as the `refusals` scenario has it.
+fn clone_store(run: &mut Run) -> Arc<Workspaces> {
+    let f = fixture();
+    run.step(&steps(&f, "refusals")[0]);
+    let clock = run.clock.clone();
+    Arc::new(Workspaces::with(
+        Options {
+            dir: run.at("tenant").to_str().unwrap().to_string(),
+            tree_root: Some(run.at("trees").to_str().unwrap().to_string()),
+            owner: Some(run.me),
+            noevia: Some(run.me),
+            mode: None,
+            epoch: "qa".into(),
+            change_max_buffer: None,
+        },
+        Box::new(move || clock.fetch_add(1, Ordering::SeqCst) as f64),
+        Git {
+            extra_env: vec![
+                ("GIT_AUTHOR_DATE".into(), DATE.into()),
+                ("GIT_COMMITTER_DATE".into(), DATE.into()),
+            ],
+            ..Git::default()
+        },
+        Box::new(chown_tree),
+    ))
+}
+
+/// Claims task `n` in `ws` and returns its tree.
+fn claim_n(ws: &Workspaces, run: &Run, n: u32) -> std::path::PathBuf {
+    let id = task_id(n);
+    let repo = run.at("repos/qa-repo").to_str().unwrap().to_string();
+    let record = ws
+        .claim(Claim {
+            task_id: &id,
+            repo_path: &repo,
+            ..Claim::default()
+        })
+        .unwrap();
+    std::path::PathBuf::from(record.get("path").as_str().unwrap())
+}
+
+/// Releases task `n` on another thread and answers within a deadline: a release that hangs fails the
+/// test instead of holding it forever.
+fn release_n(ws: &Arc<Workspaces>, n: u32) -> JValue {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let ws = ws.clone();
+    let id = task_id(n);
+    std::thread::spawn(move || {
+        let _ = tx.send(ws.release(&id, false));
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(60))
+        .expect("the release did not finish within its deadline")
+        .unwrap()
+}
+
+fn stuck_with(record: &JValue, want: &str) {
+    assert_eq!(
+        record.get("status").as_str(),
+        Some("stuck"),
+        "{}",
+        text(record)
+    );
+    let why = record.get("error").as_str().unwrap_or("");
+    assert!(why.contains(want), "wanted {want:?} in {why:?}");
+}
+
+fn fifo_at(path: &Path) {
+    use rustix::fs::{mknodat, FileType, Mode, CWD};
+    mknodat(CWD, path, FileType::Fifo, Mode::from_raw_mode(0o666), 0).unwrap();
+}
+
+#[test]
+fn an_attributes_file_that_is_not_a_plain_small_file_is_refused_not_read() {
+    let mut run = Run::new();
+    let ws = clone_store(&mut run);
+    // A FIFO as `.gitattributes`: reading it would block, with the store's lock held.
+    let tree = claim_n(&ws, &run, 1);
+    fifo_at(&tree.join(".gitattributes"));
+    stuck_with(&release_n(&ws, 1), ".gitattributes is not a regular file");
+    assert!(tree.exists(), "the tree is kept for inspection");
+    // ... in a nested directory.
+    let tree = claim_n(&ws, &run, 2);
+    fs::create_dir_all(tree.join("a/b")).unwrap();
+    fifo_at(&tree.join("a/b/.gitattributes"));
+    stuck_with(
+        &release_n(&ws, 2),
+        "a/b/.gitattributes is not a regular file",
+    );
+    // `.git/info/attributes` a link to /dev/zero: following it reads until memory runs out.
+    let tree = claim_n(&ws, &run, 3);
+    fs::create_dir_all(tree.join(".git/info")).unwrap();
+    std::os::unix::fs::symlink("/dev/zero", tree.join(".git/info/attributes")).unwrap();
+    stuck_with(
+        &release_n(&ws, 3),
+        ".git/info/attributes is not a regular file",
+    );
+    // `.git/info` itself a link: not followed either.
+    let tree = claim_n(&ws, &run, 4);
+    let outside = run.base.join("outside-info");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("attributes"), "* filter=x\n").unwrap();
+    let _ = fs::remove_dir_all(tree.join(".git/info"));
+    std::os::unix::fs::symlink(&outside, tree.join(".git/info")).unwrap();
+    stuck_with(
+        &release_n(&ws, 4),
+        ".git/info/attributes is not a regular file",
+    );
+    // A `.gitattributes` that is a link (even a dangling one) is not read.
+    let tree = claim_n(&ws, &run, 5);
+    std::os::unix::fs::symlink("/dev/zero", tree.join(".gitattributes")).unwrap();
+    stuck_with(&release_n(&ws, 5), ".gitattributes is not a regular file");
+    let tree = claim_n(&ws, &run, 6);
+    std::os::unix::fs::symlink("nowhere", tree.join(".gitattributes")).unwrap();
+    stuck_with(&release_n(&ws, 6), ".gitattributes is not a regular file");
+    // One over the cap is refused (a sparse file: nothing near its length is read).
+    let tree = claim_n(&ws, &run, 7);
+    let big = fs::File::create(tree.join(".gitattributes")).unwrap();
+    big.set_len(1 << 40).unwrap();
+    stuck_with(&release_n(&ws, 7), ".gitattributes is larger than");
+    // The refusals are not blanket: a plain, small, harmless one is read and the release goes on.
+    let tree = claim_n(&ws, &run, 8);
+    fs::write(tree.join(".gitattributes"), "*.txt text eol=lf\n").unwrap();
+    fs::write(tree.join("b.txt"), "b\n").unwrap();
+    let done = release_n(&ws, 8);
+    assert_eq!(
+        done.get("status").as_str(),
+        Some("released"),
+        "{}",
+        text(&done)
+    );
+    // And a filter named in a plain one is still refused, by name.
+    let tree = claim_n(&ws, &run, 9);
+    fs::write(tree.join(".gitattributes"), "*.txt filter=x\n").unwrap();
+    stuck_with(&release_n(&ws, 9), ".gitattributes names a filter driver");
+}
+
+#[test]
+fn a_huge_git_config_is_refused_not_read() {
+    let mut run = Run::new();
+    let ws = clone_store(&mut run);
+    let tree = claim_n(&ws, &run, 1);
+    let config = fs::OpenOptions::new()
+        .append(true)
+        .open(tree.join(".git/config"))
+        .unwrap();
+    // 8 GiB, sparse; a filesystem that cannot hold one gets one just over the cap.
+    if config.set_len(8 << 30).is_err() {
+        config.set_len(2 << 20).unwrap();
+    }
+    drop(config);
+    let done = release_n(&ws, 1);
+    stuck_with(
+        &done,
+        "Could not take the workspace back from the harness user",
+    );
+    stuck_with(&done, ".git/config is larger than 1048576 bytes");
+    // A config that is not too large but is a FIFO or a link is refused as before.
+    let tree = claim_n(&ws, &run, 2);
+    fs::remove_file(tree.join(".git/config")).unwrap();
+    fifo_at(&tree.join(".git/config"));
+    stuck_with(&release_n(&ws, 2), ".git/config is not a plain file");
+}
+
+#[test]
+fn a_partial_clone_cannot_make_noevia_contact_the_remote_it_names() {
+    for (n, (key, value)) in [
+        ("extensions.partialclone", "origin"),
+        ("remote.origin.promisor", "true"),
+        ("remote.origin.partialclonefilter", "blob:none"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut run = Run::new();
+        let ws = clone_store(&mut run);
+        let n = n as u32 + 1;
+        let tree = claim_n(&ws, &run, n);
+        shell(&["config", key, value], &tree);
+        shell(
+            &[
+                "config",
+                "remote.origin.url",
+                &run.sub("<BASE>/repos/qa-repo"),
+            ],
+            &tree,
+        );
+        fs::write(tree.join("a.txt"), "changed\n").unwrap();
+        stuck_with(&release_n(&ws, n), key);
+        assert!(!run.base.join("pwned").exists());
+    }
+}
+
+#[test]
+fn removing_a_tree_stops_at_the_depth_limit_and_never_follows_a_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let deep = |levels: usize| "d/".repeat(levels);
+    // Within the limit: all gone, files and links included.
+    let ok = dir.path().join("ok");
+    fs::create_dir_all(ok.join(deep(200))).unwrap();
+    fs::write(ok.join(deep(200)).join("f"), "f").unwrap();
+    let outside = dir.path().join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret"), "x").unwrap();
+    std::os::unix::fs::symlink(&outside, ok.join("link")).unwrap();
+    code_workspace::remove_all(ok.to_str().unwrap()).unwrap();
+    assert!(!ok.exists());
+    assert!(outside.join("secret").exists(), "a link was followed");
+    // Beyond it: an error, no crash, and the part not reached is left.
+    let too_deep = dir.path().join("too-deep");
+    fs::create_dir_all(too_deep.join(deep(300))).unwrap();
+    let e = code_workspace::remove_all(too_deep.to_str().unwrap()).unwrap_err();
+    assert!(e.to_string().contains("nested too deeply"), "{e}");
+    assert!(too_deep.exists());
+    // Missing, a file and a link: no error; the link itself goes, not what it names.
+    code_workspace::remove_all(dir.path().join("missing").to_str().unwrap()).unwrap();
+    let file = dir.path().join("file");
+    fs::write(&file, "f").unwrap();
+    code_workspace::remove_all(file.to_str().unwrap()).unwrap();
+    assert!(!file.exists());
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&outside, &link).unwrap();
+    code_workspace::remove_all(link.to_str().unwrap()).unwrap();
+    assert!(!link.exists() && outside.join("secret").exists());
+}
+
+#[test]
+fn a_harness_home_nested_past_the_limit_does_not_stop_the_release() {
+    let mut run = Run::new();
+    let ws = clone_store(&mut run);
+    let tree = claim_n(&ws, &run, 1);
+    let home = run.at(&format!("trees/.harness-home/{}", task_id(1)));
+    fs::create_dir_all(home.join("d/".repeat(300))).unwrap();
+    fs::write(tree.join("b.txt"), "b\n").unwrap();
+    let done = release_n(&ws, 1);
+    // As in Node: the home is not the task's work, and its removal failing is ignored.
+    assert_eq!(
+        done.get("status").as_str(),
+        Some("released"),
+        "{}",
+        text(&done)
+    );
+    assert!(!tree.exists());
+    assert!(
+        home.exists(),
+        "the part past the limit is left, not followed"
+    );
+}
+
+#[test]
+fn sealing_removes_acls_and_the_write_bits_of_fifos_and_sockets() {
+    use rustix::fs::{getxattr, setxattr, XattrFlags};
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let tree = dir.path().join("tree");
+    fs::create_dir_all(tree.join("sub")).unwrap();
+    fs::write(tree.join("sub/f.txt"), "f").unwrap();
+    let me = fs::metadata(dir.path()).unwrap();
+    let ids = Ids {
+        uid: me.uid(),
+        gid: me.gid(),
+    };
+    // FIFO and socket, group- and other-writable.
+    fifo_at(&tree.join("fifo"));
+    fs::set_permissions(tree.join("fifo"), fs::Permissions::from_mode(0o666)).unwrap();
+    let _listener = std::os::unix::net::UnixListener::bind(tree.join("sock")).unwrap();
+    fs::set_permissions(tree.join("sock"), fs::Permissions::from_mode(0o777)).unwrap();
+    // ACLs, as the kernel's binary xattr (version 2; entries: tag, permission, id).
+    let acl = |entries: &[(u16, u16, u32)]| {
+        let mut v = 2u32.to_le_bytes().to_vec();
+        for (tag, perm, id) in entries {
+            v.extend_from_slice(&tag.to_le_bytes());
+            v.extend_from_slice(&perm.to_le_bytes());
+            v.extend_from_slice(&id.to_le_bytes());
+        }
+        v
+    };
+    let none = u32::MAX;
+    let access = acl(&[
+        (1, 6, none),
+        (2, 6, 4242),
+        (4, 4, none),
+        (0x10, 6, none),
+        (0x20, 4, none),
+    ]);
+    let default = acl(&[
+        (1, 7, none),
+        (2, 7, 4242),
+        (4, 5, none),
+        (0x10, 7, none),
+        (0x20, 5, none),
+    ]);
+    let set_access = setxattr(
+        tree.join("sub/f.txt"),
+        "system.posix_acl_access",
+        &access,
+        XattrFlags::empty(),
+    );
+    let set_default = setxattr(
+        tree.join("sub"),
+        "system.posix_acl_default",
+        &default,
+        XattrFlags::empty(),
+    );
+    let acls = set_access.is_ok() && set_default.is_ok();
+    if !acls {
+        eprintln!("this filesystem takes no POSIX ACLs ({set_access:?}, {set_default:?}); only the seal's call path and the modes are checked");
+    }
+    seal_tree(&tree, ids).unwrap();
+    let mode = |p: &str| fs::metadata(tree.join(p)).unwrap().mode() & 0o777;
+    assert_eq!(mode("fifo") & 0o022, 0, "the fifo kept group/other write");
+    assert_eq!(mode("sock") & 0o022, 0, "the socket kept group/other write");
+    if acls {
+        let mut buf = [0u8; 256];
+        for (p, name) in [
+            ("sub/f.txt", "system.posix_acl_access"),
+            ("sub", "system.posix_acl_default"),
+        ] {
+            let got = getxattr(tree.join(p), name, &mut buf[..]);
+            assert_eq!(got, Err(rustix::io::Errno::NODATA), "{p} kept {name}");
+        }
+    }
 }
