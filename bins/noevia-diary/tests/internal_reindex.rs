@@ -366,6 +366,36 @@ async fn a_plan_only_call_returns_the_plans_and_writes_nothing() {
     assert_eq!(dirty(root), vec![ENTRY_PATH.to_owned()], "the mark stays");
     assert_eq!(chunks(root, ENTRY_PATH), 0, "nothing was written");
 
+    // Document names must all be strings.
+    assert_eq!(
+        plan(
+            &app,
+            &json!({"embedding": live, "plan_only": true, "documents": [ENTRY_PATH, 7]})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    // A pending journal row (Python replays it first) declines.
+    let idx =
+        rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db")).unwrap();
+    let tables_before = table_dump(&idx);
+    idx.execute(
+        "INSERT INTO journal (id, created_at, kind, payload) VALUES ('qa-pending', '2031-03-20', 'exchange', '{}')",
+        [],
+    )
+    .unwrap();
+    let (status, _) = plan(
+        &app,
+        &json!({"embedding": live, "plan_only": true, "documents": [ENTRY_PATH]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+    idx.execute("DELETE FROM journal WHERE id = 'qa-pending'", [])
+        .unwrap();
+    // Every index table is as it was (chunks, slots, journal, dirty marks).
+    assert_eq!(table_dump(&idx), tables_before);
+
     // A tenant that is not ready is declined.
     let dir2 = tempfile::tempdir().unwrap();
     build_tenant(dir2.path(), false);
@@ -378,4 +408,34 @@ async fn a_plan_only_call_returns_the_plans_and_writes_nothing() {
     )
     .await;
     assert_eq!(status, StatusCode::MISDIRECTED_REQUEST);
+}
+
+/// Every row of every non-virtual table of the index, for a nothing-was-written check.
+fn table_dump(c: &rusqlite::Connection) -> Vec<String> {
+    let mut names: Vec<String> = c
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND sql NOT LIKE '%VIRTUAL%'")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    names.sort();
+    let mut out = Vec::new();
+    for n in names {
+        let mut stmt = c.prepare(&format!("SELECT * FROM \"{n}\"")).unwrap();
+        let cols = stmt.column_count();
+        let mut rows: Vec<String> = stmt
+            .query_map([], |r| {
+                Ok((0..cols)
+                    .map(|i| format!("{:?}", r.get::<_, rusqlite::types::Value>(i).unwrap()))
+                    .collect::<Vec<_>>()
+                    .join("|"))
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        rows.sort();
+        out.push(format!("{n}: {}", rows.join("; ")));
+    }
+    out
 }

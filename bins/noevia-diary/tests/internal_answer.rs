@@ -562,7 +562,10 @@ async fn a_streamed_answer_is_relayed_while_the_model_is_still_answering() {
     let app = Arc::new(noevia_diary::server::App::new(
         noevia_diary::config::parse(&config(dir.path(), &engine, true)).unwrap(),
     ));
-    let resp = streamed_request(&app).await;
+    // A reply that waited for the whole answer would never come (the model waits for `release`).
+    let resp = tokio::time::timeout(std::time::Duration::from_secs(20), streamed_request(&app))
+        .await
+        .expect("the reply starts before the model has finished");
     assert_eq!(resp.status(), StatusCode::OK);
     let mut body = resp.into_body();
     // The model has not finished (it waits for `release`), yet its first delta has arrived.
@@ -640,4 +643,56 @@ async fn a_caller_that_leaves_ends_the_model_call() {
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
     assert_eq!(snapshot(dir.path()), before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_closed_connection_ends_the_model_call_over_real_tcp() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let dir = tempfile::tempdir().unwrap();
+    build_tenant(dir.path(), true);
+    let (engine, started, dropped) = paced_engine(None).await;
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(dir.path(), &engine, true)).unwrap(),
+    ));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(noevia_diary::serve(listener, app));
+    for stream in [false, true] {
+        started.store(false, std::sync::atomic::Ordering::SeqCst);
+        dropped.store(false, std::sync::atomic::Ordering::SeqCst);
+        let body = request("answer", stream).to_string();
+        let mut conn = tokio::net::TcpStream::connect(addr).await.unwrap();
+        conn.write_all(
+            format!(
+                "POST /internal/answer?tenant={UID} HTTP/1.1\r\nhost: qa\r\nx-noevia-diary-control: ctl\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !started.load(std::sync::atomic::Ordering::SeqCst) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the model was never called"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        if stream {
+            // The reply has started: read its first bytes before going away.
+            let mut buf = [0u8; 64];
+            let n = conn.read(&mut buf).await.unwrap();
+            assert!(buf[..n].starts_with(b"HTTP/1.1 200"));
+        }
+        drop(conn);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !dropped.load(std::sync::atomic::Ordering::SeqCst) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the model call is still open (stream: {stream})"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }
 }

@@ -125,16 +125,20 @@ pub async fn internal(
     };
     let handle = tokio::runtime::Handle::current();
     if request.get("plan_only") == Some(&json!(true)) {
-        let Some(documents) = request.get("documents").and_then(Value::as_array).map(|d| {
-            d.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect::<Vec<_>>()
-        }) else {
-            return status(400, json!({"detail": "plan_only needs the documents"}));
+        let documents: Option<Vec<String>> = request
+            .get("documents")
+            .and_then(Value::as_array)
+            .and_then(|d| d.iter().map(|v| v.as_str().map(str::to_owned)).collect());
+        let Some(documents) = documents else {
+            return status(
+                400,
+                json!({"detail": "plan_only needs the documents, as strings"}),
+            );
         };
+        // Held until the reply is ready: a caller that gives up drops it, which stops the plans.
+        let (_caller, gone) = tokio::sync::oneshot::channel::<()>();
         let task = tokio::task::spawn_blocking(move || {
-            plans(&app, &cfg, &uid, active, &documents, handle)
+            plans(&app, &cfg, &uid, active, &documents, handle, gone)
         });
         return task.await.unwrap_or_else(|_| status(500, json!({})));
     }
@@ -224,6 +228,7 @@ fn plans(
     active: diary_retrieval::Target,
     documents: &[String],
     handle: tokio::runtime::Handle,
+    mut gone: tokio::sync::oneshot::Receiver<()>,
 ) -> Response<Body> {
     let root = app.data_root.join("users").join(uid);
     // Dirty documents are the point here. Python holds its store lock around this call (after
@@ -265,6 +270,13 @@ fn plans(
     }
     let mut out = Vec::new();
     for document in documents {
+        if matches!(
+            gone.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+        ) {
+            // The caller gave up (its deadline): no more embedding calls for a reply nobody reads.
+            return status(503, json!({}));
+        }
         let text = match store.get_text(document) {
             Ok(t) => t,
             Err(_) => {

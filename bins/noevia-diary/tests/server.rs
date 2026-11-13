@@ -408,10 +408,13 @@ async fn external_sources_scan_in_python_key_order() {
     assert_eq!((s, d), (200, None), "{body}");
     let first = body.find(r#""name":"2030-01-06 walk.md","rel_path":"2030-01-06 walk.md","size":17,"date":"2030-01-06","date_source":"filename""#);
     assert!(first.is_some(), "{body}");
-    assert!(body.starts_with(&format!(
-        r#"{{"configured":true,"sources":[{{"path":{},"exists":true,"files":["#,
-        serde_json::json!(src_s)
-    )), "{body}");
+    assert!(
+        body.starts_with(&format!(
+            r#"{{"configured":true,"sources":[{{"path":{},"exists":true,"files":["#,
+            serde_json::json!(src_s)
+        )),
+        "{body}"
+    );
     assert!(body.contains(&format!(
         r#"{{"path":{},"exists":false,"files":[],"total":0,"truncated":false}}"#,
         serde_json::json!(missing)
