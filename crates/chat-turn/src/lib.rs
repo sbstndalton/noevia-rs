@@ -6,6 +6,8 @@
 //! - [`guard`]: the stream guard for tool-call arguments, over the `stream-guard` crate;
 //! - [`tools`]: the dispatch trait the tool engines implement, and the 300-character result cut;
 //! - [`partial`]: the interrupted-turn record;
+//! - [`record`]: the turn record (chat-interrupted-turn.cjs `createTurnRecord`) and the partial
+//!   file's entry (chat-partial.cjs `bounded`), recorded from Node;
 //! - [`relay`]: one model round turned into events, with the reasoning-only note and the
 //!   telemetry the client needs.
 //!
@@ -15,6 +17,7 @@
 pub mod event;
 pub mod guard;
 pub mod partial;
+pub mod record;
 pub mod relay;
 pub mod sink;
 pub mod tools;
@@ -22,6 +25,9 @@ pub mod tools;
 pub use event::{Event, Phase, TimeToFirstToken};
 pub use guard::{ArgGuard, Failure};
 pub use partial::{Disposition, Outcome, Partial, ToolStep};
+pub use record::{
+    bounded, partial_file, TurnRecord, PARTIAL_CAP_UNITS, STOPPED_SENDER, TOOL_RESULT_LIMIT,
+};
 pub use relay::{relay, Relayed, Upstream};
 pub use sink::{OrderError, Turn};
 pub use tools::{cap_result, ToolCall, ToolDispatch, ToolOutcome};

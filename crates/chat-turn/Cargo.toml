@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+js-json = { path = "../js-json" }
 serde_json = "1"
 stream-guard = { path = "../stream-guard" }
 
