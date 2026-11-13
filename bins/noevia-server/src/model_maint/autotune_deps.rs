@@ -223,10 +223,6 @@ impl FrontDeps {
         covered(&self.current, step)
     }
 
-    fn token(&self) -> Option<String> {
-        self.current.get().and_then(|h| h.token())
-    }
-
     fn router(&self) -> Result<&super::router::Router, Fail> {
         self.maint
             .router
@@ -385,7 +381,11 @@ impl FrontEngine {
                 }
             }
         }
-        let router = self.maint.router.as_ref().ok_or_else(|| Fail::new("The model server is not configured."))?;
+        let router = self
+            .maint
+            .router
+            .as_ref()
+            .ok_or_else(|| Fail::new("The model server is not configured."))?;
         let method = if call.method == "POST" {
             reqwest::Method::POST
         } else {
@@ -429,7 +429,6 @@ impl FrontEngine {
             Err(_) => Err(fetch_failed(abort)),
         }
     }
-
 }
 
 /// A streamed engine reply (the long-prompt test): its chunks until it ends or the step aborts.
@@ -488,7 +487,8 @@ impl super::autotune_context::Engine for FrontEngine {
             .as_ref()
             .ok_or_else(|| Fail::new("The model server is not configured."))?;
         let token = self.current.get().and_then(|h| h.token());
-        let sent = router.stream(path, &to_v(&body), token.as_deref(), STREAM_LIMIT);
+        let body = to_v(&body);
+        let sent = router.stream(path, &body, token.as_deref(), STREAM_LIMIT);
         let response = tokio::select! {
             biased;
             r = sent => r.map_err(|_| fetch_failed(Some(&abort)))?,
@@ -524,11 +524,13 @@ impl super::autotune_context::Engine for FrontEngine {
         let sizing = Arc::clone(&self.maint.sizing);
         let listing = sizing.listing().await;
         let m = model.to_owned();
-        Ok(tokio::task::spawn_blocking(move || sizing.conservative_for(&m, inference, &listing))
-            .await
-            .ok()
-            .flatten()
-            .unwrap_or(JValue::Null))
+        Ok(
+            tokio::task::spawn_blocking(move || sizing.conservative_for(&m, inference, &listing))
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(JValue::Null),
+        )
     }
 
     async fn identity_for(&self, model: &str) -> Result<JValue, Fail> {

@@ -3,7 +3,12 @@
 //! llamacpp-full-autotune tests by `record-node.cjs`, format in `FORMAT.md` beside it) is replayed:
 //! the calibrator is driven with the recorded runner calls and must make the recorded dependency
 //! calls in order, with the same arguments, and answer what Node answered.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 
 use autotune_runner::{js, Abort, Call, Context, Fail, Hooks};
 use js_json::{wtf16, JValue};
@@ -30,7 +35,12 @@ fn resolve(v: &JValue, strings: &[String]) -> JValue {
                 let i = items[0].1.as_num().unwrap() as usize;
                 return JValue::Str(strings[i].clone());
             }
-            JValue::Obj(items.iter().map(|(k, x)| (k.clone(), resolve(x, strings))).collect())
+            JValue::Obj(
+                items
+                    .iter()
+                    .map(|(k, x)| (k.clone(), resolve(x, strings)))
+                    .collect(),
+            )
         }
         JValue::Arr(items) => JValue::Arr(items.iter().map(|x| resolve(x, strings)).collect()),
         other => other.clone(),
@@ -63,7 +73,10 @@ struct Ev {
 fn flatten(events: &[JValue], out: &mut Vec<Ev>) {
     for e in events {
         let at = out.len();
-        out.push(Ev { v: e.clone(), end: 0 });
+        out.push(Ev {
+            v: e.clone(),
+            end: 0,
+        });
         flatten(js::items(e.get("during")), out);
         out[at].end = out.len();
     }
@@ -156,7 +169,10 @@ impl Replay {
                 return None;
             }
             let Some(head) = self.events.get(c.pos) else {
-                let why = format!("extra call {what} {} after the trace ended", text(&JValue::obj(args.iter().cloned())));
+                let why = format!(
+                    "extra call {what} {} after the trace ended",
+                    text(&JValue::obj(args.iter().cloned()))
+                );
                 self.fail(&mut c, why);
                 return None;
             };
@@ -184,7 +200,10 @@ impl Replay {
                     c = g;
                     if t.timed_out() && c.pos < end {
                         let head = label(&self.events[c.pos].v);
-                        let why = format!("event {at} {what}: stuck at event {} ({head}) inside it", c.pos);
+                        let why = format!(
+                            "event {at} {what}: stuck at event {} ({head}) inside it",
+                            c.pos
+                        );
                         self.fail(&mut c, why);
                     }
                 }
@@ -199,7 +218,11 @@ impl Replay {
             let (g, t) = self.changed.wait_timeout(c, WAIT).unwrap();
             c = g;
             if t.timed_out() && self.events.get(c.pos).map(|h| label(&h.v)) == Some(dep.clone()) {
-                let why = format!("event {}: node {dep} / rust {what} {}", c.pos, text(&JValue::obj(args.iter().cloned())));
+                let why = format!(
+                    "event {}: node {dep} / rust {what} {}",
+                    c.pos,
+                    text(&JValue::obj(args.iter().cloned()))
+                );
                 self.fail(&mut c, why);
             }
         }
@@ -238,16 +261,25 @@ impl Replay {
             "start" => {
                 let model = arg(0).as_str().unwrap_or("").to_string();
                 let budget = js::number(arg(1).get("promptBudgetSeconds"));
-                Some(self.rt.spawn(async move { ctx.start(&model, budget).await }))
+                Some(
+                    self.rt
+                        .spawn(async move { ctx.start(&model, budget).await }),
+                )
             }
-            "completion" => Some(self.rt.spawn(async move { ctx.completion().await.map(|()| JValue::Null) })),
+            "completion" => Some(
+                self.rt
+                    .spawn(async move { ctx.completion().await.map(|()| JValue::Null) }),
+            ),
             "probe" => {
                 let model = arg(0).as_str().unwrap_or("").to_string();
                 let opts = arg(1);
                 Some(self.rt.spawn(async move { ctx.probe(&model, opts).await }))
             }
             "status" => {
-                let got = JValue::obj([("body", JValue::obj([("job", ctx.status_job(arg(0).as_str().unwrap_or("")))]))]);
+                let got = JValue::obj([(
+                    "body",
+                    JValue::obj([("job", ctx.status_job(arg(0).as_str().unwrap_or("")))]),
+                )]);
                 self.check_result(at, e, &Ok(got));
                 None
             }
@@ -256,7 +288,14 @@ impl Replay {
                 let want = e.get("result").get("job");
                 if text(want) != text(&got) {
                     let mut c = self.cur.lock().unwrap();
-                    self.fail(&mut c, format!("event {at} driver cancellationFacts job: node {} / rust {}", text(want), text(&got)));
+                    self.fail(
+                        &mut c,
+                        format!(
+                            "event {at} driver cancellationFacts job: node {} / rust {}",
+                            text(want),
+                            text(&got)
+                        ),
+                    );
                 }
                 None
             }
@@ -272,7 +311,10 @@ impl Replay {
             }
             other => {
                 let mut c = self.cur.lock().unwrap();
-                self.fail(&mut c, format!("event {at}: driver method {other} has no Rust counterpart"));
+                self.fail(
+                    &mut c,
+                    format!("event {at}: driver method {other} has no Rust counterpart"),
+                );
                 None
             }
         };
@@ -288,11 +330,22 @@ impl Replay {
                 (want != got).then(|| format!("result: node {want} / rust {got}"))
             }
             (Err(f), true) => {
-                let (want, got) = (text(&without_backend(e.get("throws"))), text(&error_json(f)));
+                let (want, got) = (
+                    text(&without_backend(e.get("throws"))),
+                    text(&error_json(f)),
+                );
                 (want != got).then(|| format!("throws: node {want} / rust {got}"))
             }
-            (Ok(v), true) => Some(format!("node threw {} / rust answered {}", text(e.get("throws")), text(v))),
-            (Err(f), false) => Some(format!("node answered {} / rust threw {}", text(e.get("result")), f.message)),
+            (Ok(v), true) => Some(format!(
+                "node threw {} / rust answered {}",
+                text(e.get("throws")),
+                text(v)
+            )),
+            (Err(f), false) => Some(format!(
+                "node answered {} / rust threw {}",
+                text(e.get("result")),
+                f.message
+            )),
         };
         if let Some(why) = why {
             let mut c = self.cur.lock().unwrap();
@@ -346,13 +399,17 @@ impl Body for ReplayBody {
         self.body
     }
     fn read(&mut self) -> impl Future<Output = Result<Option<Vec<u8>>, Fail>> + Send {
-        let e = self.r.take("stream.read", &[("stream", JValue::Num(self.id as f64))]);
+        let e = self
+            .r
+            .take("stream.read", &[("stream", JValue::Num(self.id as f64))]);
         async move {
             let v = later(e).await?;
             if v.get("done").truthy() {
                 return Ok(None);
             }
-            Ok(Some(v.get("text").as_str().unwrap_or("").as_bytes().to_vec()))
+            Ok(Some(
+                v.get("text").as_str().unwrap_or("").as_bytes().to_vec(),
+            ))
         }
     }
 }
@@ -369,21 +426,40 @@ fn call_args(call: &Call, abort: &Option<Abort>) -> Vec<(&'static str, JValue)> 
 
 impl Engine for ReplayEngine {
     type Body = ReplayBody;
-    fn raw_models(&self, _abort: Option<Abort>) -> impl Future<Output = Result<JValue, Fail>> + Send {
+    fn raw_models(
+        &self,
+        _abort: Option<Abort>,
+    ) -> impl Future<Output = Result<JValue, Fail>> + Send {
         let e = self.0.take("rawModels", &[]);
         async move { later(e).await }
     }
-    fn request(&self, call: Call, abort: Option<Abort>) -> impl Future<Output = Result<JValue, Fail>> + Send {
+    fn request(
+        &self,
+        call: Call,
+        abort: Option<Abort>,
+    ) -> impl Future<Output = Result<JValue, Fail>> + Send {
         let e = self.0.take("request", &call_args(&call, &abort));
         async move { later(e).await }
     }
-    fn stream(&self, path: &str, body: JValue, _abort: Abort) -> impl Future<Output = Result<ReplayBody, Fail>> + Send {
+    fn stream(
+        &self,
+        path: &str,
+        body: JValue,
+        _abort: Abort,
+    ) -> impl Future<Output = Result<ReplayBody, Fail>> + Send {
         let id = {
             let mut c = self.0.cur.lock().unwrap();
             c.streams += 1;
             c.streams - 1
         };
-        let e = self.0.take("stream", &[("path", JValue::from(path)), ("method", JValue::from("POST")), ("body", body)]);
+        let e = self.0.take(
+            "stream",
+            &[
+                ("path", JValue::from(path)),
+                ("method", JValue::from("POST")),
+                ("body", body),
+            ],
+        );
         let r = Arc::clone(&self.0);
         async move {
             let v = later(e).await?;
@@ -397,7 +473,11 @@ impl Engine for ReplayEngine {
         }
     }
     fn presets_get(&self, model: &str) -> JValue {
-        answer(self.0.take("presets.get", &[("model", JValue::from(model))])).unwrap_or(JValue::Null)
+        answer(
+            self.0
+                .take("presets.get", &[("model", JValue::from(model))]),
+        )
+        .unwrap_or(JValue::Null)
     }
     fn presets_snapshot(&self) -> (String, String) {
         let v = answer(self.0.take("presets.snapshot", &[])).unwrap_or(JValue::Null);
@@ -411,15 +491,21 @@ impl Engine for ReplayEngine {
         async move { later(e).await.map(|_| ()) }
     }
     fn invalidate_baseline(&self, tag: &str) -> impl Future<Output = Result<bool, Fail>> + Send {
-        let e = self.0.take("invalidateBaseline", &[("tag", JValue::from(tag))]);
+        let e = self
+            .0
+            .take("invalidateBaseline", &[("tag", JValue::from(tag))]);
         async move { later(e).await.map(|v| v.truthy()) }
     }
     fn conservative_for(&self, model: &str) -> impl Future<Output = Result<JValue, Fail>> + Send {
-        let e = self.0.take("conservativeFor", &[("model", JValue::from(model))]);
+        let e = self
+            .0
+            .take("conservativeFor", &[("model", JValue::from(model))]);
         async move { later(e).await }
     }
     fn identity_for(&self, model: &str) -> impl Future<Output = Result<JValue, Fail>> + Send {
-        let e = self.0.take("identityFor", &[("model", JValue::from(model))]);
+        let e = self
+            .0
+            .take("identityFor", &[("model", JValue::from(model))]);
         async move { later(e).await }
     }
     fn held(&self) -> bool {
@@ -441,12 +527,20 @@ impl Engine for ReplayEngine {
         std::future::pending()
     }
     fn random_int(&self, min: u32, max: u32) -> u32 {
-        let v = answer(self.0.take("randomInt", &[("min", JValue::Num(f64::from(min))), ("max", JValue::Num(f64::from(max)))]));
+        let v = answer(self.0.take(
+            "randomInt",
+            &[
+                ("min", JValue::Num(f64::from(min))),
+                ("max", JValue::Num(f64::from(max))),
+            ],
+        ));
         v.ok().and_then(|v| v.as_num()).unwrap_or(0.0) as u32
     }
     fn random_uuid(&self) -> String {
         let v = answer(self.0.take("randomUUID", &[]));
-        v.ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
+        v.ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default()
     }
 }
 
@@ -463,11 +557,15 @@ impl Hooks for ReplayHooks {
         async move { later(e).await.map(|v| js::items(&v).to_vec()) }
     }
     fn foreign_wait(&self, legacy: Fail) -> impl Future<Output = Result<(), Fail>> + Send {
-        let e = self.0.take("hook foreignWait", &[("arg", error_json(&legacy))]);
+        let e = self
+            .0
+            .take("hook foreignWait", &[("arg", error_json(&legacy))]);
         async move { later(e).await.map(|_| ()) }
     }
     fn on_write(&self, revision: &str) {
-        let _ = self.0.take("hook onWrite", &[("arg", JValue::from(revision))]);
+        let _ = self
+            .0
+            .take("hook onWrite", &[("arg", JValue::from(revision))]);
     }
     fn on_update(&self, c: &JValue) {
         let _ = self.0.take("hook onUpdate", &[("arg", c.clone())]);
@@ -507,7 +605,10 @@ fn replay(path: &std::path::Path) -> Result<(), String> {
     let limits = Limits::from_timeouts(config.get("timeouts"));
     // The calibrator is made on the runtime (its creation reads the models.ini revision).
     let ctx = {
-        let (e, h) = (ReplayEngine(Arc::clone(&replay)), ReplayHooks(Arc::clone(&replay)));
+        let (e, h) = (
+            ReplayEngine(Arc::clone(&replay)),
+            ReplayHooks(Arc::clone(&replay)),
+        );
         rt.block_on(async move { PrivateCalibrator::new(e, h, fill, floor, limits) })
     };
     let _ = replay.ctx.set(ctx);
@@ -538,7 +639,12 @@ fn replay(path: &std::path::Path) -> Result<(), String> {
     let outcome = if let Some(m) = &c.mismatch {
         Err(m.clone())
     } else if c.pos < replay.events.len() {
-        Err(format!("stopped at event {} ({}) of {}", c.pos, label(&replay.events[c.pos].v), replay.events.len()))
+        Err(format!(
+            "stopped at event {} ({}) of {}",
+            c.pos,
+            label(&replay.events[c.pos].v),
+            replay.events.len()
+        ))
     } else {
         Ok(())
     };
@@ -571,6 +677,14 @@ fn every_recorded_private_calibrator_replays() {
     for f in &failed {
         println!("FAIL {f}");
     }
-    assert!(names.len() >= 300 || only.is_some(), "the trace set is missing");
-    assert!(failed.is_empty(), "{} of {} traces differ from Node", failed.len(), passed + failed.len());
+    assert!(
+        names.len() >= 300 || only.is_some(),
+        "the trace set is missing"
+    );
+    assert!(
+        failed.is_empty(),
+        "{} of {} traces differ from Node",
+        failed.len(),
+        passed + failed.len()
+    );
 }
