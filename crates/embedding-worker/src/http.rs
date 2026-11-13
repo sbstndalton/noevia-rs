@@ -282,6 +282,28 @@ impl Http {
                 || (body.get("foregroundBusy") == Some(&Value::Bool(false))
                     && !crate::foreground::busy())))
     }
+    /// A JSON `POST` to `address` under the same address rules, no-redirect policy and caps as the
+    /// embedding requests (used by the native search's reranker: core `rag.cjs` sends it through the
+    /// same on-this-network fetch). `bearer` becomes `authorization: Bearer <key>`.
+    pub async fn post_json(
+        &self,
+        address: &str,
+        bearer: Option<&str>,
+        body: String,
+        timeout: Duration,
+        cap: usize,
+    ) -> Result<(u16, Value), String> {
+        self.request(
+            url(address)?,
+            Method::POST,
+            headers(bearer, "authorization")?,
+            Some(body),
+            timeout,
+            cap,
+        )
+        .await
+    }
+
     /// One query vector, as core `rag.cjs` `embedFramed` asks for a single framed text: exactly one
     /// item with a vector, else an error. A foreground read: no admission lease and no ownership
     /// proof (Node's query embedding takes neither); same address rules, headers and caps as the

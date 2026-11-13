@@ -10,6 +10,7 @@
 //! front of the search.
 
 use super::*;
+use project_retrieval::rerank::{self, Bench};
 use serde_json::{json, Value};
 use server_store::rusqlite;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -196,10 +197,9 @@ async fn run_seen(
 ) -> Outcome {
     let query = w.query.clone();
     let question = inputs.question.to_owned();
+    let (bench, knobs) = (Mutex::new(Bench::default()), HashMap::new());
     retrieve_with(
-        None,
-        Some("http://127.0.0.1:9"),
-        observed,
+        &deps(observed, &bench, &knobs),
         inputs,
         None,
         |target, framed| {
@@ -214,9 +214,28 @@ async fn run_seen(
             );
             async move { Ok(query) }
         },
+        no_reranker,
     )
     .await
     .text()
+}
+
+fn deps<'a>(
+    observed: &'a Mutex<Option<Observation>>,
+    bench: &'a Mutex<Bench>,
+    knobs: &'a HashMap<String, String>,
+) -> Deps<'a> {
+    Deps {
+        seed: None,
+        service_url: Some("http://127.0.0.1:9"),
+        observed,
+        bench,
+        knobs,
+    }
+}
+
+async fn no_reranker(_: rerank::Request, _: Option<String>) -> Option<(u16, Value)> {
+    panic!("the reranker is off")
 }
 
 fn pairs(o: Outcome) -> Vec<(String, String)> {
@@ -259,21 +278,9 @@ async fn wanted_versions_filter_as_in_node() {
 }
 
 #[tokio::test]
-async fn defers_while_the_reranker_is_on_or_its_settings_are_unreadable() {
+async fn defers_while_the_reranker_settings_are_unreadable() {
     let w = world();
     let calls = AtomicUsize::new(0);
-    let on: HashMap<String, String> = [
-        ("NOEVIA_FEATURE_RAG_RERANK".to_owned(), "1".to_owned()),
-        (
-            "RERANK_BASE_URL".to_owned(),
-            "http://qa-rerank:8080".to_owned(),
-        ),
-    ]
-    .into();
-    assert_eq!(
-        run(&w, inputs(&w, &on), &calls).await,
-        Outcome::Defer("reranker on")
-    );
     let env = HashMap::new();
     let mut i = inputs(&w, &env);
     i.rerank_env = None;
@@ -282,6 +289,96 @@ async fn defers_while_the_reranker_is_on_or_its_settings_are_unreadable() {
         Outcome::Defer("reranker settings unavailable")
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+/// With the reranker on, the cosine pool is `RAG_RERANK_POOL` wide and the reranker's order picks
+/// `RAG_RERANK_KEEP` hits; a failed answer is the cosine top six; three deadline misses bench it.
+#[tokio::test]
+async fn the_reranker_picks_the_kept_hits_and_falls_back_to_cosine() {
+    let w = world_for("ties between the two duplicate files");
+    let env: HashMap<String, String> = [
+        ("NOEVIA_FEATURE_RAG_RERANK", "1"),
+        ("RERANK_BASE_URL", "http://qa-rerank:8080"),
+        ("RERANK_BACKEND", "tei"),
+        ("RERANK_API_KEY", "qa-key"),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_owned(), v.to_owned()))
+    .collect();
+    let knobs: HashMap<String, String> = [
+        ("RAG_RERANK_POOL", "8"),
+        ("RAG_RERANK_KEEP", "3"),
+        ("RAG_RERANK_DEADLINE_MS", "100"),
+    ]
+    .into_iter()
+    .map(|(k, v)| (k.to_owned(), v.to_owned()))
+    .collect();
+    let (observed, bench) = (Mutex::new(None), Mutex::new(Bench::default()));
+    let search = |answer: Option<Value>, hang: bool| {
+        let (query, observed, bench, knobs, env) =
+            (w.query.clone(), &observed, &bench, &knobs, &env);
+        let i = Inputs {
+            question: "echo echo echo",
+            limit: TOP_K,
+            ..inputs(&w, env)
+        };
+        async move {
+            let sent = std::sync::Mutex::new(Vec::new());
+            let out = retrieve_with(
+                &deps(observed, bench, knobs),
+                i,
+                None,
+                |_, _| async move { Ok(query) },
+                |request: rerank::Request, bearer: Option<String>| {
+                    sent.lock().unwrap().push((request, bearer));
+                    async move {
+                        if hang {
+                            std::future::pending::<()>().await;
+                        }
+                        answer.map(|a| (200, a))
+                    }
+                },
+            )
+            .await
+            .text();
+            (pairs(out), sent.into_inner().unwrap())
+        }
+    };
+    // Eight cosine hits go to the reranker, which reverses them; three are kept.
+    let reverse = json!((0..8)
+        .map(|i| json!({"index": i, "score": i}))
+        .collect::<Vec<_>>());
+    let (got, sent) = search(Some(reverse), false).await;
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].0.url, "http://qa-rerank:8080/rerank");
+    assert_eq!(sent[0].1.as_deref(), Some("qa-key"));
+    let texts: Value = serde_json::from_str(&sent[0].0.body).unwrap();
+    assert_eq!(
+        texts["texts"].as_array().unwrap().len(),
+        8,
+        "the pool is RAG_RERANK_POOL wide"
+    );
+    let pool: Vec<String> = texts["texts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t.as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(got.len(), 3);
+    assert_eq!(
+        got.iter().map(|g| g.1.clone()).collect::<Vec<_>>(),
+        pool.iter().rev().take(3).cloned().collect::<Vec<_>>()
+    );
+    // A partial answer: the cosine top six, Node's recorded hits.
+    let (got, _) = search(Some(json!([{"index": 0, "score": 1}])), false).await;
+    assert_eq!(got, w.want);
+    // Three answers past the deadline bench the reranker: the fourth search sends nothing.
+    for _ in 0..3 {
+        let (got, sent) = search(None, true).await;
+        assert_eq!((got, sent.len()), (w.want.clone(), 1));
+    }
+    let (got, sent) = search(None, true).await;
+    assert_eq!((got, sent.len()), (w.want.clone(), 0));
 }
 
 #[tokio::test]
@@ -394,25 +491,24 @@ async fn an_embedding_failure_or_a_wrong_width_is_no_hits() {
     let w = world();
     let env = HashMap::new();
     let seen = Mutex::new(None);
+    let (bench, knobs) = (Mutex::new(Bench::default()), HashMap::new());
     let failed = retrieve_with(
-        None,
-        Some("http://127.0.0.1:9"),
-        &seen,
+        &deps(&seen, &bench, &knobs),
         inputs(&w, &env),
         None,
         |_, _| async { Err("embeddings 500".to_owned()) },
+        no_reranker,
     )
     .await
     .text();
     assert_eq!(failed, Outcome::Hits(Vec::new()));
     let wide = w.query.iter().copied().chain([0.5]).collect::<Vec<f32>>();
     let wrong = retrieve_with(
-        None,
-        Some("http://127.0.0.1:9"),
-        &seen,
+        &deps(&seen, &bench, &knobs),
         inputs(&w, &env),
         None,
         |_, _| async move { Ok(wide) },
+        no_reranker,
     )
     .await
     .text();

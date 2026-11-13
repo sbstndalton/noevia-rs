@@ -10,6 +10,7 @@
 //!   indexes Node wrote (`tests/generate_search_fixtures.cjs`).
 //! - [`policy`]: whether the reranker is on and whether embedding is off, the two decisions a
 //!   search makes before it embeds the query (`tests/generate_policy_fixtures.cjs`).
+//! - [`rerank`]: the optional reranker over the cosine pool (`tests/generate_rerank_fixtures.cjs`).
 //!
 //! Not here: embedding the query, the rerank client, image retrieval and any switch.
 
@@ -17,4 +18,5 @@ pub mod context;
 pub mod hits;
 pub mod names;
 pub mod policy;
+pub mod rerank;
 pub mod search;

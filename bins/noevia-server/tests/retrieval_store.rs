@@ -129,8 +129,22 @@ async fn embedding_stub(vector: Vec<f64>) -> (String, Arc<AtomicUsize>) {
                         }
                     }
                 }
-                count.fetch_add(1, Ordering::SeqCst);
-                let reply = json!({ "data": [{ "index": 0, "embedding": vector }] }).to_string();
+                let text = String::from_utf8_lossy(&buf).into_owned();
+                let (head, body) = text.split_once("\r\n\r\n").unwrap_or((&text, ""));
+                // The same stub is the reranker (TEI `POST /rerank`): it reverses the pool.
+                let reply = if head.starts_with("POST /rerank ") {
+                    let texts = serde_json::from_str::<Value>(body).unwrap()["texts"]
+                        .as_array()
+                        .unwrap()
+                        .len();
+                    json!((0..texts)
+                        .map(|i| json!({"index": i, "score": i}))
+                        .collect::<Vec<_>>())
+                    .to_string()
+                } else {
+                    count.fetch_add(1, Ordering::SeqCst);
+                    json!({ "data": [{ "index": 0, "embedding": vector }] }).to_string()
+                };
                 let out = format!(
                     "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
                     reply.len()
@@ -161,10 +175,12 @@ async fn rig(mode: &str, extra: &[(&str, &str)]) -> Rig {
         "qa-embed-map",
         q,
         want,
+        false,
     )
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn rig_on(
     mode: &str,
     extra: &[(&str, &str)],
@@ -173,6 +189,7 @@ async fn rig_on(
     model: &str,
     query_vector: &Value,
     want: Vec<Value>,
+    rerank_on_stub: bool,
 ) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
@@ -214,6 +231,16 @@ async fn rig_on(
     .collect();
     for (k, v) in extra {
         env.insert((*k).to_owned(), (*v).to_owned());
+    }
+    if rerank_on_stub {
+        for (k, v) in [
+            ("NOEVIA_FEATURE_RAG_RERANK", "1"),
+            ("RERANK_BACKEND", "tei"),
+            ("RERANK_BASE_URL", base.as_str()),
+            ("RAG_RERANK_KEEP", "3"),
+        ] {
+            env.insert(k.to_owned(), v.to_owned());
+        }
     }
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     let store = Store {
@@ -336,20 +363,18 @@ async fn refuses_bad_bodies_and_defers_what_is_nodes() {
     .await;
     assert_eq!(body, json!({ "hits": [] }));
     assert_eq!(r.embeds.load(Ordering::SeqCst), 0);
-    // The reranker on: Node's search, which reranks.
+    // The reranker on but unreachable: the cosine order answers (rerankPool's fallback), here.
     let rr = rig(
         "on",
         &[
             ("NOEVIA_FEATURE_RAG_RERANK", "1"),
-            ("RERANK_BASE_URL", "http://qa-rerank:8080"),
+            ("RERANK_BASE_URL", "http://127.0.0.1:9"),
+            ("RAG_RERANK_DEADLINE_MS", "500"),
         ],
     )
     .await;
-    assert_eq!(
-        ask(&rr, Some(TOKEN), &query(json!({}))).await.1,
-        json!({ "defer": "reranker on" })
-    );
-    assert_eq!(rr.embeds.load(Ordering::SeqCst), 0);
+    let (_, body) = ask(&rr, Some(TOKEN), &query(json!({}))).await;
+    assert_eq!(body["hits"].as_array().unwrap(), &rr.want, "{body}");
     // An account id that is not one: no account directory, no hits (Node's search found the index).
     let (_, body) = ask(&r, Some(TOKEN), &json!({ "user": "qa-not-an-account", "projectId": "qa-proj-1", "query": "q", "versions": {} }).to_string()).await;
     assert_eq!(body, json!({ "hits": [] }));
@@ -403,6 +428,7 @@ async fn image_search_answers_nodes_text_images_and_indexed() {
             "qa-embed-mm",
             &q["query_vector"],
             Vec::new(),
+            false,
         )
         .await;
         let body = json!({ "user": USER, "projectId": "qa-proj-img", "query": "alpha echo", "versions": {}, "images": true }).to_string();
@@ -414,4 +440,33 @@ async fn image_search_answers_nodes_text_images_and_indexed() {
             400
         );
     }
+}
+
+/// The reranker on and answering: the pool is `RAG_RERANK_POOL` (12) cosine hits, which the reranker
+/// reverses; `RAG_RERANK_KEEP` (3) of them come back, the weakest cosine hits first.
+#[tokio::test]
+async fn the_reranker_picks_the_kept_hits() {
+    let r = recorded();
+    let rig = rig_on(
+        "on",
+        &[],
+        &r["index"],
+        "qa-proj-1",
+        "qa-embed-map",
+        &r["search"]["query_vector"],
+        Vec::new(),
+        true,
+    )
+    .await;
+    let (status, body) = ask(&rig, Some(TOKEN), &query(json!({}))).await;
+    assert_eq!(status, 200, "{body}");
+    let hits = body["hits"].as_array().unwrap();
+    assert_eq!(hits.len(), 3, "{body}");
+    // Reversed: ascending cosine score.
+    let scores: Vec<f64> = hits.iter().map(|h| h["score"].as_f64().unwrap()).collect();
+    assert!(scores.windows(2).all(|w| w[0] <= w[1]), "{scores:?}");
+    assert!(
+        scores[0] < r["search"]["hits"][5]["score"].as_f64().unwrap(),
+        "from the wider pool"
+    );
 }

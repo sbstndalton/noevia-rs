@@ -1292,21 +1292,23 @@ fn seed_index(path: &std::path::Path) -> Vec<f64> {
 }
 
 /// Track R4 `NOEVIA_RUST_RETRIEVAL`: on, a job's project search is this process's (the embedding
-/// service gets the query, Node's bridge is never asked) unless it defers (the reranker is on);
-/// shadow, both run and Node's answer is used; off (the default), only the bridge.
+/// service gets the query, Node's bridge is never asked), also with the reranker on (an unreachable
+/// one: the cosine order answers), unless it defers (a target on the shared engine); shadow, both
+/// run and Node's answer is used; off (the default), only the bridge.
 #[tokio::test]
 async fn native_retrieval_answers_a_job_when_on_and_runs_beside_the_bridge_in_shadow() {
     let rerank = [
         ("NOEVIA_FEATURE_RAG_RERANK", "1".to_owned()),
-        ("RERANK_BASE_URL", "http://qa-rerank:8080".to_owned()),
+        ("RERANK_BASE_URL", "http://127.0.0.1:9".to_owned()),
     ];
-    for (mode, extra) in [
-        ("on", &[][..]),
-        ("shadow", &[][..]),
-        ("off", &[][..]),
-        ("on", &rerank[..]),
+    for (mode, extra, shared) in [
+        ("on", &[][..], false),
+        ("shadow", &[][..], false),
+        ("off", &[][..], false),
+        ("on", &rerank[..], false),
+        ("on", &[][..], true),
     ] {
-        let deferred = !extra.is_empty();
+        let deferred = shared;
         let vector: Arc<Mutex<Vec<f64>>> = Arc::default();
         let answer = Arc::clone(&vector);
         let embed = Stub::start(Arc::new(move |_m, p, _b| {
@@ -1332,7 +1334,7 @@ async fn native_retrieval_answers_a_job_when_on_and_runs_beside_the_bridge_in_sh
         std::fs::write(
             f.data.join("embedding-config.json"),
             json!({"version": 1, "active": {"model": "qa-embed-map", "profile": "embeddinggemma-2",
-                "baseUrl": format!("http://{}", embed.addr)}, "next": null, "previous": null})
+                "baseUrl": if shared { Value::Null } else { json!(format!("http://{}", embed.addr)) }}, "next": null, "previous": null})
             .to_string(),
         )
         .unwrap();
@@ -1372,7 +1374,7 @@ async fn native_retrieval_answers_a_job_when_on_and_runs_beside_the_bridge_in_sh
                 bridge > 0 && native == bridge,
                 "{mode}: bridge {bridge}, native {native}"
             ),
-            // Off, and on with the reranker on (the native search defers): the bridge alone.
+            // Off, and on with a shared-engine target (the native search defers): the bridge alone.
             _ => assert!(
                 bridge > 0 && native == 0,
                 "{mode}: bridge {bridge}, native {native}"

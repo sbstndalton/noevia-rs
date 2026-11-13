@@ -14,9 +14,13 @@
 //! hits is no hits here. While it runs it holds `embedding_worker::foreground`, as Node holds
 //! `foreground()`, so the native outbox and media passes yield to it.
 //!
-//! Defers to the bridge: the reranker is on (its client is not ported yet), the active target has no
-//! address of its own (it embeds on the shared inference engine, whose admission is Node's), or the
-//! embedding configuration or the reranker settings cannot be read.
+//! With the reranker on (`NOEVIA_FEATURE_RAG_RERANK` and a reranker address, the admin's switch over
+//! them), the cosine pool is `RAG_RERANK_POOL` wide and `project_retrieval::rerank` asks the reranker
+//! for the kept hits within its deadline, falling back to the cosine order as `rerankPool` does.
+//!
+//! Defers to the bridge: the active target has no address of its own (it embeds on the shared
+//! inference engine, whose admission is Node's), or the embedding configuration or the reranker
+//! settings cannot be read.
 //!
 //! Named differences from Node:
 //! - Node's own gate can also refuse an embedding for a reason only it knows (a boot fence, a
@@ -27,7 +31,8 @@
 //! - A research job's search does not see Node's in-process wanted versions (a re-index Node runs
 //!   itself; the native index writer is the outbox, which replaces a file's chunks in one
 //!   transaction). Node's own searches send theirs ([`Inputs::versions`]).
-//! - those of `project_retrieval::search`: tie-order and unclaimed-legacy.
+//! - those of `project_retrieval::search` (tie-order, unclaimed-legacy) and of
+//!   `project_retrieval::rerank` (the request cut at the deadline, this process's own bench).
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -35,9 +40,8 @@ use std::sync::Mutex;
 
 use embedding_worker::{http::Http, runtime, Config as EmbeddingConfig, Target};
 use project_retrieval::hits::Hit;
-use project_retrieval::policy::{
-    current_snapshot, embedding_off, observe, rerank_target, Observation,
-};
+use project_retrieval::policy::{current_snapshot, embedding_off, observe, Observation};
+use project_retrieval::rerank::{self, Bench};
 use project_retrieval::search::{self, ImageSettings, Versions, WithImages};
 use prompt_framing::embedding_input::{self, Kind, Profile};
 use prompt_framing::js::units;
@@ -105,6 +109,34 @@ pub struct Retrieval {
     observed: Mutex<Option<Observation>>,
     /// `RAG_IMAGE_TOP_K` and `RAG_IMAGE_MIN_SCORE`, read once as `rag.cjs` reads them at load.
     pub images: ImageSettings,
+    /// `RAG_RERANK_POOL`, `RAG_RERANK_KEEP`, `RAG_RERANK_DEADLINE_MS` and `RERANK_API_KEY` of this
+    /// process (`rag.cjs` reads them from `process.env`).
+    knobs: HashMap<String, String>,
+    /// The reranker's deadline bench, this process's.
+    bench: Mutex<Bench>,
+}
+
+/// What a search reads besides its question.
+pub struct Deps<'a> {
+    pub seed: Option<&'a EmbeddingConfig>,
+    pub service_url: Option<&'a str>,
+    pub observed: &'a Mutex<Option<Observation>>,
+    pub bench: &'a Mutex<Bench>,
+    pub knobs: &'a HashMap<String, String>,
+}
+
+const KNOBS: [&str; 4] = [
+    "RAG_RERANK_POOL",
+    "RAG_RERANK_KEEP",
+    "RAG_RERANK_DEADLINE_MS",
+    "RERANK_API_KEY",
+];
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match m.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    }
 }
 
 impl std::fmt::Debug for Retrieval {
@@ -140,6 +172,11 @@ impl Retrieval {
                 get("RAG_IMAGE_TOP_K").as_deref(),
                 get("RAG_IMAGE_MIN_SCORE").as_deref(),
             ),
+            knobs: KNOBS
+                .iter()
+                .filter_map(|k| get(k).map(|v| ((*k).to_owned(), v)))
+                .collect(),
+            bench: Mutex::new(Bench::default()),
         })
     }
 
@@ -151,6 +188,8 @@ impl Retrieval {
             http: None,
             observed: Mutex::new(None),
             images: ImageSettings::from_env(None, None),
+            knobs: HashMap::new(),
+            bench: Mutex::new(Bench::default()),
         }
     }
 
@@ -169,13 +208,29 @@ impl Retrieval {
         let Some(http) = &self.http else {
             return Outcome::Defer("embedding client unavailable");
         };
+        let deps = Deps {
+            seed: self.seed.as_ref(),
+            service_url: self.service_url.as_deref(),
+            observed: &self.observed,
+            bench: &self.bench,
+            knobs: &self.knobs,
+        };
         retrieve_with(
-            self.seed.as_ref(),
-            self.service_url.as_deref(),
-            &self.observed,
+            &deps,
             inputs,
             images,
             |target, framed| async move { http.embed_query(&target, &framed).await },
+            |request: rerank::Request, bearer: Option<String>| async move {
+                http.post_json(
+                    &request.url,
+                    bearer.as_deref(),
+                    request.body,
+                    std::time::Duration::from_secs(60),
+                    rerank::MAX_ANSWER_BYTES,
+                )
+                .await
+                .ok()
+            },
         )
         .await
     }
@@ -227,24 +282,30 @@ struct Disk {
 
 /// [`Retrieval::retrieve_images`] with the embedding call given (tests answer it from a recording).
 /// `images`: also the image half (`searchProjectWithImages`, whose empty answer is the same shape).
-pub async fn retrieve_with<E, F>(
-    seed: Option<&EmbeddingConfig>,
-    service_url: Option<&str>,
-    observed: &Mutex<Option<Observation>>,
+/// `send` posts one reranker request (with the API key as the bearer) and answers its status and
+/// JSON body, or `None` when it failed; the reranker's deadline is raced here.
+pub async fn retrieve_with<E, F, S, G>(
+    deps: &Deps<'_>,
     inputs: Inputs<'_>,
     images: Option<ImageSettings>,
     embed: E,
+    send: S,
 ) -> Outcome<WithImages>
 where
     E: FnOnce(Target, Vec<u16>) -> F,
     F: Future<Output = Result<Vec<f32>, String>>,
+    S: FnOnce(rerank::Request, Option<String>) -> G,
+    G: Future<Output = Option<(u16, serde_json::Value)>>,
 {
+    let (seed, service_url, observed) = (deps.seed, deps.service_url, deps.observed);
     let none = Outcome::Hits(WithImages::default());
-    match inputs.rerank_env {
-        None => return Outcome::Defer("reranker settings unavailable"),
-        Some(env) if rerank_target(env).enabled => return Outcome::Defer("reranker on"),
-        Some(_) => {}
-    }
+    // `initRerank` over the reranker's effective environment: on, the cosine pool is wider and the
+    // reranker picks the kept hits (`rerankPool`).
+    let Some(env) = inputs.rerank_env else {
+        return Outcome::Defer("reranker settings unavailable");
+    };
+    let reranker = rerank::Config::from_env(env, |k| deps.knobs.get(k).cloned());
+    let pool = reranker.as_ref().map_or(TOP_K, |c| c.pool);
     let path = index_path(inputs.data_dir, inputs.user, inputs.project);
     // An invalid environment seed still reads a saved configuration; without one it is refused.
     let seed = seed.cloned().unwrap_or_else(runtime::invalid_seed);
@@ -328,9 +389,9 @@ where
         };
         match images {
             Some(settings) => {
-                search::search_with_images(&conn, target, &query, TOP_K, &versions, settings).ok()
+                search::search_with_images(&conn, target, &query, pool, &versions, settings).ok()
             }
-            None => search::search(&conn, target, &query, TOP_K, &versions)
+            None => search::search(&conn, target, &query, pool, &versions)
                 .ok()
                 .map(|text| WithImages {
                     text,
@@ -341,6 +402,32 @@ where
     .await
     .flatten()
     .unwrap_or_default();
+    if let Some(cfg) = reranker {
+        let hits = std::mem::take(&mut found.text);
+        let ranking = if !rerank::needed(&hits) || lock(deps.bench).benched(inputs.now_ms) {
+            None
+        } else {
+            let request = rerank::request(&cfg, inputs.question, &hits);
+            let deadline = std::time::Duration::from_millis(cfg.deadline_ms);
+            match tokio::time::timeout(deadline, send(request, cfg.api_key.clone())).await {
+                Err(_) => {
+                    lock(deps.bench).missed(inputs.now_ms + cfg.deadline_ms as f64);
+                    None
+                }
+                Ok(answer) => {
+                    let scores = answer.and_then(|(status, body)| {
+                        rerank::parse_value(cfg.backend, hits.len(), status, &body)
+                    });
+                    // Only an answer the backend accepts resets the misses (a throw leaves them).
+                    if scores.is_some() {
+                        lock(deps.bench).answered();
+                    }
+                    scores.map(|s| rerank::order(&s))
+                }
+            }
+        };
+        found.text = rerank::merge(hits, cfg.keep, ranking);
+    }
     found.text.truncate(inputs.limit);
     Outcome::Hits(found)
 }
