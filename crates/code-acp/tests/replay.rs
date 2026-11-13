@@ -189,7 +189,7 @@ fn run(f: &JValue, sc: &JValue) -> JValue {
                     let j = JValue::obj([(
                         "ok",
                         JValue::obj([
-                            ("sessionId", JValue::Str(c.session_id().to_string())),
+                            ("sessionId", c.session().clone()),
                             ("agent", c.agent().clone()),
                         ]),
                     )]);
@@ -289,6 +289,10 @@ fn every_node_transcript_replays() {
         panic!()
     };
     for (name, sc) in all {
+        // The spawn transport's transcript has no socket to replay over: see the spawn tests.
+        if sc.get("transport").as_str() == Some("spawn") {
+            continue;
+        }
         let node = sc.get("transcript");
         let got = run(&f, sc);
         for key in ["lines", "handlers", "logs", "connect", "prompt"] {
@@ -582,4 +586,142 @@ fn endpoints_are_host_and_port() {
             format!("CODE_HARNESS_ENDPOINT should be host:port, not \"{bad}\"")
         );
     }
+}
+
+#[test]
+fn a_spawned_agent_that_exits_ends_the_prompt_as_node_says_even_if_its_child_lingers() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = fixture();
+    let node = f.get("scenarios").get("spawn-exit").get("transcript");
+    let dir = tempfile::tempdir().unwrap();
+    let agent = dir.path().join("qa-agent");
+    // Answers the handshake, takes the prompt, leaves a child holding stdout, exits 3.
+    fs::write(
+        &agent,
+        "#!/bin/sh\nread a\necho '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'\nread b\necho '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-spawned\"}}'\nread c\nsleep 20 &\nexit 3\n",
+    )
+    .unwrap();
+    fs::set_permissions(&agent, fs::Permissions::from_mode(0o755)).unwrap();
+    let options = Options::new(
+        Transport::Spawn {
+            command: agent.to_str().unwrap().to_string(),
+            args: Vec::new(),
+        },
+        dir.path().to_str().unwrap(),
+    );
+    let conn = connect(options, Arc::new(Quiet), Cancel::new()).unwrap();
+    let t = Instant::now();
+    let e = conn.prompt("QA").unwrap_err();
+    assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+    assert_eq!(text(&error_json(&e)), text(node.get("prompt").get("error")));
+}
+
+#[test]
+fn a_cancel_is_not_held_up_by_an_agent_that_stops_reading() {
+    let port = sandbox(|_r, _w| {
+        // Never reads again; keeps the socket open.
+        std::thread::sleep(Duration::from_secs(20));
+    });
+    let cancel = Cancel::new();
+    let conn = connect(
+        Options::new(Transport::Socket(format!("127.0.0.1:{port}")), "/qa"),
+        Arc::new(Quiet),
+        cancel.clone(),
+    )
+    .unwrap();
+    let big = "x".repeat(64 * 1024 * 1024);
+    let prompting = std::thread::spawn(move || conn.prompt(&big));
+    std::thread::sleep(Duration::from_millis(300));
+    let t = Instant::now();
+    cancel.cancel();
+    assert!(
+        t.elapsed() < Duration::from_secs(3),
+        "cancel took {:?}",
+        t.elapsed()
+    );
+    let e = prompting.join().unwrap().unwrap_err();
+    assert_eq!(e.message, "Cancelled");
+}
+
+#[test]
+fn an_agent_cannot_make_noevia_start_threads_without_limit() {
+    struct Holds(Mutex<Option<mpsc::Receiver<()>>>);
+    impl Handlers for Holds {
+        fn request_permission(&self, _: &JValue) -> Result<JValue, Refusal> {
+            // Every permission waits until the test lets them all go.
+            let rx = self.0.lock().unwrap().take();
+            if let Some(rx) = rx {
+                let _ = rx.recv_timeout(Duration::from_secs(10));
+            } else {
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            Ok(JValue::Null)
+        }
+        fn read_text_file(&self, _: &JValue) -> Result<JValue, Refusal> {
+            Ok(JValue::Null)
+        }
+        fn write_text_file(&self, _: &JValue) -> Result<JValue, Refusal> {
+            Ok(JValue::Null)
+        }
+        fn session_update(&self, _: &JValue) {}
+    }
+    let (_go, rx) = mpsc::channel();
+    let (seen_tx, seen_rx) = mpsc::channel::<String>();
+    let port = sandbox(move |mut r, mut w| {
+        let mut l = String::new();
+        r.read_line(&mut l).unwrap(); // the prompt
+        for i in 0..1000 {
+            writeln!(w, r#"{{"jsonrpc":"2.0","id":{i},"method":"session/request_permission","params":{{}}}}"#).unwrap();
+        }
+        let mut refused = 0;
+        while refused < 1000 - code_acp::MAX_IN_FLIGHT {
+            l.clear();
+            if r.read_line(&mut l).unwrap() == 0 {
+                break;
+            }
+            if l.contains("Too many requests at once.") {
+                refused += 1;
+            }
+        }
+        seen_tx.send(format!("{refused}")).unwrap();
+        writeln!(w, r#"{{"jsonrpc":"2.0","id":3,"result":{{}}}}"#).unwrap();
+    });
+    let conn = connect(
+        Options::new(Transport::Socket(format!("127.0.0.1:{port}")), "/qa"),
+        Arc::new(Holds(Mutex::new(Some(rx)))),
+        Cancel::new(),
+    )
+    .unwrap();
+    let prompting = std::thread::spawn(move || conn.prompt("QA"));
+    let refused: usize = seen_rx
+        .recv_timeout(Duration::from_secs(30))
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(refused, 1000 - code_acp::MAX_IN_FLIGHT);
+    prompting.join().unwrap().unwrap();
+}
+
+#[test]
+fn connecting_is_bounded_by_the_handshake_and_a_cancel() {
+    // An address nothing answers on: whatever the network does with it, connect gives up in time.
+    let mut options = Options::new(Transport::Socket("10.255.255.1:9".into()), "/qa");
+    options.handshake = Duration::from_millis(300);
+    let t = Instant::now();
+    assert!(connect(options, Arc::new(Quiet), Cancel::new()).is_err());
+    assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+    let options = Options::new(Transport::Socket("10.255.255.1:9".into()), "/qa");
+    let cancel = Cancel::new();
+    let c2 = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        c2.cancel();
+    });
+    let t = Instant::now();
+    let e = connect(options, Arc::new(Quiet), cancel).err().unwrap();
+    assert!(t.elapsed() < Duration::from_secs(3), "{:?}", t.elapsed());
+    assert!(
+        e.message == "Cancelled" || e.message.starts_with("The coding sandbox is unreachable"),
+        "{e:?}"
+    );
 }

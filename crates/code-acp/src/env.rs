@@ -12,11 +12,10 @@ pub struct Proxy {
     pub no_proxy: Option<String>,
 }
 
+/// `obj[key] = value` (a missing value is JS `undefined`: the key keeps its place and is dropped
+/// at the end, as `agentEnv` deletes undefined keys after building the object).
 fn set(items: &mut Vec<(String, JValue)>, key: &str, value: Option<String>) {
-    match value {
-        Some(v) => wtf16::set(items, key, JValue::Str(v)),
-        None => items.retain(|(k, _)| k != key),
-    }
+    wtf16::set(items, key, value.map_or(JValue::Undefined, JValue::Str));
 }
 
 /// code-acp.cjs `agentEnv`: nothing inherited but `PATH` and `LANG` (given here, read from the
@@ -61,6 +60,7 @@ pub fn agent_env(
     }
     set(&mut out, "CURL_HOME", Some("/nonexistent".into()));
     set(&mut out, "WGETRC", Some("/dev/null".into()));
+    out.retain(|(_, v)| !matches!(v, JValue::Undefined));
     JValue::Obj(out)
 }
 
@@ -197,16 +197,8 @@ pub(crate) fn js_number(v: &JValue) -> f64 {
         JValue::Null => 0.0,
         JValue::Bool(b) => f64::from(u8::from(*b)),
         JValue::Str(s) => string_number(s),
-        JValue::Arr(items) => match items.as_slice() {
-            [] => 0.0,
-            [one] if !matches!(one, JValue::Arr(_) | JValue::Obj(_)) => match one {
-                JValue::Null | JValue::Undefined => 0.0,
-                other => js_number(&JValue::Str(
-                    js_json::to_js_string(other).unwrap_or_default(),
-                )),
-            },
-            _ => f64::NAN,
-        },
+        // `Number([x])` is `Number(String([x]))`.
+        JValue::Arr(_) => js_json::to_js_string(v).map_or(f64::NAN, |s| string_number(&s)),
         JValue::Undefined | JValue::Obj(_) => f64::NAN,
     }
 }
@@ -228,10 +220,18 @@ fn string_number(s: &str) -> f64 {
             if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
                 return f64::NAN;
             }
-            return digits
-                .chars()
-                .filter_map(|c| c.to_digit(radix))
-                .fold(0.0, |acc, d| acc * f64::from(radix) + f64::from(d));
+            // The exact integer, then one rounding to a double (as JS does), while it fits.
+            let exact = digits.chars().try_fold(0u128, |acc, c| {
+                acc.checked_mul(u128::from(radix))?
+                    .checked_add(u128::from(c.to_digit(radix)?))
+            });
+            return match exact {
+                Some(n) => n as f64,
+                None => digits
+                    .chars()
+                    .filter_map(|c| c.to_digit(radix))
+                    .fold(0.0, |acc, d| acc * f64::from(radix) + f64::from(d)),
+            };
         }
     }
     let (sign, body) = match t.strip_prefix('-') {
