@@ -286,13 +286,45 @@ pub fn mint_discovery_token(key: &[u8], now_ms: i64, jti: &str) -> String {
         r#"{{"v":1,"uid":null,"pid":null,"cid":null,"jti":"{jti}","exp":{},"w":0,"d":1}}"#,
         now_ms + DISCOVERY_TOKEN_TTL_MS
     );
+    sign_token(key, &payload)
+}
+
+/// core `mcp-internal.cjs`: `base64url(payload) "." base64url(HMAC-SHA256(key, base64url(payload)))`.
+pub(crate) fn sign_token(key: &[u8], payload: &str) -> String {
     let body = b64url(payload.as_bytes());
     let signature = hmac_sha256(key, body.as_bytes());
     format!("{body}.{}", b64url(&signature))
 }
 
+/// Every configured server (the operator's, then the directory's) as discovery sees it. A directory table
+/// that cannot be read is no directory servers (core `directory-mcp.cjs` fails closed the same way), and
+/// the operator's servers stay.
+pub(crate) async fn server_specs(app: &Arc<App>) -> Vec<ServerSpec> {
+    let mut out = operator_servers(&app.config.mcp);
+    let Some(mcp) = app.mcp.as_ref().map(Arc::clone) else {
+        return out;
+    };
+    let app = Arc::clone(app);
+    let specs = tokio::task::spawn_blocking(move || {
+        mcp.dir_rows(&app).ok().map(|rows| specs_of(&mcp, &rows))
+    })
+    .await
+    .ok()
+    .flatten();
+    out.extend(specs.unwrap_or_default());
+    out
+}
+
+/// The capability-token key (`derive('mcp-internal-token')`), as discovery derives it.
+pub(crate) fn internal_token_key(mcp: &Mcp) -> Option<Vec<u8>> {
+    let keys = mcp.keys()?;
+    let (key, _) = keys
+        .derive_with(|secret| google_token_seal::derive_secret_key(secret, "mcp-internal-token"));
+    Some(key.as_slice().to_vec())
+}
+
 /// A random version-4 UUID, as `crypto.randomUUID()`.
-fn uuid_v4() -> String {
+pub(crate) fn uuid_v4() -> String {
     let mut b = crate::mcp_broker::random::<16>();
     b[6] = (b[6] & 0x0f) | 0x40;
     b[8] = (b[8] & 0x3f) | 0x80;

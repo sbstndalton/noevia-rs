@@ -1851,7 +1851,66 @@ The bridge checks the active account, owner, kind and generation synchronously b
 resolver; invalid choices never consume it. Routing remember remains strictly boolean and cannot grant writes.
 The old public Node handler is deleted and its bypass returns `RUST_TOOL_APPROVALS_OWNED`.
 Release assembly and startup require the capability and refusal together; an old/old pair remains a valid rollback.
+
+## Port contract 2026-11-04 S9: the approval registry
+
+`rust-approval-registry` moves the pending approvals themselves into the front (`approval_registry.rs`):
+the write questions, the routing questions (#778) and the chat-wide "Allow for this chat" grants. The
+#2282 facts/resolve bridge, Node's `rust-tool-approval-bridge.cjs` and the spawned resolve task are gone:
+the public decision route consumes the answer in this process, inside cowork.db's IMMEDIATE writer lock
+after a live check of the account. Node's turn uses the private store: `POST /v1/approvals/open` before it
+shows the card, then `POST /v1/approvals/wait`, a long-poll that ends with `approve`, `deny`, `timeout`
+or the routing choice. When Node drops the wait (the person left), the question is withdrawn, so a late
+answer is a 404 and nothing is recorded as declined (#679). `granted` and `revoke` replace
+`chatWideApproved` and `revokeChatGrant`. The rules are Node's: 5 minutes to answer, a 1 hour grant bound
+to its scope and to the permission binding. The registry also compares a grant with the chat's live grant
+context on every check, so a move (new generation), a delete (tombstone) or a restart (new start id)
+revokes it; the public move and delete routes drop it at once.
+
+Nothing survives a restart, as before: the registry is in-memory and the supervisor restarts the front
+and Node together under a new start id. Core's marker is `server/rust-approval-registry.cjs`, required
+from `index.cjs`. Assembly and startup refuse mixed pairs, and old/old remains a valid rollback.
 This supersedes the earlier sections calling the public approval endpoint chat-bound; the pending state still is.
+
+`registry-executor-v3` is the grant protocol. `granted` issues an expiring single-use ticket,
+`redeem` consumes it under the registry lock, and Node's executor checks its captured revocation
+epoch immediately before each outbound write. Credential loading, connection establishment and
+credential refresh happen before that final synchronous check-and-send block. This includes MCP
+`transport.callTool` and built-in Drive write fetches. The local 2 s fence expiry is extra defence;
+elapsed time and wrapper entry never acknowledge that a write was sent.
+
+Every completing revoke (store revoke, store move/delete, public move/delete before and after,
+including failed operations, project delete, and grant/redeem live-context invalidation) first revokes in the registry, then calls Node's
+private `POST /internal/approvals/revoke {user,chat,protocol}` with the shared per-start store token.
+Only a direct loopback request without client-forwarding headers is accepted. Node advances its
+epoch synchronously before returning `{acknowledged:true,protocol}`. Project deletion uses `chat:null`
+to invalidate the user's outstanding tickets conservatively, including tickets whose front grants
+have already disappeared. No success is returned without this acknowledgement (2 s bound).
+
+Node unreachable, timed out, wrong protocol or refusing: 503 `Approval revocation pending; retry`.
+The front revocation stays recorded. A context-invalidating grant check or redeem also waits for
+this acknowledgement before its 200/false answer. An unconfirmed context invalidation remains
+pending after the grant/ticket is removed; subsequent checks retry it and keep returning 503 until
+it is confirmed. Each required fence snapshots the current generation and retires the scopes its
+acknowledgement covers, at or below that generation. Explicit revokes wait only for their own target;
+context checks wait only for their own pending generations. Only the existing project/user fence is
+user-wide. Other pending chats are reconciled in a detached, coalesced cleanup task (at most one per
+peer, with its own two-second deadline). It never delays or fails the caller. Each successful scope
+retires its covered markers; failed scopes remain retryable. Newer generations survive an older
+acknowledgement, and chat aliases are canonicalised. There is no time-based eviction.
+
+Outstanding markers and in-flight checks reserve at most 64 distinct chat slots globally.
+Reservations span the blocking context read, so concurrent checks cannot exceed the cap. At capacity, new grant and
+redeem admission returns 503 without issuing or consuming a ticket. It queues the same bounded
+background drain; a retry can proceed once acknowledgements free capacity. Saturated revocation
+generations also refuse admission. No grant is evicted to make room and no paused executor's fence is discarded. Node-originated revokes retain the existing pending-revoke
+backoff; public/store mutation callers can retry. If the second acknowledgement fails, a mutation
+may already have applied but its response is 503; no successful revocation is claimed. This is a
+fail-closed API deviation. The retired `started` op and front time drain are removed.
+
+A grant check/redeem without the exact protocol gets no grant. Assembly and startup require
+`REGISTRY_PROTOCOL = 'registry-executor-v3'` on Core and the matching front capability, rejecting
+v2/v3 pairs in both directions. Nothing survives restart; both processes restart together.
 
 
 GET only of `/api/models/autotune` belongs to `autotune_read_routes.rs`

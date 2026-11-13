@@ -129,6 +129,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "autotune-runner"
+version = "0.1.0"
+dependencies = [
+ "autotune-plan",
+ "autotune-start",
+ "js-json",
+ "llamacpp-autoconfig",
+ "llamacpp-presets",
+ "regex",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
+name = "autotune-start"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "llamacpp-presets",
+]
+
+[[package]]
 name = "axum"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -424,6 +446,21 @@ dependencies = [
  "proptest",
  "provider-error",
  "serde_json",
+]
+
+[[package]]
+name = "chat-turn"
+version = "0.1.0"
+dependencies = [
+ "context-fit",
+ "js-json",
+ "prompt-framing",
+ "provider-error",
+ "regex",
+ "serde_json",
+ "sha2",
+ "stream-guard",
+ "tool-exchange",
 ]
 
 [[package]]
@@ -951,6 +988,13 @@ name = "docx-text-cli"
 version = "0.1.0"
 dependencies = [
  "docx-text",
+ "serde_json",
+]
+
+[[package]]
+name = "drive-tools"
+version = "0.1.0"
+dependencies = [
  "serde_json",
 ]
 
@@ -1870,6 +1914,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
+name = "mcp-client"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "mcp-frame"
 version = "0.1.0"
 dependencies = [
@@ -2161,6 +2212,7 @@ dependencies = [
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "drive-tools",
  "egress",
  "egress-issuer",
  "embedding-worker",
@@ -2183,6 +2235,7 @@ dependencies = [
  "offsite-backup-format",
  "policy-leaves",
  "preset-reload",
+ "project-retrieval",
  "prompt-framing",
  "provider-egress",
  "rand_core 0.6.4",
@@ -2220,6 +2273,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "toml",
+ "tool-rate-limit",
  "toolboxes-permitted",
  "tower",
  "url",
@@ -3976,6 +4030,15 @@ dependencies = [
  "proptest",
  "ssrf-policy",
  "url",
+]
+
+[[package]]
+name = "tool-rate-limit"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "policy-leaves",
+ "serde_json",
 ]
 
 [[package]]

@@ -18,6 +18,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub approval_revocation: crate::approval_revocation::Revoker,
     pub host: String,
     pub port: u16,
     pub trust_proxy: bool,
@@ -25,6 +26,8 @@ pub struct Config {
     /// Deep research (sbstndalton/noevia#2218): the engine address, the bridge to Node and the flag's
     /// environment override, as core index.cjs reads them.
     pub research: std::sync::Arc<crate::research_routes::Research>,
+    /// Native project retrieval for research (`NOEVIA_RUST_RETRIEVAL`, off by default; track R4).
+    pub retrieval: std::sync::Arc<crate::native_retrieval::Retrieval>,
     pub dist: PathBuf,
     pub stamp_version: Option<String>,
     /// COWORK_CODE_NET_ADDR, parsed as core code-net-guard.cjs does (empty: no guard).
@@ -394,12 +397,17 @@ impl Config {
             host,
             port,
             trust_proxy: get("TRUST_PROXY").as_deref() == Some("true"),
+            retrieval: std::sync::Arc::new(crate::native_retrieval::Retrieval::from_lookup(&get)?),
             research: std::sync::Arc::new(crate::research_routes::Research::new(
                 crate::research_routes::Settings::from_lookup(
                     &get,
                     format!("http://{}", upstream.authority()),
                 )?,
             )?),
+            approval_revocation: crate::approval_revocation::Revoker::new(
+                format!("http://{}", upstream.authority()),
+                get("NOEVIA_PROJECT_STORE_TOKEN"),
+            ),
             upstream,
             dist: get("NOEVIA_WEB_DIST")
                 .filter(|d| !d.is_empty())

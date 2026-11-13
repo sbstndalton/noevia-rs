@@ -88,6 +88,34 @@
 //! settle and invalidate answer once their write was tried. Without the front's model maintenance
 //! (no App) they are 503.
 //!
+//! The chat approval registry (port contract 2026-11-04 S9, capability `rust-approval-registry`;
+//! approval_registry.rs): Node's turn opens a question before it shows the card, then waits for
+//! it. The public `POST /api/tool-approvals/{id}` answers it in this process. Without the front's
+//! App every op is 503.
+//!
+//! `POST /v1/approvals/open { user, id, kind: "write"|"route", chat?, scope?, binding?, once? }`
+//!                                                  -> 200 `{ opened: true }`
+//!                                                   | 409 `{ error, code: "APPROVAL_EXISTS" }`
+//!                                                   | 503 `{ error, code: "APPROVALS_FULL" }`
+//! `POST /v1/approvals/wait { user, id }`          -> 200 `{ outcome }` once answered or timed out
+//!   (`approve` | `deny` | `timeout`; a routing question `cloud` | `local` with `remember`).
+//!   A long-poll: when Node drops the request (its turn stopped) the question is withdrawn, so a
+//!   later answer finds nothing (#679: stopped, not declined). 404 `{ error }` no such question.
+//! `POST /v1/approvals/cancel { user, id }`        -> 200 `{ cancelled }` (opened, never waited)
+//! `POST /v1/approvals/granted { user, chat, scope, binding, protocol }` -> 200 `{ granted, ticket? }`
+//! `POST /v1/approvals/redeem { user, chat, scope, binding, ticket, protocol }`
+//!                                                  -> 200 `{ redeemed, protocol, window_ms }`
+//!   Capability `registry-executor-v3`: `protocol` must be that string, or the answer is no grant
+//!   (`code: "APPROVAL_PROTOCOL"`), so a Core from before tickets never reads a ticket as approval.
+//!   A grant answer authorises nothing by itself: Node redeems its single-use ticket just before
+//!   it dispatches the write, and the redeem succeeds only if no revocation of that chat (Node's,
+//!   a move, a delete, a failed move, anything) ordered before it under the registry's lock.
+//!   The executor rechecks Node's revocation epoch immediately before its outbound write.
+//! `POST /v1/approvals/revoke { user, chat }` -> 200 `{ revoked }` only after authenticated Node
+//!   epoch acknowledgement; 503 on missing/refused/timed-out acknowledgement. Revocation is still
+//!   recorded; Node's pending-revoke backoff retries it. Mutations fence before and after as well.
+
+//!
 //! Errors use Node's shapes: 503 `{ error, code: "PROJECTS_BUSY" }` (the lock was held past its
 //! wait), 410 `account no longer exists`, 400 a bad request, 413 a body over the limit, 500 else.
 //! The body limit is [`BODY_LIMIT`]; a request's file work runs on the blocking pool.
@@ -668,11 +696,45 @@ pub fn router_with_app(
         }),
     );
     router = router.merge(roles_route);
+    // Rust port track R4: Node's project search through the native one (native_retrieval.rs).
+    let retrieval_store = store.clone();
+    let retrieval_app = app.clone();
+    router = router.route(
+        "/v1/retrieval/search",
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let store = retrieval_store.clone();
+            let app = retrieval_app.clone();
+            async move {
+                if !authorised(&store, &headers) {
+                    return error(StatusCode::UNAUTHORIZED, "unauthorized");
+                }
+                let Some(app) = app else {
+                    return reply(StatusCode::OK, &json!({ "defer": "unavailable" }));
+                };
+                let (status, body) = crate::native_retrieval::store_answer(app, &raw).await;
+                reply_text(
+                    StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    body,
+                )
+            }
+        }),
+    );
     // Port contract 2026-11-04 RS-1: the preset reload baseline's authority.
     router = router.merge(preset_baseline_routes(
         store.clone(),
         app.as_ref().map(|a| a.config.maint.guard.clone()),
     ));
+    // Port contract 2026-11-04 S9: the chat approval registry (approval_registry.rs).
+    for op in ["open", "wait", "cancel", "granted", "redeem", "revoke"] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/approvals/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move { approvals_op(store, app, headers, raw, op).await }
+            }),
+        );
+    }
     // Port contract row H: Node's session with the inference admission lease authority.
     router = router.merge(inference_admission_routes(store.clone()));
     // Port contract row J: the maintenance lease authority, for Node's maintenance gate.
@@ -702,7 +764,14 @@ pub fn router_with_app(
         );
     }
     // sbstndalton/noevia#2190 round 7: Google Drive's token broker (connector_routes.rs `internal_op`).
-    for op in ["session", "reject", "disconnect", "reseal"] {
+    for op in [
+        "session",
+        "reject",
+        "disconnect",
+        "reseal",
+        "tool",
+        "target",
+    ] {
         let (store, app) = (store.clone(), app.clone());
         router = router.route(
             &format!("/v1/gdrive/{op}"),
@@ -735,6 +804,7 @@ pub fn router_with_app(
         "key-set",
         "reseal",
         "discovery",
+        "call",
     ] {
         let (store, app) = (store.clone(), app.clone());
         router = router.route(
@@ -772,6 +842,18 @@ pub fn router_with_app(
                 async move { egress_op(store, app, headers, raw, op).await }
             }),
         );
+    }
+    // Port contract S9 (re-review 1ed3a14): Node's store move and delete revoke the chat's grant
+    // and advance its revocation epoch before the change and again after it, whatever the outcome,
+    // so every grant redeem orders strictly before or after them.
+    if let Some(app) = app {
+        let store = store.clone();
+        router = router.layer(axum::middleware::from_fn(
+            move |request: axum::http::Request<Body>, next: axum::middleware::Next| {
+                let (app, store) = (Arc::clone(&app), store.clone());
+                async move { revoking_chat_change(app, store, request, next).await }
+            },
+        ));
     }
     router
 }
@@ -962,6 +1044,227 @@ async fn preset_baseline(
     })
     .await;
     done.unwrap_or_else(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"))
+}
+
+/// `/v1/chat/move` and `/v1/chat/delete` with the chat's grant revoked before and after.
+async fn revoking_chat_change(
+    app: Arc<crate::App>,
+    store: Store,
+    request: axum::http::Request<Body>,
+    next: axum::middleware::Next,
+) -> Response<Body> {
+    let path = request.uri().path();
+    if (path != "/v1/chat/move" && path != "/v1/chat/delete")
+        || !authorised(&store, request.headers())
+    {
+        return next.run(request).await;
+    }
+    let (parts, body) = request.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, BODY_LIMIT).await else {
+        return error(StatusCode::PAYLOAD_TOO_LARGE, "Request exceeds size limit");
+    };
+    let target = serde_json::from_slice::<Value>(&bytes).ok().and_then(|v| {
+        Some((
+            v.get("user")?.as_str()?.to_owned(),
+            v.get("chat")?.as_str()?.to_owned(),
+        ))
+    });
+    // Each revoke completes only once its chat is drained (re-review 689d17a P1-1).
+    if let Some((user, chat)) = &target {
+        if app.revoke_approvals(user, chat).await.is_err() {
+            return error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Approval revocation pending; retry",
+            );
+        }
+    }
+    let response = next
+        .run(axum::http::Request::from_parts(parts, Body::from(bytes)))
+        .await;
+    if let Some((user, chat)) = &target {
+        if app.revoke_approvals(user, chat).await.is_err() {
+            return error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Approval revocation pending; retry",
+            );
+        }
+    }
+    response
+}
+
+/// `POST /v1/approvals/{op}` (see the header).
+async fn approvals_op(
+    store: Store,
+    app: Option<Arc<crate::App>>,
+    headers: HeaderMap,
+    raw: Bytes,
+    op: &'static str,
+) -> Response<Body> {
+    use crate::approval_registry::{DecideError, Kind, OpenError, Question};
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Some(app) = app else {
+        return error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "approval registry unavailable",
+        );
+    };
+    let Ok(body) = serde_json::from_slice::<Value>(&raw) else {
+        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let Some(user) = body
+        .get("user")
+        .and_then(Value::as_str)
+        .filter(|u| !u.is_empty())
+        .map(str::to_owned)
+    else {
+        return error(StatusCode::BAD_REQUEST, "user required");
+    };
+    // An absent or null optional field is none; any other non-string is a bad request.
+    let text = |key: &str| -> Result<Option<String>, ()> {
+        match body.get(key) {
+            None | Some(Value::Null) => Ok(None),
+            Some(Value::String(s)) => Ok(Some(s.clone())),
+            Some(_) => Err(()),
+        }
+    };
+    let id = text("id").ok().flatten().unwrap_or_default();
+    let missing = || {
+        error(
+            StatusCode::NOT_FOUND,
+            server_account::tool_approvals::MISSING,
+        )
+    };
+    match op {
+        "open" => {
+            let Some(kind) = body
+                .get("kind")
+                .and_then(Value::as_str)
+                .and_then(Kind::parse)
+            else {
+                return error(StatusCode::BAD_REQUEST, "kind must be 'write' or 'route'");
+            };
+            let (Ok(chat), Ok(scope)) = (text("chat"), text("scope")) else {
+                return error(StatusCode::BAD_REQUEST, "chat and scope must be strings");
+            };
+            let binding = body.get("binding").filter(|b| !b.is_null()).cloned();
+            let once = body.get("once").and_then(Value::as_bool) == Some(true);
+            match app.approvals.open(Question {
+                id,
+                user,
+                kind,
+                chat,
+                scope,
+                binding,
+                once,
+            }) {
+                Ok(()) => reply(StatusCode::OK, &json!({"opened":true})),
+                Err(OpenError::Invalid) => error(StatusCode::BAD_REQUEST, "invalid approval id"),
+                Err(OpenError::Duplicate) => reply(
+                    StatusCode::CONFLICT,
+                    &json!({"error":"approval already open","code":"APPROVAL_EXISTS"}),
+                ),
+                Err(OpenError::Capacity) => reply(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &json!({"error":"too many open approvals","code":"APPROVALS_FULL"}),
+                ),
+                Err(OpenError::Unavailable) => error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "approval registry unavailable",
+                ),
+            }
+        }
+        "wait" => match app.approvals.wait(&user, &id).await {
+            Ok(outcome) => reply(StatusCode::OK, &outcome.json()),
+            Err(DecideError::Missing | DecideError::Choice) => missing(),
+            Err(DecideError::Unavailable) => error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "approval registry unavailable",
+            ),
+        },
+        "cancel" => reply(
+            StatusCode::OK,
+            &json!({"cancelled": app.approvals.cancel(&user, &id)}),
+        ),
+        "granted" | "revoke" | "redeem" => {
+            let (Ok(Some(chat)), Ok(scope)) = (text("chat"), text("scope")) else {
+                return error(StatusCode::BAD_REQUEST, "chat required");
+            };
+            if op == "revoke" {
+                return match app.revoke_approvals(&user, &chat).await {
+                    Ok(revoked) => reply(StatusCode::OK, &json!({"revoked":revoked})),
+                    Err(_) => error(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Approval revocation pending; retry",
+                    ),
+                };
+            }
+            // Re-review 689d17a P1-2: a caller that does not name the redeem protocol (a Core from
+            // before tickets, which would read a ticketed answer as plain approval) gets no grant.
+            if text("protocol").ok().flatten().as_deref()
+                != Some(crate::approval_registry::PROTOCOL)
+            {
+                return reply(
+                    StatusCode::OK,
+                    &json!({"granted": false, "redeemed": false, "code": "APPROVAL_PROTOCOL"}),
+                );
+            }
+            let binding = body.get("binding").filter(|b| !b.is_null()).cloned();
+            let ticket = text("ticket").ok().flatten();
+            if op == "redeem" && ticket.as_deref().is_none_or(str::is_empty) {
+                return error(StatusCode::BAD_REQUEST, "ticket required");
+            }
+            let scope = scope.unwrap_or_default();
+            // The live grant context is a store read under the chat's lock: the blocking pool.
+            let registry = Arc::clone(&app.approvals);
+            let (check_user, check_chat) = (user.clone(), chat.clone());
+            let answer = tokio::task::spawn_blocking(move || {
+                let approvals = registry;
+                let use_ticket = if op == "redeem" { ticket.as_deref() } else { None };
+                let answer = approvals.check(&user, &chat, &scope, binding.as_ref(), use_ticket);
+                let body = match answer {
+                    Ok(crate::approval_registry::GrantUse::Redeemed(redeemed)) => Some(json!({
+                        "redeemed":redeemed,"protocol":crate::approval_registry::PROTOCOL,
+                        "window_ms":u64::try_from(approvals.window().as_millis()).unwrap_or(u64::MAX),
+                    })),
+                    Ok(crate::approval_registry::GrantUse::Ticket(Some(t))) => Some(json!({"granted":true,"ticket":t})),
+                    Ok(crate::approval_registry::GrantUse::Ticket(None)) => Some(json!({"granted":false})),
+                    Err(_) => None,
+                };
+                (body, approvals.pending_invalidation(&user, &chat))
+            })
+            .await;
+            match answer {
+                Ok((None, _)) => {
+                    app.drain_approval_invalidations();
+                    error(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Approval revocation pending; retry",
+                    )
+                }
+                Ok((Some(body), Ok(invalidated))) => {
+                    if app
+                        .confirm_approval_invalidation(&check_user, &check_chat, invalidated)
+                        .await
+                        .is_err()
+                    {
+                        return error(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "Approval revocation pending; retry",
+                        );
+                    }
+                    reply(StatusCode::OK, &body)
+                }
+                Ok((_, Err(_))) => error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Approval revocation pending; retry",
+                ),
+                Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error"),
+            }
+        }
+        _ => error(StatusCode::NOT_FOUND, "not found"),
+    }
 }
 
 async fn gdrive_op(
