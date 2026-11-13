@@ -723,7 +723,9 @@ async fn the_auto_tunes_long_prompt_stream_ends_when_its_hold_is_lost() {
     // lease's loss into the fetch signal), not when the engine finally answers.
     use noevia_server::model_maint::autotune_context::{Body as _, Engine as _};
     use noevia_server::model_maint::autotune_deps::{FrontDeps, ReadFacts};
-    const SLOW: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":180000,"renewMs":10000,"hardMs":3600000}"#;
+    // Node renews never within the test; the authority's lease outlasts the 15 s step margin (so
+    // the stream may start) by one second, then ends under the reading stream.
+    const SLOW: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":180000,"renewMs":600000,"hardMs":3600000}"#;
     let calls = Arc::new(AtomicUsize::new(0));
     let (node_port, _) = engine(latch(Arc::clone(&calls), SLOW, 201)).await;
     let stalls: Handler = Arc::new(|req: &Req| {
@@ -737,7 +739,7 @@ async fn the_auto_tunes_long_prompt_stream_ends_when_its_hold_is_lost() {
     });
     let (mut m, d) = maint_on(node_port, stalls).await;
     Arc::get_mut(&mut m).unwrap().authority =
-        Authority::with_timing(Duration::from_millis(600), lease::HARD, lease::MAX);
+        Authority::with_timing(Duration::from_secs(16), lease::HARD, lease::MAX);
     let read_facts: ReadFacts = Arc::new(|| Box::pin(async { (0.0, None) }));
     let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
     let deps = FrontDeps::new(
@@ -763,7 +765,7 @@ async fn the_auto_tunes_long_prompt_stream_ends_when_its_hold_is_lost() {
     let started = std::time::Instant::now();
     let mut ended = None;
     for _ in 0..8 {
-        match tokio::time::timeout(Duration::from_secs(5), reply.read()).await {
+        match tokio::time::timeout(Duration::from_secs(25), reply.read()).await {
             Ok(Ok(Some(_))) => continue,
             Ok(other) => {
                 ended = Some(other);
@@ -775,5 +777,10 @@ async fn the_auto_tunes_long_prompt_stream_ends_when_its_hold_is_lost() {
     let err = ended.expect("the stream ended").unwrap_err();
     assert!(err.coverage_lost, "{}", err.message);
     assert!(!hold.excluded());
-    assert!(started.elapsed() < Duration::from_secs(3));
+    // Within the loss poll of the lease's end, not when the engine answers.
+    assert!(
+        started.elapsed() < Duration::from_secs(19),
+        "{:?}",
+        started.elapsed()
+    );
 }
