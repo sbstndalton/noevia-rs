@@ -21,7 +21,7 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
 pub const APPEND_MAX_CHARS: usize = 8000;
-const PENDING_NATIVE: &str =
+pub(crate) const PENDING_NATIVE: &str =
     "Diary exchange is pending; the save outcome is uncertain until journal replay";
 const EDIT_QUEUED: &str =
     "Correction is queued but could not be saved yet. It will retry when storage is available.";
@@ -209,7 +209,7 @@ pub fn directory_create(c: &Ctx<'_>, body: &Map<String, Value>) -> Reply {
 
 /// One journal entry this call enqueued, applied as CorpusStore.apply_pending would (the tenant
 /// had nothing else pending, or the request was declined). Ok(true) when applied.
-fn apply_entry(
+pub(crate) fn apply_entry(
     c: &Ctx<'_>,
     id: &str,
     apply: impl FnOnce() -> Result<(), WriteFailure>,

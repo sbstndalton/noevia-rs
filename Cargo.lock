@@ -1996,6 +1996,7 @@ dependencies = [
  "axum",
  "chrono",
  "diary-backup-run",
+ "diary-core",
  "diary-corpus-parse",
  "diary-corpus-write",
  "diary-index-transform",
