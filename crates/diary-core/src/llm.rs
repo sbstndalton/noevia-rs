@@ -8,10 +8,12 @@
 //!
 //! Known differences from the Python:
 //! - Response text is always decoded as UTF-8 (lossy); httpx honours a declared other charset.
-//! - JSON with `NaN`/`Infinity` tokens is a decode error here; Python's `json` accepts them.
+//! - JSON that serde refuses but Python's `json` accepts is a decode error here: `NaN`/`Infinity`
+//!   tokens, lone surrogate escapes (`"\ud83c"`), nesting deeper than 128. An integer beyond
+//!   64 bits is read as a float.
 //! - Error messages that quote an httpx exception (the "after N attempts" summary) carry only the
-//!   error class and status, never the URL; no caller shows them (`streaming.describe_failure`
-//!   logs class names only).
+//!   error class (and status), never the URL or the exception text, in every mode; no caller
+//!   shows them (`streaming.describe_failure` logs class names only).
 
 use serde_json::{json, Map, Value};
 
@@ -39,7 +41,8 @@ pub fn letter_matches(letter: char, c: char) -> bool {
     match letter {
         'i' => matches!(c, 'I' | 'i' | '\u{130}' | '\u{131}'),
         'k' => matches!(c, 'K' | 'k' | '\u{212A}'),
-        _ => c.to_ascii_lowercase() == letter,
+        's' => matches!(c, 'S' | 's' | '\u{17F}'),
+        _ => c.is_ascii() && c.to_ascii_lowercase() == letter,
     }
 }
 
@@ -293,12 +296,17 @@ fn get<'a>(obj: &'a Value, key: &str) -> Result<Option<&'a Value>, LlmError> {
     }
 }
 
-/// Python `seq[0]` for a JSON value (`choices[0]`).
-fn first(v: &Value) -> Result<&Value, LlmError> {
+/// Python `seq[0]` for a JSON value (`choices[0]`): a string gives its first character, which the
+/// next `.get` or `[...]` then refuses with its own class.
+fn first(v: &Value) -> Result<Value, LlmError> {
     match v {
-        Value::Array(a) => a.first().ok_or(LlmError::Protocol("IndexError")),
+        Value::Array(a) => a.first().cloned().ok_or(LlmError::Protocol("IndexError")),
         Value::Object(_) => Err(LlmError::Protocol("KeyError")),
-        Value::String(_) => Err(LlmError::Protocol("AttributeError")),
+        Value::String(s) => s
+            .chars()
+            .next()
+            .map(|c| Value::String(c.to_string()))
+            .ok_or(LlmError::Protocol("IndexError")),
         _ => Err(LlmError::Protocol("TypeError")),
     }
 }
@@ -316,12 +324,13 @@ fn parse_json(raw: &str) -> Result<Value, LlmError> {
     serde_json::from_str(raw).map_err(|_| LlmError::Protocol("JSONDecodeError"))
 }
 
-/// Python `json.loads(bytes)`: UTF-8 (a UTF-8 BOM is refused, as Python refuses it for bytes too).
-fn parse_json_bytes(raw: &[u8]) -> Result<Value, LlmError> {
-    if raw.starts_with(&[0xEF, 0xBB, 0xBF]) {
-        return Err(LlmError::Protocol("JSONDecodeError"));
-    }
-    serde_json::from_slice(raw).map_err(|_| LlmError::Protocol("JSONDecodeError"))
+/// Python `json.loads(bytes)`: UTF-8 with or without a BOM (`utf-8-sig`); invalid UTF-8 is a
+/// `UnicodeDecodeError`. Known difference: BOM-less UTF-16/32 bodies, which Python detects, are a
+/// decode error here.
+pub fn parse_json_bytes(raw: &[u8]) -> Result<Value, LlmError> {
+    let raw = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(raw);
+    let text = std::str::from_utf8(raw).map_err(|_| LlmError::Protocol("UnicodeDecodeError"))?;
+    parse_json(text)
 }
 
 // ---------------------------------------------------------------- stream reading
@@ -574,7 +583,7 @@ impl StreamState {
         let Some(choices) = or_chain(&[get(&data, "choices")?]) else {
             return Ok(Flow::Continue);
         };
-        let choice = first(choices)?;
+        let choice = &first(choices)?;
         if let Some(reason) = get(choice, "finish_reason")?.filter(|v| truthy(v)) {
             self.completed = true;
             self.finish = reason.clone();
@@ -629,7 +638,7 @@ impl StreamState {
         alive();
         self.telemetry(&data, events)?;
         self.completed = true;
-        let choice = first(index(&data, "choices")?)?;
+        let choice = &first(index(&data, "choices")?)?;
         self.finish = get(choice, "finish_reason")?
             .cloned()
             .unwrap_or(Value::Null);
@@ -701,7 +710,7 @@ pub fn finish_chat_stream(c: Completion, events: &mut Vec<Event>) -> Result<Chat
 
 /// Python `chat()`'s `parse_chat` for a plain (not streamed) answer body.
 pub fn parse_chat(data: &Value, max_tokens: Option<i64>) -> Result<ChatReply, LlmError> {
-    let choice = first(index(data, "choices")?)?;
+    let choice = &first(index(data, "choices")?)?;
     let message = index(choice, "message")?;
     let Value::String(content) = index(message, "content")? else {
         return Err(LlmError::Llm("unexpected chat response shape".into()));
@@ -791,10 +800,14 @@ pub struct Call<'a> {
     pub stop: Option<&'a [String]>,
     pub max_retries: i64,
     pub retry_backoff_s: f64,
+    /// Cancellable mode: whether the exchange deadline gave the call up (checked before each try,
+    /// so a given-up call never re-sends its prompt).
+    pub abandoned: &'a dyn Fn() -> bool,
 }
 
+/// httpx `raise_for_status`: anything outside 2xx (a 3xx the client did not follow included).
 fn http_error(status: u16) -> bool {
-    status >= 400
+    !(200..300).contains(&status)
 }
 
 /// Reads one streamed answer from a full response (Python `_stream_completion` after the POST).
@@ -869,6 +882,9 @@ pub fn run(
             );
             let mut last = String::from("None");
             for attempt in 0..tries.max(0) {
+                if (call.abandoned)() {
+                    break;
+                }
                 let outcome = transport
                     .post("/chat/completions", &payload)
                     .map_err(LlmError::Transport)
@@ -1056,38 +1072,84 @@ pub struct TooLarge {
     pub limit: Option<i64>,
 }
 
+/// `re.search(needle, hay, re.I)` for a literal ASCII needle: each letter also matches the
+/// non-ASCII characters CPython 3.12's re.I lets it (U+0130/U+0131 for i, U+212A for k, U+017F
+/// for s).
 fn find_ci(hay: &str, needle: &str) -> bool {
-    hay.to_lowercase().contains(needle)
+    let hay: Vec<char> = hay.chars().collect();
+    let needle: Vec<char> = needle.chars().collect();
+    if needle.len() > hay.len() {
+        return false;
+    }
+    (0..=hay.len() - needle.len()).any(|at| {
+        needle.iter().enumerate().all(|(k, n)| {
+            hay.get(at + k).is_some_and(|h| {
+                if n.is_ascii_alphabetic() {
+                    letter_matches(*n, *h)
+                } else {
+                    h == n
+                }
+            })
+        })
+    })
 }
 
-/// The first integer after any of `prefixes` (`input (N tokens)`, `"n_ctx": N`, ...).
-fn first_int(text: &str, patterns: &[(&str, &str)]) -> Option<i64> {
-    // The earliest match of any alternative, like a regex search over the alternation.
-    let mut best: Option<(usize, i64)> = None;
-    for (prefix, suffix) in patterns {
-        let mut from = 0;
-        while let Some(found) = text.get(from..).and_then(|t| t.find(prefix)) {
-            let at = from + found;
-            let after = text.get(at + prefix.len()..).unwrap_or("");
-            let after = if prefix.ends_with(':') {
-                after.trim_start_matches(is_python_space)
-            } else {
-                after
-            };
-            let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
-            let rest = after.get(digits.len()..).unwrap_or("");
-            if !digits.is_empty() && rest.starts_with(suffix) {
-                if let Ok(n) = digits.parse::<i64>() {
-                    if best.is_none_or(|(b, _)| at < b) {
-                        best = Some((at, n));
+#[derive(Clone, Copy)]
+enum Part {
+    Lit(&'static str),
+    Space,
+    Digits,
+}
+
+/// A match of `parts` at char index `at` (literal text, `\s*`, one `(\d+)` group): the number.
+fn match_at(chars: &[char], at: usize, parts: &[Part]) -> Option<Option<i64>> {
+    let mut i = at;
+    let mut number = None;
+    for part in parts {
+        match part {
+            Part::Lit(lit) => {
+                for c in lit.chars() {
+                    if chars.get(i) != Some(&c) {
+                        return None;
                     }
+                    i += 1;
                 }
-                break;
             }
-            from = at + prefix.len();
+            Part::Space => {
+                while chars.get(i).is_some_and(|c| is_python_space(*c)) {
+                    i += 1;
+                }
+            }
+            Part::Digits => {
+                let start = i;
+                let mut value: Option<i64> = Some(0);
+                while let Some(d) = chars
+                    .get(i)
+                    .and_then(|c| diary_entity_focus::python_decimal_value(*c))
+                {
+                    value = value
+                        .and_then(|v| v.checked_mul(10))
+                        .and_then(|v| v.checked_add(i64::from(d)));
+                    i += 1;
+                }
+                if i == start {
+                    return None;
+                }
+                number = value;
+            }
         }
     }
-    best.map(|(_, n)| n)
+    Some(number)
+}
+
+/// `_first_int(rx, text)`: the number of the leftmost match of any alternative of `rx`.
+fn first_int(text: &str, alternatives: &[&[Part]]) -> Option<i64> {
+    let chars: Vec<char> = text.chars().collect();
+    (0..chars.len()).find_map(|at| {
+        alternatives
+            .iter()
+            .find_map(|alt| match_at(&chars, at, alt))
+    })?
 }
 
 /// Python `too_large_from_response` for an error answer's status and text.
@@ -1114,9 +1176,30 @@ pub fn too_large(status: u16, text: &str) -> Option<TooLarge> {
         ),
         tokens: first_int(
             &body,
-            &[("input (", " tokens)"), ("\"n_prompt_tokens\":", "")],
+            &[
+                &[Part::Lit("input ("), Part::Digits, Part::Lit(" tokens)")],
+                &[
+                    Part::Lit("\"n_prompt_tokens\""),
+                    Part::Space,
+                    Part::Lit(":"),
+                    Part::Space,
+                    Part::Digits,
+                ],
+            ],
         ),
-        limit: first_int(&body, &[("current batch size:", ""), ("\"n_ctx\":", "")]),
+        limit: first_int(
+            &body,
+            &[
+                &[Part::Lit("current batch size:"), Part::Space, Part::Digits],
+                &[
+                    Part::Lit("\"n_ctx\""),
+                    Part::Space,
+                    Part::Lit(":"),
+                    Part::Space,
+                    Part::Digits,
+                ],
+            ],
+        ),
     })
 }
 

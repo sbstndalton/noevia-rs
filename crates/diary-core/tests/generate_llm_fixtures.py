@@ -80,12 +80,12 @@ def record_text(llm, rng):
 def record_case_folding():
     """Which characters Python's re.IGNORECASE lets each letter of the reasoning tags match, and
     which pairs of them a backreference treats as equal."""
-    letters = "thinkg"
+    letters = "abcdefghijklmnopqrstuvwxyz"
     classes = {}
     for letter in letters:
         pat = re.compile(re.escape(letter), re.IGNORECASE)
         classes[letter] = [cp for cp in range(0x110000) if not 0xD800 <= cp <= 0xDFFF and pat.fullmatch(chr(cp))]
-    members = sorted({cp for v in classes.values() for cp in v})
+    members = sorted({cp for v in classes.values() for cp in v if cp > 0x7f or chr(cp).lower() in "iks"})
     backref = re.compile(r"(.)\1", re.IGNORECASE | re.DOTALL)
     pairs = [[a, b] for a in members for b in members if backref.fullmatch(chr(a) + chr(b))]
     # \s under re (str pattern) for the leading/trailing whitespace of the tags.
@@ -143,7 +143,12 @@ def record_too_large(llm):
                          (500, '{"error":{"code":400,"message":"exceeds the available context size","n_prompt_tokens": 9000,"n_ctx":8192}}'),
                          (400, "input is larger than the max context size"), (413, "EXCEED_CONTEXT_SIZE"),
                          (200, "too large to process"), (400, "other failure"), (503, "x" * 5000 + "too large to process"),
-                         (400, "too large to process" + "y" * 400), (400, "input (12 tokens) too large to process")]:
+                         (400, "too large to process" + "y" * 400), (400, "input (12 tokens) too large to process"),
+                         (400, '{"n_prompt_tokens" : 9000, "n_ctx"\t:\n 8192, "message": "exceeds the available context size"}'),
+                         (400, "too large to proce\u017fs, input (\u0661\u0662 tokens)"), (400, "TOO LARGE TO PROCESS"),
+                         (400, "too large to \u0130process"), (400, "exceed_context_\u017fize current batch size:   64"),
+                         (400, "input (99999999999999999999999 tokens) too large to process"),
+                         (422, 'input (5 tokens) "n_prompt_tokens":7 too large to process')]:
         resp = httpx.Response(status, text=body)
         got = llm.too_large_from_response(resp)
         out.append({"status": status, "body": body,
@@ -205,6 +210,11 @@ def sse(rng):
         lines.append("data: {not json")
     elif end < 0.88:
         lines.append("data: [1, 2]")
+    elif end < 0.94:
+        lines.append("data: " + rng.choice(['{"choices": ""}', '{"choices": "ab"}', '{"choices": [{"delta": "x"}]}',
+                                            '{"choices": [{"delta": [1]}]}', '{"timings": [], "choices": []}',
+                                            '{"choices": {"0": 1}}', '{"choices": 5}', '{"choices": [7]}',
+                                            '{"choices": [{"finish_reason": "stop", "delta": {"content": 5}}]}']))
     sep = rng.choice(["\n", "\n\n", "\r\n", "\r\n\r\n", "\r"])
     body = sep.join(lines) + (sep if rng.random() < 0.8 else "")
     return rng.choice(["text/event-stream", "text/event-stream; charset=utf-8"]), body
@@ -224,23 +234,34 @@ class Alive:
 
 def run_completion(llm, httpx, case):
     sent = []
+    alive = Alive()
     responses = list(case["responses"])
 
     def handler(request):
         sent.append(json.loads(request.content))
+        if case.get("abandon_after") is not None and len(sent) >= case["abandon_after"]:
+            alive.abandoned = True
         status, ctype, body = responses.pop(0) if responses else (500, "text/plain", "no more synthetic answers")
-        return httpx.Response(status, headers={"content-type": ctype}, content=body.encode("utf-8"))
+        if ctype == "raise":
+            raise getattr(httpx, body)("synthetic transport failure", request=request)
+        raw = body.encode("utf-8")
+        if ctype.endswith("+bom"):
+            ctype, raw = ctype[:-4], b"\xef\xbb\xbf" + raw
+        if ctype.endswith("+badutf8"):
+            ctype, raw = ctype[:-8], raw + b"\xff"
+        return httpx.Response(status, headers={"content-type": ctype}, content=raw)
 
     client = llm.LLMClient("http://qa-engine.invalid/v1", chat_model="qa-chat", max_retries=case["retries"],
                            retry_backoff_s=0.5)
     sleeps = []
     real_sleep = llm.time.sleep
     llm.time.sleep = sleeps.append  # the retry waits are recorded, not slept
-    client._client = httpx.Client(base_url="http://qa-engine.invalid/v1", transport=httpx.MockTransport(handler))
+    # As the real chat client: redirects followed (util.make_client(follow_redirects=True)).
+    client._client = httpx.Client(base_url="http://qa-engine.invalid/v1", transport=httpx.MockTransport(handler),
+                                  follow_redirects=True)
     if case.get("reasoning_tokens") is not None:
         client.reasoning_tokens = case["reasoning_tokens"]
     events = []
-    alive = Alive()
     mode = case["mode"]
     try:
         if mode == "stream":
@@ -267,14 +288,19 @@ def completion_cases(rng):
         responses = []
         if rng.random() < 0.12:
             responses.append((rng.choice([500, 503, 404, 429]), "text/plain", "synthetic upstream failure"))
+        if rng.random() < 0.08:
+            responses.append((0, "raise", rng.choice(["ConnectError", "ConnectTimeout", "ReadTimeout", "ReadError"])))
         ctype, body = sse(rng)
+        if rng.random() < 0.05:
+            ctype += rng.choice(["+bom", "+badutf8"])
         if mode == "plain" and "event-stream" in ctype:
             ctype, body = "application/json", json.dumps(
                 {"choices": [{"message": {"content": rng.choice(["plain", "<think>x</think>y\n[LOG: ok]", "z" * 200])},
                               "finish_reason": rng.choice(["stop", "length"])}]})
-        responses.append((200, ctype, body))
+        responses.append((rng.choice([200] * 20 + [204, 302, 304]), ctype, body))
         cases.append({"name": f"completion_{i:03d}", "mode": mode, "responses": responses,
-                      "max_tokens": rng.choice([None, None, 1, 5, 12, 40]),
+                      "max_tokens": rng.choice([None, None, 1, 5, 12, 40, 0, -1]),
+                      "abandon_after": rng.choice([None] * 8 + [1, 2]),
                       "retries": rng.choice([1, 2, 3]),
                       "reasoning_tokens": rng.choice([None, 0, 16]),
                       "stop": rng.choice([None, ["\n\n"]])})

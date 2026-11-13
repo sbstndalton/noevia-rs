@@ -38,6 +38,11 @@ pub fn python_is_alnum(c: char) -> bool {
     lexical::py_alnum(c)
 }
 
+/// The value of a Python decimal digit (`int()` of one `\d` character).
+pub fn python_decimal_value(c: char) -> Option<u8> {
+    lexical::decimal_digit(c)
+}
+
 /// Python `str.isdecimal()` for one character: what `\d` matches in a `str` regex.
 pub fn python_is_decimal(c: char) -> bool {
     lexical::decimal_digit(c).is_some()
