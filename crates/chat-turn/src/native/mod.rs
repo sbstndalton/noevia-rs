@@ -720,16 +720,21 @@ impl<H: Host> Turn<'_, H> {
             local: true,
             machine: false,
         };
-        let ask = title::ask_for_title(
-            &facts,
-            || {
-                t.first_reply
-                    || host.title_auto_named(t.list_id.as_deref(), &t.chat_id, &t.first_message)
-            },
-            || self.process.titles.lock().is_ok_and(|a| a.allowed(&key)),
-            || host.engine_busy(),
-        );
-        if !ask {
+        // chat.cjs's conditions in its order, the store and the engine asked only when the ones before hold.
+        if !title::ask_for_title(&facts, || true, || true, || false) {
+            return;
+        }
+        if !(t.first_reply
+            || host
+                .title_auto_named(t.list_id.as_deref(), &t.chat_id, &t.first_message)
+                .await)
+        {
+            return;
+        }
+        if !self.process.titles.lock().is_ok_and(|a| a.allowed(&key)) {
+            return;
+        }
+        if host.engine_busy().await {
             return;
         }
         if let Ok(mut a) = self.process.titles.lock() {
