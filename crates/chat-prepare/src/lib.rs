@@ -1,7 +1,8 @@
-//! The native chat turn's preparation (track R8, phase 2), slice P1: the system message and the
-//! replayed history of a turn without a project, as noevia-core's `server/chat.cjs` `handleChat`
-//! builds them before routing (its `sysParts`, `msgs` and `wire`). Pure: the caller reads the
-//! account files and the clock and passes their contents in.
+//! The native chat turn's preparation (track R8, phase 2): the system message and the replayed
+//! history of a turn, as noevia-core's `server/chat.cjs` `handleChat` builds them before routing
+//! (its `sysParts`, `msgs` and `wire`). Slice P1: a turn without a project; slice P2a: what a
+//! project turn adds that needs neither retrieval nor tools nor skills to be computed. Pure: the
+//! caller reads the account files, the project record and the clock and passes them in.
 //!
 //! - [`account`]: `account-instructions.cjs` `read` and `systemPart` (style, advanced controls,
 //!   response language, the custom text).
@@ -9,14 +10,28 @@
 //! - [`memory`]: `account-memory.cjs` `read` and `systemPart`.
 //! - [`history`]: the filter, `HISTORY_CAP` cut and map of `body.history`, then
 //!   `normalizeReplayHistory`.
+//! - [`names`]: `quoted-name.cjs` `quoteName` and `quotedNames`.
+//! - [`shared`]: `shared-context.cjs` `read` and `forChat` (the recent Code tasks part).
+//! - [`sources`]: `source-readability.cjs` (`isUnreadable`, `isWaiting`, `readable`,
+//!   `waitingNotice`), `source-coverage.cjs` `coverageNote`, and chat.cjs's not-ready and
+//!   stored-only lines.
+//! - [`project`]: the project parts in chat.cjs's order and a shadow project's knowledge block in
+//!   front of the user's message.
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!
+//! The order of `sysParts`: account part, time part, then without a project the memory part; with
+//! one the [`project`] parts (name, goal, instructions, memory part with the project's memories,
+//! shared Code tasks, knowledge-file block, not-ready line, waiting line, coverage note), its
+//! skills ([`project::ProjectTurn::skills`]) and the stored-only line; then [`Turn::trailing`]
+//! (the frame and brain blocks) in both cases.
+//!
 //! Strings are JS strings held as `js_json::wtf16` text (a lone surrogate is one private-use
 //! character). Everything is replayed byte for byte on Node's own output
-//! (`tests/fixtures/node-prepare.v1.json`, written by `tests/record_prepare.cjs`).
+//! (`tests/fixtures/node-prepare.v1.json`, written by `tests/record_prepare.cjs`, and
+//! `tests/fixtures/node-project.v1.json`, written by `tests/record_project.cjs`).
 //!
-//! Named differences (recorded in the fixture's `differences`, each checked as documented here):
+//! Named differences (recorded in the fixtures' `differences`, each checked as documented here):
 //! - An account file `wtf16::parse` refuses but `JSON.parse` reads (a number outside the f64
 //!   range, a character of U+10F800..U+10FFFF, nesting past 128) reads as the empty record.
 //! - The time part states only Gregorian years 1583-9999 ([`PrepareError::TimeOutOfRange`]
@@ -27,29 +42,49 @@
 //! - Zone data: the day comes from chrono-tz's bundled IANA data, Node's from its ICU's, and the
 //!   two releases differ (see [`time`]). A server whose zone changed between them states a
 //!   different day near midnight; that is reachable on a deployment in such a zone.
+//! - Code tasks: `forChat` sorts by `(b.updatedAt || 0) - (a.updatedAt || 0)`. The code store
+//!   writes a number; an `updatedAt` that is a non-empty string, an array or an object sorts here
+//!   as 0, where Node coerces it (`ToNumber`; a `NaN` leaves the order to V8's sort internals).
 //!
-//! What a turn with a project adds (project name, goal, instructions and memories, shared code
-//! context, knowledge-file excerpts, skills, framing and brain blocks, the stored-only and
-//! not-ready source notes) and what happens to the wire once the route is known (off-box zone
-//! and history filter, vision, route notes) are later slices.
+//! - A project record (a name, goal, memory or file name) holding a character of
+//!   U+10F800..U+10FFFF: `JSON.parse` reads it, `wtf16::parse` refuses it, so the caller cannot
+//!   hand such a record here (it reads as no project record); the reader of the record (P2b)
+//!   decides, and keeps such a turn in Node. `NotReady.name` and `Partial.name` must come from
+//!   wtf16 text, never from lossy Rust text.
+//!
+//! Node behaviour kept as is: a `null` entry in `project.files` makes the stored-only line throw
+//! (`f.attachment?.state` of `null`), so such a turn is [`PrepareError::Thrown`] as in Node, where
+//! retrieval's skill check throws on it even earlier.
+//!
+//! Later slices: the retrieval itself and `partialSources` (P2b, which pass `filesBlock` and
+//! `partialReads` in here); the skill index, auto-loaded and pinned skill blocks and the history's
+//! skill scrub (they arrive through [`project::ProjectTurn::skills`]); the frame and brain blocks
+//! ([`Turn::trailing`]); image assets; and what happens to the wire once the route is known
+//! (off-box zone and history filter, the hybrid route's read-file hint, vision, route notes).
 
 pub mod account;
 pub mod history;
 pub mod js;
 pub mod memory;
+pub mod names;
+pub mod project;
+pub mod shared;
+pub mod sources;
 pub mod time;
 
 pub use history::{Entry, ReplayOptions};
 use js_json::JValue;
+pub use project::ProjectTurn;
 
-/// Node would throw a TypeError here (a settings value whose `String()` throws).
+/// Node would throw a TypeError here (a value whose `String()` throws, a property read of `null`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Thrown;
 
 /// Why [`prepare`] built nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrepareError {
-    /// The account settings make Node throw ([`Thrown`]); a [`account::read`] record never does.
+    /// The account settings or the project make Node throw ([`Thrown`]); an [`account::read`]
+    /// record never does.
     Thrown,
     /// The instant's date in the zone is outside the years [`time::part`] states.
     TimeOutOfRange,
@@ -61,7 +96,18 @@ pub enum PartKind {
     Account,
     Time,
     Memory,
-    /// A part a later slice adds, named by the chat.cjs block it ports (a project line, a frame
+    ProjectName,
+    ProjectGoal,
+    ProjectInstructions,
+    /// `shared-context.cjs` `forChat`.
+    SharedCode,
+    /// The knowledge-file excerpts block.
+    Knowledge,
+    NotReady,
+    Waiting,
+    Coverage,
+    StoredOnly,
+    /// A part a later slice adds, named by the chat.cjs block it ports (a frame block, the brain
     /// block, ...).
     Other(&'static str),
 }
@@ -102,16 +148,17 @@ impl SystemParts {
 
 /// What a turn is prepared from.
 ///
-/// Preconditions (what P1 covers; anything else is a later slice, and calling this for it gives
-/// a system message Node would not send):
-/// - No project: after chat.cjs resolves `body.projectId` and a free chat's diary-extras context
-///   project (`diaryExtras.chatProjectId`), `project` is null. A free chat with attachments has a
-///   hidden shadow project (`cowork-chat-context-*`), so it is a project turn, not this case.
+/// Preconditions (anything else is a later slice, and calling this for it gives a system message
+/// Node would not send):
+/// - `project` is what chat.cjs resolves from `body.projectId` and a free chat's diary-extras
+///   context project (`diaryExtras.chatProjectId`): `None` when that is null. A free chat with
+///   attachments has a hidden shadow project (`cowork-chat-context-*`), so it is a project turn.
+///   [`ProjectTurn`] lists what a project turn must not hold yet (image assets, skills).
 /// - Chat framing off for this turn: chat.cjs ~735-755 pushes the confirmed frame's block and the
-///   linked brain block after the memory part (the P4 slice). Chat framing is on live, so a live
-///   no-project turn with a confirmed frame is not covered yet; such blocks go in `trailing`
-///   once ported.
-/// - No Diary space and no `compactOnly` side effects beyond the replay (`message: None`).
+///   linked brain block after everything else (the P4 slice). Chat framing is on live, so a live
+///   turn with a confirmed frame is not covered yet; such blocks go in `trailing` once ported.
+/// - No Diary space and no `compactOnly` side effects beyond the replay and the parts
+///   (`message: None`).
 pub struct Turn<'a> {
     /// [`account::read`] of `account-instructions.json`.
     pub instructions: &'a JValue,
@@ -133,7 +180,9 @@ pub struct Turn<'a> {
     /// (chat.cjs ~1265), a later slice.
     pub carry_orphan_tool: &'a (dyn Fn(&str) -> bool + Sync),
     pub known_tool: &'a (dyn Fn(&str) -> bool + Sync),
-    /// Parts pushed after the memory part, in order (empty for P1).
+    /// The project, its tasks and what retrieval and the source jobs found (`None`: no project).
+    pub project: Option<ProjectTurn<'a>>,
+    /// Parts pushed after everything above (the frame and brain blocks), in order.
     pub trailing: &'a [(PartKind, String)],
 }
 
@@ -154,15 +203,15 @@ pub struct Prepared {
     pub messages: Vec<JValue>,
 }
 
-/// The system parts in chat.cjs's order (account part, time part, account memory, then
-/// `trailing`), the system message and the wire of a turn that meets [`Turn`]'s preconditions.
+/// The system parts in chat.cjs's order (see the crate doc), the system message and the wire of a
+/// turn that meets [`Turn`]'s preconditions.
 pub fn prepare(turn: &Turn<'_>) -> Result<Prepared, PrepareError> {
     let opts = ReplayOptions {
         carry_orphan_tool: turn.carry_orphan_tool,
         off_box: false,
         known_tool: turn.known_tool,
     };
-    let history = history::replay_history(turn.history, turn.history_cap, turn.message, &opts);
+    let mut history = history::replay_history(turn.history, turn.history_cap, turn.message, &opts);
     let mut parts = SystemParts::default();
     if let Some(p) = account::part(turn.instructions).map_err(|_| PrepareError::Thrown)? {
         parts.push(PartKind::Account, p);
@@ -170,9 +219,44 @@ pub fn prepare(turn: &Turn<'_>) -> Result<Prepared, PrepareError> {
     let time_part =
         time::part(turn.now_ms, turn.time_zone, true).ok_or(PrepareError::TimeOutOfRange)?;
     parts.push(PartKind::Time, time_part.clone());
-    // Without a project, `memoryPart` has the account's lines only (`project?.memories` is undefined).
-    if let Some(p) = memory::part(turn.memory, &JValue::Undefined) {
-        parts.push(PartKind::Memory, p);
+    // `memoryPart` holds the project's memories too (`project?.memories`; undefined without one).
+    let project_memories = turn
+        .project
+        .as_ref()
+        .map_or(&JValue::Undefined, |p| p.project.get("memories"));
+    let memory_part = memory::part(turn.memory, project_memories);
+    match &turn.project {
+        None => {
+            if let Some(p) = memory_part {
+                parts.push(PartKind::Memory, p);
+            }
+        }
+        Some(p) => {
+            let compact = turn.message.is_none();
+            for (kind, text) in
+                project::parts(p, memory_part, compact).map_err(|_| PrepareError::Thrown)?
+            {
+                parts.push(kind, text);
+            }
+            let block = p
+                .files_block
+                .filter(|b| project::retrieval_ran(p.project) && !b.is_empty());
+            if let (Some(block), Some(message), true) = (
+                block,
+                turn.message,
+                project::is_chat_attachments(p.project).map_err(|_| PrepareError::Thrown)?,
+            ) {
+                project::attach_files_block(&mut history, block, message);
+            }
+            for (kind, text) in p.skills {
+                parts.push(*kind, text.clone());
+            }
+            if let Some(line) =
+                sources::stored_only(p.project.get("files")).map_err(|_| PrepareError::Thrown)?
+            {
+                parts.push(PartKind::StoredOnly, line);
+            }
+        }
     }
     for (kind, text) in turn.trailing {
         parts.push(*kind, text.clone());
