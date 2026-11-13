@@ -1797,7 +1797,10 @@ fn an_operator_invitation_is_accepted_by_the_normal_flow_for_each_role() {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .unwrap();
-        assert_eq!((created_by.as_str(), stored.as_str()), (owner_id.as_str(), role.as_str()));
+        assert_eq!(
+            (created_by.as_str(), stored.as_str()),
+            (owner_id.as_str(), role.as_str())
+        );
         // The audit event names the command, not an account.
         let (actor, detail): (Option<String>, String) = w
             .node
@@ -1810,7 +1813,10 @@ fn an_operator_invitation_is_accepted_by_the_normal_flow_for_each_role() {
         assert_eq!(actor, None);
         assert_eq!(
             detail,
-            format!(r#"{{"role":"{}","via":"operator-invitation"}}"#, role.as_str())
+            format!(
+                r#"{{"role":"{}","via":"operator-invitation"}}"#,
+                role.as_str()
+            )
         );
         // No account, session or password until the invitation is accepted.
         assert_eq!(count(&w, "SELECT count(*) FROM users"), 1 + i as i64);
@@ -1820,7 +1826,14 @@ fn an_operator_invitation_is_accepted_by_the_normal_flow_for_each_role() {
             made.token,
             role.as_str()
         );
-        let (s, v, _) = call(&w, &mut guest, "POST", "/api/auth/invitations/accept", &body, now + 1);
+        let (s, v, _) = call(
+            &w,
+            &mut guest,
+            "POST",
+            "/api/auth/invitations/accept",
+            &body,
+            now + 1,
+        );
         assert_eq!(s, 201);
         assert_eq!(v["user"]["role"], role.as_str());
         // Single use.
@@ -1857,7 +1870,14 @@ fn an_operator_invitation_changes_only_its_invitation_and_audit_rows() {
     let w = world(false);
     let mut owner = Browser::new("10.0.0.1");
     setup(&w, &mut owner);
-    let (s, _, _) = call(&w, &mut owner, "POST", "/api/admin/invitations", r#"{"role":"member"}"#, T0);
+    let (s, _, _) = call(
+        &w,
+        &mut owner,
+        "POST",
+        "/api/admin/invitations",
+        r#"{"role":"member"}"#,
+        T0,
+    );
     assert_eq!(s, 201);
     let before = dump(&w);
     operator::create(&operator_writer(&w), Role::Admin, T0 + 5).unwrap();
@@ -1902,7 +1922,10 @@ fn the_operator_invitation_refuses_an_empty_store_and_a_store_without_an_active_
     let mut owner = Browser::new("10.0.0.1");
     let owner_id = setup(&w, &mut owner);
     w.node
-        .execute("UPDATE users SET disabled_at=?1 WHERE id=?2", (T0, &owner_id))
+        .execute(
+            "UPDATE users SET disabled_at=?1 WHERE id=?2",
+            (T0, &owner_id),
+        )
         .unwrap();
     let audits = count(&w, "SELECT count(*) FROM audit_events");
     assert!(matches!(
