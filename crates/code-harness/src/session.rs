@@ -89,7 +89,11 @@ impl Ended {
             h.push(hook);
         }
         if self.is_ended() {
-            let hooks: Vec<_> = self.hooks.lock().map(|mut h| std::mem::take(&mut *h)).unwrap_or_default();
+            let hooks: Vec<_> = self
+                .hooks
+                .lock()
+                .map(|mut h| std::mem::take(&mut *h))
+                .unwrap_or_default();
             for hook in hooks {
                 hook();
             }
@@ -99,7 +103,11 @@ impl Ended {
         if self.ended.swap(true, Ordering::SeqCst) {
             return;
         }
-        let hooks: Vec<_> = self.hooks.lock().map(|mut h| std::mem::take(&mut *h)).unwrap_or_default();
+        let hooks: Vec<_> = self
+            .hooks
+            .lock()
+            .map(|mut h| std::mem::take(&mut *h))
+            .unwrap_or_default();
         for hook in hooks {
             hook();
         }
@@ -269,7 +277,11 @@ fn clip_utf8(text: &str, max: usize) -> String {
     let mut out = String::new();
     let mut bytes = 0;
     for c in text.chars() {
-        let c = if wtf16::lone_unit(c).is_some() { '\u{FFFD}' } else { c };
+        let c = if wtf16::lone_unit(c).is_some() {
+            '\u{FFFD}'
+        } else {
+            c
+        };
         if bytes + c.len_utf8() > max {
             break;
         }
@@ -314,7 +326,10 @@ fn js_number(v: &JValue) -> f64 {
                 0.0
             } else if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
                 u64::from_str_radix(hex, 16).map_or(f64::NAN, |n| n as f64)
-            } else if t.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-')) {
+            } else if t
+                .chars()
+                .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
+            {
                 t.parse::<f64>().unwrap_or(f64::NAN)
             } else if t == "Infinity" || t == "+Infinity" {
                 f64::INFINITY
@@ -332,7 +347,11 @@ fn js_number(v: &JValue) -> f64 {
 fn slice_index(i: f64, len: usize) -> usize {
     let len_f = len as f64;
     let i = if i.is_nan() { 0.0 } else { i.trunc() };
-    let i = if i < 0.0 { (len_f + i).max(0.0) } else { i.min(len_f) };
+    let i = if i < 0.0 {
+        (len_f + i).max(0.0)
+    } else {
+        i.min(len_f)
+    };
     i as usize
 }
 
@@ -400,7 +419,10 @@ impl Session {
 
     /// Whether the guard stopped the task, and the error the task then ends with.
     pub fn blocked(&self) -> Option<crate::tool_schemas::BlockedError> {
-        self.lock().guard.as_ref().and_then(ExecutorGuard::blocked_error)
+        self.lock()
+            .guard
+            .as_ref()
+            .and_then(ExecutorGuard::blocked_error)
     }
 
     fn record(&self, entry: Vec<(&str, JValue)>) {
@@ -437,7 +459,8 @@ impl Session {
     }
 
     fn reject(options: &JValue, reason: &JValue) -> Result<JValue, Refusal> {
-        reject_outcome(&actions::pick_option(options, "reject_once"), reason).map_err(Refusal::thrown)
+        reject_outcome(&actions::pick_option(options, "reject_once"), reason)
+            .map_err(Refusal::thrown)
     }
 
     /// `session/request_permission`: the selected outcome.
@@ -453,7 +476,10 @@ impl Session {
         let mut st = self.lock();
         let announced = if stated.truthy() && stated.get("toolCallId").truthy() {
             let key = key_of(stated.get("toolCallId"));
-            st.calls.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone())
+            st.calls
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| v.clone())
         } else {
             None
         };
@@ -546,7 +572,10 @@ impl Session {
                 Some(_) => {
                     st.counts.refused += 1;
                     drop(st);
-                    return Self::reject(&options, &s("The person refused this kind of action for this task."));
+                    return Self::reject(
+                        &options,
+                        &s("The person refused this kind of action for this task."),
+                    );
                 }
                 None => {}
             }
@@ -560,7 +589,10 @@ impl Session {
             ("command", classified.get("command").clone()),
             ("paths", classified.get("paths").clone()),
             ("reason", reason),
-            ("arguments", nullish_or(tool_call.get("rawInput"), JValue::Null)),
+            (
+                "arguments",
+                nullish_or(tool_call.get("rawInput"), JValue::Null),
+            ),
             ("diff", diff_of(&tool_call)),
         ]);
         self.event("approval.requested", request.clone())?;
@@ -646,7 +678,8 @@ impl Session {
         self.guard_fs(false, params)?;
         let target = self.inside(params.get("path"))?;
         let root = self.host.root();
-        let content = files::read(&target, MAX_FILE_BYTES, root.as_deref()).map_err(file_refusal)?;
+        let content =
+            files::read(&target, MAX_FILE_BYTES, root.as_deref()).map_err(file_refusal)?;
         let line = nullish_or(params.get("line"), JValue::Null);
         let limit = nullish_or(params.get("limit"), JValue::Null);
         if line == JValue::Null && limit == JValue::Null {
@@ -713,7 +746,8 @@ impl Session {
                 let classified = actions::classify(update);
                 let name = or(update.get("title"), or(update.get("kind"), s("tool")));
                 if update.get("toolCallId").truthy() {
-                    st.names.insert(key_of(update.get("toolCallId")), name.clone());
+                    st.names
+                        .insert(key_of(update.get("toolCallId")), name.clone());
                 }
                 drop(st);
                 self.event(
@@ -742,7 +776,12 @@ impl Session {
                 if done {
                     let exit = meta::read_exit_code(update);
                     if exit != JValue::Null && st.exits.len() < MAX_EXITS {
-                        let name = st.names.get(&key_of(id)).cloned().filter(JValue::truthy).unwrap_or(JValue::Null);
+                        let name = st
+                            .names
+                            .get(&key_of(id))
+                            .cloned()
+                            .filter(JValue::truthy)
+                            .unwrap_or(JValue::Null);
                         st.exits.push(JValue::obj([
                             ("id", nullish_or(id, JValue::Null)),
                             ("name", name),
@@ -772,7 +811,8 @@ impl Session {
                     .take(MAX_CODE_PLAN_ENTRIES)
                     .map(|e| nullish_or(e.get("content"), s("")))
                     .collect();
-                let (questions, truncated) = bound_code_plan(&contents, entries.len() > MAX_CODE_PLAN_ENTRIES);
+                let (questions, truncated) =
+                    bound_code_plan(&contents, entries.len() > MAX_CODE_PLAN_ENTRIES);
                 self.event(
                     "plan.proposed",
                     JValue::obj([
@@ -832,7 +872,10 @@ impl Session {
         }
         let data = JValue::obj([
             ("text", JValue::Str(st.output_buffer.clone())),
-            ("truncated", JValue::Bool(st.output_truncated && !st.truncation_recorded)),
+            (
+                "truncated",
+                JValue::Bool(st.output_truncated && !st.truncation_recorded),
+            ),
         ]);
         self.event("assistant.output", data)?;
         st.output_events += 1;
@@ -855,7 +898,9 @@ impl Session {
             let joined = rest.peek().copied().and_then(|c| {
                 let low = wtf16::lone_unit(c).filter(|u| (0xDC00..=0xDFFF).contains(u))?;
                 let hi = wtf16::lone_unit(high)?;
-                char::from_u32(0x10000 + ((u32::from(hi) - 0xD800) << 10) + (u32::from(low) - 0xDC00))
+                char::from_u32(
+                    0x10000 + ((u32::from(hi) - 0xD800) << 10) + (u32::from(low) - 0xDC00),
+                )
             });
             match joined {
                 Some(c) => {
@@ -875,7 +920,11 @@ impl Session {
             }
         }
         for c in source {
-            let c = if wtf16::lone_unit(c).is_some() { '\u{FFFD}' } else { c };
+            let c = if wtf16::lone_unit(c).is_some() {
+                '\u{FFFD}'
+            } else {
+                c
+            };
             let bytes = c.len_utf8();
             if st.output_bytes + bytes > MAX_ASSISTANT_OUTPUT_BYTES {
                 st.output_truncated = true;
@@ -1046,7 +1095,11 @@ fn summarize_content(content: &JValue) -> JValue {
     };
     let texts: Vec<String> = blocks
         .iter()
-        .filter_map(|b| b.truthy().then(|| b.get("text").as_str().map(str::to_string)).flatten())
+        .filter_map(|b| {
+            b.truthy()
+                .then(|| b.get("text").as_str().map(str::to_string))
+                .flatten()
+        })
         .filter(|t| !t.is_empty())
         .collect();
     let joined = clip(&JValue::Str(texts.join("\n")));

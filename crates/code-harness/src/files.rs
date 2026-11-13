@@ -107,7 +107,9 @@ fn outside(rel: &str) -> bool {
 
 /// code-harness.cjs `pinnedParent`: the checked final path.
 fn pinned_parent(target: &str, root: Option<&str>) -> Result<String, FileRefusal> {
-    let root = root.filter(|r| !r.is_empty()).ok_or_else(|| refuse(OUTSIDE))?;
+    let root = root
+        .filter(|r| !r.is_empty())
+        .ok_or_else(|| refuse(OUTSIDE))?;
     let real_root = realpath(root).ok_or_else(|| refuse(OUTSIDE))?;
     let real_parent = realpath(&dirname(target)).ok_or_else(|| refuse(OUTSIDE))?;
     if outside(&relative(&real_root, &real_parent)) {
@@ -123,12 +125,17 @@ fn pinned_parent(target: &str, root: Option<&str>) -> Result<String, FileRefusal
 }
 
 /// code-harness.cjs `verifyOpened`: the descriptor is the file `last` names now, still inside.
-fn verify_opened(file: &fs::File, last: &str, root: Option<&str>) -> Result<fs::Metadata, FileRefusal> {
+fn verify_opened(
+    file: &fs::File,
+    last: &str,
+    root: Option<&str>,
+) -> Result<fs::Metadata, FileRefusal> {
     let opened = file.metadata().map_err(|e| os(&e))?;
     let root = root.unwrap_or("");
     let real_root = realpath(root).ok_or_else(|| refuse(OUTSIDE))?;
     let real_parent = realpath(&dirname(last)).ok_or_else(|| refuse(OUTSIDE))?;
-    let named = fs::symlink_metadata(join(&real_parent, &basename(last))).map_err(|_| refuse(OUTSIDE))?;
+    let named =
+        fs::symlink_metadata(join(&real_parent, &basename(last))).map_err(|_| refuse(OUTSIDE))?;
     if outside(&relative(&real_root, &real_parent)) {
         return Err(refuse(OUTSIDE));
     }
@@ -234,7 +241,13 @@ pub fn write(target: &str, text: &str, root: Option<&str>) -> Result<(), FileRef
 /// character in the `wtf16` form) becomes U+FFFD.
 pub fn utf8_of(text: &str) -> String {
     text.chars()
-        .map(|c| if wtf16::lone_unit(c).is_some() { '\u{FFFD}' } else { c })
+        .map(|c| {
+            if wtf16::lone_unit(c).is_some() {
+                '\u{FFFD}'
+            } else {
+                c
+            }
+        })
         .collect()
 }
 

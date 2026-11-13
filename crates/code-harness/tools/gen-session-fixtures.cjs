@@ -120,6 +120,21 @@ const SCENARIOS = {
       { update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'after the cap' } } },
     ],
   },
+  // "Allow for this task" never stands for a delete or a push; it does for an edit.
+  'standing': {
+    capabilities: ['read_repository', 'edit_file', 'execute_command', 'delete', 'git_push'],
+    answers: ['approve_all', 'approve_all', 'approve_all', 'deny', 'deny', 'approve'],
+    script: [
+      exec('rm -rf build'),
+      exec('git push origin HEAD'),
+      edit('<TREE>/a.txt'),
+      exec('rm -rf dist'),
+      exec('git push origin main'),
+      edit('<TREE>/lines.txt'),
+      perm({ kind: 'delete', title: 'Delete', locations: [{ path: '<TREE>/a.txt' }] }),
+      { update: { sessionUpdate: 'plan', entries: [{ content: 'é'.repeat(150) }, { content: 'lone \ud800 entry' }, { content: null }, { content: 7 }] } },
+    ],
+  },
   'guard-blocks': {
     guarded: true,
     capabilities: ['read_repository', 'edit_file', 'execute_command'],

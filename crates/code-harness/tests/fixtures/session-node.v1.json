@@ -2549,6 +2549,678 @@
     }
    }
   },
+  "standing": {
+   "capabilities": [
+    "read_repository",
+    "edit_file",
+    "execute_command",
+    "delete",
+    "git_push"
+   ],
+   "domains": [],
+   "guarded": false,
+   "answers": [
+    "approve_all",
+    "approve_all",
+    "approve_all",
+    "deny",
+    "deny",
+    "approve"
+   ],
+   "script": [
+    {
+     "call": "requestPermission",
+     "params": {
+      "toolCall": {
+       "kind": "execute",
+       "title": "rm -rf build",
+       "rawInput": {
+        "command": "rm -rf build"
+       }
+      },
+      "options": [
+       {
+        "optionId": "y",
+        "kind": "allow_once",
+        "name": "Allow"
+       },
+       {
+        "optionId": "a",
+        "kind": "allow_always",
+        "name": "Always"
+       },
+       {
+        "optionId": "n",
+        "kind": "reject_once",
+        "name": "Reject"
+       }
+      ]
+     }
+    },
+    {
+     "call": "requestPermission",
+     "params": {
+      "toolCall": {
+       "kind": "execute",
+       "title": "git push origin HEAD",
+       "rawInput": {
+        "command": "git push origin HEAD"
+       }
+      },
+      "options": [
+       {
+        "optionId": "y",
+        "kind": "allow_once",
+        "name": "Allow"
+       },
+       {
+        "optionId": "a",
+        "kind": "allow_always",
+        "name": "Always"
+       },
+       {
+        "optionId": "n",
+        "kind": "reject_once",
+        "name": "Reject"
+       }
+      ]
+     }
+    },
+    {
+     "call": "requestPermission",
+     "params": {
+      "toolCall": {
+       "kind": "edit",
+       "title": "Edit <TREE>/a.txt",
+       "locations": [
+        {
+         "path": "<TREE>/a.txt"
+        }
+       ],
+       "rawInput": {
+        "path": "<TREE>/a.txt"
+       }
+      },
+      "options": [
+       {
+        "optionId": "y",
+        "kind": "allow_once",
+        "name": "Allow"
+       },
+       {
+        "optionId": "a",
+        "kind": "allow_always",
+        "name": "Always"
+       },
+       {
+        "optionId": "n",
+        "kind": "reject_once",
+        "name": "Reject"
+       }
+      ]
+     }
+    },
+    {
+     "call": "requestPermission",
+     "params": {
+      "toolCall": {
+       "kind": "execute",
+       "title": "rm -rf dist",
+       "rawInput": {
+        "command": "rm -rf dist"
+       }
+      },
+      "options": [
+       {
+        "optionId": "y",
+        "kind": "allow_once",
+        "name": "Allow"
+       },
+       {
+        "optionId": "a",
+        "kind": "allow_always",
+        "name": "Always"
+       },
+       {
+        "optionId": "n",
+        "kind": "reject_once",
+        "name": "Reject"
+       }
+      ]
+     }
+    },
+    {
+     "call": "requestPermission",
+     "params": {
+      "toolCall": {
+       "kind": "execute",
+       "title": "git push origin main",
+       "rawInput": {
+        "command": "git push origin main"
+       }
+      },
+      "options": [
+       {
+        "optionId": "y",
+        "kind": "allow_once",
+        "name": "Allow"
+       },
+       {
+        "optionId": "a",
+        "kind": "allow_always",
+        "name": "Always"
+       },
+       {
+        "optionId": "n",
+        "kind": "reject_once",
+        "name": "Reject"
+       }
+      ]
+     }
+    },
+    {
+     "call": "requestPermission",
+     "params": {
+      "toolCall": {
+       "kind": "edit",
+       "title": "Edit <TREE>/lines.txt",
+       "locations": [
+        {
+         "path": "<TREE>/lines.txt"
+        }
+       ],
+       "rawInput": {
+        "path": "<TREE>/lines.txt"
+       }
+      },
+      "options": [
+       {
+        "optionId": "y",
+        "kind": "allow_once",
+        "name": "Allow"
+       },
+       {
+        "optionId": "a",
+        "kind": "allow_always",
+        "name": "Always"
+       },
+       {
+        "optionId": "n",
+        "kind": "reject_once",
+        "name": "Reject"
+       }
+      ]
+     }
+    },
+    {
+     "call": "requestPermission",
+     "params": {
+      "toolCall": {
+       "kind": "delete",
+       "title": "Delete",
+       "locations": [
+        {
+         "path": "<TREE>/a.txt"
+        }
+       ]
+      },
+      "options": [
+       {
+        "optionId": "y",
+        "kind": "allow_once",
+        "name": "Allow"
+       },
+       {
+        "optionId": "a",
+        "kind": "allow_always",
+        "name": "Always"
+       },
+       {
+        "optionId": "n",
+        "kind": "reject_once",
+        "name": "Reject"
+       }
+      ]
+     }
+    },
+    {
+     "update": {
+      "sessionUpdate": "plan",
+      "entries": [
+       {
+        "content": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+       },
+       {
+        "content": "lone \ud800 entry"
+       },
+       {
+        "content": null
+       },
+       {
+        "content": 7
+       }
+      ]
+     }
+    }
+   ],
+   "results": [
+    {
+     "ok": {
+      "outcome": "selected",
+      "optionId": "y"
+     }
+    },
+    {
+     "ok": {
+      "outcome": "selected",
+      "optionId": "y"
+     }
+    },
+    {
+     "ok": {
+      "outcome": "selected",
+      "optionId": "y"
+     }
+    },
+    {
+     "ok": {
+      "outcome": "selected",
+      "optionId": "n",
+      "_meta": {
+       "noevia": {
+        "reason": "The person declined this action."
+       }
+      }
+     }
+    },
+    {
+     "ok": {
+      "outcome": "selected",
+      "optionId": "n",
+      "_meta": {
+       "noevia": {
+        "reason": "The person declined this action."
+       }
+      }
+     }
+    },
+    {
+     "ok": {
+      "outcome": "selected",
+      "optionId": "y"
+     }
+    },
+    {
+     "ok": {
+      "outcome": "selected",
+      "optionId": "y"
+     }
+    },
+    null
+   ],
+   "calls": [
+    {
+     "fn": "event",
+     "args": [
+      "approval.requested",
+      {
+       "taskId": "00000000-0000-4000-8000-0000000000aa",
+       "action": "delete",
+       "title": "rm -rf build",
+       "kind": "execute",
+       "command": "rm -rf build",
+       "paths": [],
+       "reason": "",
+       "arguments": {
+        "command": "rm -rf build"
+       },
+       "diff": null
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.decided",
+      {
+       "decision": "approve_all",
+       "action": "delete"
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.requested",
+      {
+       "taskId": "00000000-0000-4000-8000-0000000000aa",
+       "action": "git_push",
+       "title": "git push origin HEAD",
+       "kind": "execute",
+       "command": "git push origin HEAD",
+       "paths": [],
+       "reason": "",
+       "arguments": {
+        "command": "git push origin HEAD"
+       },
+       "diff": null
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.decided",
+      {
+       "decision": "approve_all",
+       "action": "git_push"
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.requested",
+      {
+       "taskId": "00000000-0000-4000-8000-0000000000aa",
+       "action": "edit_file",
+       "title": "Edit <TREE>/a.txt",
+       "kind": "edit",
+       "command": "",
+       "paths": [
+        "<TREE>/a.txt"
+       ],
+       "reason": "",
+       "arguments": {
+        "path": "<TREE>/a.txt"
+       },
+       "diff": null
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.decided",
+      {
+       "decision": "approve_all",
+       "action": "edit_file"
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.requested",
+      {
+       "taskId": "00000000-0000-4000-8000-0000000000aa",
+       "action": "delete",
+       "title": "rm -rf dist",
+       "kind": "execute",
+       "command": "rm -rf dist",
+       "paths": [],
+       "reason": "",
+       "arguments": {
+        "command": "rm -rf dist"
+       },
+       "diff": null
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.decided",
+      {
+       "decision": "deny",
+       "action": "delete"
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.requested",
+      {
+       "taskId": "00000000-0000-4000-8000-0000000000aa",
+       "action": "git_push",
+       "title": "git push origin main",
+       "kind": "execute",
+       "command": "git push origin main",
+       "paths": [],
+       "reason": "",
+       "arguments": {
+        "command": "git push origin main"
+       },
+       "diff": null
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.decided",
+      {
+       "decision": "deny",
+       "action": "git_push"
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.requested",
+      {
+       "taskId": "00000000-0000-4000-8000-0000000000aa",
+       "action": "delete",
+       "title": "Delete",
+       "kind": "delete",
+       "command": "",
+       "paths": [
+        "<TREE>/a.txt"
+       ],
+       "reason": "",
+       "arguments": null,
+       "diff": null
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.decided",
+      {
+       "decision": "approve",
+       "action": "delete"
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "plan.proposed",
+      {
+       "question": null,
+       "subQuestions": [
+        "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+        "lone � entry",
+        "",
+        "7"
+       ],
+       "truncated": true
+      }
+     ]
+    }
+   ],
+   "asked": [
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "action": "delete",
+     "title": "rm -rf build",
+     "kind": "execute",
+     "command": "rm -rf build",
+     "paths": [],
+     "reason": "",
+     "arguments": {
+      "command": "rm -rf build"
+     },
+     "diff": null
+    },
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "action": "git_push",
+     "title": "git push origin HEAD",
+     "kind": "execute",
+     "command": "git push origin HEAD",
+     "paths": [],
+     "reason": "",
+     "arguments": {
+      "command": "git push origin HEAD"
+     },
+     "diff": null
+    },
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "action": "edit_file",
+     "title": "Edit <TREE>/a.txt",
+     "kind": "edit",
+     "command": "",
+     "paths": [
+      "<TREE>/a.txt"
+     ],
+     "reason": "",
+     "arguments": {
+      "path": "<TREE>/a.txt"
+     },
+     "diff": null
+    },
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "action": "delete",
+     "title": "rm -rf dist",
+     "kind": "execute",
+     "command": "rm -rf dist",
+     "paths": [],
+     "reason": "",
+     "arguments": {
+      "command": "rm -rf dist"
+     },
+     "diff": null
+    },
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "action": "git_push",
+     "title": "git push origin main",
+     "kind": "execute",
+     "command": "git push origin main",
+     "paths": [],
+     "reason": "",
+     "arguments": {
+      "command": "git push origin main"
+     },
+     "diff": null
+    },
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "action": "delete",
+     "title": "Delete",
+     "kind": "delete",
+     "command": "",
+     "paths": [
+      "<TREE>/a.txt"
+     ],
+     "reason": "",
+     "arguments": null,
+     "diff": null
+    }
+   ],
+   "logs": [
+    {
+     "at": 0,
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "delete",
+     "decision": "approve_all"
+    },
+    {
+     "at": 0,
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "git_push",
+     "decision": "approve_all"
+    },
+    {
+     "at": 0,
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "edit_file",
+     "decision": "approve_all"
+    },
+    {
+     "at": 0,
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "delete",
+     "decision": "deny"
+    },
+    {
+     "at": 0,
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "git_push",
+     "decision": "deny"
+    },
+    {
+     "at": 0,
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "delete",
+     "decision": "approve"
+    }
+   ],
+   "job": {
+    "status": "completed",
+    "error": null,
+    "result": {
+     "stopReason": "end_turn",
+     "branch": "noevia/task-00000000-0000-4000-8000-0000000000aa",
+     "identityHash": "804d868f360847a173756bbce764f04a928dfc24212ca707a1067a85637f4f60",
+     "meta": {
+      "harness": "qa-agent",
+      "harnessVersion": "1",
+      "protocolVersion": null,
+      "usage": null,
+      "context": null,
+      "commands": 0,
+      "failedCommands": 0,
+      "exitCodes": [],
+      "messageChunks": 0,
+      "limitations": [
+       "The harness did not report token usage.",
+       "No command exit codes were reported."
+      ]
+     },
+     "tools": 0,
+     "approvals": 7,
+     "allowed": 5,
+     "refused": 2,
+     "denied": 0,
+     "workspace": "<TREE>"
+    }
+   }
+  },
   "guard-blocks": {
    "capabilities": [
     "read_repository",
