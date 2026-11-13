@@ -6,24 +6,32 @@
 //! the resend record of `recordResend`. The classifier is [`crate::router`] and
 //! [`crate::system_one`].
 //!
-//! Pure: every read of a store or a service is a seam the caller answers, in chat.cjs's order:
-//! 1. [`wants_auto`], then the provider row of [`provider_id`] (`getProvider`).
-//! 2. Automatic: `servedCatalogue()` (null when the manager is off or unreadable), [`auto_check`];
-//!    the pre-load of [`AutoCheck::preload`] (`startPreload`), the classification
-//!    (`classifyFastOrSmart`), then [`auto_pick`].
-//! 3. Manual: [`manual_model`]; when [`wants_loaded_model`], `modelsInstalled()` (its error ignored)
-//!    and `lastLoadedModel()` as the model.
-//! 4. Both: [`require_model`]; when [`chat_guard_applies`], `servedCatalogue()` again and
-//!    [`chat_guard`].
+//! Pure: [`Routing`] owns chat.cjs's order and asks the caller for every read of a store or a
+//! service ([`Seam`]); the caller answers each with a [`Reply`] until [`Step::Done`]:
+//! 1. `autoRoles()` for `wantsAuto`, only when the project leaves the turn on Automatic and the
+//!    default provider (Node's `&&` reads it last), then `getProvider(id)`.
+//! 2. Automatic: `autoRoles()` again (`savedRoles`: none is the 400), `servedCatalogue()` (the 409
+//!    for stale roles), `startPreload` of the pre-load target, `classifyFastOrSmart`, the pick and
+//!    its resend log entry ([`Step::Done`]'s `resend`, owed even when the pick then refuses).
+//! 3. Manual: the project's model; without one on the local engine, `modelsInstalled()` (its error
+//!    ignored) and `lastLoadedModel()`.
+//! 4. Both: the 400 for no model; for the project's own pick on the local provider,
+//!    `servedCatalogue()` again and the 409 for a non-chat model.
+//!
+//! `codeProject(project)` is a closure ([`Turn::code_project`]), called only when it decides the
+//! pre-load, as Node's `likelyCode` reads it. The pre-load (#1863) leaves the caller work on every
+//! outcome ([`Preload`]): at the response's finish or close `releaseIfUnused` (chat.cjs ~1106-1112),
+//! and when the pick names another model, right after it, `use()` unless the turn was aborted and
+//! `cancel()` (~1131).
 //!
 //! Preconditions (later slices): no routing modes (`routingModes` off, so no `routeTarget`, no cloud
 //! route and no `route_pending` question), no Inference machines (`chatMachines` null), and the
-//! provider passes the egress and ChatGPT checks chat.cjs runs between steps 1 and 2. The tool
-//! gate's move to a tool-capable role (#1550) and the long-context profile (#1079) come after.
+//! provider passes the egress and ChatGPT checks chat.cjs runs on the row before step 2 (the caller
+//! runs them before it answers [`Seam::Provider`]). The tool gate's move to a tool-capable role
+//! (#1550) and the long-context profile (#1079) come after ([`crate::reroute`]).
 //!
 //! Model names and role values are JS values (`JValue`), compared as `===` does: two JSON objects
-//! are never the same one. `autoRoles()` is read once: Node reads it again at each use, and gets the
-//! same workspace's value within a turn.
+//! are never the same one.
 
 use std::collections::HashMap;
 
@@ -97,6 +105,9 @@ pub enum Halt {
     /// Node throws (a `String()` of an object with its own `toString`, a property read of `null`),
     /// and the turn fails as an uncaught error does.
     Thrown,
+    /// The caller answered a [`Seam`] it was not asked, or stepped a finished [`Routing`]: a bug of
+    /// the caller, never an answer Node gives.
+    OutOfOrder,
 }
 
 impl From<Thrown> for Halt {
@@ -113,17 +124,13 @@ pub struct Classification {
     pub decision: JValue,
 }
 
-/// What the routing reads of the turn.
-#[derive(Debug, Clone, Copy)]
+/// What the routing reads of the turn besides its seams.
+#[derive(Clone, Copy)]
 pub struct Turn<'a> {
     /// The turn's project record; `null` without one.
     pub project: &'a JValue,
-    /// `autoRoles()`: the workspace's role object, `null` when none is saved.
-    pub auto_roles: &'a JValue,
     /// `DEFAULT_PROVIDER_ID`.
     pub default_provider_id: &'a str,
-    /// The provider row (`getProvider(provider_id(..))`).
-    pub provider: &'a JValue,
     /// `body.message`.
     pub message: &'a str,
     /// `modelManager.enabled` (truthy).
@@ -134,8 +141,14 @@ pub struct Turn<'a> {
     pub task_mode: bool,
     /// The turn carries images: attached or retrieved ones, or a message whose content is not text.
     pub has_images: bool,
-    /// chat.cjs `codeProject(project)`: the project shares a Code chat or has Code tasks.
-    pub code_project: bool,
+    /// chat.cjs `codeProject(project)`: the project shares a Code chat or has Code tasks. Called
+    /// only when the pre-load would otherwise go ahead, Code names another model, the message has
+    /// no code and it is not a Task turn.
+    pub code_project: &'a dyn Fn() -> bool,
+    /// `body.resend`.
+    pub resend: &'a JValue,
+    /// The roles file's section roles (model-system.cjs `sectionRolesOf`: trimmed, lower-cased).
+    pub system_roles: &'a HashMap<String, String>,
 }
 
 /// JS `===` over JSON values (SameValueZero, as `Set.has` and `includes`, for the same values).
@@ -152,24 +165,6 @@ pub fn project_provider(project: &JValue, default: &str) -> JValue {
     match project.get("provider") {
         JValue::Str(s) if s == "lemonade" => JValue::from(default),
         other => other.clone(),
-    }
-}
-
-/// `wantsAuto`: Automatic is the default (a free chat without its context project too), on the
-/// default provider only, and only with roles saved.
-pub fn wants_auto(project: &JValue, auto_roles: &JValue, default: &str) -> bool {
-    let routing = !project.truthy() || project.get("routing").as_str() == Some("auto");
-    let provider = project_provider(project, default);
-    routing && (!provider.truthy() || provider.as_str() == Some(default)) && auto_roles.truthy()
-}
-
-/// The id chat.cjs asks `getProvider` for: `wantsAuto ? DEFAULT_PROVIDER_ID : projectProvider || DEFAULT_PROVIDER_ID`.
-pub fn provider_id(wants_auto: bool, project: &JValue, default: &str) -> JValue {
-    let provider = project_provider(project, default);
-    if wants_auto || !provider.truthy() {
-        JValue::from(default)
-    } else {
-        provider
     }
 }
 
@@ -273,8 +268,7 @@ pub fn creative_move_is_free(
 
 /// `route-preload.cjs` `preloadTarget(...)` as chat.cjs calls it (no role on an Inference machine):
 /// the one local model every role this turn could end on names, or `None`.
-fn preload_target(t: &Turn<'_>) -> Option<JValue> {
-    let roles = t.auto_roles;
+fn preload_target(t: &Turn<'_>, roles: &JValue) -> Option<JValue> {
     let context_high = t.project.get("contextProfile").as_str() == Some("high");
     if !roles.truthy() || t.has_images || context_high {
         return None;
@@ -289,103 +283,11 @@ fn preload_target(t: &Turn<'_>) -> Option<JValue> {
         return None;
     }
     let code = roles.get("code");
-    let likely_code = || router::wants_code(t.message) || t.task_mode || t.code_project;
+    let likely_code = || router::wants_code(t.message) || t.task_mode || (t.code_project)();
     if code.truthy() && !strict_eq(code, model) && likely_code() {
         return None;
     }
     Some(model.clone())
-}
-
-/// What the roles check settled before the classifier runs.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AutoCheck {
-    /// The Creative role's model is not served: it is optional, so it never fails the turn, and the
-    /// router's pick then stands.
-    pub creative_gone: bool,
-    /// The model to load beside the decision (#1863), for the caller's `startPreload`; `None`: no
-    /// pre-load.
-    pub preload: Option<JValue>,
-}
-
-/// The Automatic roles check: 400 without roles, 409 when a role other than Creative names a model
-/// the catalogue does not serve; `catalogue` is `servedCatalogue()`'s answer (null: unknown).
-pub fn auto_check(t: &Turn<'_>, catalogue: &JValue) -> Result<AutoCheck, Halt> {
-    if !t.auto_roles.truthy() {
-        return Err(Halt::Refused(Refusal {
-            status: 400,
-            error: "Auto routing is not configured yet — pick Fast and Smart models in the model popup first.".into(),
-        }));
-    }
-    let missing = missing_roles(t.auto_roles, catalogue)?;
-    let creative_gone = missing.iter().any(|(r, _)| *r == Role::Creative);
-    let others: Vec<(Role, JValue)> = missing
-        .into_iter()
-        .filter(|(r, _)| *r != Role::Creative)
-        .collect();
-    if let Some(error) = stale_roles_error(&others)? {
-        return Err(Halt::Refused(Refusal { status: 409, error }));
-    }
-    let local =
-        !t.compact_only && is_default(t.provider, t.default_provider_id) && t.manager_enabled;
-    Ok(AutoCheck {
-        creative_gone,
-        preload: if local { preload_target(t) } else { None },
-    })
-}
-
-/// An Automatic turn's route.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Picked {
-    /// `routedRole`.
-    pub role: Role,
-    /// `model`: the role's model (`roles[routedRole]`).
-    pub model: JValue,
-    /// `routingDecision`, its `effectiveRole` set to the role (as the classifier gave it otherwise).
-    pub decision: JValue,
-    /// What `recordResend` writes for a regenerated or retried message (`recordOutcome`'s entry), or
-    /// `None`.
-    pub resend: Option<JValue>,
-}
-
-/// The Automatic pick after the classification: a role with no model falls back to Smart (else
-/// Fast); a creative prompt moves to the Creative role when one is served and the move costs no
-/// model swap. `resend` is `body.resend`.
-pub fn auto_pick(
-    t: &Turn<'_>,
-    catalogue: &JValue,
-    check: &AutoCheck,
-    c: &Classification,
-    resend: &JValue,
-) -> Result<Picked, Thrown> {
-    let roles = t.auto_roles;
-    let mut role = c.role;
-    if !roles.get(role.as_str()).truthy() {
-        role = if roles.get("smart").truthy() {
-            Role::Smart
-        } else {
-            Role::Fast
-        };
-    }
-    if !check.creative_gone
-        && sampling::creative_route(Some(role.as_str()), t.message, roles)
-        && creative_move_is_free(roles, role, catalogue)?
-    {
-        role = Role::Creative;
-    }
-    let mut decision = c.decision.clone();
-    if let JValue::Obj(items) = &mut decision {
-        wtf16::set(items, "effectiveRole", JValue::from(role.as_str()));
-    }
-    let status = match decision.get("status") {
-        s if s.truthy() => s.clone(),
-        _ => JValue::Null,
-    };
-    Ok(Picked {
-        role,
-        model: roles.get(role.as_str()).clone(),
-        decision,
-        resend: resend_record(resend, role, status),
-    })
 }
 
 /// `recordResend(resend, { auto: true, role, status })`: only a regenerate or a retry is recorded,
@@ -417,47 +319,9 @@ pub fn manual_model(project: &JValue) -> JValue {
     }
 }
 
-/// A Manual turn with no pick on the local engine takes the model the manager last reported as
-/// loaded: the caller reads `modelsInstalled()` (ignoring its error), then `lastLoadedModel()`.
-pub fn wants_loaded_model(t: &Turn<'_>, model: &JValue) -> bool {
-    !model.truthy() && is_default(t.provider, t.default_provider_id) && t.manager_enabled
-}
-
-/// The 400 for a turn with no model.
-pub fn require_model(t: &Turn<'_>, model: &JValue) -> Result<(), Halt> {
-    if model.truthy() {
-        return Ok(());
-    }
-    let error = if is_default(t.provider, t.default_provider_id) {
-        "no model selected and none loaded — pick one in the model popup".to_string()
-    } else {
-        let label = t.provider.get("label");
-        let name = if label.truthy() {
-            label
-        } else {
-            t.provider.get("id")
-        };
-        let name = js_json::to_js_string(name).map_err(|_| Halt::Thrown)?;
-        format!("no model selected for {name} — pick one in the model popup")
-    };
-    Err(Halt::Refused(Refusal { status: 400, error }))
-}
-
-/// Whether the manual pick is checked against the catalogue (#409): a Manual turn answering the
-/// project's own stored model on the local provider. `model` is [`manual_model`]'s or the loaded
-/// model: Node's `project.model === model` is true for the project's own value even when it is an
-/// object (the same reference), and a loaded model is never an object, so values are compared.
-pub fn chat_guard_applies(t: &Turn<'_>, wants_auto: bool, model: &JValue) -> bool {
-    !wants_auto
-        && t.project.truthy()
-        && t.project.get("model") == model
-        && is_default(t.provider, t.default_provider_id)
-}
-
 /// The 409 for a stored pick that names an embedding, reranking or system routing model.
-/// `catalogue` is `servedCatalogue()`'s answer; `system_roles` the roles file's section roles
-/// (model-system.cjs `sectionRolesOf`: trimmed, lower-cased).
-pub fn chat_guard(
+/// `catalogue` is `servedCatalogue()`'s answer.
+fn chat_guard(
     model: &JValue,
     catalogue: &JValue,
     system_roles: &HashMap<String, String>,
@@ -482,6 +346,351 @@ pub fn chat_guard(
         status: 409,
         error: format!("{name} is an embedding, reranking or routing model and cannot answer chat messages — pick a chat model in the model popup."),
     }))
+}
+
+/// What the routing asks of its caller next.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Seam {
+    /// `autoRoles()`: the workspace's roles, `null` when none is saved.
+    AutoRoles,
+    /// `getProvider(id)`: the provider row.
+    Provider(JValue),
+    /// `servedCatalogue()`: the served list, `null` when the manager is off or unreadable.
+    ServedCatalogue,
+    /// `startPreload({ manager, model, signal, busy, log })`: whether a pre-load started.
+    StartPreload(JValue),
+    /// `classifyFastOrSmart(message)`.
+    Classify,
+    /// `modelsInstalled()`, answered once it settles (an error is ignored).
+    ModelsInstalled,
+    /// `lastLoadedModel()`.
+    LastLoadedModel,
+}
+
+/// The caller's answer to the last [`Seam`]; [`Reply::Start`] for the first step.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Reply {
+    Start,
+    AutoRoles(JValue),
+    Provider(JValue),
+    Catalogue(JValue),
+    Preload { started: bool },
+    Classified(Classification),
+    Installed,
+    LastLoaded(JValue),
+}
+
+/// What the caller does with the pre-load (#1863), whatever the outcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Preload {
+    NotStarted,
+    /// When the response finishes or closes, call its `releaseIfUnused` once (idle: no other chat
+    /// turn running or waiting, and the engine not busy).
+    Started,
+    /// Started, and the pick names another model: right away `use()` it unless the turn was
+    /// aborted, then `cancel()`; and `releaseIfUnused` at the end, as for [`Preload::Started`].
+    Abandoned,
+}
+
+/// The settled route.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Routed {
+    /// `wantsAuto`.
+    pub wants_auto: bool,
+    /// `projectProvider`.
+    pub project_provider: JValue,
+    /// The provider row (`provider`).
+    pub provider: JValue,
+    /// `model`.
+    pub model: JValue,
+    /// `routedRole` (`None` on a Manual turn).
+    pub role: Option<Role>,
+    /// `routingDecision`, its `effectiveRole` set to the role (`null` on a Manual turn).
+    pub decision: JValue,
+}
+
+/// One step of [`Routing`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Step {
+    Ask(Seam),
+    /// The route, or why the turn ends; and, either way, what the caller still does: the pre-load
+    /// and, once an Automatic pick was made, the resend log entry (`recordResend` runs before the
+    /// 400 for a pick with no model, so a refused turn can owe it too). The entry is written
+    /// before the pre-load's `use()`/`cancel()`, which come right after the pick, before the first
+    /// `resolveFor` (P6a's [`crate::offer::offer`]) and [`crate::reroute`]; `use()` only when the
+    /// turn is not aborted (Node's `!chatSignal.signal.aborted`). No recorded turn is aborted.
+    Done {
+        route: Result<Routed, Halt>,
+        preload: Preload,
+        /// What `recordResend` writes for a regenerated or retried message (`recordOutcome`'s
+        /// entry).
+        resend: Option<JValue>,
+    },
+}
+
+enum Stage {
+    Start,
+    WantsRoles,
+    Provider,
+    SavedRoles,
+    Catalogue,
+    Preload,
+    Classify,
+    Installed,
+    LastLoaded,
+    Guard,
+    Over,
+}
+
+/// chat.cjs's routing of one turn, in its order (see the module doc).
+pub struct Routing<'a> {
+    t: Turn<'a>,
+    stage: Stage,
+    wants: bool,
+    provider: JValue,
+    roles: JValue,
+    catalogue: JValue,
+    creative_gone: bool,
+    preload_model: JValue,
+    preload: Preload,
+    model: JValue,
+    role: Option<Role>,
+    decision: JValue,
+    resend: Option<JValue>,
+}
+
+impl<'a> Routing<'a> {
+    pub fn new(t: Turn<'a>) -> Self {
+        Routing {
+            t,
+            stage: Stage::Start,
+            wants: false,
+            provider: JValue::Null,
+            roles: JValue::Null,
+            catalogue: JValue::Null,
+            creative_gone: false,
+            preload_model: JValue::Null,
+            preload: Preload::NotStarted,
+            model: JValue::Null,
+            role: None,
+            decision: JValue::Null,
+            resend: None,
+        }
+    }
+
+    /// The next seam, given the answer to the last one. A reply to a seam that was not asked, or a
+    /// step after [`Step::Done`], ends with [`Halt::OutOfOrder`].
+    pub fn step(&mut self, reply: Reply) -> Step {
+        let default = self.t.default_provider_id;
+        match (std::mem::replace(&mut self.stage, Stage::Over), reply) {
+            (Stage::Start, Reply::Start) => {
+                let p = self.t.project;
+                let auto = !p.truthy() || p.get("routing").as_str() == Some("auto");
+                let provider = project_provider(p, default);
+                if auto && (!provider.truthy() || provider.as_str() == Some(default)) {
+                    self.ask(Stage::WantsRoles, Seam::AutoRoles)
+                } else {
+                    self.ask_provider()
+                }
+            }
+            (Stage::WantsRoles, Reply::AutoRoles(roles)) => {
+                self.wants = roles.truthy();
+                self.ask_provider()
+            }
+            (Stage::Provider, Reply::Provider(row)) => {
+                self.provider = row;
+                if self.wants {
+                    return self.ask(Stage::SavedRoles, Seam::AutoRoles);
+                }
+                self.model = manual_model(self.t.project);
+                if !self.model.truthy() && self.on_default() && self.t.manager_enabled {
+                    self.ask(Stage::Installed, Seam::ModelsInstalled)
+                } else {
+                    self.settle()
+                }
+            }
+            (Stage::SavedRoles, Reply::AutoRoles(roles)) => {
+                if !roles.truthy() {
+                    return self.halt(Halt::Refused(Refusal {
+                        status: 400,
+                        error: "Auto routing is not configured yet — pick Fast and Smart models in the model popup first.".into(),
+                    }));
+                }
+                self.roles = roles;
+                self.ask(Stage::Catalogue, Seam::ServedCatalogue)
+            }
+            (Stage::Catalogue, Reply::Catalogue(catalogue)) => {
+                self.catalogue = catalogue;
+                match self.check() {
+                    Err(h) => self.halt(h),
+                    Ok(Some(model)) => {
+                        self.preload_model = model.clone();
+                        self.ask(Stage::Preload, Seam::StartPreload(model))
+                    }
+                    Ok(None) => self.ask(Stage::Classify, Seam::Classify),
+                }
+            }
+            (Stage::Preload, Reply::Preload { started }) => {
+                if started {
+                    self.preload = Preload::Started;
+                }
+                self.ask(Stage::Classify, Seam::Classify)
+            }
+            (Stage::Classify, Reply::Classified(c)) => match self.pick(&c) {
+                Err(Thrown) => self.halt(Halt::Thrown),
+                Ok(()) => self.settle(),
+            },
+            (Stage::Installed, Reply::Installed) => {
+                self.ask(Stage::LastLoaded, Seam::LastLoadedModel)
+            }
+            (Stage::LastLoaded, Reply::LastLoaded(model)) => {
+                self.model = model;
+                self.settle()
+            }
+            (Stage::Guard, Reply::Catalogue(catalogue)) => {
+                match chat_guard(&self.model, &catalogue, self.t.system_roles) {
+                    Err(h) => self.halt(h),
+                    Ok(()) => self.done(),
+                }
+            }
+            _ => self.halt(Halt::OutOfOrder),
+        }
+    }
+
+    fn ask(&mut self, stage: Stage, seam: Seam) -> Step {
+        self.stage = stage;
+        Step::Ask(seam)
+    }
+
+    /// `getProvider(wantsAuto ? DEFAULT_PROVIDER_ID : projectProvider || DEFAULT_PROVIDER_ID)`.
+    fn ask_provider(&mut self) -> Step {
+        let provider = project_provider(self.t.project, self.t.default_provider_id);
+        let id = if self.wants || !provider.truthy() {
+            JValue::from(self.t.default_provider_id)
+        } else {
+            provider
+        };
+        self.ask(Stage::Provider, Seam::Provider(id))
+    }
+
+    fn on_default(&self) -> bool {
+        is_default(&self.provider, self.t.default_provider_id)
+    }
+
+    /// The stale-roles check (Creative is optional: missing, the router's pick stands) and the
+    /// pre-load target.
+    fn check(&mut self) -> Result<Option<JValue>, Halt> {
+        let missing = missing_roles(&self.roles, &self.catalogue)?;
+        self.creative_gone = missing.iter().any(|(r, _)| *r == Role::Creative);
+        let others: Vec<(Role, JValue)> = missing
+            .into_iter()
+            .filter(|(r, _)| *r != Role::Creative)
+            .collect();
+        if let Some(error) = stale_roles_error(&others)? {
+            return Err(Halt::Refused(Refusal { status: 409, error }));
+        }
+        let local = !self.t.compact_only && self.on_default() && self.t.manager_enabled;
+        Ok(if local {
+            preload_target(&self.t, &self.roles)
+        } else {
+            None
+        })
+    }
+
+    /// The pick: a role with no model falls back to Smart (else Fast); a creative prompt moves to
+    /// the Creative role when it is served and the move costs no model swap.
+    fn pick(&mut self, c: &Classification) -> Result<(), Thrown> {
+        let roles = &self.roles;
+        let mut role = c.role;
+        if !roles.get(role.as_str()).truthy() {
+            role = if roles.get("smart").truthy() {
+                Role::Smart
+            } else {
+                Role::Fast
+            };
+        }
+        if !self.creative_gone
+            && sampling::creative_route(Some(role.as_str()), self.t.message, roles)
+            && creative_move_is_free(roles, role, &self.catalogue)?
+        {
+            role = Role::Creative;
+        }
+        let mut decision = c.decision.clone();
+        if let JValue::Obj(items) = &mut decision {
+            wtf16::set(items, "effectiveRole", JValue::from(role.as_str()));
+        }
+        let status = match decision.get("status") {
+            s if s.truthy() => s.clone(),
+            _ => JValue::Null,
+        };
+        self.model = roles.get(role.as_str()).clone();
+        self.resend = resend_record(self.t.resend, role, status);
+        self.role = Some(role);
+        self.decision = decision;
+        if self.preload == Preload::Started && !strict_eq(&self.preload_model, &self.model) {
+            self.preload = Preload::Abandoned;
+        }
+        Ok(())
+    }
+
+    /// The 400 for a turn with no model, then the manual guard's catalogue read (#409): a Manual
+    /// turn answering the project's own stored model on the local provider. Node's
+    /// `project.model === model` is true for the project's own value even when it is an object
+    /// (the same reference), and a loaded model is never an object, so values are compared.
+    fn settle(&mut self) -> Step {
+        if !self.model.truthy() {
+            let error = if self.on_default() {
+                "no model selected and none loaded — pick one in the model popup".to_string()
+            } else {
+                let label = self.provider.get("label");
+                let name = if label.truthy() {
+                    label
+                } else {
+                    self.provider.get("id")
+                };
+                match js_json::to_js_string(name) {
+                    Ok(name) => {
+                        format!("no model selected for {name} — pick one in the model popup")
+                    }
+                    Err(_) => return self.halt(Halt::Thrown),
+                }
+            };
+            return self.halt(Halt::Refused(Refusal { status: 400, error }));
+        }
+        let project = self.t.project;
+        if !self.wants
+            && project.truthy()
+            && project.get("model") == &self.model
+            && self.on_default()
+        {
+            return self.ask(Stage::Guard, Seam::ServedCatalogue);
+        }
+        self.done()
+    }
+
+    fn done(&mut self) -> Step {
+        Step::Done {
+            route: Ok(Routed {
+                wants_auto: self.wants,
+                project_provider: project_provider(self.t.project, self.t.default_provider_id),
+                provider: self.provider.clone(),
+                model: self.model.clone(),
+                role: self.role,
+                decision: self.decision.clone(),
+            }),
+            preload: self.preload,
+            resend: self.resend.clone(),
+        }
+    }
+
+    fn halt(&mut self, h: Halt) -> Step {
+        self.stage = Stage::Over;
+        Step::Done {
+            route: Err(h),
+            preload: self.preload,
+            resend: self.resend.clone(),
+        }
+    }
 }
 
 /// `chat-model-kind.cjs` `isChatGenerationModel(name, labels)`. A copy of `noevia-server`'s

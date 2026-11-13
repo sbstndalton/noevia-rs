@@ -39,7 +39,8 @@
 //!   [`system_one`] (`system-one-router.cjs`) over [`router`] (`auto-router.cjs`). Recorded in
 //!   `tests/fixtures/node-roles.v1.json`, written by `tests/record_roles.cjs`, which runs those
 //!   modules and chat.cjs's own lines; no named differences. Routing modes, Inference machines, the
-//!   egress and ChatGPT checks, the tool-capable move and the long-context profile are later slices.
+//!   egress and ChatGPT checks are later slices; the tool-capable move and the long-context profile
+//!   are [`reroute`].
 //! - [`offer`] (slice P6a): the tools a turn offers the model and the per-tool facts the native
 //!   executor's frame carries (`tools`, `routes`, `writes`, `public`, `automaticOnlyWrites`,
 //!   `editTools`, `routeNote`, `templateGate`): the turn's boxes and Automatic's additions
@@ -50,8 +51,28 @@
 //!   router and tool gate are the caller's answers. Recorded in `tests/fixtures/node-tools.v1.json`,
 //!   written by `tests/record_tools.cjs`; one named difference: a tool whose name is truthy but not
 //!   text is refused ([`toolboxes::NameNotText`], the turn stays in Node) where Node offers it. The hybrid route's
-//!   private-tools move, Inference machines, the tool-capable move (`toolCapableRoute`), the
+//!   private-tools move, Inference machines, the
 //!   prompt edits of the ungranted cloud route and the executor's refusal inputs are later slices.
+//! - [`reroute`] (slice P5c): the rest of the turn's model routing after [`roles`] and [`offer`]:
+//!   Automatic's move to a tool-capable role when the tool gate says a tool is needed and the
+//!   routed model's template cannot take tools (#1550, `toolCapableRoute`; the template verdict
+//!   is the caller's seam), the long-context profile of Context: High (#1079, `<model>-long`, the
+//!   `long-profile` crate's pick over `servedCatalogue()`), the status line and meta fields they
+//!   set, and the offered tools resolved again for a changed model ([`offer::offer`]). Recorded in
+//!   `tests/fixtures/node-reroute.v1.json`, written by `tests/record_reroute.cjs` (whole turns
+//!   through `createChatHandler`); no named differences. Inference machines and routing modes are
+//!   later slices.
+//! - [`retrieval`] (slice P2b): a project turn's knowledge-file retrieval around its two seams (the
+//!   file-job wait and `rag.filesContext`): the project id, whether and how the turn waits, the
+//!   request (the readable files, the question, `attached`, multimodal `images`), and what chat.cjs
+//!   keeps of the answer: the block, the reply's sources (`chat-sources.cjs` `buildSources`), the
+//!   partial reads (`source-coverage.cjs` `partialSources`, `coverageWarning`) and the prepared
+//!   frame's `sources` (`rust-chat-native.cjs` `injectedSources`). Recorded in
+//!   `tests/fixtures/node-retrieval.v1.json`, written by `tests/record_retrieval.cjs` (whole turns
+//!   through `createChatHandler` with the seams stubbed). One named difference: a turn whose
+//!   request asks for images ([`retrieval::Stopped::Images`]) stays in Node until the images
+//!   multimodal retrieval finds are ported (a later slice). A source whose text is in its own file
+//!   is explicit: [`retrieval::load`] marks it as projects.cjs's loader does.
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!
@@ -91,8 +112,8 @@
 //! (`f.attachment?.state` of `null`), so such a turn is [`PrepareError::Thrown`] as in Node, where
 //! retrieval's skill check throws on it even earlier.
 //!
-//! Later slices: the retrieval itself and `partialSources` (P2b, which pass `filesBlock` and
-//! `partialReads` in here); the history's skill scrub and the automatic skill selection itself
+//! Later slices: the images of multimodal retrieval (#1726; [`retrieval`] gives `filesBlock`,
+//! `sourcesNotReady` and `partialReads` to [`ProjectTurn`]); the history's skill scrub and the automatic skill selection itself
 //! (its picks go to [`skills::parts`]); the brain block
 //! ([`Turn::trailing`], after the frame block) and the tool gate's use of [`frame::gate_bias`];
 //! image assets; and what happens to the wire once the route is known (off-box zone and history
@@ -107,6 +128,8 @@ pub mod memory;
 pub mod names;
 pub mod offer;
 pub mod project;
+pub mod reroute;
+pub mod retrieval;
 pub mod roles;
 pub mod route;
 pub mod route_notes;

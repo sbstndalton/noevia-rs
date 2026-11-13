@@ -65,3 +65,9 @@ jobs:
       - name: The core's own tools of a turn reproduce the committed recording
         # Synthetic QA toolboxes, MCP boxes, projects, policies, router and gate answers and turns through toolboxes.cjs, tools-mode.cjs, tool-route-notes.cjs and chat.cjs's own lines; no network.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_tools.cjs --check crates/chat-prepare/tests/fixtures/node-tools.v1.json
+      - name: The core's own knowledge-file retrieval of a project turn reproduces the committed recording
+        # Synthetic QA projects, sources, file-job and retrieval answers and turns through server/chat.cjs (the front's native executor asking for them), chat-sources.cjs, source-coverage.cjs and rust-chat-native.cjs with stub stores; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_retrieval.cjs --check crates/chat-prepare/tests/fixtures/node-retrieval.v1.json
+      - name: The core's own move to a tool-capable role and long-context profile reproduce the committed recording
+        # Synthetic QA roles, catalogues, template, gate and prefill answers and whole turns through server/chat.cjs, tools-mode.cjs, long-profile.cjs (dav-parse.wasm) and toolboxes.cjs with stub stores; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_reroute.cjs --check crates/chat-prepare/tests/fixtures/node-reroute.v1.json

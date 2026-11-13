@@ -12,7 +12,7 @@
 //! ASCII `\b`, `\w` and `\d`, and JS `\s` (U+FEFF is space, U+0085 is not). A lone surrogate
 //! (held as a private-use character in `wtf16` text) is neither a word character nor space, in
 //! both. One construct the `regex` crate lacks is dropped where it cannot change a match: see
-//! [`EXPLICIT_WEB`].
+//! `EXPLICIT_WEB`.
 
 use std::sync::OnceLock;
 

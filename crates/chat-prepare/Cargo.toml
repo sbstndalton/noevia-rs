@@ -1,7 +1,7 @@
 [package]
 name = "chat-prepare"
 version = "0.1.0"
-description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, the chat frame block, a turn's reasoning effort, Fast thinking-off and sampling presets, which model answers it as which role (manual pick or Automatic: the roles check, classification and refusals), and the tools it offers with the per-tool facts the native executor's frame carries, replayed byte for byte on recorded Node output. Nothing calls it yet."
+description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, a project turn's knowledge-file retrieval around its seams (the file-job wait and the retrieval call: what is asked, the reply's sources, partial reads and the frame's sources), the chat frame block, a turn's reasoning effort, Fast thinking-off and sampling presets, which model answers it as which role (manual pick or Automatic: the roles check, classification and refusals), and the tools it offers with the per-tool facts the native executor's frame carries, Automatic's move to a tool-capable role and the long-context profile with the tools resolved again for the new model, replayed byte for byte on recorded Node output. Nothing calls it yet."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -18,6 +18,9 @@ prompt-framing = { path = "../prompt-framing" }
 icu_properties = "=2.3.0"
 # account-instructions.cjs cleanLanguage's /^[\p{L}][\p{L}\p{M} ()'-]*$/u. MIT OR Apache-2.0; already in Cargo.lock.
 regex = "=1.13.1"
+# The long-context profile's pick (#1079): the crate dav-parse.wasm runs for long-profile.cjs (workspace crate;
+# preset-reload and serde_json, both already in Cargo.lock; no rusqlite).
+long-profile = { path = "../long-profile" }
 # The IANA zones the time part states the day in (Intl.DateTimeFormat's timeZone). MIT OR Apache-2.0; already in Cargo.lock.
 chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 chrono-tz = "=0.10.4"
