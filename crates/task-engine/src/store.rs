@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
+use code_actions::{approval_for, Action};
+
 use crate::error::EngineError;
 use crate::event::{
     check_event, encoded_len, valid_job_id, Event, AUTHORITY_TYPES, MAX_EVENTS_PER_JOB,
@@ -174,6 +176,26 @@ impl JobStore {
             return Err(EngineError::TooLarge("approval card is too large"));
         }
         self.append(id, at, "approval.requested", card)
+    }
+
+    /// `approval.requested` for a classified action (code-actions). An action that never needs an
+    /// approval is refused, and the card's `action` is the classifier's name, whatever the caller put there.
+    pub fn request_action_approval(
+        &mut self,
+        id: &str,
+        at: u64,
+        action: Action,
+        card: Value,
+    ) -> Result<&JobView, EngineError> {
+        if approval_for(action) == "never" {
+            return Err(EngineError::BadInput("this action never needs an approval"));
+        }
+        let mut card = card;
+        let object = card
+            .as_object_mut()
+            .ok_or(EngineError::BadInput("an approval card needs an id"))?;
+        object.insert("action".into(), Value::String(action.name().into()));
+        self.request_approval(id, at, card)
     }
 
     /// `approval.decided`: answers the pending approval `approval_id`. The job runs again.

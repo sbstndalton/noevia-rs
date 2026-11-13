@@ -129,6 +129,33 @@ fn start_is_only_legal_from_queued() {
 }
 
 #[test]
+fn an_action_approval_takes_the_classifier_name_and_skips_actions_that_never_need_one() {
+    use code_actions::Action;
+    let mut s = store_with(A);
+    s.start(A, 2).unwrap();
+    assert_eq!(
+        s.request_action_approval(A, 3, Action::Read, json!({ "id": "r" }))
+            .unwrap_err()
+            .code(),
+        "bad_input"
+    );
+    assert_eq!(
+        s.request_action_approval(A, 3, Action::None, json!({ "id": "r" }))
+            .unwrap_err()
+            .code(),
+        "bad_input"
+    );
+    let view = s
+        .request_action_approval(A, 3, Action::Delete, json!({ "id": "d", "action": "read" }))
+        .unwrap();
+    assert_eq!(
+        view.pending_approval.as_ref().unwrap()["action"],
+        json!(Action::Delete.name())
+    );
+    assert_eq!(view.status, Status::WaitingApproval);
+}
+
+#[test]
 fn approvals_need_a_running_job_and_the_matching_id() {
     let mut s = store_with(A);
     let card = json!({ "id": "appr-1", "action": "write" });

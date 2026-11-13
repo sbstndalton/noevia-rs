@@ -3687,6 +3687,7 @@ dependencies = [
 name = "task-engine"
 version = "0.1.0"
 dependencies = [
+ "code-actions",
  "serde_json",
  "task-lifecycle",
 ]
