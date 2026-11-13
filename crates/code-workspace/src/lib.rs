@@ -1,9 +1,9 @@
 //! noevia-core `server/code-workspace.cjs` in Rust (R7 step 2, part 1): one writer per workspace.
 //! A Code task never runs in the registered repository's own tree; it gets a git worktree (or,
 //! when the harness runs as another user, a `git clone --shared`) on its own branch, recorded in
-//! `<dir>/code-workspaces/<task>.json`. This part ports the claim, the release (with the clone's
-//! save-back), restart recovery, containment and the live head; the pipeline's reads (`change`,
-//! `projectSnapshot`, `reclaim`, the verified merge, `verifyCheckout`) follow in part 2.
+//! `<dir>/code-workspaces/<task>.json`: the claim, the release (with the clone's save-back),
+//! restart recovery, containment and the live head here; the pipeline's reads (`change`,
+//! `projectSnapshot`, `reclaim`, the verified merge, `verifyCheckout`) in [`pipeline`].
 //!
 //! Records and the trust file are byte-compatible with Node's (`JSON.stringify` of the record in
 //! its key order), so either side can read what the other wrote. Every git call is
@@ -33,6 +33,7 @@
 
 pub mod git;
 pub mod paths;
+pub mod pipeline;
 
 use git::{Git, GitError, RunOptions};
 use js_json::{wtf16, JValue};
@@ -76,6 +77,8 @@ const HARNESS_LEAVINGS: [&str; 13] = [
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
     pub status: Option<u16>,
+    /// The pipeline reads' stable reason (`no_workspace`, `too_large`, `stale_sha`, …).
+    pub code: Option<&'static str>,
     pub message: String,
 }
 
@@ -83,6 +86,7 @@ impl Error {
     fn new(status: Option<u16>, message: impl Into<String>) -> Error {
         Error {
             status,
+            code: None,
             message: message.into(),
         }
     }
@@ -136,6 +140,8 @@ pub struct Options {
     pub mode: Option<Mode>,
     /// This process: claims of another epoch are interrupted by [`Workspaces::recover`].
     pub epoch: String,
+    /// The output cap for a diff read for review (`None`: [`pipeline::CHANGE_MAX_BUFFER`]).
+    pub change_max_buffer: Option<usize>,
 }
 
 /// What [`Workspaces::claim`] takes.
@@ -165,6 +171,7 @@ pub struct Workspaces {
     now: Clock,
     git: Git,
     chown: Chown,
+    change_max_buffer: usize,
     lock: Mutex<()>,
 }
 
@@ -483,6 +490,9 @@ impl Workspaces {
             now,
             git,
             chown,
+            change_max_buffer: options
+                .change_max_buffer
+                .unwrap_or(pipeline::CHANGE_MAX_BUFFER),
             lock: Mutex::new(()),
         }
     }

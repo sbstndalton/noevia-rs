@@ -175,6 +175,82 @@ const SCENARIOS = {
     { op: 'release', ws: 'c', taskId: T6 },
     { op: 'list', ws: 'c' },
   ],
+  'pipeline-worktree': [
+    { op: 'repo', name: 'qa-repo', files: { 'a.txt': 'a\n', 'README.md': '# QA readme\n' + 'é'.repeat(10) + '\n', 'z.txt': 'z\n' } },
+    { op: 'ws', name: 'w', epoch: 'qa-epoch-1' },
+    { op: 'ws', name: 'tiny', epoch: 'qa-epoch-1', changeMaxBuffer: 100 },
+    { op: 'clock', t: 1000 },
+    { op: 'claim', ws: 'w', taskId: T1, repo: 'repos/qa-repo', pinned: ['opencode.json'] },
+    { op: 'projectSnapshot', ws: 'w', taskId: T1 },
+    { op: 'projectSnapshot', ws: 'w', taskId: T1, maxFiles: 1, maxReadmeBytes: 13 },
+    { op: 'projectSnapshot', ws: 'w', taskId: T6 },
+    { op: 'write', path: `${WT(T1)}/b.txt`, text: 'b\n' },
+    { op: 'write', path: `${WT(T1)}/a.txt`, text: 'a\nmore\r\ndiff --git a/fake b/fake\n' },
+    { op: 'write', path: `${WT(T1)}/new\nline.txt`, text: 'odd name\n' },
+    { op: 'git', cwd: WT(T1), args: ['add', '-A'] },
+    { op: 'git', cwd: WT(T1), args: ['commit', '-qm', 'QA change'] },
+    { op: 'change', ws: 'w', taskId: T1 },
+    { op: 'verifyCheckout', ws: 'w', taskId: T1, sha: '{tip:noevia/task-' + T1 + '}' },
+    { op: 'mergePreflight', ws: 'w', taskId: T1, sha: '{tip:noevia/task-' + T1 + '}' },
+    { op: 'release', ws: 'w', taskId: T1 },
+    { op: 'change', ws: 'w', taskId: T1 },
+    { op: 'change', ws: 'w', taskId: T1, maxFiles: 1 },
+    { op: 'change', ws: 'tiny', taskId: T1 },
+    { op: 'change', ws: 'w', taskId: T6 },
+    { op: 'change', ws: 'w', taskId: 'bad' },
+    { op: 'verifyCheckout', ws: 'w', taskId: T1, sha: '{tip:noevia/task-' + T1 + '}' },
+    { op: 'verifyCheckout', ws: 'w', taskId: T1, sha: 'abc' },
+    { op: 'verifyCheckout', ws: 'w', taskId: T1, sha: '{tip:main}' },
+    { op: 'verifyCheckout', ws: 'w', taskId: T6, sha: '{tip:main}' },
+    { op: 'branchTip', ws: 'w', taskId: T1 },
+    { op: 'branchTip', ws: 'w', taskId: T6 },
+    { op: 'branchTip', ws: 'w', taskId: 'bad' },
+    { op: 'mergePreflight', ws: 'w', taskId: T1, sha: '{tip:noevia/task-' + T1 + '}' },
+    { op: 'git', cwd: 'repos/qa-repo', args: ['checkout', '-q', '--detach'] },
+    { op: 'mergePreflight', ws: 'w', taskId: T1, sha: 'abc' },
+    { op: 'mergePreflight', ws: 'w', taskId: T1, sha: '{tip:main}' },
+    { op: 'mergePreflight', ws: 'w', taskId: 'bad', sha: '{tip:main}' },
+    { op: 'mergePreflight', ws: 'w', taskId: T6, sha: '{tip:main}' },
+    { op: 'mergePreflight', ws: 'w', taskId: T1, sha: '{tip:noevia/task-' + T1 + '}' },
+    { op: 'mergeVerified', ws: 'w', taskId: T1, sha: '{tip:noevia/task-' + T1 + '}' },
+    { op: 'mergeVerified', ws: 'w', taskId: T1, sha: '{tip:noevia/task-' + T1 + '}' },
+    { op: 'reclaim', ws: 'w', taskId: T1, pinned: ['opencode.json'] },
+    { op: 'reclaim', ws: 'w', taskId: T1 },
+    { op: 'reclaim', ws: 'w', taskId: T6 },
+    { op: 'reclaim', ws: 'w', taskId: 'bad' },
+    { op: 'claim', ws: 'w', taskId: T2, repo: 'repos/qa-repo', branch: 'noevia/task-' + T1 },
+    { op: 'write', path: `${WT(T1)}/c.txt`, text: 'round two\n' },
+    { op: 'git', cwd: WT(T1), args: ['add', 'c.txt'] },
+    { op: 'git', cwd: WT(T1), args: ['commit', '-qm', 'QA round two'] },
+    { op: 'release', ws: 'w', taskId: T1 },
+    { op: 'change', ws: 'w', taskId: T1 },
+    // No named base branch: claimed while the source is detached.
+    { op: 'claim', ws: 'w', taskId: T3, repo: 'repos/qa-repo' },
+    { op: 'release', ws: 'w', taskId: T3 },
+    { op: 'change', ws: 'w', taskId: T3 },
+    { op: 'mergePreflight', ws: 'w', taskId: T3, sha: '{tip:noevia/task-' + T3 + '}' },
+  ],
+  'pipeline-clone': [
+    { op: 'repo', name: 'qa-repo', files: { 'a.txt': 'a\n', 'readme.TXT': 'plain readme\n' } },
+    { op: 'ws', name: 'c', epoch: 'qa-epoch-1', treeRoot: 'trees', owner: 'self' },
+    { op: 'clock', t: 1000 },
+    { op: 'claim', ws: 'c', taskId: T1, repo: 'repos/qa-repo', branch: 'qa/clone' },
+    { op: 'projectSnapshot', ws: 'c', taskId: T1 },
+    { op: 'release', ws: 'c', taskId: T1 },
+    // A round that never committed starts again from the base.
+    { op: 'reclaim', ws: 'c', taskId: T1 },
+    { op: 'write', path: `${CL(T1)}/b.txt`, text: 'b\n' },
+    { op: 'git', cwd: CL(T1), args: ['add', 'b.txt'] },
+    { op: 'git', cwd: CL(T1), args: ['commit', '-qm', 'QA clone commit'] },
+    { op: 'release', ws: 'c', taskId: T1 },
+    { op: 'reclaim', ws: 'c', taskId: T1, pinned: ['opencode.json'] },
+    { op: 'write', path: `${CL(T1)}/c.txt`, text: 'c\n' },
+    { op: 'release', ws: 'c', taskId: T1 },
+    { op: 'change', ws: 'c', taskId: T1 },
+    { op: 'git', cwd: 'repos/qa-repo', args: ['checkout', '-q', '--detach'] },
+    { op: 'mergeVerified', ws: 'c', taskId: T1, sha: '{tip:qa/clone}' },
+    { op: 'branchTip', ws: 'c', taskId: T1 },
+  ],
   // Node's own behaviour where the Rust port differs on purpose (src/lib.rs, "Fixed on purpose").
   'differences': [
     { op: 'repo', name: 'qa-repo', files: { 'a.txt': 'a\n' } },
@@ -251,6 +327,8 @@ function runScenario(steps) {
   const stores = {};
   let clock = 0, last = null;
   const out = [];
+  // `{tip:<branch>}`: that branch's tip in the first source repository, read now.
+  const sha = (v) => String(v).replace(/^\{tip:(.+)\}$/, (_, b) => shell(['rev-parse', `refs/heads/${b}`], at(`repos/${repos[0]}`)).trim());
   for (const s of steps) {
     let result;
     switch (s.op) {
@@ -272,7 +350,7 @@ function runScenario(steps) {
       case 'ws': {
         const owner = s.owner === 'self' ? { uid: process.getuid(), gid: process.getgid() } : null;
         stores[s.name] = createCodeWorkspaces({ dir: at('tenant'), treeRoot: s.treeRoot ? at(s.treeRoot) : null, owner, run,
-          now: () => clock++, epoch: s.epoch });
+          now: () => clock++, epoch: s.epoch, ...(s.changeMaxBuffer ? { changeMaxBuffer: s.changeMaxBuffer } : {}) });
         break;
       }
       case 'claim': result = outcome(base, () => stores[s.ws].claim({ taskId: s.taskId, repoPath: at(s.repo),
@@ -284,6 +362,14 @@ function runScenario(steps) {
       case 'headSha': result = outcome(base, () => stores[s.ws].headSha(s.taskId)); break;
       case 'get': result = outcome(base, () => stores[s.ws].get(s.taskId)); break;
       case 'list': result = outcome(base, () => stores[s.ws].list()); break;
+      case 'change': result = outcome(base, () => stores[s.ws].change(s.taskId, s.maxFiles !== undefined ? { maxFiles: s.maxFiles } : {})); break;
+      case 'reclaim': result = outcome(base, () => stores[s.ws].reclaim({ taskId: s.taskId, ...(s.pinned ? { pinned: s.pinned } : {}) })); break;
+      case 'projectSnapshot': result = outcome(base, () => stores[s.ws].projectSnapshot(s.taskId, {
+        ...(s.maxFiles !== undefined ? { maxFiles: s.maxFiles } : {}), ...(s.maxReadmeBytes !== undefined ? { maxReadmeBytes: s.maxReadmeBytes } : {}) })); break;
+      case 'mergePreflight': result = outcome(base, () => stores[s.ws].mergePreflight(s.taskId, { headSha: sha(s.sha) })); break;
+      case 'mergeVerified': result = outcome(base, () => stores[s.ws].mergeVerified(s.taskId, { headSha: sha(s.sha) })); break;
+      case 'verifyCheckout': result = outcome(base, () => stores[s.ws].verifyCheckout(s.taskId, sha(s.sha))); break;
+      case 'branchTip': result = outcome(base, () => stores[s.ws].branchTip(s.taskId)); break;
       default: throw Error(`unknown op ${s.op}`);
     }
     // A snapshot equal to the previous step's is recorded as "same".

@@ -192,7 +192,10 @@ fn outcome(base: &str, r: Result<JValue, Error>) -> JValue {
                     "status",
                     e.status.map_or(JValue::Null, |s| JValue::Num(f64::from(s))),
                 ),
-                ("code", JValue::Null),
+                (
+                    "code",
+                    e.code.map_or(JValue::Null, |c| JValue::Str(c.to_string())),
+                ),
                 ("link", JValue::Null),
                 ("message", JValue::Str(norm(base, &e.message))),
             ]),
@@ -237,6 +240,19 @@ impl Run {
 
     fn sub(&self, t: &str) -> String {
         t.replace("<BASE>", &self.b())
+    }
+
+    /// `{tip:<branch>}`: that branch's tip in the first source repository, read now.
+    fn sha(&self, v: &str) -> String {
+        match v.strip_prefix("{tip:").and_then(|r| r.strip_suffix('}')) {
+            Some(branch) => {
+                let repo = self.at(&format!("repos/{}", self.repos[0]));
+                shell(&["rev-parse", &format!("refs/heads/{branch}")], &repo)
+                    .trim()
+                    .to_string()
+            }
+            None => v.to_string(),
+        }
     }
 
     fn step(&mut self, s: &JValue) -> Option<JValue> {
@@ -306,6 +322,7 @@ impl Run {
                     noevia: Some(self.me),
                     mode: None,
                     epoch: str_of("epoch"),
+                    change_max_buffer: s.get("changeMaxBuffer").as_num().map(|n| n as usize),
                 };
                 let git = Git {
                     extra_env: vec![
@@ -361,6 +378,37 @@ impl Run {
                 .map(|r| r.map_or(JValue::Null, JValue::Str)),
             "get" => self.stores[&store].get(&task),
             "list" => Ok(JValue::Arr(self.stores[&store].list())),
+            "change" => {
+                let max = s.get("maxFiles").as_num().map_or(200, |n| n as usize);
+                self.stores[&store].change(&task, max)
+            }
+            "reclaim" => {
+                let pinned = match s.get("pinned") {
+                    JValue::Arr(a) => a.clone(),
+                    _ => Vec::new(),
+                };
+                self.stores[&store].reclaim(&task, &pinned)
+            }
+            "projectSnapshot" => {
+                let files = s.get("maxFiles").as_num().map_or(400, |n| n as usize);
+                let readme = s
+                    .get("maxReadmeBytes")
+                    .as_num()
+                    .map_or(8 * 1024, |n| n as usize);
+                self.stores[&store].project_snapshot(&task, files, readme)
+            }
+            "mergePreflight" => {
+                Ok(self.stores[&store].merge_preflight(&task, &self.sha(&str_of("sha"))))
+            }
+            "mergeVerified" => {
+                Ok(self.stores[&store].merge_verified(&task, &self.sha(&str_of("sha"))))
+            }
+            "verifyCheckout" => {
+                self.stores[&store].verify_checkout(&task, &self.sha(&str_of("sha")))
+            }
+            "branchTip" => Ok(self.stores[&store]
+                .branch_tip(&task)
+                .map_or(JValue::Null, JValue::Str)),
             other => panic!("unknown op {other}"),
         };
         Some(outcome(&self.b(), r))
@@ -421,7 +469,7 @@ fn every_node_scenario_replays() {
         }
         seen += 1;
     }
-    assert_eq!(seen, 6);
+    assert_eq!(seen, 8);
 }
 
 #[test]
