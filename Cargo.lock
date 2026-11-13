@@ -472,6 +472,7 @@ dependencies = [
 name = "code-actions"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "prompt-framing",
  "proptest",
 ]
