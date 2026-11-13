@@ -22,7 +22,10 @@
 //   chatModels  chat-model-kind.cjs isChatGenerationModel(name, labels) under model-system.cjs's section roles
 //   turns       chat.cjs's own lines (cut out of the pinned chat.cjs, run as they are): projectProvider and wantsAuto, the
 //               provider line, recordResend, and the block from creativeMoveAllowed to the chat-model guard, over stubs
-//               (no routing modes, no Inference machines). `calls` lists the seams in the order they ran.
+//               (no routing modes, no Inference machines). `calls` lists the seams in the order they ran (autoRoles,
+//               getProvider, servedCatalogue, codeProject, startPreload, classify, recordOutcome, modelsInstalled,
+//               lastLoadedModel) and what was done with a fake pre-load (use, cancel, and releaseIfUnused when the
+//               response ends).
 // Each source file's sha256 is recorded, so a changed Node file needs a fresh recording. Node's console output goes to
 // stderr; stdout is the fixture.
 
@@ -269,18 +272,26 @@ async function addTurn(raw) {
   const t = viaJson(raw);
   const calls = [];
   modelSystem.rememberSectionRoles(t.rolesFile || '');
-  let refusal = null, asked;
+  let refusal = null, reads = 0;
+  const ends = [];
   const env = {
-    project: t.project, autoRoles: () => t.autoRoles, DEFAULT_PROVIDER_ID,
-    getProvider: (id) => { asked = id; return PROVIDERS[id] || PROVIDERS.default; }, routeTarget: null, chatMachines: null,
-    json: (res, status, payload) => { refusal = { status, body: payload }; return 'refused'; }, res: {},
+    // `savedRoles`, when given, is what every later autoRoles() reads (a workspace changed between the two reads).
+    project: t.project, autoRoles: () => { calls.push('autoRoles'); reads += 1; return reads > 1 && 'savedRoles' in t ? t.savedRoles : t.autoRoles; },
+    DEFAULT_PROVIDER_ID, getProvider: (id) => { calls.push(`getProvider:${JSON.stringify(id)}`); return PROVIDERS[id] || PROVIDERS.default; },
+    routeTarget: null, chatMachines: null,
+    json: (res, status, payload) => { refusal = { status, body: payload }; return 'refused'; }, res: { once: (event, f) => ends.push(f) },
     servedCatalogue: async () => { calls.push('servedCatalogue'); return t.catalogue; },
     missingRoles: check.missingRoles, staleRolesError: check.staleRolesError, body: { message: t.message, compactOnly: t.compactOnly, mode: t.mode, resend: t.resend },
     modelManager: { enabled: t.managerEnabled }, require: (f) => (f === './route-preload.cjs'
-      ? { ...serverRequire('route-preload.cjs'), startPreload: async ({ model }) => { calls.push(`startPreload:${JSON.stringify(model)}`); return null; } }
+      ? { ...serverRequire('route-preload.cjs'), startPreload: async ({ model }) => {
+        calls.push(`startPreload:${JSON.stringify(model)}`);
+        // A fake pre-load (the engine's own checks are startPreload's; `preloadStarts: false` is one that declined).
+        return t.preloadStarts === false ? null : { model, use: () => calls.push('preload.use'), cancel: () => calls.push('preload.cancel'),
+          releaseIfUnused: async () => { calls.push('preload.releaseIfUnused'); } };
+      } }
       : serverRequire(f.replace(/^\.\//, ''))),
     attachedImages: t.images ? [{}] : [], retrievedImages: [], msgs: [{ role: 'user', content: t.message }], heuristicWantsCode: plain.heuristicWantsCode,
-    message: t.message, codeProject: () => !!t.codeProject, chatSignal: { signal: { aborted: false } },
+    message: t.message, codeProject: () => { calls.push('codeProject'); return !!t.codeProject; }, chatSignal: { signal: { aborted: !!t.aborted } },
     engineBusy: () => false, turnsInFlight: 1, classifyFastOrSmart: async (m) => { calls.push('classify'); return t.classification; },
     recordOutcome: (entry) => { calls.push(`recordOutcome:${JSON.stringify(entry)}`); }, modelsInstalled: async () => { calls.push('modelsInstalled'); if (t.installedThrows) throw new Error('qa'); },
     lastLoadedModel: () => { calls.push('lastLoadedModel'); return t.lastLoaded; }, isChatGenerationModel,
@@ -290,7 +301,11 @@ async function addTurn(raw) {
     const r = await runTurn(...PARAMS.map((p) => env[p]));
     out = r === 'refused' ? { refusal } : r;
   } catch (e) { out = { thrown: e?.constructor?.name || 'Error' }; }
-  turns.push({ ...t, systemRoles: [...modelSystem.sectionRolesOf(t.rolesFile || '')], asked, provider: asked === undefined ? undefined : PROVIDERS[asked] || PROVIDERS.default, out, calls });
+  // The response ends: its finish and close handlers run.
+  for (const f of ends) f();
+  const provider = calls.find((c) => c.startsWith('getProvider:'));
+  turns.push({ ...t, systemRoles: [...modelSystem.sectionRolesOf(t.rolesFile || '')],
+    provider: provider && (PROVIDERS[JSON.parse(provider.slice('getProvider:'.length))] || PROVIDERS.default), out, calls });
 }
 const turn = (extra) => ({ project: null, autoRoles: { fast: 'qa-fast', smart: 'qa-smart' }, catalogue: TURN_CATALOGUES[2], classification: 'fast',
   message: 'Say hello', managerEnabled: true, lastLoaded: 'qa-loaded', ...extra });
@@ -331,10 +346,25 @@ const turn = (extra) => ({ project: null, autoRoles: { fast: 'qa-fast', smart: '
       for (const message of ['Say hello', '```x```']) await addTurn(turn({ autoRoles, catalogue: TURN_CATALOGUES[3], message, ...extra }));
     }
   }
+  // The pre-load and its cleanup (#1863): kept, abandoned (with and without an abort), declined, never asked; codeProject
+  // read only when it decides; the second autoRoles() read finding no roles (the 400).
+  const ONE_CODE = { fast: 'qa-one', smart: 'qa-one', code: 'qa-code' };
+  for (const classification of ['fast', 'smart', 'code', { role: 'code', routingDecision: routing('code', 'accepted') }]) {
+    for (const extra of [{}, { aborted: true }, { preloadStarts: false }, { codeProject: true }, { mode: 'cowork' }, { message: '```x```' },
+      { resend: RESENDS[1] }, { catalogue: [row('qa-one'), row('qa-code'), null] }, { savedRoles: null }, { savedRoles: {} }]) {
+      for (const autoRoles of [ONE_CODE, TURN_ROLES[3], TURN_ROLES[5], { fast: 'qa-one', smart: 'qa-one', code: 'qa-code', creative: 'qa-one' }]) {
+        await addTurn(turn({ autoRoles, catalogue: TURN_CATALOGUES[3], classification, ...extra }));
+      }
+    }
+  }
+  for (const savedRoles of [null, {}, 0, '', TURN_ROLES[2], { fast: 'qa-gone', smart: 'qa-smart' }]) {
+    for (const project of [null, { routing: 'auto' }, { routing: 'manual' }]) await addTurn(turn({ project, savedRoles }));
+  }
   for (let n = 0; n < 1500; n += 1) {
     await addTurn({ project: pick(TURN_PROJECTS), autoRoles: pick(TURN_ROLES), catalogue: pick(TURN_CATALOGUES), classification: pick(CLASSIFICATIONS),
       message: pick(TURN_MESSAGES), managerEnabled: rand() < 0.8, lastLoaded: pick([null, 'qa-loaded', 'qa-embed-x']), compactOnly: rand() < 0.1,
-      mode: rand() < 0.1 ? 'cowork' : undefined, images: rand() < 0.1, codeProject: rand() < 0.2, resend: pick(RESENDS), rolesFile: pick(ROLE_FILES) });
+      mode: rand() < 0.1 ? 'cowork' : undefined, images: rand() < 0.1, codeProject: rand() < 0.2, resend: pick(RESENDS), rolesFile: pick(ROLE_FILES),
+      aborted: rand() < 0.1, preloadStarts: rand() < 0.7, ...(rand() < 0.05 ? { savedRoles: pick([null, TURN_ROLES[2]]) } : {}) });
   }
 
   // ── Output ────────────────────────────────────────────────────────────────────────────────

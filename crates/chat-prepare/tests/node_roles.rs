@@ -9,9 +9,12 @@
     clippy::indexing_slicing
 )]
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
-use chat_prepare::roles::{self, Classification, Halt, Role, Turn};
+use chat_prepare::roles::{
+    self, Classification, Halt, Preload, Reply, Role, Routing, Seam, Step, Turn,
+};
 use chat_prepare::router::{self, Answer, Rules};
 use chat_prepare::system_one::{self, Backend, Router, Start};
 use js_json::{wtf16, JValue};
@@ -400,71 +403,103 @@ fn the_chat_model_kind_matches_node() {
     d.done("chatModels", 2000);
 }
 
-/// chat.cjs's lines for one recorded turn, the seams answered by the case; the outcome and the seams
-/// called, in order, as the recorder states them.
-fn turn(c: &JValue, default: &str) -> (JValue, Vec<String>, JValue) {
-    let project = c.get("project");
-    let auto_roles = c.get("autoRoles");
-    let wants = roles::wants_auto(project, auto_roles, default);
-    let asked = roles::provider_id(wants, project, default);
-    let t = Turn {
-        project,
-        auto_roles,
+/// One recorded turn through [`Routing`]: each seam answered from the case, as a caller would, and
+/// the pre-load actions done as [`Preload`] says. The outcome and the calls, in the recorder's terms.
+fn turn(c: &JValue, default: &str) -> (JValue, Vec<String>) {
+    let calls = RefCell::new(Vec::<String>::new());
+    let push = |s: String| calls.borrow_mut().push(s);
+    let code_project = || {
+        push("codeProject".into());
+        c.get("codeProject").truthy()
+    };
+    let system_roles = system_roles(c);
+    let mut routing = Routing::new(Turn {
+        project: c.get("project"),
         default_provider_id: default,
-        provider: c.get("provider"),
         message: c.get("message").as_str().unwrap(),
         manager_enabled: c.get("managerEnabled").truthy(),
         compact_only: c.get("compactOnly").truthy(),
         task_mode: c.get("mode").as_str() == Some("cowork"),
         has_images: c.get("images").truthy(),
-        code_project: c.get("codeProject").truthy(),
+        code_project: &code_project,
+        resend: c.get("resend"),
+        system_roles: &system_roles,
+    });
+    let (mut reply, mut reads) = (Reply::Start, 0);
+    let (route, preload, resend) = loop {
+        let seam = match routing.step(reply) {
+            Step::Ask(seam) => seam,
+            Step::Done {
+                route,
+                preload,
+                resend,
+            } => break (route, preload, resend),
+        };
+        reply = match seam {
+            Seam::AutoRoles => {
+                push("autoRoles".into());
+                reads += 1;
+                let later = c.get("savedRoles");
+                let saved = reads > 1
+                    && matches!(c, JValue::Obj(o) if o.iter().any(|(k, _)| k == "savedRoles"));
+                Reply::AutoRoles(if saved { later } else { c.get("autoRoles") }.clone())
+            }
+            Seam::Provider(id) => {
+                push(format!("getProvider:{}", stringify(&id)));
+                Reply::Provider(c.get("provider").clone())
+            }
+            Seam::ServedCatalogue => {
+                push("servedCatalogue".into());
+                Reply::Catalogue(c.get("catalogue").clone())
+            }
+            Seam::StartPreload(model) => {
+                push(format!("startPreload:{}", stringify(&model)));
+                Reply::Preload {
+                    started: c.get("preloadStarts").as_bool() != Some(false),
+                }
+            }
+            Seam::Classify => {
+                push("classify".into());
+                Reply::Classified(match c.get("classification") {
+                    JValue::Str(r) => Classification {
+                        role: Role::of(r).unwrap(),
+                        decision: JValue::Null,
+                    },
+                    o => Classification {
+                        role: Role::of(o.get("role").as_str().unwrap()).unwrap(),
+                        decision: o.get("routingDecision").clone(),
+                    },
+                })
+            }
+            Seam::ModelsInstalled => {
+                push("modelsInstalled".into());
+                Reply::Installed
+            }
+            Seam::LastLoadedModel => {
+                push("lastLoadedModel".into());
+                Reply::LastLoaded(c.get("lastLoaded").clone())
+            }
+        };
     };
-    let catalogue = c.get("catalogue");
-    let mut calls: Vec<String> = Vec::new();
-    let route = (|| -> Result<(JValue, Option<Role>, JValue), Halt> {
-        let mut model = roles::manual_model(project);
-        let (mut routed, mut decision) = (None, JValue::Null);
-        if wants {
-            calls.push("servedCatalogue".into());
-            let check = roles::auto_check(&t, catalogue)?;
-            if let Some(m) = &check.preload {
-                calls.push(format!("startPreload:{}", stringify(m)));
-            }
-            calls.push("classify".into());
-            let cls = match c.get("classification") {
-                JValue::Str(r) => Classification {
-                    role: Role::of(r).unwrap(),
-                    decision: JValue::Null,
-                },
-                o => Classification {
-                    role: Role::of(o.get("role").as_str().unwrap()).unwrap(),
-                    decision: o.get("routingDecision").clone(),
-                },
-            };
-            let picked = roles::auto_pick(&t, catalogue, &check, &cls, c.get("resend"))?;
-            if let Some(entry) = &picked.resend {
-                calls.push(format!("recordOutcome:{}", stringify(entry)));
-            }
-            (model, routed, decision) = (picked.model, Some(picked.role), picked.decision);
-        } else if roles::wants_loaded_model(&t, &model) {
-            calls.push(String::from("modelsInstalled"));
-            calls.push(String::from("lastLoadedModel"));
-            model = c.get("lastLoaded").clone();
+    if let Some(entry) = &resend {
+        push(format!("recordOutcome:{}", stringify(entry)));
+    }
+    if preload == Preload::Abandoned {
+        if !c.get("aborted").truthy() {
+            push("preload.use".into());
         }
-        roles::require_model(&t, &model)?;
-        if roles::chat_guard_applies(&t, wants, &model) {
-            calls.push("servedCatalogue".into());
-            roles::chat_guard(&model, catalogue, &system_roles(c))?;
-        }
-        Ok((model, routed, decision))
-    })();
+        push("preload.cancel".into());
+    }
+    if preload != Preload::NotStarted {
+        push("preload.releaseIfUnused".into());
+    }
     let out = match route {
-        Ok((model, routed, decision)) => JValue::obj([
-            ("projectProvider", roles::project_provider(project, default)),
-            ("wantsAuto", JValue::Bool(wants)),
-            ("model", model),
-            ("routedRole", routed.map_or(JValue::Null, role)),
-            ("routingDecision", decision),
+        Ok(r) => JValue::obj([
+            ("projectProvider", r.project_provider),
+            ("wantsAuto", JValue::Bool(r.wants_auto)),
+            ("model", r.model),
+            ("routedRole", r.role.map_or(JValue::Null, role)),
+            ("routingDecision", r.decision),
         ]),
         Err(Halt::Refused(r)) => JValue::obj([(
             "refusal",
@@ -474,8 +509,9 @@ fn turn(c: &JValue, default: &str) -> (JValue, Vec<String>, JValue) {
             ]),
         )]),
         Err(Halt::Thrown) => thrown(),
+        Err(Halt::OutOfOrder) => panic!("the replay answered a seam out of order"),
     };
-    (out, calls, asked)
+    (out, calls.into_inner())
 }
 
 #[test]
@@ -483,31 +519,79 @@ fn the_turns_route_as_node_does() {
     let f = fixture();
     let default = f.get("defaultProviderId").as_str().unwrap();
     let mut d = Diffs::default();
-    let (mut auto, mut refused, mut creative, mut preloads) = (0, 0, 0, 0);
+    let mut seen: HashMap<&str, usize> = HashMap::new();
     for c in items(&f, "turns") {
-        let (out, calls, asked) = turn(c, default);
+        let (out, calls) = turn(c, default);
         let calls = JValue::Arr(calls.into_iter().map(JValue::Str).collect());
-        let both = |out: &JValue, calls: &JValue, asked: &JValue| {
+        let both = |out: &JValue, calls: &JValue| {
             stringify(&JValue::obj([
                 ("out", out.clone()),
                 ("calls", calls.clone()),
-                ("asked", asked.clone()),
             ]))
         };
-        auto += usize::from(out.get("wantsAuto").truthy());
-        refused += usize::from(!out.get("refusal").is_nullish());
-        creative += usize::from(out.get("routedRole").as_str() == Some("creative"));
-        preloads += usize::from(stringify(&calls).contains("startPreload"));
-        d.check(
-            c,
-            &both(c.get("out"), c.get("calls"), c.get("asked")),
-            &both(&out, &calls, &asked),
-        );
+        let text = stringify(&calls);
+        for (what, hit) in [
+            ("auto", out.get("wantsAuto").truthy()),
+            ("refused", !out.get("refusal").is_nullish()),
+            (
+                "notConfigured",
+                stringify(&out).contains("Auto routing is not configured yet"),
+            ),
+            (
+                "creative",
+                out.get("routedRole").as_str() == Some("creative"),
+            ),
+            ("preload", text.contains("startPreload")),
+            ("cancel", text.contains("preload.cancel")),
+            ("use", text.contains("preload.use")),
+            ("codeProject", text.contains("codeProject")),
+        ] {
+            *seen.entry(what).or_default() += usize::from(hit);
+        }
+        d.check(c, &both(c.get("out"), c.get("calls")), &both(&out, &calls));
     }
     // Enough of each outcome to mean something.
-    assert!(
-        auto >= 500 && refused >= 500 && creative >= 20 && preloads >= 200,
-        "{auto} {refused} {creative} {preloads}"
-    );
+    for (what, min) in [
+        ("auto", 500),
+        ("refused", 500),
+        ("notConfigured", 20),
+        ("creative", 20),
+        ("preload", 200),
+        ("cancel", 20),
+        ("use", 15),
+        ("codeProject", 30),
+    ] {
+        assert!(
+            seen.get(what).copied().unwrap_or(0) >= min,
+            "{what}: {seen:?}"
+        );
+    }
     d.done("turns", 3000);
+}
+
+#[test]
+fn a_seam_answered_out_of_order_ends_the_routing() {
+    let no = || false;
+    let roles = HashMap::new();
+    let t = Turn {
+        project: &JValue::Null,
+        default_provider_id: "default",
+        message: "Say hello",
+        manager_enabled: true,
+        compact_only: false,
+        task_mode: false,
+        has_images: false,
+        code_project: &no,
+        resend: &JValue::Undefined,
+        system_roles: &roles,
+    };
+    let mut r = Routing::new(t);
+    assert_eq!(r.step(Reply::Start), Step::Ask(Seam::AutoRoles));
+    let out_of_order = Step::Done {
+        route: Err(Halt::OutOfOrder),
+        preload: Preload::NotStarted,
+        resend: None,
+    };
+    assert_eq!(r.step(Reply::Installed), out_of_order);
+    assert_eq!(r.step(Reply::Start), out_of_order);
 }
