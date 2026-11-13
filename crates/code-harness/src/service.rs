@@ -5,13 +5,26 @@
 //! Approvals live in memory on purpose, as in Node: a decision that outlives the request it belongs
 //! to is not a decision, and a restart re-asks.
 //!
-//! Not here: the Planner preparation and pipeline (`features.codePipeline`) and the Planner review
-//! (`features.plannerReview`): the Planner is never offered, so a start that asks for it is refused
-//! as an unknown preparation, and a task is never reviewed. A deployment that has either flag on
-//! keeps Code mode with Node.
+//! The Planner preparation ([`PLANNER_PREPARATION`]) is offered, as in Node, only when the host
+//! gave a pipeline ([`Options::pipeline`]) whose `enabled()` says so (features.codeHarness and
+//! features.codePipeline) and Code mode runs in the sandbox; otherwise the list is exactly the
+//! three entries and `planner` is an unknown preparation. A Planner start runs crate
+//! code-pipeline's driver over [`crate::pipeline_host`]'s adapters, its cancel reaches the
+//! pipeline's signal, and its cards are this service's. When the host cannot build the pipeline
+//! for a start ([`Setup::create`] answers `None`, or the lifecycle authority was already claimed
+//! for the tenant's directory) the start is refused with Node's [`NOT_SET_UP`] (409).
+//!
+//! Not here: the Planner review of a direct task (`features.plannerReview`): a direct task is never
+//! reviewed, so a deployment with that flag on keeps Code mode with Node.
 
 use crate::executor::{Approvals, Deps, Egress, Engine, Executor, Fail, Jobs, Lease, StartRequest};
+pub use crate::pipeline_host::{Parts, Setup, NOT_SET_UP, PLANNER_PREPARATION};
+use crate::pipeline_host::{
+    to_x, Live, PipeHarness, PipeJobs, PipeWorkspaces, StartState,
+};
 use crate::session::Ended;
+use code_pipeline::driver::{self, Pipeline, Signal};
+use server_projects::task_store::LifecycleAuthority;
 use code_acp::Transport;
 use code_workspace::git::js_trim;
 use code_workspace::{Ids, Options as WsOptions, Workspaces};
@@ -159,6 +172,8 @@ pub struct Options {
     pub new_id: Arc<dyn Fn() -> String + Send + Sync>,
     /// This process, for the workspaces' recovery.
     pub epoch: String,
+    /// core index.cjs's `pipeline` (`{ enabled(), create(...) }`); `None`: no Planner.
+    pub pipeline: Option<Arc<dyn Setup>>,
 }
 
 /// The project a request is for: its id and its record (for `sharedContext`).
@@ -174,6 +189,9 @@ pub struct Resolved {
     pub engine: Option<Engine>,
     pub inference: Option<Arc<dyn Inference>>,
     pub context: String,
+    /// Whatever else the host learned for this start (the front: core's engine facts), for its
+    /// [`Setup::create`].
+    pub facts: Option<JValue>,
 }
 
 struct Slot {
@@ -253,6 +271,39 @@ struct Asker(Arc<Registry>);
 
 impl Approvals for Asker {
     fn ask(&self, request: &JValue, ended: &Arc<Ended>) -> String {
+        let ended2 = ended.clone();
+        self.wait(
+            request,
+            &|abort| ended.on_end(abort),
+            &move || ended2.is_ended(),
+        )
+    }
+}
+
+/// The pipeline's cards: refused as `aborted` once the task's signal fires.
+impl driver::Approvals for Asker {
+    fn ask(&self, request: &JValue, signal: &Signal) -> Result<JValue, driver::Fail> {
+        let hook = std::sync::Mutex::new(None);
+        let answer = self.wait(
+            request,
+            &|abort| {
+                *hook.lock().unwrap_or_else(PoisonError::into_inner) =
+                    signal.on_abort(Box::new(move || abort()));
+            },
+            &|| signal.is_aborted(),
+        );
+        if let Some(id) = hook.into_inner().unwrap_or_else(PoisonError::into_inner) {
+            signal.off(id);
+        }
+        Ok(JValue::Str(answer))
+    }
+}
+
+type Abort = Box<dyn Fn() + Send + Sync>;
+
+impl Asker {
+    /// One card: `on_end` is given the hook that refuses it as `aborted`.
+    fn wait(&self, request: &JValue, on_end: &dyn Fn(Abort), ended: &dyn Fn() -> bool) -> String {
         let registry = &self.0;
         let id = (registry.new_id)();
         let slot = Arc::new(Slot {
@@ -272,11 +323,11 @@ impl Approvals for Asker {
         {
             let registry = registry.clone();
             let id = id.clone();
-            ended.on_end(Box::new(move || {
+            on_end(Box::new(move || {
                 let _ = registry.finish(&id, "aborted");
             }));
         }
-        if ended.is_ended() {
+        if ended() {
             let _ = registry.finish(&id, "aborted");
         }
         let deadline = Instant::now() + registry.timeout;
@@ -338,6 +389,11 @@ impl Jobs for StoreJobs {
 struct Tenant {
     store: Arc<Store>,
     executor: Arc<Executor>,
+    workspaces: Arc<Workspaces>,
+    /// The lifecycle authority, claimed once when the store opens (with a pipeline only).
+    authority: Option<Arc<LifecycleAuthority>>,
+    /// The pipeline's live tasks.
+    pipelines: Live,
     /// One start at a time, from the one-task check to the job (Node's are one synchronous step).
     starting: Mutex<()>,
 }
@@ -431,6 +487,10 @@ impl Service {
             Box::new(move || new_id()),
         ));
         store.recover(&|_| false).map_err(refused)?;
+        let authority = o
+            .pipeline
+            .as_ref()
+            .and_then(|_| store.claim_lifecycle_authority().ok().map(Arc::new));
         let now = o.now.clone();
         let workspaces = Arc::new(Workspaces::with(
             WsOptions {
@@ -458,7 +518,7 @@ impl Service {
         );
         let executor = Executor::new(Deps {
             jobs: Arc::new(StoreJobs(store.clone())),
-            workspaces,
+            workspaces: workspaces.clone(),
             egress: o.egress.clone(),
             approvals: Arc::new(Asker(self.registry.clone())),
             engine: Box::new(move || engine()),
@@ -479,6 +539,9 @@ impl Service {
         let tenant = Arc::new(Tenant {
             store,
             executor,
+            workspaces,
+            authority,
+            pipelines: Arc::new(Mutex::new(HashMap::new())),
             starting: Mutex::new(()),
         });
         stores.insert(dir.to_string(), tenant.clone());
@@ -489,9 +552,27 @@ impl Service {
         self.options.egress.as_ref().is_some_and(|e| e.available())
     }
 
-    fn preparations() -> JValue {
+    /// `pipelineOn()`: a pipeline whose `enabled()` is true, and the sandbox.
+    fn pipeline_on(&self) -> bool {
+        self.options.sandboxed
+            && self.options.pipeline.as_ref().is_some_and(|p| {
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| p.enabled()))
+                    .unwrap_or(false)
+            })
+    }
+
+    /// `preparations()`.
+    fn offered(&self) -> Vec<(&'static str, &'static str, bool, &'static str)> {
+        let mut list = PROMPT_PREPARATION.to_vec();
+        if self.pipeline_on() {
+            list.push(PLANNER_PREPARATION);
+        }
+        list
+    }
+
+    fn preparations(&self) -> JValue {
         JValue::Arr(
-            PROMPT_PREPARATION
+            self.offered()
                 .iter()
                 .map(|(id, label, available, reason)| {
                     JValue::obj([
@@ -567,7 +648,7 @@ impl Service {
             ("capabilities", strings(&GRANTABLE)),
             ("defaultCapabilities", strings(&DEFAULT_CAPABILITIES)),
             ("harnesses", harnesses),
-            ("promptPreparation", Self::preparations()),
+            ("promptPreparation", self.preparations()),
             ("sandboxed", JValue::Bool(self.options.sandboxed)),
             ("network", JValue::Bool(self.network())),
             ("networkState", s(state)),
@@ -645,9 +726,9 @@ impl Service {
             v if v.truthy() => text_of(v),
             _ => "direct".to_string(),
         };
-        let Some((prep_id, _, available, reason)) = PROMPT_PREPARATION
-            .iter()
-            .find(|(id, ..)| *id == preparation)
+        let offered = self.offered();
+        let Some((prep_id, _, available, reason)) =
+            offered.iter().find(|(id, ..)| *id == preparation)
         else {
             return Err(fail(400, "Unknown prompt preparation."));
         };
@@ -685,7 +766,29 @@ impl Service {
             v if v.truthy() => Some(text_of(v)),
             _ => None,
         };
-        let started = tenant.executor.start(StartRequest {
+        let started = if *prep_id == PLANNER_PREPARATION.0 {
+            self.start_pipeline(
+                &tenant,
+                resolved,
+                gate,
+                driver::Task {
+                    project_id: Some(project.id.to_string()),
+                    repo_id: repo.id.clone(),
+                    repo_path: repo.path.clone(),
+                    prompt,
+                    capabilities: capabilities.clone(),
+                    domains: domains.clone(),
+                    harness: Some(harness.clone()),
+                    connect: Some(Arc::new(())),
+                    model,
+                    sandbox_kind: Some("sandbox".into()),
+                    context: String::new(),
+                    tenant_id: user_id.map(str::to_string),
+                    approve_plan: *body.get("approvePlan") == JValue::Bool(true),
+                },
+            )?
+        } else {
+            tenant.executor.start(StartRequest {
             project_id: Some(project.id.to_string()),
             repo_path: repo.path.clone(),
             prompt,
@@ -705,7 +808,8 @@ impl Service {
             inference: resolved
                 .inference
                 .map(|g| Arc::new(move || g.enter()) as crate::executor::Gate),
-        })?;
+            })?
+        };
         let mut out = match started {
             JValue::Obj(items) => items,
             _ => Vec::new(),
@@ -722,6 +826,99 @@ impl Service {
             wtf16::set(&mut out, k, v);
         }
         Ok(JValue::Obj(out))
+    }
+
+    /// The `PLANNER_PREPARATION` branch: `pipelineRun.start(...)`'s `{ taskId, branch, workspace }`.
+    /// The pipeline is built for this start (its engine is this start's); its lease is entered
+    /// just before `job.started` and held until its thread ends.
+    fn start_pipeline(
+        &self,
+        tenant: &Arc<Tenant>,
+        resolved: Resolved,
+        gate: Option<Arc<dyn Inference>>,
+        mut task: driver::Task,
+    ) -> Result<JValue, Fail> {
+        let not_set_up = || fail(409, NOT_SET_UP);
+        let (Some(setup), Some(authority)) = (&self.options.pipeline, &tenant.authority) else {
+            return Err(not_set_up());
+        };
+        task.context = resolved.context.clone();
+        let start = Arc::new(StartState {
+            signal: Signal::new(),
+            task: Mutex::new(None),
+            gate: gate.map(|g| Arc::new(move || g.enter()) as crate::executor::Gate),
+            lease: Mutex::new(None),
+            log: self.options.log.clone(),
+            now: self.options.now.clone(),
+        });
+        let parts = Parts {
+            jobs: Arc::new(PipeJobs {
+                store: tenant.store.clone(),
+                authority: authority.clone(),
+                live: tenant.pipelines.clone(),
+                start: start.clone(),
+            }),
+            workspaces: Arc::new(PipeWorkspaces(tenant.workspaces.clone())),
+            harness: Arc::new(PipeHarness::new(
+                tenant.executor.clone(),
+                resolved.engine.clone(),
+            )),
+            approvals: Arc::new(Asker(self.registry.clone())),
+            tree: tenant.workspaces.clone(),
+        };
+        let deps = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            setup.create(parts, &resolved)
+        }))
+        .ok()
+        .flatten()
+        .ok_or_else(not_set_up)?;
+        let started = Pipeline::new(deps).start(task, start.signal.clone());
+        let live = tenant.pipelines.clone();
+        // The task stops being live, and its lease is given back, once its thread has ended (or
+        // at once when there is none).
+        let finish = move || {
+            let id = start.task.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            if let Some(id) = id {
+                live.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .remove(&id);
+            }
+            start.lease.lock().unwrap_or_else(PoisonError::into_inner).take();
+        };
+        let started = match started {
+            Ok(s) => s,
+            Err(e) => {
+                finish();
+                return Err(to_x(e));
+            }
+        };
+        let out = JValue::obj([
+            ("taskId", s(&started.task_id)),
+            ("branch", started.branch.clone()),
+            ("workspace", started.workspace.clone()),
+        ]);
+        match started.thread {
+            Some(thread) => {
+                let finish = Arc::new(Mutex::new(Some(finish)));
+                let later = finish.clone();
+                let watcher = std::thread::Builder::new()
+                    .name(format!("code pipeline {}", started.task_id))
+                    .spawn(move || {
+                        let _ = thread.join();
+                        if let Some(f) = later.lock().unwrap_or_else(PoisonError::into_inner).take() {
+                            f();
+                        }
+                    });
+                if watcher.is_err() {
+                    // The run goes on detached; the lease is not held past here.
+                    if let Some(f) = finish.lock().unwrap_or_else(PoisonError::into_inner).take() {
+                        f();
+                    }
+                }
+            }
+            None => finish(),
+        }
+        Ok(out)
     }
 
     /// `jobs.list({ projectId, kind: 'code', active: true }).length`: an unreadable journal counts,
@@ -804,6 +1001,19 @@ impl Service {
             })
         };
         let mut before: Option<Result<JValue, Fail>> = None;
+        // A pipeline task: its signal (jobs.cjs `cancel` of a live run); the run records the rest.
+        let pipeline = tenant
+            .pipelines
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(task_id)
+            .cloned();
+        if let Some(signal) = pipeline {
+            before = Some(view_now());
+            self.registry.abort_task(task_id);
+            signal.abort();
+            return before.unwrap_or_else(view_now);
+        }
         tenant.executor.cancel_with(task_id, &mut || {
             before = Some(view_now());
             self.registry.abort_task(task_id);

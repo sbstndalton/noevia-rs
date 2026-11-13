@@ -7,9 +7,13 @@
 //! The inference lease (code-service.cjs `leased`) is the host's [`Deps::inference`]: taken
 //! before the run starts and held until it ends.
 //!
-//! Not here (yet): the Planner review gate (`features.plannerReview`), the pipeline
-//! (`features.codePipeline`) and a Code role on another inference machine (the relay). A host
-//! that has any of them on keeps such tasks with Node.
+//! The pipeline (`features.codePipeline`, crate code-pipeline) drives the same run in pieces:
+//! [`Executor::claim_run`] (a resume takes the released workspace again), [`Executor::run_turn`]
+//! (one agent turn with the brief, released after) and [`Executor::release_run`]; see
+//! [`crate::pipeline_host`]. Its lease is the pipeline's, held for the whole task.
+//!
+//! Not here (yet): the Planner review gate (`features.plannerReview`) and a Code role on another
+//! inference machine (the relay). A host that has either on keeps such tasks with Node.
 
 use crate::meta;
 use crate::session::{Ended, Host, Refusal, Session, Task};
@@ -168,6 +172,20 @@ impl std::fmt::Debug for StartRequest {
             .finish_non_exhaustive()
     }
 }
+
+/// `claimRun(req)`'s argument: `repo_path` `None` takes a released task's workspace again on its
+/// branch (`resume: true`, code-workspace `reclaim`).
+pub struct ClaimRequest<'a> {
+    pub repo_path: Option<&'a str>,
+    pub harness: &'a str,
+    pub capabilities: &'a [String],
+    pub domains: &'a [String],
+}
+
+/// A claimed run a host drives itself (`claimRun`'s handle): given back once, by
+/// [`Executor::run_turn`] or [`Executor::release_run`].
+#[derive(Clone)]
+pub struct RunHandle(Arc<Handle>);
 
 /// One Code task executor per workspace.
 pub struct Executor {
@@ -358,23 +376,23 @@ impl Executor {
 
     /// `claimRun`: the workspace and, when the task has the network and named domains, its grant.
     /// Nothing is left held when it fails.
-    fn claim(&self, task_id: &str, req: &StartRequest) -> Result<Arc<Handle>, (Fail, bool)> {
-        let pinned: Vec<JValue> = code_harness_config::cwd_pin_paths(Some(&req.harness))
+    fn claim(&self, task_id: &str, req: &ClaimRequest<'_>) -> Result<Arc<Handle>, (Fail, bool)> {
+        let pinned: Vec<JValue> = code_harness_config::cwd_pin_paths(Some(req.harness))
             .into_iter()
             .map(s)
             .collect();
-        let workspace = self
-            .deps
-            .workspaces
-            .claim(Claim {
+        let workspace = match req.repo_path {
+            Some(repo_path) => self.deps.workspaces.claim(Claim {
                 task_id,
-                repo_path: &req.repo_path,
+                repo_path,
                 branch: None,
-                capabilities: &req.capabilities,
-                domains: &req.domains,
+                capabilities: req.capabilities,
+                domains: req.domains,
                 pinned: &pinned,
-            })
-            .map_err(|e| (Fail::new(e.status, e.message), false))?;
+            }),
+            None => self.deps.workspaces.reclaim(task_id, &pinned),
+        }
+        .map_err(|e| (Fail::new(e.status, e.message), false))?;
         let mut handle = Handle {
             task_id: task_id.to_string(),
             workspace,
@@ -394,7 +412,7 @@ impl Executor {
             .as_ref()
             .filter(|_| wants_network && !req.domains.is_empty())
         {
-            match egress.grant(task_id, &req.domains) {
+            match egress.grant(task_id, req.domains) {
                 // A controller that grants nothing leaves the task without a proxy.
                 Ok(grant) if grant.truthy() => handle.grant = Some(grant),
                 Ok(_) => {}
@@ -521,7 +539,13 @@ impl Executor {
             .deps
             .jobs
             .create(req.project_id.as_deref(), &capabilities)?;
-        let handle = match self.claim(&task_id, &req) {
+        let claim = ClaimRequest {
+            repo_path: Some(&req.repo_path),
+            harness: &req.harness,
+            capabilities: &req.capabilities,
+            domains: &req.domains,
+        };
+        let handle = match self.claim(&task_id, &claim) {
             Ok(h) => h,
             Err((e, grant_failed)) => {
                 let data = JValue::obj([("error", s(&clip(&e.message, 500)))]);
@@ -627,6 +651,78 @@ impl Executor {
         Ok(started)
     }
 
+    /// `claimRun`: the workspace (or, without a repository, the released one again) and the
+    /// network grant; nothing is left held when it fails.
+    pub fn claim_run(&self, task_id: &str, req: &ClaimRequest<'_>) -> Result<RunHandle, Fail> {
+        self.claim(task_id, req).map(RunHandle).map_err(|(e, _)| e)
+    }
+
+    /// The handle's facts as they stand: `{ workspace: { branch, path, baseSha }, grant:
+    /// { token } | null, network, cleanupConfirmed, released }` (`released` `null` until it is).
+    pub fn run_facts(&self, run: &RunHandle) -> JValue {
+        let h = &run.0;
+        let w = &h.workspace;
+        let undefined_null = |v: &JValue| match v {
+            JValue::Undefined => JValue::Null,
+            v => v.clone(),
+        };
+        let lock = |m: &Mutex<JValue>| m.lock().map(|v| v.clone()).unwrap_or(JValue::Undefined);
+        JValue::obj([
+            (
+                "workspace",
+                JValue::obj([
+                    ("branch", w.get("branch").clone()),
+                    ("path", w.get("path").clone()),
+                    ("baseSha", undefined_null(w.get("baseSha"))),
+                ]),
+            ),
+            (
+                "grant",
+                h.grant.as_ref().map_or(JValue::Null, |g| {
+                    JValue::obj([("token", g.get("token").clone())])
+                }),
+            ),
+            ("network", lock(&h.network)),
+            (
+                "cleanupConfirmed",
+                JValue::Bool(h.cleanup_confirmed.lock().map(|c| *c).unwrap_or(false)),
+            ),
+            (
+                "released",
+                h.released
+                    .lock()
+                    .ok()
+                    .and_then(|r| r.clone())
+                    .unwrap_or(JValue::Null),
+            ),
+        ])
+    }
+
+    /// `runExecutor(ctx, handle, opts)`: one agent turn with `req.prompt` (the brief), stopped by
+    /// `cancel`, the handle released after; `label` names the task in its checkpoints.
+    pub fn run_turn(
+        &self,
+        run: &RunHandle,
+        req: &StartRequest,
+        label: &str,
+        guarded: bool,
+        cancel: &Arc<Cancel>,
+    ) -> Result<JValue, Fail> {
+        let task_id = run.0.task_id.clone();
+        catch_unwind(AssertUnwindSafe(|| {
+            self.execute(&task_id, &run.0, req, label, guarded, cancel)
+        }))
+        .unwrap_or_else(|_| {
+            self.release(&run.0, None);
+            Err(Fail::new(None, "failed"))
+        })
+    }
+
+    /// `releaseRun(handle)`: idempotent.
+    pub fn release_run(&self, run: &RunHandle) {
+        let _ = catch_unwind(AssertUnwindSafe(|| self.release(&run.0, None)));
+    }
+
     /// start's `.catch`: a run that never started gives the grant and the claim back, and a job
     /// still queued says why.
     fn abandon(&self, task_id: &str, handle: &Arc<Handle>) {
@@ -650,7 +746,7 @@ impl Executor {
         cancel: &Arc<Cancel>,
     ) {
         let outcome = catch_unwind(AssertUnwindSafe(|| {
-            self.execute(task_id, handle, req, guarded, cancel)
+            self.execute(task_id, handle, req, &req.prompt, guarded, cancel)
         }))
         .unwrap_or_else(|_| Err(Fail::new(None, "failed")));
         // A run that panicked never reached its release; it happens once per handle either way.
@@ -713,16 +809,18 @@ impl Executor {
     }
 
     /// `runExecutor(ctx, handle, …)`: one agent turn in the claimed workspace, released after.
+    /// `label` is what the checkpoint calls the task (`req.prompt` is what the agent is sent).
     fn execute(
         &self,
         task_id: &str,
         handle: &Arc<Handle>,
         req: &StartRequest,
+        label: &str,
         guarded: bool,
         cancel: &Arc<Cancel>,
     ) -> Result<JValue, Fail> {
         let workspace = &handle.workspace;
-        let title = clip(&req.prompt, 120);
+        let title = clip(label, 120);
         let branch = workspace.get("branch").clone();
         let base_sha = match workspace.get("baseSha") {
             JValue::Undefined => JValue::Null,

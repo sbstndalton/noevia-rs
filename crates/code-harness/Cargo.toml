@@ -1,7 +1,7 @@
 [package]
 name = "code-harness"
 version = "0.1.0"
-description = "noevia-core's code-harness.cjs in Rust: the Code task session's pieces: code-meta.cjs and code-tool-schemas.cjs (the Executor guard), and the agent's file API (defaultFiles); nothing calls it yet (R7)"
+description = "noevia-core's code-harness.cjs in Rust: the Code task session's pieces: code-meta.cjs and code-tool-schemas.cjs (the Executor guard), and the agent's file API (defaultFiles); the Code service and executor, and the host of crate code-pipeline's driver (R7)"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -14,6 +14,9 @@ workspace = true
 code-acp = { path = "../code-acp" }
 code-harness-config = { path = "../code-harness-config" }
 code-workspace = { path = "../code-workspace" }
+code-pipeline = { path = "../code-pipeline" }
+code-verify = { path = "../code-verify" }
+role-engine = { path = "../role-engine" }
 code-actions = { path = "../code-actions", features = ["host"] }
 js-json = { path = "../js-json" }
 sha2 = "=0.10.9"
