@@ -271,9 +271,236 @@ pub fn open_index(path: &Path) -> Result<Option<Connection>, Fault> {
     Ok(Some(conn))
 }
 
+/// `IMAGE_TOP_K` and `IMAGE_MIN_SCORE` (`rag.cjs:971-972`), read from `RAG_IMAGE_TOP_K` and
+/// `RAG_IMAGE_MIN_SCORE` as Node reads them.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImageSettings {
+    pub top_k: usize,
+    pub min_score: f64,
+}
+
+/// `parseInt(String(v), 10)`: optional leading JS whitespace and sign, then decimal digits up to the
+/// first other character; `None` (NaN) without a digit.
+fn js_parse_int(v: Option<&str>) -> Option<f64> {
+    let u = prompt_framing::js::units(v.unwrap_or("undefined"));
+    let s = String::from_utf16_lossy(prompt_framing::js::trim(&u));
+    let (neg, rest) = match s.strip_prefix('-') {
+        Some(r) => (true, r),
+        None => (false, s.strip_prefix('+').unwrap_or(&s)),
+    };
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    let n: f64 = digits.parse().ok()?;
+    Some(if neg { -n } else { n })
+}
+
+/// `Number(v)` of a string: JS whitespace trimmed, empty is 0, decimal (with exponent), `0x`/`0o`/`0b`
+/// integers and `Infinity`; anything else is NaN. `undefined` is NaN.
+fn js_number(v: Option<&str>) -> f64 {
+    let Some(v) = v else { return f64::NAN };
+    let u = prompt_framing::js::units(v);
+    let s = String::from_utf16_lossy(prompt_framing::js::trim(&u));
+    if s.is_empty() {
+        return 0.0;
+    }
+    for (prefix, radix) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
+        if let Some(d) = s.strip_prefix(prefix) {
+            return if !d.is_empty() && d.chars().all(|c| c.is_digit(radix)) {
+                d.chars().fold(0.0, |n, c| {
+                    n * f64::from(radix) + f64::from(c.to_digit(radix).unwrap_or(0))
+                })
+            } else {
+                f64::NAN
+            };
+        }
+    }
+    let body = s.strip_prefix(['+', '-']).unwrap_or(&s);
+    if body == "Infinity" {
+        return if s.starts_with('-') {
+            f64::NEG_INFINITY
+        } else {
+            f64::INFINITY
+        };
+    }
+    // Decimal literal only: Rust's parser also takes "inf", "nan" and other spellings JS does not.
+    let decimal = {
+        let (mantissa, exponent) = match body.find(['e', 'E']) {
+            Some(i) => (&body[..i], Some(&body[i + 1..])),
+            None => (body, None),
+        };
+        let digits = mantissa.chars().filter(char::is_ascii_digit).count();
+        digits > 0
+            && mantissa.chars().filter(|c| *c == '.').count() <= 1
+            && mantissa.chars().all(|c| c.is_ascii_digit() || c == '.')
+            && exponent.is_none_or(|e| {
+                let e = e.strip_prefix(['+', '-']).unwrap_or(e);
+                !e.is_empty() && e.chars().all(|c| c.is_ascii_digit())
+            })
+    };
+    if decimal {
+        s.parse().unwrap_or(f64::NAN)
+    } else {
+        f64::NAN
+    }
+}
+
+impl ImageSettings {
+    /// `clampInt(RAG_IMAGE_TOP_K, 2, 0, 8)` and `RAG_IMAGE_MIN_SCORE` when it is a number in [-1, 1],
+    /// else [`MIN_SCORE`].
+    pub fn from_env(top_k: Option<&str>, min_score: Option<&str>) -> ImageSettings {
+        let top_k = js_parse_int(top_k).map_or(2.0, |n| n.clamp(0.0, 8.0));
+        let n = js_number(min_score);
+        ImageSettings {
+            // In 0..=8, an integer.
+            top_k: top_k as usize,
+            min_score: if n.is_finite() && (-1.0..=1.0).contains(&n) {
+                n
+            } else {
+                MIN_SCORE
+            },
+        }
+    }
+}
+
+/// An image row as a search result carries it (`mediaRow`): `{file, kind: 'image', meta}`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageRow {
+    pub file: String,
+    pub meta: Value,
+}
+
+/// An image hit: the row, its label (`body`), its `img:` hash and its rounded cosine score.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ImageHit {
+    pub row: ImageRow,
+    pub label: String,
+    pub hash: String,
+    pub score: f64,
+}
+
+/// `searchProjectWithImages`' answer.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WithImages {
+    pub text: Vec<Hit>,
+    pub images: Vec<ImageHit>,
+    /// Every image row with a current vector, readable meta only.
+    pub indexed: Vec<ImageRow>,
+}
+
+/// `mediaRow(row)`: `JSON.parse(row.meta || 'null')` must be an object (an array is one in JS).
+/// Named difference: a meta whose JSON holds a lone surrogate escape (`"\ud800"`), which
+/// `JSON.parse` takes, is unreadable here.
+fn media_row(file: String, meta: Option<String>) -> Option<ImageRow> {
+    let meta: Value =
+        serde_json::from_str(meta.as_deref().filter(|m| !m.is_empty()).unwrap_or("null")).ok()?;
+    matches!(meta, Value::Object(_) | Value::Array(_)).then_some(ImageRow { file, meta })
+}
+
+/// The image half of `searchProjectWithImagesNow` (`rag.cjs:957-967`): `indexed` (every image row
+/// joined to a current vector, by chunk id: the tie-order rule of this module) and `images` (cosine
+/// at or above `min_score`, best first, at most `top_k`; no version filter, no reranker).
+pub fn image_hits(
+    conn: &Connection,
+    slot: &Slot,
+    query: &[f32],
+    settings: ImageSettings,
+) -> Result<(Vec<ImageHit>, Vec<ImageRow>), Fault> {
+    let cols = columns(conn)?;
+    if !(cols.iter().any(|c| c == "kind") && cols.iter().any(|c| c == "meta")) {
+        // An index from before #1726 holds no image rows.
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let join = join_sql(slot);
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT c.file, c.meta FROM {join} WHERE c.kind = 'image' ORDER BY c.id"
+        ))
+        .map_err(|_| Fault::Query)?;
+    let indexed = stmt
+        .query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+        })
+        .map_err(|_| Fault::Query)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| Fault::Query)?
+        .into_iter()
+        .filter_map(|(file, meta)| media_row(file, meta))
+        .collect();
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT c.file, c.body, c.content_hash, c.meta, 1.0 - vec_distance_cosine(v.embedding, ?1) AS score
+             FROM {join}
+             WHERE c.kind = 'image' AND 1.0 - vec_distance_cosine(v.embedding, ?1) >= ?2
+             ORDER BY score DESC, c.id ASC
+             LIMIT ?3"
+        ))
+        .map_err(|_| Fault::Query)?;
+    let limit = i64::try_from(settings.top_k).unwrap_or(0);
+    let images = stmt
+        .query_map(
+            rusqlite::params![f32_blob(query), settings.min_score, limit],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, f64>(4)?,
+                ))
+            },
+        )
+        .map_err(|_| Fault::Query)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| Fault::Query)?
+        .into_iter()
+        .filter_map(|(file, label, hash, meta, score)| {
+            Some(ImageHit {
+                row: media_row(file, meta)?,
+                label,
+                hash,
+                score: round3(score),
+            })
+        })
+        .collect();
+    Ok((images, indexed))
+}
+
+/// `searchProjectWithImagesNow` after the query is embedded: the text hits exactly as [`search`]
+/// gives them, and the image half beside them. No slot, or a query of another width, is empty.
+pub fn search_with_images(
+    conn: &Connection,
+    target: Target,
+    query: &[f32],
+    pool: usize,
+    versions: &Versions,
+    settings: ImageSettings,
+) -> Result<WithImages, Fault> {
+    let Some(slot) = find_slot(conn, target)? else {
+        return Ok(WithImages::default());
+    };
+    if query.len() != slot.dim {
+        return Ok(WithImages::default());
+    }
+    let text = text_hits(conn, &slot, query, pool, versions)?;
+    let (images, indexed) = image_hits(conn, &slot, query, settings)?;
+    Ok(WithImages {
+        text,
+        images,
+        indexed,
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{is_current, round3, safe, slot_id, Target, Versions};
+    use super::{
+        is_current, js_number, js_parse_int, round3, safe, slot_id, ImageSettings, Target, Versions,
+    };
     use serde_json::json;
 
     #[test]
@@ -315,6 +542,30 @@ mod tests {
         assert!(safe(&json!({"table":"vec_items","dim":0})).is_none());
         assert!(safe(&json!({"table":"vec_items","dim":65537})).is_none());
         assert!(safe(&json!({"table":"vec_items","dim":"8"})).is_none());
+    }
+
+    #[test]
+    fn node_number_and_parse_int() {
+        assert_eq!(js_parse_int(Some(" 2.9")), Some(2.0));
+        assert_eq!(js_parse_int(Some("-3x")), Some(-3.0));
+        assert_eq!(js_parse_int(Some("many")), None);
+        assert_eq!(js_parse_int(None), None);
+        assert_eq!(js_number(Some(" 0.25 ")), 0.25);
+        assert_eq!(js_number(Some("")), 0.0);
+        assert_eq!(js_number(Some("0x10")), 16.0);
+        assert_eq!(js_number(Some("-1e0")), -1.0);
+        assert_eq!(js_number(Some(".5")), 0.5);
+        assert_eq!(js_number(Some("5.")), 5.0);
+        assert!(js_number(Some("inf")).is_nan());
+        assert!(js_number(Some("NaN")).is_nan());
+        assert!(js_number(Some("1e")).is_nan());
+        assert!(js_number(Some("0x")).is_nan());
+        assert!(js_number(Some("-0x10")).is_nan());
+        assert_eq!(js_number(Some("-Infinity")), f64::NEG_INFINITY);
+        assert!(js_number(None).is_nan());
+        // RAG_IMAGE_MIN_SCORE set but empty is Number('') = 0, a valid floor.
+        assert_eq!(ImageSettings::from_env(None, Some("")).min_score, 0.0);
+        assert_eq!(ImageSettings::from_env(Some("-4"), None).top_k, 0);
     }
 
     #[test]
