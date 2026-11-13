@@ -28,11 +28,13 @@
 //!    on a live job, which would replace its kind and capabilities.
 //! 4. Event `data` must be an object (or absent, which is `{}` as in Node). It is written in JS
 //!    property order whatever order the caller built it in.
-//! 5. A journal that is a symbolic link, not a regular file, hard-linked, or over
-//!    [`crate::task_journals::MAX_JOURNAL_BYTES`] is unreadable (409), never followed or loaded,
-//!    and no row is written that would take it over that size (409, "The job journal is full");
-//!    a line that `JSON.parse` reads but this port cannot hold (a number past the `f64` range, a
-//!    character of U+10F800..U+10FFFF) refuses the write rather than being dropped.
+//! 5. A journal that is a symbolic link, not a regular file, or over
+//!    [`crate::task_journals::MAX_JOURNAL_BYTES`] is unreadable (409), never followed or loaded;
+//!    a hard-linked one takes no row (the cut would reach the other name); no row is written that
+//!    would take a journal over that size (409, "The job journal is full") or that this store's
+//!    reader could not read back; a last line that `JSON.parse` reads but this port cannot hold
+//!    (a number past the `f64` range, a character of U+10F800..U+10FFFF) makes the journal
+//!    unreadable rather than being dropped.
 //! 6. Rows that are not objects make the journal unreadable (the reader's rule).
 //! 7. Prune removes the finished journal by its own file name; jobs.cjs removed the file of the id
 //!    its `job.created` row names (another job's, or a 400 when it has none). A finished job whose
@@ -230,8 +232,14 @@ impl Store {
         };
         let rows = journals::parse_rows_with(id, &raw, &|first| self.chains_by_policy(first))
             .ok_or_else(unreadable)?;
-        // What the end needs before a write; a refusal here stops writes only, never reads.
-        let tail = tail_of(&raw, rows.len());
+        // What the end needs before a write. A damaged last line stops writes only; a last line
+        // JSON.parse reads but this port cannot hold stops reads too (leaving it out would show
+        // the job as it was before that row).
+        let tail = match tail_of(&raw, rows.len()) {
+            Err(TailFault::Unholdable) => return Err(unreadable()),
+            Err(TailFault::Damaged) => Err(unreadable()),
+            Ok(tail) => Ok(tail),
+        };
         Ok(Journal { rows, tail })
     }
 
@@ -357,6 +365,11 @@ impl Store {
         let event = JValue::Obj(event);
         let mut line = wtf16::stringify(&event)
             .ok_or_else(|| Refusal::new(None, "Job event cannot be written"))?;
+        // Never a row this store's own reader could not read back (data nested past what it
+        // follows, for one).
+        if wtf16::parse(&line).is_err() {
+            return Err(Refusal::new(None, "Job event data cannot be read back"));
+        }
         line.push('\n');
         let tail = journal.tail.clone()?;
         self.write_line(id, &tail, &line, sync)?;
@@ -541,8 +554,8 @@ impl Store {
             let data = JValue::obj([("reason", JValue::Str(reason.to_string()))]);
             match self.append_unlocked(&id, "job.interrupted", data, false) {
                 Ok(_) => count += 1,
-                // Left for review, as an unreadable journal is.
-                Err(e) if e.is_unreadable() => {}
+                // Unreadable, full or finished meanwhile: left as it is, for review.
+                Err(e) if e.status == Some(409) => {}
                 Err(e) => return Err(e),
             }
         }
@@ -601,6 +614,9 @@ fn finished(job: &Job) -> bool {
 fn key(n: f64) -> f64 {
     if n.is_nan() {
         f64::NEG_INFINITY
+    } else if n == 0.0 {
+        // -0 and 0 are equal in JS; total_cmp would order them.
+        0.0
     } else {
         n
     }
@@ -761,7 +777,14 @@ enum Tail {
 
 /// What the end of `raw` needs, given that the reader kept `kept` rows. Every line before the last
 /// one was read (the reader refuses a damaged middle line), so only the last one can be missing.
-fn tail_of(raw: &[u8], kept: usize) -> Result<Tail, Refusal> {
+enum TailFault {
+    /// A newline-terminated last line that does not parse: damage, kept for review.
+    Damaged,
+    /// A last line JSON.parse reads that this port cannot hold.
+    Unholdable,
+}
+
+fn tail_of(raw: &[u8], kept: usize) -> Result<Tail, TailFault> {
     let text = String::from_utf8_lossy(raw);
     let lines: Vec<&str> = text.split('\n').filter(|l| !l.is_empty()).collect();
     if lines.len() == kept {
@@ -776,8 +799,11 @@ fn tail_of(raw: &[u8], kept: usize) -> Result<Tail, Refusal> {
     // a torn write (a row and its newline are one write): it is damage, kept for review, and
     // nothing is written after it.
     let last = lines.last().copied().unwrap_or("");
-    if wtf16::parse(last) != Err(wtf16::Refusal::Invalid) || raw.last() == Some(&b'\n') {
-        return Err(unreadable());
+    if wtf16::parse(last) != Err(wtf16::Refusal::Invalid) {
+        return Err(TailFault::Unholdable);
+    }
+    if raw.last() == Some(&b'\n') {
+        return Err(TailFault::Damaged);
     }
     // The last non-empty segment is the dropped line: cut at its first byte (the raw bytes, not the
     // decoded text, whose length differs where a byte is not UTF-8).

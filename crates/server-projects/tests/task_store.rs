@@ -691,6 +691,8 @@ fn difference_a_last_line_this_port_cannot_hold_refuses_the_write() {
         .append(id, "job.started", JValue::Undefined)
         .unwrap_err()
         .is_unreadable());
+    // Nor is it read as the job before that row.
+    assert!(s.get(id).unwrap_err().is_unreadable());
     assert_eq!(
         fs::read_to_string(&path).unwrap(),
         format!("{created}\n{odd}\n")
@@ -782,4 +784,53 @@ fn concurrent_appends_keep_one_sequence() {
         assert_eq!(row.get("seq").as_num(), Some((i + 1) as f64));
     }
     assert_eq!(journal.lines().count(), 161);
+}
+
+#[test]
+fn data_too_deep_to_read_back_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(dir.path(), Options::default());
+    let id = s
+        .create(NewJob {
+            kind: "code",
+            project_id: None,
+            parent_id: None,
+            capabilities: &[],
+        })
+        .unwrap();
+    let mut deep = JValue::Null;
+    for _ in 0..127 {
+        deep = JValue::obj([("d", deep)]);
+    }
+    let e = s.append(&id, "progress", deep).unwrap_err();
+    assert_eq!(e.http_status(), 500);
+    // The journal is as it was, and still takes rows.
+    s.append(&id, "job.started", JValue::Undefined).unwrap();
+}
+
+#[test]
+fn recover_goes_on_past_a_full_journal() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(dir.path(), Options::default());
+    let new = || {
+        s.create(NewJob {
+            kind: "code",
+            project_id: None,
+            parent_id: None,
+            capabilities: &[],
+        })
+        .unwrap()
+    };
+    let (a, b) = (new(), new());
+    let path = dir.path().join("jobs").join(format!("{a}.jsonl"));
+    let pad = "x".repeat(64 * 1024 * 1024 - fs::metadata(&path).unwrap().len() as usize - 200);
+    let row = format!(r#"{{"job":"{a}","seq":2,"type":"progress","at":2,"data":{{"p":"{pad}"}}}}"#);
+    let mut f = fs::OpenOptions::new().append(true).open(&path).unwrap();
+    std::io::Write::write_all(&mut f, format!("{row}\n").as_bytes()).unwrap();
+    drop(f);
+    assert_eq!(s.recover(&|_| false).unwrap(), 1);
+    assert_eq!(
+        s.get(&b).unwrap().unwrap().status.as_str(),
+        Some("interrupted")
+    );
 }
