@@ -1,28 +1,36 @@
-//! `POST /api/chat` (chat port S5, capability `rust-chat-turn`): the front owns the route as a
-//! transparent relay. Core keeps the whole turn (the inference gate, the `llm:` budget, the body cap,
-//! routes/chat.cjs and the loop) behind its loopback `POST /internal/chat/turn` (core
-//! rust-chat-turn.cjs), and refuses a POST /api/chat that did not come through here.
+//! `POST /api/chat` (chat port S5, capability `rust-chat-turn`; its edge since S6, `rust-chat-edge`):
+//! the front owns the route, answers everything routes/chat.cjs answered before the loop
+//! (chat_edge.rs), and relays a turn that passes to Core's loopback `POST /internal/chat/turn` (core
+//! rust-chat-turn.cjs), which runs the rest of the unchanged pipeline. Core refuses a POST /api/chat
+//! that did not come through here.
 //!
 //! In order:
 //! 1. Node's request gate, as identity.rs answers it: 401 signed out, 403 `invalid CSRF token`, 403
-//!    `browser_session_required`. Node's inference gate answered before authentication, so a refused
-//!    request is first offered to Core's `POST /internal/chat/gate`: when the gate is held its 503
-//!    (`Retry-After: 3` and the retryable body) is the answer, as Node gave it; otherwise the refusal.
-//! 2. The request, unread, to `/internal/chat/turn` with the per-start secret and the signed-in user
-//!    (legacy_proxy.rs `relay`): the client's headers and credentials ride along, Core authenticates
-//!    them again and must find the same user. At most `STORED_HISTORY_BYTES + 1` body bytes go on:
-//!    Core's own cap then answers its 413 after its 429, in Node's order.
-//! 3. Core's answer byte for byte and frame by frame: JSON, the 503 with `Retry-After`, or the event
+//!    `browser_session_required`.
+//!    Node's inference gate answered before these, so a refusal is first offered to Core's
+//!    `POST /internal/chat/gate`: when the gate is held its 503 (`Retry-After: 3` and the retryable
+//!    body) is the answer, as Node gave it; otherwise the refusal.
+//! 2. Node's inference gate, taken and held for this call (chat_edge.rs `hold`): its 503, or the
+//!    gate held while the rest is decided.
+//! 3. The edge (chat_edge.rs), the gate held: the shared `llm:` budget (429), counted only now, the
+//!    body cap (413), JSON and the object (400), the request shape (400), Cowork (403/409) and the
+//!    Diary add-on (404).
+//! 4. The request, its body as read, to `/internal/chat/turn` (a Cowork start to
+//!    `/internal/chat/cowork`) with the per-start secret, the signed-in user and the gate's lease,
+//!    which Core's turn adopts instead of entering the gate again (legacy_proxy.rs `relay`): the
+//!    client's headers and credentials ride along, Core authenticates them again and must find the
+//!    same user.
+//! 5. Core's answer byte for byte and frame by frame: JSON, the 503 with `Retry-After`, or the event
 //!    stream with its `: keep-alive` comments. The client leaving drops the response, which closes
 //!    Core's socket (the turn stops and keeps its interrupted reply, #679).
 //!
 //! When Core fails before its headers the answer is the proxy's 502 JSON. When an event stream breaks
 //! after them, the client gets the frame index.cjs writes for a handler that throws mid-stream, and
 //! the end: `data: {"type":"error","text":"The request could not be completed. Please retry."}`.
-use crate::{identity, reply, serve::Conn, App};
+use crate::{chat_edge, identity, reply, serve::Conn, App};
 use axum::{
     body::Body,
-    http::{header, HeaderValue, Request, Response, StatusCode},
+    http::{header, HeaderMap, HeaderValue, Request, Response, StatusCode},
     response::IntoResponse,
 };
 use bytes::Bytes;
@@ -46,7 +54,7 @@ pub const RELAY_LIMIT: u64 = STORED_HISTORY_BYTES + 1;
 pub const FAILED_FRAME: &str =
     "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n";
 /// The proxy's 502 (legacy_proxy.rs) for a Core that does not answer.
-const UNAVAILABLE: &str = "The server is not answering. Please retry.";
+pub(crate) const UNAVAILABLE: &str = "The server is not answering. Please retry.";
 
 fn unavailable() -> Response<Body> {
     reply::error(StatusCode::BAD_GATEWAY, UNAVAILABLE, true)
@@ -64,60 +72,124 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     if app.proxy.is_in_process() {
         return app.proxy.forward(conn.peer, req).await;
     }
-    let (parts, body) = req.into_parts();
+    let (mut parts, body) = req.into_parts();
     let creds = identity::creds_of(&parts);
     let layer = Arc::clone(&app.identity);
     let now = identity::now_ms();
     let gated = tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &path, now)).await;
-    let token = app.config.research.front_token().and_then(sensitive);
     let authn = match gated {
         Ok(Ok(id)) => id,
         Ok(Err(rejection @ identity::Rejection::Refused(_))) => {
-            return match gate_refusal(app, conn, &parts, token).await {
-                Some(held) => held,
-                None => rejection.into_response(),
-            };
+            return refused(app, conn, &parts.headers, rejection.into_response()).await;
         }
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    let token = app.config.research.front_token().and_then(sensitive);
     let (Some(token), Some(user)) = (token, sensitive(&authn.user.id)) else {
         return unavailable();
     };
-    let req = Request::from_parts(parts, body);
+    // Node's inference gate first: a call is counted only once the gate let it in.
+    let held = match chat_edge::hold(app, conn, &parts.headers, chat_edge::CHAT_HOLD_PATH).await {
+        chat_edge::Gate::Held(h) => h,
+        chat_edge::Gate::Answer(answer) => return answer,
+    };
+    // The edge (chat_edge.rs), in routes/chat.cjs's order, the gate held: the budget before the body.
+    let Some(limited) = chat_edge::charge(app, &authn.user.id) else {
+        return unavailable();
+    };
+    if limited {
+        return reply::error(
+            StatusCode::TOO_MANY_REQUESTS,
+            chat_edge::CHAT_TOO_MANY,
+            true,
+        );
+    }
+    let bytes = match crate::account_routes::read_body(body, STORED_HISTORY_BYTES as usize).await {
+        Ok(b) if !b.over => b.bytes,
+        failed => match chat_edge::unread(failed.is_ok()) {
+            chat_edge::Verdict::Refuse(status, text) => {
+                return reply::json_text(status, text, true)
+            }
+            _ => return unavailable(),
+        },
+    };
+    let account = chat_edge::Account {
+        admin: authn.user.role == server_auth::Role::Admin,
+        diary: authn.user.diary_enabled,
+    };
+    // The harness flag is read only for a Cowork request that got that far.
+    let verdict = match chat_edge::check(&bytes, account, || None) {
+        chat_edge::Verdict::Cowork => {
+            let a = Arc::clone(app);
+            let harness = tokio::task::spawn_blocking(move || chat_edge::harness_blocking(&a))
+                .await
+                .ok()
+                .flatten();
+            chat_edge::check(&bytes, account, || harness)
+        }
+        other => other,
+    };
+    let target = match verdict {
+        chat_edge::Verdict::Turn => TURN_PATH,
+        chat_edge::Verdict::Cowork => chat_edge::COWORK_PATH,
+        chat_edge::Verdict::Refuse(status, text) => return reply::json_text(status, text, true),
+    };
+    parts.headers.remove(header::TRANSFER_ENCODING);
+    parts
+        .headers
+        .insert(header::CONTENT_LENGTH, HeaderValue::from(bytes.len()));
+    let req = Request::from_parts(parts, Body::from(bytes));
     let extra = [
         (crate::project_store::TOKEN_HEADER, token),
         (USER_HEADER, user),
+        (chat_edge::LEASE_HEADER, held.lease.clone()),
     ];
-    match app
+    let res = app
         .proxy
-        .relay(conn.peer, req, TURN_PATH, &extra, RELAY_LIMIT)
-        .await
-    {
-        Some(res) if is_event_stream(&res) => res.map(|b| Body::new(StreamTail::new(b))),
-        Some(res) => res,
-        None => unavailable(),
+        .relay(conn.peer, req, target, &extra, RELAY_LIMIT)
+        .await;
+    // Core's turn adopted the hold when it read the request; the probe can close now.
+    drop(held);
+    let Some(res) = res else {
+        return unavailable();
+    };
+    if is_event_stream(&res) {
+        res.map(|b| Body::new(StreamTail::new(b)))
+    } else {
+        res
     }
 }
 
-/// Core's inference gate for a request the front refuses: its 503 when the gate is held, else `None`
-/// (a 204, or no answer: the front's refusal stands).
-async fn gate_refusal(
+/// A refusal of the session gate's, after Core's inference gate: the gate's 503 when it is held,
+/// else `answer`.
+async fn refused(
     app: &Arc<App>,
     conn: Conn,
-    parts: &axum::http::request::Parts,
-    token: Option<HeaderValue>,
+    headers: &HeaderMap,
+    answer: Response<Body>,
+) -> Response<Body> {
+    gate_probe(app, conn, headers, GATE_PATH)
+        .await
+        .unwrap_or(answer)
+}
+
+/// Core's inference gate for a request the front refuses, at `target` (the chat gate, or the Diary
+/// local exchange's): its 503 when the gate is held, else `None` (a 204, or no answer: the front's
+/// refusal stands).
+pub(crate) async fn gate_probe(
+    app: &Arc<App>,
+    conn: Conn,
+    headers: &HeaderMap,
+    target: &str,
 ) -> Option<Response<Body>> {
-    let token = token?;
+    let token = app.config.research.front_token().and_then(sensitive)?;
     let mut probe = Request::post(GATE_PATH).body(Body::empty()).ok()?;
-    if let Some(host) = parts.headers.get(header::HOST) {
+    if let Some(host) = headers.get(header::HOST) {
         probe.headers_mut().insert(header::HOST, host.clone());
     }
     let extra = [(crate::project_store::TOKEN_HEADER, token)];
-    let res = app
-        .proxy
-        .relay(conn.peer, probe, GATE_PATH, &extra, 0)
-        .await?;
+    let res = app.proxy.relay(conn.peer, probe, target, &extra, 0).await?;
     (res.status() == StatusCode::SERVICE_UNAVAILABLE).then_some(res)
 }
 

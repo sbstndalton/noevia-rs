@@ -27,7 +27,7 @@
 //!   takes it with an inference-admission lease (crates/engine-admission `Ask::DiaryExchange`) after
 //!   the add-on gate and the method and before the body, and gives it back when the response ends.
 
-use crate::{identity, reply, App};
+use crate::{chat_edge, identity, reply, App};
 use axum::body::Body;
 use axum::http::request::Parts;
 use axum::http::{header, HeaderValue, Method, Request, Response, StatusCode};
@@ -296,6 +296,7 @@ async fn local_exchange(app: &Arc<App>, req: Request<Body>, path: String) -> Res
     };
     let admission = app.config.research.admission();
     let user = ctx.identity.user.id.clone();
+    let budget = Arc::clone(app);
     let admit = async move {
         // A browser that goes away while this waits drops the request to Node, which holds nothing then.
         match admission
@@ -306,6 +307,22 @@ async fn local_exchange(app: &Arc<App>, req: Request<Body>, path: String) -> Res
             .await
         {
             Ok(lease) => {
+                // Chat port S6: the `llm:` budget chat shares is this front's (chat_edge.rs); Node's lease
+                // charges nothing for it. Node's order stays: counted once the gate let the call in, and a
+                // call over the budget gives the gate back (the lease drops) before its 429.
+                // A budget that cannot be read refuses (fail closed), as chat_turn.rs does.
+                let over = match chat_edge::charge(&budget, &user) {
+                    Some(false) => None,
+                    Some(true) => Some((429, chat_edge::DIARY_TOO_MANY)),
+                    None => Some((502, crate::chat_turn::UNAVAILABLE)),
+                };
+                if let Some((status, message)) = over {
+                    drop(lease);
+                    return Err(server_diary::ExchangeRefusal {
+                        status,
+                        message: message.into(),
+                    });
+                }
                 let lost = lease.lost().clone();
                 Ok(server_diary::ExchangeHold {
                     keep: Box::new(lease),
