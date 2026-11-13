@@ -1,0 +1,447 @@
+{
+ "sources": {
+  "server/rag.cjs": "227d0b739858237554fe366269ef5926e76ac2275731f83f0fb19e3d31e6c024",
+  "server/rerank-target.cjs": "66f4a7f2b60e54737b0af78683ed74dcb2ff1e2e0fce762cf3bc5940bc192084",
+  "server/embedding-service.cjs": "1266640492aea8841d73d25ec22dba1fe2daa962c04dd415df81c7dfed4468dd",
+  "server/rust-embedding-background.cjs": "c45fc4a2402a8bb2c8825ef26f3ab978425c099bfdd1f7f7cf2bb72afd28df2c"
+ },
+ "source": "server/rerank-target.cjs rerankTarget :44-60, engineOrigins :29, origin :21",
+ "cases": [
+  {
+   "env": {},
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": null,
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": null,
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "  http://qa-rerank:8080  ",
+    "RERANK_MODEL": " qa-rerank-model "
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": "qa-rerank-model",
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BACKEND": "tei"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "tei",
+    "baseUrl": "http://rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BACKEND": " TEI ",
+    "RERANK_BASE_URL": "http://10.0.0.9:8080"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "tei",
+    "baseUrl": "http://10.0.0.9:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BACKEND": "llama.cpp",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BACKEND": "llama",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BACKEND": "other",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": false,
+    "backend": null,
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": "RERANK_BACKEND must be tei or llamacpp. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BACKEND": "toString",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": false,
+    "backend": null,
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": "RERANK_BACKEND must be tei or llamacpp. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BACKEND": "__proto__",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": false,
+    "backend": null,
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": "RERANK_BACKEND must be tei or llamacpp. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "true",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": " ON ",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "yes",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "0",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "false",
+    "RERANK_BASE_URL": "http://qa-rerank:8080"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-rerank:8080",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://qa-engine:11434/v1",
+    "INFERENCE_BASE_URL": "http://QA-ENGINE:11434"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-engine:11434/v1",
+    "model": null,
+    "shared": true,
+    "reason": "RERANK_BASE_URL points at the shared inference engine, which holds one model within the inference memory budget; run the reranker on its own endpoint (compose.rerank.yaml) or set RERANK_SHARED_ENGINE=allow. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://qa-engine:11434",
+    "INFERENCE_BASE_URL": "http://qa-engine:11434/v1",
+    "RERANK_SHARED_ENGINE": " Allow "
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-engine:11434",
+    "model": null,
+    "shared": true,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://qa-engine:11434",
+    "MODEL_MANAGER_BASE_URL": "http://qa-engine:11434"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-engine:11434",
+    "model": null,
+    "shared": true,
+    "reason": "RERANK_BASE_URL points at the shared inference engine, which holds one model within the inference memory budget; run the reranker on its own endpoint (compose.rerank.yaml) or set RERANK_SHARED_ENGINE=allow. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://qa-engine:11434",
+    "LEMONADE_BASE_URL": "http://qa-engine:11434/api"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-engine:11434",
+    "model": null,
+    "shared": true,
+    "reason": "RERANK_BASE_URL points at the shared inference engine, which holds one model within the inference memory budget; run the reranker on its own endpoint (compose.rerank.yaml) or set RERANK_SHARED_ENGINE=allow. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://qa-engine:11435",
+    "INFERENCE_BASE_URL": "http://qa-engine:11434"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-engine:11435",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://qa-engine",
+    "INFERENCE_BASE_URL": "http://qa-engine:80"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-engine",
+    "model": null,
+    "shared": true,
+    "reason": "RERANK_BASE_URL points at the shared inference engine, which holds one model within the inference memory budget; run the reranker on its own endpoint (compose.rerank.yaml) or set RERANK_SHARED_ENGINE=allow. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "https://qa-engine",
+    "INFERENCE_BASE_URL": "https://qa-engine:443/x"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "https://qa-engine",
+    "model": null,
+    "shared": true,
+    "reason": "RERANK_BASE_URL points at the shared inference engine, which holds one model within the inference memory budget; run the reranker on its own endpoint (compose.rerank.yaml) or set RERANK_SHARED_ENGINE=allow. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "not a url",
+    "INFERENCE_BASE_URL": "not a url"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "not a url",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://qa-engine:11434",
+    "INFERENCE_BASE_URL": "garbage"
+   },
+   "out": {
+    "enabled": true,
+    "backend": "llamacpp",
+    "baseUrl": "http://qa-engine:11434",
+    "model": null,
+    "shared": false,
+    "reason": null
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BACKEND": "tei",
+    "INFERENCE_BASE_URL": "http://rerank:8080"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "tei",
+    "baseUrl": "http://rerank:8080",
+    "model": null,
+    "shared": true,
+    "reason": "RERANK_BASE_URL points at the shared inference engine, which holds one model within the inference memory budget; run the reranker on its own endpoint (compose.rerank.yaml) or set RERANK_SHARED_ENGINE=allow. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://[::1]:8080",
+    "INFERENCE_BASE_URL": "http://[0:0:0:0:0:0:0:1]:8080"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://[::1]:8080",
+    "model": null,
+    "shared": true,
+    "reason": "RERANK_BASE_URL points at the shared inference engine, which holds one model within the inference memory budget; run the reranker on its own endpoint (compose.rerank.yaml) or set RERANK_SHARED_ENGINE=allow. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://Qa-Rerank.example:8080/",
+    "INFERENCE_BASE_URL": "http://qa-rerank.example:8080/v1"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://Qa-Rerank.example:8080/",
+    "model": null,
+    "shared": true,
+    "reason": "RERANK_BASE_URL points at the shared inference engine, which holds one model within the inference memory budget; run the reranker on its own endpoint (compose.rerank.yaml) or set RERANK_SHARED_ENGINE=allow. Retrieval uses cosine ranking."
+   }
+  },
+  {
+   "env": {
+    "NOEVIA_FEATURE_RAG_RERANK": "1",
+    "RERANK_BASE_URL": "http://user:pw@qa-engine:1",
+    "INFERENCE_BASE_URL": "http://qa-engine:1"
+   },
+   "out": {
+    "enabled": false,
+    "backend": "llamacpp",
+    "baseUrl": "http://user:pw@qa-engine:1",
+    "model": null,
+    "shared": true,
+    "reason": "RERANK_BASE_URL points at the shared inference engine, which holds one model within the inference memory budget; run the reranker on its own endpoint (compose.rerank.yaml) or set RERANK_SHARED_ENGINE=allow. Retrieval uses cosine ranking."
+   }
+  }
+ ]
+}

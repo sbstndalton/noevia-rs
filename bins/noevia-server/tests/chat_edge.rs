@@ -33,11 +33,16 @@ const ORIGIN: &str = "http://127.0.0.1:18021";
 const STORE_TOKEN: &str = "synthetic-store-token-0123456789abcdef";
 const START: &str = "0123456789abcdef0123456789abcdef";
 const BUSY: &str = r#"{"error":"Inference is paused for maintenance.","code":"inferenceMaintenance","retryable":true,"retryAfter":3}"#;
-const DIARY_BUSY: &str = r#"{"error":"Inference is paused for maintenance."}"#;
-const LEASE: &str = "x-noevia-gate-lease";
+/// Chat port S8: the admission lease a covered call carries (core rust-chat-admission.cjs).
+const LEASE: &str = "x-noevia-admission-lease";
 const CAP: usize = 32 * 1024 * 1024;
-const HOLD: &str = "POST /internal/chat/gate?hold=1";
-const DIARY_HOLD: &str = "POST /internal/chat/gate?route=diary-local-exchange&hold=1";
+const ADMISSION: &str = "/internal/inference-admission/lease";
+/// The front taking Core's gate with an admission lease, for a chat call or the local exchange.
+const HOLD: &str = "POST /internal/inference-admission/lease chat";
+const DIARY_HOLD: &str = "POST /internal/inference-admission/lease diary";
+/// Core's gate refusal on the admission route (inference-admission-lease.cjs): the front words it.
+const GATE_REFUSAL: &str =
+    r#"{"error":"Inference is paused for maintenance.","code":"inferenceMaintenance"}"#;
 
 type UpBody = http_body_util::combinators::BoxBody<Bytes, std::io::Error>;
 
@@ -67,7 +72,7 @@ struct Core {
     waiting: Mutex<Vec<tokio::sync::oneshot::Sender<bool>>>,
     /// Leases issued, in the order the gate let calls in.
     issued: Mutex<Vec<String>>,
-    /// Leases whose hold closed (the front gave the gate back or its call adopted it).
+    /// Leases the front gave back (DELETE), in order.
     closed: Mutex<Vec<String>>,
     seen: Mutex<Seen>,
 }
@@ -111,41 +116,14 @@ fn reply(status: u16, text: &str, extra: &[(&str, &str)]) -> Response<UpBody> {
     .unwrap()
 }
 
-/// The gate's refusal as `query`'s route meets it.
-fn refusal(query: &str) -> Response<UpBody> {
-    if query.contains("route=diary-local-exchange") {
-        reply(503, DIARY_BUSY, &[])
-    } else {
-        reply(503, BUSY, &[("retry-after", "3")])
-    }
-}
-
-/// A held gate: 200 with a fresh lease, kept open until the front closes it.
-fn held(core: &Arc<Core>) -> Response<UpBody> {
+/// A lease the gate let a call in with (core inference-admission-lease.cjs 201).
+fn grant(core: &Arc<Core>, ticket: &str) -> Response<UpBody> {
     let lease = {
         let mut issued = core.issued.lock().unwrap();
-        let lease = format!("lease-{}", issued.len() + 1);
-        issued.push(lease.clone());
-        lease
+        issued.push(ticket.to_owned());
+        ticket.to_owned()
     };
-    let (mut tx, body) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
-    let (c, l) = (Arc::clone(core), lease.clone());
-    tokio::spawn(async move {
-        let _ = tx.send_data(Bytes::from_static(b"held\n")).await;
-        loop {
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            if tx.send_data(Bytes::new()).await.is_err() {
-                c.closed.lock().unwrap().push(l);
-                return;
-            }
-        }
-    });
-    Response::builder()
-        .status(200)
-        .header("content-type", "text/plain; charset=utf-8")
-        .header(LEASE, lease)
-        .body(body.boxed())
-        .unwrap()
+    reply(201, &format!(r#"{{"lease":"{lease}","ttlMs":30000}}"#), &[])
 }
 
 async fn core_service(
@@ -154,7 +132,6 @@ async fn core_service(
 ) -> Result<Response<UpBody>, std::io::Error> {
     let target = req.uri().to_string();
     let path = req.uri().path().to_string();
-    let query = req.uri().query().unwrap_or("").to_string();
     let method = req.method().to_string();
     let headers = req
         .headers()
@@ -172,14 +149,41 @@ async fn core_service(
         .await
         .map(|c| c.to_bytes())
         .unwrap_or_default();
-    {
+    let ticket = path
+        .strip_prefix(&format!("{ADMISSION}/"))
+        .and_then(|r| r.split('/').next())
+        .unwrap_or("")
+        .to_owned();
+    // Row H: the front issues the ticket and takes Core's gate with a PUT naming it.
+    let is_ask = method == "PUT" && !ticket.is_empty() && !path.ends_with("/renew");
+    if let (false, Some(id)) = (is_ask, path.strip_prefix(&format!("{ADMISSION}/"))) {
+        // A renewal, or the front giving its lease back.
+        if method == "DELETE" {
+            core.closed.lock().unwrap().push(id.to_owned());
+        }
+        return Ok(reply(if method == "DELETE" { 204 } else { 200 }, "{}", &[]));
+    }
+    if is_ask {
+        assert_eq!(
+            headers.get("x-noevia-store-token").map(String::as_str),
+            Some(STORE_TOKEN)
+        );
+        let ask: Value = serde_json::from_slice(&body).unwrap();
+        let route = ask["gate"].as_str().unwrap().to_owned();
+        assert_eq!(ask, serde_json::json!({ "gate": route }));
+        core.seen
+            .lock()
+            .unwrap()
+            .hits
+            .push(format!("POST {ADMISSION} {route}"));
+    } else {
         let mut seen = core.seen.lock().unwrap();
         seen.hits.push(format!("{method} {target}"));
         seen.headers = headers.clone();
         seen.body = body.to_vec();
     }
     let lease = headers.get(LEASE).cloned();
-    if path == "/internal/chat/gate" {
+    if is_ask {
         let mode = *core.gate.lock().unwrap();
         let let_in = match mode {
             GateMode::Open => true,
@@ -190,13 +194,10 @@ async fn core_service(
                 rx.await.unwrap_or(false)
             }
         };
-        return Ok(match (let_in, query.contains("hold=1")) {
-            (false, _) => refusal(&query),
-            (true, true) => held(&core),
-            (true, false) => Response::builder()
-                .status(204)
-                .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
-                .unwrap(),
+        return Ok(if let_in {
+            grant(&core, &ticket)
+        } else {
+            reply(503, GATE_REFUSAL, &[])
         });
     }
     Ok(match path.as_str() {
@@ -298,15 +299,21 @@ impl Front {
             .map_or(Value::Null, |l| Value::String(l.clone()))
     }
 
-    /// Every issued hold has been closed (given back, or handed to its call).
+    /// Every issued lease has been given back (with a refusal, or once its call's answer ended).
     async fn holds_closed(&self) {
         for _ in 0..200 {
-            if self.core.closed.lock().unwrap().len() == self.core.issued.lock().unwrap().len() {
+            // A refused ask's ticket is also given back (row H); only the granted ones are counted here.
+            let all_closed = {
+                let closed = self.core.closed.lock().unwrap();
+                let issued = self.core.issued.lock().unwrap();
+                issued.iter().all(|l| closed.contains(l))
+            };
+            if all_closed {
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
-        panic!("a gate hold stayed open");
+        panic!("a gate lease was kept");
     }
 
     fn gate(&self, mode: GateMode) {
@@ -323,6 +330,10 @@ impl Front {
 }
 
 async fn front(env_extra: &[(&'static str, &str)]) -> Front {
+    // A Node start is registered with this process's admission authority before any lease is issued.
+    engine_admission::authority::global()
+        .node_session("chat-edge-test", 1)
+        .unwrap();
     let core = core().await;
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
@@ -410,6 +421,18 @@ enum Who {
 }
 
 async fn send(f: &Front, method: &str, path: &str, body: Vec<u8>, who: Who) -> Answer {
+    send_with(f, method, path, body, who, &[]).await
+}
+
+/// [`send`] with headers of the client's own.
+async fn send_with(
+    f: &Front,
+    method: &str,
+    path: &str,
+    body: Vec<u8>,
+    who: Who,
+    extra: &[(&str, &str)],
+) -> Answer {
     let stream = TcpStream::connect(f.addr).await.unwrap();
     let (mut send, conn) =
         hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
@@ -423,7 +446,9 @@ async fn send(f: &Front, method: &str, path: &str, body: Vec<u8>, who: Who) -> A
         .uri(path)
         .header("host", "front.test")
         .header("origin", ORIGIN)
-        .header("content-type", "application/json");
+        .header("content-type", "application/json")
+        // A lease a client names is never passed on: only the front's own reaches Core.
+        .header(LEASE, "0123456789abcdef0123456789abcdef");
     if who != Who::SignedOut {
         let csrf = if who == Who::BadCsrf {
             "wrong"
@@ -431,6 +456,9 @@ async fn send(f: &Front, method: &str, path: &str, body: Vec<u8>, who: Who) -> A
             &f.csrf
         };
         b = b.header("cookie", &f.jar).header("x-csrf-token", csrf);
+    }
+    for (k, v) in extra {
+        b = b.header(*k, *v);
     }
     let res = send
         .send_request(b.body(Full::new(Bytes::from(body))).unwrap())
@@ -548,7 +576,7 @@ async fn replay_step(f: &Front, id: &str, step: &Value) {
                 body.len(),
                 "{id}: the body reaches Core whole"
             );
-            // The gate was taken first, and the turn carried its lease (one gate count).
+            // The gate was taken first, and the turn carried its lease (its one gate count).
             assert_eq!(
                 hits,
                 [HOLD.to_owned(), format!("POST /internal/chat/{at}")],
@@ -587,7 +615,7 @@ async fn replay_step(f: &Front, id: &str, step: &Value) {
             }
             assert_eq!(got.headers["x-noevia-api"], "1", "{id}");
             assert!(got.headers.get(LEASE).is_none(), "{id}");
-            // Refused by the front with Core's gate held for it; nothing else reached Core.
+            // Refused by the front with Core's gate taken for it; nothing else reached Core.
             assert_eq!(hits, [if diary { DIARY_HOLD } else { HOLD }], "{id}");
         }
     }
@@ -700,7 +728,7 @@ async fn a_call_the_gate_refused_is_never_counted_and_every_refusal_meets_the_ga
     assert_eq!(turn(&f, br#"{"message":"hi"}"#).await.text(), BUSY);
     f.gate(GateMode::Open);
     assert_eq!(turn(&f, br#"{"message":"hi"}"#).await.status, 429);
-    // Every hold was closed: given back with the refusal, or handed to the turn that carried it.
+    // Every lease was given back: with the refusal, or once the answer of the turn it covered ended.
     f.holds_closed().await;
 }
 
@@ -779,7 +807,7 @@ async fn concurrent_callers_are_counted_in_the_order_the_gate_lets_them_in() {
 async fn the_budget_comes_after_authentication_and_before_the_body() {
     let f = front(&[("LLM_RATE_LIMIT", "1")]).await;
     assert_eq!(turn(&f, br#"{"message":"hi"}"#).await.status, 200);
-    // Signed out, or without CSRF: Node's 401/403 before its budget (its gate probe only), nothing counted.
+    // Signed out, or without CSRF: Node's 401/403 before its budget (the gate taken and given back), nothing counted.
     for (who, status, body) in [
         (Who::SignedOut, 401, r#"{"error":"unauthorized"}"#),
         (Who::BadCsrf, 403, r#"{"error":"invalid CSRF token"}"#),
@@ -787,7 +815,7 @@ async fn the_budget_comes_after_authentication_and_before_the_body() {
         f.clear();
         let got = send(&f, "POST", "/api/chat", b"{}".to_vec(), who).await;
         assert_eq!((got.status, got.text().as_str()), (status, body));
-        assert_eq!(f.hits(), ["POST /internal/chat/gate"]);
+        assert_eq!(f.hits(), [HOLD]);
     }
     // Over the budget, a body over the cap or not JSON is still the 429: the body is never read.
     for body in [vec![b'a'; CAP + 1], b"{nope".to_vec()] {
@@ -837,4 +865,27 @@ fn the_oracle_core_is_pinned_and_the_capability_is_listed() {
         "{pin}"
     );
     assert!(noevia_server::FEATURES.contains(&"rust-chat-edge"));
+}
+
+/// #2485: a Node-owned request is forwarded as is, except that a lease the client names never
+/// reaches Core (only the front names one). Before, only the local exchange dropped it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_node_owned_request_never_carries_a_client_named_lease() {
+    let f = front(&[]).await;
+    f.account(Account {
+        admin: false,
+        diary: true,
+        harness: false,
+    });
+    for method in ["GET", "POST"] {
+        f.clear();
+        let got = send(&f, method, "/api/qa-node-owned", Vec::new(), Who::SignedIn).await;
+        assert_eq!(
+            f.hits(),
+            [format!("{method} /api/qa-node-owned")],
+            "{}",
+            got.text()
+        );
+        assert!(!f.core.seen.lock().unwrap().headers.contains_key(LEASE));
+    }
 }

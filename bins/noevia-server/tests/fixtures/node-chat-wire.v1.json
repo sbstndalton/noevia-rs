@@ -1,0 +1,410 @@
+{
+ "v": 1,
+ "keepAlive": ": keep-alive\n\n",
+ "heartbeatMs": 5000,
+ "wireHeader": "x-noevia-chat-wire",
+ "wire": "ndjson/1",
+ "ndjsonType": "application/x-ndjson",
+ "cases": [
+  {
+   "name": "plain-turn",
+   "end": "end",
+   "types": [
+    "meta",
+    "sources",
+    "telemetry",
+    "status",
+    "context",
+    "status",
+    "tools_scope",
+    "telemetry",
+    "reasoning",
+    "delta",
+    "delta",
+    "usage",
+    "telemetry",
+    "done",
+    "title"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n\ndata: {\"type\":\"sources\",\"sources\":[{\"name\":\"notes.md\",\"kind\":\"file\"}]}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n\ndata: {\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n\ndata: {\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n\ndata: {\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n\ndata: {\"type\":\"tools_scope\",\"text\":\"\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"reasoning\",\"text\":\"Thinking about tea.\"}\n\ndata: {\"type\":\"delta\",\"text\":\"Steam rises\"}\n\ndata: {\"type\":\"delta\",\"text\":\" slowly.\"}\n\ndata: {\"type\":\"usage\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"promptTokens\":311,\"completionTokens\":9,\"totalTokens\":320,\"tokensPerSecond\":41.5,\"timeToFirstToken\":812,\"drafted\":0}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n\ndata: {\"type\":\"title\",\"chatId\":\"synthetic-chat-1\",\"title\":\"Tea poem\"}\n\n",
+   "ndjson": "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n{\"type\":\"sources\",\"sources\":[{\"name\":\"notes.md\",\"kind\":\"file\"}]}\n{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n{\"type\":\"tools_scope\",\"text\":\"\"}\n{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n{\"type\":\"reasoning\",\"text\":\"Thinking about tea.\"}\n{\"type\":\"delta\",\"text\":\"Steam rises\"}\n{\"type\":\"delta\",\"text\":\" slowly.\"}\n{\"type\":\"usage\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"promptTokens\":311,\"completionTokens\":9,\"totalTokens\":320,\"tokensPerSecond\":41.5,\"timeToFirstToken\":812,\"drafted\":0}\n{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n{\"type\":\"title\",\"chatId\":\"synthetic-chat-1\",\"title\":\"Tea poem\"}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}",
+    "{\"type\":\"sources\",\"sources\":[{\"name\":\"notes.md\",\"kind\":\"file\"}]}",
+    "{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}",
+    "{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}",
+    "{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}",
+    "{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}",
+    "{\"type\":\"tools_scope\",\"text\":\"\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}",
+    "{\"type\":\"reasoning\",\"text\":\"Thinking about tea.\"}",
+    "{\"type\":\"delta\",\"text\":\"Steam rises\"}",
+    "{\"type\":\"delta\",\"text\":\" slowly.\"}",
+    "{\"type\":\"usage\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"promptTokens\":311,\"completionTokens\":9,\"totalTokens\":320,\"tokensPerSecond\":41.5,\"timeToFirstToken\":812,\"drafted\":0}",
+    "{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}",
+    "{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}",
+    "{\"type\":\"title\",\"chatId\":\"synthetic-chat-1\",\"title\":\"Tea poem\"}"
+   ]
+  },
+  {
+   "name": "tool-round",
+   "end": "end",
+   "types": [
+    "meta",
+    "telemetry",
+    "status",
+    "warning",
+    "context",
+    "status",
+    "tools_scope",
+    "telemetry",
+    "preamble",
+    "tool",
+    "tool_pending",
+    "tool_result",
+    "telemetry",
+    "delta",
+    "usage",
+    "warning",
+    "sources",
+    "delta",
+    "telemetry",
+    "done"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n\ndata: {\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n\ndata: {\"type\":\"warning\",\"text\":\"Some sources are still being read.\"}\n\ndata: {\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n\ndata: {\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n\ndata: {\"type\":\"tools_scope\",\"text\":\"Files\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"preamble\",\"text\":\"I will save it.\"}\n\ndata: {\"type\":\"tool\",\"index\":0,\"name\":\"write_file\",\"args\":{\"path\":\"poem.txt\",\"content\":\"Steam rises slowly.\"}}\n\ndata: {\"type\":\"tool_pending\",\"id\":\"ap-00000000-0000-4000-8000-000000000001\",\"index\":0,\"name\":\"write_file\",\"args\":{\"path\":\"poem.txt\",\"content\":\"Steam rises slowly.\"},\"target\":\"poem.txt\",\"targetKind\":\"file\"}\n\ndata: {\"type\":\"tool_result\",\"index\":0,\"name\":\"write_file\",\"text\":\"Saved poem.txt\",\"applied\":true,\"target\":\"poem.txt\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"delta\",\"text\":\"Saved.\"}\n\ndata: {\"type\":\"usage\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"promptTokens\":311,\"completionTokens\":9,\"totalTokens\":320,\"tokensPerSecond\":41.5,\"timeToFirstToken\":812,\"drafted\":0}\n\ndata: {\"type\":\"warning\",\"text\":\"The answer was cut at the output limit.\"}\n\ndata: {\"type\":\"sources\",\"sources\":[]}\n\ndata: {\"type\":\"delta\",\"text\":\"\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n\n",
+   "ndjson": "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n{\"type\":\"warning\",\"text\":\"Some sources are still being read.\"}\n{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n{\"type\":\"tools_scope\",\"text\":\"Files\"}\n{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n{\"type\":\"preamble\",\"text\":\"I will save it.\"}\n{\"type\":\"tool\",\"index\":0,\"name\":\"write_file\",\"args\":{\"path\":\"poem.txt\",\"content\":\"Steam rises slowly.\"}}\n{\"type\":\"tool_pending\",\"id\":\"ap-00000000-0000-4000-8000-000000000001\",\"index\":0,\"name\":\"write_file\",\"args\":{\"path\":\"poem.txt\",\"content\":\"Steam rises slowly.\"},\"target\":\"poem.txt\",\"targetKind\":\"file\"}\n{\"type\":\"tool_result\",\"index\":0,\"name\":\"write_file\",\"text\":\"Saved poem.txt\",\"applied\":true,\"target\":\"poem.txt\"}\n{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n{\"type\":\"delta\",\"text\":\"Saved.\"}\n{\"type\":\"usage\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"promptTokens\":311,\"completionTokens\":9,\"totalTokens\":320,\"tokensPerSecond\":41.5,\"timeToFirstToken\":812,\"drafted\":0}\n{\"type\":\"warning\",\"text\":\"The answer was cut at the output limit.\"}\n{\"type\":\"sources\",\"sources\":[]}\n{\"type\":\"delta\",\"text\":\"\"}\n{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}",
+    "{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}",
+    "{\"type\":\"warning\",\"text\":\"Some sources are still being read.\"}",
+    "{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}",
+    "{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}",
+    "{\"type\":\"tools_scope\",\"text\":\"Files\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}",
+    "{\"type\":\"preamble\",\"text\":\"I will save it.\"}",
+    "{\"type\":\"tool\",\"index\":0,\"name\":\"write_file\",\"args\":{\"path\":\"poem.txt\",\"content\":\"Steam rises slowly.\"}}",
+    "{\"type\":\"tool_pending\",\"id\":\"ap-00000000-0000-4000-8000-000000000001\",\"index\":0,\"name\":\"write_file\",\"args\":{\"path\":\"poem.txt\",\"content\":\"Steam rises slowly.\"},\"target\":\"poem.txt\",\"targetKind\":\"file\"}",
+    "{\"type\":\"tool_result\",\"index\":0,\"name\":\"write_file\",\"text\":\"Saved poem.txt\",\"applied\":true,\"target\":\"poem.txt\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}",
+    "{\"type\":\"delta\",\"text\":\"Saved.\"}",
+    "{\"type\":\"usage\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"promptTokens\":311,\"completionTokens\":9,\"totalTokens\":320,\"tokensPerSecond\":41.5,\"timeToFirstToken\":812,\"drafted\":0}",
+    "{\"type\":\"warning\",\"text\":\"The answer was cut at the output limit.\"}",
+    "{\"type\":\"sources\",\"sources\":[]}",
+    "{\"type\":\"delta\",\"text\":\"\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}",
+    "{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}"
+   ]
+  },
+  {
+   "name": "paused-declined",
+   "end": "end",
+   "types": [
+    "meta",
+    "telemetry",
+    "status",
+    "context",
+    "status",
+    "telemetry",
+    "tool",
+    "tool_pending",
+    "tool_result",
+    "paused",
+    "telemetry",
+    "done"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n\ndata: {\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n\ndata: {\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n\ndata: {\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"tool\",\"index\":0,\"name\":\"delete_file\",\"args\":{\"path\":\"old.txt\"}}\n\ndata: {\"type\":\"tool_pending\",\"id\":\"ap-00000000-0000-4000-8000-000000000002\",\"index\":0,\"name\":\"delete_file\",\"args\":{\"path\":\"old.txt\"}}\n\ndata: {\"type\":\"tool_result\",\"index\":0,\"name\":\"delete_file\",\"text\":\"ERROR: the user declined this action.\",\"declined\":true}\n\ndata: {\"type\":\"paused\",\"reason\":\"declined\",\"applied\":[],\"declined\":[\"delete_file\"],\"text\":\"Paused: you declined delete_file.\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n\n",
+   "ndjson": "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n{\"type\":\"tool\",\"index\":0,\"name\":\"delete_file\",\"args\":{\"path\":\"old.txt\"}}\n{\"type\":\"tool_pending\",\"id\":\"ap-00000000-0000-4000-8000-000000000002\",\"index\":0,\"name\":\"delete_file\",\"args\":{\"path\":\"old.txt\"}}\n{\"type\":\"tool_result\",\"index\":0,\"name\":\"delete_file\",\"text\":\"ERROR: the user declined this action.\",\"declined\":true}\n{\"type\":\"paused\",\"reason\":\"declined\",\"applied\":[],\"declined\":[\"delete_file\"],\"text\":\"Paused: you declined delete_file.\"}\n{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}",
+    "{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}",
+    "{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}",
+    "{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}",
+    "{\"type\":\"tool\",\"index\":0,\"name\":\"delete_file\",\"args\":{\"path\":\"old.txt\"}}",
+    "{\"type\":\"tool_pending\",\"id\":\"ap-00000000-0000-4000-8000-000000000002\",\"index\":0,\"name\":\"delete_file\",\"args\":{\"path\":\"old.txt\"}}",
+    "{\"type\":\"tool_result\",\"index\":0,\"name\":\"delete_file\",\"text\":\"ERROR: the user declined this action.\",\"declined\":true}",
+    "{\"type\":\"paused\",\"reason\":\"declined\",\"applied\":[],\"declined\":[\"delete_file\"],\"text\":\"Paused: you declined delete_file.\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}",
+    "{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}"
+   ]
+  },
+  {
+   "name": "early-route-question",
+   "end": "end",
+   "types": [
+    "route_pending",
+    "route_remembered",
+    "meta",
+    "telemetry",
+    "status",
+    "context",
+    "status",
+    "telemetry",
+    "delta",
+    "usage",
+    "telemetry",
+    "done"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"route_pending\",\"id\":\"00000000-0000-4000-8000-000000000003\",\"flag\":\"health\"}\n\ndata: {\"type\":\"route_remembered\",\"forceLocal\":true,\"allowCloud\":false}\n\ndata: {\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\",\"route\":\"smart\",\"routing\":{\"route\":\"local\",\"reason\":\"asked\"}}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n\ndata: {\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n\ndata: {\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n\ndata: {\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"delta\",\"text\":\"Kept local.\"}\n\ndata: {\"type\":\"usage\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"promptTokens\":311,\"completionTokens\":9,\"totalTokens\":320,\"tokensPerSecond\":41.5,\"timeToFirstToken\":812,\"drafted\":0}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n\n",
+   "ndjson": "{\"type\":\"route_pending\",\"id\":\"00000000-0000-4000-8000-000000000003\",\"flag\":\"health\"}\n{\"type\":\"route_remembered\",\"forceLocal\":true,\"allowCloud\":false}\n{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\",\"route\":\"smart\",\"routing\":{\"route\":\"local\",\"reason\":\"asked\"}}\n{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n{\"type\":\"delta\",\"text\":\"Kept local.\"}\n{\"type\":\"usage\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"promptTokens\":311,\"completionTokens\":9,\"totalTokens\":320,\"tokensPerSecond\":41.5,\"timeToFirstToken\":812,\"drafted\":0}\n{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"route_pending\",\"id\":\"00000000-0000-4000-8000-000000000003\",\"flag\":\"health\"}",
+    "{\"type\":\"route_remembered\",\"forceLocal\":true,\"allowCloud\":false}",
+    "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\",\"route\":\"smart\",\"routing\":{\"route\":\"local\",\"reason\":\"asked\"}}",
+    "{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}",
+    "{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}",
+    "{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}",
+    "{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}",
+    "{\"type\":\"delta\",\"text\":\"Kept local.\"}",
+    "{\"type\":\"usage\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"promptTokens\":311,\"completionTokens\":9,\"totalTokens\":320,\"tokensPerSecond\":41.5,\"timeToFirstToken\":812,\"drafted\":0}",
+    "{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}",
+    "{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}"
+   ]
+  },
+  {
+   "name": "compact-only",
+   "end": "end",
+   "types": [
+    "meta",
+    "telemetry",
+    "status",
+    "context",
+    "done"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n\ndata: {\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n\ndata: {\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n\ndata: {\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n\n",
+   "ndjson": "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}",
+    "{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}",
+    "{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}",
+    "{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}"
+   ]
+  },
+  {
+   "name": "error-after-headers",
+   "end": "end",
+   "types": [
+    "meta",
+    "telemetry",
+    "status",
+    "context",
+    "status",
+    "error"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n\ndata: {\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n\ndata: {\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n\ndata: {\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n\ndata: {\"type\":\"error\",\"code\":\"machineUnreachable\",\"text\":\"The inference machine is not answering.\",\"retryable\":true}\n\n",
+   "ndjson": "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}\n{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}\n{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}\n{\"type\":\"error\",\"code\":\"machineUnreachable\",\"text\":\"The inference machine is not answering.\",\"retryable\":true}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}",
+    "{\"type\":\"status\",\"id\":\"preparing\",\"text\":\"Preparing response…\"}",
+    "{\"type\":\"context\",\"model\":\"synthetic-chat-model\",\"limit\":32768,\"used\":311,\"free\":19349,\"historyCount\":1,\"compactedAt\":null}",
+    "{\"type\":\"status\",\"id\":\"generating\",\"text\":\"Generating response…\"}",
+    "{\"type\":\"error\",\"code\":\"machineUnreachable\",\"text\":\"The inference machine is not answering.\",\"retryable\":true}"
+   ]
+  },
+  {
+   "name": "handler-throws-after-headers",
+   "end": "failed",
+   "types": [
+    "meta",
+    "telemetry",
+    "delta"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n\ndata: {\"type\":\"delta\",\"text\":\"Half an ans\"}\n\ndata: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "ndjson": "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n{\"type\":\"delta\",\"text\":\"Half an ans\"}\n{\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}",
+    "{\"type\":\"delta\",\"text\":\"Half an ans\"}",
+    "{\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}"
+   ]
+  },
+  {
+   "name": "core-goes-away",
+   "end": "break",
+   "types": [
+    "meta",
+    "telemetry",
+    "telemetry",
+    "delta"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"delta\",\"text\":\"Steam\"}\n\n",
+   "ndjson": "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}\n{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}\n{\"type\":\"delta\",\"text\":\"Steam\"}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"waiting\",\"model\":\"synthetic-chat-model\"}",
+    "{\"type\":\"telemetry\",\"phase\":\"streaming\",\"model\":\"synthetic-chat-model\",\"timeToFirstToken\":812}",
+    "{\"type\":\"delta\",\"text\":\"Steam\"}",
+    "{\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}"
+   ]
+  },
+  {
+   "name": "text-edge-cases",
+   "end": "end",
+   "types": [
+    "meta",
+    "delta",
+    "delta",
+    "delta",
+    "tool",
+    "telemetry",
+    "done"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n\ndata: {\"type\":\"delta\",\"text\":\"line\\nbreak\\r\\n\\n tab\\t \\\"quote\\\" \\\\back\\\\ \\u0000 \\u001f \"}\n\ndata: {\"type\":\"delta\",\"text\":\"   separators, 😀 pair, \\ud800 lone high, \\udfff lone low, é, 中文, ﻿\"}\n\ndata: {\"type\":\"delta\",\"text\":\"data: not a frame\\n\\n: not a comment\"}\n\ndata: {\"type\":\"tool\",\"index\":1,\"name\":\"n\",\"args\":{\"deep\":[[[{\"a\":0,\"b\":1e+21,\"c\":1.5e-7,\"d\":9007199254740992,\"e\":null,\"f\":true}]]]}}\n\ndata: {\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n\ndata: {\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n\n",
+   "ndjson": "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}\n{\"type\":\"delta\",\"text\":\"line\\nbreak\\r\\n\\n tab\\t \\\"quote\\\" \\\\back\\\\ \\u0000 \\u001f \"}\n{\"type\":\"delta\",\"text\":\"   separators, 😀 pair, \\ud800 lone high, \\udfff lone low, é, 中文, ﻿\"}\n{\"type\":\"delta\",\"text\":\"data: not a frame\\n\\n: not a comment\"}\n{\"type\":\"tool\",\"index\":1,\"name\":\"n\",\"args\":{\"deep\":[[[{\"a\":0,\"b\":1e+21,\"c\":1.5e-7,\"d\":9007199254740992,\"e\":null,\"f\":true}]]]}}\n{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}\n{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"meta\",\"model\":\"synthetic-chat-model\",\"chatId\":\"synthetic-chat-1\"}",
+    "{\"type\":\"delta\",\"text\":\"line\\nbreak\\r\\n\\n tab\\t \\\"quote\\\" \\\\back\\\\ \\u0000 \\u001f \"}",
+    "{\"type\":\"delta\",\"text\":\"   separators, 😀 pair, \\ud800 lone high, \\udfff lone low, é, 中文, ﻿\"}",
+    "{\"type\":\"delta\",\"text\":\"data: not a frame\\n\\n: not a comment\"}",
+    "{\"type\":\"tool\",\"index\":1,\"name\":\"n\",\"args\":{\"deep\":[[[{\"a\":0,\"b\":1e+21,\"c\":1.5e-7,\"d\":9007199254740992,\"e\":null,\"f\":true}]]]}}",
+    "{\"type\":\"telemetry\",\"phase\":\"complete\",\"timeToFirstToken\":812}",
+    "{\"type\":\"done\",\"model\":\"synthetic-chat-model\"}"
+   ]
+  },
+  {
+   "name": "diary-relayed-frames",
+   "end": "end",
+   "types": [
+    "status",
+    "raw",
+    "raw",
+    "raw",
+    "done"
+   ],
+   "sseStatus": 200,
+   "sseHeaders": {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "X-Accel-Buffering": "no",
+    "Connection": "keep-alive"
+   },
+   "ndjsonHeaders": {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-store"
+   },
+   "sse": "data: {\"type\":\"status\",\"text\":\"Connecting to diary companion…\"}\n\ndata: {\"type\":\"status\", \"text\":\"Opening diary context…\"}\n\nid: 7\nevent: message\ndata: {\"type\":\"answer\",\"text\":\"Dear diary\"}\n\ndata: {\"type\":\"diary\",\"saved\":true}\n\ndata: {\"type\":\"done\"}\n\n",
+   "ndjson": "{\"type\":\"status\",\"text\":\"Connecting to diary companion…\"}\n\"data: {\\\"type\\\":\\\"status\\\", \\\"text\\\":\\\"Opening diary context…\\\"}\\n\\n\"\n\"id: 7\\nevent: message\\ndata: {\\\"type\\\":\\\"answer\\\",\\\"text\\\":\\\"Dear diary\\\"}\\n\\n\"\n\"data: {\\\"type\\\":\\\"diary\\\",\\\"saved\\\":true}\\n\\n\"\n{\"type\":\"done\"}\n",
+   "failed": "data: {\"type\":\"error\",\"text\":\"The request could not be completed. Please retry.\"}\n\n",
+   "client": [
+    "{\"type\":\"status\",\"text\":\"Connecting to diary companion…\"}",
+    "{\"type\":\"status\",\"text\":\"Opening diary context…\"}",
+    "{\"type\":\"answer\",\"text\":\"Dear diary\"}",
+    "{\"type\":\"diary\",\"saved\":true}",
+    "{\"type\":\"done\"}"
+   ]
+  }
+ ]
+}

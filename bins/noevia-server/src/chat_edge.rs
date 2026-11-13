@@ -25,21 +25,20 @@
 //!
 //! Node's inference gate ran before all of these: a call was counted only once the gate let it in,
 //! in the order the gate let calls in, and a call the gate refused was never counted. So the front
-//! takes the gate first and keeps it ([`hold`], Core rust-chat-edge.cjs leases): Core's
-//! `/internal/chat/gate?hold=1` enters the gate for this call (waiting as Node waited) and answers its
-//! refusal, or 200 with [`LEASE_HEADER`] and stays open while the gate is held. Only then is the call
-//! counted, and the refusals below are answered while the gate is held, as Node held it through them.
-//! A call that passes carries the lease, and Core's turn adopts the hold instead of entering the gate
-//! again. Nothing is given back to the budget, because nothing is counted that Node would not count.
+//! takes the gate first and keeps it (chat port S8: an admission lease, chat_admission.rs; S6 held
+//! Core's `/internal/chat/gate?hold=1` instead), waiting as Node waited and answering its refusal.
+//! Only then is the call counted, and the refusals below are answered while the gate is held, as Node
+//! held it through them. A call that passes carries the lease, which covers it in Core: it does not
+//! enter the gate again. Nothing is given back to the budget, because nothing is counted that Node
+//! would not count.
 //!
-//! The Diary local exchange (`POST /api/diary/local-exchange`) stays Node's: once Node's own checks
-//! would have let it reach the budget (signed in, the add-on on, a POST), the front takes the gate
-//! as the local exchange meets it, counts the call on the same budget, and answers its 429 `Please
-//! wait before sending another message` itself; a call that passes is forwarded with the lease.
-use crate::{identity, reply, serve::Conn, App};
+//! The Diary local exchange (`POST /api/diary/local-exchange`) is native (diary_routes.rs): it takes
+//! the Diary lease, counts the call on the same budget ([`charge`]) and answers its 429 `Please wait
+//! before sending another message` itself.
+use crate::{chat_admission, identity, serve::Conn, App};
 use axum::{
     body::Body,
-    http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode},
+    http::{Request, Response, StatusCode},
 };
 use js_json::raw;
 use std::sync::Arc;
@@ -55,12 +54,6 @@ pub const DIARY_TOO_MANY: &str = "Please wait before sending another message";
 pub const LOCAL_EXCHANGE: &str = "/api/diary/local-exchange";
 /// Core rust-chat-edge.cjs `COWORK_PATH`: a Cowork start that passed the checks.
 pub const COWORK_PATH: &str = "/internal/chat/cowork";
-/// Core rust-chat-edge.cjs `LEASE_HEADER`: the gate hold a call carries to Core.
-pub const LEASE_HEADER: &str = "x-noevia-gate-lease";
-/// The gate taken and held for a chat turn or Cowork start.
-pub const CHAT_HOLD_PATH: &str = "/internal/chat/gate?hold=1";
-/// The gate taken and held as the local exchange meets it (its own refusal shape).
-pub const DIARY_HOLD_PATH: &str = "/internal/chat/gate?route=diary-local-exchange&hold=1";
 /// chat-mode.cjs `TURN_BOX_CAP` and `TURN_IMAGE_CAP`, and the id length both lists allow.
 const TURN_BOX_CAP: usize = 20;
 const TURN_IMAGE_CAP: usize = 12;
@@ -181,60 +174,6 @@ pub fn charge(app: &App, user: &str) -> Option<bool> {
         app.config.chat_edge.llm_limit,
         identity::now_ms(),
     ))
-}
-
-/// Core's inference gate, held for one call: its open answer (dropping it gives the gate back unless
-/// a call adopted the lease) and the lease.
-pub struct Hold {
-    _open: Response<Body>,
-    pub lease: HeaderValue,
-}
-
-/// What Core's gate said to [`hold`].
-pub enum Gate {
-    Held(Hold),
-    /// The gate's own answer (its refusal), or the 502 of a Core that did not answer.
-    Answer(Response<Body>),
-}
-
-/// Takes Core's gate for this call at `target` ([`CHAT_HOLD_PATH`] or [`DIARY_HOLD_PATH`]).
-pub async fn hold(app: &Arc<App>, conn: Conn, headers: &HeaderMap, target: &str) -> Gate {
-    let unavailable = || {
-        reply::error(
-            StatusCode::BAD_GATEWAY,
-            "The server is not answering. Please retry.",
-            true,
-        )
-    };
-    let Some(token) = app
-        .config
-        .research
-        .front_token()
-        .and_then(|t| HeaderValue::from_str(t).ok())
-        .map(|mut v| {
-            v.set_sensitive(true);
-            v
-        })
-    else {
-        return Gate::Answer(unavailable());
-    };
-    let Ok(mut probe) = Request::post(target).body(Body::empty()) else {
-        return Gate::Answer(unavailable());
-    };
-    if let Some(host) = headers.get(axum::http::header::HOST) {
-        probe
-            .headers_mut()
-            .insert(axum::http::header::HOST, host.clone());
-    }
-    let extra = [(crate::project_store::TOKEN_HEADER, token)];
-    let Some(res) = app.proxy.relay(conn.peer, probe, target, &extra, 0).await else {
-        return Gate::Answer(unavailable());
-    };
-    match res.headers().get(LEASE_HEADER).cloned() {
-        Some(lease) if res.status() == StatusCode::OK => Gate::Held(Hold { _open: res, lease }),
-        _ if res.status().is_client_error() || res.status().is_server_error() => Gate::Answer(res),
-        _ => Gate::Answer(unavailable()),
-    }
 }
 
 /// The account facts the checks read.
@@ -401,76 +340,16 @@ pub fn harness_blocking(app: &App) -> Option<bool> {
     Some(server_features::evaluate(feature, env, stored.as_deref(), true).enabled)
 }
 
-/// A Node-owned request: the local exchange counts its call on the shared budget, anything else is
-/// forwarded as before. `path` is the WHATWG pathname.
-pub async fn forward_node(
-    app: &Arc<App>,
-    conn: Conn,
-    mut req: Request<Body>,
-    path: Option<&str>,
-) -> Response<Body> {
-    if path != Some(LOCAL_EXCHANGE) || app.proxy.is_in_process() {
-        return app.proxy.forward(conn.peer, req).await;
-    }
-    // Only this front names a hold.
-    req.headers_mut().remove(LEASE_HEADER);
-    let held = if req.method() == Method::POST {
-        match local_exchange_turn(app, conn, req.headers().clone()).await {
-            Ok(held) => held,
-            Err(answer) => return *answer,
-        }
-    } else {
-        None
-    };
-    if let Some(h) = &held {
-        req.headers_mut().insert(LEASE_HEADER, h.lease.clone());
-    }
-    let res = app.proxy.forward(conn.peer, req).await;
-    // Core adopted the hold when it read the request; the probe can close now.
-    drop(held);
-    res
-}
-
-/// The local exchange's turn on the budget: `Ok(None)` when Node answers before its budget (signed
-/// out, CSRF, the add-on off), `Ok(Some)` with the gate held when the call was counted and goes on,
-/// `Err` with the gate's refusal or the 429.
-async fn local_exchange_turn(
-    app: &Arc<App>,
-    conn: Conn,
-    headers: HeaderMap,
-) -> Result<Option<Hold>, Box<Response<Body>>> {
-    let creds = server_auth::Creds::from_headers(
-        "POST",
-        headers.iter().map(|(k, v)| (k.as_str(), v.as_bytes())),
-    );
-    let layer = Arc::clone(&app.identity);
-    let now = identity::now_ms();
-    let gated =
-        tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, LOCAL_EXCHANGE, now)).await;
-    let Ok(Ok(authn)) = gated else {
-        return Ok(None);
-    };
-    if !authn.user.diary_enabled {
-        return Ok(None);
-    }
-    let held = match hold(app, conn, &headers, DIARY_HOLD_PATH).await {
-        Gate::Held(h) => h,
-        Gate::Answer(answer) => return Err(Box::new(answer)),
-    };
-    match charge(app, &authn.user.id) {
-        Some(true) => Err(Box::new(reply::error(
-            StatusCode::TOO_MANY_REQUESTS,
-            DIARY_TOO_MANY,
-            true,
-        ))),
-        Some(false) => Ok(Some(held)),
-        // A limiter that cannot be read refuses, as the chat turn's does: never an uncounted call.
-        None => Err(Box::new(reply::error(
-            StatusCode::BAD_GATEWAY,
-            "The server is not answering. Please retry.",
-            true,
-        ))),
-    }
+/// A Node-owned request, forwarded as before. Only this front names a lease, so a client's lease
+/// header never reaches Core on any path.
+///
+/// #2485: this once also counted `POST /api/diary/local-exchange` before forwarding it, and let the
+/// call through uncounted when the identity layer was unavailable (fail open). That route is always
+/// native (routes.rs, diary_routes.rs `local_exchange`, which takes the Diary lease and the budget
+/// and fails closed), so the branch was dead and is gone.
+pub async fn forward_node(app: &Arc<App>, conn: Conn, mut req: Request<Body>) -> Response<Body> {
+    req.headers_mut().remove(chat_admission::LEASE_HEADER);
+    app.proxy.forward(conn.peer, req).await
 }
 
 #[cfg(test)]
