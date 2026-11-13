@@ -43,6 +43,7 @@ const OPERATOR = [
   { id: 'search', url: 'http://search.lan:9/mcp', auth: 'bearer', tokenEnv: 'SEARCH_TOKEN' },
   { id: 'nobearer', url: 'http://search2.lan:9/mcp', auth: 'bearer', tokenEnv: 'UNSET_TOKEN' },
   { id: 'open', url: 'http://open.lan:9/mcp', auth: 'none' },
+  { id: 'dir-dup', url: 'http://dup.lan:9/mcp', auth: 'bearer', tokenEnv: 'SEARCH_TOKEN' },
 ];
 const DIRECTORY = [
   { id: 'dir-keys', url: 'https://keys.example.test/mcp', auth: 'personal', directory: true, title: 'QA Keys', addedBy: 'admin-1' },
@@ -50,6 +51,8 @@ const DIRECTORY = [
   { id: 'dir-oauth', url: 'https://oauth.example.test/mcp', auth: 'oauth', directory: true, title: 'QA Sign-in', addedBy: 'admin-1' },
   { id: 'dir-shared', url: 'https://shared.example.test/mcp', auth: 'directory', directory: true, title: 'QA Shared', addedBy: 'admin-1' },
   { id: 'dir-private', url: 'https://private.example.test/mcp', auth: 'none', directory: true, title: 'QA Moved', addedBy: 'admin-1' },
+  // An operator id a directory entry also took: core's id map keeps the later one.
+  { id: 'dir-dup', url: 'https://dup.example.test/mcp', auth: 'none', directory: true, title: 'QA Dup', addedBy: 'admin-1' },
 ];
 const SHARED_HEADERS = { 'dir-shared': { 'X-Api-Key': 'qa-shared-key' } };
 const NOT_PUBLIC = new Set(['https://private.example.test/mcp']);
@@ -64,7 +67,7 @@ const STORAGE = {
 };
 const TOOLS = { noevia: ['project_read_file', 'project_edit_file', 'diary_append'], nextcloud: ['nc_notes_search_notes', 'nc_notes_create_note'],
   search: ['tavily_search'], nobearer: ['other_search'], open: ['open_tool', 'shared_name'], 'dir-keys': ['keys_tool'], 'dir-untitled': ['untitled_tool'],
-  'dir-oauth': ['oauth_tool'], 'dir-shared': ['shared_tool', 'shared_name'], 'dir-private': ['moved_tool'] };
+  'dir-dup': ['dup_tool'], 'dir-oauth': ['oauth_tool'], 'dir-shared': ['shared_tool', 'shared_name'], 'dir-private': ['moved_tool'] };
 
 const r = (text, extra = {}) => ({ result: { content: [{ type: 'text', text }], ...extra } });
 const http = (status, retryAfter = null) => ({ http: status, retryAfter });
@@ -148,6 +151,7 @@ const SCENARIOS = [
     { server: 'dir-private', name: 'moved_tool', user: 'user-1', transport: [] },
     { server: 'dir-shared', name: 'shared_name', user: 'user-1', transport: [r('the directory server')] },
     { server: 'open', name: 'shared_name', user: 'user-1', transport: [r('the operator server')] },
+    { server: 'dir-dup', name: 'dup_tool', user: 'user-1', transport: [r('the later server with that id')] },
   ] },
   { name: 'the in-process server gets a capability token for this user and project', calls: [
     { server: 'noevia', name: 'project_read_file', user: 'user-1', workspace: 'user-1', project: 'proj-1', transport: [r('file text')] },

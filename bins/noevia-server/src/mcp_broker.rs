@@ -608,7 +608,7 @@ pub struct Mcp {
     /// restart makes an old preview ask to be run again.
     pub(crate) preview_key: [u8; 32],
     /// The clients and back-off of tool calls (mcp_call.rs), made on the first call.
-    pub(crate) calls: std::sync::OnceLock<Option<Arc<crate::mcp_call::Calls>>>,
+    pub(crate) calls: std::sync::OnceLock<Arc<crate::mcp_call::Calls>>,
 }
 
 impl Mcp {

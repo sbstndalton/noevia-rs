@@ -83,22 +83,24 @@ impl Backend for Scripted {
     fn now_ms(&self) -> f64 {
         self.now
     }
-    async fn server(&self, id: &str) -> Option<ServerSpec> {
-        let s = self.f["servers"]
+    async fn servers(&self) -> Vec<ServerSpec> {
+        self.f["servers"]
             .as_array()
             .unwrap()
             .iter()
-            .find(|s| s["id"] == id)?;
-        let text = |k: &str| s[k].as_str().map(str::to_owned);
-        Some(ServerSpec {
-            id: text("id").unwrap(),
-            url: text("url").unwrap(),
-            auth: text("auth").unwrap(),
-            directory: s["directory"] == true,
-            title: text("title"),
-            added_by: text("addedBy"),
-            token_env: text("tokenEnv"),
-        })
+            .map(|s| {
+                let text = |k: &str| s[k].as_str().map(str::to_owned);
+                ServerSpec {
+                    id: text("id").unwrap(),
+                    url: text("url").unwrap(),
+                    auth: text("auth").unwrap(),
+                    directory: s["directory"] == true,
+                    title: text("title"),
+                    added_by: text("addedBy"),
+                    token_env: text("tokenEnv"),
+                }
+            })
+            .collect()
     }
     async fn key_headers(&self, user: &str, server: &str) -> Credential<Vec<(String, String)>> {
         self.broker

@@ -41,6 +41,12 @@
    "auth": "none"
   },
   {
+   "id": "dir-dup",
+   "url": "http://dup.lan:9/mcp",
+   "auth": "bearer",
+   "tokenEnv": "SEARCH_TOKEN"
+  },
+  {
    "id": "dir-keys",
    "url": "https://keys.example.test/mcp",
    "auth": "personal",
@@ -78,6 +84,14 @@
    "auth": "none",
    "directory": true,
    "title": "QA Moved",
+   "addedBy": "admin-1"
+  },
+  {
+   "id": "dir-dup",
+   "url": "https://dup.example.test/mcp",
+   "auth": "none",
+   "directory": true,
+   "title": "QA Dup",
    "addedBy": "admin-1"
   }
  ],
@@ -2786,6 +2800,50 @@
      ],
      "broker": [],
      "text": "[reduced to 8000] the operator server"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "dir-dup",
+      "name": "dup_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "the later server with that id"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "https://dup.example.test/mcp",
+       "headers": {},
+       "name": "dup_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] the later server with that id"
     }
    ]
   },

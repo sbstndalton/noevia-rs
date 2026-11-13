@@ -411,6 +411,10 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
     let Some(app) = app else {
         return internal_error(503, "unavailable");
     };
+    // Track R5: with NOEVIA_RUST_MCP_CALLS off, a tool call is a 404 whatever else holds (Node runs it).
+    if op == "call" && !app.config.mcp.calls {
+        return internal_error(404, "not found");
+    }
     let Some(mcp) = app.mcp.as_ref().map(Arc::clone) else {
         return internal_error(503, "unavailable");
     };

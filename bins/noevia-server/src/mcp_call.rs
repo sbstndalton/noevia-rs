@@ -23,7 +23,9 @@
 //! `tests/mcp-call-oracle.cjs` and replayed through [`execute`] by `tests/mcp_call_oracle.rs`.
 //!
 //! Named differences: when this front cannot mint a capability token (its secret keys are not loaded), the
-//! in-process server's call answers [`UNAVAILABLE`] (core always holds its key). The transport's own
+//! in-process server's call answers [`UNAVAILABLE`] (core always holds its key). An error text is cut to
+//! 300 UTF-16 units as core cuts it, except that a character whose two units straddle the cut is left out
+//! whole (a Rust string cannot end in half a character; core's text ends in a lone surrogate there). The transport's own
 //! differences are `mcp_egress.rs`'s (a non-JSON body's text; a connect-time refusal of a directory
 //! server's address is `fetch failed`, where core's public-fetch names the host).
 use crate::mcp_broker::{Fail, Mcp};
@@ -150,8 +152,8 @@ pub struct Failed {
 /// What a call needs from the process it runs in.
 pub trait Backend: Send + Sync {
     fn now_ms(&self) -> f64;
-    /// The configured server with this id (the operator's, then the directory's), or `None`.
-    fn server(&self, id: &str) -> impl Future<Output = Option<ServerSpec>> + Send;
+    /// The configured servers: the operator's, then the directory's.
+    fn servers(&self) -> impl Future<Output = Vec<ServerSpec>> + Send;
     fn key_headers(
         &self,
         user: &str,
@@ -282,7 +284,9 @@ fn limited<T>(limits: &Mutex<RateLimit>, f: impl FnOnce(&mut RateLimit) -> T) ->
 /// core `executeMcpToolCall(name, args, signal, serverId)` from the routed server on (see the module docs).
 pub async fn execute<B: Backend>(b: &B, limits: &Mutex<RateLimit>, req: &Request) -> Answer {
     let name = req.name.as_str();
-    let Some(server) = b.server(&req.server).await else {
+    // core `new Map(MCP_SERVERS.map(...))`: of two servers with one id, the later (the directory's) wins.
+    let servers = b.servers().await;
+    let Some(server) = servers.iter().rev().find(|s| s.id == req.server).cloned() else {
         return Answer::plain(format!(
             "ERROR: tool \"{name}\" belongs to MCP server \"{}\", which is no longer configured",
             req.server
@@ -486,16 +490,19 @@ pub struct Calls {
     limits: Mutex<RateLimit>,
 }
 
+/// The shared clients, made on the first call. A client that could not be built is tried again on the next
+/// call rather than remembered as missing.
 fn calls_of(app: &App, mcp: &Mcp) -> Option<Arc<Calls>> {
-    mcp.calls
-        .get_or_init(|| {
-            Some(Arc::new(Calls {
-                guarded: Egress::for_discovery(app.config.mcp.qa_loopback, 1)?,
-                open: Egress::operator(1)?,
-                limits: Mutex::new(RateLimit::default()),
-            }))
-        })
-        .clone()
+    if let Some(calls) = mcp.calls.get() {
+        return Some(Arc::clone(calls));
+    }
+    let made = Arc::new(Calls {
+        guarded: Egress::for_discovery(app.config.mcp.qa_loopback, 1)?,
+        open: Egress::operator(1)?,
+        limits: Mutex::new(RateLimit::default()),
+    });
+    // Two first calls at once: one set wins and both use it.
+    Some(Arc::clone(mcp.calls.get_or_init(|| made)))
 }
 
 /// The broker's refusal as a credential: "sign in / add a key" (core `needsSignIn`), anything else
@@ -525,8 +532,8 @@ impl Backend for AppBackend {
         crate::identity::now_ms() as f64
     }
 
-    async fn server(&self, id: &str) -> Option<ServerSpec> {
-        self.servers.iter().find(|s| s.id == id).cloned()
+    async fn servers(&self) -> Vec<ServerSpec> {
+        self.servers.clone()
     }
 
     async fn key_headers(&self, user: &str, server: &str) -> Credential<Vec<(String, String)>> {
@@ -642,9 +649,9 @@ impl<T> Credential<T> {
 }
 
 /// `POST /v1/mcp/call` (after the store secret): one call (see the module docs) -> 200 `{ text, reduce }`.
-/// 404 while `NOEVIA_RUST_MCP_CALLS` is off; 400 for a body that is not a call; 503 when the front cannot
-/// run calls (no clients, or the directory table cannot be read). The call runs in its own task: the
-/// request going away stops it, and its session is still closed.
+/// 404 while `NOEVIA_RUST_MCP_CALLS` is off (mcp_routes.rs answers that before anything else); 400 for a
+/// body that is not a call; 503 when the front cannot build its clients. The call runs in its own task:
+/// the request going away stops it, and its session is still closed.
 pub async fn op(app: &Arc<App>, mcp: &Arc<Mcp>, body: &JValue) -> Response<Body> {
     use crate::mcp_routes::{internal, internal_error};
     if !app.config.mcp.calls {
@@ -657,9 +664,7 @@ pub async fn op(app: &Arc<App>, mcp: &Arc<Mcp>, body: &JValue) -> Response<Body>
     let Some(calls) = calls_of(app, mcp) else {
         return internal_error(503, "unavailable");
     };
-    let Some(servers) = crate::mcp_discovery_backend::server_specs(app).await else {
-        return internal_error(503, "unavailable");
-    };
+    let servers = crate::mcp_discovery_backend::server_specs(app).await;
     let (gone, stop) = tokio::sync::watch::channel(false);
     let backend = AppBackend {
         app: Arc::clone(app),

@@ -296,20 +296,23 @@ pub(crate) fn sign_token(key: &[u8], payload: &str) -> String {
     format!("{body}.{}", b64url(&signature))
 }
 
-/// Every configured server (the operator's, then the directory's) as discovery sees it; `None` while the
-/// directory table cannot be read (fails closed: a call is not routed on a list that may be gone).
-pub(crate) async fn server_specs(app: &Arc<App>) -> Option<Vec<ServerSpec>> {
+/// Every configured server (the operator's, then the directory's) as discovery sees it. A directory table
+/// that cannot be read is no directory servers (core `directory-mcp.cjs` fails closed the same way), and
+/// the operator's servers stay.
+pub(crate) async fn server_specs(app: &Arc<App>) -> Vec<ServerSpec> {
     let mut out = operator_servers(&app.config.mcp);
-    let mcp = app.mcp.as_ref().map(Arc::clone)?;
+    let Some(mcp) = app.mcp.as_ref().map(Arc::clone) else {
+        return out;
+    };
     let app = Arc::clone(app);
     let specs = tokio::task::spawn_blocking(move || {
         mcp.dir_rows(&app).ok().map(|rows| specs_of(&mcp, &rows))
     })
     .await
     .ok()
-    .flatten()?;
-    out.extend(specs);
-    Some(out)
+    .flatten();
+    out.extend(specs.unwrap_or_default());
+    out
 }
 
 /// The capability-token key (`derive('mcp-internal-token')`), as discovery derives it.
