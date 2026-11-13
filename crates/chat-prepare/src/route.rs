@@ -6,9 +6,10 @@
 //! `sampling` ([`Route::effort`], [`Route::thinking_off`], [`Route::sampling`]).
 //!
 //! Pure: the caller reads the two settings rows (an error reading them fails the turn, as Node's
-//! throw does) and the environment, and the routing (a later slice) decides `wantsAuto`,
-//! `routedRole` and the provider row. Recorded by running chat.cjs's own lines (cut out of the
-//! pinned file) in `tests/record_route.cjs`.
+//! throw does) and the environment, and the routing ([`crate::roles`], slice P5b, then the tool
+//! and long-context moves of later slices) decides `wantsAuto`, `routedRole` and the provider row.
+//! Recorded by running chat.cjs's own lines (cut out of the pinned file) in
+//! `tests/record_route.cjs`.
 
 use js_json::JValue;
 

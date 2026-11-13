@@ -27,11 +27,19 @@
 //!   reasoning effort ([`effort`], `reasoning-effort.cjs`), the Fast route's thinking switch and
 //!   the task-aware sampling presets ([`sampling`], `sampling-presets.cjs` in full), as chat.cjs
 //!   ~1405-1430 computes them (recorded in `tests/fixtures/node-route.v1.json`, written by
-//!   `tests/record_route.cjs`, which runs those lines of the pinned chat.cjs). The routing that
-//!   decides `wantsAuto`, `routedRole` and the provider row is a later slice. Named
+//!   `tests/record_route.cjs`, which runs those lines of the pinned chat.cjs). `wantsAuto`,
+//!   `routedRole` and the provider row come from [`roles`] (P5b) and the later routing slices. Named
 //!   differences: two hosts Node's URL parser and the `url` crate read apart (a Unicode 16
 //!   letter, a mixed-direction label), see [`effort::local_engine`]; every other recorded case
 //!   (8,466 URL pairs and rows among them) replays byte for byte.
+//! - [`roles`] (slice P5b): which model answers the turn and as which role, before P5a's lines:
+//!   `wantsAuto`, the Automatic roles check (400/409), the classification and its fallbacks, the
+//!   Creative move, the pre-load target, the Manual pick and its loaded-model default, and the 400
+//!   and 409 refusals of a turn with no or a non-chat model. The classification is
+//!   [`system_one`] (`system-one-router.cjs`) over [`router`] (`auto-router.cjs`). Recorded in
+//!   `tests/fixtures/node-roles.v1.json`, written by `tests/record_roles.cjs`, which runs those
+//!   modules and chat.cjs's own lines; no named differences. Routing modes, Inference machines, the
+//!   egress and ChatGPT checks, the tool-capable move and the long-context profile are later slices.
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!
@@ -86,11 +94,14 @@ pub mod js;
 pub mod memory;
 pub mod names;
 pub mod project;
+pub mod roles;
 pub mod route;
+pub mod router;
 pub mod sampling;
 pub mod shared;
 pub mod skills;
 pub mod sources;
+pub mod system_one;
 pub mod time;
 
 pub use history::{Entry, ReplayOptions};
