@@ -752,7 +752,8 @@ fn every_prepared_turn_reads() {
         let p = Prepared::read(c.get("handoff").get("prepared"))
             .unwrap_or_else(|e| panic!("{}: {e:?}", c.get("name").as_str().unwrap()));
         assert!(p.model.starts_with("qa"));
-        // The cut comes right after the preparation's `tools_scope`, the last event core sends before it.
+        // In the recordings the cut comes right after the preparation's `tools_scope` (a pending route
+        // pre-load's `loadingModel` status could follow it; no case has one).
         let JValue::Arr(events) = c.get("events") else {
             panic!()
         };

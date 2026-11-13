@@ -392,7 +392,10 @@ async fn drive(
     let left = matches!(ended, native::Ended::Left) || host.left();
     let keep = Arc::clone(&host);
     let message = p.message.clone();
-    let (turn_chat, record) = (p.chat_id.clone(), p.record);
+    // handleChatTurn's finally reads `body.chatId` (the title's chatId: the request's own id when it is
+    // text), not chat.cjs's chatId, which a new project chat gets made up for it.
+    let turn_chat = Some(p.title.chat_id.clone()).filter(|c| !c.is_empty());
+    let record = p.record;
     let _ = tokio::task::spawn_blocking(move || {
         if let Ok(saving) = keep.saving.lock() {
             saving.finish(
