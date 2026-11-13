@@ -15,12 +15,15 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const serverDir = path.resolve(process.argv[2] || '');
-const SOURCES = ['jobs.cjs', 'code-plan.cjs', 'code-review-verdict.cjs', 'task-lifecycle.cjs'];
+const SOURCES = ['jobs.cjs', 'code-plan.cjs', 'code-review-verdict.cjs', 'task-lifecycle.cjs', 'completeness-report.cjs',
+  'completeness-policy-host.cjs', 'wasm/dav-parse.wasm'];
 
 // jobs.cjs calls crypto.randomUUID() for every created job; the script names the next one.
 let nextUuid = null;
 crypto.randomUUID = () => { const id = nextUuid; nextUuid = null; if (!id) throw Error('no uuid set'); return id; };
-const { createJobs } = require(path.join(serverDir, 'jobs.cjs'));
+const { createJobs, claimLifecycleAuthority } = require(path.join(serverDir, 'jobs.cjs'));
+// The lifecycle token, claimed once for the whole script: the `authority` op appends with it.
+const AUTHORITY = claimLifecycleAuthority();
 
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const hex = (buf) => Buffer.from(buf).toString('hex');
@@ -290,6 +293,180 @@ const SCENARIOS = {
   ],
 };
 
+// Lifecycle authority (#701): appends with the token. A pipeline-shaped journal and every refusal of
+// boundAuthorityEvent, in a chained (durable) and a plain journal.
+const SHA1 = 'a1'.repeat(20), SHA2 = 'b2'.repeat(32), PLAN = 'c3'.repeat(32);
+const auth = (store, job, type, data) => ({ op: 'authority', store, id: job, type, data });
+const stage = (store, job, from, to, revision, extra = {}) => auth(store, job, 'task.stage', { from, to, revision, ...extra });
+const ARTIFACTS = ['plan', 'test-report'];
+SCENARIOS['authority-pipeline'] = [
+  { op: 'clock', t: 30000 },
+  { op: 'create', store: 'durable', uuid: A, kind: 'code', projectId: 'qa-project', capabilities: ['read', 'edit', 'execute'] },
+  { op: 'append', store: 'durable', id: A, type: 'job.started' },
+  { op: 'append', store: 'durable', id: A, type: 'plan.proposed', data: { subQuestions: ['QA step one', 'QA step two'] } },
+  { op: 'clock', t: 30001 },
+  // Unknown keys and a forged report are dropped; the reason is cleaned.
+  stage('durable', A, 'planned', 'implementing', 0, { reason: '  QA plan\u0000\u0001accepted\n\t ', report: { overall: 'pass' }, reportHash: 'f'.repeat(64), extra: 1 }),
+  auth('durable', A, 'task.revision', { n: 1, headSha: SHA1, planHash: PLAN, note: 'dropped' }),
+  { op: 'append', store: 'durable', id: A, type: 'step.started', data: { id: 'tests', title: 'Run the QA tests' } },
+  { op: 'append', store: 'durable', id: A, type: 'step.completed', data: { id: 'tests' } },
+  { op: 'append', store: 'durable', id: A, type: 'artifact.created', data: { name: 'plan', kind: 'plan' } },
+  { op: 'append', store: 'durable', id: A, type: 'artifact.created', data: { name: 'test-report', kind: 'test-report', passed: true } },
+  { op: 'append', store: 'durable', id: A, type: 'checkpoint.created', data: { sha: SHA1, branch: 'noevia/qa' } },
+  stage('durable', A, 'implementing', 'verifying', 1, { reason: 7 }),
+  { op: 'clock', t: 30002 },
+  stage('durable', A, 'verifying', 'reviewing', 1, { expectedArtifacts: ARTIFACTS, reason: 'QA ready for review', report: { checks: [] } }),
+  // Staying in reviewing records no new report.
+  stage('durable', A, 'reviewing', 'reviewing', 1, { expectedArtifacts: ['missing'] }),
+  { op: 'append', store: 'durable', id: A, type: 'review.completed', data: { baseSha: SHA1, headSha: SHA1, verdict: 'request_changes', summary: 'QA changes', findings: [], corrected: false } },
+  stage('durable', A, 'reviewing', 'changes_requested', 1, { reason: 'QA review asked for changes' }),
+  stage('durable', A, 'changes_requested', 'implementing', 1),
+  auth('durable', A, 'task.revision', { n: 2, headSha: SHA2, planHash: null }),
+  { op: 'append', store: 'durable', id: A, type: 'step.started', data: { id: 'tests', title: 'Run the QA tests' } },
+  { op: 'append', store: 'durable', id: A, type: 'step.completed', data: { id: 'tests', failed: true } },
+  stage('durable', A, 'implementing', 'verifying', 2),
+  // This round's evidence only: the failed run, and none of the first round's artifacts.
+  stage('durable', A, 'verifying', 'reviewing', 2, { expectedArtifacts: ARTIFACTS }),
+  stage('durable', A, 'verifying', 'implementing', 2, { reason: 'QA tests failed' }),
+  { op: 'append', store: 'durable', id: A, type: 'step.started', data: { id: 'tests', title: 'Run the QA tests again' } },
+  { op: 'append', store: 'durable', id: A, type: 'step.completed', data: { id: 'tests' } },
+  { op: 'append', store: 'durable', id: A, type: 'artifact.created', data: { name: 'plan', kind: 'plan' } },
+  { op: 'append', store: 'durable', id: A, type: 'step.started', data: { id: 'fix', title: 'Fix the QA test' } },
+  stage('durable', A, 'implementing', 'reviewing', 2),
+  { op: 'append', store: 'durable', id: A, type: 'step.completed', data: { id: 'fix' } },
+  { op: 'append', store: 'durable', id: A, type: 'artifact.created', data: { name: 'test-report', kind: 'test-report', passed: true } },
+  { op: 'append', store: 'durable', id: A, type: 'checkpoint.created', data: { sha: SHA2.slice(0, 40), branch: 'noevia/qa' } },
+  stage('durable', A, 'implementing', 'verifying', 2),
+  { op: 'clock', t: 30003 },
+  stage('durable', A, 'verifying', 'reviewing', 2, { expectedArtifacts: ARTIFACTS, reason: 'x'.repeat(299) + '😀 cut' }),
+  stage('durable', A, 'reviewing', 'merged', 2, { reason: '\u0001\u0002' }),
+  stage('durable', A, 'merged', 'implementing', 2),
+  stage('durable', A, 'merged', 'merged', 2),
+  // A token on another type is an ordinary append.
+  auth('durable', A, 'progress', { stage: 'merged' }),
+  { op: 'append', store: 'durable', id: A, type: 'task.stage', data: { from: 'merged', to: 'merged', revision: 2 } },
+  { op: 'append', store: 'durable', id: A, type: 'job.completed', data: { result: { ok: true } } },
+  stage('durable', A, 'merged', 'merged', 2),
+  auth('durable', A, 'task.revision', { n: 3, headSha: SHA1 }),
+  { op: 'get', store: 'durable', id: A },
+];
+SCENARIOS['authority-refusals'] = [
+  { op: 'clock', t: 40000 },
+  auth('any', A, 'task.stage', { from: 'planned', to: 'implementing', revision: 0 }),
+  auth('any', 'not-a-job', 'task.stage', {}),
+  { op: 'create', store: 'any', uuid: B, kind: 'browser' },
+  auth('any', B, 'task.stage', { from: 'planned', to: 'implementing', revision: 0 }),
+  auth('any', B, 'task.revision', { n: 1, headSha: SHA1 }),
+  { op: 'create', store: 'any', uuid: A, kind: 'code' },
+  { op: 'append', store: 'any', id: A, type: 'job.started' },
+  { op: 'append', store: 'any', id: A, type: 'task.stage', data: { from: 'planned', to: 'implementing', revision: 0 } },
+  { op: 'append', store: 'any', id: A, type: 'task.revision', data: { n: 1, headSha: SHA1 } },
+  auth('any', A, 'task.stage', { from: 'planned', to: 'planning', revision: 0 }),
+  auth('any', A, 'task.stage', { from: 'planned', revision: 0 }),
+  auth('any', A, 'task.stage', { from: 'planned', to: { b: 1, '1': ['x\ud800'], a: null }, revision: 0 }),
+  auth('any', A, 'task.stage', { from: 'planned', to: 'Implementing', revision: 0 }),
+  auth('any', A, 'task.stage', 'implementing'),
+  auth('any', A, 'task.stage', ['implementing']),
+  auth('any', A, 'task.stage', null),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'implementing', revision: 0 }),
+  auth('any', A, 'task.stage', { to: 'implementing', revision: 0 }),
+  auth('any', A, 'task.stage', { from: 'planned', to: 'implementing', revision: 1 }),
+  auth('any', A, 'task.stage', { from: 'planned', to: 'implementing', revision: '0' }),
+  auth('any', A, 'task.stage', { from: 'planned', to: 'implementing' }),
+  auth('any', A, 'task.stage', { from: 'planned', to: 'verifying', revision: 0 }),
+  auth('any', A, 'task.stage', { from: 'planned', to: 'merged', revision: 0 }),
+  auth('any', A, 'task.stage', { from: 'planned', to: 'reviewing', revision: 0, expectedArtifacts: 'bad' }),
+  auth('any', A, 'task.stage', { from: 'planned', to: 'implementing', revision: 0, reason: 'é'.repeat(400) }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'merged', revision: 0 }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'planned', revision: 0 }),
+  auth('any', A, 'task.revision', { n: 2, headSha: SHA1 }),
+  auth('any', A, 'task.revision', { n: '1', headSha: SHA1 }),
+  auth('any', A, 'task.revision', { headSha: SHA1 }),
+  auth('any', A, 'task.revision', { n: 1 }),
+  auth('any', A, 'task.revision', { n: 1, headSha: SHA1.slice(0, 39) }),
+  auth('any', A, 'task.revision', { n: 1, headSha: SHA1.toUpperCase() }),
+  auth('any', A, 'task.revision', { n: 1, headSha: SHA1 + '\n' }),
+  auth('any', A, 'task.revision', { n: 1, headSha: 'g'.repeat(40) }),
+  auth('any', A, 'task.revision', { n: 1, headSha: SHA2 + 'b2' }),
+  auth('any', A, 'task.revision', { n: 1, headSha: SHA1, planHash: 'xyz' }),
+  auth('any', A, 'task.revision', { n: 1, headSha: SHA1, planHash: SHA1 }),
+  auth('any', A, 'task.revision', { n: 1, headSha: SHA1, planHash: 42 }),
+  auth('any', A, 'task.revision', { n: 1, headSha: SHA1, planHash: false }),
+  auth('any', A, 'task.revision', { n: 1, headSha: SHA2 }),
+  // expectedArtifacts is checked only on a legal move into reviewing.
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: 'plan' }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: [''] }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: ['x'.repeat(201)] }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: ['😀'.repeat(100)] }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: Array.from({ length: 33 }, (_, i) => `a${i}`) }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: [1] }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: { 0: 'plan' } }),
+  // Well-formed lists: refused by the report (nothing recorded yet).
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: Array.from({ length: 32 }, (_, i) => `a${i}`) }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: ['x'.repeat(200), '😀'.repeat(99) + 'é'] }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: null }),
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1 }),
+  { op: 'append', store: 'any', id: A, type: 'step.started', data: { id: 'test', title: 'QA tests' } },
+  { op: 'append', store: 'any', id: A, type: 'tool.uncertain', data: { id: 'qa-tool' } },
+  { op: 'append', store: 'any', id: A, type: 'approval.requested', data: { action: 'execute' } },
+  { op: 'append', store: 'any', id: A, type: 'checkpoint.created', data: { sha: 'not a sha' } },
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: ['plan'] }),
+  { op: 'append', store: 'any', id: A, type: 'approval.decided', data: { decision: 'approve' } },
+  { op: 'append', store: 'any', id: A, type: 'step.completed', data: { id: 'test' } },
+  { op: 'append', store: 'any', id: A, type: 'artifact.created', data: { name: 'plan', kind: 'test-report', passed: false } },
+  { op: 'append', store: 'any', id: A, type: 'checkpoint.created', data: { commit: SHA1 } },
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: ['plan'] }),
+  { op: 'append', store: 'any', id: A, type: 'plan.skipped' },
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'reviewing', revision: 1, expectedArtifacts: ['plan', 'plan'] }),
+  // A cancelled job takes no lifecycle event (only a late artifact).
+  { op: 'cancel', store: 'any', id: A },
+  auth('any', A, 'task.stage', { from: 'implementing', to: 'blocked', revision: 1 }),
+  auth('any', A, 'artifact.created', { name: 'partial' }),
+];
+SCENARIOS['authority-limits'] = [
+  { op: 'clock', t: 50000 },
+  { op: 'create', store: 'code', uuid: A, kind: 'code' },
+  ...Array.from({ length: 32 }, (_, i) => auth('code', A, 'task.revision', { n: i + 1, headSha: i % 2 ? SHA1 : SHA2 })),
+  auth('code', A, 'task.revision', { n: 33, headSha: SHA1 }),
+  auth('code', A, 'task.revision', { n: 1, headSha: SHA1 }),
+  stage('code', A, 'planned', 'implementing', 32),
+  ...Array.from({ length: 63 }, (_, i) => stage('code', A, 'implementing', 'implementing', 32, { reason: `QA ${i}` })),
+  stage('code', A, 'implementing', 'verifying', 32),
+  stage('code', A, 'implementing', 'implementing', 99),
+  { op: 'get', store: 'code', id: A },
+];
+// Journals jobs.cjs did not shape: the fold refuses them before anything else is checked.
+SCENARIOS['authority-inconsistent'] = [
+  { op: 'clock', t: 60000 },
+  { op: 'seed', name: `${A}.jsonl`, text: line(created(A, 10, 'code')) + line(row(A, 2, 'task.stage', 11, { from: 'implementing', to: 'verifying', revision: 0, reason: null })) },
+  auth('code', A, 'task.stage', { from: 'planned', to: 'implementing', revision: 0 }),
+  auth('code', A, 'task.revision', { n: 1, headSha: SHA1 }),
+  { op: 'seed', name: `${B}.jsonl`, text: line(created(B, 10, 'code')) + line(row(B, 2, 'task.stage', 11, { from: 'planned', to: 'implementing', revision: 0, reason: null }))
+    + line(row(B, 3, 'task.stage', 12, { from: 'implementing', to: 'reviewing', revision: 0, reason: null })) },
+  auth('code', B, 'task.stage', { from: 'reviewing', to: 'merged', revision: 0 }),
+  { op: 'seed', name: `${C}.jsonl`, text: line(created(C, 10, 'code')) + line(row(C, 2, 'task.stage', 11, { from: 'planned', to: 'nowhere', revision: 0, reason: null })) },
+  auth('code', C, 'task.revision', { n: 1, headSha: SHA1 }),
+  // A plain journal whose events skip a revision still folds: only the revision count is read.
+  { op: 'seed', name: `${D}.jsonl`, text: line(created(D, 10, 'code')) + line(row(D, 2, 'task.revision', 11, { n: 5, headSha: SHA1, planHash: null })) },
+  auth('code', D, 'task.revision', { n: 2, headSha: SHA1 }),
+  auth('code', D, 'task.revision', { n: 6, headSha: SHA1 }),
+  stage('code', D, 'planned', 'implementing', 6),
+  // A job.failed in an authoritative journal blocks it, but the job has ended.
+  { op: 'seed', name: `${E}.jsonl`, text: line(created(E, 10, 'code')) + line(row(E, 2, 'task.stage', 11, { from: 'planned', to: 'implementing', revision: 0, reason: null })) + line(row(E, 3, 'job.failed', 12, { error: 'x' })) },
+  stage('code', E, 'blocked', 'implementing', 0),
+];
+// Node's own behaviour where the Rust store differs on purpose (task_store.rs, "Fixed on purpose" 8 and 9).
+SCENARIOS['authority-differences'] = [
+  { op: 'clock', t: 70000 },
+  { op: 'seed', name: `${A}.jsonl`, text: line(created(A, 10, 'code')) + line(row(A, 2, 'task.revision', 11, { n: '1', headSha: SHA1, planHash: null })) },
+  stage('code', A, 'planned', 'implementing', '1'),
+  auth('code', A, 'task.revision', { n: '11', headSha: SHA1 }),
+  { op: 'create', store: 'code', uuid: B, kind: 'code' },
+  stage('code', B, 'planned', 'implementing', 0),
+  { op: 'append', store: 'code', id: B, type: 'step.started', data: { id: { qa: 1 }, title: 'QA step' } },
+  stage('code', B, 'implementing', 'reviewing', 0, { expectedArtifacts: [] }),
+];
+
 // The jobs/ directory as {name: bytes}; null when there is none.
 function snapshot(dir) {
   const root = path.join(dir, 'jobs');
@@ -341,6 +518,7 @@ function runScenario(steps) {
         break;
       case 'create': nextUuid = s.uuid; result = outcome(() => store(s.store).create({ kind: s.kind, projectId: s.projectId, parentId: s.parentId, capabilities: s.capabilities })); nextUuid = null; break;
       case 'append': result = outcome(() => (s.data === undefined ? store(s.store).append(s.id, s.type) : store(s.store).append(s.id, s.type, s.data))); break;
+      case 'authority': result = outcome(() => store(s.store).append(s.id, s.type, s.data, AUTHORITY)); break;
       case 'get': result = outcome(() => brief(store(s.store).get(s.id))); break;
       case 'cancel': result = outcome(() => brief(store(s.store).cancel(s.id))); break;
       case 'recover': result = outcome(() => store(s.store).recover()); break;
