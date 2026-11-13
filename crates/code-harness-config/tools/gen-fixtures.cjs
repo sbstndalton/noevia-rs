@@ -147,7 +147,7 @@ const W = [
 // writePinned on its own, for relative paths noevia never passes but the function accepts.
 const P = [
   ['a/b/c.txt'], ['../escape.txt'], ['a/../b.txt'], ['/abs/x.txt'], ['a//b.txt'], ['./a.txt'], ['a/./b.txt'], ['x/'], [''], ['.'],
-  ['a/b/../../..'], ['a/b/../../../cwd/z.txt'], ['é\u{1F600}/f.txt'], ['link/inner.txt', [L('cwd/link', '<T>/outside')]],
+  ['a/b/../../..'], ['a/b/../../../cwd/z.txt'], ['a/../'], ['./'], ['a/b/../../'], ['é\u{1F600}/f.txt'], ['link/inner.txt', [L('cwd/link', '<T>/outside')]],
   ['a/link//x', [D('cwd/a'), L('cwd/a/link', '<T>/outside')]], ['a//f', [D('cwd/a'), L('cwd/a/f', '<T>/outside/keep.txt')]],
 ];
 for (const [relative, extra = []] of P) W.push({ name: `writePinned ${JSON.stringify(relative)}`, setup: [...ROOTS, ...extra], pinned: { root: '<T>/cwd', relative, content: 'pinned é\n' } });

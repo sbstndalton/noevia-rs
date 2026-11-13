@@ -61642,6 +61642,189 @@
    ]
   },
   {
+   "name": "writePinned \"a/../\"",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/../",
+    "content": "pinned é\n"
+   },
+   "result": {
+    "err": {
+     "status": 409,
+     "message": "Refused to pin the harness configuration: a/../ is a directory."
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned \"./\"",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "./",
+    "content": "pinned é\n"
+   },
+   "result": {
+    "err": {
+     "status": 409,
+     "message": "Refused to pin the harness configuration: ./ is a directory."
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned \"a/b/../../\"",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/b/../../",
+    "content": "pinned é\n"
+   },
+   "result": {
+    "err": {
+     "status": 409,
+     "message": "Refused to pin the harness configuration: a/b/../../ is a directory."
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
    "name": "writePinned \"é😀/f.txt\"",
    "setup": [
     {

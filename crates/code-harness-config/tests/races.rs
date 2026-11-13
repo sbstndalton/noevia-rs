@@ -9,7 +9,6 @@
     clippy::panic
 )]
 
-use std::ffi::OsStr;
 use std::fs;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::fs::{symlink, MetadataExt};
@@ -20,26 +19,27 @@ use code_harness_config::{
     write_harness_config, write_pinned, Chown, Handover, Owner, PinError, PinOptions, WriteRequest,
 };
 
-/// Changes no owner; runs `on_dir` with the full path of each directory just made.
-struct Swap<F: FnMut(&Path)> {
-    on_dir: F,
+/// Changes no owner; runs `on_dir` with the full path of each directory just made (and opened),
+/// and `on_open` with the path of each component or file about to be opened (after its check).
+struct Swap<D: FnMut(&Path), O: FnMut(&Path)> {
+    on_dir: D,
+    on_open: O,
     files: Vec<PathBuf>,
 }
 
-impl<F: FnMut(&Path)> Handover for Swap<F> {
-    fn directory(
-        &mut self,
-        _: BorrowedFd<'_>,
-        _: &OsStr,
-        path: &Path,
-        _: Owner,
-    ) -> std::io::Result<()> {
+fn nothing(_: &Path) {}
+
+impl<D: FnMut(&Path), O: FnMut(&Path)> Handover for Swap<D, O> {
+    fn directory(&mut self, _: BorrowedFd<'_>, path: &Path, _: Owner) -> std::io::Result<()> {
         (self.on_dir)(path);
         Ok(())
     }
     fn file(&mut self, _: BorrowedFd<'_>, path: &Path, _: Owner) -> std::io::Result<()> {
         self.files.push(path.to_path_buf());
         Ok(())
+    }
+    fn opening(&mut self, path: &Path) {
+        (self.on_open)(path);
     }
 }
 
@@ -96,11 +96,12 @@ fn a_link_planted_after_the_directory_check_is_refused() {
     let (_t, cwd, home, outside) = layout();
     let target = outside.clone();
     let mut hook = Swap {
-        on_dir: |made: &Path| {
-            // The harness user, now owning `.claude`, replaces it with a link out of the tree.
-            if made.ends_with(".claude") && made.starts_with(&cwd) {
-                fs::rename(made, made.with_file_name(".claude.moved")).unwrap();
-                symlink(&target, made).unwrap();
+        on_dir: nothing,
+        on_open: |next: &Path| {
+            // `.claude` was just made; before the walk enters it, it becomes a link out of the tree.
+            if next.ends_with(".claude") && next.starts_with(&cwd) {
+                fs::rename(next, next.with_file_name(".claude.moved")).unwrap();
+                symlink(&target, next).unwrap();
             }
         },
         files: Vec::new(),
@@ -150,6 +151,7 @@ fn an_ancestor_swapped_after_the_walk_entered_it_is_not_followed() {
                 symlink(&out, &a).unwrap();
             }
         },
+        on_open: nothing,
         files: Vec::new(),
     };
     write_pinned(
@@ -182,7 +184,8 @@ fn a_link_at_the_target_is_refused_never_written_through() {
     symlink(outside.join("keep.txt"), cwd.join("opencode.json")).unwrap();
     symlink(outside.join("new.txt"), cwd.join("dangling.json")).unwrap();
     let mut hook = Swap {
-        on_dir: |_: &Path| {},
+        on_dir: nothing,
+        on_open: nothing,
         files: Vec::new(),
     };
     for name in ["opencode.json", "dangling.json"] {
@@ -212,35 +215,87 @@ fn ctime(p: &Path) -> (i64, i64) {
 }
 
 #[test]
-fn the_real_hand_over_never_follows_a_link() {
-    let t = tempfile::tempdir().unwrap();
-    let target = t.path().join("target");
-    fs::write(&target, "x").unwrap();
-    let link = t.path().join("link");
-    symlink(&target, &link).unwrap();
-    let owner = me(&target);
-    let dir = fs::File::open(t.path()).unwrap();
-    let (target_before, link_before) = (ctime(&target), ctime(&link));
-    std::thread::sleep(Duration::from_millis(50));
-    Chown
-        .directory(dir.as_fd(), OsStr::new("link"), &link, owner)
-        .unwrap();
+fn a_link_planted_at_the_file_after_its_check_is_never_written_through() {
+    let (_t, cwd, _home, outside) = layout();
+    let (leaf, keep) = (cwd.join("opencode.json"), outside.join("keep.txt"));
+    let mut hook = Swap {
+        on_dir: nothing,
+        on_open: |next: &Path| {
+            // The file was checked absent; before it is created, a link to a file outside appears.
+            if next == leaf.as_path() {
+                symlink(&keep, next).unwrap();
+            }
+        },
+        files: Vec::new(),
+    };
+    let req = WriteRequest {
+        cwd: Some(&cwd),
+        home: None,
+        owner: Some(Owner { uid: 1, gid: 1 }),
+        options: PinOptions {
+            harness: Some("opencode"),
+            ..OPTS
+        },
+    };
+    let err = write_harness_config(&req, &mut hook).unwrap_err();
+    // Node's own answer to this race: the exclusive create fails (EEXIST), nothing is followed.
+    let PinError::Io {
+        syscall, source, ..
+    } = &err
+    else {
+        panic!("{err:?}")
+    };
     assert_eq!(
-        ctime(&target),
-        target_before,
-        "the link's target was not touched"
+        (*syscall, source.kind()),
+        ("open", std::io::ErrorKind::AlreadyExists)
     );
+    assert_eq!(
+        fs::read_to_string(outside.join("keep.txt")).unwrap(),
+        "outside\n"
+    );
+    assert_eq!(listing(&outside), ["keep.txt"]);
+    assert!(fs::symlink_metadata(cwd.join("opencode.json"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert!(hook.files.is_empty(), "nothing handed over");
+}
+
+#[test]
+fn the_real_hand_over_goes_through_the_descriptor_not_the_name() {
+    let t = tempfile::tempdir().unwrap();
+    let (dir, moved) = (t.path().join("d"), t.path().join("d.moved"));
+    fs::create_dir(&dir).unwrap();
+    let owner = me(&dir);
+    let held = fs::File::open(&dir).unwrap();
+    // After the descriptor is held, the name points at another directory (as a hard-link or
+    // rename swap would make it).
+    fs::rename(&dir, &moved).unwrap();
+    fs::create_dir(&dir).unwrap();
+    let (held_before, name_before) = (ctime(&moved), ctime(&dir));
+    std::thread::sleep(Duration::from_millis(50));
+    Chown.directory(held.as_fd(), &dir, owner).unwrap();
     assert_ne!(
-        ctime(&link),
-        link_before,
-        "the link itself was (the check can see a change)"
+        ctime(&moved),
+        held_before,
+        "the held directory was handed over"
+    );
+    assert_eq!(
+        ctime(&dir),
+        name_before,
+        "the name it was made under was not"
     );
 
-    // The file hand-over goes through the descriptor it is given.
-    let file = fs::File::open(&target).unwrap();
+    let (file, other) = (t.path().join("f"), t.path().join("f.moved"));
+    fs::write(&file, "x").unwrap();
+    let open = fs::File::open(&file).unwrap();
+    fs::rename(&file, &other).unwrap();
+    fs::write(&file, "y").unwrap();
+    let (held_before, name_before) = (ctime(&other), ctime(&file));
     std::thread::sleep(Duration::from_millis(50));
-    Chown.file(file.as_fd(), &link, owner).unwrap();
-    assert_ne!(ctime(&target), target_before);
+    Chown.file(open.as_fd(), &file, owner).unwrap();
+    assert_ne!(ctime(&other), held_before);
+    assert_eq!(ctime(&file), name_before);
 }
 
 #[test]

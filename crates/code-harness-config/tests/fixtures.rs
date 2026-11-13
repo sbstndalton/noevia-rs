@@ -15,7 +15,6 @@
     clippy::panic
 )]
 
-use std::ffi::OsStr;
 use std::os::fd::BorrowedFd;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
@@ -68,13 +67,7 @@ impl Recorder {
 }
 
 impl Handover for Recorder {
-    fn directory(
-        &mut self,
-        _: BorrowedFd<'_>,
-        _: &OsStr,
-        path: &Path,
-        owner: Owner,
-    ) -> std::io::Result<()> {
+    fn directory(&mut self, _: BorrowedFd<'_>, path: &Path, owner: Owner) -> std::io::Result<()> {
         self.record(path, owner)
     }
     fn file(&mut self, _: BorrowedFd<'_>, path: &Path, owner: Owner) -> std::io::Result<()> {

@@ -10,9 +10,9 @@
 //! harness user owns the tree, and each new directory is handed to it before the walk descends)
 //! is followed. Here the walk holds a descriptor per directory: the root is opened (followed: it
 //! is the caller's), and each component is classified with `fstatat(AT_SYMLINK_NOFOLLOW)` (the
-//! checks and messages Node has), made with `mkdirat` when missing, handed over with
-//! `fchownat(AT_SYMLINK_NOFOLLOW)` and entered with `openat(O_DIRECTORY|O_NOFOLLOW)`, all relative
-//! to the parent descriptor. The old file is removed with `unlinkat`, the new one created with
+//! checks and messages Node has), made with `mkdirat` when missing and entered with
+//! `openat(O_DIRECTORY|O_NOFOLLOW)`, all relative to the parent descriptor; a directory just made
+//! is handed over with `fchown` on that descriptor before the walk descends through it. The old file is removed with `unlinkat`, the new one created with
 //! `openat(O_CREAT|O_EXCL|O_NOFOLLOW, 0o600)` and handed over with `fchown` on its descriptor
 //! before it is closed. A link swapped in after the check, which only the descriptor walk sees,
 //! is refused with Node's "is a symbolic link" message. Node's order of checks, its messages, its
@@ -60,33 +60,25 @@ impl Owner {
 /// path Node would pass to `lchownSync` (for logging and tests); the change itself must go through
 /// the descriptors, never the path.
 pub trait Handover {
-    /// A directory `name` just made in `parent`.
-    fn directory(
-        &mut self,
-        parent: BorrowedFd<'_>,
-        name: &OsStr,
-        path: &Path,
-        owner: Owner,
-    ) -> io::Result<()>;
+    /// A directory just made, opened (`O_DIRECTORY|O_NOFOLLOW`) before it is handed over and
+    /// before the walk descends through it.
+    fn directory(&mut self, dir: BorrowedFd<'_>, path: &Path, owner: Owner) -> io::Result<()>;
     /// The file just written, still open.
     fn file(&mut self, file: BorrowedFd<'_>, path: &Path, owner: Owner) -> io::Result<()>;
+    /// Called just before each directory component or the file is opened, after its check: an
+    /// observation point for tests of that window. The default does nothing.
+    fn opening(&mut self, _path: &Path) {}
 }
 
-/// The production hand-over: `fchownat(parent, name, AT_SYMLINK_NOFOLLOW)` for a directory and
-/// `fchown` on the open file. Neither follows a link.
+/// The production hand-over: `fchown` on the descriptor of the new directory or the open file.
+/// Neither names a path, so neither can follow a link or reach a hard link swapped in.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Chown;
 
 impl Handover for Chown {
-    fn directory(
-        &mut self,
-        parent: BorrowedFd<'_>,
-        name: &OsStr,
-        _path: &Path,
-        owner: Owner,
-    ) -> io::Result<()> {
+    fn directory(&mut self, dir: BorrowedFd<'_>, _path: &Path, owner: Owner) -> io::Result<()> {
         let (uid, gid) = owner.ids();
-        rustix::fs::chownat(parent, name, uid, gid, AtFlags::SYMLINK_NOFOLLOW).map_err(Into::into)
+        rustix::fs::fchown(dir, uid, gid).map_err(Into::into)
     }
 
     fn file(&mut self, file: BorrowedFd<'_>, _path: &Path, owner: Owner) -> io::Result<()> {
@@ -369,8 +361,11 @@ pub fn write_pinned(
         return Err(PinError::Outside);
     }
     let parts = segs.get(segments(&base).len()..).unwrap_or_default();
-    let Some((leaf, dirs)) = parts.split_last() else {
-        return Err(PinError::Outside);
+    // No segment below the root: only a path that collapses to it with a trailing slash (`a/../`)
+    // gets here, and Node finds a directory at its target.
+    let (leaf, dirs) = match parts.split_last() {
+        Some((leaf, dirs)) => (Some(leaf), dirs),
+        None => (None, parts),
     };
 
     let root_flags = dir_flags();
@@ -386,6 +381,9 @@ pub fn write_pinned(
         };
         io_err(syscall, Some(&first), e)
     })?;
+    let Some(leaf) = leaf else {
+        return Err(refuse(format!("{relative} is a directory")));
+    };
 
     let mut dir = base.clone();
     for (i, part) in dirs.iter().enumerate() {
@@ -396,32 +394,40 @@ pub fn write_pinned(
             String::from_utf8_lossy(&rel.join(&b'/')).into_owned()
         };
         let name = OsStr::from_bytes(part);
-        match kind(&dir_fd, name) {
+        let made = match kind(&dir_fd, name) {
             Ok(Some(FileType::Symlink)) => {
                 return Err(refuse(format!("{} is a symbolic link", shown())))
             }
-            Ok(Some(FileType::Directory)) => {}
+            Ok(Some(FileType::Directory)) => false,
             Ok(Some(_)) => return Err(refuse(format!("{} is not a directory", shown()))),
             Ok(None) => {
                 rustix::fs::mkdirat(&dir_fd, name, Mode::RWXU)
                     .map_err(|e| io_err("mkdir", Some(&dir), e))?;
-                if let Some(o) = owner {
-                    handover
-                        .directory(dir_fd.as_fd(), name, as_path(&dir), o)
-                        .map_err(|e| io_err("lchown", Some(&dir), e))?;
-                }
+                true
             }
             Err(e) => return Err(io_err("lstat", Some(&dir), e)),
+        };
+        handover.opening(as_path(&dir));
+        // A directory just made is ours and readable; it is opened for reading so it can be
+        // handed over with `fchown` (which an `O_PATH` descriptor cannot do).
+        let flags = if made {
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
+        } else {
+            root_flags | OFlags::NOFOLLOW
+        };
+        dir_fd = match rustix::fs::openat(&dir_fd, name, flags, Mode::empty()) {
+            Ok(fd) => fd,
+            // Checked as a directory (or made) a moment ago, a link or something else now: swapped.
+            Err(Errno::LOOP | Errno::NOTDIR) => {
+                return Err(refuse(format!("{} is a symbolic link", shown())))
+            }
+            Err(e) => return Err(io_err("open", Some(&dir), e)),
+        };
+        if let (true, Some(o)) = (made, owner) {
+            handover
+                .directory(dir_fd.as_fd(), as_path(&dir), o)
+                .map_err(|e| io_err("lchown", Some(&dir), e))?;
         }
-        dir_fd =
-            match rustix::fs::openat(&dir_fd, name, root_flags | OFlags::NOFOLLOW, Mode::empty()) {
-                Ok(fd) => fd,
-                // Checked as a directory a moment ago, a link (or something else) now: swapped.
-                Err(Errno::LOOP | Errno::NOTDIR) => {
-                    return Err(refuse(format!("{} is a symbolic link", shown())))
-                }
-                Err(e) => return Err(io_err("open", Some(&dir), e)),
-            };
     }
 
     // The last segment as Node passes it: with its trailing slash, if the path had one.
@@ -441,6 +447,7 @@ pub fn write_pinned(
         Ok(None) => {}
         Err(e) => return Err(io_err("lstat", Some(&target), e)),
     }
+    handover.opening(as_path(&target));
     let fd = rustix::fs::openat(
         &dir_fd,
         leaf_name,
