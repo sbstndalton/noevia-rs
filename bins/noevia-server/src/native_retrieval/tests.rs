@@ -122,8 +122,12 @@ struct World {
 /// A data directory holding S1's index for project `qa-proj-1` and a saved embedding configuration
 /// whose active target is S1's, answering the S1 search `note`.
 fn world_for(note: &str) -> World {
+    world_in("S1-map-slot", note)
+}
+
+fn world_in(scenario: &str, note: &str) -> World {
     let f = fixture();
-    let q = search_of(&f, "S1-map-slot", note);
+    let q = search_of(&f, scenario, note);
     let dir = tempfile::tempdir().unwrap();
     rebuild(
         &dir.path()
@@ -669,4 +673,90 @@ async fn a_lease_taken_during_the_embed_drops_the_hits() {
         "the first check let the embed run"
     );
     assert_eq!(asked.load(Ordering::SeqCst), 2);
+}
+
+/// S8, recorded from Node's `searchProject` with the reranker on (TEI, `RAG_RERANK_KEEP` 4): the
+/// cosine pool of `RAG_RERANK_POOL` (12; LIMIT 48), the reranker's order, four kept; a failing
+/// reranker leaves the cosine top six. The native search must give Node's hits exactly.
+#[tokio::test]
+async fn the_reranker_matches_nodes_search_project() {
+    let f = fixture();
+    let s8 = f["scenarios"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == "S8-rerank")
+        .unwrap()
+        .clone();
+    for q in s8["searches"].as_array().unwrap() {
+        let note = q["note"].as_str().unwrap();
+        let w = world_in("S8-rerank", note);
+        let rr = &q["rerank"];
+        let env: HashMap<String, String> = rr["env"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+            .collect();
+        let knobs: HashMap<String, String> = rr["knobs"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+            .collect();
+        let reverse = rr["answer"] == "reverse";
+        let pool = rr["pool"].as_u64().unwrap() as usize;
+        let (observed, bench) = (Mutex::new(None), Mutex::new(Chain::default()));
+        let query = w.query.clone();
+        let i = Inputs {
+            question: "echo echo echo",
+            limit: usize::MAX,
+            ..inputs(&w, &env)
+        };
+        let got = retrieve_with(
+            &deps(&observed, &bench, &knobs),
+            i,
+            None,
+            |_, _| async move { Ok(query) },
+            |request: rerank::Request, _| async move {
+                let n = serde_json::from_str::<Value>(&request.body).unwrap()["texts"]
+                    .as_array()
+                    .unwrap()
+                    .len();
+                assert_eq!(n, pool, "the pool Node sent");
+                Some(if reverse {
+                    (
+                        200,
+                        json!((0..n)
+                            .map(|i| json!({"index": i, "score": i}))
+                            .collect::<Vec<_>>()),
+                    )
+                } else {
+                    (500, json!({}))
+                })
+            },
+        )
+        .await;
+        let Outcome::Hits(found) = got else {
+            panic!("{note}: deferred")
+        };
+        let got: Vec<(String, String, f64)> = found
+            .text
+            .into_iter()
+            .map(|h| (h.file, h.body, h.score))
+            .collect();
+        let want: Vec<(String, String, f64)> = q["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| {
+                (
+                    h["file"].as_str().unwrap().to_owned(),
+                    h["body"].as_str().unwrap().to_owned(),
+                    h["score"].as_f64().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(got, want, "{note}");
+    }
 }

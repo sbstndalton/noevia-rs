@@ -8,7 +8,8 @@
 //   NOEVIA_CORE_CHECKOUT=<noevia-core checkout with server/node_modules installed> \
 //     node crates/project-retrieval/tests/generate_search_fixtures.cjs
 //
-// Writes crates/project-retrieval/tests/fixtures/F2-F6-search.json. For every scenario it records what Node did
+// Writes crates/project-retrieval/tests/fixtures/F2-F6-search.json. S8 runs the reranker, whose decision layer
+// needs the dav-parse wasm pinned by the checkout's server/dav-parse.lock at server/wasm/dav-parse.wasm. For every scenario it records what Node did
 // (steps), the index as Node left it (schema SQL, chunks, vec_meta, every slot's vectors and hash map) and, per
 // search, the query vector Node bound into its SQL, Node's in-process wanted-version state for the project's files,
 // and searchProject's answer. The Rust test rebuilds the index from the dump and must give the same answers.
@@ -25,6 +26,11 @@ const SOURCES = {
   'server/rag.cjs': '227d0b739858237554fe366269ef5926e76ac2275731f83f0fb19e3d31e6c024',
   'server/vector-slots.cjs': 'aa56665f88b9631179baac90ecfd180849e0e9f1b956ccc4ebc0e5bb4819c6be',
   'server/embedding-profile.cjs': 'fa349dd5909a912335bb81e81b1e670e1ed774cbca626da30853e24c3743b740',
+  // S8 (the reranker): rerank-target.cjs, the decision layer and its checks in the pinned wasm.
+  'server/rerank-target.cjs': '66f4a7f2b60e54737b0af78683ed74dcb2ff1e2e0fce762cf3bc5940bc192084',
+  'server/decision/index.cjs': 'b0c917d0c2f7779b6979c8e171911665434bdf61b0a7b07e88115999f751587b',
+  'server/decision/backends.cjs': '68b1a3d0839725930ffe615053341016e306131d2986bbef5c74c73109afc56f',
+  'server/wasm/dav-parse.wasm': '2305d64d1a75a57b3c52eda673b384c819718aae540c570837b4aeb4ef5e5cb9',
 };
 for (const [rel, want] of Object.entries(SOURCES)) {
   const got = crypto.createHash('sha256').update(fs.readFileSync(path.join(checkout, rel))).digest('hex');
@@ -60,8 +66,16 @@ let dim = 9;
 let wrongWidthFor = null; // a query text answered with a vector one wider than the slot
 let lastQuery = null;
 const calls = [];
+// The scripted reranker of S8 (TEI `POST /rerank`): 'reverse' scores the pool in reverse, 'fail' answers 500.
+let reranker = 'fail';
+let reranked = [];
 rag._test.setRagFetch(async (url, init) => {
   const body = JSON.parse(init.body);
+  if (String(url).endsWith('/rerank')) {
+    reranked.push(body.texts.length);
+    if (reranker === 'fail') return new Response('{}', { status: 500 });
+    return new Response(JSON.stringify(body.texts.map((_, index) => ({ index, score: index }))), { status: 200 });
+  }
   const data = body.input.map((t, index) => {
     const d = wrongWidthFor && t.includes(wrongWidthFor) ? dim + 1 : dim;
     const embedding = vectorFor(t, d);
@@ -186,6 +200,7 @@ function scenario(name, target, build) {
       rec.searches.push({ projectId, query, note, target: current, index, created: fs.existsSync(file), query_framed: lastQuery?.framed ?? null, query_vector: lastQuery?.vector ?? null, versions, hits });
       return hits;
     },
+    last() { return rec.searches[rec.searches.length - 1]; },
     snapshot(projectId) {
       const file = path.join(dataDir, 'users', ctx.user, 'rag', `${projectId}.db`);
       if (!fs.existsSync(file)) return null;
@@ -298,6 +313,32 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
     await c.search('qa-proj-6', 'alpha', {}, 'no slot for the active model');
     await c.search('qa-proj-missing', 'alpha', {}, 'no index file: [] and nothing created');
   });
+  // S8: the reranker on (rerank-target.cjs: the flag and an address; TEI): the cosine pool is RAG_RERANK_POOL wide
+  // (default 12: LIMIT 48, slice 12) and the reranker's order picks RAG_RERANK_KEEP (here 4) of it; a reranker
+  // that fails leaves the cosine top six.
+  await scenario('S8-rerank', { model: 'qa-embed-rr', profile: 'embeddinggemma-2', baseUrl: 'http://127.0.0.1:9' }, async (c) => {
+    dim = 9;
+    await c.index('qa-proj-8', 'qa-dup-1.md', dup);
+    await c.index('qa-proj-8', 'qa-dup-2.md', dup);
+    await c.index('qa-proj-8', 'qa-long-a.md', longA);
+    await c.index('qa-proj-8', 'qa-long-b.md', longB);
+    await c.index('qa-proj-8', 'qa-fresh.md', fresh);
+    const env = { NOEVIA_FEATURE_RAG_RERANK: '1', RERANK_BACKEND: 'tei', RERANK_BASE_URL: 'http://127.0.0.1:9', RERANK_API_KEY: '' };
+    rag.configureRerank(() => env);
+    process.env.RAG_RERANK_KEEP = '4';
+    try {
+      for (const [mode, note] of [['reverse', 'rerank: the reranker reverses the cosine pool, 4 kept'], ['fail', 'rerank: a failing reranker leaves the cosine top six']]) {
+        reranker = mode;
+        reranked = [];
+        await c.search('qa-proj-8', 'echo echo echo', {}, note);
+        Object.assign(c.last(), { rerank: { env, knobs: { RAG_RERANK_KEEP: '4' }, answer: mode, pool: reranked[0] ?? 0 } });
+      }
+    } finally {
+      rag.configureRerank(() => ({}));
+      delete process.env.RAG_RERANK_KEEP;
+    }
+  });
+
   // S7: equal scores in Node come back in the vec0 scan order. The native search orders them by chunk id instead
   // (a defined order); this records the one shape where the two differ, as a named difference.
   await scenario('S7-tie-order', { model: 'qa-embed-ties', profile: 'embeddinggemma-2', baseUrl: 'http://127.0.0.1:9' }, async (c) => {

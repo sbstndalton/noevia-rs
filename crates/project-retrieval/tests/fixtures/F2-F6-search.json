@@ -2,7 +2,11 @@
  "sources": {
   "server/rag.cjs": "227d0b739858237554fe366269ef5926e76ac2275731f83f0fb19e3d31e6c024",
   "server/vector-slots.cjs": "aa56665f88b9631179baac90ecfd180849e0e9f1b956ccc4ebc0e5bb4819c6be",
-  "server/embedding-profile.cjs": "fa349dd5909a912335bb81e81b1e670e1ed774cbca626da30853e24c3743b740"
+  "server/embedding-profile.cjs": "fa349dd5909a912335bb81e81b1e670e1ed774cbca626da30853e24c3743b740",
+  "server/rerank-target.cjs": "66f4a7f2b60e54737b0af78683ed74dcb2ff1e2e0fce762cf3bc5940bc192084",
+  "server/decision/index.cjs": "b0c917d0c2f7779b6979c8e171911665434bdf61b0a7b07e88115999f751587b",
+  "server/decision/backends.cjs": "68b1a3d0839725930ffe615053341016e306131d2986bbef5c74c73109afc56f",
+  "server/wasm/dav-parse.wasm": "2305d64d1a75a57b3c52eda673b384c819718aae540c570837b4aeb4ef5e5cb9"
  },
  "source": "server/rag.cjs searchProject/searchProjectNow/textHitsConfigured :878-922, isCurrentVersion :866-871, indexProjectFile :630-700, deleteProjectFile :835-862; server/vector-slots.cjs joinSql :147, adoptLegacy :59, findSlot :69",
  "constants": {
@@ -1066,6 +1070,208 @@
      "query_vector": null,
      "versions": {},
      "hits": []
+    }
+   ]
+  },
+  {
+   "name": "S8-rerank",
+   "target": {
+    "model": "qa-embed-rr",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://127.0.0.1:9"
+   },
+   "steps": [
+    {
+     "step": "index",
+     "projectId": "qa-proj-8",
+     "file": "qa-dup-1.md",
+     "chars": 2553,
+     "version": "0528aec091002a8b7355925579af0e9b15c4695c1205d3dd7183bcb39b91cc4b",
+     "result": {
+      "ok": true,
+      "stored": 3,
+      "embedded": 3
+     }
+    },
+    {
+     "step": "index",
+     "projectId": "qa-proj-8",
+     "file": "qa-dup-2.md",
+     "chars": 2553,
+     "version": "0528aec091002a8b7355925579af0e9b15c4695c1205d3dd7183bcb39b91cc4b",
+     "result": {
+      "ok": true,
+      "stored": 3,
+      "embedded": 3
+     }
+    },
+    {
+     "step": "index",
+     "projectId": "qa-proj-8",
+     "file": "qa-long-a.md",
+     "chars": 4200,
+     "version": "e54bdec0c463e0379bf322dfb9f4348f1114472cf766da439024fd6eadc73508",
+     "result": {
+      "ok": true,
+      "stored": 5,
+      "embedded": 5
+     }
+    },
+    {
+     "step": "index",
+     "projectId": "qa-proj-8",
+     "file": "qa-long-b.md",
+     "chars": 4826,
+     "version": "a2799866ea0a886c7b736d1d139950920d8317dc2b4150492904195e6c47759f",
+     "result": {
+      "ok": true,
+      "stored": 6,
+      "embedded": 6
+     }
+    },
+    {
+     "step": "index",
+     "projectId": "qa-proj-8",
+     "file": "qa-fresh.md",
+     "chars": 3444,
+     "version": "04abe791839cc609f4bb91a6248774c927915d1fa862e68bad35fd23f5738964",
+     "result": {
+      "ok": true,
+      "stored": 4,
+      "embedded": 4
+     }
+    }
+   ],
+   "searches": [
+    {
+     "projectId": "qa-proj-8",
+     "query": "echo echo echo",
+     "note": "rerank: the reranker reverses the cosine pool, 4 kept",
+     "target": {
+      "model": "qa-embed-rr",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "index": "a56f664d5032c890",
+     "created": true,
+     "query_framed": "task: search result | query: echo echo echo",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      3,
+      0,
+      0,
+      0,
+      0.09372548758983612
+     ],
+     "versions": {},
+     "hits": [
+      {
+       "file": "qa-long-a.md",
+       "body": "bravo echo hotel charlie foxtrot alpha delta golf bravo. alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. golf bravo echo hotel charlie foxtrot alpha delta golf bravo. foxtrot alpha delta golf bravo echo hotel charlie. echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha.\n\ndelta golf bravo echo hotel charlie foxtrot alpha delta golf bravo. charlie foxtrot alpha delta golf bravo echo hotel charlie. bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. golf bravo echo hotel charlie foxtrot alpha delta.",
+       "score": 0.326
+      },
+      {
+       "file": "qa-long-a.md",
+       "body": "e foxtrot alpha delta golf bravo. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. golf bravo echo hotel charlie foxtrot alpha delta.\n\nfoxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo. echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. delta golf bravo echo hotel charlie foxtrot alpha delta. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo. bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. alpha delta golf bravo echo hotel charlie foxtrot alpha delta.\n\nhotel charlie foxtrot alpha delta golf bravo echo. golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta. echo hotel charlie foxtrot alpha delta golf bravo echo. delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta.",
+       "score": 0.337
+      },
+      {
+       "file": "qa-long-a.md",
+       "body": "vo echo hotel. delta golf bravo echo hotel charlie foxtrot alpha. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf.\n\nbravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. alpha delta golf bravo echo hotel charlie foxtrot alpha. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf. golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. echo hotel charlie foxtrot alpha delta golf bravo.\n\ndelta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. bravo echo hotel charlie foxtrot alpha delta golf bravo. alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. golf bravo echo hotel charlie foxtrot alpha delta golf bravo.",
+       "score": 0.344
+      },
+      {
+       "file": "qa-long-a.md",
+       "body": "lta golf bravo echo. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. golf bravo echo hotel charlie foxtrot alpha delta golf.\n\nfoxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo. echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. delta golf bravo echo hotel charlie foxtrot alpha delta golf. charlie foxtrot alpha delta golf bravo echo hotel. bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf.\n\nhotel charlie foxtrot alpha delta golf bravo echo hotel. golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf. echo hotel charlie foxtrot alpha delta golf bravo echo hotel. delta golf bravo echo hotel charlie foxtrot alpha. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf.",
+       "score": 0.359
+      }
+     ],
+     "rerank": {
+      "env": {
+       "NOEVIA_FEATURE_RAG_RERANK": "1",
+       "RERANK_BACKEND": "tei",
+       "RERANK_BASE_URL": "http://127.0.0.1:9",
+       "RERANK_API_KEY": ""
+      },
+      "knobs": {
+       "RAG_RERANK_KEEP": "4"
+      },
+      "answer": "reverse",
+      "pool": 11
+     }
+    },
+    {
+     "projectId": "qa-proj-8",
+     "query": "echo echo echo",
+     "note": "rerank: a failing reranker leaves the cosine top six",
+     "target": {
+      "model": "qa-embed-rr",
+      "profile": "embeddinggemma-2",
+      "baseUrl": "http://127.0.0.1:9"
+     },
+     "index": "a56f664d5032c890",
+     "created": true,
+     "query_framed": "task: search result | query: echo echo echo",
+     "query_vector": [
+      0,
+      0,
+      0,
+      0,
+      3,
+      0,
+      0,
+      0,
+      0.09372548758983612
+     ],
+     "versions": {},
+     "hits": [
+      {
+       "file": "qa-dup-1.md",
+       "body": "lta echo bravo echo hotel echo foxtrot echo. echo bravo echo hotel echo foxtrot echo delta echo bravo. foxtrot echo delta echo bravo echo hotel echo.\n\necho hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. delta echo bravo echo hotel echo foxtrot echo delta echo bravo. echo foxtrot echo delta echo bravo echo hotel echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo. hotel echo foxtrot echo delta echo bravo echo hotel echo.\n\necho bravo echo hotel echo foxtrot echo delta. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo. echo hotel echo foxtrot echo delta echo bravo echo hotel echo. delta echo bravo echo hotel echo foxtrot echo delta.",
+       "score": 0.896
+      },
+      {
+       "file": "qa-dup-2.md",
+       "body": "lta echo bravo echo hotel echo foxtrot echo. echo bravo echo hotel echo foxtrot echo delta echo bravo. foxtrot echo delta echo bravo echo hotel echo.\n\necho hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. delta echo bravo echo hotel echo foxtrot echo delta echo bravo. echo foxtrot echo delta echo bravo echo hotel echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo. hotel echo foxtrot echo delta echo bravo echo hotel echo.\n\necho bravo echo hotel echo foxtrot echo delta. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo. echo hotel echo foxtrot echo delta echo bravo echo hotel echo. delta echo bravo echo hotel echo foxtrot echo delta.",
+       "score": 0.896
+      },
+      {
+       "file": "qa-dup-1.md",
+       "body": "rot echo. echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho delta echo bravo echo hotel echo foxtrot echo. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel. foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo hotel echo foxtrot echo delta echo bravo. delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho foxtrot echo delta echo bravo echo hotel echo foxtrot echo. bravo echo hotel echo foxtrot echo delta echo bravo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo bravo echo hotel echo foxtrot echo delta echo bravo. foxtrot echo delta echo bravo echo hotel echo.",
+       "score": 0.896
+      },
+      {
+       "file": "qa-dup-2.md",
+       "body": "rot echo. echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho delta echo bravo echo hotel echo foxtrot echo. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel. foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo hotel echo foxtrot echo delta echo bravo. delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho foxtrot echo delta echo bravo echo hotel echo foxtrot echo. bravo echo hotel echo foxtrot echo delta echo bravo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo bravo echo hotel echo foxtrot echo delta echo bravo. foxtrot echo delta echo bravo echo hotel echo.",
+       "score": 0.896
+      },
+      {
+       "file": "qa-dup-1.md",
+       "body": "echo foxtrot echo delta echo bravo echo hotel echo foxtrot. bravo echo hotel echo foxtrot echo delta echo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. echo bravo echo hotel echo foxtrot echo delta echo. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo.\n\necho hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. delta echo bravo echo hotel echo foxtrot echo delta echo. echo foxtrot echo delta echo bravo echo hotel. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. echo delta echo bravo echo hotel echo foxtrot echo delta echo. hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. echo hotel echo foxtrot echo delta echo bravo echo hotel. delta echo bravo echo hotel echo foxtrot echo. echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.",
+       "score": 0.894
+      },
+      {
+       "file": "qa-dup-2.md",
+       "body": "echo foxtrot echo delta echo bravo echo hotel echo foxtrot. bravo echo hotel echo foxtrot echo delta echo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. echo bravo echo hotel echo foxtrot echo delta echo. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo.\n\necho hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. delta echo bravo echo hotel echo foxtrot echo delta echo. echo foxtrot echo delta echo bravo echo hotel. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. echo delta echo bravo echo hotel echo foxtrot echo delta echo. hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. echo hotel echo foxtrot echo delta echo bravo echo hotel. delta echo bravo echo hotel echo foxtrot echo. echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.",
+       "score": 0.894
+      }
+     ],
+     "rerank": {
+      "env": {
+       "NOEVIA_FEATURE_RAG_RERANK": "1",
+       "RERANK_BACKEND": "tei",
+       "RERANK_BASE_URL": "http://127.0.0.1:9",
+       "RERANK_API_KEY": ""
+      },
+      "knobs": {
+       "RAG_RERANK_KEEP": "4"
+      },
+      "answer": "fail",
+      "pool": 11
+     }
     }
    ]
   },
@@ -4388,6 +4594,640 @@
      {
       "chunk_id": 5,
       "content_hash": "d50a1f8bd67749fa56f0a31699b23af2e0e28660a43d0c22acb0fa8c61ffd4b4"
+     }
+    ]
+   }
+  },
+  "a56f664d5032c890": {
+   "schema": [
+    "CREATE TABLE chunks (\n        id INTEGER PRIMARY KEY,\n        file TEXT NOT NULL,\n        chunk_no INTEGER NOT NULL,\n        body TEXT NOT NULL,\n        content_hash TEXT NOT NULL,\n        updated_at TEXT NOT NULL DEFAULT (datetime('now'))\n      , version TEXT, direct INTEGER, kind TEXT, meta TEXT)",
+    "CREATE UNIQUE INDEX idx_chunks_file_hash ON chunks(file, content_hash)",
+    "CREATE TABLE vec_meta (key TEXT PRIMARY KEY, value TEXT)",
+    "CREATE VIRTUAL TABLE vec_ddeb4ff32ca51917 USING vec0(chunk_id INTEGER PRIMARY KEY, embedding float[9])",
+    "CREATE TABLE vecmap_ddeb4ff32ca51917 (chunk_id INTEGER PRIMARY KEY, content_hash TEXT NOT NULL)"
+   ],
+   "chunks": [
+    {
+     "id": 1,
+     "file": "qa-dup-1.md",
+     "chunk_no": 0,
+     "body": "echo foxtrot echo delta echo bravo echo hotel echo foxtrot. bravo echo hotel echo foxtrot echo delta echo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. echo bravo echo hotel echo foxtrot echo delta echo. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo.\n\necho hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. delta echo bravo echo hotel echo foxtrot echo delta echo. echo foxtrot echo delta echo bravo echo hotel. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. echo delta echo bravo echo hotel echo foxtrot echo delta echo. hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. echo hotel echo foxtrot echo delta echo bravo echo hotel. delta echo bravo echo hotel echo foxtrot echo. echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.",
+     "content_hash": "55ba84bf18a08a80e117721de8bc7990f068ada5d21d4b85aab4671521d5a2a1",
+     "version": "0528aec091002a8b7355925579af0e9b15c4695c1205d3dd7183bcb39b91cc4b",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 2,
+     "file": "qa-dup-1.md",
+     "chunk_no": 1,
+     "body": "rot echo. echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho delta echo bravo echo hotel echo foxtrot echo. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel. foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo hotel echo foxtrot echo delta echo bravo. delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho foxtrot echo delta echo bravo echo hotel echo foxtrot echo. bravo echo hotel echo foxtrot echo delta echo bravo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo bravo echo hotel echo foxtrot echo delta echo bravo. foxtrot echo delta echo bravo echo hotel echo.",
+     "content_hash": "019d1cd70b8c1c71322e864dd06fbc1fcea6694255c3976de2e47509588a3927",
+     "version": "0528aec091002a8b7355925579af0e9b15c4695c1205d3dd7183bcb39b91cc4b",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 3,
+     "file": "qa-dup-1.md",
+     "chunk_no": 2,
+     "body": "lta echo bravo echo hotel echo foxtrot echo. echo bravo echo hotel echo foxtrot echo delta echo bravo. foxtrot echo delta echo bravo echo hotel echo.\n\necho hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. delta echo bravo echo hotel echo foxtrot echo delta echo bravo. echo foxtrot echo delta echo bravo echo hotel echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo. hotel echo foxtrot echo delta echo bravo echo hotel echo.\n\necho bravo echo hotel echo foxtrot echo delta. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo. echo hotel echo foxtrot echo delta echo bravo echo hotel echo. delta echo bravo echo hotel echo foxtrot echo delta.",
+     "content_hash": "9e9b64114c69547cf3668eb0f5727c3c8ff9bb735d5d4f1594b5c2c4b74660be",
+     "version": "0528aec091002a8b7355925579af0e9b15c4695c1205d3dd7183bcb39b91cc4b",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 4,
+     "file": "qa-dup-2.md",
+     "chunk_no": 0,
+     "body": "echo foxtrot echo delta echo bravo echo hotel echo foxtrot. bravo echo hotel echo foxtrot echo delta echo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. echo bravo echo hotel echo foxtrot echo delta echo. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo.\n\necho hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. delta echo bravo echo hotel echo foxtrot echo delta echo. echo foxtrot echo delta echo bravo echo hotel. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. echo delta echo bravo echo hotel echo foxtrot echo delta echo. hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. echo hotel echo foxtrot echo delta echo bravo echo hotel. delta echo bravo echo hotel echo foxtrot echo. echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.",
+     "content_hash": "55ba84bf18a08a80e117721de8bc7990f068ada5d21d4b85aab4671521d5a2a1",
+     "version": "0528aec091002a8b7355925579af0e9b15c4695c1205d3dd7183bcb39b91cc4b",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 5,
+     "file": "qa-dup-2.md",
+     "chunk_no": 1,
+     "body": "rot echo. echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho delta echo bravo echo hotel echo foxtrot echo. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo. echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel. foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo hotel echo foxtrot echo delta echo bravo. delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel.\n\necho foxtrot echo delta echo bravo echo hotel echo foxtrot echo. bravo echo hotel echo foxtrot echo delta echo bravo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo echo hotel. hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo bravo echo hotel echo foxtrot echo delta echo bravo. foxtrot echo delta echo bravo echo hotel echo.",
+     "content_hash": "019d1cd70b8c1c71322e864dd06fbc1fcea6694255c3976de2e47509588a3927",
+     "version": "0528aec091002a8b7355925579af0e9b15c4695c1205d3dd7183bcb39b91cc4b",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 6,
+     "file": "qa-dup-2.md",
+     "chunk_no": 2,
+     "body": "lta echo bravo echo hotel echo foxtrot echo. echo bravo echo hotel echo foxtrot echo delta echo bravo. foxtrot echo delta echo bravo echo hotel echo.\n\necho hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. delta echo bravo echo hotel echo foxtrot echo delta echo bravo. echo foxtrot echo delta echo bravo echo hotel echo. bravo echo hotel echo foxtrot echo delta echo bravo echo hotel echo foxtrot echo. echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo. hotel echo foxtrot echo delta echo bravo echo hotel echo.\n\necho bravo echo hotel echo foxtrot echo delta. foxtrot echo delta echo bravo echo hotel echo foxtrot echo delta echo bravo. echo hotel echo foxtrot echo delta echo bravo echo hotel echo. delta echo bravo echo hotel echo foxtrot echo delta.",
+     "content_hash": "9e9b64114c69547cf3668eb0f5727c3c8ff9bb735d5d4f1594b5c2c4b74660be",
+     "version": "0528aec091002a8b7355925579af0e9b15c4695c1205d3dd7183bcb39b91cc4b",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 7,
+     "file": "qa-long-a.md",
+     "chunk_no": 0,
+     "body": "bravo echo hotel charlie foxtrot alpha delta golf bravo. alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. golf bravo echo hotel charlie foxtrot alpha delta golf bravo. foxtrot alpha delta golf bravo echo hotel charlie. echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha.\n\ndelta golf bravo echo hotel charlie foxtrot alpha delta golf bravo. charlie foxtrot alpha delta golf bravo echo hotel charlie. bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. golf bravo echo hotel charlie foxtrot alpha delta.",
+     "content_hash": "6581cd1f50c1d050ebdecda474eab4b3c25c32fcc0df4f2cbafbbd5b7438069e",
+     "version": "e54bdec0c463e0379bf322dfb9f4348f1114472cf766da439024fd6eadc73508",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 8,
+     "file": "qa-long-a.md",
+     "chunk_no": 1,
+     "body": "e foxtrot alpha delta golf bravo. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. golf bravo echo hotel charlie foxtrot alpha delta.\n\nfoxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo. echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. delta golf bravo echo hotel charlie foxtrot alpha delta. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo. bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. alpha delta golf bravo echo hotel charlie foxtrot alpha delta.\n\nhotel charlie foxtrot alpha delta golf bravo echo. golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta. echo hotel charlie foxtrot alpha delta golf bravo echo. delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta.",
+     "content_hash": "bec4e6994a545a9c3a4874380a604a8194c9c18c4d3265c6cc4888115889c6c8",
+     "version": "e54bdec0c463e0379bf322dfb9f4348f1114472cf766da439024fd6eadc73508",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 9,
+     "file": "qa-long-a.md",
+     "chunk_no": 2,
+     "body": "echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta.\n\nbravo echo hotel charlie foxtrot alpha delta golf bravo echo. alpha delta golf bravo echo hotel charlie foxtrot. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta. golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo. foxtrot alpha delta golf bravo echo hotel charlie foxtrot. echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta.\n\ndelta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. bravo echo hotel charlie foxtrot alpha delta golf. alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. golf bravo echo hotel charlie foxtrot alpha delta golf.",
+     "content_hash": "ef4384afee6e551af9851792249715a3553bab5f3d1ce3c257ccaaeacd043040",
+     "version": "e54bdec0c463e0379bf322dfb9f4348f1114472cf766da439024fd6eadc73508",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 10,
+     "file": "qa-long-a.md",
+     "chunk_no": 3,
+     "body": "lta golf bravo echo. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. golf bravo echo hotel charlie foxtrot alpha delta golf.\n\nfoxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo. echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. delta golf bravo echo hotel charlie foxtrot alpha delta golf. charlie foxtrot alpha delta golf bravo echo hotel. bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf.\n\nhotel charlie foxtrot alpha delta golf bravo echo hotel. golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot. foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf. echo hotel charlie foxtrot alpha delta golf bravo echo hotel. delta golf bravo echo hotel charlie foxtrot alpha. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf.",
+     "content_hash": "a661adbf6d62838eee0d01bea843dff07e442fc66c365181b44b196072f7c552",
+     "version": "e54bdec0c463e0379bf322dfb9f4348f1114472cf766da439024fd6eadc73508",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 11,
+     "file": "qa-long-a.md",
+     "chunk_no": 4,
+     "body": "vo echo hotel. delta golf bravo echo hotel charlie foxtrot alpha. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf.\n\nbravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. alpha delta golf bravo echo hotel charlie foxtrot alpha. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf. golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. echo hotel charlie foxtrot alpha delta golf bravo.\n\ndelta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. bravo echo hotel charlie foxtrot alpha delta golf bravo. alpha delta golf bravo echo hotel charlie foxtrot alpha delta golf bravo echo hotel. hotel charlie foxtrot alpha delta golf bravo echo hotel charlie foxtrot alpha. golf bravo echo hotel charlie foxtrot alpha delta golf bravo.",
+     "content_hash": "d50a1f8bd67749fa56f0a31699b23af2e0e28660a43d0c22acb0fa8c61ffd4b4",
+     "version": "e54bdec0c463e0379bf322dfb9f4348f1114472cf766da439024fd6eadc73508",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 12,
+     "file": "qa-long-b.md",
+     "chunk_no": 0,
+     "body": "hotel hotel charlie hotel alpha delta hotel bravo echo hotel charlie foxtrot. delta golf hotel echo hotel hotel foxtrot alpha hotel golf. charlie hotel alpha delta hotel bravo echo hotel. hotel echo hotel hotel foxtrot alpha hotel golf bravo hotel hotel charlie hotel. alpha delta hotel bravo echo hotel charlie foxtrot hotel delta golf. hotel hotel foxtrot alpha hotel golf bravo hotel hotel.\n\nhotel bravo echo hotel charlie foxtrot hotel delta golf hotel echo hotel hotel foxtrot. foxtrot alpha hotel golf bravo hotel hotel charlie hotel alpha delta hotel. echo hotel charlie foxtrot hotel delta golf hotel echo hotel. hotel golf bravo hotel hotel charlie hotel alpha. charlie foxtrot hotel delta golf hotel echo hotel hotel foxtrot alpha hotel golf. bravo hotel hotel charlie hotel alpha delta hotel bravo echo hotel.",
+     "content_hash": "6596dc827c85abfe32f714cb7095309b573d8cc7dd94db0f32dc97094ff767fc",
+     "version": "a2799866ea0a886c7b736d1d139950920d8317dc2b4150492904195e6c47759f",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 13,
+     "file": "qa-long-b.md",
+     "chunk_no": 1,
+     "body": "charlie foxtrot hotel delta golf hotel echo hotel hotel foxtrot alpha hotel golf. bravo hotel hotel charlie hotel alpha delta hotel bravo echo hotel.\n\nhotel delta golf hotel echo hotel hotel foxtrot alpha. hotel charlie hotel alpha delta hotel bravo echo hotel charlie foxtrot hotel delta golf. golf hotel echo hotel hotel foxtrot alpha hotel golf bravo hotel hotel. hotel alpha delta hotel bravo echo hotel charlie foxtrot hotel. echo hotel hotel foxtrot alpha hotel golf bravo. delta hotel bravo echo hotel charlie foxtrot hotel delta golf hotel echo hotel.\n\nhotel foxtrot alpha hotel golf bravo hotel hotel charlie hotel alpha. bravo echo hotel charlie foxtrot hotel delta golf hotel. alpha hotel golf bravo hotel hotel charlie hotel alpha delta hotel bravo echo hotel. hotel charlie foxtrot hotel delta golf hotel echo hotel hotel foxtrot alpha. golf bravo hotel hotel charlie hotel alpha delta hotel bravo. foxtrot hotel delta golf hotel echo hotel hotel.",
+     "content_hash": "4ee76386dae41557006b60a65e072da12164d3e58a26cf5cf810423c7110e461",
+     "version": "a2799866ea0a886c7b736d1d139950920d8317dc2b4150492904195e6c47759f",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 14,
+     "file": "qa-long-b.md",
+     "chunk_no": 2,
+     "body": "hotel echo hotel hotel foxtrot alpha. golf bravo hotel hotel charlie hotel alpha delta hotel bravo. foxtrot hotel delta golf hotel echo hotel hotel.\n\nhotel hotel charlie hotel alpha delta hotel bravo echo hotel charlie foxtrot hotel. delta golf hotel echo hotel hotel foxtrot alpha hotel golf bravo. charlie hotel alpha delta hotel bravo echo hotel charlie. hotel echo hotel hotel foxtrot alpha hotel golf bravo hotel hotel charlie hotel alpha. alpha delta hotel bravo echo hotel charlie foxtrot hotel delta golf hotel. hotel hotel foxtrot alpha hotel golf bravo hotel hotel charlie.\n\nhotel bravo echo hotel charlie foxtrot hotel delta. foxtrot alpha hotel golf bravo hotel hotel charlie hotel alpha delta hotel bravo. echo hotel charlie foxtrot hotel delta golf hotel echo hotel hotel. hotel golf bravo hotel hotel charlie hotel alpha delta. charlie foxtrot hotel delta golf hotel echo hotel hotel foxtrot alpha hotel golf bravo. bravo hotel hotel charlie hotel alpha delta hotel bravo echo hotel charlie.",
+     "content_hash": "2d6f78d01a29e543c70256665d9c8428a9a3c37461d023139cdb37eab83cb33d",
+     "version": "a2799866ea0a886c7b736d1d139950920d8317dc2b4150492904195e6c47759f",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 15,
+     "file": "qa-long-b.md",
+     "chunk_no": 3,
+     "body": "t hotel delta golf hotel echo hotel hotel foxtrot alpha hotel golf bravo. bravo hotel hotel charlie hotel alpha delta hotel bravo echo hotel charlie.\n\nhotel delta golf hotel echo hotel hotel foxtrot alpha hotel. hotel charlie hotel alpha delta hotel bravo echo. golf hotel echo hotel hotel foxtrot alpha hotel golf bravo hotel hotel charlie. hotel alpha delta hotel bravo echo hotel charlie foxtrot hotel delta. echo hotel hotel foxtrot alpha hotel golf bravo hotel. delta hotel bravo echo hotel charlie foxtrot hotel delta golf hotel echo hotel hotel.\n\nhotel foxtrot alpha hotel golf bravo hotel hotel charlie hotel alpha delta. bravo echo hotel charlie foxtrot hotel delta golf hotel echo. alpha hotel golf bravo hotel hotel charlie hotel. hotel charlie foxtrot hotel delta golf hotel echo hotel hotel foxtrot alpha hotel. golf bravo hotel hotel charlie hotel alpha delta hotel bravo echo. foxtrot hotel delta golf hotel echo hotel hotel foxtrot.",
+     "content_hash": "1d8aad02f8e50b8fb77e99a2c35b05c080a6dd8ef11c2004dfde4dbc5ca940e4",
+     "version": "a2799866ea0a886c7b736d1d139950920d8317dc2b4150492904195e6c47759f",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 16,
+     "file": "qa-long-b.md",
+     "chunk_no": 4,
+     "body": "otel foxtrot alpha hotel. golf bravo hotel hotel charlie hotel alpha delta hotel bravo echo. foxtrot hotel delta golf hotel echo hotel hotel foxtrot.\n\nhotel hotel charlie hotel alpha delta hotel bravo echo hotel charlie foxtrot hotel delta. delta golf hotel echo hotel hotel foxtrot alpha hotel golf bravo hotel. charlie hotel alpha delta hotel bravo echo hotel charlie foxtrot. hotel echo hotel hotel foxtrot alpha hotel golf. alpha delta hotel bravo echo hotel charlie foxtrot hotel delta golf hotel echo. hotel hotel foxtrot alpha hotel golf bravo hotel hotel charlie hotel.\n\nhotel bravo echo hotel charlie foxtrot hotel delta golf. foxtrot alpha hotel golf bravo hotel hotel charlie hotel alpha delta hotel bravo echo. echo hotel charlie foxtrot hotel delta golf hotel echo hotel hotel foxtrot. hotel golf bravo hotel hotel charlie hotel alpha delta hotel. charlie foxtrot hotel delta golf hotel echo hotel. bravo hotel hotel charlie hotel alpha delta hotel bravo echo hotel charlie foxtrot.",
+     "content_hash": "87e91fa62681454e85e415c6132a4a0abced27e17774dcdf33cc916ec881f588",
+     "version": "a2799866ea0a886c7b736d1d139950920d8317dc2b4150492904195e6c47759f",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 17,
+     "file": "qa-long-b.md",
+     "chunk_no": 5,
+     "body": "a delta hotel. charlie foxtrot hotel delta golf hotel echo hotel. bravo hotel hotel charlie hotel alpha delta hotel bravo echo hotel charlie foxtrot.\n\nhotel delta golf hotel echo hotel hotel foxtrot alpha hotel golf. hotel charlie hotel alpha delta hotel bravo echo hotel. golf hotel echo hotel hotel foxtrot alpha hotel golf bravo hotel hotel charlie hotel. hotel alpha delta hotel bravo echo hotel charlie foxtrot hotel delta golf. echo hotel hotel foxtrot alpha hotel golf bravo hotel hotel. delta hotel bravo echo hotel charlie foxtrot hotel.\n\nhotel foxtrot alpha hotel golf bravo hotel hotel charlie hotel alpha delta hotel. bravo echo hotel charlie foxtrot hotel delta golf hotel echo hotel. alpha hotel golf bravo hotel hotel charlie hotel alpha. hotel charlie foxtrot hotel delta golf hotel echo hotel hotel foxtrot alpha hotel golf.",
+     "content_hash": "57ebbe82ef2c1627ad4b9f89bf818e2b1db0dda0118f9635dbd81c434b47f215",
+     "version": "a2799866ea0a886c7b736d1d139950920d8317dc2b4150492904195e6c47759f",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 18,
+     "file": "qa-fresh.md",
+     "chunk_no": 0,
+     "body": "hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot. foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel. echo hotel hotel foxtrot alpha delta hotel bravo echo hotel. delta hotel bravo echo hotel hotel foxtrot alpha. hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel. bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel.\n\nalpha delta hotel bravo echo hotel hotel foxtrot alpha. hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel. hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel. foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha. echo hotel hotel foxtrot alpha delta hotel bravo. delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel.",
+     "content_hash": "5e6ced88587fc171afe23fccfbfbccf7777d007d2f484f25b66be287c7296a22",
+     "version": "04abe791839cc609f4bb91a6248774c927915d1fa862e68bad35fd23f5738964",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 19,
+     "file": "qa-fresh.md",
+     "chunk_no": 1,
+     "body": "hotel foxtrot alpha. echo hotel hotel foxtrot alpha delta hotel bravo. delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel.\n\nhotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha. bravo echo hotel hotel foxtrot alpha delta hotel bravo. alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel. hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha. hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo. foxtrot alpha delta hotel bravo echo hotel hotel.\n\necho hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha. delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo. hotel foxtrot alpha delta hotel bravo echo hotel hotel. bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha. alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo. hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel.",
+     "content_hash": "cf9325552c3cab9b9405b0fca9200e1a0f959c8c67ec77e72f8cf154b6ecda77",
+     "version": "04abe791839cc609f4bb91a6248774c927915d1fa862e68bad35fd23f5738964",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 20,
+     "file": "qa-fresh.md",
+     "chunk_no": 2,
+     "body": "oxtrot alpha. alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo. hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel.\n\nhotel bravo echo hotel hotel foxtrot alpha delta. foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo. echo hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel. delta hotel bravo echo hotel hotel foxtrot alpha delta. hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo. bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel.\n\nalpha delta hotel bravo echo hotel hotel foxtrot alpha delta. hotel hotel foxtrot alpha delta hotel bravo echo. hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel. foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta. echo hotel hotel foxtrot alpha delta hotel bravo echo. delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel.",
+     "content_hash": "067010905c1595d8364ee1476d099ade72e66e6115da6b1a6fcde4d7de56edd3",
+     "version": "04abe791839cc609f4bb91a6248774c927915d1fa862e68bad35fd23f5738964",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    },
+    {
+     "id": 21,
+     "file": "qa-fresh.md",
+     "chunk_no": 3,
+     "body": "ha delta. echo hotel hotel foxtrot alpha delta hotel bravo echo. delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel.\n\nhotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta. bravo echo hotel hotel foxtrot alpha delta hotel bravo echo. alpha delta hotel bravo echo hotel hotel foxtrot. hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta. hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo. foxtrot alpha delta hotel bravo echo hotel hotel foxtrot.\n\necho hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta. delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo. hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot. bravo echo hotel hotel foxtrot alpha delta hotel. alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo. hotel hotel foxtrot alpha delta hotel bravo echo hotel hotel foxtrot.\n\nhotel bravo echo hotel hotel foxtrot alpha delta hotel. foxtrot alpha delta hotel bravo echo hotel hotel foxtrot alpha delta hotel bravo echo.",
+     "content_hash": "71a14bf92cf5d1bbd05f48e2fc413bb76ff05c16ccffa471e4ccd3aebf0a6e61",
+     "version": "04abe791839cc609f4bb91a6248774c927915d1fa862e68bad35fd23f5738964",
+     "direct": 0,
+     "kind": null,
+     "meta": null
+    }
+   ],
+   "vec_meta": [
+    {
+     "key": "slot:ddeb4ff32ca51917",
+     "value": "{\"model\":\"qa-embed-rr\",\"profile\":\"embeddinggemma-2\",\"dim\":9,\"table\":\"vec_ddeb4ff32ca51917\",\"map\":\"vecmap_ddeb4ff32ca51917\"}"
+    }
+   ],
+   "vectors": {
+    "vec_ddeb4ff32ca51917": [
+     {
+      "chunk_id": 1,
+      "embedding": [
+       0,
+       23,
+       0,
+       24,
+       98,
+       26,
+       0,
+       25,
+       0.07058823853731155
+      ]
+     },
+     {
+      "chunk_id": 2,
+      "embedding": [
+       0,
+       20,
+       0,
+       18,
+       78,
+       19,
+       0,
+       20,
+       0.085098035633564
+      ]
+     },
+     {
+      "chunk_id": 3,
+      "embedding": [
+       0,
+       18,
+       0,
+       16,
+       68,
+       16,
+       0,
+       17,
+       0.003921568859368563
+      ]
+     },
+     {
+      "chunk_id": 4,
+      "embedding": [
+       0,
+       23,
+       0,
+       24,
+       98,
+       26,
+       0,
+       25,
+       0.07058823853731155
+      ]
+     },
+     {
+      "chunk_id": 5,
+      "embedding": [
+       0,
+       20,
+       0,
+       18,
+       78,
+       19,
+       0,
+       20,
+       0.085098035633564
+      ]
+     },
+     {
+      "chunk_id": 6,
+      "embedding": [
+       0,
+       18,
+       0,
+       16,
+       68,
+       16,
+       0,
+       17,
+       0.003921568859368563
+      ]
+     },
+     {
+      "chunk_id": 7,
+      "embedding": [
+       17,
+       18,
+       17,
+       15,
+       15,
+       15,
+       16,
+       17,
+       0.08745098114013672
+      ]
+     },
+     {
+      "chunk_id": 8,
+      "embedding": [
+       20,
+       20,
+       21,
+       22,
+       19,
+       19,
+       19,
+       19,
+       0.0019607844296842813
+      ]
+     },
+     {
+      "chunk_id": 9,
+      "embedding": [
+       18,
+       18,
+       20,
+       19,
+       20,
+       20,
+       18,
+       18,
+       0.08666666597127914
+      ]
+     },
+     {
+      "chunk_id": 10,
+      "embedding": [
+       18,
+       18,
+       19,
+       19,
+       20,
+       21,
+       22,
+       20,
+       0.03607843071222305
+      ]
+     },
+     {
+      "chunk_id": 11,
+      "embedding": [
+       21,
+       20,
+       18,
+       18,
+       19,
+       19,
+       20,
+       21,
+       0.05999999865889549
+      ]
+     },
+     {
+      "chunk_id": 12,
+      "embedding": [
+       11,
+       10,
+       11,
+       10,
+       11,
+       11,
+       11,
+       56,
+       0.08862745016813278
+      ]
+     },
+     {
+      "chunk_id": 13,
+      "embedding": [
+       13,
+       13,
+       11,
+       13,
+       13,
+       13,
+       14,
+       64,
+       0.04549019783735275
+      ]
+     },
+     {
+      "chunk_id": 14,
+      "embedding": [
+       14,
+       15,
+       15,
+       13,
+       12,
+       12,
+       12,
+       67,
+       0.08117646723985672
+      ]
+     },
+     {
+      "chunk_id": 15,
+      "embedding": [
+       12,
+       13,
+       11,
+       13,
+       14,
+       12,
+       13,
+       64,
+       0.027450980618596077
+      ]
+     },
+     {
+      "chunk_id": 16,
+      "embedding": [
+       12,
+       13,
+       14,
+       14,
+       14,
+       15,
+       12,
+       63,
+       0.08431372791528702
+      ]
+     },
+     {
+      "chunk_id": 17,
+      "embedding": [
+       11,
+       10,
+       11,
+       11,
+       11,
+       11,
+       12,
+       57,
+       0.014509803615510464
+      ]
+     },
+     {
+      "chunk_id": 18,
+      "embedding": [
+       17,
+       16,
+       0,
+       16,
+       17,
+       17,
+       0,
+       51,
+       0.03176470473408699
+      ]
+     },
+     {
+      "chunk_id": 19,
+      "embedding": [
+       21,
+       21,
+       0,
+       18,
+       18,
+       19,
+       0,
+       60,
+       0.07176470756530762
+      ]
+     },
+     {
+      "chunk_id": 20,
+      "embedding": [
+       20,
+       20,
+       0,
+       21,
+       19,
+       17,
+       0,
+       58,
+       0.07098039239645004
+      ]
+     },
+     {
+      "chunk_id": 21,
+      "embedding": [
+       21,
+       22,
+       0,
+       24,
+       24,
+       23,
+       0,
+       64,
+       0.05098039284348488
+      ]
+     }
+    ]
+   },
+   "maps": {
+    "vecmap_ddeb4ff32ca51917": [
+     {
+      "chunk_id": 1,
+      "content_hash": "55ba84bf18a08a80e117721de8bc7990f068ada5d21d4b85aab4671521d5a2a1"
+     },
+     {
+      "chunk_id": 2,
+      "content_hash": "019d1cd70b8c1c71322e864dd06fbc1fcea6694255c3976de2e47509588a3927"
+     },
+     {
+      "chunk_id": 3,
+      "content_hash": "9e9b64114c69547cf3668eb0f5727c3c8ff9bb735d5d4f1594b5c2c4b74660be"
+     },
+     {
+      "chunk_id": 4,
+      "content_hash": "55ba84bf18a08a80e117721de8bc7990f068ada5d21d4b85aab4671521d5a2a1"
+     },
+     {
+      "chunk_id": 5,
+      "content_hash": "019d1cd70b8c1c71322e864dd06fbc1fcea6694255c3976de2e47509588a3927"
+     },
+     {
+      "chunk_id": 6,
+      "content_hash": "9e9b64114c69547cf3668eb0f5727c3c8ff9bb735d5d4f1594b5c2c4b74660be"
+     },
+     {
+      "chunk_id": 7,
+      "content_hash": "6581cd1f50c1d050ebdecda474eab4b3c25c32fcc0df4f2cbafbbd5b7438069e"
+     },
+     {
+      "chunk_id": 8,
+      "content_hash": "bec4e6994a545a9c3a4874380a604a8194c9c18c4d3265c6cc4888115889c6c8"
+     },
+     {
+      "chunk_id": 9,
+      "content_hash": "ef4384afee6e551af9851792249715a3553bab5f3d1ce3c257ccaaeacd043040"
+     },
+     {
+      "chunk_id": 10,
+      "content_hash": "a661adbf6d62838eee0d01bea843dff07e442fc66c365181b44b196072f7c552"
+     },
+     {
+      "chunk_id": 11,
+      "content_hash": "d50a1f8bd67749fa56f0a31699b23af2e0e28660a43d0c22acb0fa8c61ffd4b4"
+     },
+     {
+      "chunk_id": 12,
+      "content_hash": "6596dc827c85abfe32f714cb7095309b573d8cc7dd94db0f32dc97094ff767fc"
+     },
+     {
+      "chunk_id": 13,
+      "content_hash": "4ee76386dae41557006b60a65e072da12164d3e58a26cf5cf810423c7110e461"
+     },
+     {
+      "chunk_id": 14,
+      "content_hash": "2d6f78d01a29e543c70256665d9c8428a9a3c37461d023139cdb37eab83cb33d"
+     },
+     {
+      "chunk_id": 15,
+      "content_hash": "1d8aad02f8e50b8fb77e99a2c35b05c080a6dd8ef11c2004dfde4dbc5ca940e4"
+     },
+     {
+      "chunk_id": 16,
+      "content_hash": "87e91fa62681454e85e415c6132a4a0abced27e17774dcdf33cc916ec881f588"
+     },
+     {
+      "chunk_id": 17,
+      "content_hash": "57ebbe82ef2c1627ad4b9f89bf818e2b1db0dda0118f9635dbd81c434b47f215"
+     },
+     {
+      "chunk_id": 18,
+      "content_hash": "5e6ced88587fc171afe23fccfbfbccf7777d007d2f484f25b66be287c7296a22"
+     },
+     {
+      "chunk_id": 19,
+      "content_hash": "cf9325552c3cab9b9405b0fca9200e1a0f959c8c67ec77e72f8cf154b6ecda77"
+     },
+     {
+      "chunk_id": 20,
+      "content_hash": "067010905c1595d8364ee1476d099ade72e66e6115da6b1a6fcde4d7de56edd3"
+     },
+     {
+      "chunk_id": 21,
+      "content_hash": "71a14bf92cf5d1bbd05f48e2fc413bb76ff05c16ccffa471e4ccd3aebf0a6e61"
      }
     ]
    }

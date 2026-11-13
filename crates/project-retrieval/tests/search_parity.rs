@@ -56,6 +56,10 @@ fn every_recorded_search_matches_node() {
         let name = s["name"].as_str().unwrap();
         for q in s["searches"].as_array().unwrap() {
             let note = q["note"].as_str().unwrap();
+            // With the reranker on (S8) the answer is the reranker's: checked by the front's tests.
+            if q.get("rerank").is_some() {
+                continue;
+            }
             let want: Vec<(String, String, f64)> = q["hits"]
                 .as_array()
                 .unwrap()
