@@ -254,6 +254,7 @@ fn every_node_service_answer_replays() {
                 format!("00000000-0000-4000-8000-{n:012}")
             }),
             epoch: "qa-epoch".into(),
+            pipeline: None,
         });
         let record = sc.get("project").clone();
         let project_id = record.get("id").as_str().unwrap().to_string();
@@ -538,6 +539,7 @@ fn quiet_service(base: &Path, port: u16) -> (Arc<Service>, String, Arc<Mutex<Vec
         base_lang: None,
         new_id: Arc::new(server_projects::source_jobs::new_id),
         epoch: "qa-epoch".into(),
+        pipeline: None,
     });
     (service, tenant.to_str().unwrap().to_string(), logs)
 }
@@ -680,6 +682,7 @@ fn a_start_runs_on_what_was_resolved_for_it_and_a_lost_lease_stops_it() {
             }),
             inference: Some(g.clone() as Arc<dyn Inference>),
             context: String::new(),
+            facts: None,
         })
     };
     let body = wtf16::parse(r#"{"repository":"qa-repo","prompt":"QA: resolved."}"#).unwrap();

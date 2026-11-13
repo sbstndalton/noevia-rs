@@ -449,9 +449,14 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "icu_properties",
  "js-json",
  "prompt-framing",
  "regex",
+ "sha2",
+ "tool-gate",
+ "toolboxes-permitted",
+ "url",
 ]
 
 [[package]]
@@ -536,8 +541,11 @@ dependencies = [
  "code-acp",
  "code-actions",
  "code-harness-config",
+ "code-pipeline",
+ "code-verify",
  "code-workspace",
  "js-json",
+ "role-engine",
  "rustix",
  "server-projects",
  "sha2",
@@ -2278,6 +2286,8 @@ dependencies = [
  "code-acp",
  "code-harness",
  "code-net-guard",
+ "code-pipeline",
+ "code-verify",
  "context-fit",
  "dav-parse",
  "drive-tools",
@@ -2310,6 +2320,7 @@ dependencies = [
  "regex",
  "reqwest",
  "research-core",
+ "role-engine",
  "rustix",
  "rustls",
  "s3-sign",

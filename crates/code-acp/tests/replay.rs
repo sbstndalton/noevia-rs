@@ -739,6 +739,14 @@ fn an_agent_cannot_make_noevia_start_threads_without_limit() {
         seen_tx.send(refused).unwrap();
         go.store(true, Ordering::SeqCst);
         writeln!(w, r#"{{"jsonrpc":"2.0","id":3,"result":{{}}}}"#).unwrap();
+        // Keep the socket open until noevia hangs up: it may still be answering the held
+        // permissions, and closing first would turn those writes into a broken pipe.
+        loop {
+            l.clear();
+            if r.read_line(&mut l).unwrap_or(0) == 0 {
+                break;
+            }
+        }
     });
     let conn = connect(
         Options::new(Transport::Socket(format!("127.0.0.1:{port}")), "/qa"),

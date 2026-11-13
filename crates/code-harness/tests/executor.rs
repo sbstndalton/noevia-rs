@@ -89,6 +89,10 @@ impl Jobs for StoreJobs {
             .flatten()
             .and_then(|j| j.status.as_str().map(str::to_string))
     }
+    fn get(&self, id: &str) -> Option<JValue> {
+        let job = self.0.get(id).ok().flatten()?;
+        Some(code_harness::pipeline_host::job_value(&job))
+    }
 }
 
 struct StubEgress {
@@ -357,6 +361,7 @@ fn every_node_task_run_replays() {
             tenant_id: Some("qa-tenant".into()),
             engine: None,
             inference: None,
+            review: None,
         });
         let started = match started {
             Ok(v) => v,

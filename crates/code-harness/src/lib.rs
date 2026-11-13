@@ -51,6 +51,8 @@ pub mod executor;
 pub mod files;
 mod js;
 pub mod meta;
+pub mod pipeline_host;
+pub mod review_gate;
 pub mod service;
 pub mod session;
 pub mod tool_schemas;
