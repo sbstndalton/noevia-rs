@@ -25,6 +25,17 @@
   },
   "durableAll": {
    "durable": true
+  },
+  "few": {
+   "kinds": [
+    "code"
+   ],
+   "maxJobs": 3,
+   "retainMs": 604800000
+  },
+  "anyFew": {
+   "maxJobs": 3,
+   "retainMs": 1000
   }
  },
  "scenarios": {
@@ -2896,12 +2907,43 @@
     "op": "append",
     "store": "any",
     "id": "00000000-0000-4000-8000-000000000001",
+    "type": "plan.edited",
+    "data": "{\"subQuestions\":[\"a\\ud800b\",\"fine\"]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "plan.edited",
+      "at": 5000,
+      "data": {
+       "question": null,
+       "subQuestions": [
+        "a�b",
+        "fine"
+       ],
+       "truncated": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":5,\"type\":\"plan.edited\",\"at\":5000,\"data\":{\"question\":null,\"subQuestions\":[\"a�b\",\"fine\"],\"truncated\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
     "type": "plan.skipped",
     "data": "{\"question\":\"q\",\"subQuestions\":[\"x\"],\"truncated\":true}",
     "result": {
      "ok": {
       "job": "00000000-0000-4000-8000-000000000001",
-      "seq": 5,
+      "seq": 6,
       "type": "plan.skipped",
       "at": 5000,
       "data": {
@@ -2914,7 +2956,7 @@
     "files": {
      "written": {
       "00000000-0000-4000-8000-000000000001.jsonl": {
-       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":5,\"type\":\"plan.skipped\",\"at\":5000,\"data\":{\"question\":null,\"subQuestions\":[],\"truncated\":false}}\n"
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":6,\"type\":\"plan.skipped\",\"at\":5000,\"data\":{\"question\":null,\"subQuestions\":[],\"truncated\":false}}\n"
       }
      },
      "removed": []
@@ -2929,7 +2971,7 @@
     "result": {
      "ok": {
       "job": "00000000-0000-4000-8000-000000000001",
-      "seq": 6,
+      "seq": 7,
       "type": "review.requested",
       "at": 5000,
       "data": {
@@ -2944,7 +2986,7 @@
     "files": {
      "written": {
       "00000000-0000-4000-8000-000000000001.jsonl": {
-       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":6,\"type\":\"review.requested\",\"at\":5000,\"data\":{\"status\":\"pending\",\"reviewer\":\"planner\",\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"files\":3}}\n"
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":7,\"type\":\"review.requested\",\"at\":5000,\"data\":{\"status\":\"pending\",\"reviewer\":\"planner\",\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"files\":3}}\n"
       }
      },
      "removed": []
@@ -2959,7 +3001,7 @@
     "result": {
      "ok": {
       "job": "00000000-0000-4000-8000-000000000001",
-      "seq": 7,
+      "seq": 8,
       "type": "review.completed",
       "at": 5000,
       "data": {
@@ -2983,7 +3025,7 @@
     "files": {
      "written": {
       "00000000-0000-4000-8000-000000000001.jsonl": {
-       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":7,\"type\":\"review.completed\",\"at\":5000,\"data\":{\"status\":\"completed\",\"reviewer\":\"planner\",\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"verdict\":\"request_changes\",\"summary\":\"Fix the QA test.\",\"findings\":[{\"severity\":\"major\",\"file\":\"src/qa.rs\",\"message\":\"QA finding\"}],\"corrected\":false}}\n"
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":8,\"type\":\"review.completed\",\"at\":5000,\"data\":{\"status\":\"completed\",\"reviewer\":\"planner\",\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"verdict\":\"request_changes\",\"summary\":\"Fix the QA test.\",\"findings\":[{\"severity\":\"major\",\"file\":\"src/qa.rs\",\"message\":\"QA finding\"}],\"corrected\":false}}\n"
       }
      },
      "removed": []
@@ -2998,7 +3040,7 @@
     "result": {
      "ok": {
       "job": "00000000-0000-4000-8000-000000000001",
-      "seq": 8,
+      "seq": 9,
       "type": "review.completed",
       "at": 5000,
       "data": {
@@ -3014,7 +3056,7 @@
     "files": {
      "written": {
       "00000000-0000-4000-8000-000000000001.jsonl": {
-       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":8,\"type\":\"review.completed\",\"at\":5000,\"data\":{\"status\":\"failed\",\"reviewer\":\"planner\",\"baseSha\":null,\"headSha\":null,\"code\":\"invalid\",\"reason\":\"The recorded verdict could not be read.\"}}\n"
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":9,\"type\":\"review.completed\",\"at\":5000,\"data\":{\"status\":\"failed\",\"reviewer\":\"planner\",\"baseSha\":null,\"headSha\":null,\"code\":\"invalid\",\"reason\":\"The recorded verdict could not be read.\"}}\n"
       }
      },
      "removed": []
@@ -3029,7 +3071,7 @@
     "result": {
      "ok": {
       "job": "00000000-0000-4000-8000-000000000001",
-      "seq": 9,
+      "seq": 10,
       "type": "review.failed",
       "at": 5000,
       "data": {
@@ -3045,7 +3087,7 @@
     "files": {
      "written": {
       "00000000-0000-4000-8000-000000000001.jsonl": {
-       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":9,\"type\":\"review.failed\",\"at\":5000,\"data\":{\"status\":\"failed\",\"reviewer\":\"planner\",\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"code\":\"stale\",\"reason\":\"The verdict was for an earlier revision.\"}}\n"
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":10,\"type\":\"review.failed\",\"at\":5000,\"data\":{\"status\":\"failed\",\"reviewer\":\"planner\",\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"code\":\"stale\",\"reason\":\"The verdict was for an earlier revision.\"}}\n"
       }
      },
      "removed": []
@@ -4701,6 +4743,179 @@
      "removed": [
       "00000000-0000-4000-8000-000000000004.jsonl"
      ]
+    }
+   }
+  ],
+  "prune-ties": [
+   {
+    "op": "clock",
+    "t": 5000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000001.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000002.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000003.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":2,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":2,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000004.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":2,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000004.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":2,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000005.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":2,\"type\":\"job.completed\",\"at\":null,\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":2,\"type\":\"job.completed\",\"at\":null,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000006.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":2,\"type\":\"job.completed\",\"at\":\"4800\",\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000006.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":1,\"type\":\"job.created\",\"at\":100,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":2,\"type\":\"job.completed\",\"at\":\"4800\",\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "prune",
+    "store": "few",
+    "result": {
+     "ok": null
+    },
+    "files": {
+     "written": {},
+     "removed": [
+      "00000000-0000-4000-8000-000000000003.jsonl",
+      "00000000-0000-4000-8000-000000000004.jsonl",
+      "00000000-0000-4000-8000-000000000005.jsonl"
+     ]
+    }
+   }
+  ],
+  "prune-differences": [
+   {
+    "op": "clock",
+    "t": 5000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "anyFew",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":5000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000002.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.completed\",\"at\":200,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "prune",
+    "store": "anyFew",
+    "result": {
+     "error": {
+      "status": 400,
+      "message": "Invalid job id"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "anyFew",
+    "uuid": "00000000-0000-4000-8000-000000000003",
+    "kind": "code",
+    "result": {
+     "error": {
+      "status": 400,
+      "message": "Invalid job id"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
     }
    }
   ],

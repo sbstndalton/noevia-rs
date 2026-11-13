@@ -581,7 +581,8 @@ pub(crate) fn bound_code_plan(status: &str, data: &JValue) -> JValue {
                 to_js_string(entry).unwrap_or_default()
             };
             let (text, cut) = clip_utf8(&original, MAX_CODE_PLAN_ENTRY_BYTES);
-            truncated |= cut;
+            // code-plan.cjs: `text !== original`, which a lone surrogate read as U+FFFD makes true.
+            truncated |= cut || text != original;
             JValue::Str(text)
         })
         .collect();

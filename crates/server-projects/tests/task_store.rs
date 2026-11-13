@@ -275,15 +275,28 @@ fn replay(f: &JValue, name: &str, stop: Option<usize>) -> Run {
 
 #[test]
 fn fixture_records_its_sources() {
+    // The Node sources the fixture was recorded from (core a72ae94). A fixture regenerated from
+    // other sources fails here until these are updated on purpose.
     let f = fixture();
-    for name in [
-        "jobs.cjs",
-        "code-plan.cjs",
-        "code-review-verdict.cjs",
-        "task-lifecycle.cjs",
+    for (name, sha) in [
+        (
+            "jobs.cjs",
+            "3a04aea9e594428d62cb5dc7f29eb937d322c6b24d83c9b2d9b08211366e5457",
+        ),
+        (
+            "code-plan.cjs",
+            "966f6d39054b2948a6796cdbf1f8310c1a15ac461c56e63523ecaa3fe6b860f2",
+        ),
+        (
+            "code-review-verdict.cjs",
+            "fde7e49afb0a60ee035036d83fc984426017d9519c283d55023b2e8773c328e2",
+        ),
+        (
+            "task-lifecycle.cjs",
+            "f99c9f9387f647fd579fbcd3acc6c6a19531995313cd4cc6894b333633ec5da1",
+        ),
     ] {
-        let sha = f.get("sources").get(name).as_str().unwrap();
-        assert_eq!(sha.len(), 64, "{name}");
+        assert_eq!(f.get("sources").get(name).as_str(), Some(sha), "{name}");
     }
 }
 
@@ -297,7 +310,7 @@ fn every_node_scenario_replays_byte_for_byte() {
     for (name, _) in all {
         match name.as_str() {
             // Differences, below.
-            "torn-differences" => continue,
+            "torn-differences" | "prune-differences" => continue,
             // Its last step is a second job.created, which only Node takes.
             "refusals" => {
                 let last = steps(&f, name).len() - 1;
@@ -359,7 +372,7 @@ fn differences_on_a_torn_tail() {
     let b = "00000000-0000-4000-8000-000000000002";
     let c = "00000000-0000-4000-8000-000000000003";
     // The answers before each restart are Node's.
-    for i in [0, 1, 2, 4, 5, 7, 8] {
+    for i in [0, 1, 2, 4, 5, 7] {
         assert_eq!(got[i], node[i], "answer {i}");
     }
     assert_eq!(
@@ -370,9 +383,15 @@ fn differences_on_a_torn_tail() {
         got[6],
         format!(r#"{{"ok":{{"id":"{b}","kind":"code","status":"running","updatedAt":12000}}}}"#)
     );
+    // The line that does not parse but ends in a newline is damage: nothing is written after it,
+    // and the journal still reads (the bad last line dropped, as Node's reader drops it).
+    assert_eq!(
+        got[8],
+        r#"{"error":{"status":409,"message":"Unreadable job journal; review required"}}"#
+    );
     assert_eq!(
         got[9],
-        format!(r#"{{"ok":{{"id":"{c}","kind":"code","status":"running","updatedAt":12000}}}}"#)
+        format!(r#"{{"ok":{{"id":"{c}","kind":"code","status":"queued","updatedAt":10}}}}"#)
     );
     // The row that lost its newline is kept, then the new one.
     let journal = fs::read_to_string(run.jobs().join(format!("{a}.jsonl"))).unwrap();
@@ -380,10 +399,210 @@ fn differences_on_a_torn_tail() {
     assert_eq!(lines.len(), 3);
     assert!(lines[1].contains(r#""seq":2,"type":"job.started""#));
     assert!(lines[2].starts_with(&format!(r#"{{"job":"{a}","seq":3,"type":"progress""#)));
-    // The line that did not parse is gone.
+    // The line that did not parse is still the last one.
     let journal = fs::read_to_string(run.jobs().join(format!("{c}.jsonl"))).unwrap();
-    assert!(!journal.contains("not json"));
+    assert!(journal.ends_with("not json\n"));
     assert_eq!(journal.lines().count(), 2);
+}
+
+#[test]
+fn difference_prune_removes_a_journal_by_its_own_name() {
+    let f = fixture();
+    let all = steps(&f, "prune-differences");
+    // Node: the derived id of a journal without job.created is null, so prune, and every create
+    // after it, throws 400.
+    assert_eq!(
+        text(all[3].get("result")),
+        r#"{"error":{"status":400,"message":"Invalid job id"}}"#
+    );
+    assert_eq!(
+        text(all[4].get("result")),
+        r#"{"error":{"status":400,"message":"Invalid job id"}}"#
+    );
+    let mut run = Run::new(f.get("stores"));
+    let mut got = Vec::new();
+    for s in &all {
+        if let Some(a) = run.step(s) {
+            got.push(text(&a));
+        }
+    }
+    assert_eq!(got[1], r#"{"ok":null}"#);
+    assert_eq!(got[2], r#"{"ok":"00000000-0000-4000-8000-000000000003"}"#);
+    let left: Vec<String> = run.actual_files().into_keys().collect();
+    assert_eq!(
+        left,
+        vec![
+            "00000000-0000-4000-8000-000000000001.jsonl".to_string(),
+            "00000000-0000-4000-8000-000000000003.jsonl".to_string()
+        ]
+    );
+}
+
+#[test]
+fn data_is_written_in_js_property_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(dir.path(), Options::default());
+    let id = s
+        .create(NewJob {
+            kind: "code",
+            project_id: None,
+            parent_id: None,
+            capabilities: &[],
+        })
+        .unwrap();
+    // As a JS object holds it: index keys first, ascending; a repeated key's last value in its
+    // first place; at every level.
+    let data = JValue::obj([
+        ("b", JValue::Num(1.0)),
+        ("2", JValue::Str("two".into())),
+        ("b", JValue::Num(3.0)),
+        (
+            "nested",
+            JValue::Arr(vec![JValue::obj([
+                ("z", JValue::Null),
+                ("10", JValue::Null),
+                ("1", JValue::Null),
+            ])]),
+        ),
+    ]);
+    let event = s.append(&id, "progress", data).unwrap();
+    assert_eq!(
+        text(event.get("data")),
+        r#"{"2":"two","b":3,"nested":[{"1":null,"10":null,"z":null}]}"#
+    );
+    // A chained journal keeps verifying after such a row.
+    let dir = tempfile::tempdir().unwrap();
+    let durable = Options {
+        durable: true,
+        ..Options::default()
+    };
+    let s = store(dir.path(), durable);
+    let id = s
+        .create(NewJob {
+            kind: "code",
+            project_id: None,
+            parent_id: None,
+            capabilities: &[],
+        })
+        .unwrap();
+    let data = JValue::obj([("b", JValue::Num(1.0)), ("2", JValue::Num(2.0))]);
+    s.append(&id, "progress", data).unwrap();
+    assert_eq!(s.get(&id).unwrap().unwrap().status.as_str(), Some("queued"));
+    s.append(&id, "job.started", JValue::Undefined).unwrap();
+}
+
+#[test]
+fn prune_with_times_that_are_not_numbers_does_not_panic() {
+    let dir = tempfile::tempdir().unwrap();
+    let jobs = dir.path().join("jobs");
+    fs::create_dir_all(&jobs).unwrap();
+    for n in 0..40u32 {
+        let id = format!("00000000-0000-4000-8000-{n:012}");
+        let at = match n % 3 {
+            0 => "null".to_string(),
+            1 => r#""x""#.to_string(),
+            _ => (100 + n).to_string(),
+        };
+        let at = if n % 5 == 0 {
+            String::new()
+        } else {
+            format!(r#","at":{at}"#)
+        };
+        let created = format!(
+            r#"{{"job":"{id}","seq":1,"type":"job.created","at":1,"data":{{"kind":"code"}}}}"#
+        );
+        let done = format!(r#"{{"job":"{id}","seq":2,"type":"job.completed"{at},"data":{{}}}}"#);
+        fs::write(
+            jobs.join(format!("{id}.jsonl")),
+            format!("{created}\n{done}\n"),
+        )
+        .unwrap();
+    }
+    let options = Options {
+        max_jobs: 5,
+        retain_ms: 1e12,
+        ..Options::default()
+    };
+    let s = store(dir.path(), options);
+    s.prune().unwrap();
+    assert_eq!(s.ids().len(), 5);
+}
+
+#[test]
+fn a_cancel_that_meets_a_finished_run_keeps_its_end() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(dir.path(), Options::default());
+    let id = s
+        .create(NewJob {
+            kind: "code",
+            project_id: None,
+            parent_id: None,
+            capabilities: &[],
+        })
+        .unwrap();
+    s.append(&id, "job.started", JValue::Undefined).unwrap();
+    // The run ends while the host is asked (no lock is held then), and the host has no run left.
+    let job = s
+        .cancel(&id, &|x| {
+            s.append(
+                x,
+                "job.completed",
+                JValue::obj([("result", JValue::Num(1.0))]),
+            )
+            .unwrap();
+            false
+        })
+        .unwrap()
+        .unwrap();
+    assert_eq!(job.status.as_str(), Some("completed"));
+}
+
+#[test]
+fn difference_a_full_or_hard_linked_journal_takes_no_row() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(dir.path(), Options::default());
+    let id = s
+        .create(NewJob {
+            kind: "code",
+            project_id: None,
+            parent_id: None,
+            capabilities: &[],
+        })
+        .unwrap();
+    let path = dir.path().join("jobs").join(format!("{id}.jsonl"));
+    // Just under the reader's limit: one more row would put it over.
+    let pad = "x".repeat(64 * 1024 * 1024 - fs::metadata(&path).unwrap().len() as usize - 200);
+    let row =
+        format!(r#"{{"job":"{id}","seq":2,"type":"progress","at":2,"data":{{"p":"{pad}"}}}}"#);
+    let mut f = fs::OpenOptions::new().append(true).open(&path).unwrap();
+    std::io::Write::write_all(&mut f, format!("{row}\n").as_bytes()).unwrap();
+    drop(f);
+    let before = fs::metadata(&path).unwrap().len();
+    let e = s
+        .append(
+            &id,
+            "progress",
+            JValue::obj([("stage", JValue::Str("y".repeat(300)))]),
+        )
+        .unwrap_err();
+    assert_eq!(e.message, "The job journal is full");
+    assert_eq!(fs::metadata(&path).unwrap().len(), before);
+
+    #[cfg(unix)]
+    {
+        let id = s
+            .create(NewJob {
+                kind: "code",
+                project_id: None,
+                parent_id: None,
+                capabilities: &[],
+            })
+            .unwrap();
+        let path = dir.path().join("jobs").join(format!("{id}.jsonl"));
+        fs::hard_link(&path, dir.path().join("other.jsonl")).unwrap();
+        let e = s.append(&id, "job.started", JValue::Undefined).unwrap_err();
+        assert!(e.is_unreadable());
+    }
 }
 
 fn store(dir: &Path, options: Options) -> Store {

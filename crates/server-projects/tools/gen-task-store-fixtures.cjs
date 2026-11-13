@@ -42,6 +42,8 @@ const STORES = {
   any: {},
   durable: { kinds: ['code'], durable: true, maxJobs: 50, retainMs: 14 * 86400000 },
   durableAll: { durable: true },
+  few: { kinds: ['code'], maxJobs: 3, retainMs: 7 * 86400000 },
+  anyFew: { maxJobs: 3, retainMs: 1000 },
 };
 
 const long = 'é'.repeat(150) + '😀'.repeat(200); // 300 + 800 bytes
@@ -122,6 +124,8 @@ const SCENARIOS = {
     { op: 'append', store: 'any', id: A, type: 'plan.proposed', data: { question: 'dropped', subQuestions: ['one', long, 7, null, { a: 1 }, [1, 2], true, ...Array.from({ length: 20 }, (_, i) => `s${i}`)], extra: 1 } },
     { op: 'append', store: 'any', id: A, type: 'plan.edited', data: { subQuestions: ['only'], truncated: true } },
     { op: 'append', store: 'any', id: A, type: 'plan.edited', data: { subQuestions: 'not a list' } },
+    // A lone surrogate is read as U+FFFD, which code-plan.cjs counts as a cut.
+    { op: 'append', store: 'any', id: A, type: 'plan.edited', data: { subQuestions: ['a\ud800b', 'fine'] } },
     { op: 'append', store: 'any', id: A, type: 'plan.skipped', data: { question: 'q', subQuestions: ['x'], truncated: true } },
     { op: 'append', store: 'any', id: A, type: 'review.requested', data: { baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40), files: 3 } },
     { op: 'append', store: 'any', id: A, type: 'review.completed', data: { baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40), verdict: 'request_changes', summary: 'Fix the QA test.', findings: [{ severity: 'major', file: 'src/qa.rs', message: 'QA finding' }], corrected: false } },
@@ -242,6 +246,24 @@ const SCENARIOS = {
     { op: 'prune', store: 'code' },
     { op: 'clock', t: 20000 },
     { op: 'create', store: 'code', uuid: id(8), kind: 'code' },
+  ],
+  'prune-ties': [
+    { op: 'clock', t: 5000 },
+    ...[A, B, C, D].map((j) => ({ op: 'seed', name: `${j}.jsonl`, text: line(created(j, 100, 'code')) + line(row(j, 2, 'job.completed', 200, {})) })),
+    // `at` null reads as 0 and a numeric string as its number, as JS subtraction coerces them.
+    { op: 'seed', name: `${E}.jsonl`, text: line(created(E, 100, 'code')) + line(row(E, 2, 'job.completed', null, {})) },
+    { op: 'seed', name: `${F}.jsonl`, text: line(created(F, 100, 'code')) + line(row(F, 2, 'job.completed', '4800', {})) },
+    { op: 'prune', store: 'few' },
+  ],
+  // Node's own behaviour where the Rust store differs on purpose (task_store.rs, "Fixed on purpose").
+  'prune-differences': [
+    { op: 'clock', t: 5000 },
+    { op: 'create', store: 'anyFew', uuid: A, kind: 'code' },
+    // A finished journal with no job.created: its derived id is null, so jobs.cjs's prune throws
+    // (and with it every create); the Rust store removes the file by its name.
+    { op: 'seed', name: `${B}.jsonl`, text: line(row(B, 1, 'job.completed', 200, {})) },
+    { op: 'prune', store: 'anyFew' },
+    { op: 'create', store: 'anyFew', uuid: C, kind: 'code' },
   ],
   // Node's own behaviour where the Rust store differs on purpose (task_store.rs, "Fixed on purpose").
   'torn-differences': [

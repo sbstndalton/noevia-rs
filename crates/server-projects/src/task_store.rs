@@ -21,16 +21,24 @@
 //! 1. A last line that parses but lost only its newline is kept and given one before the next
 //!    row. jobs.cjs cut it off after counting it, so the next row skipped a seq and, in a chained
 //!    journal, named a `previous` that was no longer there: the journal then read as damaged.
-//! 2. A last line that does not parse but does end in a newline is cut off before the next row,
-//!    as a torn one is. jobs.cjs wrote after it, which made it a damaged middle line.
+//! 2. A last line that does not parse but ends in a newline is damage, not a torn write: nothing is
+//!    written after it (409, unreadable), so it stays the journal's last line for review. jobs.cjs
+//!    wrote after it, which made the journal unreadable only after a restart.
 //! 3. `job.created` is written only by [`Store::create`]: jobs.cjs's `append` took a second one
 //!    on a live job, which would replace its kind and capabilities.
-//! 4. Event `data` must be an object (or absent, which is `{}` as in Node).
-//! 5. A journal that is a symbolic link, not a regular file, or over
-//!    [`crate::task_journals::MAX_JOURNAL_BYTES`] is unreadable (409), never followed or loaded;
+//! 4. Event `data` must be an object (or absent, which is `{}` as in Node). It is written in JS
+//!    property order whatever order the caller built it in.
+//! 5. A journal that is a symbolic link, not a regular file, hard-linked, or over
+//!    [`crate::task_journals::MAX_JOURNAL_BYTES`] is unreadable (409), never followed or loaded,
+//!    and no row is written that would take it over that size (409, "The job journal is full");
 //!    a line that `JSON.parse` reads but this port cannot hold (a number past the `f64` range, a
 //!    character of U+10F800..U+10FFFF) refuses the write rather than being dropped.
 //! 6. Rows that are not objects make the journal unreadable (the reader's rule).
+//! 7. Prune removes the finished journal by its own file name; jobs.cjs removed the file of the id
+//!    its `job.created` row names (another job's, or a 400 when it has none). A finished job whose
+//!    time is not a number sorts last (V8 leaves that order unspecified).
+//!
+//! Recover and cancel ask the host's `live`/`abort` without the store's lock.
 
 use crate::task_journals::{self as journals, Job};
 use js_json::{wtf16, JValue};
@@ -222,7 +230,8 @@ impl Store {
         };
         let rows = journals::parse_rows_with(id, &raw, &|first| self.chains_by_policy(first))
             .ok_or_else(unreadable)?;
-        let tail = tail_of(&raw, rows.len())?;
+        // What the end needs before a write; a refusal here stops writes only, never reads.
+        let tail = tail_of(&raw, rows.len());
         Ok(Journal { rows, tail })
     }
 
@@ -282,7 +291,7 @@ impl Store {
         }
         let mut data = match data {
             JValue::Undefined => JValue::Obj(Vec::new()),
-            JValue::Obj(items) => JValue::Obj(items),
+            JValue::Obj(items) => js_object(JValue::Obj(items), 0)?,
             _ => return Err(Refusal::new(None, "Job event data is an object")),
         };
         let code = finished
@@ -349,7 +358,8 @@ impl Store {
         let mut line = wtf16::stringify(&event)
             .ok_or_else(|| Refusal::new(None, "Job event cannot be written"))?;
         line.push('\n');
-        self.write_line(id, &journal.tail, &line, sync)?;
+        let tail = journal.tail.clone()?;
+        self.write_line(id, &tail, &line, sync)?;
         Ok(event)
     }
 
@@ -358,16 +368,26 @@ impl Store {
         make_dir(&self.root).map_err(|e| io(&e))?;
         let mut file = open_append(&path).map_err(|e| io(&e))?;
         let meta = file.metadata().map_err(|e| io(&e))?;
-        if !meta.file_type().is_file() {
+        if !meta.file_type().is_file() || links(&meta) > 1 {
             return Err(unreadable());
         }
         let mut bytes = Vec::with_capacity(line.len() + 1);
-        match tail {
-            Tail::Whole => {}
-            Tail::NoNewline => bytes.push(b'\n'),
-            Tail::Cut(at) => file.set_len(*at).map_err(|e| io(&e))?,
-        }
+        let kept = match tail {
+            Tail::Whole => meta.len(),
+            Tail::NoNewline => {
+                bytes.push(b'\n');
+                meta.len()
+            }
+            Tail::Cut(at) => *at,
+        };
         bytes.extend_from_slice(line.as_bytes());
+        // A row that would take the journal past what any reader loads would make it unreadable.
+        if kept.saturating_add(bytes.len() as u64) > journals::MAX_JOURNAL_BYTES {
+            return Err(Refusal::new(Some(409), "The job journal is full"));
+        }
+        if let Tail::Cut(at) = tail {
+            file.set_len(*at).map_err(|e| io(&e))?;
+        }
         file.write_all(&bytes).map_err(|e| io(&e))?;
         if sync {
             file.sync_all().map_err(|e| io(&e))?;
@@ -463,14 +483,17 @@ impl Store {
         let Ok(entries) = fs::read_dir(&self.root) else {
             return Vec::new();
         };
-        entries
+        let mut ids: Vec<String> = entries
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().into_string().ok()?;
                 let id = name.strip_suffix(".jsonl")?;
                 journals::valid_id(id).then(|| id.to_string())
             })
-            .collect()
+            .collect();
+        // Node's readdirSync lists names in byte order (libuv sorts them); prune's ties keep it.
+        ids.sort();
+        ids
     }
 
     fn of_kind(&self, job: &Job) -> bool {
@@ -486,29 +509,53 @@ impl Store {
     /// jobs.cjs `recover`: after a restart, every unfinished job of this store's kinds that `live`
     /// does not name is interrupted. Unreadable journals are left for review. The count interrupted.
     pub fn recover(&self, live: &dyn Fn(&str) -> bool) -> Result<usize, Refusal> {
+        let candidates: Vec<String> = {
+            let _held = self.guard();
+            let mut out = Vec::new();
+            for id in self.ids() {
+                if let Some(job) = self.readable(&id)? {
+                    if !finished(&job) && self.of_kind(&job) {
+                        out.push(id);
+                    }
+                }
+            }
+            out
+        };
+        // `live` is the host's, asked without the lock (a run it names may be appending).
+        let idle: Vec<String> = candidates.into_iter().filter(|id| !live(id)).collect();
         let _held = self.guard();
         let mut count = 0;
-        for id in self.ids() {
-            let job = match self.get_unlocked(&id) {
-                Ok(Some(job)) => job,
-                Ok(None) => continue,
-                Err(e) if e.is_unreadable() => continue,
-                Err(e) => return Err(e),
+        for id in idle {
+            // Read again: it may have ended meanwhile.
+            let Some(job) = self.readable(&id)? else {
+                continue;
             };
-            let status = job.status.as_str();
-            if status.is_some_and(|s| TERMINAL.contains(&s)) || live(&id) || !self.of_kind(&job) {
+            if finished(&job) {
                 continue;
             }
-            let reason = if status == Some("waiting_approval") {
+            let reason = if job.status.as_str() == Some("waiting_approval") {
                 WAITING_REASON
             } else {
                 RESTART_REASON
             };
             let data = JValue::obj([("reason", JValue::Str(reason.to_string()))]);
-            self.append_unlocked(&id, "job.interrupted", data, false)?;
-            count += 1;
+            match self.append_unlocked(&id, "job.interrupted", data, false) {
+                Ok(_) => count += 1,
+                // Left for review, as an unreadable journal is.
+                Err(e) if e.is_unreadable() => {}
+                Err(e) => return Err(e),
+            }
         }
         Ok(count)
+    }
+
+    /// The job, `None` when there is none or its journal is unreadable (jobs.cjs `getSafe`).
+    fn readable(&self, id: &str) -> Result<Option<Job>, Refusal> {
+        match self.get_unlocked(id) {
+            Ok(job) => Ok(job),
+            Err(e) if e.is_unreadable() => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
     /// jobs.cjs `prune`: finished jobs of this store's kinds older than `retain_ms`, and all but the
@@ -521,20 +568,20 @@ impl Store {
     fn prune_unlocked(&self) -> Result<(), Refusal> {
         let mut done: Vec<(f64, String)> = Vec::new();
         for id in self.ids() {
-            let job = match self.get_unlocked(&id) {
-                Ok(Some(job)) => job,
-                Ok(None) => continue,
-                Err(e) if e.is_unreadable() => continue,
-                Err(e) => return Err(e),
-            };
-            if job.status.as_str().is_some_and(|s| TERMINAL.contains(&s)) && self.of_kind(&job) {
-                done.push((job.updated_at.as_num().unwrap_or(f64::NAN), id));
+            if let Some(job) = self.readable(&id)? {
+                if finished(&job) && self.of_kind(&job) {
+                    done.push((js_number(&job.updated_at), id));
+                }
             }
         }
-        // `b.updatedAt - a.updatedAt`, a stable sort; a comparison with NaN keeps the order.
-        done.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        // `b.updatedAt - a.updatedAt`, a stable sort. A time that is not a number (NaN) sorts
+        // last here, so the order is total; V8's order for it is unspecified.
+        done.sort_by(|a, b| key(b.0).total_cmp(&key(a.0)));
         for (i, (updated, id)) in done.iter().enumerate() {
+            // With NaN the age test is false, as in JS.
             if (self.now)() - updated > self.options.retain_ms || i >= self.options.max_jobs {
+                // The file by its own name: jobs.cjs removed `file(job.id)`, the id its
+                // `job.created` row names, which may be another job's file or none at all.
                 let path = self.file(id)?;
                 match fs::remove_file(&path) {
                     Ok(()) => {}
@@ -547,14 +594,161 @@ impl Store {
     }
 }
 
-/// A journal as read for an append, and what its end needs before the next line.
-#[derive(Default)]
-struct Journal {
-    rows: Vec<JValue>,
-    tail: Tail,
+fn finished(job: &Job) -> bool {
+    job.status.as_str().is_some_and(|s| TERMINAL.contains(&s))
 }
 
-#[derive(Default, Debug, PartialEq, Eq)]
+fn key(n: f64) -> f64 {
+    if n.is_nan() {
+        f64::NEG_INFINITY
+    } else {
+        n
+    }
+}
+
+/// JS `ToNumber` for the values a journal's `at` can hold: a number, `null` (0), a boolean, a
+/// numeric string; anything else is NaN.
+fn js_number(v: &JValue) -> f64 {
+    match v {
+        JValue::Num(n) => *n,
+        JValue::Null => 0.0,
+        JValue::Bool(b) => f64::from(u8::from(*b)),
+        JValue::Str(s) => string_number(s),
+        _ => f64::NAN,
+    }
+}
+
+fn string_number(s: &str) -> f64 {
+    let t = js_trim(s);
+    if t.is_empty() {
+        return 0.0;
+    }
+    let (sign, body) = match t.strip_prefix('-') {
+        Some(rest) => (-1.0, rest),
+        None => (1.0, t.strip_prefix('+').unwrap_or(t)),
+    };
+    if body == "Infinity" {
+        return sign * f64::INFINITY;
+    }
+    for (prefix, radix) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
+        if let Some(digits) = t.strip_prefix(prefix) {
+            if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+                return f64::NAN;
+            }
+            return digits
+                .chars()
+                .filter_map(|c| c.to_digit(radix))
+                .fold(0.0, |acc, d| acc * f64::from(radix) + f64::from(d));
+        }
+    }
+    // A decimal literal: digits, at most one point, an optional exponent; nothing Rust's parser
+    // takes beyond that ("inf", "nan").
+    let decimal = {
+        let (mantissa, exponent) = match body.find(['e', 'E']) {
+            Some(i) => (body.get(..i).unwrap_or(""), body.get(i + 1..)),
+            None => (body, None),
+        };
+        let digits = mantissa.chars().filter(char::is_ascii_digit).count();
+        let points = mantissa.chars().filter(|c| *c == '.').count();
+        let mantissa_ok = digits > 0 && points <= 1 && digits + points == mantissa.len();
+        let exponent_ok = exponent.is_none_or(|e| {
+            let e = e.strip_prefix(['+', '-']).unwrap_or(e);
+            !e.is_empty() && e.chars().all(|c| c.is_ascii_digit())
+        });
+        mantissa_ok && exponent_ok
+    };
+    if !decimal {
+        return f64::NAN;
+    }
+    body.parse::<f64>().map_or(f64::NAN, |n| sign * n)
+}
+
+/// `String.prototype.trim`'s whitespace and line terminators.
+pub(crate) fn js_trim(s: &str) -> &str {
+    s.trim_matches(|c: char| {
+        matches!(
+            c,
+            '\u{9}'..='\u{d}'
+                | ' '
+                | '\u{a0}'
+                | '\u{1680}'
+                | '\u{2000}'..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+        )
+    })
+}
+
+/// How deep event data may nest (JSON.parse-read data never needs more).
+const MAX_DATA_DEPTH: usize = 128;
+
+/// An object as a JS object holds it: array-index keys first, ascending, and a repeated key's
+/// last value in its first place, at every level. What JSON.stringify then writes is what Node
+/// would write, and what a reader parses back is the same object, so a chained row's hash holds.
+fn js_object(v: JValue, depth: usize) -> Result<JValue, Refusal> {
+    if depth > MAX_DATA_DEPTH {
+        return Err(Refusal::new(None, "Job event data is nested too deep"));
+    }
+    Ok(match v {
+        JValue::Obj(items) => {
+            let mut out: Vec<(String, JValue)> = Vec::with_capacity(items.len());
+            for (k, value) in items {
+                let value = js_object(value, depth + 1)?;
+                match out.iter_mut().find(|(have, _)| *have == k) {
+                    Some(slot) => slot.1 = value,
+                    None => out.push((k, value)),
+                }
+            }
+            wtf16::order_keys(&mut out);
+            JValue::Obj(out)
+        }
+        JValue::Arr(items) => JValue::Arr(
+            items
+                .into_iter()
+                .map(|x| js_object(x, depth + 1))
+                .collect::<Result<_, _>>()?,
+        ),
+        other => other,
+    })
+}
+
+#[cfg(unix)]
+fn links(meta: &fs::Metadata) -> u64 {
+    std::os::unix::fs::MetadataExt::nlink(meta)
+}
+
+#[cfg(not(unix))]
+fn links(_: &fs::Metadata) -> u64 {
+    1
+}
+
+/// A journal as read for an append, and what its end needs before the next line.
+struct Journal {
+    rows: Vec<JValue>,
+    tail: Result<Tail, Refusal>,
+}
+
+impl Default for Journal {
+    fn default() -> Self {
+        Journal {
+            rows: Vec::new(),
+            tail: Ok(Tail::Whole),
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 enum Tail {
     /// Ends in a newline, or is empty.
     #[default]
@@ -578,9 +772,11 @@ fn tail_of(raw: &[u8], kept: usize) -> Result<Tail, Refusal> {
         });
     }
     // The dropped line is the last non-empty one. JSON.parse would have read a line this port only
-    // cannot hold: refused rather than cut.
+    // cannot hold: refused rather than cut. A line that does not parse but ends in a newline is not
+    // a torn write (a row and its newline are one write): it is damage, kept for review, and
+    // nothing is written after it.
     let last = lines.last().copied().unwrap_or("");
-    if wtf16::parse(last) != Err(wtf16::Refusal::Invalid) {
+    if wtf16::parse(last) != Err(wtf16::Refusal::Invalid) || raw.last() == Some(&b'\n') {
         return Err(unreadable());
     }
     // The last non-empty segment is the dropped line: cut at its first byte (the raw bytes, not the
