@@ -14,6 +14,7 @@
 //! Not here: context and framing assembly, routing and decision calls, persistence through the
 //! store, approvals, the Diary stream, rounds with tool results fed back to the model.
 
+pub mod after;
 pub mod cap;
 pub mod effort;
 pub mod event;

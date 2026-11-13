@@ -20,11 +20,14 @@ use std::pin::pin;
 use std::sync::Mutex;
 use std::task::{Context, Poll, Waker};
 
+use chat_turn::after::{Keep, Saving};
 use chat_turn::host::{EngineRequest, GateRefusal, Host, Read, Target, ToolRun};
 use chat_turn::js;
 use chat_turn::native::{self, Ended, Helpers, Process};
 use chat_turn::prepared::Prepared;
+use chat_turn::record::TurnRecord;
 use js_json::{wtf16, JValue};
+use sha2::{Digest, Sha256};
 
 const FIXED_NOW: f64 = 1_794_571_200_000.0;
 
@@ -74,6 +77,8 @@ struct Script {
     approvals: Mutex<Vec<String>>,
     executions: Mutex<Vec<String>>,
     uuids: Mutex<u64>,
+    /// Every event the turn sent, the client's leaving aside, with whether it had left.
+    observed: Mutex<Vec<(JValue, bool)>>,
 }
 
 /// The per-start id the recording's grant contexts carry (record_turns.cjs NOEVIA_START_ID).
@@ -136,6 +141,7 @@ impl Script {
             approvals: Mutex::new(Vec::new()),
             executions: Mutex::new(Vec::new()),
             uuids: Mutex::new(0),
+            observed: Mutex::new(Vec::new()),
         }
     }
 
@@ -153,7 +159,9 @@ impl Host for Script {
     type Body = Body;
 
     fn emit(&self, event: &JValue) {
-        if !*self.left.lock().unwrap() {
+        let left = *self.left.lock().unwrap();
+        self.observed.lock().unwrap().push((event.clone(), left));
+        if !left {
             self.events.lock().unwrap().push(js::stringify(event));
         }
     }
@@ -426,6 +434,58 @@ fn fallback_text(sources: &[String]) -> String {
     }
 }
 
+impl Keep for Script {
+    fn append_if_last(&self, chat: &str, message: &str, entry: &JValue) -> Result<String, String> {
+        self.store(
+            "transcripts.appendIfLast",
+            vec![
+                ("chatId", js::s(chat)),
+                ("message", js::s(message)),
+                ("entry", entry.clone()),
+                ("options", js::obj([("origin", js::s("turn"))])),
+            ],
+        );
+        Ok(self
+            .case
+            .get("input")
+            .get("appendOutcome")
+            .as_str()
+            .unwrap_or("saved")
+            .to_string())
+    }
+
+    fn keep_partial(&self, chat: &str, file: &JValue) {
+        self.files
+            .lock()
+            .unwrap()
+            .insert(partial_name(chat), js::stringify(file));
+    }
+
+    fn end_partial(&self, chat: &str) {
+        self.files.lock().unwrap().remove(&partial_name(chat));
+    }
+
+    fn tombstoned(&self, _chat: &str) -> bool {
+        false
+    }
+
+    fn delete_unlisted(&self, chat: &str) {
+        self.store("transcripts.deleteChat", vec![("chatId", js::s(chat))]);
+    }
+}
+
+/// chat-partial.cjs fileFor: the sha256 of the chat id itself.
+fn partial_name(chat: &str) -> String {
+    let digest = Sha256::digest(chat.as_bytes());
+    format!(
+        "chat-partials/{}.json",
+        digest
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    )
+}
+
 fn fixture() -> JValue {
     wtf16::parse(common::FIXTURE).unwrap()
 }
@@ -460,8 +520,37 @@ fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
         tool_result_cap: 8000,
     };
     let ended = block_on(native::run(&script, &process, &helpers, &prepared));
-    // The executor's turn guard gives the lease back when the turn ends (Node: on finish/close).
+    // The executor's turn guard: the record of everything sent (the relayed events first), then the
+    // interrupted reply and the partial.
+    let mut saving = Saving::new(TurnRecord::at(FIXED_NOW as i64));
+    let JValue::Arr(events) = case.get("events") else {
+        panic!()
+    };
+    let before = case.get("handoff").get("before").as_num().unwrap() as usize;
+    for e in &events[..before] {
+        saving.observe(e, false);
+    }
+    for (e, left) in script.observed.lock().unwrap().iter() {
+        saving.observe(e, *left);
+    }
+    let left = matches!(ended, Ended::Left);
+    let chat = prepared.record.then(|| {
+        case.get("input")
+            .get("body")
+            .get("chatId")
+            .as_str()
+            .unwrap()
+            .to_string()
+    });
+    // The lease goes back as the response ends or the client leaves, before the store is asked.
     script.store("lease.release", vec![("lease", js::s("qa-lease-1"))]);
+    saving.finish(
+        &script,
+        chat.as_deref(),
+        &prepared.message,
+        left,
+        FIXED_NOW as i64,
+    );
     let _ = f;
     (script, ended)
 }
@@ -551,8 +640,7 @@ fn the_native_continuation_is_node_after_the_cut() {
             "{name}: every bridge answer was asked for"
         );
 
-        let left = matches!(ended, Ended::Left);
-        if !left {
+        {
             let JValue::Arr(stores) = c.get("stores") else {
                 panic!()
             };

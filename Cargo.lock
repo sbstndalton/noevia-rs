@@ -436,6 +436,7 @@ dependencies = [
  "provider-error",
  "regex",
  "serde_json",
+ "sha2",
  "stream-guard",
  "tool-exchange",
 ]

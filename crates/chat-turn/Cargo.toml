@@ -21,3 +21,4 @@ tool-exchange = { path = "../tool-exchange" }
 prompt-framing = { path = "../prompt-framing" }
 
 [dev-dependencies]
+sha2 = "=0.10.9"
