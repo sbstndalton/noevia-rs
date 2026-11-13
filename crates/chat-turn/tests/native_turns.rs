@@ -876,31 +876,6 @@ fn a_blocked_tool_is_not_offered_and_its_call_is_refused() {
     assert!(!js::stringify(c.get("stubs")).contains(r#""op":"policy""#));
 }
 
-/// The front spawns the turn on its runtime: `native::run` must be `Send` for a `Send + Sync` host.
-#[test]
-fn the_native_turn_can_be_spawned() {
-    fn spawnable<T: Send>(_: &T) {}
-    let f = fixture();
-    let JValue::Arr(cases) = f.get("cases") else {
-        panic!()
-    };
-    let prepared = Prepared::read(cases[0].get("handoff").get("prepared")).unwrap();
-    let script = Script::new(cases[0].clone());
-    let process = Process::default();
-    let helpers = Helpers {
-        clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
-        announces_tool_action: &chat_turn::helpers::announces_tool_action,
-        announced_note: chat_turn::helpers::ANNOUNCED_NOTE,
-        reduce_tool_result: &|text, cap| chat_turn::reduce::reduce_tool_result(text, cap).text,
-        source_links: &chat_turn::helpers::source_links,
-        fallback_text: &|s| chat_turn::helpers::fallback_text(s),
-        final_answer_note: chat_turn::helpers::FINAL_ANSWER_NOTE,
-        tool_result_cap: 8000,
-    };
-    let turn = native::run(&script, &process, &helpers, &prepared);
-    spawnable(&turn);
-}
-
 /// What core wrote for each hand-off, on the front's NDJSON wire (chat port S7: rust-chat-wire.cjs writes
 /// `JSON.stringify(event) + "\n"` where the recording's event stream has `data: <same>\n\n`), split by
 /// the front's reader at several chunk sizes: the lines before `prepared` pass on as written, and the

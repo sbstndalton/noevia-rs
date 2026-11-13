@@ -18,8 +18,10 @@
 //! - [`sink`] and [`event`]: the stream's order rule, and typed events for tests; [`guard`]: the stream
 //!   guard for tool-call arguments; [`js`]: JavaScript string and object semantics.
 //!
-//! Every behaviour is proven by fixtures recorded from the Node code (each generator has a `--check`
-//! step in `.github/workflows/chat-turn.yml`); named differences are listed in each module's doc.
+//! Every behaviour is proven by fixtures recorded from the Node code; each generator has a `--check`
+//! mode that records again at the pinned core (`tests/oracle-core.ref`) and compares bytes (CI runs them
+//! from `.github/workflows/chat-turn.yml`, which comes with the front's wiring). Named differences are
+//! listed in each module's doc.
 
 pub mod after;
 pub mod cap;

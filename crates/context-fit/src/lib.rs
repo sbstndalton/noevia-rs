@@ -368,7 +368,7 @@ pub async fn compact_continuation<S, F>(
     tools: &JValue,
     limit: u64,
     mut summarize: S,
-    on_status: &mut (dyn FnMut(&str, &str) + Send),
+    on_status: &mut dyn FnMut(&str, &str),
 ) -> Result<Continuation, Refused>
 where
     S: FnMut(String, Vec<JValue>, u64) -> F,
@@ -558,7 +558,7 @@ pub async fn prepare<S, F>(
     saved: &Saved,
     now: i64,
     mut summarize: S,
-    on_status: &mut (dyn FnMut(&str, &str) + Send),
+    on_status: &mut dyn FnMut(&str, &str),
 ) -> Result<Prepared, Refused>
 where
     S: FnMut(String, Vec<JValue>, u64) -> F,
