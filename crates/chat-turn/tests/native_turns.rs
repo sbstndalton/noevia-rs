@@ -3,7 +3,11 @@
 //! end ([`Saving::finish`]), against a host that answers only what the recording says Node's edges
 //! answered: the engine's rounds and bytes, the model manager, the tool bridges (`bridge`), and the
 //! other stubs after the cut (`stubs`: the tool policy, the chat-wide grant, the approval decision, the
-//! tombstones, the template tools gate, the engine's busy signal), each asked in Node's order per stub.
+//! tombstones, the template tools gate, the engine's busy signal), each asked in Node's order per stub. The
+//! skills bridges (#272, #546) are in `bridge` too, in Node's order with the tool bridges; a read's ledger file
+//! (core's record) lands in the workspace files as the bridge answers, and the files the preparation wrote
+//! (`handoff.files`, a pinned skill's ledger) are there from the start. The clock moves on with the engine's
+//! `{ tick }` frames, as the recorder's does.
 //!
 //! Everything after the cut must be Node's, byte for byte: the events, the engine requests (url,
 //! headers, body, whether streamed, the deadline), the approval requests, every field of each tool run,
@@ -30,7 +34,7 @@ use std::task::{Context, Poll, Waker};
 
 use chat_turn::after::{Keep, Saving};
 use chat_turn::host::{
-    Answer, EditTarget, EngineRequest, GateRefusal, Host, Read, Target, ToolRun,
+    Answer, EditTarget, EngineRequest, GateRefusal, Host, Read, Scrub, Skill, Target, ToolRun,
 };
 use chat_turn::js;
 use chat_turn::native::{self, Ended, Helpers, Process};
@@ -67,6 +71,8 @@ enum Chunk {
     Bytes(Vec<u8>),
     Leave,
     Stall,
+    /// The clock moves on this many milliseconds before the next chunk.
+    Tick(f64),
 }
 
 struct Script {
@@ -90,6 +96,12 @@ struct Script {
     loaded: Mutex<bool>,
     /// Every event the turn sent, the client's leaving aside, with whether it had left.
     observed: Mutex<Vec<(JValue, bool)>>,
+    /// How far the engine's `{ tick }` frames moved the clock on.
+    clock: Mutex<f64>,
+    /// The skills bridges that give no answer (core unreachable): the named differences' tests.
+    down: Vec<&'static str>,
+    /// With `skills-revoked` down: how many revocation checks are still answered first.
+    revoked_answers: Mutex<usize>,
 }
 
 /// The per-start id the recording's grant contexts carry (record_turns.cjs NOEVIA_START_ID).
@@ -106,6 +118,7 @@ fn chunks_of(recorded: &JValue) -> Vec<Chunk> {
             JValue::Str(m) if m == "leave" => Chunk::Leave,
             JValue::Str(m) if m == "stall" => Chunk::Stall,
             JValue::Str(m) if m == "wait" => Chunk::Bytes(Vec::new()),
+            _ if c.get("tick").as_num().is_some() => Chunk::Tick(c.get("tick").as_num().unwrap()),
             _ if c.get("text").as_str().is_some() => {
                 Chunk::Bytes(c.get("text").as_str().unwrap().as_bytes().to_vec())
             }
@@ -155,6 +168,13 @@ impl Script {
             .take(before)
             .filter(|s| s.get("op").as_str() == Some("modelManager.acquireLease"))
             .count();
+        let seeded: BTreeMap<String, String> = match case.get("handoff").get("files") {
+            JValue::Obj(files) => files
+                .iter()
+                .map(|(k, v)| (k.clone(), js::stringify(v)))
+                .collect(),
+            _ => BTreeMap::new(),
+        };
         Script {
             case,
             rounds,
@@ -163,7 +183,7 @@ impl Script {
             events: Mutex::new(Vec::new()),
             requests: Mutex::new(Vec::new()),
             stores: Mutex::new(Vec::new()),
-            files: Mutex::new(BTreeMap::new()),
+            files: Mutex::new(seeded),
             bridge: Mutex::new(recorded_bridge),
             stubs: Mutex::new(recorded_stubs),
             approvals: Mutex::new(Vec::new()),
@@ -173,6 +193,41 @@ impl Script {
             lease: format!("qa-lease-{}", earlier + 1),
             loaded: Mutex::new(case_loaded),
             observed: Mutex::new(Vec::new()),
+            clock: Mutex::new(0.0),
+            down: Vec::new(),
+            revoked_answers: Mutex::new(0),
+        }
+    }
+
+    /// The next recorded bridge call, which must be `op`.
+    fn bridged(&self, op: &str) -> JValue {
+        let next = self.bridge.lock().unwrap().remove(0);
+        assert_eq!(next.get("op").as_str(), Some(op), "the next bridge call");
+        next
+    }
+
+    fn skill_list(v: &JValue) -> Vec<Skill> {
+        let JValue::Arr(items) = v else {
+            panic!("not a skill list: {v:?}")
+        };
+        items
+            .iter()
+            .map(|k| Skill {
+                file: k.get("file").as_str().unwrap().to_string(),
+                hash: k.get("hash").as_str().unwrap().to_string(),
+                name: k.get("name").as_str().unwrap().to_string(),
+            })
+            .collect()
+    }
+
+    fn chat_asked(&self, recorded: &JValue, chat_id: Option<&str>) {
+        assert_eq!(
+            chat_id,
+            self.case.get("input").get("body").get("chatId").as_str(),
+            "the chat a skills bridge names"
+        );
+        if !matches!(recorded, JValue::Undefined) {
+            assert_eq!(recorded.as_str(), chat_id, "the chat the scrub ran for");
         }
     }
 
@@ -226,7 +281,7 @@ impl Host for Script {
     }
 
     fn now_ms(&self) -> f64 {
-        FIXED_NOW
+        FIXED_NOW + *self.clock.lock().unwrap()
     }
 
     async fn lease(&self, model: &str) -> Result<Option<Vec<(String, String)>>, GateRefusal> {
@@ -332,6 +387,10 @@ impl Host for Script {
         if *self.left.lock().unwrap() {
             return Read::Aborted;
         }
+        while let Some(Chunk::Tick(ms)) = body.chunks.get(body.at) {
+            *self.clock.lock().unwrap() += *ms;
+            body.at += 1;
+        }
         let Some(chunk) = body.chunks.get(body.at).cloned() else {
             return Read::End;
         };
@@ -346,6 +405,7 @@ impl Host for Script {
                 Some(_) => Read::Idle,
                 None => panic!("a stall before the first output would wait forever"),
             },
+            Chunk::Tick(_) => unreachable!(),
         }
     }
 
@@ -597,7 +657,10 @@ impl Host for Script {
                 "the tool run's {k}"
             );
         }
-        self.executions.lock().unwrap().push(run.name.clone());
+        // The recorder lists what the Drive and MCP tool engines ran; core's built-in tools run in its toolboxes.
+        if !["read_project_file", "get_current_time"].contains(&run.name.as_str()) {
+            self.executions.lock().unwrap().push(run.name.clone());
+        }
         if let Some(message) = next.get("threw").as_str() {
             return Err(message.to_string());
         }
@@ -610,6 +673,124 @@ impl Host for Script {
             next.get("text").as_str().unwrap().to_string(),
             next.get("failed") == &JValue::Bool(true),
         ))
+    }
+
+    async fn skills_revoked(
+        &self,
+        project_id: &str,
+        loaded: &[Skill],
+    ) -> Option<Vec<(String, String)>> {
+        if self.down.contains(&"skills-revoked") {
+            let mut left = self.revoked_answers.lock().unwrap();
+            if *left == 0 {
+                return None;
+            }
+            *left -= 1;
+        }
+        let next = self.bridged("skills-revoked");
+        assert_eq!(
+            Some(project_id),
+            self.case.get("input").get("project").get("id").as_str()
+        );
+        assert_eq!(
+            loaded,
+            Script::skill_list(next.get("loaded")),
+            "the loaded skills checked"
+        );
+        let JValue::Arr(gone) = next.get("gone") else {
+            panic!()
+        };
+        Some(
+            gone.iter()
+                .map(|g| {
+                    (
+                        g.get("file").as_str().unwrap().to_string(),
+                        g.get("name").as_str().unwrap().to_string(),
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    async fn skills_read(
+        &self,
+        project_id: &str,
+        chat_id: Option<&str>,
+        candidates: &[Skill],
+        args: &str,
+        result: &str,
+    ) -> Option<Vec<Skill>> {
+        if self.down.contains(&"skills-read") {
+            return None;
+        }
+        let next = self.bridged("skills-read");
+        assert_eq!(
+            Some(project_id),
+            self.case.get("input").get("project").get("id").as_str()
+        );
+        self.chat_asked(&JValue::Undefined, chat_id);
+        assert_eq!(
+            candidates,
+            Script::skill_list(next.get("candidates")),
+            "the read's candidates"
+        );
+        assert_eq!(Some(args), next.get("args").as_str(), "the read's args");
+        assert_eq!(
+            Some(result),
+            next.get("result").as_str(),
+            "the read's result"
+        );
+        // Core records each loaded version in the account's skill ledger.
+        if next.get("ledger").is_object() {
+            self.files.lock().unwrap().insert(
+                "skill-history.json".into(),
+                js::stringify(next.get("ledger")),
+            );
+        }
+        Some(Script::skill_list(next.get("loaded")))
+    }
+
+    async fn skills_scrub(
+        &self,
+        project_id: &str,
+        chat_id: Option<&str>,
+        messages: &[JValue],
+    ) -> Option<Scrub> {
+        if self.down.contains(&"skills-scrub") {
+            return None;
+        }
+        let next = self.bridged("skills-scrub");
+        assert_eq!(
+            Some(project_id),
+            self.case.get("input").get("project").get("id").as_str()
+        );
+        self.chat_asked(next.get("chatId"), chat_id);
+        assert_eq!(
+            js::stringify(&JValue::Arr(messages.to_vec())),
+            js::stringify(next.get("messages")),
+            "the messages the scrub reads"
+        );
+        let (JValue::Arr(changed), JValue::Arr(removed)) =
+            (next.get("changed"), next.get("removed"))
+        else {
+            panic!()
+        };
+        Some(Scrub {
+            changed: changed
+                .iter()
+                .map(|c| {
+                    let JValue::Arr(pair) = c else { panic!() };
+                    (
+                        pair[0].as_num().unwrap() as usize,
+                        pair[1].as_str().unwrap().to_string(),
+                    )
+                })
+                .collect(),
+            removed: removed
+                .iter()
+                .map(|n| n.as_str().unwrap().to_string())
+                .collect(),
+        })
     }
 
     fn prefill_sample(&self, _model: &str, _prompt: f64, _ms: f64) {}
@@ -685,9 +866,14 @@ fn headers_json(h: &[(String, String)]) -> String {
 }
 
 fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
+    replay_with(f, case, &[])
+}
+
+fn replay_with(f: &JValue, case: &JValue, down: &[&'static str]) -> (Script, Ended) {
     let prepared =
         Prepared::read(case.get("handoff").get("prepared")).unwrap_or_else(|e| panic!("{e:?}"));
-    let script = Script::new(case.clone());
+    let mut script = Script::new(case.clone());
+    script.down = down.to_vec();
     let process = Process::default();
     let helpers = Helpers {
         clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
@@ -752,15 +938,18 @@ fn every_prepared_turn_reads() {
         let p = Prepared::read(c.get("handoff").get("prepared"))
             .unwrap_or_else(|e| panic!("{}: {e:?}", c.get("name").as_str().unwrap()));
         assert!(p.model.starts_with("qa"));
-        // In the recordings the cut comes right after the preparation's `tools_scope` (a pending route
-        // pre-load's `loadingModel` status could follow it; no case has one).
+        // In the recordings the cut comes right after the preparation's `tools_scope` (and a pinned skill's
+        // `skills_scope`); a pending route pre-load's `loadingModel` status could follow it (no case has one).
         let JValue::Arr(events) = c.get("events") else {
             panic!()
         };
-        let scope = events
+        let mut scope = events
             .iter()
             .position(|e| e.get("type").as_str() == Some("tools_scope"))
             .unwrap_or_else(|| panic!("{}: no tools_scope", c.get("name").as_str().unwrap()));
+        if events.get(scope + 1).map(|e| e.get("type").as_str()) == Some(Some("skills_scope")) {
+            scope += 1;
+        }
         assert_eq!(
             c.get("handoff").get("before").as_num(),
             Some((scope + 1) as f64),
@@ -915,7 +1104,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 77, "{ran:?}");
+    assert_eq!(ran.len(), 84, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
@@ -1029,6 +1218,115 @@ fn an_edit_the_bridge_cannot_resolve_after_the_card_is_refused_without_revoking(
         );
         assert!(script.executions.lock().unwrap().is_empty(), "{at}");
     }
+}
+
+/// Named differences (skills.rs): a skills bridge that gives no answer fails closed, ending the turn with the
+/// failure text (not skill_revoked: nothing was revoked) before any further round or tool. Node asks no bridge,
+/// so no recording shows these.
+#[test]
+fn a_skills_bridge_without_an_answer_ends_the_turn_with_the_failure_text() {
+    let f = fixture();
+    let JValue::Arr(cases) = f.get("cases") else {
+        panic!()
+    };
+    let case = |name: &str| {
+        cases
+            .iter()
+            .find(|c| c.get("name").as_str() == Some(name))
+            .unwrap()
+    };
+    let events = |script: &Script| -> Vec<JValue> {
+        script
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|e| wtf16::parse(e).unwrap())
+            .collect()
+    };
+    let failed = format!(r#"{{"type":"error","text":"{}"}}"#, native::FAILED_TEXT);
+    let last = |script: &Script| js::stringify(events(script).last().unwrap());
+    // The revocation check at the pinned turn's first round: nothing is asked of the engine.
+    let (pinned, ended) = replay_with(&f, case("skills_pinned"), &["skills-revoked"]);
+    assert_eq!(ended, Ended::Error);
+    assert_eq!(last(&pinned), failed);
+    assert!(pinned.requests.lock().unwrap().is_empty());
+    assert!(!events(&pinned)
+        .iter()
+        .any(|e| e.get("code").as_str() == Some("skill_revoked")));
+    // The read after the first round's call: its result is shown, then the turn ends; no second round, and
+    // the ledger has no record core did not write.
+    let (read, ended) = replay_with(&f, case("skills_read_noted"), &["skills-read"]);
+    assert_eq!(ended, Ended::Error);
+    assert_eq!(last(&read), failed);
+    assert_eq!(
+        read.requests.lock().unwrap().len(),
+        1,
+        "no round after the read"
+    );
+    let types: Vec<String> = events(&read)
+        .iter()
+        .map(|e| e.get("type").as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        types[types.len() - 2..],
+        ["tool_result".to_string(), "error".to_string()]
+    );
+    assert!(!read
+        .files
+        .lock()
+        .unwrap()
+        .contains_key("skill-history.json"));
+    // The revocation check in the gate (the pinned turn's first call): refused unchecked, unaudited, not run.
+    let gated = Script::new(case("skills_pinned").clone());
+    *gated.revoked_answers.lock().unwrap() = 1;
+    let mut gated = gated;
+    gated.down = vec!["skills-revoked"];
+    let prepared = Prepared::read(case("skills_pinned").get("handoff").get("prepared")).unwrap();
+    let helpers = Helpers {
+        clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
+        announces_tool_action: &chat_turn::helpers::announces_tool_action,
+        announced_note: chat_turn::helpers::ANNOUNCED_NOTE,
+        reduce_tool_result: &|text, cap| chat_turn::reduce::reduce_tool_result(text, cap).text,
+        source_links: &chat_turn::helpers::source_links,
+        fallback_text: &|s| chat_turn::helpers::fallback_text(s),
+        final_answer_note: chat_turn::helpers::FINAL_ANSWER_NOTE,
+        tool_result_cap: 8000,
+    };
+    let ended = block_on(native::run(
+        &gated,
+        &Process::default(),
+        &helpers,
+        &prepared,
+    ));
+    assert_eq!(ended, Ended::Error);
+    let got = events(&gated);
+    let result = got
+        .iter()
+        .find(|e| e.get("type").as_str() == Some("tool_result"))
+        .unwrap();
+    assert_eq!(
+        result.get("text").as_str(),
+        Some(chat_turn::gate::CHECK_FAULT)
+    );
+    assert_eq!(js::stringify(got.last().unwrap()), failed);
+    assert_eq!(
+        gated.requests.lock().unwrap().len(),
+        1,
+        "no round after the call"
+    );
+    assert!(gated.executions.lock().unwrap().is_empty());
+    assert!(!gated
+        .stores
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|s| s.get("op").as_str() == Some("audit")));
+    // The round-0 scrub: before any request.
+    let (plain, ended) = replay_with(&f, case("skills_plain"), &["skills-scrub"]);
+    assert_eq!(ended, Ended::Error);
+    assert_eq!(last(&plain), failed);
+    assert!(plain.requests.lock().unwrap().is_empty());
 }
 
 /// Core keeps a turn whose prepared frame is longer than its cap in Node (rust-chat-native.cjs

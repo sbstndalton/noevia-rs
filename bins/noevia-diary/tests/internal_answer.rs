@@ -441,3 +441,258 @@ async fn a_tenant_that_is_not_ready_is_declined() {
     .await;
     assert_eq!(status.as_u16(), 421);
 }
+
+/// A chat body the stub writes piece by piece; dropping it (the reader went away) is recorded.
+struct Paced {
+    rx: tokio::sync::mpsc::UnboundedReceiver<axum::body::Bytes>,
+    dropped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl http_body::Body for Paced {
+    type Data = axum::body::Bytes;
+    type Error = std::convert::Infallible;
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        self.rx
+            .poll_recv(cx)
+            .map(|f| f.map(|b| Ok(http_body::Frame::data(b))))
+    }
+}
+
+impl Drop for Paced {
+    fn drop(&mut self) {
+        self.dropped
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// An engine whose streamed answer sends its first delta, then waits for `release` (the rest)
+/// or, without one, sends a keep-alive line every 50 ms until its reader goes away.
+async fn paced_engine(
+    release: Option<Arc<tokio::sync::Notify>>,
+) -> (
+    String,
+    Arc<std::sync::atomic::AtomicBool>,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let started = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let st = started.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let d = dropped.clone();
+    let app = axum::Router::new().fallback(move |req: Request<Body>| {
+        let dropped = d.clone();
+        let started = st.clone();
+        let release = release.clone();
+        async move {
+            let path = req.uri().path().to_owned();
+            let bytes = axum::body::to_bytes(req.into_body(), 1 << 22).await.unwrap_or_default();
+            let body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            if path.ends_with("/embeddings") {
+                let data: Vec<Value> = body["input"].as_array().unwrap().iter().enumerate()
+                    .map(|(i, t)| json!({"index": i, "embedding": fake_vector(t.as_str().unwrap())})).collect();
+                return Response::builder().header("content-type", "application/json")
+                    .body(Body::from(json!({"data": data}).to_string())).unwrap();
+            }
+            started.store(true, std::sync::atomic::Ordering::SeqCst);
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+            // More than the 128 characters a stream holds back, so a delta is shown at once.
+            let first = "The synthetic diary keeps a long quiet note about the teal kite at the quay, "
+                .repeat(3);
+            let line = |v: Value| axum::body::Bytes::from(format!("data: {v}\n\n"));
+            tx.send(line(json!({"choices": [{"delta": {"content": first}}]}))).unwrap();
+            tokio::spawn(async move {
+                match release {
+                    Some(r) => {
+                        r.notified().await;
+                        let _ = tx.send(line(json!({"choices": [{"delta": {"content": "\n[LOG: ok]"}, "finish_reason": "stop"}]})));
+                        let _ = tx.send(axum::body::Bytes::from("data: [DONE]\n\n"));
+                    }
+                    None => {
+                        while tx.send(axum::body::Bytes::from(": waiting\n\n")).is_ok() {
+                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                        }
+                    }
+                }
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(Body::new(Paced { rx, dropped }))
+                .unwrap()
+        }
+    });
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    (format!("http://{addr}/v1"), started, dropped)
+}
+
+async fn first_event(body: &mut Body) -> Value {
+    use http_body_util::BodyExt;
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(20), body.frame())
+        .await
+        .expect("a first event before the model finished")
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8(frame.into_data().unwrap().to_vec()).unwrap();
+    serde_json::from_str(text.strip_prefix("data: ").unwrap().trim_end()).unwrap()
+}
+
+fn streamed_request(
+    app: &Arc<noevia_diary::server::App>,
+) -> impl std::future::Future<Output = Response<Body>> {
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/internal/answer?tenant={UID}"))
+        .header("x-noevia-diary-control", "ctl")
+        .body(Body::from(request("answer", true).to_string()))
+        .unwrap();
+    noevia_diary::server::handle(app.clone(), req)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_streamed_answer_is_relayed_while_the_model_is_still_answering() {
+    let dir = tempfile::tempdir().unwrap();
+    build_tenant(dir.path(), true);
+    let release = Arc::new(tokio::sync::Notify::new());
+    let (engine, _, _) = paced_engine(Some(release.clone())).await;
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(dir.path(), &engine, true)).unwrap(),
+    ));
+    // A reply that waited for the whole answer would never come (the model waits for `release`).
+    let resp = tokio::time::timeout(std::time::Duration::from_secs(20), streamed_request(&app))
+        .await
+        .expect("the reply starts before the model has finished");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let mut body = resp.into_body();
+    // The model has not finished (it waits for `release`), yet its first delta has arrived.
+    let first = first_event(&mut body).await;
+    assert_eq!(first["type"], json!("delta"), "{first}");
+    release.notify_one();
+    let rest = axum::body::to_bytes(body, 1 << 24).await.unwrap();
+    let events: Vec<Value> = String::from_utf8(rest.to_vec())
+        .unwrap()
+        .split("\n\n")
+        .filter_map(|f| f.strip_prefix("data: "))
+        .map(|d| serde_json::from_str(d).unwrap())
+        .collect();
+    let last = events.last().unwrap();
+    assert_eq!(last["type"], json!("answered"), "{last}");
+    assert_eq!(last["marker"], json!("ok"));
+    assert!(last["visible"]
+        .as_str()
+        .unwrap()
+        .starts_with("The synthetic diary keeps"));
+    assert_eq!(last["trace"]["status"], json!("ok"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_caller_that_leaves_ends_the_model_call() {
+    let dir = tempfile::tempdir().unwrap();
+    build_tenant(dir.path(), true);
+    let before = snapshot(dir.path());
+    let (engine, _, dropped) = paced_engine(None).await;
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(dir.path(), &engine, true)).unwrap(),
+    ));
+    let resp = streamed_request(&app).await;
+    let mut body = resp.into_body();
+    assert_eq!(first_event(&mut body).await["type"], json!("delta"));
+    assert!(!dropped.load(std::sync::atomic::Ordering::SeqCst));
+    drop(body);
+    // The upstream model call is closed promptly, not left to run to its own deadline.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !dropped.load(std::sync::atomic::Ordering::SeqCst) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the model call is still open"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    // The plain answer: a caller that gives up drops the handler, which ends the call too.
+    let (engine, started, dropped) = paced_engine(None).await;
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(dir.path(), &engine, true)).unwrap(),
+    ));
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/internal/answer?tenant={UID}"))
+        .header("x-noevia-diary-control", "ctl")
+        .body(Body::from(request("answer", false).to_string()))
+        .unwrap();
+    let pending = tokio::spawn(noevia_diary::server::handle(app.clone(), req));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !started.load(std::sync::atomic::Ordering::SeqCst) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the model was never called"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    pending.abort();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !dropped.load(std::sync::atomic::Ordering::SeqCst) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the plain model call is still open"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert_eq!(snapshot(dir.path()), before);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_closed_connection_ends_the_model_call_over_real_tcp() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let dir = tempfile::tempdir().unwrap();
+    build_tenant(dir.path(), true);
+    let (engine, started, dropped) = paced_engine(None).await;
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(dir.path(), &engine, true)).unwrap(),
+    ));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(noevia_diary::serve(listener, app));
+    for stream in [false, true] {
+        started.store(false, std::sync::atomic::Ordering::SeqCst);
+        dropped.store(false, std::sync::atomic::Ordering::SeqCst);
+        let body = request("answer", stream).to_string();
+        let mut conn = tokio::net::TcpStream::connect(addr).await.unwrap();
+        conn.write_all(
+            format!(
+                "POST /internal/answer?tenant={UID} HTTP/1.1\r\nhost: qa\r\nx-noevia-diary-control: ctl\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !started.load(std::sync::atomic::Ordering::SeqCst) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the model was never called"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        if stream {
+            // The reply has started: read its first bytes before going away.
+            let mut buf = [0u8; 64];
+            let n = conn.read(&mut buf).await.unwrap();
+            assert!(buf[..n].starts_with(b"HTTP/1.1 200"));
+        }
+        drop(conn);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !dropped.load(std::sync::atomic::Ordering::SeqCst) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the model call is still open (stream: {stream})"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }
+}

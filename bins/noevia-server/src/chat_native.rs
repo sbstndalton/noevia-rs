@@ -44,7 +44,7 @@ use bytes::Bytes;
 use chat_turn::after::{Keep, Saving};
 use chat_turn::handoff::{Frames, Piece};
 use chat_turn::host::{
-    Answer, EditTarget, EngineRequest, GateRefusal, Host, Read, Target, ToolRun,
+    Answer, EditTarget, EngineRequest, GateRefusal, Host, Read, Scrub, Skill, Target, ToolRun,
 };
 use chat_turn::js;
 use chat_turn::native::{self, Helpers, Process};
@@ -266,11 +266,20 @@ where
 /// Strips a client's copy of the hand-off header (only the front may ask for one).
 pub(crate) fn strip_client_header(headers: &mut axum::http::HeaderMap) {
     headers.remove(HANDOFF_HEADER);
+    headers.remove(chat_turn::handoff::HANDOFF_CAPS_HEADER);
 }
 
 /// Adds the hand-off header to what chat_turn.rs sends core.
-pub(crate) fn handoff_header(token: HeaderValue) -> (&'static str, HeaderValue) {
-    (HANDOFF_HEADER, token)
+/// The headers that ask core for the hand-off: the secret, and what this executor runs (core keeps a turn
+/// needing anything it does not name, such as instruction skills, in Node).
+pub(crate) fn handoff_headers(token: HeaderValue) -> [(&'static str, HeaderValue); 2] {
+    [
+        (HANDOFF_HEADER, token),
+        (
+            chat_turn::handoff::HANDOFF_CAPS_HEADER,
+            HeaderValue::from_static(chat_turn::handoff::HANDOFF_CAPS),
+        ),
+    ]
 }
 
 async fn drive(
@@ -990,6 +999,110 @@ impl Host for FrontHost {
         }
     }
 
+    async fn skills_revoked(
+        &self,
+        project_id: &str,
+        loaded: &[Skill],
+    ) -> Option<Vec<(String, String)>> {
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("projectId", js::s(project_id)),
+            ("loaded", skills_json(loaded)),
+        ]);
+        match self
+            .core("/internal/chat/skills/revoked", &body, BRIDGE_TIMEOUT)
+            .await
+        {
+            Some((200, v)) => match v.get("gone") {
+                JValue::Arr(items) => items
+                    .iter()
+                    .map(|g| {
+                        Some((
+                            g.get("file").as_str()?.to_string(),
+                            g.get("name").as_str()?.to_string(),
+                        ))
+                    })
+                    .collect(),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    async fn skills_read(
+        &self,
+        project_id: &str,
+        chat_id: Option<&str>,
+        candidates: &[Skill],
+        args: &str,
+        result: &str,
+    ) -> Option<Vec<Skill>> {
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("projectId", js::s(project_id)),
+            ("chatId", chat_id.map_or(JValue::Null, js::s)),
+            ("candidates", skills_json(candidates)),
+            ("args", js::s(args)),
+            ("result", js::s(result)),
+        ]);
+        match self
+            .core("/internal/chat/skills/read", &body, BRIDGE_TIMEOUT)
+            .await
+        {
+            Some((200, v)) => skills_of(v.get("loaded")),
+            _ => None,
+        }
+    }
+
+    async fn skills_scrub(
+        &self,
+        project_id: &str,
+        chat_id: Option<&str>,
+        messages: &[JValue],
+    ) -> Option<Scrub> {
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("projectId", js::s(project_id)),
+            ("chatId", chat_id.map_or(JValue::Null, js::s)),
+            ("messages", JValue::Arr(messages.to_vec())),
+        ]);
+        let (status, v) = self
+            .core("/internal/chat/skills/scrub", &body, BRIDGE_TIMEOUT)
+            .await?;
+        if status != 200 {
+            return None;
+        }
+        let JValue::Arr(changed) = v.get("changed") else {
+            return None;
+        };
+        let changed = changed
+            .iter()
+            .map(|c| match c {
+                JValue::Arr(pair) => match (
+                    pair.first().and_then(JValue::as_num),
+                    pair.get(1).and_then(JValue::as_str),
+                ) {
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    (Some(i), Some(text))
+                        if i >= 0.0 && i.fract() == 0.0 && (i as usize) < messages.len() =>
+                    {
+                        Some((i as usize, text.to_string()))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let JValue::Arr(removed) = v.get("removed") else {
+            return None;
+        };
+        let removed = removed
+            .iter()
+            .map(|r| r.as_str().map(str::to_string))
+            .collect::<Option<Vec<_>>>()?;
+        Some(Scrub { changed, removed })
+    }
+
     async fn permission_binding(
         &self,
         chat_id: Option<&str>,
@@ -1159,6 +1272,36 @@ impl Keep for FrontHost {
             server_store::RustProjects::owned(),
         );
     }
+}
+
+/// Skills as the bridges carry them: `[{file, hash, name}]`.
+fn skills_json(list: &[Skill]) -> JValue {
+    JValue::Arr(
+        list.iter()
+            .map(|k| {
+                js::obj([
+                    ("file", js::s(k.file.clone())),
+                    ("hash", js::s(k.hash.clone())),
+                    ("name", js::s(k.name.clone())),
+                ])
+            })
+            .collect(),
+    )
+}
+
+/// `[{file, hash, name}]` read back; `None` for anything else.
+fn skills_of(v: &JValue) -> Option<Vec<Skill>> {
+    let JValue::Arr(items) = v else { return None };
+    items
+        .iter()
+        .map(|k| {
+            Some(Skill {
+                file: k.get("file").as_str()?.to_string(),
+                hash: k.get("hash").as_str()?.to_string(),
+                name: k.get("name").as_str()?.to_string(),
+            })
+        })
+        .collect()
 }
 
 /// Resolves once the client has gone (the response body dropped).

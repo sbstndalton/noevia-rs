@@ -1733,3 +1733,209 @@ fn framing_preferences_real_device_token_reads_writes_and_respects_disablement()
         before
     );
 }
+
+/// Every row of every table, by table (sbstndalton/noevia#2582: what the operator command may change).
+fn dump(w: &World) -> std::collections::BTreeMap<String, Vec<String>> {
+    let tables: Vec<String> = w
+        .node
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    tables
+        .into_iter()
+        .map(|t| {
+            let cols: Vec<String> = w
+                .node
+                .prepare(&format!("SELECT name FROM pragma_table_info('{t}')"))
+                .unwrap()
+                .query_map([], |r| r.get(0))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            let expr = cols
+                .iter()
+                .map(|c| format!("quote(\"{c}\")"))
+                .collect::<Vec<_>>()
+                .join("||','||");
+            let rows: Vec<String> = w
+                .node
+                .prepare(&format!("SELECT {expr} FROM \"{t}\" ORDER BY rowid"))
+                .unwrap()
+                .query_map([], |r| r.get(0))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            (t, rows)
+        })
+        .collect()
+}
+
+/// The operator command's writer: its own connection, as a second process next to the server has.
+fn operator_writer(w: &World) -> Writer {
+    Writer::open(w.dir.path(), RustAuth::owned()).unwrap()
+}
+
+#[test]
+fn an_operator_invitation_is_accepted_by_the_normal_flow_for_each_role() {
+    use server_account::operator::{self, Role};
+    let w = world(false);
+    let mut owner = Browser::new("10.0.0.1");
+    let owner_id = setup(&w, &mut owner);
+    let ops = operator_writer(&w);
+    for (i, role) in [Role::Member, Role::Admin].into_iter().enumerate() {
+        let now = T0 + 10 * i as i64;
+        let made = operator::create(&ops, role, now).unwrap();
+        assert_eq!(made.expires_at, now + 86_400_000);
+        assert!(!format!("{made:?}").contains(&made.token));
+        let (created_by, stored): (String, String) = w
+            .node
+            .query_row(
+                "SELECT created_by, role FROM invitations WHERE token_hash=?1",
+                [server_auth::js::digest(&made.token)],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            (created_by.as_str(), stored.as_str()),
+            (owner_id.as_str(), role.as_str())
+        );
+        // The audit event names the command, not an account.
+        let (actor, detail): (Option<String>, String) = w
+            .node
+            .query_row(
+                "SELECT actor_user_id, detail FROM audit_events WHERE action='invite.create' ORDER BY id DESC LIMIT 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(actor, None);
+        assert_eq!(
+            detail,
+            format!(
+                r#"{{"role":"{}","via":"operator-invitation"}}"#,
+                role.as_str()
+            )
+        );
+        // No account, session or password until the invitation is accepted.
+        assert_eq!(count(&w, "SELECT count(*) FROM users"), 1 + i as i64);
+        let mut guest = Browser::new("10.0.1.1");
+        let body = format!(
+            r#"{{"token":"{}","username":"QA-Op-{}","password":"{PASSWORD}"}}"#,
+            made.token,
+            role.as_str()
+        );
+        let (s, v, _) = call(
+            &w,
+            &mut guest,
+            "POST",
+            "/api/auth/invitations/accept",
+            &body,
+            now + 1,
+        );
+        assert_eq!(s, 201);
+        assert_eq!(v["user"]["role"], role.as_str());
+        // Single use.
+        let (s, _, _) = call(
+            &w,
+            &mut Browser::new("10.0.1.2"),
+            "POST",
+            "/api/auth/invitations/accept",
+            &body.replace("QA-Op-", "QA-Again-"),
+            now + 2,
+        );
+        assert_eq!(s, 400);
+    }
+    // Expired after 24 hours.
+    let made = operator::create(&ops, Role::Member, T0).unwrap();
+    let body = format!(
+        r#"{{"token":"{}","username":"QA-Late","password":"{PASSWORD}"}}"#,
+        made.token
+    );
+    let (s, _, _) = call(
+        &w,
+        &mut Browser::new("10.0.1.3"),
+        "POST",
+        "/api/auth/invitations/accept",
+        &body,
+        T0 + 86_400_000,
+    );
+    assert_eq!(s, 400);
+}
+
+#[test]
+fn an_operator_invitation_changes_only_its_invitation_and_audit_rows() {
+    use server_account::operator::{self, Role};
+    let w = world(false);
+    let mut owner = Browser::new("10.0.0.1");
+    setup(&w, &mut owner);
+    let (s, _, _) = call(
+        &w,
+        &mut owner,
+        "POST",
+        "/api/admin/invitations",
+        r#"{"role":"member"}"#,
+        T0,
+    );
+    assert_eq!(s, 201);
+    let before = dump(&w);
+    operator::create(&operator_writer(&w), Role::Admin, T0 + 5).unwrap();
+    let after = dump(&w);
+    assert_eq!(
+        before.keys().collect::<Vec<_>>(),
+        after.keys().collect::<Vec<_>>()
+    );
+    for (table, rows) in &before {
+        let now = &after[table];
+        match table.as_str() {
+            "invitations" | "audit_events" => {
+                assert_eq!(now.len(), rows.len() + 1, "{table}");
+                assert_eq!(&now[..rows.len()], &rows[..], "{table}");
+            }
+            // AUTOINCREMENT's counter for audit_events moves with the new row; no other does.
+            "sqlite_sequence" => {
+                let others = |v: &Vec<String>| {
+                    v.iter()
+                        .filter(|r| !r.starts_with("'audit_events',"))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(others(now), others(rows));
+            }
+            _ => assert_eq!(now, rows, "{table}"),
+        }
+    }
+}
+
+#[test]
+fn the_operator_invitation_refuses_an_empty_store_and_a_store_without_an_active_administrator() {
+    use server_account::operator::{self, Refusal, Role};
+    let w = world(false);
+    let ops = operator_writer(&w);
+    assert!(matches!(
+        operator::create(&ops, Role::Admin, T0),
+        Err(Refusal::EmptyStore)
+    ));
+    assert_eq!(count(&w, "SELECT count(*) FROM invitations"), 0);
+    assert_eq!(count(&w, "SELECT count(*) FROM audit_events"), 0);
+    let mut owner = Browser::new("10.0.0.1");
+    let owner_id = setup(&w, &mut owner);
+    w.node
+        .execute(
+            "UPDATE users SET disabled_at=?1 WHERE id=?2",
+            (T0, &owner_id),
+        )
+        .unwrap();
+    let audits = count(&w, "SELECT count(*) FROM audit_events");
+    assert!(matches!(
+        operator::create(&ops, Role::Member, T0 + 1),
+        Err(Refusal::NoActiveAdministrator)
+    ));
+    assert_eq!(count(&w, "SELECT count(*) FROM invitations"), 0);
+    assert_eq!(count(&w, "SELECT count(*) FROM audit_events"), audits);
+    assert_eq!(Role::parse("owner"), None);
+    assert_eq!(Role::parse("Admin"), None);
+    assert_eq!(Role::parse(""), None);
+}

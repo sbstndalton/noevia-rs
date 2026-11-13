@@ -5266,6 +5266,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
      "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
@@ -5305,6 +5306,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "2030-01.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
@@ -5345,6 +5347,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
      "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
@@ -5386,6 +5389,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
      "Logs/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
@@ -5426,6 +5430,7 @@
     "topic": ""
    },
    "expected": {
+    "earlier": [],
     "files": {
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
      "Entries/2030/March/March 9, 2030.md": "## Saturday, March 9, 2030\n\n### 07:05\n\n**Me:** Quiet morning.\n\n**Assistant:** A quiet morning.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
@@ -5465,6 +5470,7 @@
     "topic": "  two\r\nlines here  "
    },
    "expected": {
+    "earlier": [],
     "files": {
      "2030-03.md": "## Saturday, March 9, 2030\n\n### 23:59 — two lines here\n\n**Me:** Q\n\n**Assistant:** A\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
@@ -5505,6 +5511,7 @@
     "topic": "No reply"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
      "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 00:00 — No reply\n\n**Me:** Only me.\n\n**Assistant:** \n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
@@ -5544,6 +5551,7 @@
     "topic": "Headings"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "2030-01.md": "## Sunday, January 6, 2030\n\n### 10:10 — Headings\n\n**Me:** ## Not a day\n\\### Not a sub\n\\*\\*Me:** fake\n<\\!-- xid:1 -->\n\n**Assistant:** # Title\n\\*\\*Assistant:** fake\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
@@ -5584,6 +5592,7 @@
     "topic": "Ünïcode 🌿 — dash"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
      "Entries/2030/December/December 31, 2030.md": "## Tuesday, December 31, 2030\n\n### 12:00 — Ünïcode 🌿 — dash\n\n**Me:** Ça va? 🌿\n\n**Assistant:** Très bien — 🌿\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
@@ -5623,6 +5632,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "2029-12.md": "## Monday, December 31, 2029\n\n### 08:00\n\n**Me:** old\n\n**Assistant:** older\n\n<!-- xid:00000000-0000-4000-8000-00000000c101 -->\n",
      "2030-01.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
@@ -5666,6 +5676,15 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
     "files": {
      "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
     },
@@ -5708,6 +5727,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "Entries/2029/December/December 31, 2029.md": "## Monday, December 31, 2029\n",
      "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
@@ -5750,6 +5770,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "AI Memory/README.md": "Mine 2\n",
      "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
@@ -5802,6 +5823,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "AI Memory/README.md": "Mine\n",
      "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
@@ -5846,6 +5868,15 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c201\", \"day\": \"2030-01-06\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
     "files": {
      "2030-01.md": "## Sunday, January 6, 2030\n\n### 09:05 — Earlier\n\n**Me:** first\n\n**Assistant:** one\n\n<!-- xid:00000000-0000-4000-8000-00000000c201 -->\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
     },
@@ -5894,6 +5925,15 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c201\", \"day\": \"2030-01-06\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
     "files": {
      "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 09:05 — Earlier\n\n**Me:** first\n\n**Assistant:** one\n\n<!-- xid:00000000-0000-4000-8000-00000000c201 -->\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
     },
@@ -5941,6 +5981,15 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c302\", \"day\": \"2030-01-07\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
     "files": {
      "2030-01.md": "## Sunday, January 6, 2030\n\n### 09:05\n\n**Me:** a\n\n**Assistant:** b\n\n<!-- xid:00000000-0000-4000-8000-00000000c301 -->\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n## Monday, January 7, 2030\n\n### 10:00\n\n**Me:** c\n\n**Assistant:** d\n\n<!-- xid:00000000-0000-4000-8000-00000000c302 -->\n"
     },
@@ -5989,6 +6038,15 @@
     "topic": "Later"
    },
    "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c301\", \"day\": \"2030-01-06\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
     "files": {
      "2030-01.md": "## Sunday, January 6, 2030\n\n### 09:05\n\n**Me:** a\n\n**Assistant:** b\n\n<!-- xid:00000000-0000-4000-8000-00000000c301 -->\n\n## Sunday, January 20, 2030\n\n### 16:45 — Later\n\n**Me:** me\n\n**Assistant:** assistant\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
     },
@@ -6037,6 +6095,15 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
     "files": {
      "2030-01.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
     },
@@ -6085,6 +6152,15 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
     "files": {
      "2030-01.md": "## January 6, 2030\n\n### 09:00\n\n**Me:** x\n\n## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
     },
@@ -6133,6 +6209,15 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
     "files": {
      "2030-2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
     },
@@ -6176,6 +6261,7 @@
     "topic": "Leap"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
      "Entries/2032/February/February 29, 2032.md": "## Sunday, February 29, 2032\n\n### 13:13 — Leap\n\n**Me:** Extra day\n\n**Assistant:** Noted\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
@@ -6215,6 +6301,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "Entries": "a file where the folder should be\n"
     },
@@ -6256,6 +6343,7 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [],
     "files": {
      "2030-01.md/x": "y"
     },
@@ -6298,6 +6386,15 @@
     "topic": "Canal walk"
    },
    "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
     "files": {
      "Entries": "a file where the folder should be\n"
     },
@@ -6331,6 +6428,1442 @@
      [
       "Entries",
       "a file where the folder should be\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 0,
+      "attempts": 1,
+      "kind": "exchange",
+      "last_error": "Entries",
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c401\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00 — Earlier\", \"body\": \"**Me:** An earlier question.\\n\\n**Assistant:** An earlier answer.\\n\\n<!-- xid:00000000-0000-4000-8000-00000000c401 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 5, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "files": {
+     "Entries": "a file where the folder should be\n"
+    },
+    "journal": [
+     {
+      "applied": 0,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": true,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 0,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c401\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00 — Earlier\", \"body\": \"**Me:** An earlier question.\\n\\n**Assistant:** An earlier answer.\\n\\n<!-- xid:00000000-0000-4000-8000-00000000c401 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 5, 2030.md\", \"month_label\": \"January 2030\"}"
+    }
+   ],
+   "name": "pending-earlier-unapplied-exchange-blocked",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "Entries",
+      "a file where the folder should be\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 0,
+      "attempts": 1,
+      "kind": "exchange",
+      "last_error": "2029-12.md",
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c402\", \"day\": \"2029-12-31\", \"sub_header\": \"23:00 — Earlier\", \"body\": \"**Me:** An earlier question.\\n\\n**Assistant:** An earlier answer.\\n\\n<!-- xid:00000000-0000-4000-8000-00000000c402 -->\\n\", \"month\": \"2029-12.md\", \"document\": \"2029-12.md\", \"month_label\": \"December 2029\"}"
+     }
+    ],
+    "files": {
+     "2029-12.md/x": "y"
+    },
+    "journal": [
+     {
+      "applied": 0,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": true,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 0,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c402\", \"day\": \"2029-12-31\", \"sub_header\": \"23:00 — Earlier\", \"body\": \"**Me:** An earlier question.\\n\\n**Assistant:** An earlier answer.\\n\\n<!-- xid:00000000-0000-4000-8000-00000000c402 -->\\n\", \"month\": \"2029-12.md\", \"document\": \"2029-12.md\", \"month_label\": \"December 2029\"}"
+    }
+   ],
+   "name": "pending-earlier-unapplied-blocks-a-writable-exchange",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "2029-12.md/x",
+      "y"
+     ]
+    ],
+    "raw": []
+   }
+  }
+ ],
+ "log_exchange_native": [
+  {
+   "args": {
+    "claude": "assistant",
+    "day": "2030-01-06",
+    "me": "me",
+    "now": "14:32",
+    "topic": "T"
+   },
+   "expected": {
+    "files": {},
+    "journal": [],
+    "pending": false,
+    "raises": "error"
+   },
+   "journal_before": [],
+   "name": "duplicate-field-template-fresh",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{year}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "fresh-daily",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "2030-01.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "fresh-monthly",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Journal/Diary - January 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"Diary - January 2030.md\", \"document\": \"Journal/Diary - January 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "fresh-monthly-named-template",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "Diary - {month_name} {year}.md",
+    "monthly_prefix": "Journal"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Logs/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "Logs/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Logs/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "fresh-daily-custom-prefix",
+   "settings": {
+    "entries_prefix": "Logs",
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "A quiet morning.",
+    "day": "2030-03-09",
+    "me": "Quiet morning.",
+    "now": "07:05",
+    "topic": ""
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Entries/2030/March/March 9, 2030.md": "## Saturday, March 9, 2030\n\n### 07:05\n\n**Me:** Quiet morning.\n\n**Assistant:** A quiet morning.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-03-09\", \"sub_header\": \"07:05\", \"body\": \"**Me:** Quiet morning.\\n\\n**Assistant:** A quiet morning.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-03.md\", \"document\": \"Entries/2030/March/March 9, 2030.md\", \"month_label\": \"March 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "fresh-no-topic",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "A",
+    "day": "2030-03-09",
+    "me": "Q",
+    "now": "23:59",
+    "topic": "  two\r\nlines here  "
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "2030-03.md": "## Saturday, March 9, 2030\n\n### 23:59 — two lines here\n\n**Me:** Q\n\n**Assistant:** A\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-03-09\", \"sub_header\": \"23:59 — two lines here\", \"body\": \"**Me:** Q\\n\\n**Assistant:** A\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-03.md\", \"document\": \"2030-03.md\", \"month_label\": \"March 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "fresh-topic-with-line-breaks",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "",
+    "day": "2030-01-06",
+    "me": "Only me.",
+    "now": "00:00",
+    "topic": "No reply"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 00:00 — No reply\n\n**Me:** Only me.\n\n**Assistant:** \n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"00:00 — No reply\", \"body\": \"**Me:** Only me.\\n\\n**Assistant:** \\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "fresh-empty-assistant",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "# Title\n**Assistant:** fake\n  \n",
+    "day": "2030-01-06",
+    "me": "## Not a day\n### Not a sub\n**Me:** fake\n<!-- xid:1 -->",
+    "now": "10:10",
+    "topic": "Headings"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "2030-01.md": "## Sunday, January 6, 2030\n\n### 10:10 — Headings\n\n**Me:** ## Not a day\n\\### Not a sub\n\\*\\*Me:** fake\n<\\!-- xid:1 -->\n\n**Assistant:** # Title\n\\*\\*Assistant:** fake\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"10:10 — Headings\", \"body\": \"**Me:** ## Not a day\\n\\\\### Not a sub\\n\\\\*\\\\*Me:** fake\\n<\\\\!-- xid:1 -->\\n\\n**Assistant:** # Title\\n\\\\*\\\\*Assistant:** fake\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "fresh-escaped-structure",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "Très bien — 🌿",
+    "day": "2030-12-31",
+    "me": "Ça va? 🌿",
+    "now": "12:00",
+    "topic": "Ünïcode 🌿 — dash"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Entries/2030/December/December 31, 2030.md": "## Tuesday, December 31, 2030\n\n### 12:00 — Ünïcode 🌿 — dash\n\n**Me:** Ça va? 🌿\n\n**Assistant:** Très bien — 🌿\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-12-31\", \"sub_header\": \"12:00 — Ünïcode 🌿 — dash\", \"body\": \"**Me:** Ça va? 🌿\\n\\n**Assistant:** Très bien — 🌿\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-12.md\", \"document\": \"Entries/2030/December/December 31, 2030.md\", \"month_label\": \"December 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "fresh-unicode",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "2029-12.md": "## Monday, December 31, 2029\n\n### 08:00\n\n**Me:** old\n\n**Assistant:** older\n\n<!-- xid:00000000-0000-4000-8000-00000000c101 -->\n",
+     "2030-01.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "existing-corpus-no-scaffold",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "2029-12.md",
+      "## Monday, December 31, 2029\n\n### 08:00\n\n**Me:** old\n\n**Assistant:** older\n\n<!-- xid:00000000-0000-4000-8000-00000000c101 -->\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
+    "files": {
+     "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 1,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+    }
+   ],
+   "name": "existing-journal-no-scaffold",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "Entries/2029/December/December 31, 2029.md": "## Monday, December 31, 2029\n",
+     "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "existing-daily-corpus-no-scaffold",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "Entries/2029/December/December 31, 2029.md",
+      "## Monday, December 31, 2029\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "AI Memory/README.md": "Mine 2\n",
+     "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "Entries/README.md": "Mine 1\n",
+     "Raw Sources/README.md": "Mine 3\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "existing-readmes-kept",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "Entries/README.md",
+      "Mine 1\n"
+     ],
+     [
+      "AI Memory/README.md",
+      "Mine 2\n"
+     ],
+     [
+      "Raw Sources/README.md",
+      "Mine 3\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "AI Memory/README.md": "Mine\n",
+     "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "scaffold-keeps-some-seeds",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "AI Memory/README.md",
+      "Mine\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c201\", \"day\": \"2030-01-06\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
+    "files": {
+     "2030-01.md": "## Sunday, January 6, 2030\n\n### 09:05 — Earlier\n\n**Me:** first\n\n**Assistant:** one\n\n<!-- xid:00000000-0000-4000-8000-00000000c201 -->\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 1,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c201\", \"day\": \"2030-01-06\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+    }
+   ],
+   "name": "second-exchange-same-day-monthly",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "2030-01.md",
+      "## Sunday, January 6, 2030\n\n### 09:05 — Earlier\n\n**Me:** first\n\n**Assistant:** one\n\n<!-- xid:00000000-0000-4000-8000-00000000c201 -->\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c201\", \"day\": \"2030-01-06\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
+    "files": {
+     "Entries/2030/January/January 6, 2030.md": "## Sunday, January 6, 2030\n\n### 09:05 — Earlier\n\n**Me:** first\n\n**Assistant:** one\n\n<!-- xid:00000000-0000-4000-8000-00000000c201 -->\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 1,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c201\", \"day\": \"2030-01-06\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+    }
+   ],
+   "name": "second-exchange-same-day-daily",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "Entries/2030/January/January 6, 2030.md",
+      "## Sunday, January 6, 2030\n\n### 09:05 — Earlier\n\n**Me:** first\n\n**Assistant:** one\n\n<!-- xid:00000000-0000-4000-8000-00000000c201 -->\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c302\", \"day\": \"2030-01-07\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
+    "files": {
+     "2030-01.md": "## Sunday, January 6, 2030\n\n### 09:05\n\n**Me:** a\n\n**Assistant:** b\n\n<!-- xid:00000000-0000-4000-8000-00000000c301 -->\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n## Monday, January 7, 2030\n\n### 10:00\n\n**Me:** c\n\n**Assistant:** d\n\n<!-- xid:00000000-0000-4000-8000-00000000c302 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 1,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c302\", \"day\": \"2030-01-07\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+    }
+   ],
+   "name": "earlier-day-inside-a-later-month",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "2030-01.md",
+      "## Sunday, January 6, 2030\n\n### 09:05\n\n**Me:** a\n\n**Assistant:** b\n\n<!-- xid:00000000-0000-4000-8000-00000000c301 -->\n\n## Monday, January 7, 2030\n\n### 10:00\n\n**Me:** c\n\n**Assistant:** d\n\n<!-- xid:00000000-0000-4000-8000-00000000c302 -->\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "assistant",
+    "day": "2030-01-20",
+    "me": "me",
+    "now": "16:45",
+    "topic": "Later"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c301\", \"day\": \"2030-01-06\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
+    "files": {
+     "2030-01.md": "## Sunday, January 6, 2030\n\n### 09:05\n\n**Me:** a\n\n**Assistant:** b\n\n<!-- xid:00000000-0000-4000-8000-00000000c301 -->\n\n## Sunday, January 20, 2030\n\n### 16:45 — Later\n\n**Me:** me\n\n**Assistant:** assistant\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-20\", \"sub_header\": \"16:45 — Later\", \"body\": \"**Me:** me\\n\\n**Assistant:** assistant\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 1,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c301\", \"day\": \"2030-01-06\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+    }
+   ],
+   "name": "new-day-after-existing-days",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "2030-01.md",
+      "## Sunday, January 6, 2030\n\n### 09:05\n\n**Me:** a\n\n**Assistant:** b\n\n<!-- xid:00000000-0000-4000-8000-00000000c301 -->\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
+    "files": {
+     "2030-01.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 1,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+    }
+   ],
+   "name": "blank-existing-month-file",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "2030-01.md",
+      "  \n\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
+    "files": {
+     "2030-01.md": "## January 6, 2030\n\n### 09:00\n\n**Me:** x\n\n## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 1,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+    }
+   ],
+   "name": "month-without-weekday-header",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "2030-01.md",
+      "## January 6, 2030\n\n### 09:00\n\n**Me:** x\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
+    "files": {
+     "2030-2030.md": "## Sunday, January 6, 2030\n\n### 14:32 — Canal walk\n\n**Me:** I walked to the canal.\n\n**Assistant:** The user walked to the canal.\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-2030.md\", \"document\": \"2030-2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 1,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+    }
+   ],
+   "name": "duplicate-field-template-with-journal",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{year}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "Noted",
+    "day": "2032-02-29",
+    "me": "Extra day",
+    "now": "13:13",
+    "topic": "Leap"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "AI Memory/README.md": "Keep durable diary memory and context as Markdown files here.\n",
+     "Entries/2032/February/February 29, 2032.md": "## Sunday, February 29, 2032\n\n### 13:13 — Leap\n\n**Me:** Extra day\n\n**Assistant:** Noted\n\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\n",
+     "Entries/README.md": "Diary entries are saved in the configured daily or monthly layout.\n",
+     "Raw Sources/README.md": "Keep original reference material for your diary here.\n"
+    },
+    "journal": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2032-02-29\", \"sub_header\": \"13:13 — Leap\", \"body\": \"**Me:** Extra day\\n\\n**Assistant:** Noted\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2032-02.md\", \"document\": \"Entries/2032/February/February 29, 2032.md\", \"month_label\": \"February 2032\"}"
+     }
+    ],
+    "pending": false,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "leap-day",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "Entries": "a file where the folder should be\n"
+    },
+    "journal": [
+     {
+      "applied": 0,
+      "attempts": 1,
+      "kind": "exchange",
+      "last_error": "Entries",
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "native_unavailable": "Diary exchange is pending; the save outcome is uncertain until journal replay",
+    "pending": true,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "pending-parent-is-a-file-daily",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "Entries",
+      "a file where the folder should be\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [],
+    "files": {
+     "2030-01.md/x": "y"
+    },
+    "journal": [
+     {
+      "applied": 0,
+      "attempts": 1,
+      "kind": "exchange",
+      "last_error": "2030-01.md",
+      "payload": "{\"scaffold\": true, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "native_unavailable": "Diary exchange is pending; the save outcome is uncertain until journal replay",
+    "pending": true,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [],
+   "name": "pending-parent-is-a-file-monthly",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "2030-01.md/x",
+      "y"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 1,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+     }
+    ],
+    "files": {
+     "Entries": "a file where the folder should be\n"
+    },
+    "journal": [
+     {
+      "applied": 0,
+      "attempts": 1,
+      "kind": "exchange",
+      "last_error": "Entries",
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "native_unavailable": "Diary exchange is pending; the save outcome is uncertain until journal replay",
+    "pending": true,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 1,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c001\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00\", \"body\": \"x\", \"month\": \"m\", \"document\": \"d\", \"month_label\": \"l\"}"
+    }
+   ],
+   "name": "pending-after-earlier-exchange",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "Entries",
+      "a file where the folder should be\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 0,
+      "attempts": 1,
+      "kind": "exchange",
+      "last_error": "Entries",
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c401\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00 — Earlier\", \"body\": \"**Me:** An earlier question.\\n\\n**Assistant:** An earlier answer.\\n\\n<!-- xid:00000000-0000-4000-8000-00000000c401 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 5, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "files": {
+     "Entries": "a file where the folder should be\n"
+    },
+    "journal": [
+     {
+      "applied": 0,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 6, 2030.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "native_unavailable": "Diary exchange is pending; the save outcome is uncertain until journal replay",
+    "pending": true,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 0,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c401\", \"day\": \"2030-01-05\", \"sub_header\": \"09:00 — Earlier\", \"body\": \"**Me:** An earlier question.\\n\\n**Assistant:** An earlier answer.\\n\\n<!-- xid:00000000-0000-4000-8000-00000000c401 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"Entries/2030/January/January 5, 2030.md\", \"month_label\": \"January 2030\"}"
+    }
+   ],
+   "name": "pending-earlier-unapplied-exchange-blocked",
+   "settings": {
+    "entry_layout": "daily",
+    "index_enabled": false
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "Entries",
+      "a file where the folder should be\n"
+     ]
+    ],
+    "raw": []
+   }
+  },
+  {
+   "args": {
+    "claude": "The user walked to the canal.",
+    "day": "2030-01-06",
+    "me": "I walked to the canal.",
+    "now": "14:32",
+    "topic": "Canal walk"
+   },
+   "expected": {
+    "earlier": [
+     {
+      "applied": 0,
+      "attempts": 1,
+      "kind": "exchange",
+      "last_error": "2029-12.md",
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c402\", \"day\": \"2029-12-31\", \"sub_header\": \"23:00 — Earlier\", \"body\": \"**Me:** An earlier question.\\n\\n**Assistant:** An earlier answer.\\n\\n<!-- xid:00000000-0000-4000-8000-00000000c402 -->\\n\", \"month\": \"2029-12.md\", \"document\": \"2029-12.md\", \"month_label\": \"December 2029\"}"
+     }
+    ],
+    "files": {
+     "2029-12.md/x": "y"
+    },
+    "journal": [
+     {
+      "applied": 0,
+      "attempts": 0,
+      "kind": "exchange",
+      "last_error": null,
+      "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-000000000001\", \"day\": \"2030-01-06\", \"sub_header\": \"14:32 — Canal walk\", \"body\": \"**Me:** I walked to the canal.\\n\\n**Assistant:** The user walked to the canal.\\n\\n<!-- xid:00000000-0000-4000-8000-000000000001 -->\\n\", \"month\": \"2030-01.md\", \"document\": \"2030-01.md\", \"month_label\": \"January 2030\"}"
+     }
+    ],
+    "native_unavailable": "Diary exchange is pending; the save outcome is uncertain until journal replay",
+    "pending": true,
+    "xid": "00000000-0000-4000-8000-000000000001"
+   },
+   "journal_before": [
+    {
+     "applied": 0,
+     "kind": "exchange",
+     "payload": "{\"scaffold\": false, \"xid\": \"00000000-0000-4000-8000-00000000c402\", \"day\": \"2029-12-31\", \"sub_header\": \"23:00 — Earlier\", \"body\": \"**Me:** An earlier question.\\n\\n**Assistant:** An earlier answer.\\n\\n<!-- xid:00000000-0000-4000-8000-00000000c402 -->\\n\", \"month\": \"2029-12.md\", \"document\": \"2029-12.md\", \"month_label\": \"December 2029\"}"
+    }
+   ],
+   "name": "pending-earlier-unapplied-blocks-a-writable-exchange",
+   "settings": {
+    "entry_layout": "monthly",
+    "index_enabled": false,
+    "month_file_template": "{year}-{month02}.md"
+   },
+   "tree": {
+    "dirs": [],
+    "files": [
+     [
+      "2029-12.md/x",
+      "y"
      ]
     ],
     "raw": []

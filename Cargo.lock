@@ -2140,6 +2140,7 @@ dependencies = [
  "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",
+ "http-body",
  "http-body-util",
  "regex",
  "reqwest",

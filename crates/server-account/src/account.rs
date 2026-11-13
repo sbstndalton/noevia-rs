@@ -10,6 +10,7 @@ use crate::{decode_segment, read_object, Account, Fault, Handled, Outcome, Reply
 use js_json::JValue;
 use server_auth::{Credential, Identity};
 use server_store::rusqlite::types::Value;
+use server_store::{StoreError, WriteTx};
 
 /// auth.cjs `IDLE_MS` (seven days): a session idle longer than this can no longer sign in
 /// (`identity.rs` applies the same limit).
@@ -456,6 +457,31 @@ fn delete_passkey(acct: &Account, uid: &str, id: &str) -> Handled {
     })
 }
 
+/// `createInvite`'s lifetime: an invitation is good for 24 hours.
+pub(crate) const INVITATION_TTL_MS: i64 = 86_400_000;
+
+/// `createInvite`'s writes: the invitation row (a digest of `token`, never the token) and its
+/// `invite.create` audit event, in the caller's transaction. Both `POST /api/admin/invitations`
+/// and the operator command (`crate::operator`, sbstndalton/noevia#2582) write through here.
+/// Returns the expiry.
+pub(crate) fn insert_invitation(
+    tx: &WriteTx<'_>,
+    token: &str,
+    created_by: &str,
+    actor: Option<&str>,
+    stored_role: &str,
+    detail: &JValue,
+    now: i64,
+) -> Result<i64, StoreError> {
+    let expires = now + INVITATION_TTL_MS;
+    tx.execute(
+        "INSERT INTO invitations(token_hash,created_by,role,expires_at,created_at) VALUES(?1,?2,?3,?4,?5)",
+        (util::digest(token), created_by, stored_role, expires, now),
+    )?;
+    audit(tx, "invite.create", actor, None, detail, now)?;
+    Ok(expires)
+}
+
 /// The /api/admin/ block of routes/auth.cjs `account` for the paths Rust owns.
 fn admin(
     acct: &Account,
@@ -496,14 +522,10 @@ fn admin(
             "member"
         };
         let token = util::random_token(32);
-        let expires = now + 86_400_000;
-        acct.writer.write(|tx| {
-            tx.execute(
-                "INSERT INTO invitations(token_hash,created_by,role,expires_at,created_at) VALUES(?1,?2,?3,?4,?5)",
-                (util::digest(&token), actor, stored, expires, now),
-            )?;
-            audit(tx, "invite.create", Some(actor), None, &JValue::obj([("role", role.clone())]), now)
-        })?;
+        let detail = JValue::obj([("role", role.clone())]);
+        let expires = acct
+            .writer
+            .write(|tx| insert_invitation(tx, &token, actor, Some(actor), stored, &detail, now))?;
         return reply(Reply::json(
             201,
             &JValue::obj([
