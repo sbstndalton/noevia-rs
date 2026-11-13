@@ -78,9 +78,9 @@ fn stored_mtime(path: &Path) -> std::io::Result<i64> {
 }
 
 /// Some filesystems cannot store every recorded mtime: ext4 (the CI runners' temporary directory)
-/// clamps anything before 1901-12-13T20:45:52Z (`i32::MIN` seconds) to that instant. A case whose
-/// mtime lies outside the signed 32-bit range and did not survive the round trip says nothing
-/// about the port, so it is skipped; any other mismatch is a real failure.
+/// clamps anything before 1901-12-13T20:45:52Z (`i32::MIN` seconds) or after 2446 to its range.
+/// A recorded mtime outside the signed 32-bit range that did not survive the round trip is
+/// reported here (true); any other mismatch is a real failure.
 fn mtime_unstorable(path: &Path, secs: i64) -> Result<bool, Box<dyn std::error::Error>> {
     let stored = stored_mtime(path)?;
     if stored == secs {
@@ -223,7 +223,10 @@ fn infer_date_matches_python() -> TestResult {
             fs::write(&file, b"x")?;
             let mtime = case["mtime"].as_i64().ok_or("mtime")?;
             set_mtime(&file, mtime)?;
-            if mtime_unstorable(&file, mtime)? {
+            // A date taken from the file name does not depend on the mtime: those cases always run.
+            let from_mtime = error_name(&case["expected"]).is_some()
+                || case["expected"][1].as_str() == Some("mtime");
+            if mtime_unstorable(&file, mtime)? && from_mtime {
                 unstorable += 1;
                 continue;
             }
@@ -254,9 +257,10 @@ fn infer_date_matches_python() -> TestResult {
             "infer_date: skipped {unstorable} cases whose mtime this filesystem cannot store"
         );
     }
-    // At most the cases recorded before 1901-12-13 (the ext4 floor) may be skipped.
+    // Only the mtime-decided cases outside ext4's range (before 1901-12-13 or after 2446) may be
+    // skipped: 11 of the recorded cases.
     assert!(
-        unstorable <= cases.len() / 4,
+        unstorable <= 11,
         "{unstorable} of {} cases skipped",
         cases.len()
     );
