@@ -94,6 +94,7 @@ async fn core_service(
     req: Request<Incoming>,
 ) -> Result<Response<UpBody>, std::io::Error> {
     let path = req.uri().path().to_string();
+    let hold = req.uri().query() == Some("hold=1");
     let method = req.method().to_string();
     let headers =
         req.headers()
@@ -127,6 +128,22 @@ async fn core_service(
     };
     if path == "/internal/chat/gate" {
         return Ok(match *core.gate.lock().unwrap() {
+            // Chat port S6: the front takes the gate for its call and holds it while this stays open.
+            Gate::Open if hold => {
+                let (mut tx, body) =
+                    http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+                tokio::spawn(async move {
+                    let _ = tx.send_data(Bytes::from_static(b"held\n")).await;
+                    while tx.send_data(Bytes::new()).await.is_ok() {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                });
+                Response::builder()
+                    .status(200)
+                    .header("x-noevia-gate-lease", "lease-1")
+                    .body(body.boxed())
+                    .unwrap()
+            }
             Gate::Open => Response::builder()
                 .status(204)
                 .body(Full::new(Bytes::new()).map_err(|e| match e {}).boxed())
@@ -400,9 +417,10 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
     assert_eq!(h["user-agent"], serde_json::json!(["synthetic-agent"]));
     assert_eq!(h["host"], serde_json::json!(["front.test"]));
     assert_eq!(echo["bodyLen"], TURN.len());
+    assert_eq!(h["x-noevia-gate-lease"], serde_json::json!(["lease-1"]));
     assert_eq!(
         f.core.seen.lock().unwrap().hits,
-        ["POST /internal/chat/turn"]
+        ["POST /internal/chat/gate", "POST /internal/chat/turn"]
     );
     // A WHATWG spelling of the same path is the same route; other methods and paths stay Node's.
     let (res, _c) = call(&f, "POST", "/api/x/../chat", &[], TURN.to_vec(), true).await;
@@ -595,9 +613,10 @@ async fn a_break_inside_a_frame_reaches_the_web_client_as_the_failure_event() {
             {"type": "error", "text": "The request could not be completed. Please retry."}
         ])
     );
+    // Chat port S6: Core's gate is taken for the call first, and the turn carries its hold.
     assert_eq!(
         f.core.seen.lock().unwrap().hits,
-        ["POST /internal/chat/turn"]
+        ["POST /internal/chat/gate", "POST /internal/chat/turn"]
     );
 }
 
@@ -640,13 +659,26 @@ async fn a_refused_request_meets_cores_gate_first_as_node_answered_it() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_body_reaches_core_up_to_one_byte_past_its_cap_whatever_the_declared_length() {
+async fn a_body_at_the_cap_reaches_core_whole_and_one_byte_more_is_the_fronts_413() {
+    // Chat port S6: the front reads the body (chat_edge.rs); Core gets it whole or not at all.
     let f = front().await;
     let cap = noevia_server::chat_turn::STORED_HISTORY_BYTES as usize;
-    for len in [cap, cap + 1, cap + 4096] {
-        let (res, _c) = call(&f, "POST", "/api/chat", &[], vec![b'a'; len], true).await;
-        assert_eq!(res.status(), 200, "{len}");
-        let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
-        assert_eq!(echo["bodyLen"], len.min(cap + 1), "{len}");
+    let body = |len: usize| format!("{{\"message\":\"{}\"}}", "a".repeat(len - 14)).into_bytes();
+    let (res, _c) = call(&f, "POST", "/api/chat", &[], body(cap), true).await;
+    assert_eq!(res.status(), 200);
+    let echo: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
+    assert_eq!(echo["bodyLen"], cap);
+    for len in [cap + 1, cap + 4096] {
+        f.core.seen.lock().unwrap().hits.clear();
+        let (res, _c) = call(&f, "POST", "/api/chat", &[], body(len), true).await;
+        assert_eq!(res.status(), 413, "{len}");
+        assert_eq!(
+            text(res).await,
+            r#"{"error":"This chat is too large to continue; start a new chat."}"#
+        );
+        assert_eq!(
+            f.core.seen.lock().unwrap().hits,
+            ["POST /internal/chat/gate"]
+        );
     }
 }
