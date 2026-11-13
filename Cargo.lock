@@ -468,6 +468,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-harness"
+version = "0.1.0"
+dependencies = [
+ "code-actions",
+ "js-json",
+ "sha2",
+ "stream-guard",
+]
+
+[[package]]
 name = "code-net-guard"
 version = "0.1.0"
 dependencies = [

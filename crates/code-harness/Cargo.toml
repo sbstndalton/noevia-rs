@@ -1,0 +1,17 @@
+[package]
+name = "code-harness"
+version = "0.1.0"
+description = "noevia-core's code-meta.cjs and code-tool-schemas.cjs (the Executor guard) in Rust: what a coding run says about itself, its identity hash, and the shape check, strike count and block of an ACP agent's tool calls; later also the Code harness session"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+code-actions = { path = "../code-actions" }
+js-json = { path = "../js-json" }
+sha2 = "=0.10.9"
+stream-guard = { path = "../stream-guard" }
