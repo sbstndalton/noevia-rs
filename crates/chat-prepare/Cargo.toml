@@ -1,0 +1,20 @@
+[package]
+name = "chat-prepare"
+version = "0.1.0"
+description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project, replayed byte for byte on recorded Node output. Nothing calls it yet."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+prompt-framing = { path = "../prompt-framing" }
+# account-instructions.cjs cleanLanguage's /^[\p{L}][\p{L}\p{M} ()'-]*$/u. MIT OR Apache-2.0; already in Cargo.lock.
+regex = "=1.13.1"
+# The IANA zones the time part states the day in (Intl.DateTimeFormat's timeZone). MIT OR Apache-2.0; already in Cargo.lock.
+chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
+chrono-tz = "=0.10.4"
