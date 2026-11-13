@@ -90,8 +90,8 @@ async fn native_start_refuses_as_node_does_without_asking_node() {
     assert!(checked >= 40, "{checked}");
     let (s, v) = write(f.addr, "POST", PATH, ADMIN, "{not json").await;
     assert_eq!((s, v), (400, json!({"error":"invalid JSON"})));
-    let (s, _) = write(f.addr, "POST", PATH, MEMBER, "{}").await;
-    assert_eq!(s, 403);
+    let (s, v) = write(f.addr, "POST", PATH, MEMBER, "{}").await;
+    assert_eq!((s, v), (403, json!({"error": "administrator required"})));
     no_bridge(&up);
 }
 
@@ -221,10 +221,13 @@ async fn cores_store_calls_read_the_run_and_flush_only_with_the_store_secret() {
     );
     no_bridge(&up);
     let (_d, off, _up, _e) = rig(false, None).await;
+    // No runner in this front: nothing runs and nothing is owed (Node's flush is then a no-op).
     assert_eq!(
-        store_post(off.store, "/v1/autotune/state", STORE_TOKEN, "{}")
-            .await
-            .0,
-        503
+        store_post(off.store, "/v1/autotune/state", STORE_TOKEN, "{}").await,
+        (200, json!({"running": false}))
+    );
+    assert_eq!(
+        store_post(off.store, "/v1/autotune/flush", STORE_TOKEN, "{}").await,
+        (200, json!({"flushed": true}))
     );
 }

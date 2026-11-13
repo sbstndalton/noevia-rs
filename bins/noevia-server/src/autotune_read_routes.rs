@@ -40,6 +40,10 @@ pub async fn serve(
         Ok(Err(r)) => return r.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    // routes/models.cjs's outer gate answers a non-GET of /api/models/* first, in its own words.
+    if native_start && id.user.role != server_auth::Role::Admin {
+        return reply::error(StatusCode::FORBIDDEN, "administrator required", true);
+    }
     if id.user.role != server_auth::Role::Admin {
         return reply::error(
             StatusCode::FORBIDDEN,

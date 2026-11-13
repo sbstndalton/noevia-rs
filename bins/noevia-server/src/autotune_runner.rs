@@ -99,7 +99,13 @@ impl Native {
         });
     }
 
+    /// One owed repair, as calibration's recovery after a lost hold runs (calibration_worker.rs
+    /// `recover_after_loss`): under a fresh recovery hold, every model confirmed unloaded (Node's
+    /// settle step), `recoverTrial`, then the recovery proven to Node and completed at the authority;
+    /// otherwise the recovery stays required and is retried with backoff. Chat stays fenced
+    /// throughout (`FrontDeps::require_recovery`).
     async fn repair(&self, key: &str) {
+        let mut wait = Duration::from_secs(1);
         loop {
             self.runner.deps().fence_owed(key);
             if let Ok(hold) = self
@@ -107,27 +113,120 @@ impl Native {
                 .acquire_recovery(RECOVERY_REASON, RECOVERY_LEASE)
                 .await
             {
+                let ticket = self.maint.authority.recovery_ticket().unwrap_or_default();
                 let hold = Arc::new(hold);
                 self.runner.deps().cover_with(Some(Arc::clone(&hold)));
-                let done = self.runner.recover_trial().await;
+                let mut done = self.settle(&hold).await;
+                if done {
+                    if let Err(e) = self.runner.recover_trial().await {
+                        eprintln!("[autotune] recovery {key} failed: {}", e.message);
+                        done = false;
+                    }
+                }
                 self.runner.deps().cover_with(None);
+                if done {
+                    done = hold.excluded()
+                        && (hold.gated_now()
+                            || match hold.recovery_proof() {
+                                Some((id, generation)) => {
+                                    self.maint
+                                        .node
+                                        .complete_recovery(&ticket, id, generation)
+                                        .await
+                                }
+                                None => false,
+                            })
+                        && hold.excluded();
+                    if done {
+                        done = self.maint.authority.complete_recovery(&ticket);
+                    }
+                }
+                if !done {
+                    self.maint.authority.require_recovery();
+                    if !hold.gated_now() {
+                        let _ = self.maint.node.recovery_barrier(true, &ticket).await;
+                    }
+                }
                 if let Ok(hold) = Arc::try_unwrap(hold) {
                     hold.release().await;
                 }
-                match done {
-                    Ok(()) => {
-                        self.runner.deps().settle_owed(key);
-                        return;
-                    }
-                    Err(e) => eprintln!("[autotune] recovery {key} failed: {}", e.message),
+                if done {
+                    self.runner.deps().settle_owed(key);
+                    return;
                 }
             }
-            tokio::time::sleep(RECOVERY_RETRY).await;
+            tokio::time::sleep(wait).await;
+            wait = (wait * 2).min(RECOVERY_RETRY);
         }
+    }
+
+    /// The recovery's settle step: every router model asked to unload and confirmed unloaded.
+    async fn settle(&self, hold: &crate::model_maint::Hold) -> bool {
+        let Some(router) = self.maint.router.as_ref() else {
+            return false;
+        };
+        let token = hold.token();
+        let rows = |r: &crate::model_maint::router::Reply| {
+            crate::model_maint::router::rows(&r.body)
+                .cloned()
+                .unwrap_or_default()
+        };
+        let state = |row: &Value| {
+            row.get("status")
+                .and_then(|s| s.get("value"))
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        };
+        let Ok(first) = router.models(token.as_deref()).await else {
+            return false;
+        };
+        for row in rows(&first) {
+            if matches!(
+                state(&row).as_deref(),
+                Some("loaded" | "loading" | "sleeping")
+            ) {
+                if let Some(id) = row.get("id").and_then(Value::as_str) {
+                    let _ = router.unload(id, token.as_deref()).await;
+                }
+            }
+        }
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+        while tokio::time::Instant::now() < deadline {
+            if let Ok(r) = router.models(token.as_deref()).await {
+                if r.ok
+                    && rows(&r)
+                        .iter()
+                        .all(|row| state(row).as_deref() == Some("unloaded"))
+                {
+                    return true;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        false
     }
 
     /// `POST /api/models/autotune`: the route's coercion (routes/models.cjs), then `start`.
     pub async fn start(&self, body: &JValue) -> (u16, JValue) {
+        // The manager's start wrapper: a budget fault refuses before anything is held.
+        let budget = self.runner.deps().inference_budget();
+        if let Some(fault) = self
+            .maint
+            .sizing
+            .budget_fault()
+            .filter(|_| self.maint.sizing.calibration_budget_gib(budget) <= 0.0)
+        {
+            return (
+                503,
+                JValue::obj([
+                    (
+                        "error",
+                        JValue::from(format!("Auto-tune unavailable: {fault}")),
+                    ),
+                    ("code", JValue::from("autoconfig_impl")),
+                ]),
+            );
+        }
         self.runner.deps().refresh().await;
         let present =
             |k: &str| (!matches!(body.get(k), JValue::Undefined)).then(|| body.get(k).clone());
@@ -249,9 +348,11 @@ impl Native {
                 if ask.get("scan") != &JValue::Bool(true) {
                     return (200, JValue::obj([("available", JValue::Bool(true))]));
                 }
-                r.deps().refresh().await;
-                match tokio::time::timeout(Duration::from_millis(4500), r.scan_facts_public()).await
-                {
+                let scan = async {
+                    r.deps().refresh().await;
+                    r.scan_facts_public().await
+                };
+                match tokio::time::timeout(Duration::from_millis(4500), scan).await {
                     Ok(Ok(facts)) => (200, with_available(facts)),
                     Ok(Err(e)) => {
                         let failure = match e.public_message.as_deref() {
@@ -331,9 +432,24 @@ async fn core_call(
         );
     }
     let Some(native) = native else {
+        // No runner here: nothing can be owed and nothing runs (Node's flush is then a no-op).
+        let ok = std::str::from_utf8(&raw)
+            .ok()
+            .and_then(|t| wtf16::parse(t).ok())
+            .is_some_and(|v| v.is_object());
+        if !ok {
+            return answer(
+                StatusCode::BAD_REQUEST,
+                JValue::obj([("error", JValue::from("invalid JSON"))]),
+            );
+        }
         return answer(
-            StatusCode::SERVICE_UNAVAILABLE,
-            JValue::obj([("error", JValue::from("Auto-tune is not run by this front."))]),
+            StatusCode::OK,
+            if op == "state" {
+                JValue::obj([("running", JValue::Bool(false))])
+            } else {
+                JValue::obj([("flushed", JValue::Bool(true))])
+            },
         );
     };
     let ask = std::str::from_utf8(&raw)

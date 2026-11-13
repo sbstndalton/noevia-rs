@@ -25,6 +25,14 @@ pub fn front_owns_runner(get: &impl Fn(&str) -> Option<String>) -> bool {
 const CONTEXT_UNAVAILABLE: &str = "The context worker state changed or is unavailable.";
 /// The poll while chat is busy (`holdWhenIdle` waits for an idle engine).
 const IDLE_POLL: Duration = Duration::from_millis(500);
+/// How long a facts read from Core may take before the last answer stands.
+const FACTS_LIMIT: Duration = Duration::from_secs(3);
+/// How often a call in flight checks that its hold still excludes everyone.
+const LOSS_POLL: Duration = Duration::from_millis(500);
+/// llamacpp-manager.cjs `PRESET_STEP_MS`: a write and its 120 s router reload.
+const PRESET_STEP: Duration = Duration::from_secs(150);
+/// The longest `recoverNow` waits for the owed repairs.
+const RECOVER_NOW_LIMIT: Duration = Duration::from_secs(15 * 60);
 /// A run's lease (Node's maintenance hold has no limit of its own; the authority caps it).
 const RUN_LEASE: Duration = Duration::from_secs(24 * 3600);
 
@@ -63,6 +71,16 @@ fn fetch_failed(abort: Option<&Abort>) -> Fail {
     Fail::new("fetch failed")
 }
 
+/// `assertCovered`'s refusal (inference-maintenance.cjs `coverageError`).
+fn coverage_error() -> Fail {
+    Fail {
+        coverage_lost: true,
+        status: Some(503),
+        code: Some("maintenanceCoverageLost".into()),
+        ..Fail::new("The maintenance lease was ended by the lease authority, so this work stopped before changing anything else.")
+    }
+}
+
 /// The hold a run is under, shared by its router calls (the hold's token rides on every request)
 /// and its release.
 #[derive(Default)]
@@ -93,7 +111,9 @@ pub struct FrontDeps {
     current: Arc<Current>,
     /// Core's facts as last read: its inference budget in GiB (0: none) and the sidecars' model
     /// names (Node reads both in memory, synchronously).
-    facts: Arc<Mutex<(f64, std::collections::HashSet<String>)>>,
+    facts: Arc<Mutex<(f64, Option<std::collections::HashSet<String>>)>>,
+    /// Signalled when an owed repair has run (`recoverNow` waits for them).
+    repaired: tokio::sync::Notify,
     /// Reads those facts from Core.
     read_facts: ReadFacts,
     /// The repairs `requireRecovery` asks for, run by the wiring under a fresh hold.
@@ -102,6 +122,8 @@ pub struct FrontDeps {
     /// closed meanwhile): the lease authority's recovery ticket and this process's admission fence.
     owed: Mutex<std::collections::HashMap<String, (String, Option<super::gate::AdmissionFence>)>>,
     allow_below_q5: bool,
+    /// EMBEDDING_MODEL (or EMBED_MODEL), EMBEDDING_NEXT_MODEL and RERANK_MODEL, until Core answers.
+    env_sidecars: Vec<String>,
 }
 
 impl FrontDeps {
@@ -116,30 +138,47 @@ impl FrontDeps {
             maint,
             state_file,
             current: Arc::new(Current::default()),
-            facts: Arc::new(Mutex::new((0.0, Default::default()))),
+            facts: Arc::new(Mutex::new((0.0, None))),
+            repaired: tokio::sync::Notify::new(),
             read_facts,
             recoveries,
             owed: Mutex::new(Default::default()),
+            env_sidecars: {
+                let embed = get("EMBEDDING_MODEL")
+                    .filter(|v| !v.trim().is_empty())
+                    .or_else(|| get("EMBED_MODEL"));
+                [embed, get("EMBEDDING_NEXT_MODEL"), get("RERANK_MODEL")]
+                    .into_iter()
+                    .flatten()
+                    .map(|v| v.trim().to_owned())
+                    .filter(|v| !v.is_empty())
+                    .collect()
+            },
             allow_below_q5: autotune_runner::kv::allow_below_q5(
                 get(autotune_runner::kv::KV_FLOOR_OVERRIDE_ENV).as_deref(),
             ),
         }
     }
 
-    /// Reads Core's facts again (before a start or a scan, and before each model's hold).
-    pub async fn refresh(&self) {
-        let (budget, sidecars) = (self.read_facts)().await;
-        if let Ok(mut f) = self.facts.lock() {
-            f.0 = budget;
-            if let Some(s) = sidecars {
-                f.1 = s;
+    /// Reads Core's facts again (before a start or a scan, and before each model's hold), within
+    /// a few seconds. False when the sidecars' model names are still unknown (never read): a start
+    /// then waits, since the scan must not offer a sidecar's model. A failed read keeps the last.
+    pub async fn refresh(&self) -> bool {
+        if let Ok((budget, sidecars)) = tokio::time::timeout(FACTS_LIMIT, (self.read_facts)()).await
+        {
+            if let Ok(mut f) = self.facts.lock() {
+                f.0 = budget;
+                if let Some(s) = sidecars {
+                    f.1 = Some(s);
+                }
             }
         }
+        self.facts.lock().is_ok_and(|f| f.1.is_some())
     }
 
-    /// The hold the runner is under, if any.
-    pub fn hold(&self) -> Option<Arc<Hold>> {
-        self.current.get()
+    /// Core's inference budget in GiB as last read (0: none).
+    pub fn inference_budget(&self) -> f64 {
+        self.facts.lock().map(|f| f.0).unwrap_or(0.0)
     }
 
     /// Before a repair's hold: this process's admission fence, if the run that owed the repair
@@ -161,11 +200,21 @@ impl FrontDeps {
                 fence.release();
             }
         }
+        self.repaired.notify_waiters();
     }
 
     /// Puts the runner's calls under `hold` (a recovery's fresh hold), or under none.
     pub fn cover_with(&self, hold: Option<Arc<Hold>>) {
         self.current.set(hold);
+    }
+
+    /// `maintenance.assertCovered(stepMs)`: the hold (if any) still excludes everyone and covers a
+    /// step of `step`.
+    fn covered_for(&self, step: Duration) -> Result<(), Fail> {
+        match self.current.get() {
+            Some(hold) if !hold.may_start(step) => Err(coverage_error()),
+            _ => Ok(()),
+        }
     }
 
     fn token(&self) -> Option<String> {
@@ -190,8 +239,9 @@ impl FrontDeps {
     /// The router's own request, carrying the hold's token, with Node's budget check before a
     /// load (llamacpp-manager.cjs `request`: `overBudget(model)` answers a 409).
     async fn send(&self, call: &Call, abort: Option<&Abort>) -> Result<JValue, Fail> {
-        // Row J: every router step first checks the lease still covers it (`coveredRequest`).
-        self.assert_covered()?;
+        // Row J: every router step first checks the lease covers the whole step (`coveredRequest`:
+        // `assertCovered(timeout)`), and a step in flight ends when the lease is lost.
+        self.covered_for(Duration::from_millis(call.timeout_ms))?;
         if call.method == "POST" && call.path == "/models/load" {
             let model = call
                 .body
@@ -240,15 +290,29 @@ impl FrontDeps {
             token.as_deref(),
             Duration::from_millis(call.timeout_ms),
         );
-        let reply = match abort {
-            Some(abort) => {
-                tokio::select! {
-                    biased;
-                    r = send => r,
-                    () = abort.wait() => return Err(fetch_failed(Some(abort))),
-                }
+        let hold = self.current.get();
+        let lost = async {
+            match &hold {
+                Some(h) => loop {
+                    if !h.excluded() {
+                        return;
+                    }
+                    tokio::time::sleep(LOSS_POLL).await;
+                },
+                None => std::future::pending::<()>().await,
             }
-            None => send.await,
+        };
+        let aborted = async {
+            match abort {
+                Some(a) => a.wait().await,
+                None => std::future::pending::<()>().await,
+            }
+        };
+        let reply = tokio::select! {
+            biased;
+            r = send => r,
+            () = aborted => return Err(fetch_failed(abort)),
+            () = lost => return Err(coverage_error()),
         };
         match reply {
             Ok(r) => Ok(reply_j(&r)),
@@ -401,10 +465,17 @@ impl Deps for FrontDeps {
             .map(|(k, v)| (k.clone(), v.as_str().map(str::to_owned)))
             .collect();
         let backup = write_options.get("backup") != &JValue::Bool(false);
+        // applyUnlocked: `maintenance.assertCovered(PRESET_STEP_MS)` before the write and its reload.
+        self.covered_for(PRESET_STEP)?;
         let (status, error) = self
             .maint
             .apply_unlocked_reply(&hold, &model, &base, &options, backup)
             .await;
+        // A lease lost under the write: nothing more runs on it (the phase's restore becomes the
+        // recovery, as Node's loss branch makes it).
+        if !hold.excluded() {
+            return Err(coverage_error());
+        }
         let mut out = JValue::obj([
             ("ok", JValue::Bool(status == 200)),
             ("status", JValue::Num(f64::from(status))),
@@ -459,7 +530,13 @@ impl Deps for FrontDeps {
     }
 
     fn is_sidecar_model(&self, id: &str) -> bool {
-        self.facts.lock().is_ok_and(|f| f.1.contains(id.trim()))
+        let known = self.facts.lock().ok().and_then(|f| f.1.clone());
+        match known {
+            Some(names) => names.contains(id.trim()),
+            // Core not read yet: the names Node starts from (model-system.cjs sidecarNames), taken
+            // conservatively (RERANK_MODEL whether or not the reranker is on).
+            None => self.env_sidecars.iter().any(|n| n == id.trim()),
+        }
     }
 
     fn quirks(&self, model: &str) -> Quirks {
@@ -488,7 +565,7 @@ impl Deps for FrontDeps {
     }
 
     fn budget_gib(&self) -> Result<f64, Fail> {
-        let inference = self.facts.lock().map(|f| f.0).unwrap_or(0.0);
+        let inference = self.inference_budget();
         let sized = self.maint.sizing.calibration_budget_gib(inference);
         if sized > 0.0 {
             return Ok(sized);
@@ -526,7 +603,10 @@ impl Deps for FrontDeps {
         abort: Abort,
     ) -> Result<FrontRelease, Fail> {
         // Core's facts are read once per model, before its planning (Node reads them in memory).
-        self.refresh().await;
+        tokio::select! {
+            _ = self.refresh() => {}
+            () = abort.wait() => return Err(Fail::cancelled()),
+        }
         let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
         loop {
             if abort.aborted() {
@@ -541,7 +621,19 @@ impl Deps for FrontDeps {
                         current: Arc::clone(&self.current),
                     });
                 }
-                Err(super::HoldRefusal::Busy) | Err(super::HoldRefusal::Gate { .. }) => {}
+                // inference-maintenance.cjs remoteBusy: 409, engine_busy or maintenance_held is
+                // busy (wait again); any other gate refusal is thrown at once.
+                Err(super::HoldRefusal::Busy) => {}
+                Err(super::HoldRefusal::Gate { status, code, .. })
+                    if status == 409 || code == "engine_busy" || code == "maintenance_held" => {}
+                Err(super::HoldRefusal::Gate {
+                    status, message, ..
+                }) => {
+                    return Err(Fail {
+                        status: Some(status),
+                        ..Fail::new(message)
+                    })
+                }
                 Err(_) => return Err(Fail::new("The maintenance hold is unavailable.")),
             }
             if tokio::time::Instant::now() >= deadline {
@@ -558,15 +650,7 @@ impl Deps for FrontDeps {
     }
 
     fn assert_covered(&self) -> Result<(), Fail> {
-        match self.current.get() {
-            Some(hold) if !hold.may_start(Duration::ZERO) => Err(Fail {
-                coverage_lost: true,
-                status: Some(503),
-                code: Some("maintenanceCoverageLost".into()),
-                ..Fail::new("The maintenance lease was ended by the lease authority, so this work stopped before changing anything else.")
-            }),
-            _ => Ok(()),
-        }
+        self.covered_for(Duration::ZERO)
     }
 
     fn coverage_lost(&self) -> bool {
@@ -593,7 +677,20 @@ impl Deps for FrontDeps {
         let _ = self.recoveries.send(key.to_owned());
     }
 
-    async fn recover_now(&self) {}
+    /// `maintenance.recoverNow()`: the owed repairs run now (by the repair worker); this waits for
+    /// them, at most [`RECOVER_NOW_LIMIT`], so `recover()` reports whether the restore happened.
+    async fn recover_now(&self) {
+        let deadline = tokio::time::Instant::now() + RECOVER_NOW_LIMIT;
+        loop {
+            let notified = self.repaired.notified();
+            if self.owed.lock().map_or(true, |o| o.is_empty()) {
+                return;
+            }
+            if tokio::time::timeout_at(deadline, notified).await.is_err() {
+                return;
+            }
+        }
+    }
 
     async fn invalidate_baseline(&self, tag: &str) -> bool {
         self.maint.guard.invalidate(tag).saved

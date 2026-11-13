@@ -1407,6 +1407,10 @@ mod tests {
                 "GET {p}"
             );
             for m in ["HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+                // #2516: the start's POST (checked below).
+                if m == "POST" && *p == crate::autotune_read_routes::PATH {
+                    continue;
+                }
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
@@ -1429,11 +1433,15 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-model-state-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-maintenance"));
         assert!(crate::FEATURES.contains(&"rust-autotune-read"));
-        assert_eq!(
-            dispatch_under("GET", crate::autotune_read_routes::PATH, on),
-            Some(Native::Models)
-        );
-        for method in ["POST", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+        // #2516: POST is the front's handler too, which forwards it to Node unless the native
+        // runner is switched on (AUTOTUNE_RUNNER_IMPL=rust).
+        for method in ["GET", "POST"] {
+            assert_eq!(
+                dispatch_under(method, crate::autotune_read_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
+        for method in ["HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"] {
             assert_eq!(
                 dispatch_under(method, crate::autotune_read_routes::PATH, on),
                 None
@@ -1501,7 +1509,7 @@ mod tests {
             vec![
                 (crate::model_manager_scan::PATH, &["GET"][..]),
                 (crate::model_assignments::PATH, &["GET"][..]),
-                (crate::autotune_read_routes::PATH, &["GET"][..]),
+                (crate::autotune_read_routes::PATH, &["GET", "POST"][..]),
                 (crate::autotune_cancel_routes::PATH, &[][..]),
                 (crate::autotune_clear_routes::PATH, &[][..]),
                 (crate::autotune_resume_routes::PATH, &[][..]),
