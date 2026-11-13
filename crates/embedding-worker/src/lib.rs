@@ -18,6 +18,7 @@ use std::{
     },
 };
 pub mod fill;
+pub mod foreground;
 pub mod http;
 pub mod media_documents;
 pub mod media_policy;

@@ -1,0 +1,2321 @@
+{
+ "generator": "crates/code-harness/tools/gen-service-fixtures.cjs",
+ "sources": {
+  "code-service.cjs": "bdb2292fde574cc9a04b8d1b468155e863578096f956a388fa287f63fa6f8b0c",
+  "code-harness.cjs": "ec017f978fbe11b4905e7964f5959a251db362de6f41b29c8a13d66cb03f6fe6",
+  "jobs.cjs": "3a04aea9e594428d62cb5dc7f29eb937d322c6b24d83c9b2d9b08211366e5457",
+  "routes/code.cjs": "2597a44b9d546f6c631c9b1458d191f9d7997e38affe89f3db4f7d6525b7296b",
+  "shared-context.cjs": "1d440a5c31a0d9564684eae268891e29a718b22a07172a573255e3d0b9062e33"
+ },
+ "env": {
+  "PATH": "/usr/local/bin:/usr/bin:/bin",
+  "LANG": "C.UTF-8"
+ },
+ "tables": {
+  "repos": [
+   [
+    "",
+    []
+   ],
+   [
+    " , ,",
+    []
+   ],
+   [
+    "qa|<BASE>/qa-a",
+    [
+     {
+      "id": "qa",
+      "path": "<BASE>/qa-a"
+     }
+    ]
+   ],
+   [
+    " qa | <BASE>/qa-a , other|<BASE>/qa-b",
+    [
+     {
+      "id": "qa",
+      "path": "<BASE>/qa-a"
+     },
+     {
+      "id": "other",
+      "path": "<BASE>/qa-b"
+     }
+    ]
+   ],
+   [
+    "qa|<BASE>/qa-a,qa|<BASE>/qa-b",
+    [
+     {
+      "id": "qa",
+      "path": "<BASE>/qa-a"
+     }
+    ]
+   ],
+   [
+    "qa|relative/path",
+    []
+   ],
+   [
+    "|<BASE>/qa-a",
+    []
+   ],
+   [
+    "qa|",
+    []
+   ],
+   [
+    "qa|<BASE>/missing",
+    []
+   ],
+   [
+    "qa|<BASE>/not-a-repo",
+    []
+   ],
+   [
+    "qa|<BASE>/link-a",
+    [
+     {
+      "id": "qa",
+      "path": "<BASE>/qa-a"
+     }
+    ]
+   ],
+   [
+    "qa|<BASE>/qa-a|extra",
+    [
+     {
+      "id": "qa",
+      "path": "<BASE>/qa-a"
+     }
+    ]
+   ],
+   [
+    "qa | <BASE>/qa-a",
+    [
+     {
+      "id": "qa",
+      "path": "<BASE>/qa-a"
+     }
+    ]
+   ],
+   [
+    "qa|<BASE>/qa-a/",
+    [
+     {
+      "id": "qa",
+      "path": "<BASE>/qa-a"
+     }
+    ]
+   ],
+   [
+    "a|<BASE>/qa-a,b|<BASE>/qa-b,c|<BASE>/qa-a",
+    [
+     {
+      "id": "a",
+      "path": "<BASE>/qa-a"
+     },
+     {
+      "id": "b",
+      "path": "<BASE>/qa-b"
+     },
+     {
+      "id": "c",
+      "path": "<BASE>/qa-a"
+     }
+    ]
+   ]
+  ],
+  "users": [
+   [
+    "",
+    null
+   ],
+   [
+    "1000:1000",
+    {
+     "uid": 1000,
+     "gid": 1000
+    }
+   ],
+   [
+    " 1000:1000 ",
+    {
+     "uid": 1000,
+     "gid": 1000
+    }
+   ],
+   [
+    "1000",
+    null
+   ],
+   [
+    "1000:",
+    null
+   ],
+   [
+    ":1000",
+    null
+   ],
+   [
+    "12345678:1",
+    null
+   ],
+   [
+    "1234567:7654321",
+    {
+     "uid": 1234567,
+     "gid": 7654321
+    }
+   ],
+   [
+    "0:0",
+    {
+     "uid": 0,
+     "gid": 0
+    }
+   ],
+   [
+    "a:1",
+    null
+   ],
+   [
+    "1:1:1",
+    null
+   ],
+   [
+    "١:1",
+    null
+   ],
+   [
+    "+1:1",
+    null
+   ],
+   [
+    "1 :1",
+    null
+   ]
+  ],
+  "harnesses": [
+   [
+    {},
+    [
+     {
+      "id": "opencode",
+      "label": "OpenCode",
+      "version": null
+     }
+    ]
+   ],
+   [
+    {
+     "CODE_HARNESS_NAME": ""
+    },
+    [
+     {
+      "id": "opencode",
+      "label": "OpenCode",
+      "version": null
+     }
+    ]
+   ],
+   [
+    {
+     "CODE_HARNESS_NAME": "  "
+    },
+    [
+     {
+      "id": "opencode",
+      "label": "OpenCode",
+      "version": null
+     }
+    ]
+   ],
+   [
+    {
+     "CODE_HARNESS_NAME": " pi "
+    },
+    [
+     {
+      "id": "pi",
+      "label": "pi",
+      "version": null
+     }
+    ]
+   ],
+   [
+    {
+     "CODE_HARNESS_NAME": "claude-code",
+     "CODE_HARNESS_VERSION": "2.1"
+    },
+    [
+     {
+      "id": "claude-code",
+      "label": "Claude Code",
+      "version": "2.1"
+     }
+    ]
+   ],
+   [
+    {
+     "CODE_HARNESS_NAME": "deepseek",
+     "CODE_HARNESS_VERSION": ""
+    },
+    [
+     {
+      "id": "deepseek",
+      "label": "DeepSeek Harness",
+      "version": null
+     }
+    ]
+   ],
+   [
+    {
+     "CODE_HARNESS_NAME": "my-harness"
+    },
+    [
+     {
+      "id": "my-harness",
+      "label": "my-harness",
+      "version": null
+     }
+    ]
+   ],
+   [
+    {
+     "CODE_HARNESS_NAME": "codex"
+    },
+    [
+     {
+      "id": "codex",
+      "label": "Codex",
+      "version": null
+     }
+    ]
+   ],
+   [
+    {
+     "CODE_HARNESS_NAME": "qwen-code"
+    },
+    [
+     {
+      "id": "qwen-code",
+      "label": "Qwen Code",
+      "version": null
+     }
+    ]
+   ]
+  ]
+ },
+ "scenarios": {
+  "refusals": {
+   "ops": [
+    {
+     "facts": true
+    },
+    {
+     "start": {
+      "repository": "elsewhere",
+      "prompt": "QA: run the tests."
+     }
+    },
+    {
+     "start": {
+      "repository": 7,
+      "prompt": "QA: run the tests."
+     }
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "  ﻿ "
+     }
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+     }
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+     }
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests.",
+      "harness": "codex"
+     }
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests.",
+      "promptPreparation": "planner"
+     }
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests.",
+      "promptPreparation": "local"
+     }
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests.",
+      "promptPreparation": "frontier"
+     }
+    },
+    {
+     "decide": [
+      "00000000-0000-4000-8000-0000000000ff",
+      "approve",
+      "x"
+     ]
+    },
+    {
+     "cancel": "00000000-0000-4000-8000-0000000000ff"
+    }
+   ],
+   "script": [],
+   "egress": false,
+   "inference": null,
+   "timeoutMs": 60000,
+   "project": {
+    "id": "qa-project"
+   },
+   "answers": [
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "Choose a repository the operator registered on this server."
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "Choose a repository the operator registered on this server."
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "Describe the task."
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "That task description is too long."
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "That task description is too long."
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "That coding harness is not configured on this server."
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "Unknown prompt preparation."
+     }
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+     }
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+     }
+    },
+    {
+     "status": 404,
+     "body": {
+      "error": "Task not found"
+     }
+    },
+    {
+     "status": 404,
+     "body": {
+      "error": "Task not found"
+     }
+    }
+   ],
+   "journals": {},
+   "logs": [],
+   "egressCalls": [],
+   "sandboxLines": []
+  },
+  "approve-flow": {
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests.",
+      "capabilities": [
+       "network",
+       "edit_file",
+       "execute_command",
+       "browser",
+       7,
+       "git_push",
+       "network"
+      ],
+      "domains": [
+       " Registry.Example.ORG ",
+       "bad",
+       "a.b",
+       "x.example.com1",
+       7,
+       null,
+       "ok-1.example.io",
+       ".io"
+      ],
+      "model": "qa-model-b",
+      "harness": "opencode"
+     }
+    },
+    {
+     "waitCard": "<T1>"
+    },
+    {
+     "facts": true
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests."
+     }
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      "not-the-card"
+     ]
+    },
+    {
+     "decide": [
+      "<T1>",
+      "maybe",
+      "<A1>"
+     ]
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      ""
+     ]
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      "<A1>"
+     ]
+    },
+    {
+     "waitEnd": "<T1>"
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      "<A1>"
+     ]
+    },
+    {
+     "cancel": "<T1>"
+    },
+    {
+     "facts": true
+    }
+   ],
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":\"p1\",\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"kind\":\"execute\",\"title\":\"npm test\",\"rawInput\":{\"command\":\"npm test\"}},\"options\":[{\"optionId\":\"y\",\"kind\":\"allow_once\"},{\"optionId\":\"n\",\"kind\":\"reject_once\"}]}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "egress": true,
+   "inference": null,
+   "timeoutMs": 60000,
+   "project": {
+    "id": "qa-project"
+   },
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+      "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001",
+      "repository": "qa-repo",
+      "capabilities": [
+       "edit_file",
+       "execute_command",
+       "network",
+       "git_push"
+      ],
+      "domains": [
+       "registry.example.org",
+       "ok-1.example.io"
+      ],
+      "harness": "opencode",
+      "promptPreparation": "direct",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "card"
+    },
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       }
+      ],
+      "sandboxed": true,
+      "network": true,
+      "networkState": "ready",
+      "approvals": {
+       "00000000-0000-4000-8000-000000000001": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000001",
+        "action": "execute_command",
+        "title": "npm test",
+        "kind": "execute",
+        "command": "npm test",
+        "paths": [],
+        "reason": "",
+        "arguments": {
+         "command": "npm test"
+        },
+        "diff": null
+       }
+      }
+     }
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "This project already has a task running."
+     }
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "That approval is no longer waiting."
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "Unknown decision"
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "Which approval is this answer for?"
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "ok": true
+     }
+    },
+    {
+     "waited": "ended"
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "That approval is no longer waiting."
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "completed",
+      "stage": "running",
+      "error": null,
+      "task": "QA: run the tests.",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "meta": {
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "protocolVersion": 1,
+       "usage": null,
+       "context": null,
+       "commands": 0,
+       "failedCommands": 0,
+       "exitCodes": [],
+       "messageChunks": 0,
+       "limitations": [
+        "The harness did not report token usage.",
+        "No command exit codes were reported."
+       ]
+      },
+      "identityHash": "64c93def0774ec3804e570710f9a1ee634d7ac605c85903a9289a601c0b54ad7",
+      "createdAt": 5000,
+      "updatedAt": 5000,
+      "capabilities": [
+       "edit_file",
+       "execute_command",
+       "network",
+       "git_push"
+      ],
+      "steps": [
+       {
+        "id": "harness.config",
+        "title": "Pin the harness configuration",
+        "status": "completed"
+       }
+      ],
+      "plan": null,
+      "assistantOutput": null,
+      "approval": null,
+      "result": {
+       "stopReason": "end_turn",
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "identityHash": "64c93def0774ec3804e570710f9a1ee634d7ac605c85903a9289a601c0b54ad7",
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "tools": 0,
+       "approvals": 1,
+       "allowed": 1,
+       "refused": 0,
+       "denied": 0,
+       "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001",
+       "network": {
+        "available": true,
+        "state": "closed",
+        "final": false,
+        "partial": false,
+        "cleanupConfirmed": true
+       }
+      },
+      "network": [
+       {
+        "available": true,
+        "state": "closed",
+        "final": false,
+        "partial": false,
+        "cleanupConfirmed": true
+       }
+      ]
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       }
+      ],
+      "sandboxed": true,
+      "network": true,
+      "networkState": "ready",
+      "approvals": {}
+     }
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "edit_file",
+        "execute_command",
+        "network",
+        "git_push"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 5000,
+      "data": {}
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "harness.config",
+       "title": "Pin the harness configuration"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "harness.config",
+       "file": "opencode.json",
+       "files": [
+        "./opencode.json"
+       ],
+       "permission": {
+        "edit": "ask",
+        "bash": "ask",
+        "webfetch": "ask"
+       },
+       "model": "local/qa-model-b",
+       "endpoint": "http://qa-engine.invalid:8080/v1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "progress",
+      "at": 5000,
+      "data": {
+       "stage": "running"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "approval.requested",
+      "at": 5000,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "execute_command",
+       "title": "npm test",
+       "kind": "execute",
+       "command": "npm test",
+       "paths": [],
+       "reason": "",
+       "arguments": {
+        "command": "npm test"
+       },
+       "diff": null
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "approval.decided",
+      "at": 5000,
+      "data": {
+       "decision": "approve",
+       "action": "execute_command"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "identityHash": "64c93def0774ec3804e570710f9a1ee634d7ac605c85903a9289a601c0b54ad7",
+       "identity": {
+        "backend": "acp",
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "model": "qa-model-b",
+        "provider": null,
+        "protocolVersion": 1,
+        "capabilities": [
+         "edit_file",
+         "execute_command",
+         "git_push",
+         "network"
+        ],
+        "promptPreparation": "direct",
+        "sandbox": "sandbox"
+       },
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "network.cleanup",
+       "kind": "native-network-report",
+       "network": {
+        "available": true,
+        "state": "closed",
+        "final": false,
+        "partial": false,
+        "cleanupConfirmed": true
+       }
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "identityHash": "64c93def0774ec3804e570710f9a1ee634d7ac605c85903a9289a601c0b54ad7",
+       "identity": {
+        "backend": "acp",
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "model": "qa-model-b",
+        "provider": null,
+        "protocolVersion": 1,
+        "capabilities": [
+         "edit_file",
+         "execute_command",
+         "git_push",
+         "network"
+        ],
+        "promptPreparation": "direct",
+        "sandbox": "sandbox"
+       },
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 12,
+      "type": "job.completed",
+      "at": 5000,
+      "data": {
+       "result": {
+        "stopReason": "end_turn",
+        "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+        "identityHash": "64c93def0774ec3804e570710f9a1ee634d7ac605c85903a9289a601c0b54ad7",
+        "meta": {
+         "harness": "qa-agent",
+         "harnessVersion": "0.1",
+         "protocolVersion": 1,
+         "usage": null,
+         "context": null,
+         "commands": 0,
+         "failedCommands": 0,
+         "exitCodes": [],
+         "messageChunks": 0,
+         "limitations": [
+          "The harness did not report token usage.",
+          "No command exit codes were reported."
+         ]
+        },
+        "tools": 0,
+        "approvals": 1,
+        "allowed": 1,
+        "refused": 0,
+        "denied": 0,
+        "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001",
+        "network": {
+         "available": true,
+         "state": "closed",
+         "final": false,
+         "partial": false,
+         "cleanupConfirmed": true
+        }
+       }
+      }
+     }
+    ]
+   },
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "harness": "opencode",
+     "model": "qa-model-b",
+     "event": "code.decided",
+     "action": "execute_command",
+     "decision": "approve"
+    }
+   ],
+   "egressCalls": [
+    {
+     "grant": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "domains": [
+       "registry.example.org",
+       "ok-1.example.io"
+      ]
+     }
+    },
+    {
+     "revoke": "qa-grant"
+    }
+   ],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001\",\"LANG\":\"C.UTF-8\",\"HTTP_PROXY\":\"http://task:qa-token@egress:3128\",\"HTTPS_PROXY\":\"http://task:qa-token@egress:3128\",\"http_proxy\":\"http://task:qa-token@egress:3128\",\"https_proxy\":\"http://task:qa-token@egress:3128\",\"NO_PROXY\":\"qa-engine.invalid\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"QA: run the tests.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model-b\"}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":\"p1\",\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"y\"}}}"
+   ]
+  },
+  "timeout": {
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests."
+     }
+    },
+    {
+     "waitCard": "<T1>"
+    },
+    {
+     "sleep": 600
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      "<A1>"
+     ]
+    },
+    {
+     "waitEnd": "<T1>"
+    }
+   ],
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":\"p1\",\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"kind\":\"execute\",\"title\":\"npm test\",\"rawInput\":{\"command\":\"npm test\"}},\"options\":[{\"optionId\":\"y\",\"kind\":\"allow_once\"},{\"optionId\":\"n\",\"kind\":\"reject_once\"}]}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "egress": false,
+   "inference": null,
+   "timeoutMs": 300,
+   "project": {
+    "id": "qa-project"
+   },
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+      "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "direct",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "card"
+    },
+    {
+     "slept": 600
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "This approval expired before anyone answered it."
+     }
+    },
+    {
+     "waited": "ended"
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 5000,
+      "data": {}
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "harness.config",
+       "title": "Pin the harness configuration"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "harness.config",
+       "file": "opencode.json",
+       "files": [
+        "./opencode.json"
+       ],
+       "permission": {
+        "edit": "ask",
+        "bash": "ask",
+        "webfetch": "ask"
+       },
+       "model": "local/qa-model",
+       "endpoint": "http://qa-engine.invalid:8080/v1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "progress",
+      "at": 5000,
+      "data": {
+       "stage": "running"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "approval.requested",
+      "at": 5000,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "execute_command",
+       "title": "npm test",
+       "kind": "execute",
+       "command": "npm test",
+       "paths": [],
+       "reason": "",
+       "arguments": {
+        "command": "npm test"
+       },
+       "diff": null
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "approval.decided",
+      "at": 5000,
+      "data": {
+       "decision": "timeout",
+       "action": "execute_command"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "identityHash": "0e0dadff3167ef79b3c53c6e6f92c380219a9b6372e5883d857b08797ee9e76f",
+       "identity": {
+        "backend": "acp",
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "model": "qa-model",
+        "provider": null,
+        "protocolVersion": 1,
+        "capabilities": [
+         "edit_file",
+         "execute_command",
+         "read_repository"
+        ],
+        "promptPreparation": "direct",
+        "sandbox": "sandbox"
+       },
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "identityHash": "0e0dadff3167ef79b3c53c6e6f92c380219a9b6372e5883d857b08797ee9e76f",
+       "identity": {
+        "backend": "acp",
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "model": "qa-model",
+        "provider": null,
+        "protocolVersion": 1,
+        "capabilities": [
+         "edit_file",
+         "execute_command",
+         "read_repository"
+        ],
+        "promptPreparation": "direct",
+        "sandbox": "sandbox"
+       },
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "job.completed",
+      "at": 5000,
+      "data": {
+       "result": {
+        "stopReason": "end_turn",
+        "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+        "identityHash": "0e0dadff3167ef79b3c53c6e6f92c380219a9b6372e5883d857b08797ee9e76f",
+        "meta": {
+         "harness": "qa-agent",
+         "harnessVersion": "0.1",
+         "protocolVersion": 1,
+         "usage": null,
+         "context": null,
+         "commands": 0,
+         "failedCommands": 0,
+         "exitCodes": [],
+         "messageChunks": 0,
+         "limitations": [
+          "The harness did not report token usage.",
+          "No command exit codes were reported."
+         ]
+        },
+        "tools": 0,
+        "approvals": 1,
+        "allowed": 0,
+        "refused": 1,
+        "denied": 0,
+        "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001"
+       }
+      }
+     }
+    ]
+   },
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "execute_command",
+     "decision": "timeout"
+    }
+   ],
+   "egressCalls": [],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"QA: run the tests.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":\"p1\",\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"n\",\"_meta\":{\"noevia\":{\"reason\":\"Nobody answered the approval request in time, so the action was not run.\"}}}}}"
+   ]
+  },
+  "cancel-while-waiting": {
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests."
+     }
+    },
+    {
+     "waitCard": "<T1>"
+    },
+    {
+     "cancel": "<T1>"
+    },
+    {
+     "waitEnd": "<T1>"
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      "<A1>"
+     ]
+    },
+    {
+     "cancel": "<T1>"
+    },
+    {
+     "facts": true
+    }
+   ],
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":\"p1\",\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"kind\":\"execute\",\"title\":\"npm test\",\"rawInput\":{\"command\":\"npm test\"}},\"options\":[{\"optionId\":\"y\",\"kind\":\"allow_once\"},{\"optionId\":\"n\",\"kind\":\"reject_once\"}]}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "egress": false,
+   "inference": null,
+   "timeoutMs": 60000,
+   "project": {
+    "id": "qa-project"
+   },
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+      "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "direct",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "card"
+    },
+    {
+     "status": 200,
+     "body": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "waiting_approval",
+      "stage": "running",
+      "error": null,
+      "task": "QA: run the tests.",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": null,
+      "meta": null,
+      "identityHash": null,
+      "createdAt": 5000,
+      "updatedAt": 5000,
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "steps": [
+       {
+        "id": "harness.config",
+        "title": "Pin the harness configuration",
+        "status": "completed"
+       }
+      ],
+      "plan": null,
+      "assistantOutput": null,
+      "approval": null,
+      "result": null
+     }
+    },
+    {
+     "waited": "ended"
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "That approval is no longer waiting."
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "cancelled",
+      "stage": "running",
+      "error": null,
+      "task": "QA: run the tests.",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": null,
+      "meta": null,
+      "identityHash": null,
+      "createdAt": 5000,
+      "updatedAt": 5000,
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "steps": [
+       {
+        "id": "harness.config",
+        "title": "Pin the harness configuration",
+        "status": "completed"
+       }
+      ],
+      "plan": null,
+      "assistantOutput": null,
+      "approval": null,
+      "result": null
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 5000,
+      "data": {}
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "harness.config",
+       "title": "Pin the harness configuration"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "harness.config",
+       "file": "opencode.json",
+       "files": [
+        "./opencode.json"
+       ],
+       "permission": {
+        "edit": "ask",
+        "bash": "ask",
+        "webfetch": "ask"
+       },
+       "model": "local/qa-model",
+       "endpoint": "http://qa-engine.invalid:8080/v1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "progress",
+      "at": 5000,
+      "data": {
+       "stage": "running"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "approval.requested",
+      "at": 5000,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "execute_command",
+       "title": "npm test",
+       "kind": "execute",
+       "command": "npm test",
+       "paths": [],
+       "reason": "",
+       "arguments": {
+        "command": "npm test"
+       },
+       "diff": null
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "approval.decided",
+      "at": 5000,
+      "data": {
+       "decision": "aborted",
+       "action": "execute_command"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "job.cancelled",
+      "at": 5000,
+      "data": {}
+     }
+    ]
+   },
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "execute_command",
+     "decision": "aborted"
+    }
+   ],
+   "egressCalls": [],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"QA: run the tests.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}",
+    "{\"jsonrpc\":\"2.0\",\"method\":\"session/cancel\",\"params\":{\"sessionId\":\"qa-session\"}}"
+   ]
+  },
+  "paused": {
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests."
+     }
+    }
+   ],
+   "script": [],
+   "egress": false,
+   "inference": "paused",
+   "timeoutMs": 60000,
+   "project": {
+    "id": "qa-project"
+   },
+   "answers": [
+    {
+     "status": 503,
+     "body": {
+      "error": "Coding tasks wait while noevia tunes or reconfigures models. Start this task when that finishes."
+     }
+    }
+   ],
+   "journals": {},
+   "logs": [],
+   "egressCalls": [],
+   "sandboxLines": []
+  },
+  "lease-refused": {
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests."
+     }
+    },
+    {
+     "waitEnd": "<T1>"
+    },
+    {
+     "cancel": "<T1>"
+    }
+   ],
+   "script": [],
+   "egress": false,
+   "inference": "refuses",
+   "timeoutMs": 60000,
+   "project": {
+    "id": "qa-project",
+    "sharedContext": {
+     "code": true,
+     "chat": "yes"
+    }
+   },
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+      "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "direct",
+      "sharedContext": true
+     }
+    },
+    {
+     "waited": "ended"
+    },
+    {
+     "status": 200,
+     "body": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "failed",
+      "stage": null,
+      "error": "Coding tasks wait while noevia tunes or reconfigures models. Start this task when that finishes.",
+      "task": null,
+      "branch": null,
+      "baseSha": null,
+      "headSha": null,
+      "meta": null,
+      "identityHash": null,
+      "createdAt": 5000,
+      "updatedAt": 5000,
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "steps": [],
+      "plan": null,
+      "assistantOutput": null,
+      "approval": null,
+      "result": null
+     }
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.failed",
+      "at": 5000,
+      "data": {
+       "error": "Coding tasks wait while noevia tunes or reconfigures models. Start this task when that finishes."
+      }
+     }
+    ]
+   },
+   "logs": [],
+   "egressCalls": [],
+   "sandboxLines": []
+  },
+  "shared-context": {
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: run the tests.",
+      "promptPreparation": "direct",
+      "capabilities": [
+       "network",
+       "install_dependency",
+       "edit_file"
+      ],
+      "domains": [
+       "registry.example.org"
+      ]
+     }
+    },
+    {
+     "waitEnd": "<T1>"
+    }
+   ],
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "egress": false,
+   "inference": null,
+   "timeoutMs": 60000,
+   "project": {
+    "id": "qa-project",
+    "sharedContext": {
+     "code": true
+    }
+   },
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+      "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001",
+      "repository": "qa-repo",
+      "capabilities": [
+       "edit_file"
+      ],
+      "domains": [
+       "registry.example.org"
+      ],
+      "harness": "opencode",
+      "promptPreparation": "direct",
+      "sharedContext": true
+     }
+    },
+    {
+     "waited": "ended"
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "edit_file"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 5000,
+      "data": {}
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "harness.config",
+       "title": "Pin the harness configuration"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "harness.config",
+       "file": "opencode.json",
+       "files": [
+        "./opencode.json"
+       ],
+       "permission": {
+        "edit": "ask",
+        "bash": "ask",
+        "webfetch": "ask"
+       },
+       "model": "local/qa-model",
+       "endpoint": "http://qa-engine.invalid:8080/v1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "progress",
+      "at": 5000,
+      "data": {
+       "stage": "running"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "identityHash": "f5039b1b5e41540637d8ed352bb50a5ab9f0a35b67309799ef8d2ebb0986432d",
+       "identity": {
+        "backend": "acp",
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "model": "qa-model",
+        "provider": null,
+        "protocolVersion": 1,
+        "capabilities": [
+         "edit_file"
+        ],
+        "promptPreparation": "direct",
+        "sandbox": "sandbox"
+       },
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+       "task": "QA: run the tests.",
+       "identityHash": "f5039b1b5e41540637d8ed352bb50a5ab9f0a35b67309799ef8d2ebb0986432d",
+       "identity": {
+        "backend": "acp",
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "model": "qa-model",
+        "provider": null,
+        "protocolVersion": 1,
+        "capabilities": [
+         "edit_file"
+        ],
+        "promptPreparation": "direct",
+        "sandbox": "sandbox"
+       },
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "job.completed",
+      "at": 5000,
+      "data": {
+       "result": {
+        "stopReason": "end_turn",
+        "branch": "noevia/task-00000000-0000-4000-8000-000000000001",
+        "identityHash": "f5039b1b5e41540637d8ed352bb50a5ab9f0a35b67309799ef8d2ebb0986432d",
+        "meta": {
+         "harness": "qa-agent",
+         "harnessVersion": "0.1",
+         "protocolVersion": 1,
+         "usage": null,
+         "context": null,
+         "commands": 0,
+         "failedCommands": 0,
+         "exitCodes": [],
+         "messageChunks": 0,
+         "limitations": [
+          "The harness did not report token usage.",
+          "No command exit codes were reported."
+         ]
+        },
+        "tools": 0,
+        "approvals": 0,
+        "allowed": 0,
+        "refused": 0,
+        "denied": 0,
+        "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001"
+       }
+      }
+     }
+    ]
+   },
+   "logs": [],
+   "egressCalls": [],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"QA shared context: the goal is a green test run.\\n\\nTask:\\nQA: run the tests.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}"
+   ]
+  }
+ }
+}

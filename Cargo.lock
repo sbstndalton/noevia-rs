@@ -129,6 +129,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "autotune-runner"
+version = "0.1.0"
+dependencies = [
+ "autotune-plan",
+ "autotune-start",
+ "js-json",
+ "llamacpp-autoconfig",
+ "llamacpp-presets",
+ "regex",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
+name = "autotune-start"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "llamacpp-presets",
+]
+
+[[package]]
 name = "axum"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -418,6 +440,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-prepare"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "js-json",
+ "prompt-framing",
+ "regex",
+]
+
+[[package]]
 name = "chat-template-caps"
 version = "0.1.0"
 dependencies = [
@@ -487,8 +520,26 @@ dependencies = [
 name = "code-actions"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "prompt-framing",
  "proptest",
+]
+
+[[package]]
+name = "code-harness"
+version = "0.1.0"
+dependencies = [
+ "code-acp",
+ "code-actions",
+ "code-harness-config",
+ "code-workspace",
+ "js-json",
+ "rustix",
+ "server-projects",
+ "sha2",
+ "stream-guard",
+ "tempfile",
+ "url",
 ]
 
 [[package]]
@@ -517,6 +568,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "code-verify"
+version = "0.1.0"
+dependencies = [
+ "code-acp",
+ "js-json",
+ "rustix",
+ "tempfile",
 ]
 
 [[package]]
@@ -2168,9 +2229,12 @@ dependencies = [
  "bytes",
  "chat-mirror-sched",
  "chat-turn",
+ "code-acp",
+ "code-harness",
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "drive-tools",
  "egress",
  "egress-issuer",
  "embedding-worker",
@@ -2193,6 +2257,7 @@ dependencies = [
  "offsite-backup-format",
  "policy-leaves",
  "preset-reload",
+ "project-retrieval",
  "prompt-framing",
  "provider-egress",
  "rand_core 0.6.4",
@@ -2230,6 +2295,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "toml",
+ "tool-rate-limit",
  "toolboxes-permitted",
  "tower",
  "url",

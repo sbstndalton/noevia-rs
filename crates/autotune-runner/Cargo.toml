@@ -1,0 +1,25 @@
+[package]
+name = "autotune-runner"
+version = "0.1.0"
+description = "The native model auto-tune runner (noevia-core llamacpp-full-autotune.cjs): its job record, quality gate, KV policy and step order over injected engine, preset and maintenance dependencies (sbstndalton/noevia R6, #2516)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+autotune-start = { path = "../autotune-start" }
+js-json = { path = "../js-json" }
+llamacpp-autoconfig = { path = "../llamacpp-autoconfig" }
+llamacpp-presets = { path = "../llamacpp-presets" }
+regex = "1"
+sha2 = "=0.10.9"
+# Notify only (no runtime): an abort a waiting dependency can be woken by.
+tokio = { version = "1", default-features = false, features = ["sync"] }
+
+[dev-dependencies]
+autotune-plan = { path = "../autotune-plan" }
+tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }

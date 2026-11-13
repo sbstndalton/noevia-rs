@@ -1,0 +1,26 @@
+[package]
+name = "code-harness"
+version = "0.1.0"
+description = "noevia-core's code-harness.cjs in Rust: the Code task session's pieces: code-meta.cjs and code-tool-schemas.cjs (the Executor guard), and the agent's file API (defaultFiles); nothing calls it yet (R7)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+code-acp = { path = "../code-acp" }
+code-harness-config = { path = "../code-harness-config" }
+code-workspace = { path = "../code-workspace" }
+code-actions = { path = "../code-actions", features = ["host"] }
+js-json = { path = "../js-json" }
+sha2 = "=0.10.9"
+stream-guard = { path = "../stream-guard" }
+rustix = { version = "=1.1.5", features = ["fs", "process"] }
+server-projects = { path = "../server-projects" }
+url = "=2.5.8"
+
+[dev-dependencies]
+tempfile = "3"
