@@ -132,8 +132,10 @@ dependencies = [
 name = "autotune-runner"
 version = "0.1.0"
 dependencies = [
+ "autotune-plan",
  "autotune-start",
  "js-json",
+ "llamacpp-autoconfig",
  "llamacpp-presets",
  "regex",
  "sha2",

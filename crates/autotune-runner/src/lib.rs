@@ -26,6 +26,7 @@ pub mod phases;
 mod planned;
 pub mod quality;
 pub mod runner;
+pub mod sizing;
 mod stages;
 
 pub use deps::{Abort, Call, Context, Deps, Fail, Hooks, Quirks, Release, Spawn};

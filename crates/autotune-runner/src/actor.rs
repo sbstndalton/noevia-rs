@@ -1347,6 +1347,16 @@ impl<D: Deps> Runner<D> {
         Ok(out)
     }
 
+    /// `flushReload(model)` for the routes and a start's caller.
+    pub async fn flush_reload_public(&self, model: Option<&str>) -> Result<(), Fail> {
+        self.flush_reload(model).await
+    }
+
+    /// `scanFacts()`: the untuned scan's per-row facts (Rust's untuned route applies the policy).
+    pub async fn scan_facts_public(&self) -> Result<JValue, Fail> {
+        self.scan_facts().await
+    }
+
     /// `starting` (for `tuningActive` and the routes).
     pub fn starting(&self) -> bool {
         self.st().starting

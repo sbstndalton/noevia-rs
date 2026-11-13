@@ -241,10 +241,8 @@ pub trait Deps: Send + Sync + 'static {
     fn budget_gib(&self) -> Result<f64, Fail>;
     /// llamacpp-calibration.cjs `ladder(native)` (throws `autoconfig_impl`).
     fn ladder(&self, native: u64) -> Result<Vec<u64>, Fail>;
-    /// `estimateFootprintForAutotune(request)`: `{ sizeable, totalGib, ... }`.
-    fn estimate_footprint(&self, request: JValue) -> Result<JValue, Fail>;
-    /// `tuneCacheMib(eff)`: the prompt cache an auto-tune write leaves (`Infinity` unbounded).
-    fn tune_cache_mib(&self, effective: &JValue) -> Result<f64, Fail>;
+    /// inference-budget.cjs `cacheRamLimits()`: `(capMib, hardMaxMib)` (the operator's variables).
+    fn cache_ram_limits(&self) -> (f64, f64);
     /// `allowBelowQ5Kv()` (the operator's override variable).
     fn allow_below_q5(&self) -> bool;
 

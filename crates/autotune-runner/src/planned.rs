@@ -101,7 +101,10 @@ impl<D: Deps> Runner<D> {
         let profile = self.deps().presets_get(model);
         let eff = js::spread(&[profile.get("defaults"), profile.get("options")]);
         let native = uint(m.get("contextLength"), f64::from(1u32 << 24));
-        let cache_mib = self.deps().tune_cache_mib(&eff)?;
+        let cache_mib = {
+            let (cap, hard) = self.deps().cache_ram_limits();
+            crate::sizing::tune_cache_mib(&eff, cap, hard)?
+        };
         if !cache_mib.is_finite() {
             return Ok(JValue::obj([(
                 "fallback",

@@ -684,7 +684,10 @@ impl<D: Deps> Runner<D> {
             }
             let profile = self.deps().presets_get(model);
             let eff = js::spread(&[profile.get("defaults"), profile.get("options")]);
-            let cache_mib = self.deps().tune_cache_mib(&eff)?;
+            let cache_mib = {
+                let (cap, hard) = self.deps().cache_ram_limits();
+                crate::sizing::tune_cache_mib(&eff, cap, hard)?
+            };
             if !cache_mib.is_finite() {
                 unplanned("the cache size is not a number")?;
                 return Ok(None);
@@ -718,7 +721,7 @@ impl<D: Deps> Runner<D> {
                     js::set(&mut options, "cache-ram", js::num(cache_mib));
                     js::set(&mut options, "ubatch-size", js::num(ubatch));
                     let mmproj = read.get("mmprojBytes");
-                    let e = self.deps().estimate_footprint(JValue::obj([
+                    let e = crate::sizing::estimate_footprint(&JValue::obj([
                         ("meta", read.get("meta").clone()),
                         ("modelBytes", read.get("modelBytes").clone()),
                         (

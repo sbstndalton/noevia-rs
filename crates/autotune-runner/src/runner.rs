@@ -152,6 +152,20 @@ pub struct StageHooks<D: Deps> {
     pub(crate) fill: bool,
 }
 
+impl<D: Deps> Clone for StageHooks<D> {
+    fn clone(&self) -> Self {
+        StageHooks {
+            runner: self.runner.clone(),
+            run: self.run,
+            job_object: self.job_object,
+            model: self.model.clone(),
+            phase: self.phase.clone(),
+            foreign_stop: Arc::clone(&self.foreign_stop),
+            fill: self.fill,
+        }
+    }
+}
+
 /// Locks, recovering from a poisoned lock (a panic elsewhere leaves the plain data usable).
 pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -581,18 +595,59 @@ impl<D: Deps> Runner<D> {
         Ok((202, phases::public_job(&self.job())))
     }
 
-    /// `completion = run(j)`: a new run identity, spawned.
+    /// `completion = run(j)`: a new run identity. Node runs `run(j)` synchronously up to its first
+    /// `await` (the hold for the first unfinished item) before `start` returns, so that much runs
+    /// here too; a run with nothing to wait for ends here entirely.
     pub(crate) fn launch(&self) {
         self.st().run += 1;
-        let me = self.clone();
-        self.0.deps.spawn(Spawn::Run, async move {
-            me.run().await;
+        match self.run_prologue(0) {
+            Ok(Some(index)) => {
+                let me = self.clone();
+                self.0.deps.spawn(Spawn::Run, async move {
+                    let outcome = me.run_items(index).await;
+                    me.finish_run(outcome);
+                });
+            }
+            Ok(None) => {
+                self.all_passed();
+                self.finish_run(Ok(()));
+            }
+            Err(e) => self.finish_run(Err(e)),
+        }
+    }
+
+    /// The loop head of `run(j)` from item `from`: the next unfinished item named and announced
+    /// (`None`: every item has passed).
+    fn run_prologue(&self, from: usize) -> Result<Option<usize>, Fail> {
+        let count = js::items(self.job().get("models")).len();
+        for index in from..count {
+            self.check()?;
+            let item = self.item(index);
+            if item.get("status").as_str() == Some("passed") {
+                continue;
+            }
+            let model = item.get("model").clone();
+            self.with_job(|j| {
+                js::set(j, "model", model);
+                js::set(j, "phase", "Waiting for chat to become idle");
+                js::set(j, "waiting", true);
+            });
+            self.save()?;
+            self.st().set_idle(Some(Abort::default()));
+            return Ok(Some(index));
+        }
+        Ok(None)
+    }
+
+    fn all_passed(&self) {
+        self.with_job(|j| {
+            js::set(j, "status", "passed");
+            js::set(j, "phase", "Done");
         });
     }
 
-    /// `run(j)`: each queue item under its own hold, then the job's end state.
-    pub(crate) async fn run(&self) {
-        let outcome = self.run_items().await;
+    /// The end of `run(j)` (its `catch` and `finally`): the job's end state, then a save.
+    fn finish_run(&self, outcome: Result<(), Fail>) {
         if let Err(e) = outcome {
             let cancelled = self.cancelled() || e.cancelled;
             let status = if cancelled {
@@ -656,24 +711,18 @@ impl<D: Deps> Runner<D> {
         }
     }
 
-    async fn run_items(&self) -> Result<(), Fail> {
-        let count = js::items(self.job().get("models")).len();
-        for index in 0..count {
-            self.check()?;
-            let item = self.item(index);
-            if item.get("status").as_str() == Some("passed") {
-                continue;
-            }
-            let model = item.get("model").clone();
-            let model_name = model.as_str().unwrap_or("").to_string();
-            self.with_job(|j| {
-                js::set(j, "model", model.clone());
-                js::set(j, "phase", "Waiting for chat to become idle");
-                js::set(j, "waiting", true);
-            });
-            self.save()?;
-            let idle = Abort::default();
-            self.st().set_idle(Some(idle.clone()));
+    /// The rest of `run(j)` from item `index`, whose prologue has run.
+    async fn run_items(&self, first: usize) -> Result<(), Fail> {
+        let mut next = Some(first);
+        while let Some(index) = next {
+            let count = js::items(self.job().get("models")).len();
+            let model_name = self
+                .item(index)
+                .get("model")
+                .as_str()
+                .unwrap_or("")
+                .to_string();
+            let idle = self.st().idle_abort.clone().unwrap_or_default();
             let mut release: Option<D::Release> = None;
             let outcome = self.run_item(index, &model_name, idle, &mut release).await;
             self.st().set_idle(None);
@@ -705,11 +754,9 @@ impl<D: Deps> Runner<D> {
                 self.0.deps.sleep(self.0.config.between_models_ms).await;
                 self.check()?;
             }
+            next = self.run_prologue(index + 1)?;
         }
-        self.with_job(|j| {
-            js::set(j, "status", "passed");
-            js::set(j, "phase", "Done");
-        });
+        self.all_passed();
         Ok(())
     }
 
