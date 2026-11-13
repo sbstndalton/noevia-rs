@@ -108,18 +108,17 @@ fn versions(v: &Value) -> Versions {
         .collect()
 }
 
-fn digest(path: &Path) -> Vec<u8> {
-    let mut all = std::fs::read(path).unwrap();
-    for ext in ["-wal", "-shm"] {
-        let side = path.with_file_name(format!(
-            "{}{ext}",
-            path.file_name().unwrap().to_str().unwrap()
-        ));
-        if let Ok(b) = std::fs::read(side) {
-            all.extend(b);
-        }
-    }
-    all
+/// The main file and the committed WAL frames (a missing `-wal` is an empty one). The `-shm`
+/// index a reader may create is not content.
+fn digest(path: &Path) -> (Vec<u8>, Vec<u8>) {
+    let wal = path.with_file_name(format!(
+        "{}-wal",
+        path.file_name().unwrap().to_str().unwrap()
+    ));
+    (
+        std::fs::read(path).unwrap(),
+        std::fs::read(wal).unwrap_or_default(),
+    )
 }
 
 #[test]
@@ -198,92 +197,181 @@ fn every_recorded_search_matches_node() {
                     "{name}/{note}: the case no longer shows the difference"
                 );
                 assert_eq!(got, native, "{name}/{note}");
+            } else if note.starts_with("difference: unclaimed-legacy") {
+                // Named difference: Node claims the pre-#1636 table on open and searches it; a native
+                // read claims nothing, so it has no slot yet.
+                assert!(
+                    !want.is_empty(),
+                    "{name}/{note}: the case no longer shows the difference"
+                );
+                assert!(got.is_empty(), "{name}/{note}");
             } else {
                 assert_eq!(got, want, "{name}/{note}");
             }
             checked += 1;
         }
     }
-    assert_eq!(checked, 19);
+    assert_eq!(checked, 21);
 }
 
-/// An index from before #122/#1636/#1726 has no `version`, `direct`, `kind` or `meta` column.
-/// Node adds them (NULL) on open and then searches; read-only, a missing column reads as NULL,
-/// so the recorded S5 search (the same rows) gives the same hits, and a wanted version filters
-/// every unversioned chunk as Node's `version === want` does.
-#[test]
-fn an_index_without_the_later_columns_reads_them_as_null() {
-    let f = fixture();
-    let s5 = f["scenarios"]
+fn recorded(f: &Value, scenario: &str, note: &str) -> Value {
+    f["scenarios"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|s| s["name"] == "S5-unclaimed-legacy")
-        .unwrap();
-    let q = &s5["searches"][0];
+        .find(|s| s["name"] == scenario)
+        .unwrap()["searches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|q| q["note"] == note)
+        .unwrap()
+        .clone()
+}
+
+fn query_of(q: &Value) -> Vec<f32> {
+    q["query_vector"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_f64().unwrap() as f32)
+        .collect()
+}
+
+fn triples(hits: Vec<project_retrieval::hits::Hit>) -> Vec<(String, String, f64)> {
+    hits.into_iter()
+        .map(|h| (h.file, h.body, h.score))
+        .collect()
+}
+
+fn want_of(q: &Value) -> Vec<(String, String, f64)> {
+    q["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|h| {
+            (
+                h["file"].as_str().unwrap().to_owned(),
+                h["body"].as_str().unwrap().to_owned(),
+                h["score"].as_f64().unwrap(),
+            )
+        })
+        .collect()
+}
+
+fn target_of(q: &Value) -> Target<'_> {
+    Target {
+        profile: q["target"]["profile"].as_str().unwrap(),
+        model: q["target"]["model"].as_str().unwrap(),
+    }
+}
+
+/// An index from before #122/#1636/#1726 has no `version`, `direct`, `kind` or `meta` column.
+/// Node adds them (NULL) on open and then searches; read-only, a missing column reads as NULL:
+/// the recorded S4 search over the same rows gives the same hits, and a wanted version equal to
+/// the chunks' real version filters them all, because an unversioned chunk is never current.
+#[test]
+fn an_index_without_the_later_columns_reads_them_as_null() {
+    let f = fixture();
+    let q = recorded(&f, "S4-legacy-slot", "legacy slot");
     let mut dump = f["snapshots"][q["index"].as_str().unwrap()].clone();
+    let version = dump["chunks"][0]["version"].as_str().unwrap().to_owned();
+    let file_name = dump["chunks"][0]["file"].as_str().unwrap().to_owned();
     for sql in dump["schema"].as_array_mut().unwrap() {
         if sql.as_str().unwrap().starts_with("CREATE TABLE chunks") {
             *sql = Value::String("CREATE TABLE chunks (id INTEGER PRIMARY KEY, file TEXT NOT NULL, chunk_no INTEGER NOT NULL, body TEXT NOT NULL, content_hash TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT (datetime('now')))".into());
         }
     }
-    let old: Vec<Value> = dump["chunks"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|c| {
-            let mut c = c.clone();
-            let o = c.as_object_mut().unwrap();
-            for k in ["version", "direct", "kind", "meta"] {
-                o.remove(k);
-            }
-            c
-        })
-        .collect();
+    let old = dump["chunks"].as_array().unwrap().clone();
     dump["chunks"] = Value::Array(Vec::new());
-    let dir = tempfile::tempdir().unwrap();
-    let file = dir.path().join("qa-proj-5.db");
-    rebuild(&file, &dump);
-    {
-        let conn = Connection::open(&file).unwrap();
-        for c in &old {
-            conn.execute(
-                "INSERT INTO chunks (id, file, chunk_no, body, content_hash) VALUES (?, ?, ?, ?, ?)",
-                rusqlite::params![
-                    c["id"].as_i64().unwrap(),
-                    c["file"].as_str().unwrap(),
-                    c["chunk_no"].as_i64().unwrap(),
-                    c["body"].as_str().unwrap(),
-                    c["content_hash"].as_str().unwrap()
-                ],
-            )
-            .unwrap();
+    let current = |dir: &Path, with_columns: bool| {
+        let file = dir.join(if with_columns { "new.db" } else { "old.db" });
+        let mut d = dump.clone();
+        if with_columns {
+            d = f["snapshots"][q["index"].as_str().unwrap()].clone();
         }
-    }
-    let conn = open_index(&file).unwrap().unwrap();
-    let target = Target {
-        profile: "nomic-v1",
-        model: q["target"]["model"].as_str().unwrap(),
+        rebuild(&file, &d);
+        if !with_columns {
+            let conn = Connection::open(&file).unwrap();
+            for c in &old {
+                conn.execute(
+                    "INSERT INTO chunks (id, file, chunk_no, body, content_hash) VALUES (?, ?, ?, ?, ?)",
+                    rusqlite::params![
+                        c["id"].as_i64().unwrap(),
+                        c["file"].as_str().unwrap(),
+                        c["chunk_no"].as_i64().unwrap(),
+                        c["body"].as_str().unwrap(),
+                        c["content_hash"].as_str().unwrap()
+                    ],
+                )
+                .unwrap();
+            }
+        }
+        open_index(&file).unwrap().unwrap()
     };
-    let query: Vec<f32> = q["query_vector"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|x| x.as_f64().unwrap() as f32)
-        .collect();
-    let got = search(&conn, target, &query, TOP_K, &Versions::new()).unwrap();
-    let want: Vec<&str> = q["hits"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|h| h["body"].as_str().unwrap())
-        .collect();
+    let dir = tempfile::tempdir().unwrap();
+    let (old_conn, new_conn) = (current(dir.path(), false), current(dir.path(), true));
+    let query = query_of(&q);
+    let none = Versions::new();
     assert_eq!(
-        got.iter().map(|h| h.body.as_str()).collect::<Vec<_>>(),
-        want
+        triples(search(&old_conn, target_of(&q), &query, TOP_K, &none).unwrap()),
+        want_of(&q)
     );
-    let pending: Versions = [("qa-old.md".to_owned(), Some("qa-new-version".to_owned()))].into();
-    assert!(search(&conn, target, &query, TOP_K, &pending)
+    let pending: Versions = [(file_name.clone(), Some(version))].into();
+    let of_file = |conn: &Connection| {
+        search(conn, target_of(&q), &query, TOP_K, &pending)
+            .unwrap()
+            .into_iter()
+            .filter(|h| h.file == file_name)
+            .count()
+    };
+    assert!(of_file(&new_conn) > 0, "the chunks' own version is current");
+    assert_eq!(
+        of_file(&old_conn),
+        0,
+        "an unversioned chunk is never current"
+    );
+}
+
+/// A WAL index whose last writer died with committed frames still in `-wal`: the native search is
+/// then the only (and last) connection, and must not checkpoint them into the main file on close.
+#[test]
+fn closing_after_a_search_does_not_checkpoint_into_the_index() {
+    let f = fixture();
+    let q = recorded(&f, "S1-map-slot", "mixed files");
+    let dir = tempfile::tempdir().unwrap();
+    let live = dir.path().join("live.db");
+    rebuild(&live, &f["snapshots"][q["index"].as_str().unwrap()]);
+    let writer = Connection::open(&live).unwrap();
+    writer.pragma_update(None, "wal_autocheckpoint", 0).unwrap();
+    writer
+        .execute(
+            "INSERT INTO vec_meta (key, value) VALUES ('qa-pending', 'x')",
+            [],
+        )
+        .unwrap();
+    // A copy of the files while the writer still holds its frames: what a crash leaves behind.
+    let crashed = dir.path().join("crashed.db");
+    for ext in ["", "-wal"] {
+        std::fs::copy(
+            format!("{}{ext}", live.display()),
+            format!("{}{ext}", crashed.display()),
+        )
+        .unwrap();
+    }
+    drop(writer);
+    let wal = std::fs::metadata(format!("{}-wal", crashed.display()))
         .unwrap()
-        .is_empty());
+        .len();
+    assert!(wal > 0, "the copy holds WAL frames");
+    let main_before = std::fs::read(&crashed).unwrap();
+    let conn = open_index(&crashed).unwrap().unwrap();
+    let got = search(&conn, target_of(&q), &query_of(&q), TOP_K, &Versions::new()).unwrap();
+    assert_eq!(triples(got), want_of(&q));
+    drop(conn);
+    assert_eq!(
+        std::fs::read(&crashed).unwrap(),
+        main_before,
+        "the close checkpointed into the index"
+    );
 }

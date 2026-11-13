@@ -7,17 +7,26 @@
 //! Reads only. Node's `openIndex` also writes on every search: it creates the schema when it is
 //! missing, adds the four later `chunks` columns to an older index, and records an unclaimed
 //! legacy `vec_items` table as the slot of a `nomic-v1` target. Here a missing column reads as
-//! NULL (what Node's added column holds) and the unclaimed legacy table is used as that slot
-//! without writing its record, so the hits are the same and the file is left as it was.
+//! NULL (what Node's added column holds), a missing table is a [`Fault`], and nothing is claimed.
 //!
-//! Known difference, kept on purpose for parity (finding filed): the version filter runs after the
-//! SQL `LIMIT`, so a file being re-indexed whose stale chunks fill the whole `pool × 4` window
+//! Named differences from Node (recorded in `tests/fixtures/F2-F6-search.json`, asserted):
+//! - **unclaimed-legacy**: an index from before #1636 (`vec_items` with no slot record) has no slot
+//!   here until Node or the native worker (`embedding-worker` `sqlite.rs`, on its next open)
+//!   records the claim; Node claims it for the active `nomic-v1` model on its first search. Taking
+//!   the claim in a read would let a later model inherit vectors another model made.
+//! - **tie-order**: exact score ties are ordered by chunk id; Node's SQL has no tie-breaker and
+//!   returns them in vec0 scan order, which can differ after vectors are rewritten. A tie across
+//!   the `pool × 4` or `pool` cut can therefore also change which of the tied chunks is returned.
+//!
+//! Copied on purpose for parity (finding sbstndalton/noevia#2518): the version filter runs after
+//! the SQL `LIMIT`, so a file being re-indexed whose stale chunks fill the whole `pool × 4` window
 //! leaves fewer than `pool` hits, or none, although other files have matching chunks.
 
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
+use rusqlite::config::DbConfig;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -29,7 +38,7 @@ pub const MIN_SCORE: f64 = 0.3;
 /// `TOP_K` (`rag.cjs:99`): the pool without the reranker.
 pub const TOP_K: usize = 6;
 /// The legacy vector table every index built before #1636 holds (`vector-slots.cjs:22`).
-pub const LEGACY_TABLE: &str = "vec_items";
+const LEGACY_TABLE: &str = "vec_items";
 
 /// The embedding identity a slot belongs to (`embedding-config.cjs` target, without its address:
 /// the slot id is `profile \0 model`, `vector-slots.cjs:34`).
@@ -39,15 +48,24 @@ pub struct Target<'a> {
     pub model: &'a str,
 }
 
-/// A slot record (`vec_meta 'slot:<id>'`), checked as `vector-slots.cjs` `safe` checks it.
+/// A slot record (`vec_meta 'slot:<id>'`), checked as `vector-slots.cjs` `safe` checks it. Only
+/// [`find_slot`] makes one, so its table names are always checked before they reach SQL.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Slot {
-    pub table: String,
-    pub map: Option<String>,
-    pub dim: usize,
+    table: String,
+    map: Option<String>,
+    dim: usize,
 }
 
-/// Why a search could not run. Node logs these and answers `[]`; the caller decides.
+impl Slot {
+    /// The vector width of this slot.
+    pub fn dim(&self) -> usize {
+        self.dim
+    }
+}
+
+/// Why a search could not run (an index without `chunks` or `vec_meta`, a damaged slot table, a
+/// missing vec0 module). Node logs these and answers `[]`; the caller answers `[]` too.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Fault {
     /// The index file could not be opened or read.
@@ -121,66 +139,15 @@ fn meta(conn: &Connection, key: &str) -> Result<Option<String>, Fault> {
     .map_err(|_| Fault::Query)
 }
 
-fn table_exists(conn: &Connection, name: &str) -> Result<bool, Fault> {
-    conn.query_row("SELECT 1 FROM sqlite_master WHERE name = ?", [name], |_| {
-        Ok(())
-    })
-    .optional()
-    .map(|r| r.is_some())
-    .map_err(|_| Fault::Query)
-}
-
-/// The slot records in this file (`listSlots`), for the legacy-claimed check.
-fn legacy_claimed(conn: &Connection) -> Result<bool, Fault> {
-    let mut stmt = conn
-        .prepare("SELECT value FROM vec_meta WHERE key LIKE 'slot:%'")
-        .map_err(|_| Fault::Query)?;
-    let rows = stmt
-        .query_map([], |r| r.get::<_, Option<String>>(0))
-        .map_err(|_| Fault::Query)?;
-    for raw in rows {
-        let raw = raw.map_err(|_| Fault::Query)?.unwrap_or_default();
-        let slot = serde_json::from_str::<Value>(&raw)
-            .ok()
-            .and_then(|v| safe(&v));
-        if slot.is_some_and(|s| s.table == LEGACY_TABLE) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-/// `Number(meta(db, 'dim'))` as `adoptLegacy` reads it, when it is a usable width.
-fn legacy_dim(raw: Option<&str>) -> Option<usize> {
-    // `Number(null)` is 0 and `Number('')` is 0, both refused by `dim > 0`. Node then stores the
-    // value as its JSON number, which `safe` must accept as an integer in 1..=65536.
-    let n: f64 = raw?.trim().parse().ok()?;
-    (n.fract() == 0.0 && n > 0.0 && n <= 65536.0).then_some(n as usize)
-}
-
-/// `adoptLegacy` then `findSlot` (`vector-slots.cjs:59-75`), without the write: the slot of
-/// `target`, or `None` when it has none.
+/// `findSlot` (`vector-slots.cjs:69-75`): the slot recorded for `target`, or `None`. An empty or
+/// unreadable record is no slot, as in Node. Node runs `adoptLegacy` first; see the module notes.
 pub fn find_slot(conn: &Connection, target: Target) -> Result<Option<Slot>, Fault> {
-    let id = slot_id(target);
-    if let Some(raw) = meta(conn, &format!("slot:{id}"))? {
-        return Ok(serde_json::from_str::<Value>(&raw)
-            .ok()
-            .and_then(|v| safe(&v)));
-    }
-    if target.profile != "nomic-v1" {
-        return Ok(None);
-    }
-    let Some(dim) = legacy_dim(meta(conn, "dim")?.as_deref()) else {
+    let Some(raw) = meta(conn, &format!("slot:{}", slot_id(target)))? else {
         return Ok(None);
     };
-    if !table_exists(conn, LEGACY_TABLE)? || legacy_claimed(conn)? {
-        return Ok(None);
-    }
-    Ok(Some(Slot {
-        table: LEGACY_TABLE.to_owned(),
-        map: None,
-        dim,
-    }))
+    Ok(serde_json::from_str::<Value>(&raw)
+        .ok()
+        .and_then(|v| safe(&v)))
 }
 
 /// `joinSql(slot)` (`vector-slots.cjs:147-151`). Table names are checked by [`safe`].
@@ -216,7 +183,7 @@ fn round3(score: f64) -> f64 {
 }
 
 /// `textHitsConfigured` without the reranker (`rag.cjs:909-922`): at most `pool` text hits.
-pub fn text_hits(
+fn text_hits(
     conn: &Connection,
     slot: &Slot,
     query: &[f32],
@@ -282,7 +249,9 @@ pub fn search(
 
 /// Opens an existing index for reading; `Ok(None)` when the file does not exist (#1776: a read
 /// never creates an index). sqlite-vec must already be registered for the process
-/// (`sqlite-vec-loader`). The connection refuses writes (`query_only`).
+/// (`sqlite-vec-loader`). The connection refuses writes (`query_only`) and does not checkpoint
+/// when it closes, so the main file is never written; SQLite may create the `-wal` and `-shm`
+/// side files of a WAL index that has none, as any reader does.
 pub fn open_index(path: &Path) -> Result<Option<Connection>, Fault> {
     if !path.is_file() {
         return Ok(None);
@@ -295,6 +264,8 @@ pub fn open_index(path: &Path) -> Result<Option<Connection>, Fault> {
     .map_err(|_| Fault::Index)?;
     conn.busy_timeout(Duration::from_secs(5))
         .map_err(|_| Fault::Index)?;
+    conn.set_db_config(DbConfig::SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, true)
+        .map_err(|_| Fault::Index)?;
     conn.pragma_update(None, "query_only", true)
         .map_err(|_| Fault::Index)?;
     Ok(Some(conn))
@@ -302,7 +273,7 @@ pub fn open_index(path: &Path) -> Result<Option<Connection>, Fault> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_current, legacy_dim, round3, safe, slot_id, Target, Versions};
+    use super::{is_current, round3, safe, slot_id, Target, Versions};
     use serde_json::json;
 
     #[test]
@@ -344,16 +315,6 @@ mod tests {
         assert!(safe(&json!({"table":"vec_items","dim":0})).is_none());
         assert!(safe(&json!({"table":"vec_items","dim":65537})).is_none());
         assert!(safe(&json!({"table":"vec_items","dim":"8"})).is_none());
-    }
-
-    #[test]
-    fn legacy_dim_is_number_of_the_text() {
-        assert_eq!(legacy_dim(Some("768")), Some(768));
-        assert_eq!(legacy_dim(Some(" 8 ")), Some(8));
-        assert_eq!(legacy_dim(Some("0")), None);
-        assert_eq!(legacy_dim(Some("")), None);
-        assert_eq!(legacy_dim(Some("8.5")), None);
-        assert_eq!(legacy_dim(None), None);
     }
 
     #[test]

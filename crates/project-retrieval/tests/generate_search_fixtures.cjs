@@ -39,15 +39,16 @@ const slots = require(path.join(srv, 'vector-slots.cjs'));
 const Database = require(path.join(srv, 'node_modules', 'better-sqlite3'));
 const sqliteVec = require(path.join(srv, 'node_modules', 'sqlite-vec'));
 
-// Deterministic vectors: one dimension per vocabulary word (its count in the framed text), and "zulu" pulls every
-// dimension down, so some pairs score below MIN_SCORE or negative. Identical texts give identical vectors (ties).
+// Deterministic vectors: one dimension per vocabulary word (its count in the framed text; words past the width are
+// not counted), "zulu" pulls every dimension down, so some pairs score below MIN_SCORE or negative, and the last
+// dimension is a small per-text offset of its own. Identical texts give identical vectors (ties).
 const VOCAB = ['alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel'];
 function vectorFor(text, dim) {
   const words = String(text).toLowerCase().match(/[a-z]+/g) || [];
   const v = new Array(dim).fill(0);
   for (const w of words) {
     const i = VOCAB.indexOf(w);
-    if (i >= 0 && i < dim) v[i] += 1;
+    if (i >= 0 && i < dim - 1) v[i] += 1;
     if (w === 'zulu') for (let k = 0; k < dim; k++) v[k] -= 0.5;
   }
   // A small per-text offset so different texts rarely tie by accident; identical texts still tie.
@@ -55,7 +56,7 @@ function vectorFor(text, dim) {
   v[dim - 1] += h[0] / 2550;
   return v.map((x) => Math.fround(x));
 }
-let dim = 8;
+let dim = 9;
 let wrongWidthFor = null; // a query text answered with a vector one wider than the slot
 let lastQuery = null;
 const calls = [];
@@ -119,6 +120,7 @@ function scenario(name, target, build) {
   let active = true;
   const users = new Set(['qa-user-r4']);
   let current = target;
+  const baseline = rag.trackedFileState().versions;
   const start = () => rag.init({
     dataDir,
     inferenceUrl: 'http://127.0.0.1:9/v1',
@@ -170,7 +172,12 @@ function scenario(name, target, build) {
       db.close();
       rec.steps.push({ step: 'sql', projectId, statement });
     },
+    // `versions` is Node's wanted-version map (rag.cjs fileVersions) for the touched files as the steps leave it. Node
+    // exposes only its size (trackedFileState), which is checked here; the hits then show the entries took effect.
     async search(projectId, query, versions, note) {
+      // Earlier scenarios' entries stay in the process (other projects): count this scenario's only.
+      const tracked = rag.trackedFileState().versions - baseline;
+      if (tracked !== Object.keys(versions).length) throw new Error(`${note}: Node tracks ${tracked} wanted versions, the fixture names ${Object.keys(versions).length}`);
       // The index as this search reads it (before Node's own open, which may adopt a legacy table).
       const index = ctx.snapshot(projectId);
       lastQuery = null;
@@ -201,7 +208,7 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
   const dup = prose(40, 2, 'echo', 2);
   const neg = prose(30, 5).replace(/\./g, ' zulu zulu zulu.');
   await scenario('S1-map-slot', { model: 'qa-embed-map', profile: 'embeddinggemma-2', baseUrl: 'http://127.0.0.1:9' }, async (c) => {
-    dim = 8;
+    dim = 9;
     await c.index('qa-proj-1', 'qa-small.md', 'alpha bravo charlie. A small synthetic note.');
     await c.index('qa-proj-1', 'qa-long-a.md', longA);
     await c.index('qa-proj-1', 'qa-long-b.md', longB);
@@ -224,7 +231,7 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
   const stale = Array.from({ length: 9 }, (_, k) => prose(60, k * 13 + 3, 'hotel', 2) + ' ' + VOCAB[k % 8] + ' qa marker ' + k + '.').join('\n\n');
   const fresh = prose(50, 6, 'hotel', 4);
   await scenario('S2-versions', { model: 'qa-embed-ver', profile: 'embeddinggemma-2', baseUrl: 'http://127.0.0.1:9' }, async (c) => {
-    dim = 8;
+    dim = 9;
     await c.index('qa-proj-2', 'qa-stale.md', stale);
     await c.index('qa-proj-2', 'qa-fresh.md', fresh);
     await c.index('qa-proj-2', 'qa-gone.md', longA);
@@ -248,7 +255,7 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
   });
 
   await scenario('S3-delete', { model: 'qa-embed-del', profile: 'embeddinggemma-2', baseUrl: 'http://127.0.0.1:9' }, async (c) => {
-    dim = 8;
+    dim = 9;
     await c.index('qa-proj-3', 'qa-keep.md', longB);
     await c.index('qa-proj-3', 'qa-drop.md', longA);
     await c.search('qa-proj-3', 'alpha', {}, 'before delete');
@@ -258,7 +265,7 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
   // S4: the legacy table vec_items (nomic-v1, raw text, no map). A fresh nomic-v1 index uses it as its slot.
   await scenario('S4-legacy-slot', { model: 'qa-embed-legacy', profile: 'nomic-v1', baseUrl: 'http://127.0.0.1:9' }, async (c) => {
-    dim = 6;
+    dim = 7;
     await c.index('qa-proj-4', 'qa-legacy-a.md', longA);
     await c.index('qa-proj-4', 'qa-legacy-b.md', dup);
     await c.search('qa-proj-4', 'alpha bravo', {}, 'legacy slot');
@@ -267,18 +274,25 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
     wrongWidthFor = null;
   });
 
-  // S5: a pre-#1636 index: vec_items and vec_meta 'dim', no slot record. Node adopts it for a nomic-v1 target on
-  // open (writes the slot record) and searches it.
+  // S5: a pre-#1636 index: vec_items and vec_meta 'dim', no slot record. Node adopts it for a nomic-v1 target on open
+  // (writes the slot record) and searches it; the native search only reads, so it has no slot until Node or the
+  // native worker (embedding-worker sqlite.rs) records the claim: a named difference. Once claimed, another
+  // nomic-v1 model gets nothing, and a target of another profile never adopts it.
   await scenario('S5-unclaimed-legacy', { model: 'qa-embed-legacy', profile: 'nomic-v1', baseUrl: 'http://127.0.0.1:9' }, async (c) => {
-    dim = 6;
+    dim = 7;
     await c.index('qa-proj-5', 'qa-old.md', longB);
     c.sql('qa-proj-5', "DELETE FROM vec_meta WHERE key LIKE 'slot:%'");
-    await c.search('qa-proj-5', 'hotel bravo', {}, 'adopted on open');
+    c.retarget({ model: 'qa-embed-legacy', profile: 'embeddinggemma-2', baseUrl: 'http://127.0.0.1:9' });
+    await c.search('qa-proj-5', 'hotel bravo', {}, 'unclaimed legacy table, target of another profile: no slot');
+    c.retarget({ model: 'qa-embed-legacy', profile: 'nomic-v1', baseUrl: 'http://127.0.0.1:9' });
+    await c.search('qa-proj-5', 'hotel bravo', {}, 'difference: unclaimed-legacy (Node adopts on open and searches; native: no slot)');
+    c.retarget({ model: 'qa-embed-legacy-2', profile: 'nomic-v1', baseUrl: 'http://127.0.0.1:9' });
+    await c.search('qa-proj-5', 'hotel bravo', {}, 'legacy table claimed by another nomic-v1 model: no slot');
   });
 
   // S6: the index has only another model's slot: no vector search, never another model's vectors.
   await scenario('S6-other-model', { model: 'qa-embed-other', profile: 'embeddinggemma-2', baseUrl: 'http://127.0.0.1:9' }, async (c) => {
-    dim = 8;
+    dim = 9;
     await c.index('qa-proj-6', 'qa-a.md', longA);
     c.retarget({ model: 'qa-embed-new', profile: 'embeddinggemma-2', baseUrl: 'http://127.0.0.1:9' });
     await c.search('qa-proj-6', 'alpha', {}, 'no slot for the active model');
@@ -287,7 +301,7 @@ const sha = (t) => crypto.createHash('sha256').update(t).digest('hex');
   // S7: equal scores in Node come back in the vec0 scan order. The native search orders them by chunk id instead
   // (a defined order); this records the one shape where the two differ, as a named difference.
   await scenario('S7-tie-order', { model: 'qa-embed-ties', profile: 'embeddinggemma-2', baseUrl: 'http://127.0.0.1:9' }, async (c) => {
-    dim = 8;
+    dim = 9;
     await c.index('qa-proj-7', 'qa-twin-1.md', dup);
     await c.index('qa-proj-7', 'qa-twin-2.md', dup);
     await c.search('qa-proj-7', 'echo echo echo', {}, 'ties in id order (scan order = id order)');
