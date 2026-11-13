@@ -1,0 +1,5770 @@
+{
+ "options": {
+  "floors": {
+   "duty": 1.0,
+   "retry_s": 0.25
+  }
+ },
+ "pinned_sha256": {
+  "agent/embedding.py": "54a99e73ddc4d9987729fd245c3981c23a90227407c5e31bcf74519429093d1c",
+  "agent/embedding_migration.py": "cbdc49fa956db1f006d99faf346804fc16672519ad738521268cb5820c0516a5",
+  "agent/retrieval.py": "1f68ed102044e844b066eb948c6bb968eb0eb3404a441c8aa8cb8429bb679c7b",
+  "agent/vector_slots.py": "cdc78bb0df55f2743865deca4b21cf7efc6c92490b6529a32b09cd38608e234e"
+ },
+ "python": "3.12.15",
+ "scenarios": {
+  "budget_and_unavailable": [
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": false,
+       "files": 3,
+       "ready": false,
+       "unavailable": 0,
+       "vectors": 0
+      }
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "set_next",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "target": {
+     "base_url": "http://qa-embed.invalid:8080",
+     "model": "qa-embed-b",
+     "profile": "embeddinggemma-2"
+    },
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": null,
+    "op": "break_tenant",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "519873a601",
+       "48044e19df"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "7f6c4fe00c",
+       "c3cb7b8337"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "1810345504",
+       "448c2056a5"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "2b3f97923f",
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "bd8a0bb3d9",
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "52e53b0eba",
+       "eec1fc234c"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "5d174b33c7",
+       "26c2b07c41"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "0fcf92802a",
+       "c015251f98"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "1848c9a253",
+       "5a4846c894"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 18,
+     "error": null,
+     "failed": 2,
+     "more": false,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5
+    ],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": [
+     [
+      "retry",
+      60.0
+     ]
+    ]
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 18,
+       "complete": false,
+       "files": 3,
+       "ready": false,
+       "unavailable": 1,
+       "vectors": 18
+      },
+      "next": {
+       "chunks": 18,
+       "complete": false,
+       "files": 3,
+       "ready": false,
+       "unavailable": 1,
+       "vectors": 18
+      }
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 18,
+      "error": null,
+      "failed": 2,
+      "more": false,
+      "refused": 0
+     },
+     "next": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "coverage": null,
+     "error": "alreadyActive",
+     "message": "That model, profile and address are already active.",
+     "status": 409
+    },
+    "op": "set_next",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "target": {
+     "base_url": null,
+     "model": "qa-embed-a",
+     "profile": "nomic-v1"
+    },
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 18,
+       "complete": false,
+       "files": 3,
+       "ready": false,
+       "unavailable": 1,
+       "vectors": 18
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 18,
+      "error": null,
+      "failed": 2,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 2
+    },
+    "op": "clear_next",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "embedded": 0,
+     "error": null,
+     "failed": 1,
+     "more": false,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 18,
+       "complete": false,
+       "files": 3,
+       "ready": false,
+       "unavailable": 1,
+       "vectors": 18
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 1,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 2
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}",
+    "timers": []
+   }
+  ],
+  "endpoint_moves": [
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      }
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": {
+      "base_url": "http://qa-embed-twin.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "set_next",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}",
+    "target": {
+     "base_url": "http://qa-embed-twin.invalid",
+     "model": "qa-embed-a",
+     "profile": "nomic-v1"
+    },
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      }
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": {
+      "base_url": "http://qa-embed-twin.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "ef537f25c8",
+       "1104792431",
+       "054b016b2a",
+       "fc835629b7"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      "http://qa-embed-twin.invalid",
+      "document",
+      [
+       "ef537f25c8",
+       "1104792431",
+       "054b016b2a",
+       "fc835629b7"
+      ]
+     ]
+    ],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed-twin.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": null,
+     "previous": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 2
+    },
+    "force": false,
+    "op": "switch",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed-twin.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": null,
+     "previous": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 2
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed-twin.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      }
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": {
+      "base_url": "http://qa-embed-perturbed.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "previous": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 3
+    },
+    "op": "set_next",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "target": {
+     "base_url": "http://qa-embed-perturbed.invalid",
+     "model": "qa-embed-a",
+     "profile": "nomic-v1"
+    },
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      "http://qa-embed-twin.invalid",
+      "document",
+      [
+       "ef537f25c8",
+       "1104792431",
+       "054b016b2a",
+       "fc835629b7"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      "http://qa-embed-perturbed.invalid",
+      "document",
+      [
+       "ef537f25c8",
+       "1104792431",
+       "054b016b2a",
+       "fc835629b7"
+      ]
+     ]
+    ],
+    "expected": {
+     "coverage": null,
+     "error": "parityFailed",
+     "message": "The new embeddings address does not give the same vectors as the current one.",
+     "status": 409
+    },
+    "force": false,
+    "op": "switch",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": null,
+    "on": true,
+    "op": "fail_all",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      "http://qa-embed-twin.invalid",
+      "document",
+      [
+       "ef537f25c8",
+       "1104792431",
+       "054b016b2a",
+       "fc835629b7"
+      ]
+     ]
+    ],
+    "expected": {
+     "coverage": null,
+     "error": "parityFailed",
+     "message": "The new embeddings address does not give the same vectors as the current one.",
+     "status": 409
+    },
+    "force": false,
+    "op": "switch",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": null,
+    "on": false,
+    "op": "fail_all",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      "http://qa-embed-twin.invalid",
+      "document",
+      [
+       "ef537f25c8",
+       "1104792431",
+       "054b016b2a",
+       "fc835629b7"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      "http://qa-embed-perturbed.invalid",
+      "document",
+      [
+       "ef537f25c8",
+       "1104792431",
+       "054b016b2a",
+       "fc835629b7"
+      ]
+     ]
+    ],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed-perturbed.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": null,
+     "previous": {
+      "base_url": "http://qa-embed-twin.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 4
+    },
+    "force": true,
+    "op": "switch",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed-perturbed.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": null,
+     "previous": {
+      "base_url": "http://qa-embed-twin.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 4
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed-twin.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": null,
+     "previous": {
+      "base_url": "http://qa-embed-perturbed.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 5
+    },
+    "op": "rollback",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed-perturbed.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": null,
+     "previous": {
+      "base_url": "http://qa-embed-twin.invalid",
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 6
+    },
+    "op": "rollback",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — service 0-0",
+        "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — service 0-1",
+        "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — service 0-2",
+        "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — service 1-0",
+        "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — service 1-1",
+        "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — service 1-2",
+        "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — service 2-0",
+        "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — service 2-1",
+        "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — service 2-2",
+        "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+       ],
+       [
+        10,
+        "2031-03-04",
+        "2031-03.md",
+        "8:00 — service 3-0",
+        "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+       ],
+       [
+        11,
+        "2031-03-04",
+        "2031-03.md",
+        "9:00 — service 3-1",
+        "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+       ],
+       [
+        12,
+        "2031-03-04",
+        "2031-03.md",
+        "10:00 — service 3-2",
+        "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_items",
+       "vec_meta"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f00000000000000000000a040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f00000000000000000000d040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000002841000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000000041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f00000000000000000000a040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         10,
+         "0000304100008040000040400000c03f0000803f00000000000000000000a040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         11,
+         "0000c04000000040000040400000c03f0000803f000000000000000000001041000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         12,
+         "0000c0400000e040000040400000c03f0000803f00000000000000000000d040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a901/index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantA 0-0",
+        "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantA 0-1",
+        "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantA 0-2",
+        "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantA 1-0",
+        "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantA 1-1",
+        "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantA 1-2",
+        "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — tenantA 2-0",
+        "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — tenantA 2-1",
+        "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — tenantA 2-2",
+        "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_items",
+       "vec_meta"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000005041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f000000000000000000002841000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000006841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000004041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000005041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a902/managed-index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantB 0-0",
+        "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantB 0-1",
+        "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantB 0-2",
+        "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantB 1-0",
+        "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantB 1-1",
+        "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantB 1-2",
+        "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_items",
+       "vec_meta"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f00000000000000000000a040000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f00000000000000000000d040000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000204000008840"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000002841000000000000803f000000000000000000000000000060400000204000008840"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000000041000000000000803f000000000000000000000000000060400000204000008840"
+        ]
+       ]
+      }
+     }
+    },
+    "op": "dump",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed-perturbed.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": \"http://qa-embed-twin.invalid\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   }
+  ],
+  "floors": [
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": false,
+       "files": 3,
+       "ready": false,
+       "unavailable": 0,
+       "vectors": 0
+      }
+     },
+     "duty": 1.0,
+     "last_pass": null,
+     "next": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "set_next",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "target": {
+     "base_url": "http://qa-embed.invalid:8080",
+     "model": "qa-embed-b",
+     "profile": "embeddinggemma-2"
+    },
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "519873a601",
+       "48044e19df"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "7f6c4fe00c",
+       "c3cb7b8337"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "1810345504",
+       "448c2056a5"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "2b3f97923f",
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "bd8a0bb3d9",
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "52e53b0eba",
+       "eec1fc234c"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "4b81814f4c",
+       "9b77d10547"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "11178c47d9",
+       "2edc086141"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "de477ed6cf",
+       "4e49637043"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "6aab3b461e",
+       "05e4141d07"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "bef2d0044d"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "5d174b33c7",
+       "26c2b07c41"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "0fcf92802a",
+       "c015251f98"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "1848c9a253",
+       "5a4846c894"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 27,
+     "error": null,
+     "failed": 0,
+     "more": false,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05,
+     0.05
+    ],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      }
+     },
+     "duty": 1.0,
+     "last_pass": {
+      "embedded": 27,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": null,
+    "op": "reset_active_vectors",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "519873a601",
+       "48044e19df"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "7f6c4fe00c",
+       "c3cb7b8337"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "1810345504",
+       "448c2056a5"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 6,
+     "error": null,
+     "failed": 0,
+     "more": true,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [
+     0.05,
+     0.05,
+     0.05
+    ],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": [
+     [
+      "recheck",
+      1.0
+     ]
+    ]
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "2b3f97923f",
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "bd8a0bb3d9",
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "52e53b0eba",
+       "eec1fc234c"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 6,
+     "error": null,
+     "failed": 0,
+     "more": true,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [
+     0.05,
+     0.05,
+     0.05
+    ],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": false,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 12
+      },
+      "next": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      }
+     },
+     "duty": 1.0,
+     "last_pass": {
+      "embedded": 6,
+      "error": null,
+      "failed": 0,
+      "more": true,
+      "refused": 0
+     },
+     "next": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   }
+  ],
+  "full_migration": [
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": null,
+     "previous": null,
+     "running": false,
+     "source": "environment",
+     "version": 0
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": false,
+       "files": 3,
+       "ready": false,
+       "unavailable": 0,
+       "vectors": 0
+      }
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "set_next",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "target": {
+     "base_url": "http://qa-embed.invalid:8080",
+     "model": "qa-embed-b",
+     "profile": "embeddinggemma-2"
+    },
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": false,
+       "files": 3,
+       "ready": false,
+       "unavailable": 0,
+       "vectors": 0
+      }
+     },
+     "duty": 0.5,
+     "last_pass": null,
+     "next": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "coverage": {
+      "chunks": 27,
+      "complete": false,
+      "files": 3,
+      "ready": false,
+      "unavailable": 0,
+      "vectors": 0
+     },
+     "error": "notReady",
+     "message": "The new model has not finished indexing every Diary file yet.",
+     "status": 409
+    },
+    "force": false,
+    "op": "switch",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "519873a601",
+       "48044e19df"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "7f6c4fe00c",
+       "c3cb7b8337"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "1810345504",
+       "448c2056a5"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "2b3f97923f",
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "bd8a0bb3d9",
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "52e53b0eba",
+       "eec1fc234c"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "4b81814f4c",
+       "9b77d10547"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "11178c47d9",
+       "2edc086141"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "de477ed6cf",
+       "4e49637043"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "6aab3b461e",
+       "05e4141d07"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "bef2d0044d"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "5d174b33c7",
+       "26c2b07c41"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "0fcf92802a",
+       "c015251f98"
+      ]
+     ],
+     [
+      "qa-embed-b",
+      "http://qa-embed.invalid:8080",
+      "document",
+      [
+       "1848c9a253",
+       "5a4846c894"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 27,
+     "error": null,
+     "failed": 0,
+     "more": false,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5,
+     0.5
+    ],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — service 0-0",
+        "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — service 0-1",
+        "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — service 0-2",
+        "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — service 1-0",
+        "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — service 1-1",
+        "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — service 1-2",
+        "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — service 2-0",
+        "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — service 2-1",
+        "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — service 2-2",
+        "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+       ],
+       [
+        10,
+        "2031-03-04",
+        "2031-03.md",
+        "8:00 — service 3-0",
+        "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+       ],
+       [
+        11,
+        "2031-03-04",
+        "2031-03.md",
+        "9:00 — service 3-1",
+        "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+       ],
+       [
+        12,
+        "2031-03-04",
+        "2031-03.md",
+        "10:00 — service 3-2",
+        "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "0000484100004040000040400000a040000020400000c0400000f0400000803e"
+        ],
+        [
+         2,
+         "00000841000000400000404000002041000020400000c0400000f0400000803e"
+        ],
+        [
+         3,
+         "0000604100000040000040400000a040000020400000c0400000f0400000803e"
+        ],
+        [
+         4,
+         "0000204100004040000040400000f0400000204000009040000020410000803e"
+        ],
+        [
+         5,
+         "0000c0400000004000004040000048410000204000009040000020410000803e"
+        ],
+        [
+         6,
+         "0000384100000040000040400000f0400000204000009040000020410000e03f"
+        ],
+        [
+         7,
+         "0000484100004040000040400000904000008040000090400000f0400000803e"
+        ],
+        [
+         8,
+         "0000084100000040000040400000184100008040000090400000f0400000e03f"
+        ],
+        [
+         9,
+         "0000604100000040000040400000904000008040000090400000f0400000803e"
+        ],
+        [
+         10,
+         "0000f04000004040000040400000d04000002040000090400000184100003040"
+        ],
+        [
+         11,
+         "000060400000004000004040000038410000204000009040000018410000a03f"
+        ],
+        [
+         12,
+         "0000104100000040000040400000d0400000204000009040000018410000a03f"
+        ]
+       ],
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f00000000000000000000a040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f00000000000000000000d040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000002841000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000000041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f00000000000000000000a040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         10,
+         "0000304100008040000040400000c03f0000803f00000000000000000000a040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         11,
+         "0000c04000000040000040400000c03f0000803f000000000000000000001041000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         12,
+         "0000c0400000e040000040400000c03f0000803f00000000000000000000d040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ]
+       ],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+        ],
+        [
+         2,
+         "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+        ],
+        [
+         3,
+         "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+        ],
+        [
+         4,
+         "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+        ],
+        [
+         5,
+         "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+        ],
+        [
+         6,
+         "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+        ],
+        [
+         7,
+         "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+        ],
+        [
+         8,
+         "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+        ],
+        [
+         9,
+         "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+        ],
+        [
+         10,
+         "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+        ],
+        [
+         11,
+         "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+        ],
+        [
+         12,
+         "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a901/index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantA 0-0",
+        "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantA 0-1",
+        "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantA 0-2",
+        "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantA 1-0",
+        "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantA 1-1",
+        "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantA 1-2",
+        "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — tenantA 2-0",
+        "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — tenantA 2-1",
+        "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — tenantA 2-2",
+        "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "00004841000040400000803f0000a040000020400000c0400000f04000005040"
+        ],
+        [
+         2,
+         "00000841000000400000803f00002041000020400000c0400000f04000005040"
+        ],
+        [
+         3,
+         "00006041000000400000803f0000a040000020400000c0400000f04000005040"
+        ],
+        [
+         4,
+         "00002041000040400000803f0000f04000002040000090400000204100005040"
+        ],
+        [
+         5,
+         "0000c040000000400000803f0000484100002040000090400000204100005040"
+        ],
+        [
+         6,
+         "00003841000000400000803f0000f04000002040000090400000204100009840"
+        ],
+        [
+         7,
+         "00004841000040400000803f0000904000008040000090400000f04000005040"
+        ],
+        [
+         8,
+         "00000841000000400000803f0000184100008040000090400000f04000009840"
+        ],
+        [
+         9,
+         "00006041000000400000803f0000904000008040000090400000f04000005040"
+        ]
+       ],
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000005041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f000000000000000000002841000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000006841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000004041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000005041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ]
+       ],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+        ],
+        [
+         2,
+         "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+        ],
+        [
+         3,
+         "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+        ],
+        [
+         4,
+         "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+        ],
+        [
+         5,
+         "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+        ],
+        [
+         6,
+         "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+        ],
+        [
+         7,
+         "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+        ],
+        [
+         8,
+         "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+        ],
+        [
+         9,
+         "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a902/managed-index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantB 0-0",
+        "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantB 0-1",
+        "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantB 0-2",
+        "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantB 1-0",
+        "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantB 1-1",
+        "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantB 1-2",
+        "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "00004841000040400000803f00002041000020400000c0400000f0400000803e"
+        ],
+        [
+         2,
+         "00000841000000400000803f00007041000020400000c0400000f0400000803e"
+        ],
+        [
+         3,
+         "00006041000000400000803f00002041000020400000c0400000f0400000803e"
+        ],
+        [
+         4,
+         "00002041000040400000803f000048410000204000009040000020410000803e"
+        ],
+        [
+         5,
+         "0000c040000000400000803f00008c410000204000009040000020410000803e"
+        ],
+        [
+         6,
+         "00003841000000400000803f000048410000204000009040000020410000e03f"
+        ]
+       ],
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f00000000000000000000a040000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f00000000000000000000d040000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000204000008840"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000002841000000000000803f000000000000000000000000000060400000204000008840"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000000041000000000000803f000000000000000000000000000060400000204000008840"
+        ]
+       ],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+        ],
+        [
+         2,
+         "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+        ],
+        [
+         3,
+         "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+        ],
+        [
+         4,
+         "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+        ],
+        [
+         5,
+         "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+        ],
+        [
+         6,
+         "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+        ]
+       ]
+      }
+     }
+    },
+    "op": "dump",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "embedded": 0,
+     "error": null,
+     "failed": 0,
+     "more": false,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "embedded": 0,
+     "error": null,
+     "failed": 0,
+     "more": false,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      }
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 1
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 2
+    },
+    "force": false,
+    "op": "switch",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 2
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — service 0-0",
+        "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — service 0-1",
+        "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — service 0-2",
+        "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — service 1-0",
+        "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — service 1-1",
+        "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — service 1-2",
+        "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — service 2-0",
+        "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — service 2-1",
+        "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — service 2-2",
+        "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+       ],
+       [
+        10,
+        "2031-03-04",
+        "2031-03.md",
+        "8:00 — service 3-0",
+        "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+       ],
+       [
+        11,
+        "2031-03-04",
+        "2031-03.md",
+        "9:00 — service 3-1",
+        "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+       ],
+       [
+        12,
+        "2031-03-04",
+        "2031-03.md",
+        "10:00 — service 3-2",
+        "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "0000484100004040000040400000a040000020400000c0400000f0400000803e"
+        ],
+        [
+         2,
+         "00000841000000400000404000002041000020400000c0400000f0400000803e"
+        ],
+        [
+         3,
+         "0000604100000040000040400000a040000020400000c0400000f0400000803e"
+        ],
+        [
+         4,
+         "0000204100004040000040400000f0400000204000009040000020410000803e"
+        ],
+        [
+         5,
+         "0000c0400000004000004040000048410000204000009040000020410000803e"
+        ],
+        [
+         6,
+         "0000384100000040000040400000f0400000204000009040000020410000e03f"
+        ],
+        [
+         7,
+         "0000484100004040000040400000904000008040000090400000f0400000803e"
+        ],
+        [
+         8,
+         "0000084100000040000040400000184100008040000090400000f0400000e03f"
+        ],
+        [
+         9,
+         "0000604100000040000040400000904000008040000090400000f0400000803e"
+        ],
+        [
+         10,
+         "0000f04000004040000040400000d04000002040000090400000184100003040"
+        ],
+        [
+         11,
+         "000060400000004000004040000038410000204000009040000018410000a03f"
+        ],
+        [
+         12,
+         "0000104100000040000040400000d0400000204000009040000018410000a03f"
+        ]
+       ],
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f00000000000000000000a040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f00000000000000000000d040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000002841000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000000041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f00000000000000000000a040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         10,
+         "0000304100008040000040400000c03f0000803f00000000000000000000a040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         11,
+         "0000c04000000040000040400000c03f0000803f000000000000000000001041000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         12,
+         "0000c0400000e040000040400000c03f0000803f00000000000000000000d040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ]
+       ],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+        ],
+        [
+         2,
+         "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+        ],
+        [
+         3,
+         "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+        ],
+        [
+         4,
+         "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+        ],
+        [
+         5,
+         "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+        ],
+        [
+         6,
+         "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+        ],
+        [
+         7,
+         "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+        ],
+        [
+         8,
+         "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+        ],
+        [
+         9,
+         "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+        ],
+        [
+         10,
+         "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+        ],
+        [
+         11,
+         "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+        ],
+        [
+         12,
+         "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a901/index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantA 0-0",
+        "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantA 0-1",
+        "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantA 0-2",
+        "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantA 1-0",
+        "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantA 1-1",
+        "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantA 1-2",
+        "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — tenantA 2-0",
+        "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — tenantA 2-1",
+        "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — tenantA 2-2",
+        "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "00004841000040400000803f0000a040000020400000c0400000f04000005040"
+        ],
+        [
+         2,
+         "00000841000000400000803f00002041000020400000c0400000f04000005040"
+        ],
+        [
+         3,
+         "00006041000000400000803f0000a040000020400000c0400000f04000005040"
+        ],
+        [
+         4,
+         "00002041000040400000803f0000f04000002040000090400000204100005040"
+        ],
+        [
+         5,
+         "0000c040000000400000803f0000484100002040000090400000204100005040"
+        ],
+        [
+         6,
+         "00003841000000400000803f0000f04000002040000090400000204100009840"
+        ],
+        [
+         7,
+         "00004841000040400000803f0000904000008040000090400000f04000005040"
+        ],
+        [
+         8,
+         "00000841000000400000803f0000184100008040000090400000f04000009840"
+        ],
+        [
+         9,
+         "00006041000000400000803f0000904000008040000090400000f04000005040"
+        ]
+       ],
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000005041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f000000000000000000002841000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000006841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000004041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000005041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ]
+       ],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+        ],
+        [
+         2,
+         "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+        ],
+        [
+         3,
+         "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+        ],
+        [
+         4,
+         "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+        ],
+        [
+         5,
+         "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+        ],
+        [
+         6,
+         "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+        ],
+        [
+         7,
+         "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+        ],
+        [
+         8,
+         "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+        ],
+        [
+         9,
+         "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a902/managed-index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantB 0-0",
+        "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantB 0-1",
+        "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantB 0-2",
+        "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantB 1-0",
+        "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantB 1-1",
+        "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantB 1-2",
+        "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "00004841000040400000803f00002041000020400000c0400000f0400000803e"
+        ],
+        [
+         2,
+         "00000841000000400000803f00007041000020400000c0400000f0400000803e"
+        ],
+        [
+         3,
+         "00006041000000400000803f00002041000020400000c0400000f0400000803e"
+        ],
+        [
+         4,
+         "00002041000040400000803f000048410000204000009040000020410000803e"
+        ],
+        [
+         5,
+         "0000c040000000400000803f00008c410000204000009040000020410000803e"
+        ],
+        [
+         6,
+         "00003841000000400000803f000048410000204000009040000020410000e03f"
+        ]
+       ],
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f00000000000000000000a040000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f00000000000000000000d040000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000204000008840"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000002841000000000000803f000000000000000000000000000060400000204000008840"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000000041000000000000803f000000000000000000000000000060400000204000008840"
+        ]
+       ],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+        ],
+        [
+         2,
+         "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+        ],
+        [
+         3,
+         "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+        ],
+        [
+         4,
+         "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+        ],
+        [
+         5,
+         "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+        ],
+        [
+         6,
+         "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+        ]
+       ]
+      }
+     }
+    },
+    "op": "dump",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "embedded": 0,
+     "error": null,
+     "failed": 0,
+     "more": false,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 3
+    },
+    "op": "rollback",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 3
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — service 0-0",
+        "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — service 0-1",
+        "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — service 0-2",
+        "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — service 1-0",
+        "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — service 1-1",
+        "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — service 1-2",
+        "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — service 2-0",
+        "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — service 2-1",
+        "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — service 2-2",
+        "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+       ],
+       [
+        10,
+        "2031-03-04",
+        "2031-03.md",
+        "8:00 — service 3-0",
+        "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+       ],
+       [
+        11,
+        "2031-03-04",
+        "2031-03.md",
+        "9:00 — service 3-1",
+        "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+       ],
+       [
+        12,
+        "2031-03-04",
+        "2031-03.md",
+        "10:00 — service 3-2",
+        "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "0000484100004040000040400000a040000020400000c0400000f0400000803e"
+        ],
+        [
+         2,
+         "00000841000000400000404000002041000020400000c0400000f0400000803e"
+        ],
+        [
+         3,
+         "0000604100000040000040400000a040000020400000c0400000f0400000803e"
+        ],
+        [
+         4,
+         "0000204100004040000040400000f0400000204000009040000020410000803e"
+        ],
+        [
+         5,
+         "0000c0400000004000004040000048410000204000009040000020410000803e"
+        ],
+        [
+         6,
+         "0000384100000040000040400000f0400000204000009040000020410000e03f"
+        ],
+        [
+         7,
+         "0000484100004040000040400000904000008040000090400000f0400000803e"
+        ],
+        [
+         8,
+         "0000084100000040000040400000184100008040000090400000f0400000e03f"
+        ],
+        [
+         9,
+         "0000604100000040000040400000904000008040000090400000f0400000803e"
+        ],
+        [
+         10,
+         "0000f04000004040000040400000d04000002040000090400000184100003040"
+        ],
+        [
+         11,
+         "000060400000004000004040000038410000204000009040000018410000a03f"
+        ],
+        [
+         12,
+         "0000104100000040000040400000d0400000204000009040000018410000a03f"
+        ]
+       ],
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f00000000000000000000a040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f00000000000000000000d040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000002841000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000000041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f00000000000000000000a040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         10,
+         "0000304100008040000040400000c03f0000803f00000000000000000000a040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         11,
+         "0000c04000000040000040400000c03f0000803f000000000000000000001041000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         12,
+         "0000c0400000e040000040400000c03f0000803f00000000000000000000d040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ]
+       ],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+        ],
+        [
+         2,
+         "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+        ],
+        [
+         3,
+         "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+        ],
+        [
+         4,
+         "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+        ],
+        [
+         5,
+         "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+        ],
+        [
+         6,
+         "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+        ],
+        [
+         7,
+         "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+        ],
+        [
+         8,
+         "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+        ],
+        [
+         9,
+         "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+        ],
+        [
+         10,
+         "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+        ],
+        [
+         11,
+         "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+        ],
+        [
+         12,
+         "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a901/index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantA 0-0",
+        "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantA 0-1",
+        "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantA 0-2",
+        "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantA 1-0",
+        "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantA 1-1",
+        "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantA 1-2",
+        "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — tenantA 2-0",
+        "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — tenantA 2-1",
+        "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — tenantA 2-2",
+        "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "00004841000040400000803f0000a040000020400000c0400000f04000005040"
+        ],
+        [
+         2,
+         "00000841000000400000803f00002041000020400000c0400000f04000005040"
+        ],
+        [
+         3,
+         "00006041000000400000803f0000a040000020400000c0400000f04000005040"
+        ],
+        [
+         4,
+         "00002041000040400000803f0000f04000002040000090400000204100005040"
+        ],
+        [
+         5,
+         "0000c040000000400000803f0000484100002040000090400000204100005040"
+        ],
+        [
+         6,
+         "00003841000000400000803f0000f04000002040000090400000204100009840"
+        ],
+        [
+         7,
+         "00004841000040400000803f0000904000008040000090400000f04000005040"
+        ],
+        [
+         8,
+         "00000841000000400000803f0000184100008040000090400000f04000009840"
+        ],
+        [
+         9,
+         "00006041000000400000803f0000904000008040000090400000f04000005040"
+        ]
+       ],
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000005041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f000000000000000000002841000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000006841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000004041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000005041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ]
+       ],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+        ],
+        [
+         2,
+         "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+        ],
+        [
+         3,
+         "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+        ],
+        [
+         4,
+         "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+        ],
+        [
+         5,
+         "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+        ],
+        [
+         6,
+         "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+        ],
+        [
+         7,
+         "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+        ],
+        [
+         8,
+         "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+        ],
+        [
+         9,
+         "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a902/managed-index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantB 0-0",
+        "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantB 0-1",
+        "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantB 0-2",
+        "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantB 1-0",
+        "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantB 1-1",
+        "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantB 1-2",
+        "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "00004841000040400000803f00002041000020400000c0400000f0400000803e"
+        ],
+        [
+         2,
+         "00000841000000400000803f00007041000020400000c0400000f0400000803e"
+        ],
+        [
+         3,
+         "00006041000000400000803f00002041000020400000c0400000f0400000803e"
+        ],
+        [
+         4,
+         "00002041000040400000803f000048410000204000009040000020410000803e"
+        ],
+        [
+         5,
+         "0000c040000000400000803f00008c410000204000009040000020410000803e"
+        ],
+        [
+         6,
+         "00003841000000400000803f000048410000204000009040000020410000e03f"
+        ]
+       ],
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f00000000000000000000a040000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f00000000000000000000d040000000000000803f0000803f0000000000000000000060400000204000008840"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000204000008840"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000002841000000000000803f000000000000000000000000000060400000204000008840"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000000041000000000000803f000000000000000000000000000060400000204000008840"
+        ]
+       ],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+        ],
+        [
+         2,
+         "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+        ],
+        [
+         3,
+         "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+        ],
+        [
+         4,
+         "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+        ],
+        [
+         5,
+         "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+        ],
+        [
+         6,
+         "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+        ]
+       ]
+      }
+     }
+    },
+    "op": "dump",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "coverage": null,
+     "error": "noNext",
+     "message": "No re-index is under way.",
+     "status": 409
+    },
+    "force": false,
+    "op": "switch",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      }
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "previous": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 4
+    },
+    "op": "set_next",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"previous\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  }\n}",
+    "target": {
+     "base_url": "http://qa-embed.invalid:8080",
+     "model": "qa-embed-b",
+     "profile": "embeddinggemma-2"
+    },
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "running": false,
+     "source": "saved",
+     "version": 5
+    },
+    "force": true,
+    "op": "switch",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": {\n    \"base_url\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  }\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 6
+    },
+    "op": "finish",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "coverage": null,
+     "error": "noPrevious",
+     "message": "There is no previous embedding model to remove.",
+     "status": 409
+    },
+    "op": "finish",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — service 0-0",
+        "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — service 0-1",
+        "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — service 0-2",
+        "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — service 1-0",
+        "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — service 1-1",
+        "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — service 1-2",
+        "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — service 2-0",
+        "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — service 2-1",
+        "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — service 2-2",
+        "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+       ],
+       [
+        10,
+        "2031-03-04",
+        "2031-03.md",
+        "8:00 — service 3-0",
+        "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+       ],
+       [
+        11,
+        "2031-03-04",
+        "2031-03.md",
+        "9:00 — service 3-1",
+        "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+       ],
+       [
+        12,
+        "2031-03-04",
+        "2031-03.md",
+        "10:00 — service 3-2",
+        "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "0000484100004040000040400000a040000020400000c0400000f0400000803e"
+        ],
+        [
+         2,
+         "00000841000000400000404000002041000020400000c0400000f0400000803e"
+        ],
+        [
+         3,
+         "0000604100000040000040400000a040000020400000c0400000f0400000803e"
+        ],
+        [
+         4,
+         "0000204100004040000040400000f0400000204000009040000020410000803e"
+        ],
+        [
+         5,
+         "0000c0400000004000004040000048410000204000009040000020410000803e"
+        ],
+        [
+         6,
+         "0000384100000040000040400000f0400000204000009040000020410000e03f"
+        ],
+        [
+         7,
+         "0000484100004040000040400000904000008040000090400000f0400000803e"
+        ],
+        [
+         8,
+         "0000084100000040000040400000184100008040000090400000f0400000e03f"
+        ],
+        [
+         9,
+         "0000604100000040000040400000904000008040000090400000f0400000803e"
+        ],
+        [
+         10,
+         "0000f04000004040000040400000d04000002040000090400000184100003040"
+        ],
+        [
+         11,
+         "000060400000004000004040000038410000204000009040000018410000a03f"
+        ],
+        [
+         12,
+         "0000104100000040000040400000d0400000204000009040000018410000a03f"
+        ]
+       ],
+       "vec_items": [],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+        ],
+        [
+         2,
+         "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+        ],
+        [
+         3,
+         "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+        ],
+        [
+         4,
+         "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+        ],
+        [
+         5,
+         "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+        ],
+        [
+         6,
+         "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+        ],
+        [
+         7,
+         "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+        ],
+        [
+         8,
+         "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+        ],
+        [
+         9,
+         "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+        ],
+        [
+         10,
+         "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+        ],
+        [
+         11,
+         "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+        ],
+        [
+         12,
+         "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a901/index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantA 0-0",
+        "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantA 0-1",
+        "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantA 0-2",
+        "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantA 1-0",
+        "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantA 1-1",
+        "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantA 1-2",
+        "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — tenantA 2-0",
+        "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — tenantA 2-1",
+        "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — tenantA 2-2",
+        "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "00004841000040400000803f0000a040000020400000c0400000f04000005040"
+        ],
+        [
+         2,
+         "00000841000000400000803f00002041000020400000c0400000f04000005040"
+        ],
+        [
+         3,
+         "00006041000000400000803f0000a040000020400000c0400000f04000005040"
+        ],
+        [
+         4,
+         "00002041000040400000803f0000f04000002040000090400000204100005040"
+        ],
+        [
+         5,
+         "0000c040000000400000803f0000484100002040000090400000204100005040"
+        ],
+        [
+         6,
+         "00003841000000400000803f0000f04000002040000090400000204100009840"
+        ],
+        [
+         7,
+         "00004841000040400000803f0000904000008040000090400000f04000005040"
+        ],
+        [
+         8,
+         "00000841000000400000803f0000184100008040000090400000f04000009840"
+        ],
+        [
+         9,
+         "00006041000000400000803f0000904000008040000090400000f04000005040"
+        ]
+       ],
+       "vec_items": [],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+        ],
+        [
+         2,
+         "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+        ],
+        [
+         3,
+         "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+        ],
+        [
+         4,
+         "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+        ],
+        [
+         5,
+         "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+        ],
+        [
+         6,
+         "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+        ],
+        [
+         7,
+         "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+        ],
+        [
+         8,
+         "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+        ],
+        [
+         9,
+         "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a902/managed-index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantB 0-0",
+        "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantB 0-1",
+        "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantB 0-2",
+        "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantB 1-0",
+        "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantB 1-1",
+        "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantB 1-2",
+        "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_7473bfe40fb90647",
+       "vec_items",
+       "vec_meta",
+       "vecmap_7473bfe40fb90647"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:7473bfe40fb90647",
+        "{\"model\": \"qa-embed-b\", \"profile\": \"embeddinggemma-2\", \"dim\": 8, \"table\": \"vec_7473bfe40fb90647\", \"map\": \"vecmap_7473bfe40fb90647\"}"
+       ]
+      ],
+      "vectors": {
+       "vec_7473bfe40fb90647": [
+        [
+         1,
+         "00004841000040400000803f00002041000020400000c0400000f0400000803e"
+        ],
+        [
+         2,
+         "00000841000000400000803f00007041000020400000c0400000f0400000803e"
+        ],
+        [
+         3,
+         "00006041000000400000803f00002041000020400000c0400000f0400000803e"
+        ],
+        [
+         4,
+         "00002041000040400000803f000048410000204000009040000020410000803e"
+        ],
+        [
+         5,
+         "0000c040000000400000803f00008c410000204000009040000020410000803e"
+        ],
+        [
+         6,
+         "00003841000000400000803f000048410000204000009040000020410000e03f"
+        ]
+       ],
+       "vec_items": [],
+       "vecmap_7473bfe40fb90647": [
+        [
+         1,
+         "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+        ],
+        [
+         2,
+         "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+        ],
+        [
+         3,
+         "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+        ],
+        [
+         4,
+         "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+        ],
+        [
+         5,
+         "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+        ],
+        [
+         6,
+         "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+        ]
+       ]
+      }
+     }
+    },
+    "op": "dump",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 7
+    },
+    "op": "clear_next",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": null\n}",
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": "http://qa-embed.invalid:8080",
+      "model": "qa-embed-b",
+      "profile": "embeddinggemma-2"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": true,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 27
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 0,
+      "error": null,
+      "failed": 0,
+      "more": false,
+      "refused": 0
+     },
+     "next": null,
+     "previous": null,
+     "running": false,
+     "source": "saved",
+     "version": 7
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": "{\n  \"version\": 1,\n  \"active\": {\n    \"base_url\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": null,\n  \"previous\": null\n}",
+    "timers": []
+   }
+  ],
+  "refusals_and_cooldown": [
+   {
+    "embed_calls": [],
+    "expected": null,
+    "marker": "QAREFUSE",
+    "op": "refuse",
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": null,
+    "op": "reset_active_vectors",
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "519873a601",
+       "48044e19df"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "7f6c4fe00c",
+       "c3cb7b8337"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "1810345504",
+       "448c2056a5"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "1810345504"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "448c2056a5"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 5,
+     "error": null,
+     "failed": 0,
+     "more": true,
+     "refused": 1
+    },
+    "op": "run",
+    "sleeps": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "state_file": null,
+    "timers": [
+     [
+      "recheck",
+      60.0
+     ]
+    ]
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": false,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 5
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 5,
+      "error": null,
+      "failed": 0,
+      "more": true,
+      "refused": 1
+     },
+     "next": null,
+     "previous": null,
+     "running": false,
+     "source": "environment",
+     "version": 0
+    },
+    "op": "status",
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "2b3f97923f",
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "2b3f97923f"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "bd8a0bb3d9",
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "bd8a0bb3d9"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "52e53b0eba",
+       "eec1fc234c"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 4,
+     "error": null,
+     "failed": 0,
+     "more": true,
+     "refused": 2
+    },
+    "op": "run",
+    "sleeps": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": null,
+    "op": "advance",
+    "seconds": 700,
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "448c2056a5",
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "448c2056a5"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "4b81814f4c",
+       "9b77d10547"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "11178c47d9"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 3,
+     "error": null,
+     "failed": 0,
+     "more": true,
+     "refused": 3
+    },
+    "op": "run",
+    "sleeps": [
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": null,
+    "op": "advance",
+    "seconds": 5000,
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "448c2056a5",
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "448c2056a5"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "2edc086141",
+       "de477ed6cf"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "4e49637043"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 2,
+     "error": null,
+     "failed": 0,
+     "more": true,
+     "refused": 4
+    },
+    "op": "run",
+    "sleeps": [
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": false,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 14
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 2,
+      "error": null,
+      "failed": 0,
+      "more": true,
+      "refused": 4
+     },
+     "next": null,
+     "previous": null,
+     "running": false,
+     "source": "environment",
+     "version": 0
+    },
+    "op": "retry_missing",
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "448c2056a5",
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "448c2056a5"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "4e49637043",
+       "6aab3b461e"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "4e49637043"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "6aab3b461e"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "05e4141d07"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 1,
+     "error": null,
+     "failed": 0,
+     "more": true,
+     "refused": 5
+    },
+    "op": "run",
+    "sleeps": [
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": null,
+    "marker": null,
+    "op": "refuse",
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "active": {
+      "base_url": null,
+      "model": "qa-embed-a",
+      "profile": "nomic-v1"
+     },
+     "batch": 2,
+     "coverage": {
+      "active": {
+       "chunks": 27,
+       "complete": false,
+       "files": 3,
+       "ready": true,
+       "unavailable": 0,
+       "vectors": 15
+      },
+      "next": null
+     },
+     "duty": 0.5,
+     "last_pass": {
+      "embedded": 1,
+      "error": null,
+      "failed": 0,
+      "more": true,
+      "refused": 5
+     },
+     "next": null,
+     "previous": null,
+     "running": false,
+     "source": "environment",
+     "version": 0
+    },
+    "op": "retry_missing",
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "448c2056a5",
+       "a68f78a938"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "9e1d490fff"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "4e49637043",
+       "05e4141d07"
+      ]
+     ],
+     [
+      "qa-embed-a",
+      null,
+      "document",
+      [
+       "bef2d0044d"
+      ]
+     ]
+    ],
+    "expected": {
+     "embedded": 6,
+     "error": null,
+     "failed": 0,
+     "more": true,
+     "refused": 0
+    },
+    "op": "run",
+    "sleeps": [
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "state_file": null,
+    "timers": []
+   },
+   {
+    "embed_calls": [],
+    "expected": {
+     "index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — service 0-0",
+        "519873a601b6b09f2191453686e1259d23488042570dda892f6db4a8634aae16"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — service 0-1",
+        "48044e19df29d07e5b7d6d50214e1be8fc424dec697abfee11f4238385c951da"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — service 0-2",
+        "7f6c4fe00c0af5dc039cf77cceb0f77d8e85ed939de4ca043897aad0692beede"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — service 1-0",
+        "c3cb7b83371d63a110c19afcde059baebfa0b12139b3b0f01c84795fca6075b8"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — service 1-1",
+        "1810345504aed559e54066c300c9484e82b206c667a47183f80ad4a71ce110c8"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — service 1-2",
+        "448c2056a5954cc209d1677d2847e65fc25c7e9a397fa04ea41d670c0519f1a6"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — service 2-0",
+        "2b3f97923fb7d20875eba2d6d64b42a74539c8fd6a401d48e07b64adda239ad1"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — service 2-1",
+        "a68f78a9384de7970401fae6ad576f77f2284718016eff50a95e41e58f0bafb7"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — service 2-2",
+        "bd8a0bb3d909e90227470d63f68a0acd23119809033e4cd1659163154ce879b8"
+       ],
+       [
+        10,
+        "2031-03-04",
+        "2031-03.md",
+        "8:00 — service 3-0",
+        "9e1d490fff8bf4471e7c666763b06f8f9cfa4edce47dadd22169e777d084e08f"
+       ],
+       [
+        11,
+        "2031-03-04",
+        "2031-03.md",
+        "9:00 — service 3-1",
+        "52e53b0ebac2c2722f699499dd61fca63e6fb128a62065503d5b8673c1f8dc1a"
+       ],
+       [
+        12,
+        "2031-03-04",
+        "2031-03.md",
+        "10:00 — service 3-2",
+        "eec1fc234c1f904fa121a5ac1aaec7e8824b5e75d32fe6ecdd2098d05307c0a7"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_items",
+       "vec_meta"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f00000000000000000000a040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f00000000000000000000d040000000000000803f0000803f0000000000000000000060400000d0400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000002841000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000000041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f00000000000000000000a040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f00000000000000000000d040000000000000803f000000000000000000000000000060400000d0400000803e"
+        ],
+        [
+         10,
+         "0000304100008040000040400000c03f0000803f00000000000000000000a040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         11,
+         "0000c04000000040000040400000c03f0000803f000000000000000000001041000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ],
+        [
+         12,
+         "0000c0400000e040000040400000c03f0000803f00000000000000000000d040000000000000803f000000000000803f00000000000060400000d0400000803e"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a901/index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantA 0-0",
+        "4b81814f4c238896513a33b79a396295cb7bf97c2d520a0c170351526963662d"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantA 0-1",
+        "9b77d105470225723f2483f6457ee9bc08d76b55c69a660e05df9c62cd8b0aa6"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantA 0-2",
+        "11178c47d93b411f42e4ed4c93e8db17b48d9b20d08bc1a9158a074a1135c220"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantA 1-0",
+        "2edc086141423003c11a2d87b57714a4a5effe5e6e44a33b142380cebf79d115"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantA 1-1",
+        "de477ed6cf65b296642de8a55698f25ac22cb7b52cde1d46bd43df892aa56fda"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantA 1-2",
+        "4e49637043f28eab73803e5897b9356a262ebb01d018bf7b2c466c526b0e8057"
+       ],
+       [
+        7,
+        "2031-03-03",
+        "2031-03.md",
+        "8:00 — tenantA 2-0",
+        "6aab3b461eb7ecc7d24dc45205b09f03f16d20e3a6fd41050d2d7d4a3e758128"
+       ],
+       [
+        8,
+        "2031-03-03",
+        "2031-03.md",
+        "9:00 — tenantA 2-1",
+        "05e4141d07576a2ccce7e5fce31123ec914617d0e4a5cbd6052cea907c3942ad"
+       ],
+       [
+        9,
+        "2031-03-03",
+        "2031-03.md",
+        "10:00 — tenantA 2-2",
+        "bef2d0044dd2a346c5ae6e0c134023c38df6b95ec6e997b04007b0cfca320283"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_items",
+       "vec_meta"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_items": [
+        [
+         1,
+         "0000804100004040000000000000c03f0000803f000000000000000000001041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         2,
+         "0000304100000040000000000000c03f0000803f000000000000000000005041000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         3,
+         "000030410000e040000000000000c03f0000803f000000000000000000002841000000000000803f0000803f000000000000000000006040000020400000803e"
+        ],
+        [
+         4,
+         "000030410000b040000000400000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         5,
+         "0000c04000009040000000400000c03f0000803f000000000000000000006841000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         6,
+         "0000c04000002841000000400000c03f0000803f000000000000000000004041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         7,
+         "00003041000000410000c03f0000c03f0000803f000000000000000000001041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         8,
+         "0000c040000000410000c03f0000c03f0000803f000000000000000000005041000000000000803f00000000000000000000000000006040000020400000803e"
+        ],
+        [
+         9,
+         "0000c040000040410000c03f0000c03f0000803f000000000000000000002841000000000000803f00000000000000000000000000006040000020400000803e"
+        ]
+       ]
+      }
+     },
+     "users/00000000-0000-4000-8000-00000000a902/managed-index.db": {
+      "chunks": [
+       [
+        1,
+        "2031-03-01",
+        "2031-03.md",
+        "8:00 — tenantB 0-0",
+        "5d174b33c76ad4c57a7d1fde3664eea2d161db712f3fc568b3fd0993532b4025"
+       ],
+       [
+        2,
+        "2031-03-01",
+        "2031-03.md",
+        "9:00 — tenantB 0-1",
+        "26c2b07c417eeba34f8ae5cc5583ef69156c87188cf77b6b662fe8c59b707de1"
+       ],
+       [
+        3,
+        "2031-03-01",
+        "2031-03.md",
+        "10:00 — tenantB 0-2",
+        "0fcf92802a3f4c4ec46eb66468d18919e416f0b309b726fc632d903e9199a4d9"
+       ],
+       [
+        4,
+        "2031-03-02",
+        "2031-03.md",
+        "8:00 — tenantB 1-0",
+        "c015251f988459f3ef6d46bf3e395b16ede7dea8a986f37f42efee4d59131957"
+       ],
+       [
+        5,
+        "2031-03-02",
+        "2031-03.md",
+        "9:00 — tenantB 1-1",
+        "1848c9a2533583666ec2241c8b9e04e840bd7ae05c09760b9c50df06a64552d3"
+       ],
+       [
+        6,
+        "2031-03-02",
+        "2031-03.md",
+        "10:00 — tenantB 1-2",
+        "5a4846c894aba0bd2af1d8b933c1661ded77f4819d56085d6d584e1e27b6ca5b"
+       ]
+      ],
+      "tables": [
+       "chunks",
+       "dirty_documents",
+       "vec_items",
+       "vec_meta"
+      ],
+      "vec_meta": [
+       [
+        "dim",
+        "16"
+       ],
+       [
+        "slot:955edd8bb49c8295",
+        "{\"model\": \"qa-embed-a\", \"profile\": \"nomic-v1\", \"dim\": 16, \"table\": \"vec_items\", \"map\": null}"
+       ]
+      ],
+      "vectors": {
+       "vec_items": []
+      }
+     }
+    },
+    "op": "dump",
+    "sleeps": [],
+    "state_file": null,
+    "timers": []
+   }
+  ]
+ },
+ "source": "noevia-services diary/agent at origin/main 6d0ba0e",
+ "tenants": [
+  "00000000-0000-4000-8000-00000000a901",
+  "00000000-0000-4000-8000-00000000a902"
+ ]
+}

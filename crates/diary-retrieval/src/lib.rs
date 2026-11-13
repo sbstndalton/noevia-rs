@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 
 pub mod embedding;
 pub mod index;
+pub mod migration;
 pub mod pyjson;
 pub mod slots;
 
