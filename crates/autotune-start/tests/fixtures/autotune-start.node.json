@@ -600,6 +600,143 @@
    }
   },
   {
+   "name": "array holding an object with own toString seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     {
+      "toString": 1
+     }
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "throws": "TypeError"
+   }
+  },
+  {
+   "name": "array holding null seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     null
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "array holding null then a number",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     null,
+     120
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "array holding a padded string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     " 120 "
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "array holding an exponent number",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     120
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "array holding true",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     true
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "digits rounding up to the minimum",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "14.99999999999999999",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 15,
+    "bulk": false
+   }
+  },
+  {
+   "name": "radix literal past 2^53",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "0x20000000000001",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "mode with trailing space",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "fast ",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
    "name": "fractional seconds",
    "input": {
     "confirmPause": true,

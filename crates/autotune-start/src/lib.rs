@@ -56,8 +56,8 @@ pub struct Refusal {
 pub struct Start<'a> {
     /// `confirmPause`: only the JSON value `true` passes (Node `!== true`).
     pub confirm_pause: Option<&'a JValue>,
-    /// `mode`: absent means Fast (Node's destructuring default). Present but not one of the two
-    /// strings (including `null`) is refused.
+    /// `mode`: absent (`None` or `undefined`) means Fast (Node's destructuring default). Present
+    /// but not one of the two strings (including `null`) is refused.
     pub mode: Option<&'a JValue>,
     /// `promptBudgetSeconds`: absent or `null` means the mode's default (Node `??`).
     pub prompt_budget_seconds: Option<&'a JValue>,
@@ -77,7 +77,8 @@ pub fn admit(start: &Start<'_>) -> Result<Plan, Refusal> {
         return Err(refuse(400, CONFIRM_PAUSE));
     }
     let mode = match start.mode {
-        None => Mode::Fast,
+        // Node's destructuring default applies to `undefined` only; `null` is refused below.
+        None | Some(JValue::Undefined) => Mode::Fast,
         Some(JValue::Str(s)) if s == "fast" => Mode::Fast,
         Some(JValue::Str(s)) if s == "long" => Mode::Long,
         Some(_) => return Err(refuse(400, CHOOSE_MODE)),

@@ -26,7 +26,8 @@ fn present<'a>(input: &'a JValue, key: &str) -> Option<&'a JValue> {
 }
 
 /// What the route does with a body Node throws on while coercing it (an own non-callable
-/// `toString`: `Number()` raises a TypeError, which reaches the router as an internal error). The
+/// `toString`, also inside an array: `Number()` raises a TypeError, which reaches the router as an
+/// internal error). The
 /// native admission refuses it as any other value that is not a number: a named difference.
 const NAMED_DIFFERENCE_THROWS: (u16, &str) = (
     400,
@@ -77,6 +78,7 @@ fn every_case_matches_the_recorded_node_answer() {
                 other => panic!("{name}: recorded mode {other:?}"),
             };
             let seconds = node.get("promptBudgetSeconds").as_num().expect("seconds") as u32;
+            assert_eq!(node.get("bulk").as_bool(), Some(start.bulk), "{name}: bulk");
             assert_eq!(
                 got,
                 Ok(Plan {
@@ -92,7 +94,7 @@ fn every_case_matches_the_recorded_node_answer() {
         }
     }
     assert!(
-        admitted >= 20 && refused >= 40 && throws == 1,
+        admitted >= 20 && refused >= 40 && throws == 2,
         "{admitted} {refused} {throws}"
     );
 }

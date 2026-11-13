@@ -93,6 +93,15 @@ const CASES = [
   ['object seconds', { ...ok, promptBudgetSeconds: {} }],
   ['object with own valueOf seconds', { ...ok, promptBudgetSeconds: { valueOf: 120 } }],
   ['object with own toString seconds', { ...ok, promptBudgetSeconds: { toString: 120 } }],
+  ['array holding an object with own toString seconds', { ...ok, promptBudgetSeconds: [{ toString: 1 }] }],
+  ['array holding null seconds', { ...ok, promptBudgetSeconds: [null] }],
+  ['array holding null then a number', { ...ok, promptBudgetSeconds: [null, 120] }],
+  ['array holding a padded string', { ...ok, promptBudgetSeconds: [' 120 '] }],
+  ['array holding an exponent number', { ...ok, promptBudgetSeconds: [1.2e2] }],
+  ['array holding true', { ...ok, promptBudgetSeconds: [true] }],
+  ['digits rounding up to the minimum', { ...ok, promptBudgetSeconds: '14.99999999999999999' }],
+  ['radix literal past 2^53', { ...ok, promptBudgetSeconds: '0x20000000000001' }],
+  ['mode with trailing space', { ...ok, mode: 'fast ' }],
   ['fractional seconds', { ...ok, promptBudgetSeconds: 120.5 }],
   ['below minimum', { ...ok, promptBudgetSeconds: 14 }],
   ['above maximum', { ...ok, promptBudgetSeconds: 1801 }],
@@ -128,7 +137,9 @@ const CASES = [
 (async () => {
   const cases = [];
   for (const [name, input] of CASES) {
-    const { runActive = false, ...body } = input;
+    // Node sees exactly what the fixture stores: the body after a JSON round trip (an input that
+    // does not survive one, such as Infinity, would otherwise be recorded and replayed differently).
+    const { runActive = false, ...raw } = input, body = JSON.parse(JSON.stringify(raw));
     const model = String(body?.model || '');
     cases.push({ name, input: { ...body, ...(runActive ? { runActive } : {}), systemModel: isSystemModel(model) }, node: await answer(body, { runActive }).catch((e) => ({ throws: e?.constructor?.name || 'Error' })) });
   }
