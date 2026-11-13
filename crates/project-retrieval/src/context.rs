@@ -209,3 +209,20 @@ pub fn files_context(input: &Input) -> Option<Context> {
         injected,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::head;
+
+    #[test]
+    fn a_head_cut_inside_a_surrogate_pair_is_the_named_difference() {
+        // JS `slice(0, n)` keeps the lone high surrogate; Rust strings cannot hold one, so the
+        // cut unit becomes U+FFFD. Same length in UTF-16 units, so the budget arithmetic agrees.
+        let text = format!("{}😀tail", "a".repeat(3));
+        let cut = head(&text, 4);
+        assert_eq!(cut, "aaa\u{fffd}");
+        assert_eq!(cut.encode_utf16().count(), 4);
+        assert_eq!(head(&text, 5), "aaa😀");
+        assert_eq!(head("short", 24_000), "short");
+    }
+}

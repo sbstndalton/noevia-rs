@@ -126,3 +126,34 @@ fn no_files_gives_no_context() {
     });
     assert!(got.is_none());
 }
+
+#[test]
+fn quote_name_matches_node_for_every_recorded_name() {
+    let f9 = fixture("F9-quote-name.json");
+    let cases = f9["cases"].as_array().expect("cases");
+    assert!(cases.len() >= 20);
+    for case in cases {
+        let name = str_of(case, "name");
+        assert_eq!(
+            project_retrieval::names::quote_name(name),
+            str_of(case, "quoted"),
+            "name={name:?}"
+        );
+    }
+}
+
+#[test]
+fn every_fixture_names_its_node_sources() {
+    for name in [
+        "F7-files-context.json",
+        "F7-files-context-budget-4000.json",
+        "F8-question-names.json",
+        "F9-quote-name.json",
+    ] {
+        assert_eq!(
+            fixture(name)["sources"]["server/rag.cjs"],
+            "227d0b739858237554fe366269ef5926e76ac2275731f83f0fb19e3d31e6c024",
+            "{name}"
+        );
+    }
+}
