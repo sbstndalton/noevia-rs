@@ -22,11 +22,8 @@ fn unavailable() -> Response<Body> {
     error(503, "Auto-tune state is unavailable. Try again shortly.")
 }
 async fn call(app: &App, path: &str, body: &serde_json::Value) -> Option<(u16, JValue)> {
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(path, body, Duration::from_secs(5))
-        .await?;
+    let (status, bytes) =
+        crate::autotune_runner::call(app, path, body, Duration::from_secs(5)).await?;
     if bytes.len() > MAX_FACTS {
         return None;
     }

@@ -333,6 +333,38 @@ impl Maint {
         })
     }
 
+    /// llamacpp-manager.cjs `samplingFor(model)`: the recommendation auto-tune applies (a current
+    /// source claim, else the family table, else the task preset), as `resolveSampling` gives it.
+    /// Without a store, or when the identity or records cannot be read, the claim is absent.
+    pub async fn sampling_for(&self, model: &str) -> JValue {
+        let claim = async {
+            self.evidence.as_ref()?;
+            let live = self.compute_identity(model).await.ok()?;
+            let store = self.evidence.clone()?;
+            let records = tokio::task::spawn_blocking(move || store.list())
+                .await
+                .ok()?;
+            let artifact_hash = live.as_ref().and_then(|l| {
+                l.identity
+                    .get("artifact")
+                    .as_str()
+                    .map(ev::artifact_identity_hash)
+            });
+            let sampling = ev::derive_sampling(&records, model, artifact_hash.as_deref());
+            (sampling.state == "reported")
+                .then(|| sampling.record.clone())
+                .flatten()
+        }
+        .await;
+        let source_values = claim
+            .as_ref()
+            .map_or(JValue::Null, |r| coalesce(r.get("value")));
+        let source_provenance = claim
+            .as_ref()
+            .map_or(JValue::Null, |r| coalesce(r.get("provenance")));
+        ev::sampling_plan(model, &source_values, &source_provenance)
+    }
+
     /// `evidence(model)`: the answer of `GET /api/models/evidence`, with Node's key order.
     pub async fn evidence_body(&self, model: &str) -> Result<String, Failure> {
         let live = if self.evidence.is_some() {

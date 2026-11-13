@@ -2116,11 +2116,13 @@ name = "noevia-server"
 version = "0.1.0"
 dependencies = [
  "autotune-plan",
+ "autotune-runner",
  "axum",
  "base64 0.22.1",
  "brotli",
  "bytes",
  "chat-mirror-sched",
+ "chat-template-caps",
  "code-net-guard",
  "context-fit",
  "dav-parse",
@@ -2139,6 +2141,7 @@ dependencies = [
  "js-json",
  "llamacpp-autoconfig",
  "llamacpp-presets",
+ "load-verdict",
  "long-profile",
  "mcp-frame",
  "mcp-servers",
@@ -2185,6 +2188,7 @@ dependencies = [
  "toml",
  "toolboxes-permitted",
  "tower",
+ "tune-contention",
  "url",
  "zeroize",
 ]

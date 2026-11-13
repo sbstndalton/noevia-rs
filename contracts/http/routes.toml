@@ -580,10 +580,11 @@ owner = "rust"
 methods = ["GET"]
 
 [[route]]
-# GET status only. POST start and every other verb still go to Node through the methods fallback.
+# GET status. POST start: the native runner when AUTOTUNE_RUNNER_IMPL=rust (#2516), else forwarded to
+# Node by the handler; every other verb still goes to Node through the methods fallback.
 path = "/api/models/autotune"
 owner = "rust"
-methods = ["GET"]
+methods = ["GET", "POST"]
 
 [[route]]
 path = "/api/models/autotune/cancel"

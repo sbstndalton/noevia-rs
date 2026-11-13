@@ -87,6 +87,9 @@ pub struct Config {
     /// The public calibration worker (`GET`/`POST /api/models/calibration`, `.../cancel`):
     /// llama.cpp with a preset file only, as Core's manager made `createCalibrator` (#2303).
     pub calibration: Option<std::sync::Arc<crate::model_maint::calibration_worker::Worker>>,
+    /// The native auto-tune runner (#2516), only with `AUTOTUNE_RUNNER_IMPL=rust`; otherwise the
+    /// auto-tune routes ask Node's actor through its bridges, as before.
+    pub autotune: Option<std::sync::Arc<crate::autotune_runner::Native>>,
     /// GET /api/export/conversations (M4, sbstndalton/noevia#1315), read from the user's files on
     /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
     /// the owner's 2026-10-12 condition).
@@ -388,16 +391,19 @@ impl Config {
             *slot = server_features::parse_env(get(server_features::spec(feature).env).as_deref())
                 .map_err(str::to_owned)?;
         }
+        let research = std::sync::Arc::new(crate::research_routes::Research::new(
+            crate::research_routes::Settings::from_lookup(
+                &get,
+                format!("http://{}", upstream.authority()),
+            )?,
+        )?);
+        // #2516: off unless AUTOTUNE_RUNNER_IMPL=rust (Core then builds no auto-tuner).
+        let autotune = crate::autotune_runner::build(&maint, &research, &get);
         Ok(Config {
             host,
             port,
             trust_proxy: get("TRUST_PROXY").as_deref() == Some("true"),
-            research: std::sync::Arc::new(crate::research_routes::Research::new(
-                crate::research_routes::Settings::from_lookup(
-                    &get,
-                    format!("http://{}", upstream.authority()),
-                )?,
-            )?),
+            research,
             upstream,
             dist: get("NOEVIA_WEB_DIST")
                 .filter(|d| !d.is_empty())
@@ -455,6 +461,7 @@ impl Config {
             model_manager_scan: crate::model_manager_scan::Loader::from_lookup(&get)?,
             maint,
             calibration,
+            autotune,
             rust_export,
             project_store,
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,

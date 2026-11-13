@@ -338,7 +338,7 @@ pub(super) fn random_hex(bytes: usize) -> String {
 }
 
 /// `crypto.randomUUID()`.
-fn uuid() -> String {
+pub(super) fn uuid() -> String {
     let h = random_hex(16);
     let variant = match h.as_bytes().get(16).map(|b| b % 4) {
         Some(0) => "8",
