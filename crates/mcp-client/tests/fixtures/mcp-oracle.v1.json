@@ -1,0 +1,972 @@
+{
+  "oracle": "noevia-core server/mcp.cjs resultToText and withBuiltInHeaders",
+  "sources": {
+    "server/gdrive-tools.cjs": "4829829e378cac40f888ea169c2793c0e1605268246771968c37b9fb8ff5a2c9",
+    "server/mcp.cjs": "8a20cc410642344d6feb73ecfe661cc100f5649d79fe6ceee1661f725e9aa077"
+  },
+  "protocol_version": "2025-06-18",
+  "result_to_text": [
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "﻿ first "
+          },
+          {
+            "type": "image",
+            "data": "AAAA"
+          },
+          {
+            "type": "text",
+            "text": "second "
+          }
+        ]
+      },
+      "structured_json": null,
+      "expect": "first \n[image content omitted]\nsecond"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "x"
+          }
+        ]
+      },
+      "structured_json": null,
+      "expect": "x"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": 5
+          }
+        ]
+      },
+      "structured_json": null,
+      "expect": "[text content omitted]"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "resource_link"
+          },
+          {
+            "foo": 1
+          },
+          null,
+          {
+            "type": ""
+          }
+        ]
+      },
+      "structured_json": null,
+      "expect": "[resource_link content omitted]"
+    },
+    {
+      "input": {
+        "content": [],
+        "structuredContent": {
+          "b": 2,
+          "a": 1,
+          "nested": {
+            "z": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "structured_json": "{\"b\":2,\"a\":1,\"nested\":{\"z\":[1,2]}}",
+      "expect": "{\"b\":2,\"a\":1,\"nested\":{\"z\":[1,2]}}"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "   "
+          }
+        ],
+        "structuredContent": {
+          "k": "v"
+        }
+      },
+      "structured_json": "{\"k\":\"v\"}",
+      "expect": "{\"k\":\"v\"}"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "partial"
+          }
+        ],
+        "structuredContent": {
+          "k": "v"
+        }
+      },
+      "structured_json": "{\"k\":\"v\"}",
+      "expect": "partial"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "  bad  "
+          }
+        ],
+        "isError": true
+      },
+      "structured_json": null,
+      "expect": "ERROR from tool: bad"
+    },
+    {
+      "input": {
+        "content": [],
+        "isError": true
+      },
+      "structured_json": null,
+      "expect": "ERROR from tool: (no detail)"
+    },
+    {
+      "input": {
+        "content": [],
+        "structuredContent": 0
+      },
+      "structured_json": null,
+      "expect": ""
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "structuredContent": [
+          1,
+          "two"
+        ]
+      },
+      "structured_json": "[1,\"two\"]",
+      "expect": "[1,\"two\"]"
+    },
+    {
+      "input": {},
+      "structured_json": null,
+      "expect": ""
+    },
+    {
+      "input": null,
+      "structured_json": null,
+      "expect": ""
+    },
+    {
+      "input": "a string result",
+      "structured_json": null,
+      "expect": ""
+    }
+  ],
+  "built_in_headers": [
+    {
+      "extra": [
+        [
+          "Authorization",
+          "Bearer t"
+        ],
+        [
+          "MCP-Session-Id",
+          "forged"
+        ],
+        [
+          "accept",
+          "text/html"
+        ],
+        [
+          "Content-Type",
+          "x"
+        ],
+        [
+          "mcp-protocol-version",
+          "x"
+        ],
+        [
+          "X-Custom",
+          "1"
+        ]
+      ],
+      "builtIn": [
+        [
+          "MCP-Protocol-Version",
+          "2025-06-18"
+        ],
+        [
+          "mcp-session-id",
+          "real"
+        ]
+      ],
+      "expect": [
+        [
+          "Authorization",
+          "Bearer t"
+        ],
+        [
+          "X-Custom",
+          "1"
+        ],
+        [
+          "MCP-Protocol-Version",
+          "2025-06-18"
+        ],
+        [
+          "mcp-session-id",
+          "real"
+        ]
+      ]
+    },
+    {
+      "extra": [],
+      "builtIn": [
+        [
+          "MCP-Protocol-Version",
+          "2025-06-18"
+        ]
+      ],
+      "expect": [
+        [
+          "MCP-Protocol-Version",
+          "2025-06-18"
+        ]
+      ]
+    },
+    {
+      "extra": null,
+      "builtIn": [
+        [
+          "mcp-session-id",
+          "real"
+        ]
+      ],
+      "expect": [
+        [
+          "mcp-session-id",
+          "real"
+        ]
+      ]
+    },
+    {
+      "extra": [
+        [
+          "X-Trace",
+          "old"
+        ],
+        [
+          "X-Other",
+          "2"
+        ]
+      ],
+      "builtIn": [
+        [
+          "X-Trace",
+          "new"
+        ]
+      ],
+      "expect": [
+        [
+          "X-Trace",
+          "new"
+        ],
+        [
+          "X-Other",
+          "2"
+        ]
+      ]
+    }
+  ],
+  "list_tools": [
+    {
+      "env": {},
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {}
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {},
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": ""
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {},
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_PAGES": "2"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p3"
+        },
+        {
+          "tools": [
+            {
+              "name": "c",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ],
+        [
+          "c",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_PAGES": "1.9"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {}
+      ],
+      "kept": [
+        "a"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_PAGES": "0"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "b"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_BYTES": "120"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "b",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "c",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "d",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {}
+      ],
+      "kept": [
+        "a"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ],
+        [
+          "b",
+          61
+        ],
+        [
+          "c",
+          61
+        ],
+        [
+          "d",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_BYTES": "200"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "dddddddddd",
+              "inputSchema": {
+                "type": "object"
+              }
+            },
+            {
+              "name": "é",
+              "description": "dddddddddddddddddddddddddddddd",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": [
+            {
+              "name": "z",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ]
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a",
+        "é"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          71
+        ],
+        [
+          "é",
+          92
+        ],
+        [
+          "z",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {
+        "MCP_LIST_TOOLS_MAX_BYTES": "-5",
+        "MCP_LIST_TOOLS_MAX_PAGES": "x"
+      },
+      "pages": [
+        {
+          "tools": [
+            {
+              "name": "a",
+              "description": "",
+              "inputSchema": {
+                "type": "object"
+              }
+            }
+          ],
+          "nextCursor": "p2"
+        },
+        {
+          "tools": []
+        }
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [
+        "a"
+      ],
+      "tool_bytes": [
+        [
+          "a",
+          61
+        ]
+      ]
+    },
+    {
+      "env": {},
+      "pages": [
+        {
+          "tools": null,
+          "nextCursor": "p2"
+        },
+        {}
+      ],
+      "requests": [
+        {},
+        {
+          "cursor": "p2"
+        }
+      ],
+      "kept": [],
+      "tool_bytes": []
+    }
+  ],
+  "request_bodies": [
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "noevia",
+          "version": "1"
+        }
+      }
+    },
+    {
+      "has_id": false,
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized"
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {
+          "q": 1
+        }
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": []
+      }
+    },
+    {
+      "has_id": true,
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "params": {
+        "name": "qa_tool",
+        "arguments": {}
+      }
+    }
+  ],
+  "positive_env": [
+    {
+      "value": null,
+      "out": 7
+    },
+    {
+      "value": "",
+      "out": 7
+    },
+    {
+      "value": " ",
+      "out": 7
+    },
+    {
+      "value": "12",
+      "out": 12
+    },
+    {
+      "value": " 12 ",
+      "out": 12
+    },
+    {
+      "value": "12.9",
+      "out": 12
+    },
+    {
+      "value": "0",
+      "out": 7
+    },
+    {
+      "value": "-1",
+      "out": 7
+    },
+    {
+      "value": "1e3",
+      "out": 1000
+    },
+    {
+      "value": "0x10",
+      "out": 16
+    },
+    {
+      "value": "0b11",
+      "out": 3
+    },
+    {
+      "value": "0o7",
+      "out": 7
+    },
+    {
+      "value": "Infinity",
+      "out": 7
+    },
+    {
+      "value": "-Infinity",
+      "out": 7
+    },
+    {
+      "value": "NaN",
+      "out": 7
+    },
+    {
+      "value": "abc",
+      "out": 7
+    },
+    {
+      "value": "5.",
+      "out": 5
+    },
+    {
+      "value": ".5",
+      "out": 0
+    },
+    {
+      "value": "+7",
+      "out": 7
+    },
+    {
+      "value": "1_000",
+      "out": 7
+    },
+    {
+      "value": " 12",
+      "out": 12
+    },
+    {
+      "value": "﻿12",
+      "out": 12
+    },
+    {
+      "value": "12",
+      "out": 7
+    },
+    {
+      "value": "9007199254740993",
+      "out": 9007199254740992
+    },
+    {
+      "value": "1e400",
+      "out": 7
+    }
+  ]
+}

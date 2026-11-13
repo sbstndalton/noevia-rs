@@ -1,0 +1,40 @@
+{
+ "comment": "The Google Drive tools in the order and words Settings -> Connectors lists them (core gdrive-tools.cjs TOOLS/LABELS/READS). Shared with noevia-rs bins/noevia-server/tests/fixtures/gdrive-tools-list.v1.json; keep the two files identical.",
+ "tools": [
+  {
+   "name": "drive_search_files",
+   "label": "Search files",
+   "write": false
+  },
+  {
+   "name": "drive_read_file",
+   "label": "Read file content",
+   "write": false
+  },
+  {
+   "name": "drive_get_metadata",
+   "label": "Get file metadata",
+   "write": false
+  },
+  {
+   "name": "drive_list_recent",
+   "label": "List recent files",
+   "write": false
+  },
+  {
+   "name": "drive_create_file",
+   "label": "Create file",
+   "write": true
+  },
+  {
+   "name": "drive_update_file",
+   "label": "Update file",
+   "write": true
+  },
+  {
+   "name": "drive_trash_file",
+   "label": "Trash file",
+   "write": true
+  }
+ ]
+}
