@@ -1,4 +1,5 @@
-//! The Diary's chunk index (ported from `diary/agent/retrieval.py` and `vector_slots.py`).
+//! The Diary's chunk index (ported from `diary/agent/retrieval.py` and `vector_slots.py`) and the
+//! embedding profile, configuration and address guard (`diary/agent/embedding.py`, see [`embedding`]).
 //!
 //! One SQLite file per tenant holds the chunks of every month file and, per embedding model, a
 //! vector slot (`vec_meta 'slot:<id>'`, a `vec0` table and a content-hash map). Search and
@@ -15,7 +16,9 @@
 
 use sha2::{Digest, Sha256};
 
+pub mod embedding;
 pub mod index;
+pub mod migration;
 pub mod pyjson;
 pub mod slots;
 
