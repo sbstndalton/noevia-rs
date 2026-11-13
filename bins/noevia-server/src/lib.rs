@@ -4,6 +4,8 @@
 
 pub mod account_routes;
 pub mod admin_user_routes;
+pub mod approval_registry;
+pub mod approval_revocation;
 pub mod auto_roles_routes;
 pub mod autotune_cancel_routes;
 pub mod autotune_clear_routes;
@@ -489,6 +491,12 @@ pub const FEATURES: &[&str] = &[
     "rust-retrieval-v1",
     "rust-task-reads",
     "rust-tool-approvals",
+    // Port contract 2026-11-04 S9: the pending approvals and chat grants are the front's
+    // (approval_registry.rs); Node's turn asks through the store's /v1/approvals/*.
+    "rust-approval-registry",
+    // Re-reviews 1ed3a14/689d17a: single-use grant tickets redeemed at dispatch, revocations that
+    // drain redeemed writes; Core names it (approval_registry.rs PROTOCOL).
+    "registry-executor-v3",
     "noevia-research-jobs-store/1",
     "rust-auth",
     "rust-diary",
@@ -635,6 +643,9 @@ pub(crate) fn account_row_exists(writes: &upkeep::WriterLayer, id: &str) -> bool
 }
 
 pub struct App {
+    /// The chat approval registry (port contract 2026-11-04 S9): pending write approvals, routing
+    /// questions and chat-wide grants, answered by POST /api/tool-approvals/{id}.
+    pub approvals: Arc<approval_registry::Registry>,
     pub machines: Arc<machine_service::Service>,
     pub auto_roles: auto_roles_routes::Writer,
     /// The demand marker and the wait for Node's published snapshots (snapshot.rs).
@@ -767,7 +778,18 @@ impl App {
             (Some(o), Some(d)) => Some(Arc::new(offsite_routes::Service::new(o, Arc::clone(d)))),
             _ => None,
         };
+        let approvals = Arc::new(approval_registry::Registry::new(
+            match (config.data_dir.as_ref(), config.start_id.as_ref()) {
+                (Some(data_dir), Some(start)) => Some(approval_registry::Live {
+                    data_dir: data_dir.clone(),
+                    start: start.clone(),
+                }),
+                // No store or no start id: no grant can be bound, so approve_all approves once.
+                _ => None,
+            },
+        ));
         Arc::new(App {
+            approvals,
             machines: Arc::new(machine_service::Service::default()),
             demand: Arc::new(snapshot::Demand::default()),
             drive,

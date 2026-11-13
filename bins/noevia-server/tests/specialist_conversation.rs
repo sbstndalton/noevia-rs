@@ -22,6 +22,9 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+#[path = "support/approval_front.rs"]
+mod approval_front;
+
 const SCHEMA: &str = include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql");
 const A: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const B: &str = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -61,8 +64,14 @@ async fn rig() -> Rig {
     seed(dir.path());
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
+    // Node answers only the executor-epoch acknowledgement a delete completes with (port contract S9).
+    let (node, _) = approval_front::node().await;
     let env = HashMap::from([
-        ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".to_string()),
+        ("NOEVIA_LEGACY_UPSTREAM", format!("http://{node}")),
+        (
+            "NOEVIA_PROJECT_STORE_TOKEN",
+            approval_front::STORE_TOKEN.to_string(),
+        ),
         ("UI_DATA_DIR", dir.path().display().to_string()),
         ("PUBLIC_ORIGIN", format!("http://{addr}")),
     ]);
