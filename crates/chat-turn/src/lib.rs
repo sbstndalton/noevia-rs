@@ -13,7 +13,8 @@
 //!   request's reasoning effort;
 //! - [`record`]: the turn record and the partial file's entry; [`title`]: the generated title;
 //!   [`helpers`]: the search-query cleaner, the announced-action check, the final-answer helpers and the
-//!   tool route notes; [`reduce`]: a tool result compacted for the model;
+//!   tool route notes; [`reduce`]: a tool result compacted for the model; [`sources`]: the injected
+//!   files an answer drew on (#1793);
 //! - [`sink`] and [`event`]: the stream's order rule, and typed events for tests; [`guard`]: the stream
 //!   guard for tool-call arguments; [`js`]: JavaScript string and object semantics.
 //!
@@ -36,6 +37,7 @@ pub mod record;
 pub mod reduce;
 pub mod round;
 pub mod sink;
+pub mod sources;
 pub mod sse;
 pub mod title;
 

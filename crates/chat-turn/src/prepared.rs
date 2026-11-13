@@ -58,6 +58,8 @@ pub struct Prepared {
     pub decline_ends_reply: bool,
     pub record: bool,
     pub stream_idle_ms: f64,
+    /// #1793: the reply's sources and the injected files the close may add to them (absent: none).
+    pub sources: crate::sources::Sources,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -192,6 +194,11 @@ impl Prepared {
             decline_ends_reply: flag(turn, "declineEndsReply"),
             record: flag(turn, "record"),
             stream_idle_ms: need(turn, "streamIdleMs")?.as_num().unwrap_or(0.0),
+            sources: match turn.get("sources") {
+                JValue::Undefined | JValue::Null => crate::sources::Sources::default(),
+                v => crate::sources::Sources::read(v)
+                    .ok_or_else(|| Unreadable("prepared.turn.sources is not readable".into()))?,
+            },
         })
     }
 }

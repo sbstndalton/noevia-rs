@@ -36,6 +36,9 @@ jobs:
       - name: The core's own reduceToolResult reproduces the committed recording
         # Synthetic QA tool results through server/tool-result-reduce.cjs; needs no wasm.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-turn/tests/record_reduce.cjs --check crates/chat-turn/tests/fixtures/node-reduce.v1.json
+      - name: The core's own chat-sources.cjs attribution reproduces the committed recording
+        # Synthetic QA files, answers and questions through chat-sources.cjs and rust-chat-native.cjs injectedSources; needs no wasm.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-turn/tests/record_sources.cjs --check crates/chat-turn/tests/fixtures/node-sources.v1.json
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
         with:
           targets: wasm32-unknown-unknown

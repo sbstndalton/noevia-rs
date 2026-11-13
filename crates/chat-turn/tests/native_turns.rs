@@ -687,7 +687,9 @@ fn every_prepared_turn_reads() {
         let p = Prepared::read(c.get("handoff").get("prepared"))
             .unwrap_or_else(|e| panic!("{}: {e:?}", c.get("name").as_str().unwrap()));
         assert!(p.model.starts_with("qa"));
-        assert_eq!(c.get("handoff").get("before").as_num(), Some(5.0));
+        // meta, telemetry, status, status, tools_scope; and the reply's first `sources` with retrieval.
+        let before = if c.get("input").get("retrieval").is_object() { 6.0 } else { 5.0 };
+        assert_eq!(c.get("handoff").get("before").as_num(), Some(before));
         read += 1;
     }
     assert!(read >= 30);
@@ -821,7 +823,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 50, "{ran:?}");
+    assert_eq!(ran.len(), 52, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
