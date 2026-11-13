@@ -23,8 +23,14 @@ const T0: f64 = 1_700_000_000_000.0;
 /// How long a call may wait for its event to come up before the replay calls it a mismatch.
 const WAIT: Duration = Duration::from_millis(1500);
 
+/// The recorded traces; `TRACE_DIR` (with `TRACE`) replays another directory, such as edited copies
+/// made to check that the replay catches a change.
 fn dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/private-calibrator/traces")
+    match std::env::var_os("TRACE_DIR") {
+        Some(d) => PathBuf::from(d),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/private-calibrator/traces"),
+    }
 }
 
 /// `{ "$s": i }` → the string (a `strings` entry may be `{ prefix, pad, suffix }`).
@@ -146,7 +152,7 @@ struct Replay {
     cur: Mutex<Cursor>,
     changed: Condvar,
     ctx: OnceLock<Ctx>,
-    memory: Option<f64>,
+    memory: Memory,
     rt: tokio::runtime::Handle,
 }
 
@@ -354,6 +360,12 @@ impl Replay {
     }
 }
 
+/// `config.readMemory`: one value for every read, or (`"calls"`) each read recorded as an event.
+enum Memory {
+    Constant(Option<f64>),
+    Calls,
+}
+
 fn head_ms(e: &JValue) -> f64 {
     e.get("ms").as_num().unwrap_or(0.0)
 }
@@ -512,7 +524,12 @@ impl Engine for ReplayEngine {
         answer(self.0.take("held", &[])).is_ok_and(|v| v.truthy())
     }
     fn read_memory(&self) -> Option<f64> {
-        self.0.memory
+        match self.0.memory {
+            Memory::Constant(v) => v,
+            Memory::Calls => answer(self.0.take("readMemory", &[]))
+                .ok()
+                .and_then(|v| v.as_num()),
+        }
     }
     fn now(&self) -> f64 {
         self.0.cur.lock().unwrap().clock
@@ -597,7 +614,10 @@ fn replay(path: &std::path::Path) -> Result<(), String> {
         }),
         changed: Condvar::new(),
         ctx: OnceLock::new(),
-        memory: config.get("readMemory").as_num(),
+        memory: match config.get("readMemory") {
+            JValue::Str(s) if s == "calls" => Memory::Calls,
+            v => Memory::Constant(v.as_num()),
+        },
         rt: rt.handle().clone(),
     });
     let fill = t.get("kind").as_str() == Some("fill");
@@ -653,6 +673,11 @@ fn replay(path: &std::path::Path) -> Result<(), String> {
     outcome
 }
 
+/// Traces that differ from Node on purpose (or where Node's behaviour cannot be derived from the
+/// trace), by file name, each with its reason. A listed trace must still differ, so a stale entry
+/// is noticed; every other trace must replay exactly.
+const NAMED_DIFFERENCES: &[(&str, &str)] = &[];
+
 #[test]
 fn every_recorded_private_calibrator_replays() {
     let mut names: Vec<_> = std::fs::read_dir(dir())
@@ -662,18 +687,31 @@ fn every_recorded_private_calibrator_replays() {
         .collect();
     names.sort();
     let only = std::env::var("TRACE").ok();
-    let (mut passed, mut failed) = (0, Vec::new());
+    let (mut passed, mut named, mut failed) = (0, 0, Vec::new());
+    let mut scenarios = 0;
     for p in &names {
         let name = p.file_name().unwrap().to_string_lossy().to_string();
         if only.as_deref().is_some_and(|o| !name.contains(o)) {
             continue;
         }
-        match replay(p) {
-            Ok(()) => passed += 1,
-            Err(why) => failed.push(format!("{name}: {why}")),
+        scenarios += usize::from(name.starts_with('S'));
+        let known = NAMED_DIFFERENCES.iter().find(|(n, _)| *n == name);
+        match (replay(p), known) {
+            (Ok(()), None) => passed += 1,
+            (Err(why), None) => failed.push(format!("{name}: {why}")),
+            (Err(why), Some((_, reason))) => {
+                named += 1;
+                println!("NAMED {name}: {reason} (differs: {why})");
+            }
+            (Ok(()), Some(_)) => failed.push(format!(
+                "{name}: listed in NAMED_DIFFERENCES but replays exactly"
+            )),
         }
     }
-    println!("replayed {passed} of {} traces", passed + failed.len());
+    println!(
+        "replayed {passed} of {} traces ({scenarios} scenario traces; {named} named differences)",
+        passed + named + failed.len()
+    );
     for f in &failed {
         println!("FAIL {f}");
     }
@@ -682,9 +720,13 @@ fn every_recorded_private_calibrator_replays() {
         "the trace set is missing"
     );
     assert!(
+        scenarios >= 30 || only.is_some(),
+        "the scenario (S*) traces are missing"
+    );
+    assert!(
         failed.is_empty(),
         "{} of {} traces differ from Node",
         failed.len(),
-        passed + failed.len()
+        passed + named + failed.len()
     );
 }

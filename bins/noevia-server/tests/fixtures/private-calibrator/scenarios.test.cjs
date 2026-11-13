@@ -6,7 +6,10 @@
 // calibrator-preload.cjs (traces S<NNN>-*.json); whatever Node does is the oracle, so the tests only
 // check that each scenario reached the branch it is about.
 // Env: TRACE_CORE (core checkout; default ~/noevia-work/wt/track-R6-noevia-core).
-const test = require('node:test'), assert = require('node:assert/strict');
+const nodeTest = require('node:test'), assert = require('node:assert/strict');
+// Every scenario has its own deadline: a scenario that never settles fails alone, the rest still run.
+const SCENARIO_TIMEOUT_MS = 15000;
+const test = (name, fn) => nodeTest(name, { timeout: SCENARIO_TIMEOUT_MS }, fn);
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 
 const CORE = path.resolve(process.env.TRACE_CORE || path.join(os.homedir(), 'noevia-work/wt/track-R6-noevia-core'));
@@ -159,6 +162,42 @@ test('probe: another client loading a model while the probe loads is fatal (no f
   await assert.rejects(f.factory(f.fillHooks()).probe('qa-model', f.probeOpts()), /Another client loaded a model/);
 });
 
+test('probe: a load that never finishes in time fails that size as a timeout', async t => {
+  // Short deadline: without the recorder's clock the calibrator's time is real.
+  const f = fixture(t, { calibration: { timeouts: { load: 50, poll: 500 } }, engine: { load: (m, s) => { s.status[m] = 'loading'; return { ok: true, body: {} }; } } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'timeout');
+});
+
+test('probe: an engine that takes far fewer prompt tokens than asked fails on recall', async t => {
+  const f = fixture(t, { engine: { stream: b => new Response(sse({ choices: [{ delta: { content: markerOf(b.messages[0].content) } }], timings: { prompt_n: 10, prompt_ms: 100 } }) + 'data: [DONE]\n\n') } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'recall');
+});
+
+test('probe: a long prompt that cannot be sent fails with the error as evidence', async t => {
+  const f = fixture(t, { engine: { stream: () => { throw Error('qa stream socket closed'); } } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'oom'); assert.match(r.evidence?.text, /could not be sent/);
+});
+
+test('probe: a stream body that breaks mid-read is a crash once the server answers', async t => {
+  const f = fixture(t, { engine: { stream: () => new Response(new ReadableStream({ start(c) { c.error(Error('qa body reset')); } })) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'oom'); assert.equal(r.evidence?.crash, true);
+});
+
+test('probe: a tokenizer that fails falls back to the padding estimate', async t => {
+  const f = fixture(t, { engine: { request: p => (p === '/tokenize' ? { ok: false, status: 500, body: {} } : undefined) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts({ evidence: false }));
+  assert.equal(typeof r.passed, 'boolean');
+});
+
 // ── 2. probe cancels ───────────────────────────────────────────────────────────────────────────
 test('probe: cancelProbe while the long prompt streams stops it as cancelled', async t => {
   let ctx;
@@ -282,13 +321,19 @@ test('context: an out-of-range prompt budget is refused as an invalid launch', a
 test('context: a refused final write fails the run and restores the profile', async t => {
   const f = fixture(t);
   await f.hold();
-  let writes = 0;
-  const hooks = f.contextHooks();
+  // The final write is the one made once the search has chosen a size (job.result.verifiedCtx set;
+  // onUpdate hands over the live job object). Every earlier write is a step's test profile.
+  let live = null, refused = 0;
+  const hooks = f.contextHooks({ onUpdate: job => { if (job) live = job; } });
   const real = hooks.applyUnlocked;
-  // The search writes 5 test profiles at native 16384 (8K, 16K load; 12K, 16K long...): refuse the 7th on.
-  hooks.applyUnlocked = async body => (++writes >= 7 ? { ok: false, status: 409, body: { error: 'QA refused the final write.' } } : real(body));
+  hooks.applyUnlocked = async body => {
+    if (live?.result?.verifiedCtx == null) return real(body);
+    refused++;
+    return { ok: false, status: 409, body: { error: 'QA refused the final write.' } };
+  };
   const { job } = await stage(f, hooks);
-  assert.equal(job.status, 'failed');
+  assert.equal(refused, 1);
+  assert.equal(job.status, 'failed'); assert.match(job.error, /QA refused the final write/); assert.equal(job.restored, true);
 });
 
 test('context: a calibrated profile that does not load fails the run', async t => {
@@ -326,6 +371,43 @@ test('context: models.ini changed outside the run is not restored', async t => {
   assert.equal(job.restored, false);
 });
 
+test('context: a restore whose baseline invalidation throws is reported as not restored', async t => {
+  let ctx;
+  const f = fixture(t, { calibration: { invalidateBaseline: async () => { throw Error('QA baseline store unavailable'); } },
+    engine: { stream: (b, signal) => hangingStream(signal, () => setImmediate(() => ctx.compareAndAbort(ctx.cancellationFacts().token))) } });
+  await f.hold();
+  ctx = f.factory(f.contextHooks());
+  await ctx.start('qa-model', { confirmPause: true, promptBudgetSeconds: 120 });
+  await ctx.completion();
+  const job = ctx.status('qa-model').body.job;
+  assert.equal(job.status, 'cancelled'); assert.equal(job.restored, false); assert.match(job.error, /was not restored/);
+});
+
+test('context: a restore the presets store refuses (read-only models.ini directory) is not restored', async t => {
+  let ctx;
+  const dir = () => path.dirname(f.ini);
+  const f = fixture(t, { engine: { stream: (b, signal) => hangingStream(signal, () => setImmediate(() => {
+    fs.chmodSync(dir(), 0o555);
+    ctx.compareAndAbort(ctx.cancellationFacts().token);
+  })) } });
+  await f.hold();
+  ctx = f.factory(f.contextHooks());
+  try {
+    await ctx.start('qa-model', { confirmPause: true, promptBudgetSeconds: 120 });
+    await ctx.completion();
+  } finally { fs.chmodSync(dir(), 0o755); }
+  const job = ctx.status('qa-model').body.job;
+  assert.equal(job.status, 'cancelled'); assert.equal(job.restored, false);
+});
+
+test('context: a refused test-profile write stops the run with nothing to restore', async t => {
+  const f = fixture(t);
+  await f.hold();
+  const hooks = f.contextHooks({ applyUnlocked: async () => ({ ok: false, status: 409, body: { error: 'QA refused the test profile.' } }) });
+  const { job } = await stage(f, hooks);
+  assert.equal(job.status, 'failed'); assert.match(job.error, /QA refused the test profile/); assert.equal(job.restored, undefined);
+});
+
 test('context: no size passes the long prompt and the run fails', async t => {
   const f = fixture(t, { engine: { stream: () => new Response(sse({ choices: [{ delta: { content: 'forgot' } }], timings: { prompt_n: 10, prompt_ms: 100 } }) + 'data: [DONE]\n\n') } });
   await f.hold();
@@ -341,12 +423,30 @@ test('context: a model that does not load at the starting size fails the run', a
 });
 
 // ── 6. memory ──────────────────────────────────────────────────────────────────────────────────
-test('memory: available memory falling under the floor during a load fails that size as oom', async t => {
+// A probe's step reads memory twice before it starts (the wait), once for the guard and once for the
+// first sample, then once per load poll (5th read) and once when the row reads loaded (6th read).
+test('memory: available memory under the floor once the model reads loaded fails that size as oom', async t => {
   let reads = 0;
-  const f = fixture(t, { calibration: { timeouts: { memoryPoll: 1e9 }, readMemory: () => (++reads >= 12 && reads <= 14 ? 1 : 20) } });
+  const f = fixture(t, { calibration: { timeouts: { memoryPoll: 1e9 }, readMemory: () => (++reads === 6 ? 1 : 20) } });
   await f.hold();
   const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
-  assert.equal(typeof r.passed, 'boolean');
+  assert.equal(r.passed, false); assert.equal(r.cause, 'oom');
+});
+
+test('memory: available memory under the floor at a load poll fails that size as oom', async t => {
+  let reads = 0;
+  const f = fixture(t, { calibration: { timeouts: { memoryPoll: 1e9 }, readMemory: () => (++reads === 5 ? 1 : 20) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'oom');
+});
+
+test('memory: memory that recovers while a step waits for it lets the step run', async t => {
+  let reads = 0;
+  const f = fixture(t, { calibration: { timeouts: { memoryPoll: 1e9 }, readMemory: () => (++reads <= 4 ? 1 : 20) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts({ evidence: false }));
+  assert.equal(r.passed, true);
 });
 
 test('memory: memory that stays under the floor before a step is fatal', async t => {
@@ -371,13 +471,28 @@ test('engine: a request that throws mid-step reads as a crash once the server an
   assert.ok(['passed', 'failed'].includes(job.status));
 });
 
+test('engine: a request that loses the lease stops the run without a restore', async t => {
+  let n = 0;
+  const f = fixture(t, { engine: { request: p => {
+    if (p === '/v1/chat/completions' && ++n === 2) throw Object.assign(Error('QA maintenance lease lost.'), { status: 503, coverageLost: true });
+  } } });
+  await f.hold();
+  const { job } = await stage(f, f.contextHooks());
+  assert.equal(job.status, 'failed'); assert.match(job.error, /QA maintenance lease lost/); assert.equal(job.restored, undefined);
+});
+
 test('engine: models that never unload fail the run', async t => {
-  const f = fixture(t, { calibration: { timeouts: { unload: 30 } } });
+  const f = fixture(t, { calibration: { timeouts: { unload: 30, poll: 10 } } });
   f.state.status['qa-other'] = 'loaded';
   const realUnload = f.state;
   await f.hold();
-  // qa-other ignores unload requests.
-  const hooks = f.contextHooks({ foreignHeld: () => [] });
+  // qa-other ignores unload requests. Each "did not unload" is handed to foreignWait (qa-other is
+  // live), which gives up on the third one, as the runner's wait does once its deadline passes.
+  const waits = [];
+  const hooks = f.contextHooks({ foreignHeld: () => [], foreignWait: async e => {
+    waits.push(e.message);
+    if (waits.length >= 3) throw Object.assign(Error('Another client kept using qa-other for 15 min.'), { fatal: true, foreignTimeout: true });
+  } });
   const { job } = await (async () => {
     const ctx = f.factory(hooks);
     const orig = Object.getOwnPropertyDescriptor(realUnload.status, 'qa-other');
@@ -388,15 +503,18 @@ test('engine: models that never unload fail the run', async t => {
     return { job: ctx.status('qa-model').body.job };
   })();
   assert.equal(job.status, 'failed');
+  assert.deepEqual(waits, Array(3).fill('Models did not unload in time.'));
 });
 
 test('engine: a listing that stops answering after a crash fails the run as the server gone', async t => {
   let down = false;
-  const f = fixture(t, { calibration: { timeouts: { recover: 5000 } }, engine: {
+  // Short deadlines: without the recorder's clock the calibrator's own time is real, and its sleeps
+  // here return at once.
+  const f = fixture(t, { calibration: { timeouts: { recover: 100, unload: 50, poll: 10 } }, engine: {
     request: p => { if (p === '/v1/chat/completions' && !down) { down = true; throw Error('qa connection reset'); } },
     onModels: () => { if (down) throw Error('qa router down'); },
   } });
   await f.hold();
   const { job } = await stage(f, f.contextHooks());
-  assert.equal(job.status, 'failed');
+  assert.equal(job.status, 'failed'); assert.match(job.error, /did not come back/);
 });
