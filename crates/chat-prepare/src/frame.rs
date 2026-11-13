@@ -6,8 +6,13 @@
 //!
 //! - [`stored_frame`]: `storedFrame({ enabled, chatId, projectId, project, freeChats })`. The frame
 //!   is read only from the lists the caller loaded (the chat's project's `chats`, else the free
-//!   list), never from the request body. It is `chat-framing.cjs` `normalizeFrame`, reused from
-//!   `server_projects::frame::normalize` (the recording replays `normalizeFrame` itself through it).
+//!   list), never from the request body. [`normalize_frame`] is `chat-framing.cjs`
+//!   `normalizeFrame`, a copy of `server_projects::frame::normalize` (that crate's store and SQLite
+//!   stay out of this pure one); the recording replays `normalizeFrame` itself through the copy.
+//!
+//! A [`Frame`] comes only from [`stored_frame`] / [`chat_frame`], i.e. from the user's own lists:
+//! its fields are private, and nothing public builds one from arbitrary JSON (chat.cjs never reads
+//! a frame sent in the request body). `Frame::from_recorded` exists for the recorded tests only.
 //! - [`frame_block`]: `frameBlock(frame)`: the kind's answer shape, the project scope line when
 //!   the chat lives in the project its frame names, and the tags as framed untrusted data
 //!   (`frameUntrusted('chat tags', '', ...)`), at most 6 tags of 32 units after [`safe_tag`]; tags
@@ -103,24 +108,54 @@ impl Source {
     }
 }
 
-/// A frame in `normalizeFrame`'s canonical shape plus `storedFrame`'s `inProject`.
+/// A frame in `normalizeFrame`'s canonical shape plus `storedFrame`'s `inProject`, as read from
+/// the user's own lists (see the module doc: there is no public way to build one from other JSON).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame {
-    pub project_id: Option<String>,
-    pub kind: Kind,
-    pub tags: Vec<String>,
-    pub links: Vec<String>,
-    pub confirmed: bool,
-    pub source: Source,
-    /// The scope line names the chat's project: the chat is in that project's list, and the
-    /// request's project, the project record's id and the frame's `projectId` are all the same.
-    pub in_project: bool,
+    project_id: Option<String>,
+    kind: Kind,
+    tags: Vec<String>,
+    links: Vec<String>,
+    confirmed: bool,
+    source: Source,
+    in_project: bool,
 }
 
 impl Frame {
+    pub fn project_id(&self) -> Option<&str> {
+        self.project_id.as_deref()
+    }
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+    pub fn tags(&self) -> &[String] {
+        &self.tags
+    }
+    pub fn links(&self) -> &[String] {
+        &self.links
+    }
+    pub fn confirmed(&self) -> bool {
+        self.confirmed
+    }
+    pub fn source(&self) -> Source {
+        self.source
+    }
+    /// The scope line names the chat's project: the chat is in that project's list, and the
+    /// request's project, the project record's id and the frame's `projectId` are all the same.
+    pub fn in_project(&self) -> bool {
+        self.in_project
+    }
+
+    /// For the recorded tests only, never for production input: a frame object of exactly
+    /// `storedFrame`'s shape (string tags and links, `inProject === true` read as in project).
+    #[doc(hidden)]
+    pub fn from_recorded(v: &JValue) -> Option<Frame> {
+        Frame::from_value(v)
+    }
+
     /// A frame object of exactly the canonical shape (`normalizeFrame`'s keys, string tags and
     /// links), with `inProject === true` read as [`Frame::in_project`]; `None` for anything else.
-    pub fn from_value(v: &JValue) -> Option<Frame> {
+    fn from_value(v: &JValue) -> Option<Frame> {
         let strings = |key: &str| match v.get(key) {
             JValue::Arr(items) => items
                 .iter()
@@ -182,6 +217,87 @@ pub struct Lookup<'a> {
     pub free_chats: &'a JValue,
 }
 
+const NORMALIZE_MAX_TAGS: usize = 20;
+const MAX_LINKS: usize = 20;
+const NORMALIZE_MAX_TAG_CHARS: usize = 64;
+const MAX_ID_CHARS: usize = 128;
+
+/// `cleanTag(t)`: trimmed, leading `#`s dropped, each run of `\s` one `-`, 64 units.
+fn clean_tag(t: &JValue) -> String {
+    let Some(s) = t.as_str() else {
+        return String::new();
+    };
+    let mut out = String::with_capacity(s.len());
+    let mut in_space = false;
+    for c in js::trim(s).trim_start_matches('#').chars() {
+        if js::is_js_space(c) {
+            if !in_space {
+                out.push('-');
+            }
+            in_space = true;
+        } else {
+            out.push(c);
+            in_space = false;
+        }
+    }
+    js::slice(&out, NORMALIZE_MAX_TAG_CHARS)
+}
+
+/// `cleanId(id)`: a non-empty string of at most 128 units, else null.
+fn clean_id(id: &JValue) -> Option<String> {
+    id.as_str()
+        .filter(|s| !s.is_empty() && js::len(s) <= MAX_ID_CHARS)
+        .map(str::to_string)
+}
+
+/// `[...new Set(items.filter(Boolean))].slice(0, cap)`.
+fn unique(items: impl Iterator<Item = String>, cap: usize) -> Vec<JValue> {
+    let mut out: Vec<JValue> = Vec::new();
+    for s in items {
+        if out.len() == cap {
+            break;
+        }
+        if !s.is_empty() && !out.iter().any(|v| v.as_str() == Some(s.as_str())) {
+            out.push(JValue::Str(s));
+        }
+    }
+    out
+}
+
+/// `chat-framing.cjs` `normalizeFrame(frame)`: the frame in its canonical shape, or `None` when it
+/// is not a frame at all. It mirrors `server_projects::frame::normalize` (copied, so this crate
+/// does not depend on that one); both are replayed on Node's own output.
+pub fn normalize_frame(frame: &JValue) -> Option<JValue> {
+    if !frame.is_object() {
+        return None;
+    }
+    let kind = frame.get("kind").as_str().and_then(Kind::parse)?;
+    let list = |key: &str| match frame.get(key) {
+        JValue::Arr(items) => items.as_slice(),
+        _ => &[],
+    };
+    let tags = unique(list("tags").iter().map(clean_tag), NORMALIZE_MAX_TAGS);
+    let links = unique(list("links").iter().filter_map(clean_id), MAX_LINKS);
+    let source = match frame.get("source").as_str() {
+        Some("user") => Source::User,
+        _ => Source::Suggested,
+    };
+    Some(JValue::obj([
+        (
+            "projectId",
+            clean_id(frame.get("projectId")).map_or(JValue::Null, JValue::Str),
+        ),
+        ("kind", JValue::from(kind.as_str())),
+        ("tags", JValue::Arr(tags)),
+        ("links", JValue::Arr(links)),
+        (
+            "confirmed",
+            JValue::Bool(frame.get("confirmed") == &JValue::Bool(true)),
+        ),
+        ("source", JValue::from(source.as_str())),
+    ]))
+}
+
 /// `(Array.isArray(list) ? list : []).find((c) => c && c.id === chatId)`.
 fn find<'v>(list: &'v JValue, chat_id: &str) -> Option<&'v JValue> {
     match list {
@@ -203,8 +319,7 @@ pub fn stored_frame(input: &Lookup<'_>) -> Option<Frame> {
         None
     };
     let meta = in_list.or_else(|| find(input.free_chats, chat_id));
-    let normalized =
-        server_projects::frame::normalize(meta.map_or(&JValue::Undefined, |m| m.get("frame")))?;
+    let normalized = normalize_frame(meta.map_or(&JValue::Undefined, |m| m.get("frame")))?;
     let frame = Frame::from_value(&normalized)?;
     if !frame.confirmed {
         return None;

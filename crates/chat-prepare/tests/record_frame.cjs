@@ -29,8 +29,9 @@ if (!checkout) {
 }
 const root = path.resolve(checkout);
 for (const k of ['log', 'info', 'warn', 'error', 'debug']) console[k] = (...a) => process.stderr.write(`${a.map(String).join(' ')}\n`);
+// server/chat.cjs is not loaded: its call site (~740-770, the rules src/frame.rs chat_frame ports) is pinned by its sha.
 const SOURCE_FILES = ['server/chat-frame-steering.cjs', 'server/chat-framing.cjs', 'server/tool-router.cjs', 'server/project-modes.cjs',
-  'server/prompt-framing.cjs', 'server/dav-parse-wasm.cjs', 'server/dav-parse.lock', 'server/wasm/dav-parse.wasm'];
+  'server/prompt-framing.cjs', 'server/dav-parse-wasm.cjs', 'server/dav-parse.lock', 'server/wasm/dav-parse.wasm', 'server/chat.cjs'];
 const sources = Object.fromEntries(SOURCE_FILES.map((f) => [f, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex')]));
 const req = (f) => require(path.join(root, 'server', f));
 const steering = req('chat-frame-steering.cjs');

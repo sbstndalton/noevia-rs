@@ -449,7 +449,6 @@ dependencies = [
  "js-json",
  "prompt-framing",
  "regex",
- "server-projects",
 ]
 
 [[package]]

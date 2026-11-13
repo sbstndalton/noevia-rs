@@ -95,14 +95,19 @@ fn the_fixture_names_its_node_sources() {
         "server/dav-parse-wasm.cjs",
         "server/dav-parse.lock",
         "server/wasm/dav-parse.wasm",
+        "server/chat.cjs",
     ] {
         let sha = f.get("sources").get(file).as_str().unwrap();
         assert!(sha.len() == 64, "{file}");
     }
     // Recorded at the same core as the crate's other fixtures (tests/oracle-core.ref): the files
-    // both read are the same bytes.
+    // both pin are the same bytes, chat.cjs (the call site chat_frame ports) included.
     let project = wtf16::parse(PROJECT_FIXTURE).unwrap();
-    for file in ["server/prompt-framing.cjs", "server/wasm/dav-parse.wasm"] {
+    for file in [
+        "server/prompt-framing.cjs",
+        "server/wasm/dav-parse.wasm",
+        "server/chat.cjs",
+    ] {
         assert_eq!(
             f.get("sources").get(file),
             project.get("sources").get(file),
@@ -118,8 +123,8 @@ fn the_fixture_names_its_node_sources() {
     assert!(items(&f, "differences").is_empty());
 }
 
-/// server-projects' `normalizeFrame` port is the one `storedFrame` uses here: it must be Node's
-/// on every recorded frame.
+/// The crate's copy of `normalizeFrame` (the one `storedFrame` uses here, mirroring
+/// server-projects' port) must be Node's on every recorded frame.
 #[test]
 fn normalized_frames_are_nodes() {
     let f = fixture();
@@ -128,7 +133,7 @@ fn normalized_frames_are_nodes() {
         d.check(
             name(case),
             &stringify(case.get("out")),
-            &opt(server_projects::frame::normalize(case.get("frame"))),
+            &opt(frame::normalize_frame(case.get("frame"))),
         );
     }
     d.done("normalize", 45);
@@ -181,7 +186,7 @@ fn blocks_and_biases_of_given_frames_are_nodes() {
     let f = fixture();
     let mut d = Diffs::default();
     for case in items(&f, "blocks") {
-        let given = Frame::from_value(case.get("frame"))
+        let given = Frame::from_recorded(case.get("frame"))
             .unwrap_or_else(|| panic!("{}: not a frame", name(case)));
         assert_eq!(&given.to_value(), case.get("frame"), "{}", name(case));
         d.check(
@@ -243,6 +248,13 @@ fn every_code_point_reaches_the_tags_as_in_node() {
         }
         let mut failed = Vec::new();
         for cp in 0..0x11_0000u32 {
+            // U+10F800..U+10FFFF (private use, Co) are where `wtf16` text holds lone surrogates:
+            // such a character cannot be wtf16 text at all (`wtf16::parse` refuses it, a named
+            // difference of the crate), so no tag here can hold one. Node removes them.
+            if cp >= 0x10_F800 {
+                assert_eq!(class[cp as usize], REMOVED, "{prefix:?}: U+{cp:04X}");
+                continue;
+            }
             let s = format!("{prefix}{}", char_of(cp));
             let got = frame::safe_tag(&s);
             let at = cp as usize;

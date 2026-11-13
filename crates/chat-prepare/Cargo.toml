@@ -13,8 +13,6 @@ workspace = true
 [dependencies]
 js-json = { path = "../js-json" }
 prompt-framing = { path = "../prompt-framing" }
-# chat-framing.cjs normalizeFrame, reused (the frame block's recording replays it).
-server-projects = { path = "../server-projects" }
 # chat-frame-steering.cjs safeTag's /[\p{L}\p{N}_-]/u: ICU4X's General_Category, the Unicode release Node's ICU
 # states (the NFKC before it is prompt-framing's, also ICU4X). Unicode-3.0; already in Cargo.lock.
 icu_properties = "=2.3.0"
