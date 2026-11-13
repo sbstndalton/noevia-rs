@@ -26,6 +26,8 @@ use tower::ServiceExt;
 const SCHEMA: &str = include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql");
 const FIXTURE: &str =
     include_str!("../../../crates/project-retrieval/tests/fixtures/F2-F6-search.json");
+const IMAGES: &str =
+    include_str!("../../../crates/project-retrieval/tests/fixtures/F14-image-search.json");
 const TOKEN: &str = "synthetic-retrieval-store-secret-00000";
 const START: &str = "0123456789abcdef0123456789abcdef";
 const USER: &str = "0123abcd-0000-4000-8000-0000000000a2";
@@ -52,8 +54,8 @@ fn rebuild(path: &Path, dump: &Value) {
     }
     for r in dump["chunks"].as_array().unwrap() {
         c.execute(
-            "INSERT INTO chunks (id, file, chunk_no, body, content_hash, version, direct) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            rusqlite::params![r["id"].as_i64(), r["file"].as_str(), r["chunk_no"].as_i64(), r["body"].as_str(), r["content_hash"].as_str(), r["version"].as_str(), r["direct"].as_i64()],
+            "INSERT INTO chunks (id, file, chunk_no, body, content_hash, version, direct, kind, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rusqlite::params![r["id"].as_i64(), r["file"].as_str(), r["chunk_no"].as_i64(), r["body"].as_str(), r["content_hash"].as_str(), r["version"].as_str(), r["direct"].as_i64(),r["kind"].as_str(),r["meta"].as_str()],
         )
         .unwrap();
     }
@@ -149,6 +151,29 @@ struct Rig {
 
 async fn rig(mode: &str, extra: &[(&str, &str)]) -> Rig {
     let r = recorded();
+    let want = r["search"]["hits"].as_array().unwrap().clone();
+    let q = &r["search"]["query_vector"];
+    rig_on(
+        mode,
+        extra,
+        &r["index"],
+        "qa-proj-1",
+        "qa-embed-map",
+        q,
+        want,
+    )
+    .await
+}
+
+async fn rig_on(
+    mode: &str,
+    extra: &[(&str, &str)],
+    index: &Value,
+    project: &str,
+    model: &str,
+    query_vector: &Value,
+    want: Vec<Value>,
+) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
     Connection::open(server_store::db_path(&data))
@@ -160,10 +185,10 @@ async fn rig(mode: &str, extra: &[(&str, &str)]) -> Rig {
             .join("users")
             .join(USER)
             .join("rag")
-            .join("qa-proj-1.db"),
-        &r["index"],
+            .join(format!("{project}.db")),
+        index,
     );
-    let vector: Vec<f64> = r["search"]["query_vector"]
+    let vector: Vec<f64> = query_vector
         .as_array()
         .unwrap()
         .iter()
@@ -172,7 +197,7 @@ async fn rig(mode: &str, extra: &[(&str, &str)]) -> Rig {
     let (base, embeds) = embedding_stub(vector).await;
     std::fs::write(
         data.join("embedding-config.json"),
-        json!({"version": 1, "active": {"model": "qa-embed-map", "profile": "embeddinggemma-2", "baseUrl": base}, "next": null, "previous": null}).to_string(),
+        json!({"version": 1, "active": {"model": model, "profile": "embeddinggemma-2", "baseUrl": base}, "next": null, "previous": null}).to_string(),
     )
     .unwrap();
     let mut env: HashMap<String, String> = [
@@ -201,7 +226,7 @@ async fn rig(mode: &str, extra: &[(&str, &str)]) -> Rig {
         _dir: dir,
         router: project_store::router_with_app(store, None, Some(app)),
         embeds,
-        want: r["search"]["hits"].as_array().unwrap().clone(),
+        want,
     }
 }
 
@@ -339,4 +364,54 @@ async fn refuses_bad_bodies_and_defers_what_is_nodes() {
         json!({ "defer": "off" })
     );
     assert_eq!(off.embeds.load(Ordering::SeqCst), 0);
+}
+
+/// A JSON value with every number as f64, so `1` and `1.0` compare equal.
+fn norm(v: &Value) -> Value {
+    match v {
+        Value::Number(n) => json!(n.as_f64().unwrap()),
+        Value::Array(a) => Value::Array(a.iter().map(norm).collect()),
+        Value::Object(o) => Value::Object(o.iter().map(|(k, v)| (k.clone(), norm(v))).collect()),
+        other => other.clone(),
+    }
+}
+
+/// `images: true` is `searchProjectWithImages`: Node's recorded `{text, images, indexed}` (F14), with
+/// the image knobs the front reads from its own environment, as Node reads them from its own.
+#[tokio::test]
+async fn image_search_answers_nodes_text_images_and_indexed() {
+    let f: Value = serde_json::from_str(IMAGES).unwrap();
+    for (setting, extra) in [
+        (0, &[][..]),
+        (
+            1,
+            &[("RAG_IMAGE_TOP_K", "4"), ("RAG_IMAGE_MIN_SCORE", "0.5")][..],
+        ),
+    ] {
+        let s = &f["settings"][setting];
+        let q = s["searches"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|q| q["query"] == "alpha echo")
+            .unwrap();
+        let r = rig_on(
+            "on",
+            extra,
+            &f["snapshots"][q["index"].as_str().unwrap()],
+            "qa-proj-img",
+            "qa-embed-mm",
+            &q["query_vector"],
+            Vec::new(),
+        )
+        .await;
+        let body = json!({ "user": USER, "projectId": "qa-proj-img", "query": "alpha echo", "versions": {}, "images": true }).to_string();
+        let (status, got) = ask(&r, Some(TOKEN), &body).await;
+        assert_eq!(status, 200, "{got}");
+        assert_eq!(norm(&got), norm(&q["out"]), "{}", s["name"]);
+        assert_eq!(
+            ask(&r, Some(TOKEN), &body.replace("true", "1")).await.0,
+            400
+        );
+    }
 }

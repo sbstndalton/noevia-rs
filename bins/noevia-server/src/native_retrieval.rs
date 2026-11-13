@@ -38,7 +38,7 @@ use project_retrieval::hits::Hit;
 use project_retrieval::policy::{
     current_snapshot, embedding_off, observe, rerank_target, Observation,
 };
-use project_retrieval::search::{self, Versions};
+use project_retrieval::search::{self, ImageSettings, Versions, WithImages};
 use prompt_framing::embedding_input::{self, Kind, Profile};
 use prompt_framing::js::units;
 
@@ -74,12 +74,22 @@ impl Mode {
     }
 }
 
-/// What the native search answered.
+/// What the native search answered: its hits (text hits, or `searchProjectWithImages`' answer).
 #[derive(Debug, PartialEq)]
-pub enum Outcome {
-    Hits(Vec<Hit>),
+pub enum Outcome<T = Vec<Hit>> {
+    Hits(T),
     /// The bridge answers instead, for this reason (a fixed label, no data).
     Defer(&'static str),
+}
+
+impl Outcome<WithImages> {
+    /// The text half only (`searchProject`).
+    pub fn text(self) -> Outcome {
+        match self {
+            Outcome::Hits(w) => Outcome::Hits(w.text),
+            Outcome::Defer(why) => Outcome::Defer(why),
+        }
+    }
 }
 
 /// The process's native retrieval.
@@ -93,6 +103,8 @@ pub struct Retrieval {
     http: Option<Http>,
     /// The embedding service as last observed (`embedding-service.cjs` `last`).
     observed: Mutex<Option<Observation>>,
+    /// `RAG_IMAGE_TOP_K` and `RAG_IMAGE_MIN_SCORE`, read once as `rag.cjs` reads them at load.
+    pub images: ImageSettings,
 }
 
 impl std::fmt::Debug for Retrieval {
@@ -124,6 +136,10 @@ impl Retrieval {
             service_url: get("EMBEDDING_SERVICE_URL"),
             http,
             observed: Mutex::new(None),
+            images: ImageSettings::from_env(
+                get("RAG_IMAGE_TOP_K").as_deref(),
+                get("RAG_IMAGE_MIN_SCORE").as_deref(),
+            ),
         })
     }
 
@@ -134,11 +150,22 @@ impl Retrieval {
             service_url: None,
             http: None,
             observed: Mutex::new(None),
+            images: ImageSettings::from_env(None, None),
         }
     }
 
-    /// The native answer for one question, embedding through this process's client.
+    /// The native answer for one question (`searchProject`), embedding through this process's client.
     pub async fn retrieve(&self, inputs: Inputs<'_>) -> Outcome {
+        self.retrieve_images(inputs, None).await.text()
+    }
+
+    /// [`Retrieval::retrieve`], and with `images` the image half beside the text
+    /// (`searchProjectWithImages`).
+    pub async fn retrieve_images(
+        &self,
+        inputs: Inputs<'_>,
+        images: Option<ImageSettings>,
+    ) -> Outcome<WithImages> {
         let Some(http) = &self.http else {
             return Outcome::Defer("embedding client unavailable");
         };
@@ -147,6 +174,7 @@ impl Retrieval {
             self.service_url.as_deref(),
             &self.observed,
             inputs,
+            images,
             |target, framed| async move { http.embed_query(&target, &framed).await },
         )
         .await
@@ -197,19 +225,21 @@ struct Disk {
     status: Option<serde_json::Value>,
 }
 
-/// [`Retrieval::retrieve`] with the embedding call given (tests answer it from a recording).
+/// [`Retrieval::retrieve_images`] with the embedding call given (tests answer it from a recording).
+/// `images`: also the image half (`searchProjectWithImages`, whose empty answer is the same shape).
 pub async fn retrieve_with<E, F>(
     seed: Option<&EmbeddingConfig>,
     service_url: Option<&str>,
     observed: &Mutex<Option<Observation>>,
     inputs: Inputs<'_>,
+    images: Option<ImageSettings>,
     embed: E,
-) -> Outcome
+) -> Outcome<WithImages>
 where
     E: FnOnce(Target, Vec<u16>) -> F,
     F: Future<Output = Result<Vec<f32>, String>>,
 {
-    let none = Outcome::Hits(Vec::new());
+    let none = Outcome::Hits(WithImages::default());
     match inputs.rerank_env {
         None => return Outcome::Defer("reranker settings unavailable"),
         Some(env) if rerank_target(env).enabled => return Outcome::Defer("reranker on"),
@@ -290,24 +320,29 @@ where
         return none;
     }
     let versions = inputs.versions;
-    let hits = blocking(move || {
+    let mut found = blocking(move || {
         let conn = search::open_index(&path).ok()??;
-        search::search(
-            &conn,
-            search::Target {
-                profile: &profile,
-                model: &model,
-            },
-            &query,
-            TOP_K,
-            &versions,
-        )
-        .ok()
+        let target = search::Target {
+            profile: &profile,
+            model: &model,
+        };
+        match images {
+            Some(settings) => {
+                search::search_with_images(&conn, target, &query, TOP_K, &versions, settings).ok()
+            }
+            None => search::search(&conn, target, &query, TOP_K, &versions)
+                .ok()
+                .map(|text| WithImages {
+                    text,
+                    ..WithImages::default()
+                }),
+        }
     })
     .await
     .flatten()
     .unwrap_or_default();
-    Outcome::Hits(hits.into_iter().take(inputs.limit).collect())
+    found.text.truncate(inputs.limit);
+    Outcome::Hits(found)
 }
 
 /// How long [`store_answer`] may take: under core `rust-retrieval.cjs` `DEADLINE_MS` (30 s).
@@ -315,8 +350,9 @@ pub const STORE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(2
 
 /// `POST /v1/retrieval/search` on the store listener (`--features rust-retrieval-v1`): Node's own
 /// `rag.cjs` `searchProject` asking through core `rust-retrieval.cjs`. Body `{user, projectId, query,
-/// versions}` (`versions`: Node's wanted versions of the project's files, a string or `null` each);
-/// answer `{hits: [{file, body, score}]}` (at most [`TOP_K`]) or `{defer: reason}`, on which Node
+/// versions, images?}` (`versions`: Node's wanted versions of the project's files, a string or
+/// `null` each); answer `{hits: [{file, body, score}]}` (at most [`TOP_K`]), with `images: true`
+/// `searchProjectWithImages`' `{text, images, indexed}`, or `{defer: reason}`, on which Node
 /// searches itself. Node has resolved the project and run its own account and tombstone guards;
 /// an index without an account (the shared `RAG_DIR`) is Node's. The caller has checked the
 /// per-start secret. One variable feeds both processes, so Node's mode decides how the answer is
@@ -349,6 +385,11 @@ pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, 
         }
         Some(_) => return bad("versions must be an object"),
     }
+    let images = match body.get("images") {
+        None | Some(Value::Null | Value::Bool(false)) => false,
+        Some(Value::Bool(true)) => true,
+        Some(_) => return bad("images must be a boolean"),
+    };
     let defer = |why: &str| (200, json!({ "defer": why }));
     let retrieval = &app.config.retrieval;
     if retrieval.mode == Mode::Off {
@@ -367,25 +408,46 @@ pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, 
             .ok()
             .flatten();
     let held = || app.config.maint.authority.held();
-    let search = retrieval.retrieve(Inputs {
-        data_dir: &data_dir,
-        user,
-        project,
-        question: query,
-        start: app.config.start_id.as_deref().unwrap_or_default(),
-        now_ms: crate::identity::now_ms() as f64,
-        maintenance_held: &held,
-        rerank_env: rerank_env.as_ref(),
-        versions,
-        limit: TOP_K,
-    });
+    let search = retrieval.retrieve_images(
+        Inputs {
+            data_dir: &data_dir,
+            user,
+            project,
+            question: query,
+            start: app.config.start_id.as_deref().unwrap_or_default(),
+            now_ms: crate::identity::now_ms() as f64,
+            maintenance_held: &held,
+            rerank_env: rerank_env.as_ref(),
+            versions,
+            limit: TOP_K,
+        },
+        images.then_some(retrieval.images),
+    );
     let Ok(outcome) = tokio::time::timeout(STORE_DEADLINE, search).await else {
         return defer("deadline");
     };
+    let hit = |h: Hit| json!({ "file": h.file, "body": h.body, "score": h.score });
+    let row = |r: search::ImageRow| json!({ "file": r.file, "kind": "image", "meta": r.meta });
     match outcome {
-        Outcome::Hits(hits) => (
+        Outcome::Hits(found) if images => (
             200,
-            json!({ "hits": hits.into_iter().map(|h| json!({ "file": h.file, "body": h.body, "score": h.score })).collect::<Vec<_>>() }),
+            json!({
+                "text": found.text.into_iter().map(hit).collect::<Vec<_>>(),
+                "images": found.images.into_iter().map(|i| {
+                    let mut v = row(i.row);
+                    if let Some(o) = v.as_object_mut() {
+                        o.insert("label".into(), json!(i.label));
+                        o.insert("hash".into(), json!(i.hash));
+                        o.insert("score".into(), json!(i.score));
+                    }
+                    v
+                }).collect::<Vec<_>>(),
+                "indexed": found.indexed.into_iter().map(row).collect::<Vec<_>>(),
+            }),
+        ),
+        Outcome::Hits(found) => (
+            200,
+            json!({ "hits": found.text.into_iter().map(hit).collect::<Vec<_>>() }),
         ),
         Outcome::Defer(why) => defer(why),
     }

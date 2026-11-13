@@ -201,6 +201,7 @@ async fn run_seen(
         Some("http://127.0.0.1:9"),
         observed,
         inputs,
+        None,
         |target, framed| {
             calls.fetch_add(1, Ordering::SeqCst);
             // The search holds the foreground (`foreground()`), so native passes yield to it.
@@ -215,6 +216,7 @@ async fn run_seen(
         },
     )
     .await
+    .text()
 }
 
 fn pairs(o: Outcome) -> Vec<(String, String)> {
@@ -397,9 +399,11 @@ async fn an_embedding_failure_or_a_wrong_width_is_no_hits() {
         Some("http://127.0.0.1:9"),
         &seen,
         inputs(&w, &env),
+        None,
         |_, _| async { Err("embeddings 500".to_owned()) },
     )
-    .await;
+    .await
+    .text();
     assert_eq!(failed, Outcome::Hits(Vec::new()));
     let wide = w.query.iter().copied().chain([0.5]).collect::<Vec<f32>>();
     let wrong = retrieve_with(
@@ -407,9 +411,11 @@ async fn an_embedding_failure_or_a_wrong_width_is_no_hits() {
         Some("http://127.0.0.1:9"),
         &seen,
         inputs(&w, &env),
+        None,
         |_, _| async move { Ok(wide) },
     )
-    .await;
+    .await
+    .text();
     assert_eq!(wrong, Outcome::Hits(Vec::new()));
 }
 

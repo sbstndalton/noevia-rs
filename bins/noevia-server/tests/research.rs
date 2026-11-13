@@ -1236,7 +1236,7 @@ fn seed_index(path: &std::path::Path) -> Vec<f64> {
     }
     for r in dump["chunks"].as_array().unwrap() {
         c.execute(
-            "INSERT INTO chunks (id, file, chunk_no, body, content_hash, version, direct) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO chunks (id, file, chunk_no, body, content_hash, version, direct, kind, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             server_store::rusqlite::params![
                 r["id"].as_i64(),
                 r["file"].as_str(),
@@ -1244,7 +1244,9 @@ fn seed_index(path: &std::path::Path) -> Vec<f64> {
                 r["body"].as_str(),
                 r["content_hash"].as_str(),
                 r["version"].as_str(),
-                r["direct"].as_i64()
+                r["direct"].as_i64(),
+            r["kind"].as_str(),
+            r["meta"].as_str()
             ],
         )
         .unwrap();
