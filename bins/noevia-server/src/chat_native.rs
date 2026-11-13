@@ -14,8 +14,8 @@
 //! sees the client gone. [`chat_turn::after::Saving`] keeps what the turn leaves.
 //!
 //! Switch: `NOEVIA_CHAT_EXECUTOR` (config.rs): unset or `node` is today's relay; `native:<user id>,...`
-//! names accounts; `native` is everyone. The switch engages only on a front that holds the approval
-//! registry (chat port S9): without it [`approvals`] is `None` and every turn is relayed as before.
+//! names accounts; `native` is everyone. The turn's cards use this front's approval registry (chat port S9,
+//! [`approvals`]); its chat-wide grants are core's to check, redeem and revoke (the tool bridges, D17).
 //! A Diary space and a Cowork start are never handed off (chat_turn.rs only calls here for a turn).
 //!
 //! What the turn needs of this process, and where it comes from:
@@ -44,7 +44,7 @@ use bytes::Bytes;
 use chat_turn::after::{Keep, Saving};
 use chat_turn::handoff::{Frames, Piece};
 use chat_turn::host::{
-    Answer, EditTarget, EngineRequest, GateRefusal, Host, Read, Scrub, Skill, Target, ToolRun,
+    Answer, EditTarget, EngineRequest, GateRefusal, Host, Ran, Read, Scrub, Skill, Target, ToolRun,
 };
 use chat_turn::js;
 use chat_turn::native::{self, Helpers, Process};
@@ -69,6 +69,10 @@ const OBSERVE_EVENTS: usize = 256;
 /// the relay of a Node turn has it through its socket).
 const FORWARD_QUEUE: usize = 1024 * 1024;
 const BRIDGE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Core's grant check for a native turn's write (rust-chat-native.cjs GRANT_PATH; D17).
+const GRANT_PATH: &str = "/internal/chat/tools/grant";
+/// Core's revoke of the chat's grant (rust-chat-native.cjs REVOKE_PATH; Node's revokeChatGrant).
+const REVOKE_PATH: &str = "/internal/chat/tools/revoke";
 /// Tool runs can take long (a browser task, a large Drive read); core's own call has no deadline either.
 const TOOL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
@@ -129,52 +133,151 @@ impl Switch {
     }
 }
 
-/// The approval registry's calls a native turn makes (chat port S9's `approval_registry`).
+/// What a native turn asks of the chat approval registry (chat port S9's `approval_registry`) for its cards,
+/// and the chat's permission binding. The grant check, its redeem and its revoke are core's (D17: Node's
+/// `chatWideApproved`, `redeemChatGrant` and `revokeChatGrant` behind the tool bridges), so that Node's
+/// revocation epochs and dispatch fence stay the one authority for a write under "Allow for this chat".
 pub trait Approvals: Send + Sync {
     /// The chat's permission binding for `scope` (chat.cjs permissionContext), or `None` when it cannot
-    /// be verified (store failing, chat moved, deleted or held elsewhere, workspace revoked).
+    /// be verified (store failing, chat moved, deleted or held elsewhere). Blocking (the store's file lock).
     fn binding(&self, user: &str, chat: &str, scope: &str, holder: &JValue) -> Option<JValue>;
-    /// "Allow for this chat" holds.
-    fn chat_wide(&self, user: &str, chat: Option<&str>, scope: &str, binding: &JValue) -> bool;
-    /// Opens the card and waits for its answer: "approve", "deny", "timeout" or "aborted".
-    fn ask(
+    /// Opens the card's question (S9 `openApproval`) before the card is shown: false when it could not be.
+    fn open(&self, user: &str, request: &JValue) -> bool;
+    /// Waits for the opened question's answer: "approve", "deny", "timeout" or "unavailable". Dropping the
+    /// future (the client left) withdraws the question, as Node's dropped long-poll does (#679).
+    fn wait(
         &self,
         user: &str,
         request: &JValue,
     ) -> Pin<Box<dyn std::future::Future<Output = String> + Send>>;
-    /// Ends the chat's grant.
-    fn revoke(&self, user: &str, chat: Option<&str>);
 }
 
-/// The registry [`install_approvals`] stored (tests only).
-static INSTALLED: std::sync::OnceLock<Arc<dyn Approvals>> = std::sync::OnceLock::new();
+/// The front's own registry (`App::approvals`) and grant contexts (server-projects chat_move).
+struct Registry {
+    app: Arc<App>,
+}
 
-/// Test-only seam until chat port S9 lands: stores a process-wide approval registry, which
-/// [`approvals`] then returns, so an end-to-end test can run the native path. Nothing in the binary
-/// calls this; a second call is ignored (the first registry stays).
+impl Approvals for Registry {
+    fn binding(&self, user: &str, chat: &str, scope: &str, holder: &JValue) -> Option<JValue> {
+        use server_projects::chat_move::Holder;
+        let start = self.app.config.start_id.as_deref()?;
+        let data = self.app.config.data_dir.as_deref()?;
+        let canonical = crate::approval_registry::safe_id(chat);
+        if canonical.is_empty() || user.is_empty() || scope.is_empty() {
+            return None;
+        }
+        let context = server_projects::chat_move::grant_context(data, user, chat, start).ok()?;
+        // chat-grant-context.cjs validate, then permissionContext: a tombstoned chat, or one another holder
+        // than the turn's now holds, binds nothing.
+        let held_elsewhere = match &context.holder {
+            Holder::Absent => false,
+            Holder::Free => holder.get("kind").as_str() != Some("free"),
+            Holder::Project(id) => {
+                holder.get("kind").as_str() != Some("project")
+                    || holder.get("id").as_str() != Some(id.as_str())
+            }
+        };
+        if context.tombstoned
+            || held_elsewhere
+            || context.canonical != canonical
+            || context.start != start
+        {
+            return None;
+        }
+        let held = match &context.holder {
+            Holder::Free => js::obj([("kind", js::s("free"))]),
+            Holder::Absent => js::obj([("kind", js::s("absent"))]),
+            Holder::Project(id) => js::obj([("kind", js::s("project")), ("id", js::s(id.clone()))]),
+        };
+        // chat-grant-context.cjs binding(): this key order.
+        Some(js::obj([
+            ("user", js::s(user)),
+            ("canonicalChatId", js::s(canonical.clone())),
+            ("scope", js::s(scope)),
+            (
+                "context",
+                js::obj([
+                    ("canonicalChatId", js::s(canonical)),
+                    ("holder", held),
+                    ("generation", js::s(context.generation)),
+                    ("start", js::s(context.start)),
+                    ("tombstoned", JValue::Bool(false)),
+                ]),
+            ),
+        ]))
+    }
+
+    fn open(&self, user: &str, request: &JValue) -> bool {
+        use crate::approval_registry::{Kind, Question};
+        let text = |k: &str| request.get(k).as_str().map(str::to_string);
+        let Some(id) = text("id") else {
+            return false;
+        };
+        let binding = match request.get("binding") {
+            JValue::Null => None,
+            b => serde_json::from_str(&js::stringify(b)).ok(),
+        };
+        self.app
+            .approvals
+            .open(Question {
+                id,
+                user: user.to_string(),
+                kind: Kind::Write,
+                chat: text("chatId"),
+                scope: text("scope").filter(|s| !s.is_empty()),
+                binding,
+                once: request.get("once") == &JValue::Bool(true),
+            })
+            .is_ok()
+    }
+
+    fn wait(
+        &self,
+        user: &str,
+        request: &JValue,
+    ) -> Pin<Box<dyn std::future::Future<Output = String> + Send>> {
+        use crate::approval_registry::Outcome;
+        let app = Arc::clone(&self.app);
+        let user = user.to_string();
+        let id = request.get("id").as_str().unwrap_or("").to_string();
+        Box::pin(async move {
+            match app.approvals.wait(&user, &id).await {
+                Ok(Outcome::Approve) => "approve".into(),
+                Ok(Outcome::Deny) => "deny".into(),
+                Ok(Outcome::Timeout) => "timeout".into(),
+                // A routing answer to a write question, or no such question: not an approval.
+                Ok(_) | Err(_) => "unavailable".into(),
+            }
+        })
+    }
+}
+
+/// Tests only: a process-wide registry stand-in that [`approvals`] returns instead of the front's own.
+static INSTALLED: std::sync::RwLock<Option<Arc<dyn Approvals>>> = std::sync::RwLock::new(None);
+
+/// Test-only seam: stores (or with `None` removes) a process-wide [`Approvals`], which [`approvals`] then
+/// returns instead of the front's registry, so an end-to-end test can answer recorded cards (a timeout
+/// included) at once. Nothing in the binary calls this.
 #[doc(hidden)]
-pub fn install_approvals(a: Arc<dyn Approvals>) {
-    let _ = INSTALLED.set(a);
+pub fn install_approvals(a: Option<Arc<dyn Approvals>>) {
+    if let Ok(mut installed) = INSTALLED.write() {
+        *installed = a;
+    }
 }
 
-/// The approval registry, when this front holds one (S9). `None`: the native executor never engages.
-pub(crate) fn approvals(_app: &Arc<App>) -> Option<Arc<dyn Approvals>> {
-    INSTALLED.get().cloned()
+/// The approvals a native turn uses: the front's registry (chat port S9 is on main), or a test's stand-in.
+pub(crate) fn approvals(app: &Arc<App>) -> Arc<dyn Approvals> {
+    let installed = INSTALLED.read().ok().and_then(|a| a.clone());
+    installed.unwrap_or_else(|| {
+        Arc::new(Registry {
+            app: Arc::clone(app),
+        })
+    })
 }
 
 /// Whether this turn goes native: the switch names the account and this front can run it.
 pub(crate) fn wanted(app: &Arc<App>, user: &str) -> bool {
-    if !app.config.chat_executor.names(user) {
-        return false;
-    }
-    if approvals(app).is_none() {
-        static SAID: std::sync::Once = std::sync::Once::new();
-        SAID.call_once(|| {
-            eprintln!("chat native: NOEVIA_CHAT_EXECUTOR names accounts, but this front has no approval registry; every turn is relayed");
-        });
-        return false;
-    }
-    true
+    app.config.chat_executor.names(user)
 }
 
 /// The bytes queued in a [`Wire`] and not yet taken by chat_wire.rs.
@@ -241,7 +344,7 @@ where
 {
     let mut token = HeaderValue::from_str(app.config.research.front_token()?).ok()?;
     token.set_sensitive(true);
-    let approvals = approvals(app)?;
+    let approvals = approvals(app);
     let res = relay(token).await?;
     // A JSON refusal, or a core that is not this front's pair (chat_turn.rs answers those).
     if !crate::chat_wire::is_ndjson(res.headers()) {
@@ -1126,21 +1229,64 @@ impl Host for FrontHost {
             .ok_or(())
     }
 
-    fn chat_wide_approved(&self, chat_id: Option<&str>, scope: &str, binding: &JValue) -> bool {
-        self.approvals
-            .chat_wide(&self.user, chat_id, scope, binding)
+    async fn chat_wide_approved(
+        &self,
+        chat_id: Option<&str>,
+        scope: &str,
+        binding: &JValue,
+        exchange_key: &str,
+    ) -> Option<String> {
+        let chat = chat_id?;
+        if matches!(binding, JValue::Null) {
+            return None;
+        }
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("chat", js::s(chat)),
+            ("scope", js::s(scope)),
+            ("binding", binding.clone()),
+            ("exchangeKey", js::s(exchange_key)),
+        ]);
+        // A core without the grant bridge (404) or any other answer: no grant, so the card is asked (D17).
+        let (status, v) = self.core(GRANT_PATH, &body, BRIDGE_TIMEOUT).await?;
+        let handle = v.get("handle").as_str()?;
+        (status == 200
+            && v.get("granted") == &JValue::Bool(true)
+            && handle.len() == 32
+            && handle
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+        .then(|| handle.to_string())
+    }
+
+    async fn open_approval(&self, request: &JValue) -> bool {
+        !self.left() && self.approvals.open(&self.user, request)
     }
 
     async fn await_approval(&self, request: &JValue) -> String {
-        let ask = self.approvals.ask(&self.user, request);
+        if self.left() {
+            return "aborted".into();
+        }
+        let wait = self.approvals.wait(&self.user, request);
         tokio::select! {
-            d = ask => d,
+            d = wait => d,
             () = closed(&self.tx) => "aborted".into(),
         }
     }
 
-    fn revoke_grant(&self, chat_id: Option<&str>) {
-        self.approvals.revoke(&self.user, chat_id);
+    async fn revoke_grant(&self, chat_id: Option<&str>) {
+        let Some(chat) = chat_id else {
+            return;
+        };
+        let body = js::obj([("user", js::s(self.user.clone())), ("chat", js::s(chat))]);
+        // Node's revokeChatGrant moves its epoch first and retries an unconfirmed revoke; when core cannot
+        // be asked, the front's own revoke still ends the grant here (and asks Node to acknowledge it).
+        if !matches!(
+            self.core_full(REVOKE_PATH, &body, BRIDGE_TIMEOUT).await,
+            Some((200, _))
+        ) {
+            let _ = self.app.revoke_approvals(&self.user, chat).await;
+        }
     }
 
     fn audit(&self, event: &str, details: &JValue) {
@@ -1163,8 +1309,8 @@ impl Host for FrontHost {
         });
     }
 
-    async fn execute_tool(&self, run: &ToolRun) -> Result<(String, bool), String> {
-        let body = js::obj([
+    async fn execute_tool(&self, run: &ToolRun) -> Ran {
+        let mut body = vec![
             ("user", js::s(self.user.clone())),
             (
                 "projectId",
@@ -1191,7 +1337,19 @@ impl Host for FrontHost {
                 "editTarget",
                 run.edit_target.clone().map_or(JValue::Null, js::s),
             ),
-        ]);
+        ];
+        if let Some(g) = &run.grant {
+            body.push((
+                "grant",
+                js::obj([
+                    ("handle", js::s(g.handle.clone())),
+                    ("chat", js::s(g.chat.clone())),
+                    ("scope", js::s(g.scope.clone())),
+                    ("binding", g.binding.clone()),
+                ]),
+            ));
+        }
+        let body = js::obj(body);
         // Node's tool gets the turn's abort signal when the client leaves and the turn still takes its
         // answer: the front asks core to abort the run, and waits for it.
         let call = self.core_full("/internal/chat/tools/execute", &body, TOOL_TIMEOUT);
@@ -1210,16 +1368,25 @@ impl Host for FrontHost {
             }
         };
         match answer {
-            Some((200, v)) => Ok((
-                v.get("text").as_str().unwrap_or("").to_string(),
-                v.get("failed") == &JValue::Bool(true),
-            )),
-            Some((_, v)) => Err(v
-                .get("error")
-                .as_str()
-                .unwrap_or("the tool bridge failed")
-                .to_string()),
-            None => Err("the tool bridge did not answer".into()),
+            // A grant core did not redeem: the call did not run.
+            Some((200, v))
+                if run.grant.is_some() && v.get("redeem").as_str() == Some("refused") =>
+            {
+                Ran::Refused
+            }
+            Some((200, v)) if v.get("redeem").as_str().is_some() => Ran::Unavailable,
+            Some((200, v)) => Ran::Done {
+                text: v.get("text").as_str().unwrap_or("").to_string(),
+                failed: v.get("failed") == &JValue::Bool(true),
+                not_run: v.get("notRun") == &JValue::Bool(true),
+            },
+            Some((_, v)) => Ran::Threw(
+                v.get("error")
+                    .as_str()
+                    .unwrap_or("the tool bridge failed")
+                    .to_string(),
+            ),
+            None => Ran::Threw("the tool bridge did not answer".into()),
         }
     }
 }

@@ -592,6 +592,7 @@ impl Host for Script {
         chat_id: Option<&str>,
         scope: &str,
         _binding: &JValue,
+        _exchange_key: &str,
     ) -> Option<String> {
         (self.answer(
             "chatWideApproved",

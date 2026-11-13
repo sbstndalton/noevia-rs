@@ -247,11 +247,13 @@ pub trait Host: Sync {
     ) -> impl Future<Output = Result<JValue, ()>> + Send;
     /// "Allow for this chat" holds for this chat, scope and binding: core's single-use handle for the grant
     /// (`/internal/chat/tools/grant`, Node's `chatWideApproved`), or `None`.
+    /// The handle is bound to the turn's exchange (`exchange_key`), whose execute calls alone may redeem it.
     fn chat_wide_approved(
         &self,
         chat_id: Option<&str>,
         scope: &str,
         binding: &JValue,
+        exchange_key: &str,
     ) -> impl Future<Output = Option<String>> + Send;
     /// Opens the card's question at the front's approval registry (S9 `openApproval`): false when it could not.
     fn open_approval(&self, request: &JValue) -> impl Future<Output = bool> + Send;

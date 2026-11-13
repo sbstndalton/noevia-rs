@@ -8,8 +8,9 @@
 //! What is the front's own and not stubbed: the tool policy (the account's `tool_policies` rows, set
 //! from the case's `input.policy`), the tombstones, the transcript (seeded with the turn's user message,
 //! as core's preparation leaves it), the state and partial files, the lease's lifetime.
-//! What the stubs answer, from the case's `stubs`: the chat-wide grant and the approval card's answer
-//! (this test's [`Approvals`]), the template tools gate and the engine-busy signal (core's bridges).
+//! What the stubs answer, from the case's `stubs`: the card's question opened and its answer (this test's
+//! [`Approvals`]), the chat-wide grant and its redeem (core's grant and execute bridges, D17), the template
+//! tools gate and the engine-busy signal (core's bridges).
 //!
 //! The rewrite before comparing, applied to what the front produced (the recording ran on a fixed clock,
 //! counted uuids and user `qa-user`; the front runs on the real ones). Nothing else is rewritten:
@@ -224,10 +225,37 @@ fn model_lease_released(sc: &Script) -> bool {
         })
 }
 
+/// The handle the fake core's grant bridge gives (one per case is enough: each is redeemed at once).
+const GRANT_HANDLE: &str = "0123456789abcdef0123456789abcdef";
+
+fn ok_granted(granted: bool) -> Response<UpBody> {
+    json(
+        200,
+        &if granted {
+            js::obj([
+                ("granted", JValue::Bool(true)),
+                ("handle", js::s(GRANT_HANDLE)),
+            ])
+        } else {
+            js::obj([("granted", JValue::Bool(false))])
+        },
+    )
+}
+
+/// Recorded cases also run against the front's own approval registry, and the answer the client gives
+/// each card through the public decision route.
+const REGISTRY_CASES: &[(&str, &str)] = &[
+    ("tool_approved", "approve"),
+    ("tool_declined", "deny"),
+    ("edit_approved", "approve_all"),
+];
+
 /// The stubs this test's fakes answer.
 const ANSWERED: &[&str] = &[
     "chatWideApproved",
+    "openApproval",
     "awaitApproval",
+    "redeemChatGrant",
     "allowsTools",
     "inferenceBusy",
 ];
@@ -466,7 +494,7 @@ fn tool_bridge(sc: &mut Script, op: &str, sent: &JValue) -> Option<JValue> {
         for (k, v) in fields {
             if matches!(
                 k.as_str(),
-                "op" | "text" | "failed" | "threw" | "left" | "found"
+                "op" | "text" | "failed" | "threw" | "left" | "found" | "fenced" | "notRun"
             ) || answers.contains(&k.as_str())
             {
                 continue;
@@ -680,22 +708,67 @@ async fn core_service(
             };
             ok(next.get("found").clone())
         }
+        "/internal/chat/tools/grant" => {
+            // Node's chatWideApproved (D17): the recorded answer, under a handle the execute call carries.
+            let Some(stub) = sc.stub("chatWideApproved") else {
+                sc.errors.push("grant: Node asked no grant check".into());
+                return Ok(ok_granted(false));
+            };
+            if stub.get("chatId").as_str() != sent.get("chat").as_str()
+                || stub.get("scope").as_str() != sent.get("scope").as_str()
+                || !sent.get("binding").is_object()
+                || sent.get("exchangeKey").as_str().is_none_or(str::is_empty)
+            {
+                sc.errors.push(format!(
+                    "grant: asked {}, Node asked {}",
+                    js::stringify(&sent),
+                    js::stringify(&stub)
+                ));
+            }
+            Ok(ok_granted(stub.get("answer") == &JValue::Bool(true)))
+        }
+        "/internal/chat/tools/revoke" => ok(js::obj([("revoked", JValue::Bool(true))])),
         "/internal/chat/tools/execute" => {
+            if sent.get("grant").is_object() {
+                if sent.get("grant").get("handle").as_str() != Some(GRANT_HANDLE) {
+                    sc.errors.push(format!(
+                        "execute: grant {}",
+                        js::stringify(sent.get("grant"))
+                    ));
+                }
+                let redeemed = sc.stub("redeemChatGrant").unwrap_or(JValue::Null);
+                match redeemed.get("answer").as_str() {
+                    Some("refused") => return ok(js::obj([("redeem", js::s("refused"))])),
+                    Some("unavailable") => return ok(js::obj([("redeem", js::s("unavailable"))])),
+                    _ => {}
+                }
+            }
             let Some(next) = tool_bridge(&mut sc, "execute", &sent) else {
                 return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
             };
+            if (next.get("fenced") == &JValue::Bool(true)) != sent.get("grant").is_object() {
+                sc.errors.push(format!(
+                    "execute: grant {} where Node's run was fenced: {}",
+                    js::stringify(sent.get("grant")),
+                    next.get("fenced") == &JValue::Bool(true)
+                ));
+            }
             sc.executions
                 .push(next.get("name").as_str().unwrap_or("").to_string());
             if let Some(message) = next.get("threw").as_str() {
                 return Ok(json(500, &js::obj([("error", js::s(message))])));
             }
-            let answer = js::obj([
+            let mut answer = vec![
                 ("text", next.get("text").clone()),
                 (
                     "failed",
                     JValue::Bool(next.get("failed") == &JValue::Bool(true)),
                 ),
-            ]);
+            ];
+            if next.get("notRun") == &JValue::Bool(true) {
+                answer.push(("notRun", JValue::Bool(true)));
+            }
+            let answer = js::obj(answer);
             if next.get("left") == &JValue::Bool(true) {
                 // The client leaves while the tool runs; the run still finishes and answers.
                 let leaving = Arc::clone(&sc.leaving);
@@ -827,22 +900,14 @@ impl Approvals for TestApprovals {
         ]))
     }
 
-    fn chat_wide(&self, _user: &str, chat: Option<&str>, scope: &str, _b: &JValue) -> bool {
+    fn open(&self, _user: &str, _request: &JValue) -> bool {
         let s = self.script();
         let mut sc = s.lock().unwrap();
-        let Some(stub) = sc.stub("chatWideApproved") else {
-            return false;
-        };
-        if stub.get("chatId").as_str() != chat || stub.get("scope").as_str() != Some(scope) {
-            sc.errors.push(format!(
-                "chatWideApproved asked for {chat:?} {scope}, Node asked {}",
-                js::stringify(&stub)
-            ));
-        }
-        stub.get("answer") == &JValue::Bool(true)
+        sc.stub("openApproval")
+            .is_some_and(|stub| stub.get("answer") == &JValue::Bool(true))
     }
 
-    fn ask(
+    fn wait(
         &self,
         _user: &str,
         request: &JValue,
@@ -867,8 +932,6 @@ impl Approvals for TestApprovals {
         let answer = stub.get("answer").as_str().unwrap_or("approve").to_string();
         Box::pin(async move { answer })
     }
-
-    fn revoke(&self, _user: &str, _chat: Option<&str>) {}
 }
 
 fn set_policy(data: &Path, user: &str, tool: &str, mode: &str) {
@@ -954,7 +1017,14 @@ async fn front(core: SocketAddr) -> Front {
 
 /// POST /api/chat and its SSE body: all of it, or what came until the client left (`leave` fired and
 /// then [`QUIET`] without a frame).
-async fn chat(f: &Front, body: &str, leaving: &Leaving) -> (u16, String) {
+/// With `decide`, each card the stream shows is answered with it through POST /api/tool-approvals/{id}
+/// (its id and the route's status are returned).
+async fn chat(
+    f: &Front,
+    body: &str,
+    leaving: &Leaving,
+    decide: Option<&str>,
+) -> (u16, String, Vec<(String, u16)>) {
     let stream = TcpStream::connect(f.addr).await.unwrap();
     let (mut send, conn) =
         hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
@@ -977,6 +1047,7 @@ async fn chat(f: &Front, body: &str, leaving: &Leaving) -> (u16, String) {
     let status = res.status().as_u16();
     let mut body = res.into_body();
     let mut out = Vec::new();
+    let mut decided: Vec<(String, u16)> = Vec::new();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     let mut left = false;
     loop {
@@ -1000,6 +1071,26 @@ async fn chat(f: &Front, body: &str, leaving: &Leaving) -> (u16, String) {
             }
             _ => break,
         }
+        if let Some(decision) = decide {
+            let text = String::from_utf8_lossy(&out).to_string();
+            for frame in text.split("\n\n") {
+                let Some(data) = frame.strip_prefix("data: ") else {
+                    continue;
+                };
+                let Ok(event) = wtf16::parse(data) else {
+                    continue;
+                };
+                let Some(id) = event.get("id").as_str().map(str::to_string) else {
+                    continue;
+                };
+                if event.get("type").as_str() == Some("tool_pending")
+                    && !decided.iter().any(|(d, _)| *d == id)
+                {
+                    let status = decide_card(f, &id, decision).await;
+                    decided.push((id, status));
+                }
+            }
+        }
     }
     drop(body);
     drop(send);
@@ -1008,7 +1099,38 @@ async fn chat(f: &Front, body: &str, leaving: &Leaving) -> (u16, String) {
         leaving.is_gone.store(true, Ordering::SeqCst);
         leaving.gone.notify_one();
     }
-    (status, String::from_utf8(out).unwrap())
+    (status, String::from_utf8(out).unwrap(), decided)
+}
+
+/// POST /api/tool-approvals/{id} as the page sends it: the route's status.
+async fn decide_card(f: &Front, id: &str, decision: &str) -> u16 {
+    let stream = TcpStream::connect(f.addr).await.unwrap();
+    let (mut send, conn) =
+        hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
+            .await
+            .unwrap();
+    let conn = tokio::spawn(async move {
+        let _ = conn.await;
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri(format!("/api/tool-approvals/{id}"))
+        .header("host", "front.test")
+        .header("origin", ORIGIN)
+        .header("content-type", "application/json")
+        .header("cookie", &f.jar)
+        .header("x-csrf-token", &f.csrf)
+        .body(Full::new(Bytes::from(js::stringify(&js::obj([(
+            "decision",
+            js::s(decision),
+        )])))))
+        .unwrap();
+    let status = tokio::time::timeout(Duration::from_secs(10), send.send_request(req))
+        .await
+        .map_or(0, |r| r.map_or(0, |r| r.status().as_u16()));
+    drop(send);
+    conn.abort();
+    status
 }
 
 /// The `data:` frames, keep-alives and other comments removed.
@@ -1131,7 +1253,12 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
         .node_session("qa-chat-native-boot", 1)
         .unwrap();
     let current: Arc<Mutex<Option<Shared>>> = Arc::default();
-    noevia_server::chat_native::install_approvals(Arc::new(TestApprovals(Arc::clone(&current))));
+    let scripted = || {
+        noevia_server::chat_native::install_approvals(Some(Arc::new(TestApprovals(Arc::clone(
+            &current,
+        )))));
+    };
+    scripted();
 
     let only = std::env::var("CHAT_NATIVE_CASE").ok();
     let mut ran = Vec::new();
@@ -1141,7 +1268,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
         if SKIPPED.iter().any(|(n, _)| *n == name) || only.as_ref().is_some_and(|o| *o != name) {
             continue;
         }
-        match run_case(&fixture, case, &current).await {
+        match run_case(&fixture, case, &current, None).await {
             Ok(()) => ran.push(name),
             Err(e) => {
                 eprintln!("DIFFERS {name}: {e}");
@@ -1149,6 +1276,26 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
             }
         }
     }
+    // The front's own approval registry (S9) instead of the scripted answers: the client answers each card
+    // through POST /api/tool-approvals/{id}, as the page does, and the turn is still the recorded one.
+    noevia_server::chat_native::install_approvals(None);
+    for (name, decision) in REGISTRY_CASES {
+        if only.as_ref().is_some_and(|o| o != name) {
+            continue;
+        }
+        let case = cases
+            .iter()
+            .find(|c| c.get("name").as_str() == Some(name))
+            .unwrap();
+        match run_case(&fixture, case, &current, Some(decision)).await {
+            Ok(()) => ran.push(format!("{name} (front registry)")),
+            Err(e) => {
+                eprintln!("DIFFERS {name} (front registry): {e}");
+                failures.push(format!("{name} (front registry): {e}"));
+            }
+        }
+    }
+    scripted();
     if only.is_none() {
         if let Err(e) = a_client_leaving_while_core_is_quiet_ends_cores_stream(&cases[0]).await {
             failures.push(e);
@@ -1162,7 +1309,10 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
         failures.join("\n\n")
     );
     if only.is_none() {
-        assert_eq!(ran.len() + SKIPPED.len(), cases.len());
+        assert_eq!(
+            ran.len() + SKIPPED.len(),
+            cases.len() + REGISTRY_CASES.len()
+        );
     }
 }
 
@@ -1170,11 +1320,17 @@ async fn run_case(
     fixture: &JValue,
     case: &JValue,
     current: &Arc<Mutex<Option<Shared>>>,
+    decide: Option<&str>,
 ) -> Result<(), String> {
     let input = case.get("input").clone();
+    // With the front's registry its cards are the registry's: their recorded stubs are not asked for.
     let stubs = arr(case.get("stubs"))
         .into_iter()
         .filter(|s| ANSWERED.contains(&s.get("op").as_str().unwrap_or("")))
+        .filter(|s| {
+            decide.is_none()
+                || !matches!(s.get("op").as_str(), Some("openApproval" | "awaitApproval"))
+        })
         .collect();
     let script: Shared = Arc::new(Mutex::new(Script {
         case: case.clone(),
@@ -1242,9 +1398,24 @@ async fn run_case(
         sc.calls.clear();
         Arc::clone(&sc.leaving)
     };
-    let (status, sse) = chat(&f, &js::stringify(&body), &leaving).await;
+    let (status, sse, decided) = chat(&f, &js::stringify(&body), &leaving, decide).await;
     if status != 200 {
         return Err(format!("status {status}: {sse}"));
+    }
+    if let Some(decision) = decide {
+        let cards = arr(case.get("approvals")).len();
+        if decided.len() != cards || decided.iter().any(|(_, status)| *status != 200) {
+            return Err(format!(
+                "{decision}: the cards answered {decided:?}, recorded {cards}"
+            ));
+        }
+        // An answered card's question is gone: a second answer finds nothing (404).
+        for (id, _) in &decided {
+            let again = decide_card(&f, id, decision).await;
+            if again != 404 {
+                return Err(format!("{id} answered again: {again}"));
+            }
+        }
     }
 
     // The turn's end (the lease back, the save) runs as the stream ends, or after the client left;
@@ -1361,7 +1532,7 @@ async fn run_case(
     }
     let asked = texts(&sc.asked, &f.user, window);
     let want = texts(&arr(case.get("approvals")), "", (0.0, 0.0));
-    if asked != want {
+    if decide.is_none() && asked != want {
         return Err(format!(
             "approval requests:\n front: {asked:?}\n node:  {want:?}"
         ));

@@ -375,9 +375,9 @@ impl<'a> Tools<'a> {
                             edit,
                         } => {
                             // A grant used without a card is redeemed by core's execute bridge (D17).
-                            let grant = binding.as_ref().and_then(|(_, handle, asked)| {
-                                handle.clone().filter(|_| !*asked)
-                            });
+                            let grant = binding
+                                .as_ref()
+                                .and_then(|(_, handle, asked)| handle.clone().filter(|_| !*asked));
                             let mut final_binding = None;
                             match self
                                 .after_answer(
@@ -658,7 +658,12 @@ impl<'a> Tools<'a> {
             };
             // Port contract S9: core's grant bridge answers with a single-use handle for Node's grant (D17).
             let used_grant = host
-                .chat_wide_approved(self.chat_id.as_deref(), &self.grant_scope, &binding)
+                .chat_wide_approved(
+                    self.chat_id.as_deref(),
+                    &self.grant_scope,
+                    &binding,
+                    &self.exchange_key,
+                )
                 .await;
             let asked = used_grant.is_none() || self.automatic_only_writes.contains(name);
             if asked {
@@ -742,6 +747,7 @@ impl<'a> Tools<'a> {
     }
 
     /// The checks after the card's answer, before the call: `Some(result)` when it does not run.
+    #[allow(clippy::too_many_arguments)]
     async fn after_answer<H: Host>(
         &mut self,
         host: &H,
