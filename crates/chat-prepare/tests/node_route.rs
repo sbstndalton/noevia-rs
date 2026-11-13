@@ -17,6 +17,12 @@ use js_json::{wtf16, JValue};
 const FIXTURE: &str = include_str!("fixtures/node-route.v1.json");
 const PROJECT_FIXTURE: &str = include_str!("fixtures/node-project.v1.json");
 const SKILLS_FIXTURE: &str = include_str!("fixtures/node-skills.v1.json");
+/// The chat.cjs lines the recorder runs (`record_route.cjs` cuts them between its two anchors):
+/// a change there must be reviewed against `src/route.rs` and these constants edited with it.
+const BLOCK_SHA256: &str = "7fb9214a180868047edd6a60163325a32a137e3f794d33be0878c25020ddaf1a";
+const BLOCK_LINES: [f64; 2] = [1408.0, 1428.0];
+/// The model requests that spread `...sampling.params, ...thinkingOffFields` (in that order).
+const REQUEST_SITES: f64 = 4.0;
 
 fn fixture() -> JValue {
     wtf16::parse(FIXTURE).expect("the fixture is JSON")
@@ -130,7 +136,14 @@ fn the_fixture_names_its_node_sources() {
         );
     }
     assert_eq!(f.get("defaultProviderId").as_str(), Some("default"));
-    assert!(f.get("block").get("sha256").as_str().is_some());
+    let block = f.get("block");
+    assert_eq!(block.get("sha256").as_str(), Some(BLOCK_SHA256));
+    let lines: Vec<f64> = items(block, "lines")
+        .iter()
+        .map(|n| n.as_num().unwrap())
+        .collect();
+    assert_eq!(lines, BLOCK_LINES);
+    assert_eq!(block.get("requestSites").as_num(), Some(REQUEST_SITES));
     // The presets, their version and keys are the module's constants.
     assert_eq!(
         f.get("presetsVersion").as_num(),
@@ -347,9 +360,25 @@ fn turns_match_chat_cjs() {
 }
 
 #[test]
-fn no_named_differences() {
-    // Every case above replays byte for byte; the recorder states none.
-    assert!(items(&fixture(), "differences").is_empty());
+fn the_named_differences_behave_as_documented() {
+    // src/effort.rs local_engine names them: Node's answer is recorded, the port's is the other.
+    let f = fixture();
+    let names: Vec<&str> = items(&f, "differences")
+        .iter()
+        .map(|d| {
+            let c = d.get("case");
+            let port = effort::local_engine(c.get("provider"), &engine(c));
+            assert_eq!(d.get("kind").as_str(), Some("local_engine"));
+            assert_eq!(d.get("node"), c.get("out"));
+            assert_eq!(d.get("port").as_bool(), Some(port), "{}", input(d));
+            assert_ne!(c.get("out").as_bool(), Some(port));
+            d.get("name").as_str().unwrap()
+        })
+        .collect();
+    assert_eq!(
+        names,
+        ["url_unicode_16_letter", "url_mixed_direction_label"]
+    );
 }
 
 #[test]
@@ -420,4 +449,21 @@ fn the_js_edges_hold_without_the_fixture() {
     assert_eq!((fast.effort, fast.thinking_off), (Effort::Low, true));
     let own = turn(&JValue::obj([("reasoningEffort", JValue::from("high"))]));
     assert_eq!((own.effort, own.thinking_off), (Effort::High, false));
+    // An explicit -0 is a valid temperature, and JSON.stringify writes it as 0.
+    let minus_zero = JValue::obj([("temperature", JValue::Num(-0.0))]);
+    let picked = sampling::select(None, "Say hello", &minus_zero, true);
+    assert_eq!(stringify(&picked.params_value()), r#"{"temperature":0}"#);
+    let project = JValue::obj([("sampling", minus_zero)]);
+    let quiet = route::route(&RouteTurn {
+        project: &project,
+        effort_default: &JValue::Undefined,
+        sampling_presets: &JValue::Undefined,
+        wants_auto: false,
+        routed_role: None,
+        provider: &row,
+        default_provider_id: "default",
+        engine: on,
+        message: "Say hello",
+    });
+    assert_eq!(stringify(&quiet.request_fields()), r#"{"temperature":0}"#);
 }

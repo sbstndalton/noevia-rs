@@ -5,9 +5,10 @@
 //! `sampling` ([`Route::meta_sampling`]) and the native executor's `effort`, `thinkingOff` and
 //! `sampling` ([`Route::effort`], [`Route::thinking_off`], [`Route::sampling`]).
 //!
-//! Pure: the caller reads the two settings rows and the environment, and the routing (a later
-//! slice) decides `wantsAuto`, `routedRole` and the provider row. Recorded by running chat.cjs's
-//! own lines (cut out of the pinned file) in `tests/record_route.cjs`.
+//! Pure: the caller reads the two settings rows (an error reading them fails the turn, as Node's
+//! throw does) and the environment, and the routing (a later slice) decides `wantsAuto`,
+//! `routedRole` and the provider row. Recorded by running chat.cjs's own lines (cut out of the
+//! pinned file) in `tests/record_route.cjs`.
 
 use js_json::JValue;
 
@@ -19,10 +20,13 @@ use crate::sampling::{self, Sampling, Source};
 pub struct RouteTurn<'a> {
     /// The turn's project record; `null` without one.
     pub project: &'a JValue,
-    /// The settings row `reasoning_effort_default`'s `value` (`undefined` without the row or the
-    /// table, `null` for SQL NULL).
+    /// The settings row `reasoning_effort_default`'s `value`: `undefined` without the row (or
+    /// without an `authService.db` at all), `null` for SQL NULL. A missing settings table is not
+    /// `undefined`: Node's `prepare` throws and the turn fails, so the caller must surface that
+    /// read error, never pass `undefined` for it.
     pub effort_default: &'a JValue,
-    /// The settings row `auto_sampling_presets_enabled`'s `value`, the same way.
+    /// The settings row `auto_sampling_presets_enabled`'s `value`, the same way (a missing table
+    /// is the caller's error too).
     pub sampling_presets: &'a JValue,
     /// `wantsAuto`.
     pub wants_auto: bool,

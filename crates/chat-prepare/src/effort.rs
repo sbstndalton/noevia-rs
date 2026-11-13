@@ -89,10 +89,23 @@ pub struct Engine<'a> {
 /// `baseUrl` and `INFERENCE_BASE_URL` are the same URL once each is parsed (the WHATWG URL
 /// Standard: the `url` crate here, Node's `new URL` there) and its `href` loses its trailing
 /// slashes. A value that does not parse, or a `baseUrl` whose `String()` throws, is not the local
-/// engine. The two parsers agree on every recorded pair (hosts, ports, IPv4 and IPv6 forms, IDNA,
-/// dot segments, percent escapes, whitespace, non-special schemes); an input they read apart
-/// (say, IDNA data of another Unicode release) would only change whether a Fast turn on the
-/// default provider switches thinking off.
+/// engine.
+///
+/// `provider` must come from `wtf16::parse` (or be built from such text): a lone surrogate is held
+/// as a character of U+10F800..U+10FFFF and read here as U+FFFD, as `new URL`'s USVString does. A
+/// real character of that range in lossy Rust text would be misread as one. The environment
+/// values are real text (`std::env`), never `wtf16`.
+///
+/// Named differences (recorded in the fixture's `differences`, each tested): the parsers agree on
+/// every other recorded pair (hosts, ports, IPv4 and IPv6 forms, IDNA mapping and deviation
+/// characters, joiners, dot segments, percent escapes, userinfo, whitespace, other schemes).
+/// - A host with a letter assigned in Unicode 16 (U+1C8A): Node's parser refuses it, the `url`
+///   crate maps it, so the same such URL on both sides is the local engine here and not in Node.
+/// - A label mixing left-to-right and right-to-left letters (`aא`): Node accepts it, the `url`
+///   crate applies the IDNA bidi rule and refuses it, so such a URL is never the local engine
+///   here.
+///
+/// Either only decides whether a Fast turn on the default provider switches thinking off.
 pub fn local_engine(provider: &JValue, engine: &Engine<'_>) -> bool {
     if !matches!(engine.kind, Some("lemonade" | "llamacpp")) {
         return false;

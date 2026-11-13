@@ -26,6 +26,7 @@
 //                pinned chat.cjs and run as they are, over a stub settings table), and what the turn sends of them:
 //                `request` = { ...sampling.params, ...thinkingOffFields } (the model request's spread), `meta` = the
 //                meta event's `sampling`, `prepared` = the native executor's effort, thinkingOff and sampling
+//   differences  the named differences: localEngine cases the port answers otherwise (see src/effort.rs)
 // Each source file's sha256 is recorded, so a changed Node file needs a fresh recording. Node's console output goes to
 // stderr; stdout is the fixture.
 
@@ -70,8 +71,13 @@ const blockLines = [chatText.slice(0, blockStart).split('\n').length, chatText.s
 for (const use of [
   "sampling: sampling.source === 'none' ? undefined : { preset: sampling.presetId || undefined, source: sampling.source, values: sampling.params } });",
   'effort, thinkingOff: fastThinkingOff, sampling: sampling.params,',
-  '...sampling.params, ...thinkingOffFields,',
 ]) once(use);
+// Every model request spreads the two in this order (spaced or not), and neither is spread anywhere else.
+const count = (re) => (chatText.match(re) || []).length;
+const requestSites = count(/\.\.\.sampling\.params, ?\.\.\.thinkingOffFields\b/g);
+if (requestSites < 1 || count(/\.\.\.sampling\.params\b/g) !== requestSites || count(/\.\.\.thinkingOffFields\b/g) !== requestSites) {
+  throw new Error('chat.cjs spreads sampling.params or thinkingOffFields outside `...sampling.params, ...thinkingOffFields`');
+}
 const DEFAULT_PROVIDER_ID = 'default'; // index.cjs's, with the DEFAULT_PROVIDER_ID variable unset
 const runBlock = new Function('project', 'authService', 'wantsAuto', 'routedRole', 'provider', 'DEFAULT_PROVIDER_ID', 'reasoningEffort', 'message', 'require',
   `${BLOCK}\nreturn { resolvedEffort, effort, fastThinkingOff, thinkingOffFields, samplingAutoEnabled, sampling };`);
@@ -136,16 +142,48 @@ const URLS = [ENGINE, 'http://qa-engine.invalid:8080', 'http://qa-engine.invalid
   'qa://qa-engine.invalid:8080/v1/', 'qa-engine.invalid:8080', 'localhost:8080', 'file:///qa/v1', 'file:///C:/qa', 'file:///c|/qa', '', ' ', 'not a url',
   'http://', 'http://qa engine.invalid', 'http://qa-engine.invalid:65536/v1', 'http://[::1', 'http://1.2.3.4.5/', 'http://999.0.0.1/',
   'http://0x100000000/', 'blob:http://qa-engine.invalid/x', 'http://qa_engine.invalid:8080/v1'];
+// Paired with each other and with the engine URL both ways (a full cross product with the list above would triple
+// the fixture for little more).
+const MORE_URLS = [
+  // IDNA data and rules: a Unicode 16 letter, deviation characters, joiners, mixed direction, case.
+  'http://\u1c8a.invalid:8080/v1', 'http://xn--3tf.invalid:8080/v1', 'http://stra\u00dfe.invalid:8080/v1', 'http://strasse.invalid:8080/v1',
+  'http://xn--strae-oqa.invalid:8080/v1', 'http://\u03c3\u03bf\u03c6\u03b9\u03b1\u03c2.invalid:8080/v1', 'http://\u03c3\u03bf\u03c6\u03b9\u03b1\u03c3.invalid:8080/v1',
+  'http://\u03a3\u039f\u03a6\u0399\u0391\u03a3.invalid:8080/v1', 'http://qa\u200dengine.invalid:8080/v1', 'http://qa\u200cengine.invalid:8080/v1',
+  'http://\u0915\u094d\u200d\u0937.invalid:8080/v1', 'http://\u0915\u094d\u200c\u0937.invalid:8080/v1', 'http://a\u05d0.invalid:8080/v1',
+  'http://\u05d0a.invalid:8080/v1', 'http://\u05d0\u05d1.invalid:8080/v1', 'http://\u05d01.invalid:8080/v1', 'http://QA-ENGINE.INVALID:8080/v1',
+  'http://Qa-EnGiNe.InVaLiD:8080/v1', 'http://xn--QA-ENGINE.invalid:8080/v1', 'http://xn--.invalid:8080/v1', 'http://qa--engine.invalid:8080/v1',
+  // IPv4 forms with a trailing dot or a bare 0x, other special schemes and their default ports.
+  'http://127.0.0.1.:8080/v1', 'http://127.0.0.1.:8080', 'http://127.0.0.1..:8080/v1', 'http://qa.0x:8080/v1', 'http://0x:8080/v1', 'http://qa.0x7f:8080/v1',
+  'http://qa.09:8080/v1', 'http://1.0x:8080/v1', 'ws://h:80', 'ws://h', 'ws://h:80/', 'wss://h:443', 'ftp://h:21', 'ftp://h', 'ftp://h:2121',
+  'http://h:80', 'http://h', 'http://H:80/', 'https://h:443/', 'https://h:8443/',
+  // Userinfo and IPv6 with and without a port.
+  'http://qa:secret@qa-engine.invalid:8080/v1', 'http://qa@qa-engine.invalid:8080/v1', 'http://QA@qa-engine.invalid:8080/v1',
+  'http://qa%40x@qa-engine.invalid:8080/v1', 'http://q a@qa-engine.invalid:8080/v1', 'http://[::1]/v1', 'http://[::1]:80/v1', 'http://[::1]:8080',
+  'http://[::1]:8080/v1/', 'http://[0::1]/v1', 'http://[::FFFF:7f00:1]:8080/v1', 'http://[2001:db8::1]:8080/v1', 'http://[2001:DB8:0:0::1]:8080/v1'];
 const KINDS = [undefined, 'llamacpp', 'lemonade', 'LlamaCpp', 'LEMONADE', 'llamacpp ', 'none', 'ollama', ''];
 const engines = [];
+// Named differences: a host Node's URL parser and the url crate's read apart, as the same URL on both sides. The
+// case goes to `differences` (with the answer the port gives, which src/effort.rs documents), not to `engines`.
+const differences = [];
+const URL_DIFFERENCES = new Map([
+  ['http://\u1c8a.invalid:8080/v1', { name: 'url_unicode_16_letter', port: true,
+    about: "U+1C8A (assigned in Unicode 16): Node's URL parser refuses the host, the url crate's IDNA data maps it; both sides the same URL, so the port says local engine where Node says not." }],
+  ['http://a\u05d0.invalid:8080/v1', { name: 'url_mixed_direction_label', port: false,
+    about: "A label mixing left-to-right and right-to-left letters: Node's URL parser accepts it, the url crate applies the IDNA bidi rule and refuses it; the port says not the local engine where Node says it is." }],
+]);
 const addEngine = (kind, inference, rawProvider) => {
   const provider = viaJson(rawProvider);
   setEnv('MODEL_MANAGER_KIND', kind);
   setEnv('INFERENCE_BASE_URL', inference);
   // What process.env holds (a lone surrogate reads back as U+FFFD, a NUL ends the value).
-  engines.push({ kind: process.env.MODEL_MANAGER_KIND, inference: process.env.INFERENCE_BASE_URL, provider, out: effortLib.localEngine(provider) });
+  const c = { kind: process.env.MODEL_MANAGER_KIND, inference: process.env.INFERENCE_BASE_URL, provider, out: effortLib.localEngine(provider) };
+  const named = provider?.baseUrl === inference ? URL_DIFFERENCES.get(inference) : undefined;
+  if (named) differences.push({ kind: 'local_engine', name: named.name, about: named.about, case: c, node: c.out, port: named.port });
+  else engines.push(c);
 };
 for (const a of URLS) for (const b of URLS) addEngine('llamacpp', b, { id: 'default', baseUrl: a });
+for (const a of MORE_URLS) for (const b of MORE_URLS) addEngine('llamacpp', b, { id: 'default', baseUrl: a });
+for (const a of MORE_URLS) { addEngine('llamacpp', ENGINE, { id: 'default', baseUrl: a }); addEngine('llamacpp', a, { id: 'default', baseUrl: ENGINE }); }
 // Only as the row's URL: an environment value cannot hold a NUL.
 for (const a of ['http://qa-engine.invalid:8080/v1\u0000', 'http://qa-engine.invalid:8080/v1\u0000/', '\u0000http://qa-engine.invalid:8080/v1']) {
   addEngine('llamacpp', ENGINE, { id: 'default', baseUrl: a });
@@ -319,20 +357,20 @@ for (let n = 0; n < 600; n += 1) {
 setEnv('MODEL_MANAGER_KIND', undefined);
 setEnv('INFERENCE_BASE_URL', undefined);
 
-// Named differences: none found (every case above replays byte for byte).
-const differences = [];
 
 // ── Output ──────────────────────────────────────────────────────────────────────────────────
 const sources = sourcesRead();
 const lines = (list) => list.map((x) => JSON.stringify(x)).join(',\n');
 const text = `{"version":1,"generator":"crates/chat-prepare/tests/record_route.cjs",\n"node":${JSON.stringify(process.version)},\n`
-  + `"sources":${JSON.stringify(sources)},\n"block":${JSON.stringify({ lines: blockLines, sha256: crypto.createHash('sha256').update(BLOCK).digest('hex') })},\n`
+  + `"sources":${JSON.stringify(sources)},\n"block":${JSON.stringify({ lines: blockLines, sha256: crypto.createHash('sha256').update(BLOCK).digest('hex'), requestSites })},\n`
   + `"defaultProviderId":${JSON.stringify(DEFAULT_PROVIDER_ID)},\n"presets":${JSON.stringify(presets.PRESETS)},\n"presetsVersion":${presets.PRESETS_VERSION},\n`
   + `"samplingKeys":${JSON.stringify(presets.SAMPLING_KEYS)},\n"roles":${JSON.stringify(ROLES)},\n`
   + `"efforts":[\n${lines(efforts)}\n],\n"resolve":[\n${lines(resolve)}\n],\n"forRoute":[\n${lines(forRoute)}\n],\n`
   + `"thinkingOff":[\n${lines(thinkingOff)}\n],\n"engines":[\n${lines(engines)}\n],\n"values":[\n${lines(values)}\n],\n`
   + `"sanitize":[\n${lines(sanitize)}\n],\n"classify":[\n${lines(classify)}\n],\n"creative":[\n${lines(creative)}\n],\n`
   + `"select":[\n${lines(select)}\n],\n"turns":[\n${lines(turns)}\n],\n"differences":[\n${lines(differences)}\n]}\n`;
+// A named difference that Node and the port no longer read apart is not one: record it again without it.
+if (differences.length !== URL_DIFFERENCES.size || differences.some((d) => d.node === d.port)) throw new Error('a named difference did not occur');
 const check = process.argv.indexOf('--check');
 const local = engines.filter((c) => c.out).length;
 const off = turns.filter((c) => c.out.fastThinkingOff).length;
