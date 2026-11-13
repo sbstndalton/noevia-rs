@@ -1,7 +1,7 @@
 {
  "source": {
   "file": "server/code-harness-config.cjs",
-  "sha256": "70d0ac519134df6db07e2378abfb7df1793ddfe97c1ac709ede923eec3c3f753"
+  "sha256": "cef37d871ad30dffe9d6c6fb516f4e1088e969d127dee226db58be3c6627ddf3"
  },
  "node": "v22.23.3",
  "constants": {
@@ -57984,22 +57984,22 @@
    },
    "chowns": [
     [
-     "<T>/cwd/.claude",
-     4242,
-     0
-    ],
-    [
      "<T>/cwd/.claude/settings.local.json",
      4242,
      0
     ],
     [
-     "<T>/home/.claude",
+     "<T>/cwd/.claude",
      4242,
      0
     ],
     [
      "<T>/home/.claude/settings.json",
+     4242,
+     0
+    ],
+    [
+     "<T>/home/.claude",
      4242,
      0
     ]
@@ -58097,12 +58097,12 @@
    },
    "chowns": [
     [
-     "<T>/cwd/.claude",
+     "<T>/cwd/.claude/settings.local.json",
      7,
      8
     ],
     [
-     "<T>/cwd/.claude/settings.local.json",
+     "<T>/cwd/.claude",
      7,
      8
     ]
@@ -58376,7 +58376,7 @@
    },
    "chowns": [
     [
-     "<T>/home/.pi",
+     "<T>/home/.pi/agent/models.json",
      1,
      2
     ],
@@ -58386,7 +58386,7 @@
      2
     ],
     [
-     "<T>/home/.pi/agent/models.json",
+     "<T>/home/.pi",
      1,
      2
     ],
@@ -58396,12 +58396,12 @@
      2
     ],
     [
-     "<T>/home/.pi/agent/extensions",
+     "<T>/home/.pi/agent/extensions/noevia-gate.js",
      1,
      2
     ],
     [
-     "<T>/home/.pi/agent/extensions/noevia-gate.js",
+     "<T>/home/.pi/agent/extensions",
      1,
      2
     ]
@@ -60157,7 +60157,7 @@
    ]
   },
   {
-   "name": "cwd root itself is a link (followed)",
+   "name": "cwd root itself is a link (refused)",
    "setup": [
     {
      "op": "dir",
@@ -60197,18 +60197,9 @@
     }
    },
    "result": {
-    "ok": {
-     "file": "opencode.json",
-     "files": [
-      "./opencode.json"
-     ],
-     "permission": {
-      "edit": "ask",
-      "bash": "ask",
-      "webfetch": "ask"
-     },
-     "model": "local/Ornith-1.5-9B-Q5_K_M",
-     "endpoint": "http://llama:8080/v1"
+    "err": {
+     "code": "ENOTDIR",
+     "syscall": "open"
     }
    },
    "chowns": [],
@@ -60238,12 +60229,171 @@
      "type": "file",
      "mode": 420,
      "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "home root itself is a link (refused after the cwd file)",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
     },
     {
-     "path": "outside/opencode.json",
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    },
+    {
+     "op": "link",
+     "path": "homelink",
+     "target": "<T>/outside"
+    }
+   ],
+   "call": {
+    "cwd": "<T>/cwd",
+    "home": "<T>/homelink",
+    "options": {
+     "harness": "claude-code",
+     "model": "Ornith-1.5-9B-Q5_K_M",
+     "engine": "http://llama:8080/v1",
+     "apiKey": "k"
+    }
+   },
+   "result": {
+    "err": {
+     "code": "ENOTDIR",
+     "syscall": "open"
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/.claude",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/.claude/settings.local.json",
      "type": "file",
      "mode": 384,
-     "content": "{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"autoupdate\": false,\n  \"share\": \"disabled\",\n  \"provider\": {\n    \"local\": {\n      \"npm\": \"@ai-sdk/openai-compatible\",\n      \"name\": \"noevia engine\",\n      \"options\": {\n        \"baseURL\": \"http://llama:8080/v1\",\n        \"apiKey\": \"k\"\n      },\n      \"models\": {\n        \"Ornith-1.5-9B-Q5_K_M\": {\n          \"name\": \"Ornith-1.5-9B-Q5_K_M\",\n          \"tool_call\": true,\n          \"limit\": {\n            \"context\": 32768,\n            \"output\": 4096\n          }\n        }\n      }\n    }\n  },\n  \"model\": \"local/Ornith-1.5-9B-Q5_K_M\",\n  \"small_model\": \"local/Ornith-1.5-9B-Q5_K_M\",\n  \"permission\": {\n    \"edit\": \"ask\",\n    \"bash\": \"ask\",\n    \"webfetch\": \"ask\"\n  }\n}\n"
+     "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://llama:8080\",\n    \"ANTHROPIC_API_KEY\": \"k\",\n    \"ANTHROPIC_MODEL\": \"Ornith-1.5-9B-Q5_K_M\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "homelink",
+     "type": "link",
+     "target": "<T>/outside"
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "cwd root is a file",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    },
+    {
+     "op": "file",
+     "path": "cwdfile",
+     "content": "x",
+     "mode": 420
+    }
+   ],
+   "call": {
+    "cwd": "<T>/cwdfile",
+    "home": "<T>/home",
+    "options": {
+     "harness": "opencode",
+     "model": "Ornith-1.5-9B-Q5_K_M",
+     "engine": "http://llama:8080/v1",
+     "apiKey": "k"
+    }
+   },
+   "result": {
+    "err": {
+     "code": "ENOTDIR",
+     "syscall": "open"
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwdfile",
+     "type": "file",
+     "mode": 420,
+     "content": "x"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
     }
    ]
   },
@@ -60285,7 +60435,7 @@
    "result": {
     "err": {
      "code": "ENOENT",
-     "syscall": "mkdir"
+     "syscall": "open"
     }
    },
    "chowns": [],
@@ -60598,7 +60748,159 @@
    ]
   },
   {
-   "name": "chown fails on first call",
+   "name": "unreadable but searchable home dir",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    },
+    {
+     "op": "dir",
+     "path": "home/.pi",
+     "mode": 448
+    },
+    {
+     "op": "chmod",
+     "path": "home/.pi",
+     "mode": 192
+    }
+   ],
+   "call": {
+    "cwd": "<T>/cwd",
+    "home": "<T>/home",
+    "options": {
+     "harness": "pi",
+     "model": "Ornith-1.5-9B-Q5_K_M",
+     "engine": "http://llama:8080/v1",
+     "apiKey": "k"
+    }
+   },
+   "result": {
+    "err": {
+     "code": "EACCES",
+     "syscall": "open"
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home/.pi",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "unreadable cwd root",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    },
+    {
+     "op": "chmod",
+     "path": "cwd",
+     "mode": 192
+    }
+   ],
+   "call": {
+    "cwd": "<T>/cwd",
+    "home": "<T>/home",
+    "options": {
+     "harness": "opencode",
+     "model": "Ornith-1.5-9B-Q5_K_M",
+     "engine": "http://llama:8080/v1",
+     "apiKey": "k"
+    }
+   },
+   "result": {
+    "err": {
+     "code": "EACCES",
+     "syscall": "open"
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "chown fails on the file (first call)",
    "setup": [
     {
      "op": "dir",
@@ -60640,12 +60942,12 @@
    "result": {
     "err": {
      "code": "EPERM",
-     "syscall": "lchown"
+     "syscall": "fchown"
     }
    },
    "chowns": [
     [
-     "<T>/cwd/.claude",
+     "<T>/cwd/.claude/settings.local.json",
      5,
      5
     ]
@@ -60660,6 +60962,12 @@
      "path": "cwd/.claude",
      "type": "dir",
      "mode": 448
+    },
+    {
+     "path": "cwd/.claude/settings.local.json",
+     "type": "file",
+     "mode": 384,
+     "content": "{\n  \"permissions\": {\n    \"defaultMode\": \"default\",\n    \"disableBypassPermissionsMode\": \"disable\",\n    \"disableAutoMode\": \"disable\",\n    \"blockReadsOutsideWorkingDirectories\": true,\n    \"allow\": [],\n    \"deny\": [\n      \"mcp__*\"\n    ],\n    \"ask\": [\n      \"Edit\",\n      \"Write\",\n      \"NotebookEdit\",\n      \"Bash\",\n      \"WebFetch\",\n      \"WebSearch\"\n    ]\n  },\n  \"sandbox\": {\n    \"autoAllowBashIfSandboxed\": false\n  },\n  \"disableAllHooks\": true,\n  \"disableClaudeAiConnectors\": true,\n  \"syncClaudeAiSkills\": false,\n  \"syncClaudeAiPlugins\": false,\n  \"env\": {\n    \"ANTHROPIC_BASE_URL\": \"http://llama:8080\",\n    \"ANTHROPIC_API_KEY\": \"k\",\n    \"ANTHROPIC_MODEL\": \"Ornith-1.5-9B-Q5_K_M\",\n    \"DISABLE_AUTOUPDATER\": \"1\",\n    \"DISABLE_UPDATES\": \"1\",\n    \"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC\": \"1\",\n    \"DISABLE_TELEMETRY\": \"1\"\n  }\n}\n"
     },
     {
      "path": "home",
@@ -60680,7 +60988,7 @@
    ]
   },
   {
-   "name": "chown fails on a file",
+   "name": "chown fails on the made directory after the file",
    "setup": [
     {
      "op": "dir",
@@ -60722,17 +61030,17 @@
    "result": {
     "err": {
      "code": "EPERM",
-     "syscall": "lchown"
+     "syscall": "fchown"
     }
    },
    "chowns": [
     [
-     "<T>/cwd/.claude",
+     "<T>/cwd/.claude/settings.local.json",
      5,
      5
     ],
     [
-     "<T>/cwd/.claude/settings.local.json",
+     "<T>/cwd/.claude",
      5,
      5
     ]
@@ -60758,6 +61066,358 @@
      "path": "home",
      "type": "dir",
      "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "chown fails on the outermost of two made directories",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "call": {
+    "cwd": "<T>/cwd",
+    "home": "<T>/home",
+    "owner": {
+     "uid": 5,
+     "gid": 5
+    },
+    "options": {
+     "harness": "pi",
+     "model": "Ornith-1.5-9B-Q5_K_M",
+     "engine": "http://llama:8080/v1",
+     "apiKey": "k"
+    }
+   },
+   "failChownAt": 3,
+   "result": {
+    "err": {
+     "code": "EPERM",
+     "syscall": "fchown"
+    }
+   },
+   "chowns": [
+    [
+     "<T>/home/.pi/agent/models.json",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi/agent",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi",
+     5,
+     5
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home/.pi",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "home/.pi/agent",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "home/.pi/agent/models.json",
+     "type": "file",
+     "mode": 384,
+     "content": "{\n  \"providers\": {\n    \"noevia\": {\n      \"baseUrl\": \"http://llama:8080/v1\",\n      \"api\": \"openai-completions\",\n      \"apiKey\": \"k\",\n      \"models\": [\n        {\n          \"id\": \"Ornith-1.5-9B-Q5_K_M\",\n          \"name\": \"Ornith-1.5-9B-Q5_K_M\",\n          \"contextWindow\": 32768,\n          \"maxTokens\": 4096,\n          \"reasoning\": false,\n          \"input\": [\n            \"text\"\n          ]\n        }\n      ]\n    }\n  }\n}\n"
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "chown fails on the file of the second pinned file",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "call": {
+    "cwd": "<T>/cwd",
+    "home": "<T>/home",
+    "owner": {
+     "uid": 5,
+     "gid": 5
+    },
+    "options": {
+     "harness": "pi",
+     "model": "Ornith-1.5-9B-Q5_K_M",
+     "engine": "http://llama:8080/v1",
+     "apiKey": "k"
+    }
+   },
+   "failChownAt": 4,
+   "result": {
+    "err": {
+     "code": "EPERM",
+     "syscall": "fchown"
+    }
+   },
+   "chowns": [
+    [
+     "<T>/home/.pi/agent/models.json",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi/agent",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi/agent/settings.json",
+     5,
+     5
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home/.pi",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "home/.pi/agent",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "home/.pi/agent/models.json",
+     "type": "file",
+     "mode": 384,
+     "content": "{\n  \"providers\": {\n    \"noevia\": {\n      \"baseUrl\": \"http://llama:8080/v1\",\n      \"api\": \"openai-completions\",\n      \"apiKey\": \"k\",\n      \"models\": [\n        {\n          \"id\": \"Ornith-1.5-9B-Q5_K_M\",\n          \"name\": \"Ornith-1.5-9B-Q5_K_M\",\n          \"contextWindow\": 32768,\n          \"maxTokens\": 4096,\n          \"reasoning\": false,\n          \"input\": [\n            \"text\"\n          ]\n        }\n      ]\n    }\n  }\n}\n"
+    },
+    {
+     "path": "home/.pi/agent/settings.json",
+     "type": "file",
+     "mode": 384,
+     "content": "{\n  \"defaultProvider\": \"noevia\",\n  \"defaultModel\": \"Ornith-1.5-9B-Q5_K_M\",\n  \"defaultProjectTrust\": \"never\",\n  \"enableInstallTelemetry\": false\n}\n"
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "chown fails on the made directory of the third pinned file",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "call": {
+    "cwd": "<T>/cwd",
+    "home": "<T>/home",
+    "owner": {
+     "uid": 5,
+     "gid": 5
+    },
+    "options": {
+     "harness": "pi",
+     "model": "Ornith-1.5-9B-Q5_K_M",
+     "engine": "http://llama:8080/v1",
+     "apiKey": "k"
+    }
+   },
+   "failChownAt": 6,
+   "result": {
+    "err": {
+     "code": "EPERM",
+     "syscall": "fchown"
+    }
+   },
+   "chowns": [
+    [
+     "<T>/home/.pi/agent/models.json",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi/agent",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi/agent/settings.json",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi/agent/extensions/noevia-gate.js",
+     5,
+     5
+    ],
+    [
+     "<T>/home/.pi/agent/extensions",
+     5,
+     5
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home/.pi",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "home/.pi/agent",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "home/.pi/agent/extensions",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "home/.pi/agent/extensions/noevia-gate.js",
+     "type": "file",
+     "mode": 384,
+     "content": "// Written by noevia for this task: every tool that is not a plain read asks, with its full\n// input, and is blocked when nothing can ask. Unknown and future tools ask too. A read is only\n// plain inside the task's working directory: one that names a path outside it (absolute, `..`,\n// `~`, or a symlink out) asks like any other tool, since pi has no read confinement of its own.\nimport fs from 'node:fs';\nimport path from 'node:path';\nconst READ = new Set([\"read\",\"grep\",\"find\",\"ls\"]);\nconst ROOT = (() => { try { return fs.realpathSync(process.cwd()); } catch { return null; } })();\nfunction realish(target) {\n  let probe = target, rest = '';\n  for (let i = 0; i < 128; i++) {\n    try { return path.join(fs.realpathSync(probe), rest); }\n    catch { const parent = path.dirname(probe); if (parent === probe) return null; rest = path.join(path.basename(probe), rest); probe = parent; }\n  }\n  return null;\n}\nfunction inside(value) {\n  if (value === undefined || value === null || value === '') return true;\n  if (typeof value !== 'string' || !ROOT) return false;\n  if (/^~/.test(value)) return false;\n  const resolved = realish(path.resolve(ROOT, value));\n  if (!resolved) return false;\n  const rel = path.relative(ROOT, resolved);\n  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));\n}\nfunction patternInside(value) {\n  if (value === undefined || value === null || value === '') return true;\n  if (typeof value !== 'string') return false;\n  return !/^[\\/~]/.test(value) && !value.split(/[\\/]/).includes('..');\n}\nexport function readConfined(input) {\n  const i = input && typeof input === 'object' ? input : {};\n  return inside(i.path) && inside(i.file_path) && inside(i.cwd) && patternInside(i.pattern) && patternInside(i.glob);\n}\nexport default function (pi) {\n  pi.on('tool_call', async (event, ctx) => {\n    const outside = READ.has(event.toolName) && !readConfined(event.input);\n    if (READ.has(event.toolName) && !outside) return undefined;\n    if (!ctx.hasUI) return { block: true, reason: 'noevia has no approval channel for this call, so it is blocked.' };\n    let ok = false;\n    // The message is machine-readable on purpose: noevia's pi bridge (services/code-sandbox/\n    // pi-acp-bridge.cjs) turns it into an ACP permission request with the real tool and input.\n    const payload = JSON.stringify({ noevia: 'tool_call', toolCallId: event.toolCallId ?? null, toolName: event.toolName, input: event.input ?? {},\n      ...(outside ? { outsideWorkspace: true } : {}) });\n    try { ok = await ctx.ui.confirm('Allow ' + event.toolName + '?', payload, { timeout: 300000 }); } catch { ok = false; }\n    if (ok === true) return undefined;\n    // Why it was refused, when noevia said (a malformed call, #704): asked for once, briefly, on the\n    // same channel. A bridge that has no reason, or predates this, answers nothing and the generic\n    // reason stands. It can only change the words of a refusal, never turn one into an allow.\n    let reason = 'Declined in noevia.';\n    try {\n      const said = await ctx.ui.input('noevia refusal reason', JSON.stringify({ noevia: 'refusal_reason', toolCallId: event.toolCallId ?? null, toolName: event.toolName }), { timeout: 5000 });\n      if (typeof said === 'string' && said.trim()) reason = said.slice(0, 4000);\n    } catch { /* the generic reason stands */ }\n    return { block: true, reason };\n  });\n}\n"
+    },
+    {
+     "path": "home/.pi/agent/models.json",
+     "type": "file",
+     "mode": 384,
+     "content": "{\n  \"providers\": {\n    \"noevia\": {\n      \"baseUrl\": \"http://llama:8080/v1\",\n      \"api\": \"openai-completions\",\n      \"apiKey\": \"k\",\n      \"models\": [\n        {\n          \"id\": \"Ornith-1.5-9B-Q5_K_M\",\n          \"name\": \"Ornith-1.5-9B-Q5_K_M\",\n          \"contextWindow\": 32768,\n          \"maxTokens\": 4096,\n          \"reasoning\": false,\n          \"input\": [\n            \"text\"\n          ]\n        }\n      ]\n    }\n  }\n}\n"
+    },
+    {
+     "path": "home/.pi/agent/settings.json",
+     "type": "file",
+     "mode": 384,
+     "content": "{\n  \"defaultProvider\": \"noevia\",\n  \"defaultModel\": \"Ornith-1.5-9B-Q5_K_M\",\n  \"defaultProjectTrust\": \"never\",\n  \"enableInstallTelemetry\": false\n}\n"
     },
     {
      "path": "outside",
@@ -61364,10 +62024,7 @@
     "content": "pinned é\n"
    },
    "result": {
-    "err": {
-     "code": "EISDIR",
-     "syscall": "open"
-    }
+    "ok": null
    },
    "chowns": [],
    "tree": [
@@ -61375,6 +62032,12 @@
      "path": "cwd",
      "type": "dir",
      "mode": 493
+    },
+    {
+     "path": "cwd/x",
+     "type": "file",
+     "mode": 384,
+     "content": "pinned é\n"
     },
     {
      "path": "home",
@@ -61642,6 +62305,319 @@
    ]
   },
   {
+   "name": "writePinned \"a\\u0000b\"",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a\u0000b",
+    "content": "pinned é\n"
+   },
+   "result": {
+    "err": {
+     "status": null,
+     "message": "not a single path component"
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned \"a\\u0000/b.txt\"",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a\u0000/b.txt",
+    "content": "pinned é\n"
+   },
+   "result": {
+    "err": {
+     "status": null,
+     "message": "not a single path component"
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned \"x/y\\u0000\"",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "x/y\u0000",
+    "content": "pinned é\n"
+   },
+   "result": {
+    "err": {
+     "status": null,
+     "message": "not a single path component"
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/x",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned \"x\\u0000/\"",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "x\u0000/",
+    "content": "pinned é\n"
+   },
+   "result": {
+    "err": {
+     "status": null,
+     "message": "not a single path component"
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned \"x//\"",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "x//",
+    "content": "pinned é\n"
+   },
+   "result": {
+    "ok": null
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/x",
+     "type": "file",
+     "mode": 384,
+     "content": "pinned é\n"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
    "name": "writePinned \"a/../\"",
    "setup": [
     {
@@ -61673,8 +62649,8 @@
    },
    "result": {
     "err": {
-     "status": 409,
-     "message": "Refused to pin the harness configuration: a/../ is a directory."
+     "status": null,
+     "message": "not a single path component"
     }
    },
    "chowns": [],
@@ -61734,8 +62710,8 @@
    },
    "result": {
     "err": {
-     "status": 409,
-     "message": "Refused to pin the harness configuration: ./ is a directory."
+     "status": null,
+     "message": "not a single path component"
     }
    },
    "chowns": [],
@@ -61795,8 +62771,8 @@
    },
    "result": {
     "err": {
-     "status": 409,
-     "message": "Refused to pin the harness configuration: a/b/../../ is a directory."
+     "status": null,
+     "message": "not a single path component"
     }
    },
    "chowns": [],
@@ -62105,6 +63081,752 @@
     },
     {
      "path": "cwd/a/f",
+     "type": "link",
+     "target": "<T>/outside/keep.txt"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned owner, three new dirs",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/b/c/f.txt",
+    "content": "pinned\n",
+    "owner": {
+     "uid": 11,
+     "gid": 12
+    }
+   },
+   "result": {
+    "ok": null
+   },
+   "chowns": [
+    [
+     "<T>/cwd/a/b/c/f.txt",
+     11,
+     12
+    ],
+    [
+     "<T>/cwd/a/b/c",
+     11,
+     12
+    ],
+    [
+     "<T>/cwd/a/b",
+     11,
+     12
+    ],
+    [
+     "<T>/cwd/a",
+     11,
+     12
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b/c",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b/c/f.txt",
+     "type": "file",
+     "mode": 384,
+     "content": "pinned\n"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned owner, existing outer dir",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    },
+    {
+     "op": "dir",
+     "path": "cwd/a",
+     "mode": 488
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/b/c/f.txt",
+    "content": "pinned\n",
+    "owner": {
+     "uid": 11,
+     "gid": 12
+    }
+   },
+   "result": {
+    "ok": null
+   },
+   "chowns": [
+    [
+     "<T>/cwd/a/b/c/f.txt",
+     11,
+     12
+    ],
+    [
+     "<T>/cwd/a/b/c",
+     11,
+     12
+    ],
+    [
+     "<T>/cwd/a/b",
+     11,
+     12
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a",
+     "type": "dir",
+     "mode": 488
+    },
+    {
+     "path": "cwd/a/b",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b/c",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b/c/f.txt",
+     "type": "file",
+     "mode": 384,
+     "content": "pinned\n"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned owner, nothing new",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    },
+    {
+     "op": "dir",
+     "path": "cwd/a",
+     "mode": 493
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/f.txt",
+    "content": "pinned\n",
+    "owner": {
+     "uid": 11,
+     "gid": 12
+    }
+   },
+   "result": {
+    "ok": null
+   },
+   "chowns": [
+    [
+     "<T>/cwd/a/f.txt",
+     11,
+     12
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a/f.txt",
+     "type": "file",
+     "mode": 384,
+     "content": "pinned\n"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned owner, replaces a file",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    },
+    {
+     "op": "dir",
+     "path": "cwd/a",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "cwd/a/f.txt",
+     "content": "old",
+     "mode": 438
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/f.txt",
+    "content": "pinned\n",
+    "owner": {
+     "uid": 11,
+     "gid": 12
+    }
+   },
+   "result": {
+    "ok": null
+   },
+   "chowns": [
+    [
+     "<T>/cwd/a/f.txt",
+     11,
+     12
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a/f.txt",
+     "type": "file",
+     "mode": 384,
+     "content": "pinned\n"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned owner, fails on the file",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/b/f.txt",
+    "content": "pinned\n",
+    "owner": {
+     "uid": 11,
+     "gid": 12
+    }
+   },
+   "failChownAt": 1,
+   "result": {
+    "err": {
+     "code": "EPERM",
+     "syscall": "fchown"
+    }
+   },
+   "chowns": [
+    [
+     "<T>/cwd/a/b/f.txt",
+     11,
+     12
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b/f.txt",
+     "type": "file",
+     "mode": 384,
+     "content": "pinned\n"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned owner, fails on the inner dir",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/b/f.txt",
+    "content": "pinned\n",
+    "owner": {
+     "uid": 11,
+     "gid": 12
+    }
+   },
+   "failChownAt": 2,
+   "result": {
+    "err": {
+     "code": "EPERM",
+     "syscall": "fchown"
+    }
+   },
+   "chowns": [
+    [
+     "<T>/cwd/a/b/f.txt",
+     11,
+     12
+    ],
+    [
+     "<T>/cwd/a/b",
+     11,
+     12
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b/f.txt",
+     "type": "file",
+     "mode": 384,
+     "content": "pinned\n"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned owner, fails on the outer dir",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/b/f.txt",
+    "content": "pinned\n",
+    "owner": {
+     "uid": 11,
+     "gid": 12
+    }
+   },
+   "failChownAt": 3,
+   "result": {
+    "err": {
+     "code": "EPERM",
+     "syscall": "fchown"
+    }
+   },
+   "chowns": [
+    [
+     "<T>/cwd/a/b/f.txt",
+     11,
+     12
+    ],
+    [
+     "<T>/cwd/a/b",
+     11,
+     12
+    ],
+    [
+     "<T>/cwd/a",
+     11,
+     12
+    ]
+   ],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b",
+     "type": "dir",
+     "mode": 448
+    },
+    {
+     "path": "cwd/a/b/f.txt",
+     "type": "file",
+     "mode": 384,
+     "content": "pinned\n"
+    },
+    {
+     "path": "home",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "outside/keep.txt",
+     "type": "file",
+     "mode": 420,
+     "content": "outside\n"
+    }
+   ]
+  },
+  {
+   "name": "writePinned owner, refused link leaves no hand-over",
+   "setup": [
+    {
+     "op": "dir",
+     "path": "cwd",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "home",
+     "mode": 493
+    },
+    {
+     "op": "dir",
+     "path": "outside",
+     "mode": 493
+    },
+    {
+     "op": "file",
+     "path": "outside/keep.txt",
+     "content": "outside\n",
+     "mode": 420
+    },
+    {
+     "op": "dir",
+     "path": "cwd/a",
+     "mode": 493
+    },
+    {
+     "op": "link",
+     "path": "cwd/a/f.txt",
+     "target": "<T>/outside/keep.txt"
+    }
+   ],
+   "pinned": {
+    "root": "<T>/cwd",
+    "relative": "a/b/../f.txt",
+    "content": "pinned\n",
+    "owner": {
+     "uid": 11,
+     "gid": 12
+    }
+   },
+   "result": {
+    "err": {
+     "status": 409,
+     "message": "Refused to pin the harness configuration: a/b/../f.txt is a symbolic link."
+    }
+   },
+   "chowns": [],
+   "tree": [
+    {
+     "path": "cwd",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a",
+     "type": "dir",
+     "mode": 493
+    },
+    {
+     "path": "cwd/a/f.txt",
      "type": "link",
      "target": "<T>/outside/keep.txt"
     },

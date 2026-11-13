@@ -5,22 +5,32 @@
 //! key wherever the repository pointed and hand it to the harness user. Nothing below the root
 //! may be a link, and the target is replaced rather than written in place.
 //!
-//! Named difference from Node (`fd-walk`): Node checks each component by path (`lstat`) and then
-//! unlinks, opens and `lchown`s by the full path again, so a link swapped in between (the
-//! harness user owns the tree, and each new directory is handed to it before the walk descends)
-//! is followed. Here the walk holds a descriptor per directory: the root is opened (followed: it
-//! is the caller's), and each component is classified with `fstatat(AT_SYMLINK_NOFOLLOW)` (the
-//! checks and messages Node has), made with `mkdirat` when missing and entered with
-//! `openat(O_DIRECTORY|O_NOFOLLOW)`, all relative to the parent descriptor; a directory just made
-//! is handed over with `fchown` on that descriptor before the walk descends through it. The old file is removed with `unlinkat`, the new one created with
-//! `openat(O_CREAT|O_EXCL|O_NOFOLLOW, 0o600)` and handed over with `fchown` on its descriptor
-//! before it is closed. A link swapped in after the check, which only the descriptor walk sees,
-//! is refused with Node's "is a symbolic link" message. Node's order of checks, its messages, its
-//! modes and the order of hand-over calls are otherwise unchanged (the recorded fixture).
+//! Since noevia-core#367 Node itself walks by directory descriptor (`dir-fd.cjs`, over
+//! `/proc/self/fd/<n>`, which stands in for `openat`), and so does this port, natively with
+//! `openat`/`fstatat`/`mkdirat`/`unlinkat`: the root is opened `O_DIRECTORY|O_NOFOLLOW` (a root
+//! that is itself a link is refused by the open, like any other open error), each component is
+//! classified with `fstatat(AT_SYMLINK_NOFOLLOW)` relative to the descriptor of its parent (a link
+//! or a non-directory is refused with Node's messages), made with `mkdirat` mode `0o700` when
+//! missing and entered with an `O_RDONLY|O_DIRECTORY|O_NOFOLLOW` open, which must give the
+//! directory that was looked at (same device and inode) or the write is refused with "it was
+//! replaced while it was being checked". The old file is removed with `unlinkat`, the new one
+//! created `O_CREAT|O_EXCL|O_TRUNC|O_NOFOLLOW`, mode `0o600`, and handed over with `fchown` on its
+//! own descriptor; then the directories this call made are handed over, innermost first, each
+//! through its own descriptor, so nothing is handed to the harness user before the file is in
+//! place and nothing can be planted in a directory that is not yet theirs. A failed hand-over
+//! stops the rest (the file and the directories stay where they are), as in Node.
 //!
-//! When the root itself cannot be opened, the error is reported as the call Node would have
-//! failed on: `mkdir` (missing root, a directory to make) or `open` (missing root, file directly
-//! under it) for ENOENT, `lstat` otherwise.
+//! Named difference from Node, `no-proc`: Node refuses a host without `/proc/self/fd` ("this host
+//! has no /proc/self/fd, ..."), because it can only spell `openat` that way. This port does not
+//! need `/proc` and works anywhere `openat` does, so that refusal has no counterpart (and no
+//! fixture: the recorder runs on Linux). Named difference `typed-errors`: a Node `fs` error is a
+//! [`PinError::Io`] with Node's syscall name (`open`, `lstat`, `mkdir`, `unlink`, `write`,
+//! `fchown`), the OS error and, where Node has one, the path; a path component Node's `at()`
+//! cannot spell (empty, `.`, `..` or containing a NUL) is [`PinError::NotAComponent`], Node's
+//! plain `Error('not a single path component')`.
+//!
+//! The root is opened first, so a root that cannot be opened (missing, a file, a link, not
+//! readable) fails `open` before anything is looked at, whatever else the path holds.
 //!
 //! Paths are handled as Node's `path.posix` does, lexically and on bytes: the root is resolved
 //! against the current directory, the relative path joined and normalised, and a target that
@@ -47,7 +57,7 @@ pub struct Owner {
 }
 
 impl Owner {
-    // `u32::MAX` is -1, "leave unchanged", as for Node's `lchownSync`.
+    // `u32::MAX` is -1, "leave unchanged", as for Node's `fchownSync`.
     fn ids(self) -> (Option<Uid>, Option<Gid>) {
         (
             Some(Uid::from_raw_unchecked(self.uid)),
@@ -56,17 +66,18 @@ impl Owner {
     }
 }
 
-/// How new directories and the written file are handed to the harness user. `path` is the full
-/// path Node would pass to `lchownSync` (for logging and tests); the change itself must go through
-/// the descriptors, never the path.
+/// How the written file and the directories made for it are handed to the harness user. `path`
+/// is the lexical full path of the descriptor's object (for logging and tests); the change itself
+/// must go through the descriptor, never the path.
 pub trait Handover {
-    /// A directory just made, opened (`O_DIRECTORY|O_NOFOLLOW`) before it is handed over and
-    /// before the walk descends through it.
+    /// A directory this call made (opened `O_RDONLY|O_DIRECTORY|O_NOFOLLOW` when it was made).
+    /// Called after [`Handover::file`], innermost directory first.
     fn directory(&mut self, dir: BorrowedFd<'_>, path: &Path, owner: Owner) -> io::Result<()>;
-    /// The file just written, still open.
+    /// The file just written, still open. Called first.
     fn file(&mut self, file: BorrowedFd<'_>, path: &Path, owner: Owner) -> io::Result<()>;
-    /// Called just before each directory component or the file is opened, after its check: an
-    /// observation point for tests of that window. The default does nothing.
+    /// Called just before each directory component or the file is opened, after its check (and,
+    /// for a missing directory, its `mkdir`): an observation point for tests of that window. The
+    /// default does nothing.
     fn opening(&mut self, _path: &Path) {}
 }
 
@@ -96,6 +107,10 @@ pub enum PinError {
     /// The target is not strictly below its root (Node's plain `Error('Pinned file outside its
     /// root')`, no status).
     Outside,
+    /// A path component that cannot name an entry of a directory: empty (a relative path that
+    /// collapses to the root), `.`, `..` or containing a NUL. Node's plain
+    /// `Error('not a single path component')`, no status.
+    NotAComponent,
     /// A filesystem call failed (Node rethrows its `fs` error). `syscall` is Node's name for it.
     Io {
         syscall: &'static str,
@@ -119,6 +134,7 @@ impl std::fmt::Display for PinError {
         match self {
             PinError::Refused(r) => f.write_str(&r.message),
             PinError::Outside => f.write_str("Pinned file outside its root"),
+            PinError::NotAComponent => f.write_str("not a single path component"),
             PinError::Io {
                 syscall,
                 path: Some(p),
@@ -306,35 +322,36 @@ fn resolve(root: &[u8]) -> Result<Vec<u8>, PinError> {
     Ok(absolute(&segments(&full)))
 }
 
-/// Directory descriptors: search-only where the platform has `O_PATH` (Node needs only search
-/// permission on the way down), read-only elsewhere.
+/// The flags of every directory open: Node's `O_RDONLY | O_DIRECTORY | O_NOFOLLOW`.
 fn dir_flags() -> OFlags {
-    let base = OFlags::DIRECTORY | OFlags::CLOEXEC;
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    {
-        base | OFlags::PATH
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "android")))]
-    {
-        base | OFlags::RDONLY
-    }
+    OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
 }
 
 /// `lstat` relative to a directory: `None` when missing.
-fn kind(dir: &OwnedFd, name: &OsStr) -> Result<Option<FileType>, Errno> {
+fn lstat(dir: &OwnedFd, name: &OsStr) -> Result<Option<rustix::fs::Stat>, Errno> {
     match rustix::fs::statat(dir, name, AtFlags::SYMLINK_NOFOLLOW) {
-        Ok(st) => Ok(Some(FileType::from_raw_mode(st.st_mode))),
+        Ok(st) => Ok(Some(st)),
         Err(Errno::NOENT) => Ok(None),
         Err(e) => Err(e),
     }
 }
 
-/// Write one pinned file under `root` (`writePinned`). For each directory between the root and the
-/// file, in order: a link is refused, anything not a directory is refused, a missing one is made
-/// (mode `0o700`) and handed over. Then a link or directory at the target is refused, an existing
-/// file is unlinked, and the file is created fresh (mode `0o600`), written and handed over.
-/// Messages name the directory relative to the root, and the target as `relative` was given.
-/// Every step goes through the parent directory's descriptor (see the module doc).
+/// Node's `at()` accepts one component only.
+fn component(name: &[u8]) -> Result<&OsStr, PinError> {
+    if name.is_empty() || name.contains(&0) || name == b"." || name == b".." {
+        return Err(PinError::NotAComponent);
+    }
+    Ok(OsStr::from_bytes(name))
+}
+
+/// Write one pinned file under `root` (`writePinned`). The root is opened without following a
+/// link. For each directory between the root and the file, in order: a link is refused, anything
+/// not a directory is refused, a missing one is made (mode `0o700`), and the directory is entered
+/// through the descriptor of its parent (refused if it is not the one that was checked). Then a
+/// link or directory at the target is refused, an existing file is unlinked, and the file is
+/// created fresh (mode `0o600`), written and handed over, and then the directories made here are
+/// handed over, innermost first. Messages name the directory relative to the root, and the target
+/// as `relative` was given. See the module doc.
 pub fn write_pinned(
     root: &Path,
     relative: &str,
@@ -343,7 +360,8 @@ pub fn write_pinned(
     handover: &mut dyn Handover,
 ) -> Result<(), PinError> {
     let base = resolve(root.as_os_str().as_bytes())?;
-    // path.join(base, relative), normalised; a trailing slash is kept, as Node keeps it.
+    // path.join(base, relative), normalised; a trailing slash is kept for the containment check
+    // only, as Node's `path.relative` then drops it.
     let mut joined = base.clone();
     if !relative.is_empty() {
         joined.push(b'/');
@@ -351,99 +369,87 @@ pub fn write_pinned(
     }
     let segs = segments(&joined);
     let trailing = joined.last() == Some(&b'/') && !segs.is_empty();
-    let mut target = absolute(&segs);
+    let target = absolute(&segs);
+    let mut checked = target.clone();
     if trailing {
-        target.push(b'/');
+        checked.push(b'/');
     }
     let mut prefix = base.clone();
     prefix.push(b'/');
-    if !target.starts_with(&prefix) {
+    if !checked.starts_with(&prefix) {
         return Err(PinError::Outside);
     }
     let parts = segs.get(segments(&base).len()..).unwrap_or_default();
     // No segment below the root: only a path that collapses to it with a trailing slash (`a/../`)
-    // gets here, and Node finds a directory at its target.
-    let (leaf, dirs) = match parts.split_last() {
-        Some((leaf, dirs)) => (Some(leaf), dirs),
-        None => (None, parts),
+    // gets here; Node's `relative` is then '' and its leaf cannot be spelled.
+    let (leaf, dirs): (&[u8], &[&[u8]]) = match parts.split_last() {
+        Some((leaf, dirs)) => (leaf, dirs),
+        None => (b"", parts),
     };
 
-    let root_flags = dir_flags();
-    let mut dir_fd = rustix::fs::open(as_path(&base), root_flags, Mode::empty()).map_err(|e| {
-        let first = match dirs.first() {
-            Some(part) => [base.as_slice(), b"/", part].concat(),
-            None => target.clone(),
-        };
-        let syscall = match (e, dirs.is_empty()) {
-            (Errno::NOENT, false) => "mkdir",
-            (Errno::NOENT, true) => "open",
-            _ => "lstat",
-        };
-        io_err(syscall, Some(&first), e)
-    })?;
-    let Some(leaf) = leaf else {
-        return Err(refuse(format!("{relative} is a directory")));
-    };
+    let mut dir_fd = rustix::fs::open(as_path(&base), dir_flags(), Mode::empty())
+        .map_err(|e| io_err("open", Some(&base), e))?;
 
+    let mut made: Vec<(OwnedFd, PathBuf)> = Vec::new();
     let mut dir = base.clone();
     for (i, part) in dirs.iter().enumerate() {
+        let name = component(part)?;
         dir.push(b'/');
         dir.extend_from_slice(part);
         let shown = || {
             let rel: Vec<&[u8]> = parts.iter().take(i + 1).copied().collect();
             String::from_utf8_lossy(&rel.join(&b'/')).into_owned()
         };
-        let name = OsStr::from_bytes(part);
-        let made = match kind(&dir_fd, name) {
-            Ok(Some(FileType::Symlink)) => {
-                return Err(refuse(format!("{} is a symbolic link", shown())))
-            }
-            Ok(Some(FileType::Directory)) => false,
-            Ok(Some(_)) => return Err(refuse(format!("{} is not a directory", shown()))),
-            Ok(None) => {
-                rustix::fs::mkdirat(&dir_fd, name, Mode::RWXU)
-                    .map_err(|e| io_err("mkdir", Some(&dir), e))?;
-                true
-            }
+        let seen = match lstat(&dir_fd, name) {
+            Ok(Some(st)) => match FileType::from_raw_mode(st.st_mode) {
+                FileType::Symlink => return Err(refuse(format!("{} is a symbolic link", shown()))),
+                FileType::Directory => Some(st),
+                _ => return Err(refuse(format!("{} is not a directory", shown()))),
+            },
+            Ok(None) => None,
             Err(e) => return Err(io_err("lstat", Some(&dir), e)),
         };
+        if seen.is_none() {
+            rustix::fs::mkdirat(&dir_fd, name, Mode::RWXU)
+                .map_err(|e| io_err("mkdir", Some(&dir), e))?;
+        }
         handover.opening(as_path(&dir));
-        // A directory just made is ours and readable; it is opened for reading so it can be
-        // handed over with `fchown` (which an `O_PATH` descriptor cannot do).
-        let flags = if made {
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
-        } else {
-            root_flags | OFlags::NOFOLLOW
+        let replaced = || {
+            refuse(format!(
+                "{} it was replaced while it was being checked",
+                shown()
+            ))
         };
-        dir_fd = match rustix::fs::openat(&dir_fd, name, flags, Mode::empty()) {
+        let child = match rustix::fs::openat(&dir_fd, name, dir_flags(), Mode::empty()) {
             Ok(fd) => fd,
-            // Checked as a directory (or made) a moment ago, a link or something else now: swapped.
-            Err(Errno::LOOP | Errno::NOTDIR) => {
-                return Err(refuse(format!("{} is a symbolic link", shown())))
-            }
+            // Checked as a directory (or made) a moment ago, a link or something else now.
+            Err(Errno::LOOP | Errno::NOTDIR) => return Err(replaced()),
             Err(e) => return Err(io_err("open", Some(&dir), e)),
         };
-        if let (true, Some(o)) = (made, owner) {
-            handover
-                .directory(dir_fd.as_fd(), as_path(&dir), o)
-                .map_err(|e| io_err("lchown", Some(&dir), e))?;
+        let now = rustix::fs::fstat(&child).map_err(|e| io_err("fstat", Some(&dir), e))?;
+        let same = seen.is_none_or(|st| st.st_dev == now.st_dev && st.st_ino == now.st_ino);
+        if FileType::from_raw_mode(now.st_mode) != FileType::Directory || !same {
+            return Err(replaced());
         }
+        if seen.is_none() {
+            let held = child
+                .try_clone()
+                .map_err(|e| io_err("open", Some(&dir), e))?;
+            made.push((held, PathBuf::from(OsStr::from_bytes(&dir))));
+        }
+        dir_fd = child;
     }
 
-    // The last segment as Node passes it: with its trailing slash, if the path had one.
-    let leaf_name: Vec<u8> = if trailing {
-        [*leaf, b"/"].concat()
-    } else {
-        leaf.to_vec()
-    };
-    let leaf_name = OsStr::from_bytes(&leaf_name);
-    match kind(&dir_fd, leaf_name) {
-        Ok(Some(FileType::Symlink)) => {
-            return Err(refuse(format!("{relative} is a symbolic link")))
-        }
-        Ok(Some(FileType::Directory)) => return Err(refuse(format!("{relative} is a directory"))),
-        Ok(Some(_)) => rustix::fs::unlinkat(&dir_fd, leaf_name, AtFlags::empty())
-            .map_err(|e| io_err("unlink", Some(&target), e))?,
+    let leaf_name = component(leaf)?;
+    match lstat(&dir_fd, leaf_name) {
+        Ok(Some(st)) => match FileType::from_raw_mode(st.st_mode) {
+            FileType::Symlink => return Err(refuse(format!("{relative} is a symbolic link"))),
+            FileType::Directory => return Err(refuse(format!("{relative} is a directory"))),
+            _ => match rustix::fs::unlinkat(&dir_fd, leaf_name, AtFlags::empty()) {
+                Ok(()) | Err(Errno::NOENT) => {}
+                Err(e) => return Err(io_err("unlink", Some(&target), e)),
+            },
+        },
         Ok(None) => {}
         Err(e) => return Err(io_err("lstat", Some(&target), e)),
     }
@@ -451,7 +457,12 @@ pub fn write_pinned(
     let fd = rustix::fs::openat(
         &dir_fd,
         leaf_name,
-        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        OFlags::WRONLY
+            | OFlags::CREATE
+            | OFlags::EXCL
+            | OFlags::TRUNC
+            | OFlags::NOFOLLOW
+            | OFlags::CLOEXEC,
         Mode::RUSR | Mode::WUSR,
     )
     .map_err(|e| io_err("open", Some(&target), e))?;
@@ -461,7 +472,15 @@ pub fn write_pinned(
     if let Some(o) = owner {
         handover
             .file(file.as_fd(), as_path(&target), o)
-            .map_err(|e| io_err("lchown", Some(&target), e))?;
+            .map_err(|e| io_err("fchown", Some(&target), e))?;
+    }
+    drop(file);
+    if let Some(o) = owner {
+        for (fd, path) in made.iter().rev() {
+            handover
+                .directory(fd.as_fd(), path, o)
+                .map_err(|e| io_err("fchown", Some(path.as_os_str().as_bytes()), e))?;
+        }
     }
     Ok(())
 }
