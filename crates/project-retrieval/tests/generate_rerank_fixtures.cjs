@@ -40,7 +40,8 @@ rag._test.setRagFetch(async (url, init) => {
   // readers outside JS refuse.
   const units = (t) => Array.from({ length: t.length }, (_, i) => t.charCodeAt(i));
   const sent = { ...body, ...(body.documents ? { documents: body.documents.map(units) } : {}), ...(body.texts ? { texts: body.texts.map(units) } : {}) };
-  seen.push({ url, method: init.method, redirect: init.redirect ?? null, authorization: init.headers?.authorization ?? null, contentType: init.headers?.['content-type'] ?? null, body: sent });
+  // `raw`: the body text exactly as sent (JSON.stringify writes a lone surrogate as a \udXXX escape, so it is plain JSON).
+  seen.push({ url, method: init.method, redirect: init.redirect ?? null, authorization: init.headers?.authorization ?? null, contentType: init.headers?.['content-type'] ?? null, body: sent, raw: init.body });
   const answer = script(url, body);
   if (answer === 'hang') return new Promise(() => {});
   return new Response(typeof answer.body === 'string' ? answer.body : JSON.stringify(answer.body), { status: answer.status });

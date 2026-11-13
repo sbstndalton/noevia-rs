@@ -452,7 +452,8 @@
        ]
       ],
       "top_n": 12
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\",\"qa chunk 3 alpha bravo alpha bravo alpha bravo\",\"qa chunk 4\",\"qa chunk 5 alpha bravo\",\"qa chunk 6 alpha bravo alpha bravo\",\"qa chunk 7 alpha bravo alpha bravo alpha bravo\",\"qa chunk 8\",\"qa chunk 9 alpha bravo\",\"qa chunk 10 alpha bravo alpha bravo\",\"qa chunk 11 alpha bravo alpha bravo alpha bravo\"],\"top_n\":12}"
     }
    ],
    "answer": {
@@ -848,7 +849,8 @@
        ]
       ],
       "top_n": 8
-     }
+     },
+     "raw": "{\"model\":\"qa-rerank-model\",\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\",\"qa chunk 3 alpha bravo alpha bravo alpha bravo\",\"qa chunk 4\",\"qa chunk 5 alpha bravo\",\"qa chunk 6 alpha bravo alpha bravo\",\"qa chunk 7 alpha bravo alpha bravo alpha bravo\"],\"top_n\":8}"
     }
    ],
    "answer": {
@@ -1354,7 +1356,8 @@
        ]
       ],
       "top_n": 12
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\",\"qa chunk 3 alpha bravo alpha bravo alpha bravo\",\"qa chunk 4\",\"qa chunk 5 alpha bravo\",\"qa chunk 6 alpha bravo alpha bravo\",\"qa chunk 7 alpha bravo alpha bravo alpha bravo\",\"qa chunk 8\",\"qa chunk 9 alpha bravo\",\"qa chunk 10 alpha bravo alpha bravo\",\"qa chunk 11 alpha bravo alpha bravo alpha bravo\"],\"top_n\":12}"
     }
    ],
    "answer": {
@@ -1639,7 +1642,8 @@
        ]
       ],
       "top_n": 4
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\",\"qa chunk 3 alpha bravo alpha bravo alpha bravo\"],\"top_n\":4}"
     }
    ],
    "answer": {
@@ -1897,7 +1901,8 @@
        ]
       ],
       "top_n": 6
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\",\"qa chunk 3 alpha bravo alpha bravo alpha bravo\",\"qa chunk 4\",\"qa chunk 5 alpha bravo\"],\"top_n\":6}"
     }
    ],
    "answer": {
@@ -2070,7 +2075,8 @@
        ]
       ],
       "top_n": 3
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\"],\"top_n\":3}"
     }
    ],
    "answer": {
@@ -2220,7 +2226,8 @@
        ]
       ],
       "top_n": 3
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\"],\"top_n\":3}"
     }
    ],
    "answer": {
@@ -2341,7 +2348,8 @@
        ]
       ],
       "top_n": 2
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\"],\"top_n\":2}"
     }
    ],
    "answer": {
@@ -2441,7 +2449,8 @@
        ]
       ],
       "top_n": 2
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\"],\"top_n\":2}"
     }
    ],
    "answer": {
@@ -2643,7 +2652,8 @@
        ]
       ],
       "top_n": 5
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\",\"qa chunk 3 alpha bravo alpha bravo alpha bravo\",\"qa chunk 4\"],\"top_n\":5}"
     }
    ],
    "answer": {
@@ -2790,7 +2800,8 @@
        ]
       ],
       "top_n": 3
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\"],\"top_n\":3}"
     }
    ],
    "answer": {
@@ -6857,7 +6868,8 @@
        ]
       ],
       "top_n": 2
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"documents\":[\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\ud83d\",\"short\"],\"top_n\":2}"
     }
    ],
    "answer": {
@@ -7140,7 +7152,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\",\"qa chunk 3 alpha bravo alpha bravo alpha bravo\",\"qa chunk 4\",\"qa chunk 5 alpha bravo\",\"qa chunk 6 alpha bravo alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -7390,7 +7403,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\",\"qa chunk 3 alpha bravo alpha bravo alpha bravo\",\"qa chunk 4\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -7542,7 +7556,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -7680,7 +7695,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -7784,7 +7800,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -7883,7 +7900,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -7982,7 +8000,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -8081,7 +8100,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -8180,7 +8200,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -8279,7 +8300,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -8463,7 +8485,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\",\"qa chunk 3 alpha bravo alpha bravo alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {
@@ -8644,7 +8667,8 @@
       ],
       "truncate": true,
       "raw_scores": false
-     }
+     },
+     "raw": "{\"query\":\"qa question about alpha\",\"texts\":[\"qa chunk 0\",\"qa chunk 1 alpha bravo\",\"qa chunk 2 alpha bravo alpha bravo\"],\"truncate\":true,\"raw_scores\":false}"
     }
    ],
    "answer": {

@@ -120,10 +120,10 @@ fn every_recorded_rerank_matches_node() {
                 .collect();
             assert_eq!(document(&h.body), units, "{name}");
         }
-        match serde_json::from_str::<Value>(&mine.body) {
-            Ok(body) => assert_eq!(as_recorded(&body), r["body"], "{name}"),
-            // A label cut inside a surrogate pair: the one lone surrogate is written as JS writes it.
-            Err(_) => assert!(mine.body.contains("\\ud83d\""), "{name}: {}", mine.body),
+        // Byte for byte what the backend's JSON.stringify sent (key order, escapes, a lone surrogate).
+        assert_eq!(mine.body, r["raw"].as_str().unwrap(), "{name}");
+        if let Ok(body) = serde_json::from_str::<Value>(&mine.body) {
+            assert_eq!(as_recorded(&body), r["body"], "{name}");
         }
         let answer = &c["answer"];
         let bytes = match &answer["body"] {
