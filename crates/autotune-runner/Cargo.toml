@@ -1,0 +1,15 @@
+[package]
+name = "autotune-runner"
+version = "0.1.0"
+description = "The native model auto-tune runner (noevia-core llamacpp-full-autotune.cjs): its job record, quality gate, KV policy and step order over injected engine, preset and maintenance dependencies (sbstndalton/noevia R6, #2516)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+regex = "1"

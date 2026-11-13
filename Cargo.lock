@@ -129,6 +129,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "autotune-runner"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "regex",
+]
+
+[[package]]
 name = "axum"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
