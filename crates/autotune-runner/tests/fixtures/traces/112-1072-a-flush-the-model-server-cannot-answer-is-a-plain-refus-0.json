@@ -1,0 +1,10 @@
+{"version":1,"test":"#1072 a flush the model server cannot answer is a plain refusal, and the re-read is still owed","instance":0,"sourceSha256":{"runner":"f53b8fd7826bd78390b84d8c077411c4629fe2a070caeb540dfe7cbc0f27d5f1","test":"9a4f41387bbc96bc3aa7dbc3c6bc7c8d86816a1e916a30b25c64f8b74954d12e"},"replayable":false,"why":["a runner timer fired (setTimeout)"],"config":{"betweenModelsMs":1000,"idleTimeoutMs":300000,"memoryFloorGib":2,"foreignWaitMs":900000,"foreignQuietMs":30000,"foreignPollMs":1,"servicesReserveMib":2560,"allowBelowQ5Kv":false,"samplingFor":false,"planner":"wasm","contention":"wasm","servingChecks":"wasm","loadAdvisor":"default","longProfiles":"default","routerReload":false,"contextFactory":false,"maintenance":[],"sleep":"default"},"initial":{"state":"{\"job\":{\"status\":\"interrupted\",\"model\":\"synthetic\",\"_reloadPending\":true,\"models\":[]}}","ini":""},"events":[
+{"dep":"driver","method":"flushReload","args":[],"throws":{"message":"The model server has not re-read the restored settings yet. Try again shortly.","flags":{"publicMessage":"The model server has not re-read the restored settings yet. Try again shortly."}}},
+{"dep":"invalidateBaseline","tag":"autotune","result":true},
+{"dep":"request","path":"/models?reload=1","method":"GET","body":null,"timeoutMs":120000,"throws":{"message":"socket hang up"}},
+{"dep":"timer"},
+{"dep":"rawModels","result":{"ok":true,"body":{"data":[]}}},
+{"dep":"invalidateBaseline","tag":"autotune","result":true},
+{"dep":"request","path":"/models?reload=1","method":"GET","body":null,"timeoutMs":120000,"result":{"ok":true,"body":{}}},
+{"dep":"save","state":"{\"job\":{\"status\":\"interrupted\",\"model\":\"synthetic\",\"_reloadPending\":false,\"models\":[],\"log\":[{\"at\":1700000000000,\"text\":\"The model server re-read the restored models.ini.\"}]},\"history\":{},\"settings\":{}}"}
+]}

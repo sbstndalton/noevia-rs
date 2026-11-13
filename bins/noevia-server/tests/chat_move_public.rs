@@ -15,6 +15,9 @@ use std::path::{Path, PathBuf};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+#[path = "support/approval_front.rs"]
+mod approval_front;
+
 const SCHEMA: &str = include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql");
 const CODE: &str = "synthetic-chat-move-code";
 const ORIGIN: &str = "http://127.0.0.1:18021";
@@ -78,9 +81,15 @@ async fn front_new_account() -> Front {
         [server_auth::js::digest(CODE)],
     )
     .unwrap();
-    // Node answers nothing here: every route under test is the front's.
+    // Node answers only the executor-epoch acknowledgement (port contract S9) that every chat
+    // move completes with; every route under test is the front's.
+    let (node, _) = approval_front::node().await;
     let mut env: HashMap<&str, String> = HashMap::new();
-    env.insert("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into());
+    env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{node}"));
+    env.insert(
+        "NOEVIA_PROJECT_STORE_TOKEN",
+        approval_front::STORE_TOKEN.into(),
+    );
     env.insert("UI_PORT", "1".into());
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());

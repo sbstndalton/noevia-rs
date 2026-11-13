@@ -37,6 +37,19 @@ jobs:
           repository: sbstndalton/noevia-core
           ref: ${{ steps.core.outputs.sha }}
           path: core
+      - name: Read the tool oracles' core pin (track R5)
+        # The core whose tool-rate-limit.cjs the crate was recorded from.
+        id: core_r5
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < crates/tool-rate-limit/tests/fixtures/core-ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core_r5.outputs.sha }}
+          path: core-r5
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.23.3
@@ -53,9 +66,72 @@ jobs:
           set -euo pipefail
           node bins/noevia-server/tests/mcp-discovery-oracle.cjs "$PWD/core" "$RUNNER_TEMP/mcp-discovery-node.json"
           cmp "$RUNNER_TEMP/mcp-discovery-node.json" bins/noevia-server/tests/fixtures/mcp-discovery-node.v1.json
+      - name: Core's tool-rate-limit.cjs reproduces the committed fixture (track R5)
+        env:
+          NOEVIA_CORE_REF: ${{ steps.core_r5.outputs.sha }}
+        run: |
+          set -euo pipefail
+          node crates/tool-rate-limit/tests/gen-fixtures.cjs "$PWD/core-r5" "$RUNNER_TEMP/tool-rate-limit.json"
+          cmp "$RUNNER_TEMP/tool-rate-limit.json" crates/tool-rate-limit/tests/fixtures/tool-rate-limit.v1.json
+          cargo test --locked -p tool-rate-limit
+      - name: Core's executeMcpToolCall reproduces the committed call scenarios (track R5)
+        # core's own createMcpWiring executor, tool-rate-limit, resultToText and mintToken over a scripted
+        # transport and broker; the front's executor replays the result.
+        env:
+          NOEVIA_CORE_REF: ${{ steps.core_r5.outputs.sha }}
+          NOEVIA_MCP_CALL_FIXTURE: ${{ runner.temp }}/mcp-call-node.json
+        run: |
+          set -euo pipefail
+          [ "$(tr -d ' \n' < bins/noevia-server/tests/fixtures/mcp-call-oracle.core-ref)" = "$NOEVIA_CORE_REF" ]
+          node bins/noevia-server/tests/mcp-call-oracle.cjs "$PWD/core-r5" "$NOEVIA_MCP_CALL_FIXTURE"
+          cmp "$NOEVIA_MCP_CALL_FIXTURE" bins/noevia-server/tests/fixtures/mcp-call-node.v1.json
+          cargo test --locked -p noevia-server --test mcp_call_oracle --test mcp_call
+          cargo test --locked -p noevia-server --lib mcp_call
       - name: The actor replays every scenario, the manifest, the token and the cancellation cases
         env:
           NOEVIA_MCP_DISCOVERY_FIXTURE: ${{ runner.temp }}/mcp-discovery-node.json
         run: cargo test --locked -p noevia-server --test mcp_discovery_actor
       - name: The catalogue and the picker the front composes
         run: cargo test --locked -p noevia-server --lib mcp_discovery
+      - name: Read the Drive tools oracle's core pin (track R5)
+        id: core_r5_drive
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < bins/noevia-server/tests/fixtures/gdrive-tools-oracle.core-ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core_r5_drive.outputs.sha }}
+          path: core-r5-drive
+      - name: Core's Drive tools reproduce the committed steps, and the front replays them (track R5)
+        # core's own gdrive-tools, gdrive-files and gdrive-broker over a scripted Drive API and broker.
+        env:
+          NOEVIA_CORE_REF: ${{ steps.core_r5_drive.outputs.sha }}
+          NOEVIA_GDRIVE_TOOLS_FIXTURE: ${{ runner.temp }}/gdrive-tools-node.json
+        run: |
+          set -euo pipefail
+          node bins/noevia-server/tests/gdrive-tools-oracle.cjs "$PWD/core-r5-drive" "$NOEVIA_GDRIVE_TOOLS_FIXTURE"
+          cmp "$NOEVIA_GDRIVE_TOOLS_FIXTURE" bins/noevia-server/tests/fixtures/gdrive-tools-node.v1.json
+          cargo test --locked -p noevia-server --test gdrive_tools_oracle --test gdrive_tools
+      - name: Read the live test's core pin (track R5)
+        id: core_r5_live
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < bins/noevia-server/tests/fixtures/r5-live.core-ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core_r5_live.outputs.sha }}
+          path: core-r5-live
+      - name: Core's real wiring, store client and Drive tools hand their calls to the real front (track R5)
+        env:
+          NOEVIA_R5_CORE: ${{ github.workspace }}/core-r5-live
+        run: |
+          set -euo pipefail
+          cargo test --locked -p noevia-server --test mcp_call --test gdrive_tools -- --ignored node_hands 2>&1 | tee "$RUNNER_TEMP/r5-live.txt"
+          # Both live tests ran (a renamed test would leave the filter matching nothing).
+          [ "$(grep -c '^test node_hands_.* \.\.\. ok$' "$RUNNER_TEMP/r5-live.txt")" = 2 ]

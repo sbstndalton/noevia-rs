@@ -1,0 +1,1133 @@
+{
+ "version": 2,
+ "source": "noevia-core server/llamacpp-full-autotune.cjs start(), recorded by tests/fixtures/record-node.cjs",
+ "sourceSha256": "f53b8fd7826bd78390b84d8c077411c4629fe2a070caeb540dfe7cbc0f27d5f1",
+ "cases": [
+  {
+   "name": "fast default",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "long default",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "long",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "long",
+    "promptBudgetSeconds": 1800,
+    "bulk": false
+   }
+  },
+  {
+   "name": "fast explicit",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "fast",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "fast minimum 15",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": 15,
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 15,
+    "bulk": false
+   }
+  },
+  {
+   "name": "fast maximum 1800",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": 1800,
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 1800,
+    "bulk": false
+   }
+  },
+  {
+   "name": "long minimum 15",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "long",
+    "promptBudgetSeconds": 15,
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "long",
+    "promptBudgetSeconds": 15,
+    "bulk": false
+   }
+  },
+  {
+   "name": "null seconds uses mode default",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": null,
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "long null seconds uses long default",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "long",
+    "promptBudgetSeconds": null,
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "long",
+    "promptBudgetSeconds": 1800,
+    "bulk": false
+   }
+  },
+  {
+   "name": "numeric string seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "120",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "padded string seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": " 120 \t\n",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "byte order mark is JS whitespace",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "﻿120",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "no-break space is JS whitespace",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": " 120　",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "next line is not JS whitespace",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "120",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "hex string seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "0x78",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "upper hex string seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "0X78",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "octal string seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "0o170",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "binary string seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "0b1111000",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "hex prefix without digits",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "0x",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "signed hex is NaN",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "-0x78",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "exponent string seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "1.2e2",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "trailing dot string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "120.",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "leading dot string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": ".5e3",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 500,
+    "bulk": false
+   }
+  },
+  {
+   "name": "plus sign string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "+120",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "whole float seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": 120,
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "empty string seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "whitespace string seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "   ",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "Infinity string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "Infinity",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "lowercase inf string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "inf",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "nan string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "nan",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "underscore digits string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "1_20",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "trailing junk string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "120s",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "true seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": true,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "false seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": false,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "one-element array seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     120
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "one-element string array seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     "0x78"
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "nested one-element array seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     [
+      120
+     ]
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "empty array seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [],
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "two-element array seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     120,
+     1
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "object seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": {},
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "object with own valueOf seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": {
+     "valueOf": 120
+    },
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "object with own toString seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": {
+     "toString": 120
+    },
+    "systemModel": false
+   },
+   "node": {
+    "throws": "TypeError"
+   }
+  },
+  {
+   "name": "array holding an object with own toString seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     {
+      "toString": 1
+     }
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "throws": "TypeError"
+   }
+  },
+  {
+   "name": "array holding null seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     null
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "array holding null then a number",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     null,
+     120
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "array holding a padded string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     " 120 "
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "array holding an exponent number",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     120
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": false
+   }
+  },
+  {
+   "name": "array holding true",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": [
+     true
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "digits rounding up to the minimum",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "14.99999999999999999",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 15,
+    "bulk": false
+   }
+  },
+  {
+   "name": "radix literal past 2^53",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "0x20000000000001",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "mode with trailing space",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "fast ",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "fractional seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": 120.5,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "below minimum",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": 14,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "above maximum",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": 1801,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "just above maximum",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": 1800.0000001,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "negative zero string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": "-0",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "huge number",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": 1e+300,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "confirm absent",
+   "input": {
+    "model": "qa-synthetic",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Confirm that chat can pause and other model-server clients are stopped."
+   }
+  },
+  {
+   "name": "confirm false",
+   "input": {
+    "confirmPause": false,
+    "model": "qa-synthetic",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Confirm that chat can pause and other model-server clients are stopped."
+   }
+  },
+  {
+   "name": "confirm string true",
+   "input": {
+    "confirmPause": "true",
+    "model": "qa-synthetic",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Confirm that chat can pause and other model-server clients are stopped."
+   }
+  },
+  {
+   "name": "confirm one",
+   "input": {
+    "confirmPause": 1,
+    "model": "qa-synthetic",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Confirm that chat can pause and other model-server clients are stopped."
+   }
+  },
+  {
+   "name": "confirm null",
+   "input": {
+    "confirmPause": null,
+    "model": "qa-synthetic",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Confirm that chat can pause and other model-server clients are stopped."
+   }
+  },
+  {
+   "name": "confirm wins over bad mode",
+   "input": {
+    "model": "qa-synthetic",
+    "mode": "slow",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Confirm that chat can pause and other model-server clients are stopped."
+   }
+  },
+  {
+   "name": "mode null",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": null,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "mode capitalised",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "Fast",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "mode number",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": 1,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "mode array",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": [
+     "fast"
+    ],
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "mode object",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": {},
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "mode empty string",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "mode inherited name",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "toString",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "mode proto name",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "__proto__",
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "bad mode wins over bad seconds",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "x",
+    "promptBudgetSeconds": 1,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose Fast or Long."
+   }
+  },
+  {
+   "name": "long bulk",
+   "input": {
+    "confirmPause": true,
+    "mode": "long",
+    "untuned": true,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "A Long tune runs for one model at a time. Choose a model."
+   }
+  },
+  {
+   "name": "long bulk wins over bad seconds",
+   "input": {
+    "confirmPause": true,
+    "mode": "long",
+    "untuned": true,
+    "promptBudgetSeconds": 1,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "A Long tune runs for one model at a time. Choose a model."
+   }
+  },
+  {
+   "name": "long with truthy non-boolean untuned is not bulk",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "mode": "long",
+    "untuned": "yes",
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "long",
+    "promptBudgetSeconds": 1800,
+    "bulk": false
+   }
+  },
+  {
+   "name": "bulk fast",
+   "input": {
+    "confirmPause": true,
+    "untuned": true,
+    "systemModel": false
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": true
+   }
+  },
+  {
+   "name": "bad seconds wins over active run",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "promptBudgetSeconds": 1,
+    "runActive": true,
+    "systemModel": false
+   },
+   "node": {
+    "status": 400,
+    "error": "Choose a prompt time limit between 15 and 1800 seconds."
+   }
+  },
+  {
+   "name": "active run",
+   "input": {
+    "confirmPause": true,
+    "model": "qa-synthetic",
+    "runActive": true,
+    "systemModel": false
+   },
+   "node": {
+    "status": 409,
+    "error": "Auto-tune is already running."
+   }
+  },
+  {
+   "name": "active run wins over system model",
+   "input": {
+    "confirmPause": true,
+    "model": "laya-qa",
+    "runActive": true,
+    "systemModel": true
+   },
+   "node": {
+    "status": 409,
+    "error": "Auto-tune is already running."
+   }
+  },
+  {
+   "name": "system model",
+   "input": {
+    "confirmPause": true,
+    "model": "laya-qa",
+    "systemModel": true
+   },
+   "node": {
+    "status": 400,
+    "error": "System routing model — not tuned"
+   }
+  },
+  {
+   "name": "system model in a bulk run is not refused here",
+   "input": {
+    "confirmPause": true,
+    "model": "laya-qa",
+    "untuned": true,
+    "systemModel": true
+   },
+   "node": {
+    "status": 202,
+    "mode": "fast",
+    "promptBudgetSeconds": 120,
+    "bulk": true
+   }
+  }
+ ]
+}
