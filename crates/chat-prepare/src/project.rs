@@ -188,7 +188,8 @@ mod tests {
             };
             let out = parts(&turn, None, false).unwrap();
             assert!(
-                out.iter().all(|(k, _)| !matches!(k, PartKind::Knowledge | PartKind::Coverage)),
+                out.iter()
+                    .all(|(k, _)| !matches!(k, PartKind::Knowledge | PartKind::Coverage)),
                 "{files}: {out:?}"
             );
         }
