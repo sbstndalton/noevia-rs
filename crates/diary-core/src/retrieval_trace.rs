@@ -37,7 +37,8 @@ impl EntryRef {
         }
     }
 
-    fn to_json(&self) -> Map<String, Value> {
+    /// The reference as the trace stores it: `id`, `day` and `time`.
+    pub fn to_json(&self) -> Map<String, Value> {
         let mut out = Map::new();
         out.insert("id".into(), self.id.clone());
         out.insert("day".into(), self.day.clone());
@@ -199,7 +200,10 @@ impl RetrievalTrace {
             .map(|(rank, row)| {
                 let mut out = EntryRef::from_row(row).to_json();
                 out.insert("vector_rank".into(), json!(rank));
-                out.insert("score".into(), row.get("score").cloned().unwrap_or(Value::Null));
+                out.insert(
+                    "score".into(),
+                    row.get("score").cloned().unwrap_or(Value::Null),
+                );
                 Value::Object(out)
             })
             .collect();
@@ -230,10 +234,14 @@ impl RetrievalTrace {
         self.budget.insert("used_chars".into(), json!(used_chars));
         self.budget.insert("used_tokens".into(), json!(used_tokens));
         self.counts = Map::new();
-        self.counts.insert("candidates".into(), json!(self.candidates.len()));
-        self.counts.insert("loaded".into(), json!(self.loaded.len()));
-        self.counts.insert("dropped_budget".into(), json!(self.dropped_count("budget")));
-        self.counts.insert("dropped_top_k".into(), json!(self.dropped_count("top_k")));
+        self.counts
+            .insert("candidates".into(), json!(self.candidates.len()));
+        self.counts
+            .insert("loaded".into(), json!(self.loaded.len()));
+        self.counts
+            .insert("dropped_budget".into(), json!(self.dropped_count("budget")));
+        self.counts
+            .insert("dropped_top_k".into(), json!(self.dropped_count("top_k")));
     }
 
     /// The direct-file fallback ran. `found` says whether it produced any text.
