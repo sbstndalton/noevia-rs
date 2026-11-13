@@ -93,7 +93,7 @@
 //! it. The public `POST /api/tool-approvals/{id}` answers it in this process. Without the front's
 //! App every op is 503.
 //!
-//! `POST /v1/approvals/open { user, id, kind: "write"|"route", chat?, scope?, binding? }`
+//! `POST /v1/approvals/open { user, id, kind: "write"|"route", chat?, scope?, binding?, once? }`
 //!                                                  -> 200 `{ opened: true }`
 //!                                                   | 409 `{ error, code: "APPROVAL_EXISTS" }`
 //!                                                   | 503 `{ error, code: "APPROVALS_FULL" }`
@@ -1118,6 +1118,7 @@ async fn approvals_op(
                 return error(StatusCode::BAD_REQUEST, "chat and scope must be strings");
             };
             let binding = body.get("binding").filter(|b| !b.is_null()).cloned();
+            let once = body.get("once").and_then(Value::as_bool) == Some(true);
             match app.approvals.open(Question {
                 id,
                 user,
@@ -1125,6 +1126,7 @@ async fn approvals_op(
                 chat,
                 scope,
                 binding,
+                once,
             }) {
                 Ok(()) => reply(StatusCode::OK, &json!({"opened":true})),
                 Err(OpenError::Invalid) => error(StatusCode::BAD_REQUEST, "invalid approval id"),

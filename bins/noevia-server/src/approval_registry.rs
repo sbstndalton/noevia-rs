@@ -241,6 +241,9 @@ struct Pending {
     chat: Option<String>,
     scope: Option<String>,
     binding: Option<Binding>,
+    /// approvals.cjs `once` (#2446, #2559): approve_all on this question approves the one call and
+    /// stores no grant.
+    once: bool,
     expires: Instant,
     sender: Option<oneshot::Sender<Outcome>>,
     /// Taken by the one wait; `Some` until Node attaches.
@@ -356,6 +359,9 @@ pub struct Question {
     pub chat: Option<String>,
     pub scope: Option<String>,
     pub binding: Option<Value>,
+    /// A tool never approved for more than the call on its card (the page save): approve_all then
+    /// approves that call only. Absent on the wire = false.
+    pub once: bool,
 }
 
 /// Removes the question when Node's wait ends without an answer (its request was dropped).
@@ -439,6 +445,7 @@ impl Registry {
                 chat: q.chat,
                 scope: q.scope.filter(|x| !x.is_empty()),
                 binding,
+                once: q.once,
                 expires: now + self.timeout,
                 sender: Some(sender),
                 receiver: Some(receiver),
@@ -533,13 +540,16 @@ impl Registry {
         Ok(())
     }
 
-    /// approvals.cjs's `approve_all` condition: a chat, a scope, a binding for this user, scope
+    /// approvals.cjs's `approve_all` condition: not a `once` question, a chat, a scope, a binding for this user, scope
     /// and chat, a holder that is not absent, and (here) the live context still that binding's.
     fn grant_for(
         p: &Pending,
         user: &str,
         live: Option<&GrantContext>,
     ) -> Option<((String, String), String, Binding)> {
+        if p.once {
+            return None;
+        }
         let chat = safe_id(p.chat.as_deref()?);
         let scope = p.scope.clone()?;
         let b = p.binding.clone()?;
@@ -963,6 +973,7 @@ mod tests {
             chat: chat.map(Into::into),
             scope: scope.map(Into::into),
             binding: b,
+            once: false,
         }
     }
     fn route_q(id: &str, user: &str) -> Question {
@@ -973,6 +984,7 @@ mod tests {
             chat: Some("c1".into()),
             scope: None,
             binding: None,
+            once: false,
         }
     }
 
@@ -1213,6 +1225,47 @@ mod tests {
         assert!(r.granted(OWNER, "c2", "space:free", Some(&b2)));
         assert!(r.revoke(OWNER, "c2"));
         assert!(!r.granted(OWNER, "c2", "space:free", Some(&b2)));
+    }
+
+    /// #2559: main's #2446 rule, replayed from a fixture recorded from Node's approvals.cjs
+    /// (tools/gen-approvals-once-fixture.cjs): approve_all on a `once` question approves that call
+    /// and stores no grant; the same answer on an ordinary question stores one.
+    #[tokio::test]
+    async fn approve_all_on_a_once_question_stores_no_grant() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../contracts/http/approvals-once.v1.json"
+        ))
+        .unwrap();
+        let cases = fixture["cases"].as_array().unwrap();
+        assert_eq!(cases.len(), 6);
+        for (i, case) in cases.iter().enumerate() {
+            let (_d, live) = store();
+            let r = Registry::new(Some(live));
+            let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
+            let id = format!("q{i}");
+            let mut q = write_q(&id, OWNER, Some("c1"), Some("space:free"), Some(b.clone()));
+            q.once = case["once"].as_bool().unwrap();
+            r.open(q).unwrap();
+            let live = r.grant_context(OWNER, &id);
+            r.decide(
+                OWNER,
+                &id,
+                case["decision"].as_str().unwrap(),
+                false,
+                live.as_ref(),
+            )
+            .unwrap();
+            let want = match case["outcome"].as_str().unwrap() {
+                "approve" => Outcome::Approve,
+                _ => Outcome::Deny,
+            };
+            assert_eq!(r.wait(OWNER, &id).await, Ok(want), "{case}");
+            assert_eq!(
+                r.granted(OWNER, "c1", "space:free", Some(&b)),
+                case["grant"].as_bool().unwrap(),
+                "{case}"
+            );
+        }
     }
 
     #[tokio::test]
