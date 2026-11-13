@@ -1,7 +1,7 @@
 [package]
 name = "chat-prepare"
 version = "0.1.0"
-description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, replayed byte for byte on recorded Node output. Nothing calls it yet."
+description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, and the chat frame block, replayed byte for byte on recorded Node output. Nothing calls it yet."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -13,6 +13,9 @@ workspace = true
 [dependencies]
 js-json = { path = "../js-json" }
 prompt-framing = { path = "../prompt-framing" }
+# chat-frame-steering.cjs safeTag's /[\p{L}\p{N}_-]/u: ICU4X's General_Category, the Unicode release Node's ICU
+# states (the NFKC before it is prompt-framing's, also ICU4X). Unicode-3.0; already in Cargo.lock.
+icu_properties = "=2.3.0"
 # account-instructions.cjs cleanLanguage's /^[\p{L}][\p{L}\p{M} ()'-]*$/u. MIT OR Apache-2.0; already in Cargo.lock.
 regex = "=1.13.1"
 # The IANA zones the time part states the day in (Intl.DateTimeFormat's timeZone). MIT OR Apache-2.0; already in Cargo.lock.
