@@ -14,9 +14,10 @@
 // sequences from the vocabulary; `boundedCases` give bounded() entries directly.
 // A case records `clock` (what now() returns in order, the last repeating: the start, then one per usage), `now`
 // (Date.now() for savedAt), `events` (`threw`: the ones observe() threw on), and Node's assistantEntry,
-// partialEntry, bounded and partialFile (null where Node gives none). `loneDropped` lists where a Node result held a
-// lone surrogate (a cut inside a pair): it is recorded with that unit removed, the Rust port's named difference.
-// Strings over 256 units made of at most 16 runs are written { "$str": [[codePoint, count], ...] }.
+// partialEntry, bounded and partialFile, each as Node's JSON.stringify text ("null" where Node gives none). Events and
+// bounded() entries are JSON text too (some written by hand: `2.0`, `-0`, `1e2`), so Rust parses what Node parsed;
+// lone surrogates in them are Node's `\udxxx` escapes.
+// Strings over 256 units with a repeat are written { "$str": [segment, ...] }: literal text, or [text, count] for a repeat.
 // The two source files' sha256 are recorded: a changed Node file needs a fresh recording.
 
 process.env.TZ = 'UTC';
@@ -63,39 +64,25 @@ function finishedFile(keep) {
   const saves = partials.startPartialSaves({ dir: workDir, chatId, record: { partialEntry: () => null }, everyMs: 3600000 });
   saves.finish({ keep });
   const file = partials.fileFor(workDir, chatId);
-  const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const written = fs.readFileSync(file, 'utf8'); // JSON.stringify's text: lone surrogates escaped, ASCII-safe
   fs.rmSync(file);
-  return value;
-}
-
-// ── Lone surrogates ─────────────────────────────────────────────────────────────────────────
-const LONE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g;
-function assertWellFormed(value, where) {
-  if (typeof value === 'string') { if (LONE.test(value)) throw new Error(`${where}: a lone surrogate in an input`); LONE.lastIndex = 0; return; }
-  if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) assertWellFormed(v, `${where}.${k}`);
-}
-function dropLone(value, where, dropped) {
-  if (typeof value === 'string') {
-    const out = value.replace(LONE, '');
-    if (out !== value) dropped.push(where);
-    return out;
-  }
-  if (Array.isArray(value)) return value.map((v, i) => dropLone(v, `${where}.${i}`, dropped));
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, dropLone(v, `${where}.${k}`, dropped)]));
-  return value;
+  return written;
 }
 
 // ── Long strings, written compactly ─────────────────────────────────────────────────────────
 function encode(value) {
   if (typeof value === 'string' && value.length > 256) {
-    const runs = [];
-    for (const ch of value) {
-      const cp = ch.codePointAt(0);
-      const last = runs[runs.length - 1];
-      if (last && last[0] === cp) last[1]++;
-      else runs.push([cp, 1]);
+    const segments = [];
+    const chars = Array.from(value);
+    for (let i = 0; i < chars.length;) {
+      let j = i;
+      while (j < chars.length && chars[j] === chars[i]) j++;
+      if (j - i >= 8) segments.push([chars[i], j - i]);
+      else if (typeof segments[segments.length - 1] === 'string') segments[segments.length - 1] += chars.slice(i, j).join('');
+      else segments.push(chars.slice(i, j).join(''));
+      i = j;
     }
-    return runs.length <= 16 ? { $str: runs } : value;
+    return segments.some(Array.isArray) && segments.length < 64 ? { $str: segments } : value;
   }
   if (Array.isArray(value)) return value.map(encode);
   if (value && typeof value === 'object') {
@@ -106,38 +93,36 @@ function encode(value) {
 }
 
 // ── Running one case ────────────────────────────────────────────────────────────────────────
-function recorded(c, head, out) {
-  const dropped = [];
-  const result = { ...head, ...dropLone(JSON.parse(JSON.stringify(out)), '', dropped) };
-  if (dropped.length) result.loneDropped = dropped.map((p) => p.slice(1));
-  return encode(result);
-}
+// An event or entry as JSON text: a Raw is written by hand (number forms JSON.stringify never makes).
+class Raw { constructor(text) { this.text = text; } }
+const raw = (text) => new Raw(text);
+const asText = (v) => (v instanceof Raw ? v.text : JSON.stringify(v));
+const text = (v) => (v === undefined ? 'null' : JSON.stringify(v));
 
 function run(c) {
-  const events = JSON.parse(JSON.stringify(c.events)); // what reaches the record is JSON data
-  assertWellFormed(events, c.name);
+  const events = c.events.map(asText);
   const clock = c.clock || [FIXED_NOW];
   let tick = 0;
   const record = createTurnRecord({ now: () => clock[Math.min(tick++, clock.length - 1)] });
   const threw = [];
-  events.forEach((ev, i) => { try { record.observe(ev); } catch { threw.push(i); } });
+  events.forEach((ev, i) => { try { record.observe(JSON.parse(ev)); } catch { threw.push(i); } });
   const now = c.now ?? FIXED_NOW;
   wallNow = now;
   const assistantEntry = record.assistantEntry();
   const partialEntry = record.partialEntry();
   const keep = partialEntry || assistantEntry;
-  const out = { assistantEntry, partialEntry, bounded: keep ? bounded(keep) : null, partialFile: keep ? finishedFile(keep) : null };
+  const out = { assistantEntry: text(assistantEntry), partialEntry: text(partialEntry),
+    bounded: text(keep ? bounded(keep) : null), partialFile: keep ? finishedFile(keep) : 'null' };
   wallNow = FIXED_NOW;
-  return recorded(c, { name: c.name, about: c.about, clock, now, events, ...(threw.length ? { threw } : {}) }, out);
+  return encode({ name: c.name, about: c.about, clock, now, events, ...(threw.length ? { threw } : {}), ...out });
 }
 
 function runBounded(c) {
-  const entry = JSON.parse(JSON.stringify(c.entry));
-  assertWellFormed(entry, c.name);
+  const entry = asText(c.entry);
   wallNow = c.now;
-  const out = { bounded: bounded(entry), partialFile: finishedFile(entry) };
+  const out = { bounded: text(bounded(JSON.parse(entry))), partialFile: finishedFile(JSON.parse(entry)) };
   wallNow = FIXED_NOW;
-  return recorded(c, { name: c.name, about: c.about, now: c.now, entry }, out);
+  return encode({ name: c.name, about: c.about, now: c.now, entry, ...out });
 }
 
 // ── Vocabulary ──────────────────────────────────────────────────────────────────────────────
@@ -208,7 +193,26 @@ const CASES = [
   { name: 'pause_no_reason', about: 'A pause with no reason.', events: [paused()] },
   { name: 'pause_applied_kinds', about: 'applied: only a non-negative integer is kept.',
     events: [paused({ reason: 'sensitive-tool-result', applied: -1 }), delta('QA'), paused({ reason: 'supervision', applied: 1.5 }), paused({ reason: 'supervision', applied: '2' }), paused({ applied: 1e300 })] },
-  { name: 'pause_applied_float_integer', about: 'applied 2.0 is the integer 2.', events: [paused({ applied: 2.0 })] },
+  { name: 'numbers_as_written', about: 'Number forms JSON.stringify never makes, parsed from the same text: 2.0, -0, 1e2, 1.50.',
+    clock: [T0, T0 + 3], events: [raw('{"type":"paused","reason":"sensitive-tool-result","applied":2.0}'), raw('{"type":"delta","text":"QA"}'),
+      raw('{"type":"tool","index":2.0,"name":"qa_two"}'), raw('{"type":"tool","index":-0,"name":"qa_zero"}'), raw('{"type":"tool","index":1e0,"name":"qa_one"}'),
+      raw('{"type":"usage","promptTokens":-0,"completionTokens":1e2,"totalTokens":1.50,"tokensPerSecond":-1.25e-3}'),
+      raw('{"type":"meta","route":1e2,"routingDecision":-0.0,"routing":{"route":"local","reason":"auto"}}')] },
+  { name: 'numbers_negative_zero_applied', about: 'applied -0 is an integer >= 0: kept, written 0.',
+    events: [raw('{"type":"paused","reason":"declined","applied":-0,"declined":["qa_a"]}')] },
+  { name: 'numbers_route_float', about: 'A route 1.0 is labelled 1; routingDecision 0.0 is falsy.', events: [raw('{"type":"meta","route":1.0,"routingDecision":0.0}'), raw('{"type":"delta","text":"QA"}')] },
+  { name: 'lone_halves_rejoin', about: 'An emoji split across two deltas is one character again.',
+    events: [delta('QA \ud83d'), delta('\ude00 done'), reasoning('\ud83d'), reasoning('\ude00')] },
+  { name: 'lone_half_stays', about: 'A lone high half with nothing after it, and a lone low one at the start.',
+    events: [delta('\ude00QA \ud83d'), result({ index: 0, name: 'qa_\ud83d', args: 'x', text: '\udc00' })] },
+  { name: 'preamble_removes_half_a_pair', about: 'lastIndexOf of a lone half finds it inside a pair; the other half is left lone.',
+    events: [delta(`QA ${E} and ${E}.`), preamble('\ud83d')] },
+  { name: 'preamble_low_half', about: 'Removing a lone low half; the narration is that half.',
+    events: [delta(`${E}${E}`), preamble('\ude00'), tool({ index: 0 })] },
+  { name: 'preamble_lone_after_trim', about: 'A narration whose trimmed text starts with a lone low half after thinking that ends in a lone high one.',
+    events: [reasoning('QA \ud83d'), preamble(' \ude00 ')] },
+  { name: 'reasoning_cap_splits_pair', about: 'The newest 65536 units of reasoning start inside a pair: Node keeps the lone low half.',
+    events: [reasoning(`${E}${a(65535)}`), delta('QA')] },
   { name: 'routing_detail_valid', about: 'check-unavailable keeps a valid detail code.',
     events: [meta({ routing: { route: 'cloud', reason: 'check-unavailable', detail: `q${'a-9'.repeat(13)}` } }), delta('QA')] },
   { name: 'routing_detail_too_long', about: 'A 41-unit detail is dropped.', events: [meta({ routing: { route: 'local', reason: 'check-unavailable', detail: `q${a(40)}` } })] },
@@ -273,8 +277,8 @@ const pick = (list) => list[Math.floor(rand() * list.length)];
 const maybe = (p, value) => (rand() < p ? value : undefined);
 const INDEXES = [0, 0, 1, 1, 2, 3, 5, -1, 1.5, '1', null, undefined, undefined, 2 ** 32];
 const NAMES = ['qa_read', 'qa_write', 'drive_trash_file', '', 7, undefined];
-const TEXTS = ['QA answer.', ' ', '\n', 'QA tail', '', 5, E, '﻿QA', '\u0085', 'QA let me check.'];
-const NARRATION = ['QA let me check.', '  QA spaced narration  ', 'QA answer.', E, '', '\u0085', '　', 'QA tail'];
+const TEXTS = ['\ud83d', '\ude00', 'QA answer.', ' ', '\n', 'QA tail', '', 5, E, '﻿QA', '\u0085', 'QA let me check.'];
+const NARRATION = ['\ud83d', '\ude00', 'QA let me check.', '  QA spaced narration  ', 'QA answer.', E, '', '\u0085', '　', 'QA tail'];
 const FLAGS = [true, true, false, 'true', 1, undefined, undefined];
 const DECLINED = ['qa_a', 'qa_b', 'qa_a', 'qa bad', a(80), a(81), 'qa.c-d', '', 7, 'é', 'qa_1', 'qa_2', 'qa_3', 'qa_4', 'qa_5', 'qa_6', 'qa_7', 'qa_8', 'qa_9'];
 const MAKERS = [
@@ -317,6 +321,11 @@ const BOUNDED = [
   { name: 'entry_truncated_kept', about: 'A truncated key stays when the content is short.', entry: { content: 'QA', truncated: 'qa' } },
   { name: 'entry_long_both', about: 'Both fields over the cap.', entry: { content: a(70000), reasoning: `${E}${a(65536)}`, interrupted: false } },
   { name: 'entry_long_reasoning_only', about: 'Reasoning over the cap does not mark truncated.', entry: { content: '', reasoning: a(65537) } },
+  { name: 'entry_object_length', about: 'An object content with its own number length over the cap is truncated.', entry: { content: { length: 70000 } } },
+  { name: 'entry_object_length_small', about: 'An own length under the cap.', entry: { content: { length: 3, qa: 'x' } } },
+  { name: 'entry_numbers_as_written', about: 'Numbers in a passed-through key, as written.', entry: raw('{"content":"QA","stats":{"elapsedMs":-0,"promptTokens":1e2,"tokensPerSecond":2.50}}') },
+  { name: 'entry_index_keys', about: 'Array-index keys come first in JS property order.', entry: raw('{"role":"assistant","2":"b","content":"QA","1":"a"}') },
+  { name: 'entry_lone_surrogates', about: 'Lone halves in content and reasoning, short of the cap.', entry: { content: '\ud83dQA', reasoning: 'QA\ude00' } },
   { name: 'entry_running_marker_kept', about: 'Other keys, even running, pass through.', entry: { content: 'QA', running: { start: 'qa' }, toolCalls: [] } },
 ];
 
