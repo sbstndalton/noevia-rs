@@ -720,7 +720,9 @@ impl Host for Script {
             );
         }
         // The recorder lists what the Drive and MCP tool engines ran; core's built-in tools run in its toolboxes.
-        if !["read_project_file", "get_current_time"].contains(&run.name.as_str()) {
+        if !["read_project_file", "get_current_time", "space_page_save"]
+            .contains(&run.name.as_str())
+        {
             self.executions.lock().unwrap().push(run.name.clone());
         }
         if let Some(message) = next.get("threw").as_str() {
@@ -1036,8 +1038,8 @@ fn every_prepared_turn_reads() {
         read += 1;
     }
     assert!(read >= 30);
-    // The coworker page save (#2446) is the one recorded turn still kept in Node.
-    assert_eq!(refused, ["page_save_stays_in_node: page-save"]);
+    // The coworker page save (#2446) is handed off too now (the `once` capability): no recorded turn stays in Node.
+    assert_eq!(refused, Vec::<String>::new());
 }
 
 #[test]
@@ -1170,7 +1172,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 91, "{ran:?}");
+    assert_eq!(ran.len(), 94, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is

@@ -217,6 +217,8 @@ pub struct Tools<'a> {
     pub automatic_only_writes: HashSet<String>,
     /// The offered project file edit tools (chat.cjs `projectEditTool`).
     pub edit_tools: HashSet<String>,
+    /// #2446 `neverStanding`: asked about on every call, never under a chat-wide grant (the coworker page save).
+    pub once_tools: HashSet<String>,
     /// The turn's instruction skills (#272), when it has a project.
     pub skills: Option<&'a Skills>,
     pub routes: Vec<(String, String)>,
@@ -308,6 +310,7 @@ impl<'a> Tools<'a> {
             public,
             automatic_only_writes,
             edit_tools: HashSet::new(),
+            once_tools: HashSet::new(),
             skills: None,
             routes,
             chat_id,
@@ -337,7 +340,18 @@ impl<'a> Tools<'a> {
     }
 
     fn is_write(&self, name: &str) -> bool {
-        self.writes.contains(name)
+        // chat.cjs isWriteTool: a once-only tool is always a write.
+        self.writes.contains(name) || self.once_tools.contains(name)
+    }
+
+    /// chat.cjs `policyMode`: the account's mode, an `allow` read as `ask` for a once-only tool (#2446).
+    fn policy<H: Host>(&self, host: &H, name: &str, write: bool) -> String {
+        let mode = host.tool_policy(name, write);
+        if mode == "allow" && self.once_tools.contains(name) {
+            "ask".into()
+        } else {
+            mode
+        }
     }
 
     /// Runs one call through the exchange and the gate and gives what the turn keeps of it.
@@ -597,7 +611,7 @@ impl<'a> Tools<'a> {
                 js::slice(name, 64)
             ));
         }
-        let permission = host.tool_policy(name, write);
+        let permission = self.policy(host, name, write);
         if permission == "block" {
             audit_denied(host, name, "blocked");
             return Gate::Result(blocked_text(name));
@@ -672,14 +686,19 @@ impl<'a> Tools<'a> {
                 Err(()) => return Gate::Result(PERMISSION_UNVERIFIED.into()),
             };
             // Port contract S9: core's grant bridge answers with a single-use handle for Node's grant (D17).
-            let used_grant = host
-                .chat_wide_approved(
+            // #2446: "Allow for this chat" never covers a once-only tool; its grant is not even asked for.
+            let once = self.once_tools.contains(name);
+            let used_grant = if once {
+                None
+            } else {
+                host.chat_wide_approved(
                     self.chat_id.as_deref(),
                     &self.grant_scope,
                     &binding,
                     &self.exchange_key,
                 )
-                .await;
+                .await
+            };
             let asked = used_grant.is_none() || self.automatic_only_writes.contains(name);
             if asked {
                 let id = format!("ap-{}", host.uuid());
@@ -697,7 +716,7 @@ impl<'a> Tools<'a> {
                     ("chatId", self.chat_id.clone().map_or(JValue::Null, js::s)),
                     ("scope", js::s(self.grant_scope.clone())),
                     ("binding", binding.clone()),
-                    ("once", JValue::Bool(false)),
+                    ("once", JValue::Bool(once)),
                 ]);
                 if !host.open_approval(&question).await {
                     return Gate::Result(self.not_asked(host, name));
@@ -720,6 +739,9 @@ impl<'a> Tools<'a> {
                 }
                 if repeat {
                     pending.push(("repeatOf", JValue::Bool(true)));
+                }
+                if once {
+                    pending.push(("once", JValue::Bool(true)));
                 }
                 host.emit(&js::obj(pending));
                 let decision = host.await_approval(&question).await;
@@ -778,7 +800,7 @@ impl<'a> Tools<'a> {
         if host.left() {
             return Some(CANCELLED.into());
         }
-        if host.tool_policy(name, write) == "block" {
+        if self.policy(host, name, write) == "block" {
             audit_denied(host, name, "blocked");
             return Some(blocked_text(name));
         }
@@ -859,8 +881,8 @@ impl<'a> Tools<'a> {
             return Some(CANCELLED.into());
         }
         // Read as chat.cjs reads it: once for `block`, and again for `ask` when the call was not asked about.
-        if host.tool_policy(name, write) == "block"
-            || (permission != "ask" && host.tool_policy(name, write) == "ask")
+        if self.policy(host, name, write) == "block"
+            || (permission != "ask" && self.policy(host, name, write) == "ask")
         {
             return Some(PERMISSION_CHANGED.into());
         }

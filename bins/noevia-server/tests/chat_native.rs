@@ -627,7 +627,7 @@ async fn core_service(
             if headers
                 .get("x-noevia-chat-handoff-caps")
                 .map(String::as_str)
-                != Some("skills")
+                != Some(chat_turn::handoff::HANDOFF_CAPS)
             {
                 sc.errors.push(format!(
                     "turn: caps header {:?}",
@@ -1655,11 +1655,16 @@ async fn run_case(
         return Err(format!("tool abort asked: {aborted}"));
     }
     // The recorder logs the runs of the tools it stubs (Drive, the QA documents box); core's own project
-    // file readers run for real there and are seen in the bridge calls instead.
+    // file readers and the coworker page save run for real there and are seen in the bridge calls instead.
     let ran: Vec<String> = sc
         .executions
         .iter()
-        .filter(|n| !matches!(n.as_str(), "read_project_file" | "project_read_file"))
+        .filter(|n| {
+            !matches!(
+                n.as_str(),
+                "read_project_file" | "project_read_file" | "space_page_save"
+            )
+        })
         .cloned()
         .collect();
     if ran != want {

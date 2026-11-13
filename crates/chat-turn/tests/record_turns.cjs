@@ -568,7 +568,7 @@ async function runTurn(c, { handoff = false } = {}) {
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
       templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       // The front names the capabilities its executor runs (rust-chat-native.cjs CAPS_HEADER; chat-turn HANDOFF_CAPS).
-      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills']), supervising: () => false } } : {}),
+      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once']), supervising: () => false } } : {}),
     });
     const body = { message: 'QA hello', projectId: project ? project.id : undefined, chatId: 'qa-chat-1', history: [], ...(c.body || {}) };
     await handler.handleChat({}, res, body, { user });
@@ -925,8 +925,14 @@ const CASES = [
   { name: 'skills_pinned', about: 'A skill pinned by the request (#571) and a read in the first round: every check finds it standing; the other skill is a candidate the read does not load.',
     project: QA_SKILLS, body: { skill: QA_PIN },
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-pin"}'), finish('tool_calls')] }, answer('Done with the pinned skill.')] },
-  { name: 'page_save_stays_in_node', about: 'A coworker conversation offers the page save (#2446): the hand-off is refused (page-save) and Node runs the turn.',
+  { name: 'page_save_offered', about: 'A coworker conversation offers the page save (#2446): handed off to a front naming `once`, the tool named in onceTools.',
     pageSave: true, project: { id: 'specialist-qa', name: 'QA Coworker' }, rounds: [answer('A coworker reply.')] },
+  { name: 'page_save_approved', about: 'The coworker page save asks its once card (never Allow for this chat), is approved and runs; its store fails, so the result says it is not known.', pageSave: true, decision: 'approve',
+    project: { id: 'specialist-qa', name: 'QA Coworker' },
+    rounds: [{ frames: [toolCall('space_page_save', '{"title":"QA page","content":"QA draft."}'), finish('tool_calls')] }, answer('I tried to save the page.')] },
+  { name: 'page_save_under_grant', about: 'The chat holds "Allow for this chat": the page save still asks (no grant is checked), once on its card.', pageSave: true, chatWide: true, decision: 'approve',
+    project: { id: 'specialist-qa', name: 'QA Coworker' },
+    rounds: [{ frames: [toolCall('space_page_save', '{"title":"QA page 2","content":"QA draft 2."}'), finish('tool_calls')] }, answer('Asked before saving.')] },
 ];
 
 (async () => {
