@@ -7,36 +7,36 @@
 //! conditions under which a title is asked for at all. The request itself, the timeout and the store
 //! are the caller's. Nothing calls this yet.
 //!
-//! # Units
+//! # Text and units
 //!
 //! Node measures strings in UTF-16 code units, and so does this module: every length and cut below
 //! (80, 60, 600, 1200, the word-boundary positions) counts code units, and nothing here can panic
-//! on any input.
+//! on any input. Text is `js_json::wtf16` text: a lone surrogate (half of an astral character, which
+//! `slice` can leave and `JSON.stringify` writes as `\ud83d`) is one private-use character of
+//! U+10F800..=U+10FFFF, counted as one unit. Titles and request bodies that hold one are written
+//! with `js_json::wtf16::stringify`, never with a plain UTF-8 encoder; the request body is a
+//! `JValue` in Node's key order.
 //!
 //! # Named differences from Node
 //!
-//! * **Lone surrogates.** A JavaScript string can hold half of an astral character; a Rust `String`
-//!   cannot. Node cuts with `slice`, which can split a pair, and repairs it only in `derivedTitle`.
-//!   Everywhere else (the clip of the message and the reply in the title request, the 60-unit cut of
-//!   a title) the Node string ends in a lone high surrogate, which `JSON.stringify` writes as the
-//!   escape `\ud83d`. Rust deletes every lone surrogate from a value it produces, after Node's own
-//!   steps have run on the code units (so a trailing-punctuation strip still stops at it, as in
-//!   Node). `serde_json` also refuses a lone-surrogate escape in a reply, so a reply that holds one
-//!   is no title here where Node would read it. Titles stored by Node with a lone surrogate cannot
-//!   be handed to [`is_derived_title`] either; every well-formed title compares as in Node.
+//! * **The reply is parsed by `wtf16::parse`** ([`title_from_reply_text`]), which refuses text that
+//!   already holds a character of U+10F800..=U+10FFFF, and nesting deeper than serde_json follows
+//!   (128). Node reads both; here they give no title. The caller turns the reply's bytes into text
+//!   with `String::from_utf8_lossy`, as `Buffer.toString('utf8')` does (invalid bytes become U+FFFD).
 //! * **Whitespace and letters.** `\s`, `\p{L}` and `\p{Extended_Pictographic}` are JavaScript's, not
 //!   Rust's: `is_js_space` (no NEL, with the BOM), and tables generated from Node's own ICU
 //!   (`title/tables.rs`) that the tests check code point by code point against the recording.
 //!
 //! The Node behaviour kept as is, quirks included: a `Title:` prefix is stripped before quotes, so
 //! `"Title: X"` keeps its prefix; a reply cut by `finish_reason: length` is used as it is; only the
-//! first line of the reply is read; the word limit is checked before the length cut.
+//! first line of the reply is read; the word limit is checked before the length cut; a title cut
+//! through an astral letter ends in half of it.
 
 mod tables;
 
 use std::collections::{BTreeMap, HashMap};
 
-use serde_json::{json, Value};
+use js_json::{wtf16, JValue};
 
 /// The longest title the client derives from a first message.
 pub const CHAT_TITLE_MAX: usize = 80;
@@ -107,8 +107,17 @@ fn is_high(unit: u16) -> bool {
     (0xd800..=0xdbff).contains(&unit)
 }
 
+/// The UTF-16 code units of wtf16 text: a lone surrogate character is its unit.
 fn units(s: &str) -> Vec<u16> {
-    s.encode_utf16().collect()
+    let mut out = Vec::new();
+    let mut buf = [0u16; 2];
+    for c in s.chars() {
+        match wtf16::lone_unit(c) {
+            Some(unit) => out.push(unit),
+            None => out.extend_from_slice(c.encode_utf16(&mut buf)),
+        }
+    }
+    out
 }
 
 /// The first `n` code units (`slice(0, n)`).
@@ -116,10 +125,12 @@ fn head(units: &[u16], n: usize) -> &[u16] {
     units.get(..n).unwrap_or(units)
 }
 
-/// Code units back to a string, deleting every lone surrogate (the first named difference).
+/// Code units back to wtf16 text; a lone surrogate becomes its character.
 fn text(units: &[u16]) -> String {
     char::decode_utf16(units.iter().copied())
-        .filter_map(Result::ok)
+        .map(|c| {
+            c.unwrap_or_else(|e| wtf16::lone_char(e.unpaired_surrogate()).unwrap_or('\u{fffd}'))
+        })
         .collect()
 }
 
@@ -153,44 +164,39 @@ pub fn derived_title(message: &str) -> String {
     title
 }
 
-/// Whether `title` is still the one derived from the first message (or the old bare 80-unit cut, or the
-/// trimmed message), or no title at all: only then may a generated title replace it. `None` is a
-/// missing title; any JSON value other than a string or null is not derived.
-pub fn is_derived_title(title: Option<&Value>, first_message: &str) -> bool {
+/// Whether `title` is still the one derived from the first message (or the old bare 80-unit cut, which
+/// may end in half an astral character, or the trimmed message), or no title at all: only then may a
+/// generated title replace it. `undefined` and `null` are no title; any value but a string is not derived.
+pub fn is_derived_title(title: &JValue, first_message: &str) -> bool {
     let title = match title {
-        None | Some(Value::Null) => return true,
-        Some(Value::String(title)) if title.is_empty() => return true,
-        Some(Value::String(title)) => title,
-        Some(_) => return false,
+        JValue::Undefined | JValue::Null => return true,
+        JValue::Str(title) if title.is_empty() => return true,
+        JValue::Str(title) => title,
+        _ => return false,
     };
     *title == derived_title(first_message)
-        || title
-            .encode_utf16()
-            .eq(first_message.encode_utf16().take(CHAT_TITLE_MAX))
+        || *title == wtf16::slice(first_message, CHAT_TITLE_MAX)
         || title == trim_js(first_message)
 }
 
 /// The history this turn was sent with holds no assistant message.
-pub fn first_reply(history: &Value) -> bool {
-    !history.as_array().is_some_and(|turns| {
-        turns
-            .iter()
-            .any(|turn| turn.get("role").and_then(Value::as_str) == Some("assistant"))
-    })
+pub fn first_reply(history: &JValue) -> bool {
+    !matches!(history, JValue::Arr(turns)
+        if turns.iter().any(|turn| turn.get("role").as_str() == Some("assistant")))
 }
 
 /// The chat's first user message: the first user turn of the history whose content is a string, or this
 /// turn's own message when there is none.
-pub fn first_user_message(history: &Value, message: &str) -> String {
-    history
-        .as_array()
-        .and_then(|turns| {
-            turns.iter().find_map(|turn| {
-                let user = turn.get("role").and_then(Value::as_str) == Some("user");
-                user.then(|| turn.get("content").and_then(Value::as_str))
-                    .flatten()
-            })
+pub fn first_user_message(history: &JValue, message: &str) -> String {
+    let JValue::Arr(turns) = history else {
+        return message.to_owned();
+    };
+    turns
+        .iter()
+        .find(|turn| {
+            turn.get("role").as_str() == Some("user") && turn.get("content").as_str().is_some()
         })
+        .and_then(|turn| turn.get("content").as_str())
         .unwrap_or(message)
         .to_owned()
 }
@@ -246,7 +252,7 @@ impl AttemptCounter {
             n
         });
         let n = n.saturating_add(1);
-        self.clock += 1;
+        self.clock = self.clock.wrapping_add(1);
         self.counts.insert(key.to_owned(), (self.clock, n));
         self.order.insert(self.clock, key.to_owned());
         while self.counts.len() > self.max_chats {
@@ -336,44 +342,57 @@ fn user_prompt(message: &str, reply: &str) -> String {
     )
 }
 
-/// The request body `generateTitle` sends, as a value.
-pub fn title_request_body(model: &str, message: &str, reply: &str) -> Value {
-    json!({
-        "model": model,
-        "stream": false,
-        "temperature": 0.2,
-        "max_tokens": MAX_TOKENS,
-        "chat_template_kwargs": { "enable_thinking": false },
-        "messages": [
-            { "role": "system", "content": TITLE_SYSTEM },
-            { "role": "user", "content": user_prompt(message, reply) },
-        ],
-    })
+/// The request body `generateTitle` sends, with Node's key order.
+pub fn title_request_body(model: &str, message: &str, reply: &str) -> JValue {
+    let say = |role: &str, content: &str| {
+        JValue::obj([
+            ("role", JValue::from(role)),
+            ("content", JValue::from(content)),
+        ])
+    };
+    JValue::obj([
+        ("model", JValue::from(model)),
+        ("stream", JValue::Bool(false)),
+        ("temperature", JValue::Num(0.2)),
+        ("max_tokens", JValue::Num(f64::from(MAX_TOKENS))),
+        (
+            "chat_template_kwargs",
+            JValue::obj([("enable_thinking", JValue::Bool(false))]),
+        ),
+        (
+            "messages",
+            JValue::Arr(vec![
+                say("system", TITLE_SYSTEM),
+                say("user", &user_prompt(message, reply)),
+            ]),
+        ),
+    ])
 }
 
-/// The same body as the bytes `JSON.stringify` makes, keys in Node's order.
+/// The bytes `JSON.stringify` makes of [`title_request_body`], lone surrogates written as `\udxxx`.
 pub fn title_request_json(model: &str, message: &str, reply: &str) -> String {
-    let string = |s: &str| Value::String(s.to_owned()).to_string();
-    format!(
-        "{{\"model\":{},\"stream\":false,\"temperature\":0.2,\"max_tokens\":{MAX_TOKENS},\"chat_template_kwargs\":{{\"enable_thinking\":false}},\"messages\":[{{\"role\":\"system\",\"content\":{}}},{{\"role\":\"user\",\"content\":{}}}]}}",
-        string(model),
-        string(TITLE_SYSTEM),
-        string(&user_prompt(message, reply)),
-    )
+    wtf16::stringify(&title_request_body(model, message, reply)).unwrap_or_default()
 }
 
 // ---- the reply --------------------------------------------------------------------------------------
 
-/// The engine's reply read into a title: `choices[0].message.content` cleaned, or none. `choices[0]` is
-/// read as JavaScript does, so an object with a `"0"` key counts as well as an array.
-pub fn title_from_reply(reply: &Value) -> Option<String> {
-    let choices = reply.get("choices")?;
-    let first = match choices {
-        Value::Array(list) => list.first(),
-        Value::Object(map) => map.get("0"),
-        _ => None,
-    }?;
-    clean_title(first.get("message")?.get("content")?.as_str()?)
+/// The engine's reply text read into a title: `JSON.parse`, then `choices[0].message.content` cleaned.
+/// Text `JSON.parse` refuses, or `wtf16::parse` cannot take (see the module's named differences), is no
+/// title. The caller decodes the reply's bytes lossily (`String::from_utf8_lossy`) as Node's
+/// `Buffer.toString('utf8')` does.
+pub fn title_from_reply_text(reply: &str) -> Option<String> {
+    title_from_reply(&wtf16::parse(reply).ok()?)
+}
+
+/// `choices?.[0]?.message?.content` of a parsed reply, cleaned. `choices[0]` is read as JavaScript does,
+/// so an object with a `"0"` key counts as well as an array.
+pub fn title_from_reply(reply: &JValue) -> Option<String> {
+    let first = match reply.get("choices") {
+        JValue::Arr(list) => list.first()?,
+        choices @ JValue::Obj(_) => choices.get("0"),
+        _ => return None,
+    };
+    clean_title(first.get("message").get("content").as_str()?)
 }
 
 /// `/<think>[\s\S]*?(<\/think>|$)/gi`: a reasoning block, to its close or to the end.

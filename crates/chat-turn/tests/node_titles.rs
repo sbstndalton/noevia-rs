@@ -1,6 +1,8 @@
 //! The recorded Node chat titles (`fixtures/node-titles.v1.json`, written by `record_titles.cjs` from
 //! noevia-core's `server/chat-title.cjs`) replayed against `chat_turn::title`, and the four whole-turn title
-//! cases of `node-turns.v1.json` checked against the same functions.
+//! cases of `node-turns.v1.json` checked against the same functions. Both recordings are read with
+//! `js_json::wtf16::parse`, so Node's key order and its lone surrogates survive; request bodies are
+//! compared as the exact bytes `JSON.stringify` wrote.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -13,24 +15,47 @@ mod common;
 use chat_turn::title::{
     ask_for_title, attempt_key, can_request, clean_title, derived_title, first_reply,
     first_user_message, is_derived_title, is_js_space, is_letter, is_pictographic, title_due,
-    title_from_reply, title_request_body, title_request_json, AskFacts, AttemptCounter,
-    CHAT_TITLE_MAX, MAX_ATTEMPTS, TITLE_MAX, TITLE_SYSTEM,
+    title_from_reply, title_from_reply_text, title_request_body, title_request_json, AskFacts,
+    AttemptCounter, CHAT_TITLE_MAX, MAX_ATTEMPTS, TITLE_MAX, TITLE_SYSTEM,
 };
-use common::{case, fixture as turns, request_body, same_json};
-use serde_json::{json, Value};
+use js_json::wtf16::{self, LONE_BASE};
+use js_json::JValue;
 
 type Test = fn(char) -> bool;
 
-fn titles() -> Value {
-    serde_json::from_str(include_str!("fixtures/node-titles.v1.json")).unwrap()
+fn titles() -> JValue {
+    wtf16::parse(include_str!("fixtures/node-titles.v1.json")).unwrap()
 }
 
-fn s(v: &Value) -> &str {
+fn s(v: &JValue) -> &str {
     v.as_str().unwrap()
 }
 
-fn list(v: &Value) -> &Vec<Value> {
-    v.as_array().unwrap()
+fn list(v: &JValue) -> &[JValue] {
+    match v {
+        JValue::Arr(items) => items,
+        other => panic!("not an array: {other:?}"),
+    }
+}
+
+fn at(v: &JValue, i: usize) -> &JValue {
+    match v {
+        JValue::Arr(items) => items.get(i).unwrap_or(&JValue::Undefined),
+        _ => &JValue::Undefined,
+    }
+}
+
+fn num(v: &JValue) -> u64 {
+    v.as_num().unwrap() as u64
+}
+
+fn has_lone(text: &str) -> bool {
+    text.chars().any(|c| u32::from(c) >= LONE_BASE)
+}
+
+/// The character a lone surrogate unit is held as.
+fn lone(unit: u16) -> char {
+    wtf16::lone_char(unit).unwrap()
 }
 
 /// `"a-b,c-d"` (hex) into code point ranges.
@@ -49,22 +74,24 @@ fn parse_ranges(text: &str) -> Vec<(u32, u32)> {
 #[test]
 fn the_fixture_names_its_node_source_and_constants() {
     let f = titles();
-    assert_eq!(f["version"], 1);
-    assert_eq!(
-        f["sources"]["server/chat-title.cjs"].as_str().map(str::len),
-        Some(64)
-    );
+    assert_eq!(num(f.get("version")), 1);
+    let sha = s(f.get("sources").get("server/chat-title.cjs"));
+    assert_eq!(sha.len(), 64);
     // The whole-turn recording was made from the same source file.
     assert_eq!(
-        f["sources"]["server/chat-title.cjs"],
-        turns()["sources"]["server/chat-title.cjs"]
+        sha,
+        common::fixture()["sources"]["server/chat-title.cjs"]
+            .as_str()
+            .unwrap()
     );
-    assert_eq!(f["constants"]["CHAT_TITLE_MAX"], CHAT_TITLE_MAX);
-    assert_eq!(f["constants"]["TITLE_MAX"], TITLE_MAX);
-    assert_eq!(f["constants"]["MAX_ATTEMPTS"], MAX_ATTEMPTS);
-    assert_eq!(s(&f["constants"]["TITLE_SYSTEM"]), TITLE_SYSTEM);
-    assert_eq!(f["counters"]["defaults"]["maxAttempts"], MAX_ATTEMPTS);
-    assert_eq!(f["counters"]["defaults"]["evictedAfterOtherKeys"], 2000);
+    let k = f.get("constants");
+    assert_eq!(num(k.get("CHAT_TITLE_MAX")) as usize, CHAT_TITLE_MAX);
+    assert_eq!(num(k.get("TITLE_MAX")) as usize, TITLE_MAX);
+    assert_eq!(num(k.get("MAX_ATTEMPTS")) as u32, MAX_ATTEMPTS);
+    assert_eq!(s(k.get("TITLE_SYSTEM")), TITLE_SYSTEM);
+    let d = f.get("counters").get("defaults");
+    assert_eq!(num(d.get("maxAttempts")) as u32, MAX_ATTEMPTS);
+    assert_eq!(num(d.get("evictedAfterOtherKeys")), 2000);
 }
 
 #[test]
@@ -76,7 +103,7 @@ fn whitespace_letters_and_pictographs_are_node_s_for_every_code_point() {
         ("pictographic", is_pictographic),
     ];
     for (name, test) in tables {
-        let ranges = parse_ranges(s(&f["unicode"][name]));
+        let ranges = parse_ranges(s(f.get("unicode").get(name)));
         let mut expected = 0;
         for cp in 0..=0x10ffff_u32 {
             let Some(c) = char::from_u32(cp) else {
@@ -91,100 +118,94 @@ fn whitespace_letters_and_pictographs_are_node_s_for_every_code_point() {
     // The two places the JavaScript sets differ from Rust's.
     assert!(!is_js_space('\u{85}') && '\u{85}'.is_whitespace());
     assert!(is_js_space('\u{feff}') && !'\u{feff}'.is_whitespace());
+    // A mapped lone surrogate is none of them.
+    assert!(
+        !is_js_space(lone(0xd83d)) && !is_letter(lone(0xd83d)) && !is_pictographic(lone(0xd83d))
+    );
 }
 
 #[test]
 fn derived_titles_are_node_s() {
     let f = titles();
-    assert!(list(&f["derived"]).len() >= 40);
-    for c in list(&f["derived"]) {
-        assert_eq!(
-            derived_title(s(&c["text"])),
-            s(&c["title"]),
-            "{}",
-            c["text"]
-        );
+    assert!(list(f.get("derived")).len() >= 40);
+    for c in list(f.get("derived")) {
+        assert_eq!(derived_title(s(c.get("text"))), s(c.get("title")), "{c:?}");
     }
 }
 
 #[test]
 fn is_derived_title_is_node_s() {
     let f = titles();
-    let mut yes = 0;
-    for c in list(&f["isDerived"]) {
-        let title = if c["titleAbsent"] == true {
-            None
-        } else {
-            Some(&c["title"])
-        };
-        let got = is_derived_title(title, s(&c["firstMessage"]));
-        assert_eq!(got, c["result"], "{c}");
+    let (mut yes, mut split) = (0, 0);
+    for c in list(f.get("isDerived")) {
+        // A missing `title` key is `undefined`.
+        let got = is_derived_title(c.get("title"), s(c.get("firstMessage")));
+        assert_eq!(Some(got), c.get("result").as_bool(), "{c:?}");
         yes += usize::from(got);
+        // The old bare 80-unit cut of a message whose astral character straddles it: the stored title
+        // ends in a lone surrogate and Node says yes, and so does this port.
+        let cut = c.get("title").as_str().is_some_and(has_lone);
+        split += usize::from(cut && got);
+        assert!(!cut || got, "{c:?}");
     }
-    assert!(yes > 20 && yes < list(&f["isDerived"]).len() - 20);
-    // The old bare cut that splits an astral character: Node can hold that lone-surrogate title and says yes.
-    // Rust cannot hold it, and every well-formed title is judged as in Node.
-    let split = &f["isDerivedSplitCut"];
-    assert_eq!(split["node"], true);
-    assert_eq!(split["wellFormedTitle"], false);
-    let message = s(&split["firstMessage"]);
-    let cut: Vec<u16> = message.encode_utf16().take(CHAT_TITLE_MAX).collect();
-    let well_formed: String = char::decode_utf16(cut).filter_map(Result::ok).collect();
-    assert_eq!(
-        is_derived_title(Some(&json!(well_formed)), message),
-        split["wellFormedTitle"]
-    );
+    assert!(yes > 20 && yes < list(f.get("isDerived")).len() - 20);
+    assert!(split >= 1, "a stored split cut is a positive case");
+    // The same case spelled out.
+    let message = format!("{}😀{}", "a".repeat(79), "b".repeat(10));
+    let cut = format!("{}{}", "a".repeat(79), lone(0xd83d));
+    assert_eq!(wtf16::len(&cut), 80);
+    assert!(is_derived_title(&JValue::Str(cut), &message));
+    assert!(!is_derived_title(&JValue::Str("a".repeat(79)), &message));
 }
 
 #[test]
 fn the_first_reply_and_the_first_user_message_are_node_s() {
     let f = titles();
-    for c in list(&f["firstOf"]) {
-        let history = if c["historyAbsent"] == true {
-            &Value::Null
-        } else {
-            &c["history"]
-        };
-        let message = s(&c["message"]);
-        assert_eq!(first_reply(history), c["firstReply"], "{c}");
+    for c in list(f.get("firstOf")) {
+        // A missing `history` key is `undefined`.
+        let history = c.get("history");
+        let message = s(c.get("message"));
+        assert_eq!(
+            Some(first_reply(history)),
+            c.get("firstReply").as_bool(),
+            "{c:?}"
+        );
         assert_eq!(
             first_user_message(history, message),
-            s(&c["firstUserMessage"]),
-            "{c}"
+            s(c.get("firstUserMessage")),
+            "{c:?}"
         );
     }
 }
 
 #[test]
-fn the_title_request_is_what_generate_title_sends() {
+fn the_title_request_is_what_generate_title_sends_byte_for_byte() {
     let f = titles();
     let mut cut_pairs = 0;
-    for c in list(&f["requests"]) {
-        let (model, message, reply) = (s(&c["model"]), s(&c["message"]), s(&c["reply"]));
+    for c in list(f.get("requests")) {
+        let (model, message, reply) = (s(c.get("model")), s(c.get("message")), s(c.get("reply")));
         assert!(can_request(model, message, reply));
-        let calls = list(&c["calls"]);
+        let calls = list(c.get("calls"));
         assert_eq!(calls.len(), 1);
         let call = &calls[0];
-        assert_eq!(call["method"], "POST");
-        assert_eq!(call["redirect"], "error");
-        assert_eq!(call["signal"], true);
-        assert_eq!(call["headers"]["Content-Type"], "application/json");
-        let node: Value = serde_json::from_str(s(&call["bodyText"])).unwrap();
-        assert!(
-            same_json(&title_request_body(model, message, reply), &node),
-            "{message:?}"
-        );
+        assert_eq!(s(call.get("method")), "POST");
+        assert_eq!(s(call.get("redirect")), "error");
+        assert_eq!(call.get("signal").as_bool(), Some(true));
         assert_eq!(
-            title_request_json(model, message, reply),
-            s(&call["bodyText"]),
-            "{message:?}"
+            s(call.get("headers").get("Content-Type")),
+            "application/json"
         );
-        // The bytes parse back to the value.
-        let parsed: Value =
-            serde_json::from_str(&title_request_json(model, message, reply)).unwrap();
-        assert!(same_json(&parsed, &node));
-        cut_pairs += usize::from(call["bodyLoneSurrogates"].as_u64().unwrap() > 0);
-        assert_eq!(c["title"], "QA Title");
+        let node = s(call.get("bodyText"));
+        let body = title_request_body(model, message, reply);
+        assert_eq!(wtf16::stringify(&body).unwrap(), node, "{message:?}");
+        assert_eq!(title_request_json(model, message, reply), node);
+        // The recorded bytes read and written again are the same bytes (key order included).
+        assert_eq!(
+            wtf16::stringify(&wtf16::parse(node).unwrap()).unwrap(),
+            node
+        );
+        cut_pairs += usize::from(node.contains("\\ud"));
+        assert_eq!(s(c.get("title")), "QA Title");
     }
     assert!(
         cut_pairs >= 4,
@@ -195,62 +216,84 @@ fn the_title_request_is_what_generate_title_sends() {
 #[test]
 fn a_blank_model_message_or_reply_makes_no_request() {
     let f = titles();
-    assert!(list(&f["skipped"]).len() >= 8);
-    for c in list(&f["skipped"]) {
-        let (model, message, reply) = (
-            c["model"].as_str().unwrap_or(""),
-            c["message"].as_str().unwrap_or(""),
-            c["reply"].as_str().unwrap_or(""),
+    assert!(list(f.get("skipped")).len() >= 8);
+    for c in list(f.get("skipped")) {
+        let text = |k: &str| c.get(k).as_str().unwrap_or("").to_owned();
+        let called = c.get("called").as_bool().unwrap();
+        assert_eq!(
+            can_request(&text("model"), &text("message"), &text("reply")),
+            called,
+            "{c:?}"
         );
-        assert_eq!(can_request(model, message, reply), c["called"], "{c}");
-        assert_eq!(c["title"].is_null(), c["called"] == false, "{c}");
+        assert_eq!(c.get("title").is_nullish(), !called, "{c:?}");
     }
 }
 
 #[test]
 fn replies_are_read_and_cleaned_as_node_does() {
     let f = titles();
-    let (mut some, mut none, mut lone) = (0, 0, 0);
-    for c in list(&f["replies"]) {
-        let got = title_from_reply(&c["response"]);
-        let want = c["title"].as_str().map(str::to_owned);
-        assert_eq!(got, want, "{}: {}", c["label"], c["response"]);
-        if let Some(raw) = c["response"]["choices"][0]["message"]["content"].as_str() {
-            assert_eq!(clean_title(raw), want, "{raw:?}");
+    let (mut some, mut none, mut lone_titles) = (0, 0, 0);
+    for c in list(f.get("replies")) {
+        let response = c.get("response");
+        let want = c.get("title").as_str();
+        // The crate function takes the reply's text.
+        let text = wtf16::stringify(response).unwrap();
+        let got = title_from_reply_text(&text);
+        assert_eq!(got.as_deref(), want, "{:?}: {text}", c.get("label"));
+        assert_eq!(title_from_reply(response).as_deref(), want);
+        if let JValue::Arr(choices) = response.get("choices") {
+            if let Some(raw) = choices
+                .first()
+                .and_then(|c| c.get("message").get("content").as_str())
+            {
+                assert_eq!(clean_title(raw).as_deref(), want, "{raw:?}");
+            }
         }
         if let Some(t) = got {
             some += 1;
-            assert!(!t.is_empty() && t.encode_utf16().count() <= TITLE_MAX);
+            lone_titles += usize::from(has_lone(&t));
+            assert!(!t.is_empty() && wtf16::len(&t) <= TITLE_MAX, "{t:?}");
         } else {
             none += 1;
         }
-        lone += c["titleLoneSurrogates"].as_u64().unwrap();
     }
-    // Node's titles cut through an astral letter end in half of it; the recording holds them with it deleted.
-    assert!(
-        lone >= 5,
-        "the recording cuts titles through astral letters"
-    );
+    // Node's titles cut through an astral letter, or holding one, end in or hold a lone surrogate.
+    assert!(lone_titles >= 8, "{lone_titles}");
     assert!(some > 100 && none > 40, "{some} titles, {none} none");
 }
 
 #[test]
 fn the_attempt_counter_is_node_s() {
     let f = titles();
-    assert!(list(&f["counters"]["runs"]).len() >= 10);
-    for run in list(&f["counters"]["runs"]) {
-        let max = run["options"]["max"]
-            .as_u64()
+    let runs = list(f.get("counters").get("runs"));
+    assert!(runs.len() >= 10);
+    for run in runs {
+        let max = run
+            .get("options")
+            .get("max")
+            .as_num()
             .map_or(MAX_ATTEMPTS, |m| m as u32);
-        let max_chats = run["options"]["maxChats"]
-            .as_u64()
+        let max_chats = run
+            .get("options")
+            .get("maxChats")
+            .as_num()
             .map_or(2000, |m| m as usize);
         let mut counter = AttemptCounter::new(max, max_chats);
-        for (i, op) in list(&run["ops"]).iter().enumerate() {
-            let key = s(&op["key"]);
-            match s(&op["op"]) {
-                "allowed" => assert_eq!(json!(counter.allowed(key)), op["result"], "{i}: {op}"),
-                _ => assert_eq!(json!(counter.record(key)), op["result"], "{i}: {op}"),
+        for (i, op) in list(run.get("ops")).iter().enumerate() {
+            let key = s(op.get("key"));
+            match s(op.get("op")) {
+                "allowed" => {
+                    assert_eq!(
+                        Some(counter.allowed(key)),
+                        op.get("result").as_bool(),
+                        "{i}: {op:?}"
+                    );
+                }
+                _ => assert_eq!(
+                    f64::from(counter.record(key)),
+                    op.get("result").as_num().unwrap(),
+                    "{i}: {op:?}"
+                ),
             }
         }
     }
@@ -270,6 +313,7 @@ fn the_attempt_counter_is_node_s() {
 
 #[test]
 fn the_attempt_key_separates_account_list_and_chat() {
+    // Not recorded: chat.cjs builds the key inline, so this is a check against its text, not a replay.
     assert_eq!(
         attempt_key(Some("qa-user"), Some("qa-list"), "qa-chat"),
         "qa-user\0qa-list\0qa-chat"
@@ -285,168 +329,200 @@ fn the_attempt_key_separates_account_list_and_chat() {
 
 // ---- the whole-turn title cases -----------------------------------------------------------------
 
-/// The reply a turn streamed: every content delta of its first scripted round.
-fn streamed_reply(case: &Value) -> String {
-    list(&case["input"]["rounds"][0]["frames"])
+/// A recorded case, read with its key order.
+fn turn_case(f: &JValue, name: &str) -> JValue {
+    list(f.get("cases"))
         .iter()
-        .filter_map(|f| f["choices"][0]["delta"]["content"].as_str())
+        .find(|c| c.get("name").as_str() == Some(name))
+        .unwrap()
+        .clone()
+}
+
+/// The reply a turn streamed: every content delta of its first scripted round.
+fn streamed_reply(case: &JValue) -> String {
+    list(at(case.get("input").get("rounds"), 0).get("frames"))
+        .iter()
+        .filter_map(|f| at(f.get("choices"), 0).get("delta").get("content").as_str())
         .collect()
 }
 
 #[test]
 fn the_whole_turn_title_cases_agree_with_the_module() {
-    let f = turns();
+    let f = wtf16::parse(common::FIXTURE).unwrap();
     for name in [
         "title",
         "title_renamed",
         "title_still_derived",
         "title_failed",
     ] {
-        let c = case(name);
-        let input = &c["input"];
-        let (model, message) = (s(&input["project"]["model"]), s(&input["body"]["message"]));
-        let history = &input["body"]["history"];
-        let reply = streamed_reply(&c);
-        let requests = list(&c["requests"]);
-        let first = first_reply(history);
-        let auto_named = input["titles"]["autoNamed"] == true;
-        let attempts = AttemptCounter::default();
-        let key = attempt_key(
-            None,
-            Some(s(&input["project"]["id"])),
-            s(&input["body"]["chatId"]),
+        let c = turn_case(&f, name);
+        let input = c.get("input");
+        let (model, message) = (
+            s(input.get("project").get("model")),
+            s(input.get("body").get("message")),
         );
+        let history = input.get("body").get("history");
+        let reply = streamed_reply(&c);
+        let requests = list(c.get("requests"));
+        let first = first_reply(history);
+        let auto_named = input.get("titles").get("autoNamed").as_bool() == Some(true);
+        let events = list(c.get("events"));
 
-        // Is a title asked for? The turn made a second engine request exactly then.
+        // Is a title asked for? The turn made a second engine request exactly then. The facts come from
+        // the recorded input and events; the recording runs the default local provider on an idle engine
+        // (not recorded, so fixed here). The order of the gates and the counter are not recorded from Node;
+        // the unit tests below check them against chat.cjs's text.
+        let diary = |v: &JValue| v.as_str().is_some_and(|id| id.starts_with("diary"));
         let facts = AskFacts {
-            store_wired: input["titles"].is_object(),
-            paused: false,
-            round_has_content: true,
+            store_wired: input.get("titles").is_object(),
+            paused: events
+                .iter()
+                .any(|e| e.get("type").as_str() == Some("paused")),
+            round_has_content: !reply.is_empty(),
             reply: &reply,
-            chat_id: s(&input["body"]["chatId"]),
-            compact_only: false,
-            diary: false,
+            chat_id: input.get("body").get("chatId").as_str().unwrap_or(""),
+            compact_only: input.get("body").get("compactOnly").as_bool() == Some(true),
+            diary: diary(input.get("body").get("spaceId")) || diary(input.get("project").get("id")),
             local: true,
             machine: false,
         };
         let asked = ask_for_title(
             &facts,
             || title_due(first, || auto_named),
-            || attempts.allowed(&key),
+            || true,
             || false,
         );
         assert_eq!(asked, requests.len() == 2, "{name}");
 
         // The store is read for the first message exactly when the history has an assistant turn.
-        let ops = list(&c["stores"]);
-        let reads: Vec<&Value> = ops
+        let ops = list(c.get("stores"));
+        let op_name = |o: &JValue| s(o.get("op")).to_owned();
+        let reads = ops
             .iter()
-            .filter(|o| o["op"] == "chatTitles.autoNamed")
-            .collect();
-        assert_eq!(reads.len(), usize::from(!first), "{name}");
+            .filter(|o| op_name(o) == "chatTitles.autoNamed")
+            .count();
+        assert_eq!(reads, usize::from(!first), "{name}");
         let first_message = first_user_message(history, message);
-        for op in ops
-            .iter()
-            .filter(|o| s(&o["op"]).starts_with("chatTitles."))
-        {
-            assert_eq!(s(&op["first"]), first_message, "{name}");
+        for op in ops.iter().filter(|o| op_name(o).starts_with("chatTitles.")) {
+            assert_eq!(s(op.get("first")), first_message, "{name}");
         }
 
-        let event = list(&c["events"]).iter().find(|e| e["type"] == "title");
-        let saves: Vec<&Value> = ops
+        let event = events
             .iter()
-            .filter(|o| o["op"] == "chatTitles.save")
-            .collect();
+            .find(|e| e.get("type").as_str() == Some("title"));
+        let saves = ops
+            .iter()
+            .filter(|o| op_name(o) == "chatTitles.save")
+            .count();
         if asked {
             let request = &requests[1];
             assert!(can_request(model, message, &reply));
-            assert!(
-                same_json(
-                    &title_request_body(model, message, &reply),
-                    &request_body(&f, request)
-                ),
+            // The recorded body, bytes in Node's key order, is what the module builds.
+            assert_eq!(
+                wtf16::stringify(request.get("body")).unwrap(),
+                title_request_json(model, message, &reply),
                 "{name}"
             );
-            assert_eq!(request["headers"]["Content-Type"], "application/json");
-            let scripted = &input["rounds"][1];
-            let title = scripted.get("json").and_then(title_from_reply);
-            assert_eq!(title.as_deref(), event.map(|e| s(&e["title"])), "{name}");
-            assert_eq!(saves.len(), usize::from(title.is_some()), "{name}");
+            assert_eq!(
+                s(request.get("headers").get("Content-Type")),
+                "application/json"
+            );
+            let scripted = at(input.get("rounds"), 1).get("json");
+            let title = wtf16::stringify(scripted).and_then(|t| title_from_reply_text(&t));
+            assert_eq!(title.as_deref(), event.map(|e| s(e.get("title"))), "{name}");
+            assert_eq!(saves, usize::from(title.is_some()), "{name}");
         } else {
-            assert!(event.is_none() && saves.is_empty(), "{name}");
+            assert!(event.is_none() && saves == 0, "{name}");
         }
     }
 }
 
-// ---- Rust-side checks of the named differences and the edges ----------------------------------------
+// ---- Rust-side checks of lone surrogates and the edges --------------------------------------------------
 
 #[test]
-fn a_cut_through_an_astral_character_drops_the_half_pair() {
+fn a_cut_through_an_astral_character_keeps_its_half_as_node_does() {
     // The clip of the message: unit 599 is the high half of the emoji, which Node sends as "\ud83d".
     let message = format!("{}😀tail", "m".repeat(599));
     let body = title_request_json("qa-model", &message, "QA reply");
     assert!(
-        body.contains(&format!("{}…\\n\\nAssistant", "m".repeat(599))),
+        body.contains(&format!("{}\\ud83d…\\n\\nAssistant", "m".repeat(599))),
         "{body}"
     );
-    assert!(!body.contains("\\ud83d") && !body.contains('😀'));
+    assert!(!body.contains('😀'));
     // A pair that fits is kept whole.
     let message = format!("{}😀tail", "m".repeat(598));
     assert!(title_request_json("qa-model", &message, "QA reply").contains('😀'));
-    // A title cut at 59 units through an astral letter (the pictographs are gone by then). With no space to cut
-    // at, Node's trailing strip stops at the lone surrogate and keeps the `,;` before it; Rust deletes the
-    // surrogate afterwards, so the punctuation stays too.
-    let cut = clean_title(&format!(
-        "{},;{}{}",
-        "a".repeat(56),
-        "\u{1d49c}",
-        "b".repeat(10)
-    ));
-    assert_eq!(cut.as_deref(), Some(&*format!("{},;…", "a".repeat(56))));
-    let cut = clean_title(&format!(
-        "{}{}{}",
-        "a".repeat(58),
-        "\u{1d49c}",
-        "b".repeat(10)
-    ));
-    assert_eq!(cut.as_deref(), Some(&*format!("{}…", "a".repeat(58))));
+    // A title cut at 59 units through an astral letter (the pictographs are gone by then): the half stays,
+    // and with no space to cut at Node's trailing strip stops at it, keeping the `,;` before it.
+    let half = lone(0xd835);
+    let cut = clean_title(&format!("{},;\u{1d49c}{}", "a".repeat(56), "b".repeat(10)));
+    assert_eq!(cut, Some(format!("{},;{half}…", "a".repeat(56))));
+    assert_eq!(wtf16::len(cut.as_deref().unwrap()), 60);
+    let cut = clean_title(&format!("{}\u{1d49c}{}", "a".repeat(58), "b".repeat(10)));
+    assert_eq!(cut, Some(format!("{}{half}…", "a".repeat(58))));
     // A pair the cut keeps whole stays.
-    let cut = clean_title(&format!(
-        "{}{}{}",
-        "a".repeat(57),
-        "\u{1d49c}",
-        "b".repeat(10)
-    ));
-    assert_eq!(
-        cut.as_deref(),
-        Some(&*format!("{}\u{1d49c}…", "a".repeat(57)))
-    );
-    // derivedTitle repairs the pair itself, in Node and here.
+    let cut = clean_title(&format!("{}\u{1d49c}{}", "a".repeat(57), "b".repeat(10)));
+    assert_eq!(cut, Some(format!("{}\u{1d49c}…", "a".repeat(57))));
+    // derivedTitle repairs the pair itself.
     let derived = derived_title(&format!("{}😀{}", "a".repeat(78), "b".repeat(10)));
     assert_eq!(derived, format!("{}…", "a".repeat(78)));
 }
 
 #[test]
-fn a_reply_with_a_lone_surrogate_escape_is_no_reply_here() {
-    // serde_json refuses the escape, so the caller never has a value to read.
-    assert!(
-        serde_json::from_str::<Value>(r#"{"choices":[{"message":{"content":"QA \ud83d"}}]}"#)
-            .is_err()
+fn a_lone_surrogate_in_the_reply_behaves_as_in_node_inside_and_outside_content() {
+    let high = lone(0xd83d);
+    // Outside `content`: a value, a key, the second choice. The title is read as without it.
+    for text in [
+        r#"{"id":"qa-\ud83d","choices":[{"message":{"content":"QA Topic"}}]}"#,
+        r#"{"\ud83d":1,"choices":[{"message":{"role":"a\ude00","content":"QA Topic"}}]}"#,
+        r#"{"choices":[{"message":{"content":"QA Topic"}},{"message":{"content":"\ud83d"}}]}"#,
+    ] {
+        assert_eq!(
+            title_from_reply_text(text).as_deref(),
+            Some("QA Topic"),
+            "{text}"
+        );
+    }
+    // Inside `content`: it is one unit, kept, and counted as one.
+    let text =
+        |content: &str| format!(r#"{{"choices":[{{"message":{{"content":"{content}"}}}}]}}"#);
+    assert_eq!(
+        title_from_reply_text(&text(r"QA \ud83d Topic")),
+        Some(format!("QA {high} Topic"))
     );
+    // A lone surrogate alone is no letter: no title, as in Node.
+    assert_eq!(title_from_reply_text(&text(r"\ud83d")), None);
+    // 58 + 1 + 10 units: cut at 59 units, the half stays; the 60-unit title is 58 + half + ellipsis.
+    let long = format!("{}\\ud83d{}", "a".repeat(58), "b".repeat(10));
+    let title = title_from_reply_text(&text(&long)).unwrap();
+    assert_eq!(title, format!("{}{high}…", "a".repeat(58)));
+    assert_eq!(wtf16::len(&title), 60);
+    // The half counts as one unit at the limit: 59 + 1 is 60 units and fits whole.
+    let fits = format!("{}\\ud83d", "a".repeat(59));
+    assert_eq!(
+        title_from_reply_text(&text(&fits)),
+        Some(format!("{}{high}", "a".repeat(59)))
+    );
+    // Text Node refuses is no title; the named differences give none as well.
+    assert_eq!(title_from_reply_text("{"), None);
+    assert_eq!(title_from_reply_text(&text("QA \u{10f800} Topic")), None);
+    let deep = format!("{}{}", "[".repeat(300), "]".repeat(300));
+    assert_eq!(title_from_reply_text(&deep), None);
 }
 
 #[test]
 fn title_from_reply_reads_only_the_first_choice_and_a_string() {
-    let reply = |c: Value| json!({ "choices": [{ "message": { "content": c } }] });
+    let reply = |c: &str| format!(r#"{{"choices":[{{"message":{{"content":{c}}}}}]}}"#);
     assert_eq!(
-        title_from_reply(&reply(json!("QA Topic"))).as_deref(),
+        title_from_reply_text(&reply(r#""QA Topic""#)).as_deref(),
         Some("QA Topic")
     );
-    assert_eq!(title_from_reply(&reply(json!(["QA Topic"]))), None);
-    assert_eq!(title_from_reply(&reply(json!(null))), None);
-    assert_eq!(title_from_reply(&json!({})), None);
-    assert_eq!(title_from_reply(&Value::Null), None);
-    assert_eq!(title_from_reply(&json!({ "choices": "QA" })), None);
+    assert_eq!(title_from_reply_text(&reply(r#"["QA Topic"]"#)), None);
+    assert_eq!(title_from_reply_text(&reply("null")), None);
+    assert_eq!(title_from_reply_text("{}"), None);
+    assert_eq!(title_from_reply_text("null"), None);
+    assert_eq!(title_from_reply_text(r#"{"choices":"QA"}"#), None);
+    assert_eq!(title_from_reply(&JValue::Undefined), None);
 }
 
 #[test]
@@ -553,6 +629,9 @@ fn no_input_panics() {
         "ß",
         "İ",
         "ı",
+        "\u{10f83d}",
+        "\u{10fe00}",
+        "\u{1d49c}",
     ];
     let mut state = 0x2545_f491_4f6c_dd1d_u64;
     let mut next = move || {
@@ -567,19 +646,15 @@ fn no_input_panics() {
             .map(|_| alphabet[(next() % alphabet.len() as u64) as usize])
             .collect();
         let _ = derived_title(&text);
-        let _ = clean_title(&text);
         let _ = title_request_json("qa-model", &text, &text);
-        let _ = title_request_body("qa-model", &text, &text);
-        let _ = is_derived_title(Some(&json!(derived_title(&text))), &text);
-        let _ = is_derived_title(Some(&json!(text.clone())), &text);
-        let _ = first_user_message(&json!([{"role": "user", "content": text}]), &text);
+        let _ = is_derived_title(&JValue::Str(derived_title(&text)), &text);
+        let _ = is_derived_title(&JValue::Str(text.clone()), &text);
+        let turn = JValue::obj([("role", "user".into()), ("content", text.clone().into())]);
+        let _ = first_user_message(&JValue::Arr(vec![turn]), &text);
         let _ = can_request("m", &text, &text);
-        assert!(
-            derived_title(&text).encode_utf16().count()
-                <= CHAT_TITLE_MAX.max(text.encode_utf16().count())
-        );
+        assert!(wtf16::len(&derived_title(&text)) <= CHAT_TITLE_MAX.max(wtf16::len(&text)));
         if let Some(t) = clean_title(&text) {
-            assert!(t.encode_utf16().count() <= TITLE_MAX);
+            assert!(wtf16::len(&t) <= TITLE_MAX);
         }
     }
 }
