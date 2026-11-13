@@ -98,6 +98,9 @@ pub struct FrontDeps {
     read_facts: ReadFacts,
     /// The repairs `requireRecovery` asks for, run by the wiring under a fresh hold.
     recoveries: tokio::sync::mpsc::UnboundedSender<String>,
+    /// Each owed repair's fences, kept until it has run (Node's gate keeps chat and new maintenance
+    /// closed meanwhile): the lease authority's recovery ticket and this process's admission fence.
+    owed: Mutex<std::collections::HashMap<String, (String, Option<super::gate::AdmissionFence>)>>,
     allow_below_q5: bool,
 }
 
@@ -116,6 +119,7 @@ impl FrontDeps {
             facts: Arc::new(Mutex::new((0.0, Default::default()))),
             read_facts,
             recoveries,
+            owed: Mutex::new(Default::default()),
             allow_below_q5: autotune_runner::kv::allow_below_q5(
                 get(autotune_runner::kv::KV_FLOOR_OVERRIDE_ENV).as_deref(),
             ),
@@ -136,6 +140,27 @@ impl FrontDeps {
     /// The hold the runner is under, if any.
     pub fn hold(&self) -> Option<Arc<Hold>> {
         self.current.get()
+    }
+
+    /// Before a repair's hold: this process's admission fence, if the run that owed the repair
+    /// still had local admission when it was asked for.
+    pub(crate) fn fence_owed(&self, key: &str) {
+        if let Ok(mut owed) = self.owed.lock() {
+            if let Some((_, fence @ None)) = owed.get_mut(key) {
+                *fence = super::gate::AdmissionFence::reserve(Arc::clone(&self.maint.local));
+            }
+        }
+    }
+
+    /// A repair ran: its fences open again.
+    pub(crate) fn settle_owed(&self, key: &str) {
+        let entry = self.owed.lock().ok().and_then(|mut o| o.remove(key));
+        if let Some((ticket, fence)) = entry {
+            self.maint.authority.complete_recovery(&ticket);
+            if let Some(fence) = fence {
+                fence.release();
+            }
+        }
     }
 
     /// Puts the runner's calls under `hold` (a recovery's fresh hold), or under none.
@@ -575,6 +600,18 @@ impl Deps for FrontDeps {
     }
 
     fn require_recovery(&self, key: &str, _message: &str) {
+        let Ok(mut owed) = self.owed.lock() else {
+            return;
+        };
+        if owed.contains_key(key) {
+            return;
+        }
+        // Closed at once, before the repair runs: the authority's recovery flag (no new lease) and
+        // this process's own admission (taken again by the repair if the run still had it).
+        let ticket = self.maint.authority.require_recovery();
+        let fence = super::gate::AdmissionFence::reserve(Arc::clone(&self.maint.local));
+        owed.insert(key.to_owned(), (ticket, fence));
+        drop(owed);
         let _ = self.recoveries.send(key.to_owned());
     }
 

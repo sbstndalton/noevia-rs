@@ -101,6 +101,7 @@ impl Native {
 
     async fn repair(&self, key: &str) {
         loop {
+            self.runner.deps().fence_owed(key);
             if let Ok(hold) = self
                 .maint
                 .acquire_recovery(RECOVERY_REASON, RECOVERY_LEASE)
@@ -114,7 +115,10 @@ impl Native {
                     hold.release().await;
                 }
                 match done {
-                    Ok(()) => return,
+                    Ok(()) => {
+                        self.runner.deps().settle_owed(key);
+                        return;
+                    }
                     Err(e) => eprintln!("[autotune] recovery {key} failed: {}", e.message),
                 }
             }
