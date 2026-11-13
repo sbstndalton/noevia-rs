@@ -96,6 +96,23 @@ pub struct ToolRun {
     pub edit_target: Option<String>,
 }
 
+/// An instruction skill as the prepared frame and core's skills bridges name it (#272): its stored file, the
+/// SHA-256 of the version, and its name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Skill {
+    pub file: String,
+    pub hash: String,
+    pub name: String,
+}
+
+/// What core's round-0 scrub (#546, `/internal/chat/skills/scrub`) changed: the new content of each message it
+/// replaced (by index into the messages sent), and the names of the skills it took out.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Scrub {
+    pub changed: Vec<(usize, String)>,
+    pub removed: Vec<String>,
+}
+
 /// What the native turn asks of the process that runs it.
 ///
 /// Duties of an implementation (Node does these through the response and its `chatSignal`):
@@ -212,6 +229,32 @@ pub trait Host: Sync {
         &self,
         run: &ToolRun,
     ) -> impl Future<Output = Result<(String, bool), String>> + Send;
+
+    /// The loaded skills that are gone, disabled, changed or no longer reviewed in the project as stored now
+    /// (core's `/internal/chat/skills/revoked`): `(file, name)` each; `None` when the bridge gave no readable answer.
+    fn skills_revoked(
+        &self,
+        project_id: &str,
+        loaded: &[Skill],
+    ) -> impl Future<Output = Option<Vec<(String, String)>>> + Send;
+    /// Which of `candidates` one successful tool call (`args`, `result`) read; core records each in the account's
+    /// skill ledger for the chat (`/internal/chat/skills/read`). `None` when the bridge gave no readable answer.
+    fn skills_read(
+        &self,
+        project_id: &str,
+        chat_id: Option<&str>,
+        candidates: &[Skill],
+        args: &str,
+        result: &str,
+    ) -> impl Future<Output = Option<Vec<Skill>>> + Send;
+    /// The round-0 scrub of `messages` (each `{role, content}`, or `null` for one the scrub does not read) against
+    /// the project as stored now (`/internal/chat/skills/scrub`). `None` when the bridge gave no readable answer.
+    fn skills_scrub(
+        &self,
+        project_id: &str,
+        chat_id: Option<&str>,
+        messages: &[JValue],
+    ) -> impl Future<Output = Option<Scrub>> + Send;
 
     /// `prefill.recordSample(model, prompt, ms)`.
     fn prefill_sample(&self, model: &str, prompt: f64, first_token_ms: f64);

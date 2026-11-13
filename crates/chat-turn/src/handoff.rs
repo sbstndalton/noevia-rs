@@ -19,6 +19,13 @@ const PREPARED: &[u8] = b"{\"type\":\"prepared\"";
 /// with room for the tools and the rest.
 pub const PREPARED_CAP: usize = 40 * 1024 * 1024;
 
+/// The header the front names its executor's capabilities in when it asks for a hand-off (core
+/// rust-chat-native.cjs `CAPS_HEADER`; read only with the hand-off secret).
+pub const HANDOFF_CAPS_HEADER: &str = "x-noevia-chat-handoff-caps";
+/// What this executor runs beyond the first hand-off step, for [`HANDOFF_CAPS_HEADER`]: `skills`, the
+/// instruction skills checks ([`crate::skills`]). Without it core keeps a turn whose project has skills.
+pub const HANDOFF_CAPS: &str = "skills";
+
 /// What a chunk of core's stream gives.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Piece {

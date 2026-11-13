@@ -175,7 +175,7 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
             let user_id = authn.user.id.clone();
             crate::chat_native::serve(app, user_id, |handoff| async move {
                 let mut extra = extra.to_vec();
-                extra.push(crate::chat_native::handoff_header(handoff));
+                extra.extend(crate::chat_native::handoff_headers(handoff));
                 app.proxy
                     .relay(conn.peer, req, target, &extra, RELAY_LIMIT)
                     .await
