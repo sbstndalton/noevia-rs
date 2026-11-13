@@ -432,10 +432,12 @@ version = "0.1.0"
 dependencies = [
  "context-fit",
  "js-json",
+ "prompt-framing",
  "provider-error",
  "regex",
  "serde_json",
  "stream-guard",
+ "tool-exchange",
 ]
 
 [[package]]

@@ -1,7 +1,6 @@
 //! The native continuation of a prepared turn: chat.cjs from the hand-off to `done` (lines
-//! ~1766-2601), for a turn whose model answers without calling a tool. Tool rounds, the title and the
-//! interrupted-turn saves are the next steps (track R8 B2, B3); a turn that calls a tool ends here
-//! with [`Ended::ToolsNotYet`] before anything is run.
+//! ~1766-2601), with its tool rounds (each call through [`crate::gate`]). The title and the
+//! interrupted-turn saves are the next step (track R8 B3).
 //!
 //! In order: the model's lease, the runtime context limit (loading the model when it is not loaded),
 //! the context fit with the saved summary, the template's tools check and the route notes, then the
@@ -24,6 +23,7 @@ use js_json::{wtf16, JValue};
 
 use crate::cap::{Cap, Step, CUT_MARK};
 use crate::effort::{self, Built, Rejected};
+use crate::gate::{Call, RecentWrites, Tools};
 use crate::host::{EngineRequest, Host, Read};
 use crate::js;
 use crate::prepared::Prepared;
@@ -52,6 +52,7 @@ const TOOL_SPECIFIC: [&str; 2] = ["unable to generate parser", "tools param requ
 #[derive(Debug, Default)]
 pub struct Process {
     pub rejected: Mutex<Rejected>,
+    pub recent_writes: RecentWrites,
     loads: Mutex<HashMap<String, Vec<f64>>>,
 }
 
@@ -87,6 +88,14 @@ pub struct Helpers<'a> {
     pub clean_search_args: &'a (dyn Fn(&str, &str) -> String + Sync),
     pub announces_tool_action: &'a (dyn Fn(&str) -> bool + Sync),
     pub announced_note: &'a str,
+    /// tool-result-reduce.cjs `reduceToolResult(result, { maxChars }).text`.
+    pub reduce_tool_result: &'a (dyn Fn(&str, usize) -> String + Sync),
+    /// final-answer.cjs `sourceLinks`, `fallbackText` and `FINAL_ANSWER_NOTE`.
+    pub source_links: &'a (dyn Fn(&str) -> Vec<String> + Sync),
+    pub fallback_text: &'a (dyn Fn(&[String]) -> String + Sync),
+    pub final_answer_note: &'a str,
+    /// The account's tool result cap for the model's copy (index.cjs TOOL_RESULT_CAP).
+    pub tool_result_cap: usize,
 }
 
 /// How the turn ended.
@@ -98,8 +107,6 @@ pub enum Ended {
     Error,
     /// The client went away; nothing more is written.
     Left,
-    /// The model called a tool: not run by this step yet; nothing was sent for it after the `tool` events.
-    ToolsNotYet,
 }
 
 fn event(kind: &str, pairs: Vec<(&str, JValue)>) -> JValue {
@@ -877,6 +884,38 @@ async fn rounds<H: Host>(r: &Run<'_, H>, fit: Fit) -> Ended {
     let mut round: i32 = 0;
     let idle = (p.stream_idle_ms > 0.0).then_some(p.stream_idle_ms);
     let mut continuation: Option<(f64, usize)> = None;
+    let names = |list: &[String]| {
+        list.iter()
+            .cloned()
+            .collect::<std::collections::HashSet<String>>()
+    };
+    let mut gate = Tools::new(
+        p.tools
+            .iter()
+            .filter_map(|t| t.get("function").get("name").as_str().map(str::to_string))
+            .collect(),
+        names(&p.writes),
+        names(&p.public),
+        names(&p.automatic_only_writes),
+        p.routes.clone(),
+        (
+            p.chat_id.clone(),
+            p.chat_key.clone(),
+            p.grant_scope.clone(),
+            p.grant_holder.clone(),
+            names(&p.recent_writes),
+        ),
+        p.project_id.clone(),
+        host.uuid(),
+        p.decline_ends_reply,
+        &r.process.recent_writes,
+        r.helpers.reduce_tool_result,
+        r.helpers.source_links,
+        r.helpers.tool_result_cap,
+    );
+    let mut applied_writes: Vec<(String, Option<String>)> = Vec::new();
+    let mut gathered: Vec<String> = Vec::new();
+    let mut paused = false;
     loop {
         if round >= if final_pass { 4 } else { 3 } || host.left() {
             break;
@@ -1264,9 +1303,70 @@ async fn rounds<H: Host>(r: &Run<'_, H>, fit: Fit) -> Ended {
                                         vec![("text", msg.get("content").clone())],
                                     )));
                                 }
-                                if has_calls {
-                                    effects(r, out);
-                                    return Ended::ToolsNotYet;
+                                if let JValue::Arr(calls) = msg.get("tool_calls") {
+                                    for tc in calls {
+                                        #[allow(clippy::cast_precision_loss)]
+                                        let index = current.tool_calls.len() as f64;
+                                        let field = |v: &JValue| {
+                                            if v.truthy() {
+                                                js_json::to_js_string(v).unwrap_or_default()
+                                            } else {
+                                                String::new()
+                                            }
+                                        };
+                                        let (id, name, args) = (
+                                            tc.get("id"),
+                                            field(tc.get("function").get("name")),
+                                            field(tc.get("function").get("arguments")),
+                                        );
+                                        let too_large =
+                                            [field(id), name.clone(), args.clone()].iter().any(
+                                                |v| js::len(v) > crate::round::MAX_TOOL_ARGS_UNITS,
+                                            );
+                                        let shown = if too_large {
+                                            js::slice(&name, 64)
+                                        } else {
+                                            name.clone()
+                                        };
+                                        let made = too_large || !id.truthy();
+                                        current.tool_calls.push((
+                                            index,
+                                            crate::round::Slot {
+                                                id: if made {
+                                                    js::s(format!(
+                                                        "call-{}",
+                                                        crate::round::number_text(index)
+                                                    ))
+                                                } else {
+                                                    id.clone()
+                                                },
+                                                id_made: made,
+                                                name: shown.clone(),
+                                                args: if too_large {
+                                                    String::new()
+                                                } else {
+                                                    args.clone()
+                                                },
+                                                too_large,
+                                                name_cut: false,
+                                            },
+                                        ));
+                                        out.push(Effect::Event(event(
+                                            "tool",
+                                            vec![
+                                                ("index", js::n(exchange.tool_offset + index)),
+                                                ("name", js::s(shown)),
+                                                (
+                                                    "args",
+                                                    js::s(if too_large {
+                                                        String::new()
+                                                    } else {
+                                                        (r.helpers.clean_search_args)(&name, &args)
+                                                    }),
+                                                ),
+                                            ],
+                                        )));
+                                    }
                                 }
                                 let usage = full.get("usage").clone();
                                 let timings = full.get("timings").clone();
@@ -1300,11 +1400,9 @@ async fn rounds<H: Host>(r: &Run<'_, H>, fit: Fit) -> Ended {
                 )),
             }
         }
-        if !current.tool_calls.is_empty() {
-            return Ended::ToolsNotYet;
-        }
         // #1552: a reply that ends on announcing a tool action it did not take gets one more try.
-        if current.saw_anything
+        if current.tool_calls.is_empty()
+            && current.saw_anything
             && !announced_retried
             && round < 2
             && offer_tools
@@ -1327,22 +1425,109 @@ async fn rounds<H: Host>(r: &Run<'_, H>, fit: Fit) -> Ended {
             last = Round::new(host.now_ms());
             continue;
         }
-        // #1693: a round after tool results with no answer asks once more (no tools here: round 0 never does).
-        if !final_pass && !host.left() && round > 0 && !current.has_content {
+        // #1693: the final-answer round offers no tools; a call it writes anyway is not run.
+        if final_pass && !current.tool_calls.is_empty() {
+            for (i, slot) in &current.tool_calls {
+                host.emit(&event(
+                    "tool_result",
+                    vec![
+                        ("index", js::n(exchange.tool_offset + i)),
+                        ("name", js::s(slot.name.clone())),
+                        (
+                            "text",
+                            js::s("Not run: this step only writes the final answer."),
+                        ),
+                        ("notRun", JValue::Bool(true)),
+                    ],
+                ));
+            }
+            exchange.tool_offset += next_offset(&current.tool_calls);
+            current.tool_calls.clear();
+        }
+        let calls = current.tool_calls.len();
+        if calls > 0 {
+            run_calls(
+                r,
+                &mut gate,
+                &mut exchange,
+                &mut current,
+                &mut messages,
+                &mut applied_writes,
+                &mut gathered,
+            )
+            .await;
+            exchange.tool_offset += next_offset(&current.tool_calls);
+        }
+        if p.decline_ends_reply && !gate.declined.is_empty() {
+            // #666: the person declined a write; the reply ends here with a fixed note.
+            paused = true;
+            let mut unique: Vec<String> = Vec::new();
+            for n in &gate.declined {
+                if !unique.contains(n) {
+                    unique.push(n.clone());
+                }
+            }
+            let n = applied_writes.len();
+            let names = unique.join(", ");
+            let text = if n > 0 {
+                format!(
+                    "{} saved. You declined {names}, so nothing else was changed.",
+                    if n == 1 {
+                        "1 change was".to_string()
+                    } else {
+                        format!("{n} changes were")
+                    }
+                )
+            } else {
+                format!("No change was made: you declined {names}.")
+            };
+            host.emit(&event(
+                "paused",
+                vec![
+                    ("reason", js::s("declined")),
+                    ("applied", js::count(n)),
+                    (
+                        "declined",
+                        JValue::Arr(unique.into_iter().map(js::s).collect()),
+                    ),
+                    ("text", js::s(text)),
+                ],
+            ));
+            last = current;
+            break;
+        }
+        // #1693: tool results with no answer yet: one bounded no-tools round asks for it.
+        let needs_final = if calls > 0 {
+            round >= 2
+        } else {
+            round > 0 && !current.has_content
+        };
+        if !final_pass && !host.left() && needs_final {
             final_pass = true;
+            messages.push(js::obj([
+                ("role", js::s("user")),
+                ("content", js::s(r.helpers.final_answer_note)),
+            ]));
             last = current;
             round += 1;
             continue;
         }
+        if final_pass || round == 2 || calls == 0 {
+            last = current;
+            break;
+        }
         last = current;
-        break;
+        round += 1;
     }
     if host.left() {
         return Ended::Left;
     }
-    if !last.has_content && final_pass {
-        host.emit(&event("delta", vec![("text", js::s("\n\nThe model did not write a final answer from the tool results. Its reasoning is in the thinking above. Try again or choose another model."))]));
-    } else if !last.has_content && js::has_text(&last.reasoning) {
+    if !paused && !last.has_content && final_pass {
+        host.emit(&event(
+            "delta",
+            vec![("text", js::s((r.helpers.fallback_text)(&gathered)))],
+        ));
+    } else if !paused && !last.has_content && js::has_text(&last.reasoning) {
         host.emit(&event("delta", vec![("text", js::s(REASONING_ONLY_NOTE))]));
     }
     host.emit(&event(
@@ -1357,6 +1542,122 @@ async fn rounds<H: Host>(r: &Run<'_, H>, fit: Fit) -> Ended {
     Ended::Done {
         content: last.content,
         has_content: last.has_content,
+    }
+}
+
+/// `Math.max(...keys) + 1` of a round's calls.
+fn next_offset(calls: &[(f64, crate::round::Slot)]) -> f64 {
+    calls
+        .iter()
+        .map(|(k, _)| *k)
+        .fold(f64::NEG_INFINITY, |a, b| {
+            if a.is_nan() || b.is_nan() {
+                f64::NAN
+            } else {
+                a.max(b)
+            }
+        })
+        + 1.0
+}
+
+/// A round's calls: their arguments and ids settled, the narration kept, then each through the gate.
+async fn run_calls<H: Host>(
+    r: &Run<'_, H>,
+    gate: &mut Tools<'_>,
+    exchange: &mut Exchange,
+    round: &mut Round,
+    messages: &mut Vec<JValue>,
+    applied: &mut Vec<(String, Option<String>)>,
+    gathered: &mut Vec<String>,
+) {
+    let host = r.host;
+    for (_, slot) in round.tool_calls.iter_mut() {
+        slot.args = if slot.too_large {
+            "{}".to_string()
+        } else {
+            (r.helpers.clean_search_args)(&slot.name, &slot.args)
+        };
+    }
+    // Every call needs a unique id: the first real one stays, missing, oversized or repeated ones are made.
+    let used: std::collections::HashSet<String> = round
+        .tool_calls
+        .iter()
+        .filter(|(_, c)| !c.id_made)
+        .map(|(_, c)| js::stringify(&c.id))
+        .collect();
+    let mut used = used;
+    let mut seen = std::collections::HashSet::new();
+    for (i, c) in round.tool_calls.iter_mut() {
+        let key = js::stringify(&c.id);
+        if !c.id_made && !seen.contains(&key) {
+            seen.insert(key);
+            continue;
+        }
+        let base = format!("call-{}", crate::round::number_text(*i));
+        let mut id = base.clone();
+        let mut k = 2;
+        while used.contains(&js::stringify(&js::s(id.clone()))) {
+            id = format!("{base}-{k}");
+            k += 1;
+        }
+        used.insert(js::stringify(&js::s(id.clone())));
+        c.id = js::s(id);
+    }
+    if js::has_text(&round.content) {
+        host.emit(&event(
+            "preamble",
+            vec![("text", js::s(round.content.clone()))],
+        ));
+        round.has_content = false;
+    }
+    messages.push(js::obj([
+        ("role", js::s("assistant")),
+        ("content", JValue::Null),
+        (
+            "tool_calls",
+            JValue::Arr(
+                round
+                    .tool_calls
+                    .iter()
+                    .map(|(_, c)| {
+                        js::obj([
+                            ("id", c.id.clone()),
+                            ("type", js::s("function")),
+                            (
+                                "function",
+                                js::obj([
+                                    ("name", js::s(c.name.clone())),
+                                    ("arguments", js::s(c.args.clone())),
+                                ]),
+                            ),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ),
+    ]));
+    for (i, c) in &round.tool_calls {
+        if host.left() {
+            break;
+        }
+        let call = Call {
+            index: *i,
+            id: c.id.clone(),
+            name: c.name.clone(),
+            args: c.args.clone(),
+            too_large: c.too_large,
+        };
+        let outcome = gate.call(host, &call, exchange.tool_offset).await;
+        host.emit(&outcome.event);
+        messages.push(outcome.message);
+        if let Some(a) = outcome.applied {
+            applied.push(a);
+        }
+        for link in outcome.links {
+            if !gathered.contains(&link) {
+                gathered.push(link);
+            }
+        }
     }
 }
 

@@ -20,7 +20,7 @@ use std::pin::pin;
 use std::sync::Mutex;
 use std::task::{Context, Poll, Waker};
 
-use chat_turn::host::{EngineRequest, GateRefusal, Host, Read};
+use chat_turn::host::{EngineRequest, GateRefusal, Host, Read, Target, ToolRun};
 use chat_turn::js;
 use chat_turn::native::{self, Ended, Helpers, Process};
 use chat_turn::prepared::Prepared;
@@ -29,17 +29,7 @@ use js_json::{wtf16, JValue};
 const FIXED_NOW: f64 = 1_794_571_200_000.0;
 
 /// The cases this step does not run yet, and why.
-const NOT_YET: [(&str, &str); 14] = [
-    ("tool_read", "tools"),
-    ("tool_streamed_args", "tools"),
-    ("tool_approved", "tools"),
-    ("tool_declined", "tools"),
-    ("tool_approval_timeout", "tools"),
-    ("tool_write_target_refused", "tools"),
-    ("tool_unknown", "tools"),
-    ("final_pass", "tools"),
-    ("final_pass_no_answer", "tools"),
-    ("fallback_fails_then_final_pass", "tools"),
+const NOT_YET: [(&str, &str); 4] = [
     ("title", "the title (B3)"),
     ("title_still_derived", "the title (B3)"),
     ("title_failed", "the title (B3)"),
@@ -80,7 +70,14 @@ struct Script {
     requests: Mutex<Vec<EngineRequest>>,
     stores: Mutex<Vec<JValue>>,
     files: Mutex<BTreeMap<String, String>>,
+    bridge: Mutex<Vec<JValue>>,
+    approvals: Mutex<Vec<String>>,
+    executions: Mutex<Vec<String>>,
+    uuids: Mutex<u64>,
 }
+
+/// The per-start id the recording's grant contexts carry (record_turns.cjs NOEVIA_START_ID).
+const START_ID: &str = "0123456789abcdef0123456789abcdef";
 
 fn chunks_of(round: &JValue) -> Vec<Chunk> {
     let mut out = Vec::new();
@@ -122,6 +119,10 @@ impl Script {
         let JValue::Arr(rounds) = case.get("input").get("rounds").clone() else {
             panic!()
         };
+        let recorded_bridge = match case.get("bridge") {
+            JValue::Arr(b) => b.clone(),
+            _ => Vec::new(),
+        };
         Script {
             case,
             rounds,
@@ -131,6 +132,10 @@ impl Script {
             requests: Mutex::new(Vec::new()),
             stores: Mutex::new(Vec::new()),
             files: Mutex::new(BTreeMap::new()),
+            bridge: Mutex::new(recorded_bridge),
+            approvals: Mutex::new(Vec::new()),
+            executions: Mutex::new(Vec::new()),
+            uuids: Mutex::new(0),
         }
     }
 
@@ -277,9 +282,148 @@ impl Host for Script {
         );
     }
 
+    fn user_id(&self) -> String {
+        "qa-user".into()
+    }
+
+    fn uuid(&self) -> String {
+        let mut n = self.uuids.lock().unwrap();
+        *n += 1;
+        format!("00000000-0000-4000-8000-{:012}", *n)
+    }
+
+    fn tool_policy(&self, _name: &str, write: bool) -> String {
+        // record_turns.cjs toolPolicy: writes ask, reads run.
+        if write { "ask" } else { "allow" }.into()
+    }
+
+    async fn write_target(&self, name: &str, args: &str, _chat_key: Option<&str>) -> Target {
+        let next = self.bridge.lock().unwrap().remove(0);
+        assert_eq!(
+            (
+                next.get("op").as_str(),
+                next.get("name").as_str(),
+                next.get("args").as_str()
+            ),
+            (Some("target"), Some(name), Some(args))
+        );
+        let found = next.get("found");
+        if let Some(e) = found.get("error").as_str() {
+            Target::Refused(e.to_string())
+        } else if let Some(t) = found.get("target").as_str() {
+            Target::Found {
+                target: t.to_string(),
+                kind: found.get("kind").as_str().map(str::to_string),
+            }
+        } else {
+            Target::None
+        }
+    }
+
+    async fn permission_binding(
+        &self,
+        chat_id: Option<&str>,
+        scope: &str,
+        _holder: &JValue,
+    ) -> Result<JValue, ()> {
+        let Some(chat) = chat_id else {
+            return Ok(JValue::Null);
+        };
+        let context = js::obj([
+            ("canonicalChatId", js::s(chat)),
+            ("holder", js::obj([("kind", js::s("absent"))])),
+            ("generation", js::s("0")),
+            ("start", js::s(START_ID)),
+            ("tombstoned", JValue::Bool(false)),
+        ]);
+        Ok(js::obj([
+            ("user", js::s("qa-user")),
+            ("canonicalChatId", js::s(chat)),
+            ("scope", js::s(scope)),
+            ("context", context),
+        ]))
+    }
+
+    fn chat_wide_approved(&self, _chat_id: Option<&str>, _scope: &str, _binding: &JValue) -> bool {
+        false
+    }
+
+    async fn await_approval(&self, request: &JValue) -> String {
+        self.approvals.lock().unwrap().push(js::stringify(request));
+        self.case
+            .get("input")
+            .get("decision")
+            .as_str()
+            .unwrap_or("approve")
+            .to_string()
+    }
+
+    fn revoke_grant(&self, _chat_id: Option<&str>) {}
+
+    fn audit(&self, event: &str, details: &JValue) {
+        self.store(
+            "audit",
+            vec![
+                ("event", js::s(event)),
+                ("actor", js::s("qa-user")),
+                ("subject", js::s("qa-user")),
+                ("details", details.clone()),
+            ],
+        );
+    }
+
+    async fn execute_tool(&self, run: &ToolRun) -> Result<(String, bool), String> {
+        let next = self.bridge.lock().unwrap().remove(0);
+        assert_eq!(
+            (
+                next.get("op").as_str(),
+                next.get("name").as_str(),
+                next.get("args").as_str()
+            ),
+            (
+                Some("execute"),
+                Some(run.name.as_str()),
+                Some(run.args.as_str())
+            )
+        );
+        self.executions.lock().unwrap().push(run.name.clone());
+        // The bridge counts the call as chat.cjs does.
+        self.store("recordToolUse", vec![("name", js::s(run.name.clone()))]);
+        Ok((
+            next.get("text").as_str().unwrap().to_string(),
+            next.get("failed") == &JValue::Bool(true),
+        ))
+    }
+
     fn prefill_sample(&self, _model: &str, _prompt: f64, _ms: f64) {}
 
     fn mtp_evidence(&self, _model: &str, _drafted: f64, _accepted: f64) {}
+}
+
+// final-answer.cjs, for this test until the helpers port lands (track R8 B0c): the recorded results
+// hold at most one plain link, so a simple scan is enough here.
+const FINAL_ANSWER_NOTE: &str = "Write your final answer to the user now, using the tool results above. Cite the source links they contain. Do not call any more tools. If a tool failed, say so in one line and answer from the results that did come back.";
+
+fn source_links(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .filter(|w| w.starts_with("http://") || w.starts_with("https://"))
+        .map(|w| {
+            w.trim_end_matches(['.', ',', ';', ':', '!', '?'])
+                .to_string()
+        })
+        .take(5)
+        .collect()
+}
+
+fn fallback_text(sources: &[String]) -> String {
+    if sources.is_empty() {
+        "\n\nThe model did not write a final answer from the tool results. Its reasoning is in the thinking above. Try again or choose another model.".into()
+    } else {
+        format!(
+            "\n\nThe model did not write a final answer. Its reasoning is in the thinking above; these are the sources the tools returned:\n{}",
+            sources.iter().map(|u| format!("- {u}")).collect::<Vec<_>>().join("\n")
+        )
+    }
 }
 
 fn fixture() -> JValue {
@@ -303,6 +447,17 @@ fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
         clean_search_args: &|_, a| a.to_string(),
         announces_tool_action: &|_| false,
         announced_note: "",
+        reduce_tool_result: &|text, cap| {
+            assert!(
+                js::len(text) <= cap,
+                "a recorded result over the cap needs the reducer port"
+            );
+            text.to_string()
+        },
+        source_links: &source_links,
+        fallback_text: &fallback_text,
+        final_answer_note: FINAL_ANSWER_NOTE,
+        tool_result_cap: 8000,
     };
     let ended = block_on(native::run(&script, &process, &helpers, &prepared));
     // The executor's turn guard gives the lease back when the turn ends (Node: on finish/close).
@@ -370,6 +525,32 @@ fn the_native_continuation_is_node_after_the_cut() {
             }
             assert_eq!(s.body, js::stringify(&body), "{name} request {i} body");
         }
+        let JValue::Arr(approvals) = c.get("approvals") else {
+            panic!()
+        };
+        let want: Vec<String> = approvals.iter().map(js::stringify).collect();
+        assert_eq!(
+            *script.approvals.lock().unwrap(),
+            want,
+            "{name}: approval requests"
+        );
+        let JValue::Arr(executions) = c.get("executions") else {
+            panic!()
+        };
+        let want: Vec<String> = executions
+            .iter()
+            .map(|e| e.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            *script.executions.lock().unwrap(),
+            want,
+            "{name}: tools run"
+        );
+        assert!(
+            script.bridge.lock().unwrap().is_empty(),
+            "{name}: every bridge answer was asked for"
+        );
+
         let left = matches!(ended, Ended::Left);
         if !left {
             let JValue::Arr(stores) = c.get("stores") else {

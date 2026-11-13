@@ -39,6 +39,31 @@ pub struct GateRefusal {
     pub retryable: Option<bool>,
 }
 
+/// What a write would change, for its approval card (writeTargetFor, #659).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Target {
+    /// Nothing to show.
+    None,
+    Found {
+        target: String,
+        kind: Option<String>,
+    },
+    /// Refused before the card, with this reason; nothing is written.
+    Refused(String),
+}
+
+/// One call to run through the tool engines (core's `/internal/chat/tools/execute`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolRun {
+    pub project_id: Option<String>,
+    pub name: String,
+    pub args: String,
+    pub allowed: Vec<String>,
+    pub routes: Vec<(String, String)>,
+    pub chat_key: Option<String>,
+    pub exchange_key: String,
+}
+
 pub trait Host: Sync {
     /// An engine answer's body.
     type Body: Send;
@@ -85,6 +110,41 @@ pub trait Host: Sync {
 
     /// `recordUsage(workspace, model, reported)`.
     fn record_usage(&self, model: &str, reported: &JValue);
+    /// The signed-in user (the turn's workspace's).
+    fn user_id(&self) -> String;
+    /// `crypto.randomUUID()`.
+    fn uuid(&self) -> String;
+    /// The account's tool policy (Settings → Connectors): "allow", "ask" or "block".
+    fn tool_policy(&self, name: &str, write: bool) -> String;
+    /// What a write would change (core bridge).
+    fn write_target(
+        &self,
+        name: &str,
+        args: &str,
+        chat_key: Option<&str>,
+    ) -> impl Future<Output = Target> + Send;
+    /// The chat's permission binding for `scope` (chat.cjs `permissionContext`): `null` for a turn with
+    /// no chat id, `Err` when it cannot be verified (store failing, chat moved, deleted or held elsewhere).
+    fn permission_binding(
+        &self,
+        chat_id: Option<&str>,
+        scope: &str,
+        holder: &JValue,
+    ) -> impl Future<Output = Result<JValue, ()>> + Send;
+    /// "Allow for this chat" holds for this chat, scope and binding.
+    fn chat_wide_approved(&self, chat_id: Option<&str>, scope: &str, binding: &JValue) -> bool;
+    /// Waits for the person's answer to an approval card: "approve", "deny", "timeout" or "aborted".
+    fn await_approval(&self, request: &JValue) -> impl Future<Output = String> + Send;
+    /// Ends the chat's "Allow for this chat" grant.
+    fn revoke_grant(&self, chat_id: Option<&str>);
+    /// One audit line for the signed-in user (`authService.audit(event, user, user, details)`).
+    fn audit(&self, event: &str, details: &JValue);
+    /// Runs one call: its text and whether it failed, or the error it threw.
+    fn execute_tool(
+        &self,
+        run: &ToolRun,
+    ) -> impl Future<Output = Result<(String, bool), String>> + Send;
+
     /// `prefill.recordSample(model, prompt, ms)`.
     fn prefill_sample(&self, model: &str, prompt: f64, first_token_ms: f64);
     /// The model's draft acceptance as evidence (model manager `recordEvidence`).

@@ -219,7 +219,9 @@ async function runTurn(c, { handoff = false } = {}) {
     const project = c.project === null ? null : {
       id: 'qa-project', name: 'QA Project', model: MODEL, routing: 'manual', toolboxes: ['core'], files: [], ...(c.project || {}),
     };
-    const log = { requests: [], stores: [], approvals: [], executions: [] };
+    // `bridge`: what the two calls the native executor makes through core's tool bridges answered
+    // (rust-chat-native.cjs: executeToolCall, writeTargetFor), so its replay gets Node's own answers.
+    const log = { requests: [], stores: [], approvals: [], executions: [], bridge: [] };
     const store = (op, args) => log.stores.push({ op, ...args });
     const workspace = {
       userId: user.id, dir, assertActive() {},
@@ -308,11 +310,20 @@ async function runTurn(c, { handoff = false } = {}) {
       visionProbe: async () => ({ supported: false, reason: 'none' }), visionDescriptions: new Map(), skillsIndexFor: () => [],
       chatSkillRouter: { select: async () => ({ loaded: [] }) }, chatToolRouter: { select: async (ids) => ({ ids, routed: false }) },
       ...toolbox, oauthServerIds: () => new Set(), accountReady: () => true,
+      executeToolCall: async (proj, name, args, allowed, signal, outcome, options) => {
+        const text = await toolbox.executeToolCall(proj, name, args, allowed, signal, outcome, options);
+        log.bridge.push({ op: 'execute', name, args, text, failed: outcome.failed === true });
+        return text;
+      },
       grantContext: async (raw) => grantFixture.context(raw, { holder: { kind: 'absent' } }),
       chatWideApproved: () => false,
       awaitApproval: async (request) => { const { abortSignal: _signal, ...asked } = request; log.approvals.push(asked); return c.decision || 'approve'; },
       // index.cjs: Drive writes are described before their card and again before dispatch (gdrive-tools describeTarget).
-      writeTargetFor: (name, rawArgs, { user: who }) => (driveTools.names.has(name) ? driveTools.describeTarget(who, name, rawArgs) : null),
+      writeTargetFor: async (name, rawArgs, { user: who }) => {
+        const found = driveTools.names.has(name) ? await driveTools.describeTarget(who, name, rawArgs) : null;
+        log.bridge.push({ op: 'target', name, args: rawArgs, found });
+        return found;
+      },
       recordUsage: (_ws, model, reported) => store('recordUsage', { model, reported }),
       recordToolUse: (_ws, name) => store('recordToolUse', { name }),
       chatTitles: c.titles ? { save: (listId, chatId, title, first) => store('chatTitles.save', { listId, chatId, title, first }), autoNamed: (listId, chatId, first) => { store('chatTitles.autoNamed', { listId, chatId, first }); return c.titles.autoNamed !== false; } } : null,
@@ -338,7 +349,7 @@ async function runTurn(c, { handoff = false } = {}) {
       about: c.about,
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null, rounds: c.rounds || [] },
       http: out.http, refusal: out.refusal, events: out.events,
-      requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores,
+      requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge,
       files: listFiles(dir),
       record: { assistantEntry: record.assistantEntry(), partialEntry: record.partialEntry() },
     };

@@ -15,6 +15,7 @@
 pub mod cap;
 pub mod effort;
 pub mod event;
+pub mod gate;
 pub mod guard;
 pub mod host;
 pub mod js;

@@ -17,5 +17,7 @@ js-json = { path = "../js-json" }
 context-fit = { path = "../context-fit" }
 provider-error = { path = "../provider-error" }
 regex = "1"
+tool-exchange = { path = "../tool-exchange" }
+prompt-framing = { path = "../prompt-framing" }
 
 [dev-dependencies]

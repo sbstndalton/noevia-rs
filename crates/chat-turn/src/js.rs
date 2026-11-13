@@ -104,6 +104,29 @@ pub fn count(v: usize) -> JValue {
     JValue::Num(v as f64)
 }
 
+/// The UTF-16 code units of a JS string held as `wtf16` text.
+pub fn to_units(s: &str) -> Vec<u16> {
+    let mut out = Vec::with_capacity(s.len());
+    let mut buf = [0u16; 2];
+    for c in s.chars() {
+        match wtf16::lone_unit(c) {
+            Some(u) => out.push(u),
+            None => out.extend_from_slice(c.encode_utf16(&mut buf)),
+        }
+    }
+    out
+}
+
+/// A JS string from its code units, lone surrogates as `wtf16` holds them.
+pub fn from_units(units: &[u16]) -> String {
+    char::decode_utf16(units.iter().copied())
+        .map(|r| match r {
+            Ok(c) => c,
+            Err(e) => wtf16::lone_char(e.unpaired_surrogate()).unwrap_or('\u{FFFD}'),
+        })
+        .collect()
+}
+
 /// `Number(v)` for the values a provider's JSON can hold.
 pub fn to_number(v: &JValue) -> f64 {
     match v {

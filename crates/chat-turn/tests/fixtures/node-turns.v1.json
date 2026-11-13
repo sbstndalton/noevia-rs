@@ -472,6 +472,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -1026,6 +1027,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -1547,6 +1549,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -2090,6 +2093,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -2685,6 +2689,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -3274,6 +3279,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -3815,6 +3821,7 @@
      }
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -4307,6 +4314,7 @@
      }
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -4817,6 +4825,7 @@
      }
     }
    ],
+   "bridge": [],
    "files": {
     "chat-partials/306b2900fd9810550c17d58ec45bba4e02ff771ce6aae40b916cc725756d1b8b.json": {
      "role": "assistant",
@@ -5313,6 +5322,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -5788,6 +5798,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -6299,6 +6310,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -6806,6 +6818,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -7372,6 +7385,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -7937,6 +7951,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -8556,6 +8571,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -9147,6 +9163,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -9799,6 +9816,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -10407,6 +10425,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -11131,6 +11150,15 @@
     {
      "op": "lease.release",
      "lease": "qa-lease-1"
+    }
+   ],
+   "bridge": [
+    {
+     "op": "execute",
+     "name": "drive_read_file",
+     "args": "{\"fileId\":\"qa-file-1\"}",
+     "text": "QA drive_read_file result: synthetic-file.txt (1 KB)",
+     "failed": false
     }
    ],
    "files": {
@@ -11901,6 +11929,15 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [
+    {
+     "op": "execute",
+     "name": "drive_read_file",
+     "args": "{\"fileId\":\"qa-file-2\"}",
+     "text": "QA drive_read_file result: synthetic-file.txt (1 KB)",
+     "failed": false
+    }
+   ],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -12664,6 +12701,33 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [
+    {
+     "op": "target",
+     "name": "drive_trash_file",
+     "args": "{\"fileId\":\"qa-file-3\"}",
+     "found": {
+      "target": "QA file qa-file-3 (id qa-file-3)",
+      "kind": "drive"
+     }
+    },
+    {
+     "op": "target",
+     "name": "drive_trash_file",
+     "args": "{\"fileId\":\"qa-file-3\"}",
+     "found": {
+      "target": "QA file qa-file-3 (id qa-file-3)",
+      "kind": "drive"
+     }
+    },
+    {
+     "op": "execute",
+     "name": "drive_trash_file",
+     "args": "{\"fileId\":\"qa-file-3\"}",
+     "text": "QA drive_trash_file result: synthetic-file.txt (1 KB)",
+     "failed": false
+    }
+   ],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -13291,6 +13355,17 @@
     {
      "op": "lease.release",
      "lease": "qa-lease-1"
+    }
+   ],
+   "bridge": [
+    {
+     "op": "target",
+     "name": "drive_trash_file",
+     "args": "{\"fileId\":\"qa-file-4\"}",
+     "found": {
+      "target": "QA file qa-file-4 (id qa-file-4)",
+      "kind": "drive"
+     }
     }
    ],
    "files": {
@@ -14053,6 +14128,17 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [
+    {
+     "op": "target",
+     "name": "drive_trash_file",
+     "args": "{\"fileId\":\"qa-file-5\"}",
+     "found": {
+      "target": "QA file qa-file-5 (id qa-file-5)",
+      "kind": "drive"
+     }
+    }
+   ],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -14781,6 +14867,16 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [
+    {
+     "op": "target",
+     "name": "drive_trash_file",
+     "args": "{\"fileId\":\"not a drive id!\"}",
+     "found": {
+      "error": "\"not a drive id!\" is not a Google Drive file id. The Google Drive tools only change files in the connected Google Drive; to change a file uploaded to this project, use the project file tools (project_append_file or project_replace_text)"
+     }
+    }
+   ],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -15495,6 +15591,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -16547,6 +16644,29 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [
+    {
+     "op": "execute",
+     "name": "drive_read_file",
+     "args": "{\"fileId\":\"qa-a\"}",
+     "text": "QA drive_read_file result: synthetic-file.txt (1 KB)",
+     "failed": false
+    },
+    {
+     "op": "execute",
+     "name": "drive_read_file",
+     "args": "{\"fileId\":\"qa-b\"}",
+     "text": "QA drive_read_file result: synthetic-file.txt (1 KB)",
+     "failed": false
+    },
+    {
+     "op": "execute",
+     "name": "drive_read_file",
+     "args": "{\"fileId\":\"qa-c\"}",
+     "text": "QA drive_read_file result: synthetic-file.txt (1 KB)",
+     "failed": false
+    }
+   ],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -17514,6 +17634,15 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [
+    {
+     "op": "execute",
+     "name": "drive_read_file",
+     "args": "{\"fileId\":\"qa-a\"}",
+     "text": "QA read result with a link https://qa.example.invalid/doc-1",
+     "failed": false
+    }
+   ],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -18377,6 +18506,15 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [
+    {
+     "op": "execute",
+     "name": "drive_read_file",
+     "args": "{\"fileId\":\"qa-a\"}",
+     "text": "QA drive_read_file result: synthetic-file.txt (1 KB)",
+     "failed": false
+    }
+   ],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -18941,6 +19079,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -19674,6 +19813,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -20147,6 +20287,7 @@
      "lease": "qa-lease-1"
     }
    ],
+   "bridge": [],
    "files": {
     "context-43710917b5756b07375ece9529f61647f8a977bd4da3e8e866811ab56a420169.json": {
      "current": {
@@ -20505,6 +20646,7 @@
    "approvals": [],
    "executions": [],
    "stores": [],
+   "bridge": [],
    "files": {},
    "record": {
     "assistantEntry": {
@@ -20555,6 +20697,7 @@
    "approvals": [],
    "executions": [],
    "stores": [],
+   "bridge": [],
    "files": {},
    "record": {
     "assistantEntry": {
@@ -20595,6 +20738,7 @@
    "approvals": [],
    "executions": [],
    "stores": [],
+   "bridge": [],
    "files": {},
    "record": {
     "assistantEntry": {
