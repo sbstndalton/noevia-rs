@@ -284,10 +284,20 @@ async fn drive(
         host.end_partial(&chat_turn::after::safe_chat_id(c));
     }
     let ticks = tokio::spawn(ticks(Arc::clone(&host), chat.clone()));
+    // Node's `close` handler gives the lease back the moment the client leaves, before the turn's
+    // own end (the audit, the tool-use count and the save come after it).
+    let watcher = {
+        let host = Arc::clone(&host);
+        tokio::spawn(async move {
+            closed(&host.tx).await;
+            host.release_lease();
+        })
+    };
     let process = process();
     let helpers = helpers();
     let ended = native::run(&*host, process, &helpers, &p).await;
     ticks.abort();
+    watcher.abort();
     let left = matches!(ended, native::Ended::Left) || host.left();
     let keep = Arc::clone(&host);
     let message = p.message.clone();
