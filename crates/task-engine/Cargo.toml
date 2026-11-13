@@ -1,0 +1,15 @@
+[package]
+name = "task-engine"
+version = "0.1.0"
+description = "noevia-core's jobs.cjs job store and the task start, approve and cancel state machine in Rust, on the task-lifecycle crate: an in-memory append-only journal with a JSON Lines codec; nothing calls it yet (R7 head start, not wired)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = "1"
+task-lifecycle = { path = "../task-lifecycle" }

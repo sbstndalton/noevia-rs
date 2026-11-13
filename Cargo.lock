@@ -3684,6 +3684,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "task-engine"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "task-lifecycle",
+]
+
+[[package]]
 name = "task-lifecycle"
 version = "0.1.0"
 dependencies = [

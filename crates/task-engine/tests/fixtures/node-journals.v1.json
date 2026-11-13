@@ -1,0 +1,1106 @@
+{
+ "version": 1,
+ "generator": "tools/gen-node-journal-fixtures.cjs",
+ "scenarios": [
+  {
+   "name": "start-complete",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code",
+     "projectId": "qa-project",
+     "capabilities": [
+      "read",
+      "write"
+     ]
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "progress",
+     "stage": "implementing"
+    },
+    {
+     "op": "complete",
+     "result": {
+      "ok": true,
+      "note": "synthetic"
+     }
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000001",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": "qa-project",
+      "parentId": null,
+      "capabilities": [
+       "read",
+       "write"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000001",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000001",
+     "seq": 3,
+     "type": "progress",
+     "at": 1030,
+     "data": {
+      "stage": "implementing"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000001",
+     "seq": 4,
+     "type": "job.completed",
+     "at": 1040,
+     "data": {
+      "result": {
+       "ok": true,
+       "note": "synthetic"
+      }
+     }
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": "qa-project",
+    "parentId": null,
+    "capabilities": [
+     "read",
+     "write"
+    ],
+    "status": "completed",
+    "stage": "implementing",
+    "pendingApproval": null,
+    "result": {
+     "ok": true,
+     "note": "synthetic"
+    },
+    "error": null,
+    "lifecycle": "verifying",
+    "createdAt": 1010,
+    "updatedAt": 1040
+   }
+  },
+  {
+   "name": "approval-approve-then-complete",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code",
+     "projectId": "qa-project",
+     "capabilities": [
+      "write",
+      "write",
+      "shell"
+     ]
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "request",
+     "card": {
+      "id": "appr-1",
+      "action": "write",
+      "path": "src/a.txt"
+     }
+    },
+    {
+     "op": "decide",
+     "approvalId": "appr-1",
+     "decision": "approve"
+    },
+    {
+     "op": "progress",
+     "stage": "verifying"
+    },
+    {
+     "op": "complete",
+     "result": null
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000002",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": "qa-project",
+      "parentId": null,
+      "capabilities": [
+       "write",
+       "shell"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000002",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000002",
+     "seq": 3,
+     "type": "approval.requested",
+     "at": 1030,
+     "data": {
+      "id": "appr-1",
+      "action": "write",
+      "path": "src/a.txt"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000002",
+     "seq": 4,
+     "type": "approval.decided",
+     "at": 1040,
+     "data": {
+      "decision": "approve"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000002",
+     "seq": 5,
+     "type": "progress",
+     "at": 1050,
+     "data": {
+      "stage": "verifying"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000002",
+     "seq": 6,
+     "type": "job.completed",
+     "at": 1060,
+     "data": {
+      "result": null
+     }
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": "qa-project",
+    "parentId": null,
+    "capabilities": [
+     "write",
+     "shell"
+    ],
+    "status": "completed",
+    "stage": "verifying",
+    "pendingApproval": null,
+    "result": null,
+    "error": null,
+    "lifecycle": "verifying",
+    "createdAt": 1010,
+    "updatedAt": 1060
+   }
+  },
+  {
+   "name": "approval-denied-then-fail",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code",
+     "capabilities": [
+      "shell"
+     ]
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "request",
+     "card": {
+      "id": "appr-2",
+      "action": "shell"
+     }
+    },
+    {
+     "op": "decide",
+     "approvalId": "appr-2",
+     "decision": "deny"
+    },
+    {
+     "op": "fail",
+     "error": "synthetic failure"
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000003",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": [
+       "shell"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000003",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000003",
+     "seq": 3,
+     "type": "approval.requested",
+     "at": 1030,
+     "data": {
+      "id": "appr-2",
+      "action": "shell"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000003",
+     "seq": 4,
+     "type": "approval.decided",
+     "at": 1040,
+     "data": {
+      "decision": "deny"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000003",
+     "seq": 5,
+     "type": "job.failed",
+     "at": 1050,
+     "data": {
+      "error": "synthetic failure"
+     }
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [
+     "shell"
+    ],
+    "status": "failed",
+    "stage": null,
+    "pendingApproval": null,
+    "result": null,
+    "error": "synthetic failure",
+    "lifecycle": "blocked",
+    "createdAt": 1010,
+    "updatedAt": 1050
+   }
+  },
+  {
+   "name": "approve-all-and-timeout",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "chat"
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "request",
+     "card": {
+      "id": "appr-3"
+     }
+    },
+    {
+     "op": "decide",
+     "approvalId": "appr-3",
+     "decision": "approve_all"
+    },
+    {
+     "op": "request",
+     "card": {
+      "id": "appr-4"
+     }
+    },
+    {
+     "op": "decide",
+     "approvalId": "appr-4",
+     "decision": "timeout"
+    },
+    {
+     "op": "cancel"
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000004",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "chat",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000004",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000004",
+     "seq": 3,
+     "type": "approval.requested",
+     "at": 1030,
+     "data": {
+      "id": "appr-3"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000004",
+     "seq": 4,
+     "type": "approval.decided",
+     "at": 1040,
+     "data": {
+      "decision": "approve_all"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000004",
+     "seq": 5,
+     "type": "approval.requested",
+     "at": 1050,
+     "data": {
+      "id": "appr-4"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000004",
+     "seq": 6,
+     "type": "approval.decided",
+     "at": 1060,
+     "data": {
+      "decision": "timeout"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000004",
+     "seq": 7,
+     "type": "job.cancelled",
+     "at": 1070,
+     "data": {}
+    }
+   ],
+   "expect": {
+    "kind": "chat",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "cancelled",
+    "stage": null,
+    "pendingApproval": null,
+    "result": null,
+    "error": null,
+    "lifecycle": "blocked",
+    "createdAt": 1010,
+    "updatedAt": 1070
+   }
+  },
+  {
+   "name": "cancel-queued",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "cancel"
+    }
+   ],
+   "refusals": [
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000005",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000005",
+     "seq": 2,
+     "type": "job.cancelled",
+     "at": 1020,
+     "data": {}
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "cancelled",
+    "stage": null,
+    "pendingApproval": null,
+    "result": null,
+    "error": null,
+    "lifecycle": "blocked",
+    "createdAt": 1010,
+    "updatedAt": 1020
+   }
+  },
+  {
+   "name": "cancel-running",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "cancel"
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000006",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000006",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000006",
+     "seq": 3,
+     "type": "job.cancelled",
+     "at": 1030,
+     "data": {}
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "cancelled",
+    "stage": null,
+    "pendingApproval": null,
+    "result": null,
+    "error": null,
+    "lifecycle": "blocked",
+    "createdAt": 1010,
+    "updatedAt": 1030
+   }
+  },
+  {
+   "name": "cancel-while-waiting",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "request",
+     "card": {
+      "id": "appr-5"
+     }
+    },
+    {
+     "op": "cancel"
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000007",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000007",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000007",
+     "seq": 3,
+     "type": "approval.requested",
+     "at": 1030,
+     "data": {
+      "id": "appr-5"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000007",
+     "seq": 4,
+     "type": "job.cancelled",
+     "at": 1040,
+     "data": {}
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "cancelled",
+    "stage": null,
+    "pendingApproval": null,
+    "result": null,
+    "error": null,
+    "lifecycle": "blocked",
+    "createdAt": 1010,
+    "updatedAt": 1040
+   }
+  },
+  {
+   "name": "cancel-after-finish-is-a-no-op",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "complete",
+     "result": {
+      "done": 1
+     }
+    },
+    {
+     "op": "cancel"
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000008",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000008",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000008",
+     "seq": 3,
+     "type": "job.completed",
+     "at": 1030,
+     "data": {
+      "result": {
+       "done": 1
+      }
+     }
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "completed",
+    "stage": null,
+    "pendingApproval": null,
+    "result": {
+     "done": 1
+    },
+    "error": null,
+    "lifecycle": "verifying",
+    "createdAt": 1010,
+    "updatedAt": 1030
+   }
+  },
+  {
+   "name": "failed-at-claim",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "fail",
+     "error": "no worktree"
+    }
+   ],
+   "refusals": [
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000009",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000009",
+     "seq": 2,
+     "type": "job.failed",
+     "at": 1020,
+     "data": {
+      "error": "no worktree"
+     }
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "failed",
+    "stage": null,
+    "pendingApproval": null,
+    "result": null,
+    "error": "no worktree",
+    "lifecycle": "blocked",
+    "createdAt": 1010,
+    "updatedAt": 1020
+   }
+  },
+  {
+   "name": "interrupted-after-restart",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "request",
+     "card": {
+      "id": "appr-6"
+     }
+    },
+    {
+     "op": "recover"
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000010",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000010",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000010",
+     "seq": 3,
+     "type": "approval.requested",
+     "at": 1030,
+     "data": {
+      "id": "appr-6"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000010",
+     "seq": 4,
+     "type": "job.interrupted",
+     "at": 1040,
+     "data": {
+      "reason": "The server restarted while waiting for approval; start again to be asked again."
+     }
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "interrupted",
+    "stage": null,
+    "pendingApproval": null,
+    "result": null,
+    "error": "The server restarted while waiting for approval; start again to be asked again.",
+    "lifecycle": "blocked",
+    "createdAt": 1010,
+    "updatedAt": 1040
+   }
+  },
+  {
+   "name": "completed-from-queued-breaks-lifecycle",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "complete",
+     "result": "synthetic"
+    }
+   ],
+   "refusals": [
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000011",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000011",
+     "seq": 2,
+     "type": "job.completed",
+     "at": 1020,
+     "data": {
+      "result": "synthetic"
+     }
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "completed",
+    "stage": null,
+    "pendingApproval": null,
+    "result": "synthetic",
+    "error": null,
+    "lifecycle": null,
+    "createdAt": 1010,
+    "updatedAt": 1020
+   }
+  },
+  {
+   "name": "write-after-finish-refused",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "complete",
+     "result": 1
+    },
+    {
+     "op": "progress",
+     "stage": "implementing"
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null,
+    409
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000012",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000012",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000012",
+     "seq": 3,
+     "type": "job.completed",
+     "at": 1030,
+     "data": {
+      "result": 1
+     }
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "completed",
+    "stage": null,
+    "pendingApproval": null,
+    "result": 1,
+    "error": null,
+    "lifecycle": "verifying",
+    "createdAt": 1010,
+    "updatedAt": 1030
+   }
+  },
+  {
+   "name": "start-twice-refused-by-the-engine-only",
+   "agree": false,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "start"
+    },
+    {
+     "op": "start"
+    }
+   ],
+   "refusals": [
+    null,
+    null,
+    null
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000013",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000013",
+     "seq": 2,
+     "type": "job.started",
+     "at": 1020,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-000000000013",
+     "seq": 3,
+     "type": "job.started",
+     "at": 1030,
+     "data": {}
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "running",
+    "stage": null,
+    "pendingApproval": null,
+    "result": null,
+    "error": null,
+    "lifecycle": "implementing",
+    "createdAt": 1010,
+    "updatedAt": 1030
+   }
+  },
+  {
+   "name": "unknown-type-refused",
+   "agree": true,
+   "ops": [
+    {
+     "op": "create",
+     "kind": "code"
+    },
+    {
+     "op": "append",
+     "type": "not.a.type",
+     "data": {}
+    }
+   ],
+   "refusals": [
+    null,
+    500
+   ],
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-000000000014",
+     "seq": 1,
+     "type": "job.created",
+     "at": 1010,
+     "data": {
+      "kind": "code",
+      "projectId": null,
+      "parentId": null,
+      "capabilities": []
+     }
+    }
+   ],
+   "expect": {
+    "kind": "code",
+    "projectId": null,
+    "parentId": null,
+    "capabilities": [],
+    "status": "queued",
+    "stage": null,
+    "pendingApproval": null,
+    "result": null,
+    "error": null,
+    "lifecycle": "planned",
+    "createdAt": 1010,
+    "updatedAt": 1010
+   }
+  }
+ ]
+}
