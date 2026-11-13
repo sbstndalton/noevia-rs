@@ -74,9 +74,13 @@ fn replay(s: &Value) -> (JobStore, String, Vec<bool>) {
                     serde_json::json!({ "stage": op["stage"] }),
                 )
                 .map(|_| ()),
-            "request" => store
-                .request_approval(&id, at, op["card"].clone())
-                .map(|_| ()),
+            "request" => {
+                // The fixture cards carry their own id; the host's approval id is that id.
+                let approval_id = op["card"]["id"].as_str().unwrap().to_string();
+                store
+                    .request_approval(&id, at, &approval_id, op["card"].clone())
+                    .map(|_| ())
+            }
             "decide" => store
                 .decide_approval(
                     &id,
@@ -127,9 +131,21 @@ fn every_agreed_scenario_matches_node() {
 
         // Every event row, in order, as Node wrote it.
         let rows = s["journal"].as_array().unwrap();
-        let got = store.events(&id).expect("journal");
+        // The engine adds its approvalId key to approval.requested data; Node's rows do not have it.
+        let got: Vec<Event> = store
+            .events(&id)
+            .expect("journal")
+            .iter()
+            .map(|e| {
+                let mut e = e.clone();
+                if e.kind == "approval.requested" {
+                    e.data.as_object_mut().unwrap().remove("approvalId");
+                }
+                e
+            })
+            .collect();
         let want: Vec<Event> = rows.iter().map(row_to_event).collect();
-        assert_eq!(got, want.as_slice(), "{name}: journal rows");
+        assert_eq!(got, want, "{name}: journal rows");
 
         // The folded view, as Node's get() derived it.
         let view = store.get(&id).expect("view");

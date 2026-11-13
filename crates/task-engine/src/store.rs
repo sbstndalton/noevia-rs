@@ -9,7 +9,8 @@ use code_actions::{approval_for, Action};
 
 use crate::error::EngineError;
 use crate::event::{
-    check_event, encoded_len, valid_job_id, Event, AUTHORITY_TYPES, MAX_EVENTS_PER_JOB,
+    check_event, encoded_len, valid_job_id, Event, APPROVAL_ID_KEY, AUTHORITY_TYPES,
+    MAX_EVENTS_PER_JOB,
 };
 use crate::fold::{Fold, JobView, Status};
 
@@ -157,21 +158,23 @@ impl JobStore {
         self.append(id, at, "job.started", json!({}))
     }
 
-    /// `approval.requested`: a running job waits for an answer. The card needs a string `id`, which
-    /// [`JobStore::decide_approval`] matches against.
+    /// `approval.requested`: a running job waits for an answer. `approval_id` is the host's id; the
+    /// answer must repeat it. It is stored in the event under [`APPROVAL_ID_KEY`].
     pub fn request_approval(
         &mut self,
         id: &str,
         at: u64,
+        approval_id: &str,
         card: Value,
     ) -> Result<&JobView, EngineError> {
-        let has_id = card
-            .get("id")
-            .and_then(Value::as_str)
-            .is_some_and(|s| !s.is_empty());
-        if !card.is_object() || !has_id {
-            return Err(EngineError::BadInput("an approval card needs an id"));
+        if approval_id.is_empty() || approval_id.len() > 64 {
+            return Err(EngineError::BadInput("approval id is empty or too long"));
         }
+        let mut card = card;
+        let object = card
+            .as_object_mut()
+            .ok_or(EngineError::BadInput("an approval card is an object"))?;
+        object.insert(APPROVAL_ID_KEY.into(), Value::String(approval_id.into()));
         if encoded_len(&card)? > self.limits.max_card_bytes {
             return Err(EngineError::TooLarge("approval card is too large"));
         }
@@ -184,6 +187,7 @@ impl JobStore {
         &mut self,
         id: &str,
         at: u64,
+        approval_id: &str,
         action: Action,
         card: Value,
     ) -> Result<&JobView, EngineError> {
@@ -193,9 +197,9 @@ impl JobStore {
         let mut card = card;
         let object = card
             .as_object_mut()
-            .ok_or(EngineError::BadInput("an approval card needs an id"))?;
+            .ok_or(EngineError::BadInput("an approval card is an object"))?;
         object.insert("action".into(), Value::String(action.name().into()));
-        self.request_approval(id, at, card)
+        self.request_approval(id, at, approval_id, card)
     }
 
     /// `approval.decided`: answers the pending approval `approval_id`. The job runs again.
@@ -206,15 +210,11 @@ impl JobStore {
         approval_id: &str,
         decision: &str,
     ) -> Result<&JobView, EngineError> {
-        let pending = self
-            .get(id)
-            .ok_or(EngineError::NoSuchJob)?
-            .pending_approval
-            .clone();
-        let Some(card) = pending else {
+        let view = self.get(id).ok_or(EngineError::NoSuchJob)?;
+        if view.pending_approval.is_none() {
             return Err(EngineError::IllegalTransition("no approval is pending"));
-        };
-        if card.get("id").and_then(Value::as_str) != Some(approval_id) {
+        }
+        if view.pending_approval_id.as_deref() != Some(approval_id) {
             return Err(EngineError::BadInput(
                 "approvalId does not match the pending approval",
             ));

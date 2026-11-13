@@ -36,6 +36,10 @@ pub const EVENT_TYPES: [&str; 23] = [
 /// write them, and this crate has no such path yet.
 pub const AUTHORITY_TYPES: [&str; 2] = ["task.stage", "task.revision"];
 
+/// The key the engine adds to an `approval.requested` event's data: the host's approval id. Node's
+/// cards have no id of their own (code-service.cjs keeps the id in its map), so it is kept apart.
+pub const APPROVAL_ID_KEY: &str = "approvalId";
+
 /// The largest JSON encoding of one event's `data`.
 pub const MAX_EVENT_DATA_BYTES: usize = 64 * 1024;
 

@@ -133,21 +133,14 @@ fn an_action_approval_takes_the_classifier_name_and_skips_actions_that_never_nee
     use code_actions::Action;
     let mut s = store_with(A);
     s.start(A, 2).unwrap();
-    assert_eq!(
-        s.request_action_approval(A, 3, Action::Read, json!({ "id": "r" }))
-            .unwrap_err()
-            .code(),
-        "bad_input"
-    );
-    assert_eq!(
-        s.request_action_approval(A, 3, Action::None, json!({ "id": "r" }))
-            .unwrap_err()
-            .code(),
-        "bad_input"
-    );
+    let read = s.request_action_approval(A, 3, "r", Action::Read, json!({}));
+    assert_eq!(read.unwrap_err().code(), "bad_input");
+    let none = s.request_action_approval(A, 3, "r", Action::None, json!({}));
+    assert_eq!(none.unwrap_err().code(), "bad_input");
     let view = s
-        .request_action_approval(A, 3, Action::Delete, json!({ "id": "d", "action": "read" }))
+        .request_action_approval(A, 3, "d", Action::Delete, json!({ "action": "read" }))
         .unwrap();
+    assert_eq!(view.pending_approval_id.as_deref(), Some("d"));
     assert_eq!(
         view.pending_approval.as_ref().unwrap()["action"],
         json!(Action::Delete.name())
@@ -158,20 +151,32 @@ fn an_action_approval_takes_the_classifier_name_and_skips_actions_that_never_nee
 #[test]
 fn approvals_need_a_running_job_and_the_matching_id() {
     let mut s = store_with(A);
-    let card = json!({ "id": "appr-1", "action": "write" });
+    let card = json!({ "action": "write", "command": "touch x" });
     assert_eq!(
-        s.request_approval(A, 2, card.clone()).unwrap_err().code(),
+        s.request_approval(A, 2, "appr-1", card.clone())
+            .unwrap_err()
+            .code(),
         "illegal_transition"
     );
     s.start(A, 2).unwrap();
     assert_eq!(
-        s.request_approval(A, 3, json!({ "action": "write" }))
+        s.request_approval(A, 3, "", card.clone())
             .unwrap_err()
             .code(),
         "bad_input"
     );
-    s.request_approval(A, 4, card).unwrap();
+    assert_eq!(
+        s.request_approval(A, 3, "appr-1", json!("no"))
+            .unwrap_err()
+            .code(),
+        "bad_input"
+    );
+    s.request_approval(A, 4, "appr-1", card).unwrap();
     assert_eq!(s.get(A).unwrap().status, Status::WaitingApproval);
+    assert_eq!(
+        s.get(A).unwrap().pending_approval_id.as_deref(),
+        Some("appr-1")
+    );
     assert_eq!(
         s.decide_approval(A, 5, "appr-9", "approve")
             .unwrap_err()
@@ -257,7 +262,7 @@ fn recover_interrupts_only_unfinished_jobs_that_are_not_live() {
     let mut s = JobStore::new(Limits::default());
     s.create(A, 1, new_job("code", &[], None)).unwrap();
     s.start(A, 2).unwrap();
-    s.request_approval(A, 3, json!({ "id": "appr-1" })).unwrap();
+    s.request_approval(A, 3, "appr-1", json!({})).unwrap();
     s.create(B, 4, new_job("code", &[], None)).unwrap();
     s.start(B, 5).unwrap();
     let done = s.recover(6, &|id| id == B);
@@ -336,10 +341,10 @@ fn count_limits_are_enforced() {
             .code(),
         "limit"
     );
-    let card = json!({ "id": "x", "pad": "y".repeat(100) });
+    let card = json!({ "pad": "y".repeat(100) });
     s.start(A, 2).unwrap();
     assert_eq!(
-        s.request_approval(A, 3, card).unwrap_err().code(),
+        s.request_approval(A, 3, "x", card).unwrap_err().code(),
         "too_large"
     );
 }
@@ -469,7 +474,7 @@ fn random_sequences_never_panic_and_terminal_jobs_stay_terminal() {
             let at = 2 + step;
             let r = match next(9) {
                 0 => s.start(A, at).map(|_| ()),
-                1 => s.request_approval(A, at, json!({ "id": "p" })).map(|_| ()),
+                1 => s.request_approval(A, at, "p", json!({})).map(|_| ()),
                 2 => s.decide_approval(A, at, "p", "approve").map(|_| ()),
                 3 => s.complete(A, at, json!(null)).map(|_| ()),
                 4 => s.fail(A, at, "boom").map(|_| ()),
@@ -506,4 +511,46 @@ fn random_sequences_never_panic_and_terminal_jobs_stay_terminal() {
         let text = task_engine::to_jsonl(&events);
         assert_eq!(parse_jsonl(&text).unwrap(), events);
     }
+}
+
+#[test]
+fn a_node_shaped_card_without_an_id_is_answered_by_the_host_id() {
+    let mut s = store_with(A);
+    s.start(A, 2).unwrap();
+    let card = json!({ "taskId": A, "action": "execute", "command": "ls", "paths": [] });
+    s.request_approval(A, 3, "host-7", card.clone()).unwrap();
+    let view = s.get(A).unwrap();
+    assert_eq!(
+        view.pending_approval.as_ref(),
+        Some(&card),
+        "the card is kept as given"
+    );
+    assert_eq!(view.pending_approval_id.as_deref(), Some("host-7"));
+    assert_eq!(
+        s.decide_approval(A, 4, "host-7", "deny").unwrap().status,
+        Status::Running
+    );
+}
+
+#[test]
+fn a_card_cannot_name_its_own_approval_id() {
+    let mut s = store_with(A);
+    s.start(A, 2).unwrap();
+    // A model-shaped card that carries an `approvalId` of its own: the host's id wins.
+    s.request_approval(A, 3, "host-8", json!({ "approvalId": "forged" }))
+        .unwrap();
+    assert_eq!(
+        s.get(A).unwrap().pending_approval_id.as_deref(),
+        Some("host-8")
+    );
+    assert_eq!(
+        s.decide_approval(A, 4, "forged", "approve")
+            .unwrap_err()
+            .code(),
+        "bad_input"
+    );
+    assert_eq!(
+        s.get(A).unwrap().pending_approval.as_ref(),
+        Some(&json!({}))
+    );
 }

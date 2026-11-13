@@ -9,7 +9,7 @@ use serde_json::Value;
 use task_lifecycle::State;
 
 use crate::error::EngineError;
-use crate::event::{Event, MAX_EVENTS_PER_JOB};
+use crate::event::{Event, APPROVAL_ID_KEY, MAX_EVENTS_PER_JOB};
 
 /// A job's status (jobs.cjs `job.status`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +57,10 @@ pub struct JobView {
     pub capabilities: Vec<String>,
     pub status: Status,
     pub stage: Option<String>,
+    /// The pending approval card, without the engine's `approvalId` key.
     pub pending_approval: Option<Value>,
+    /// The id the host gave the pending approval (the `approvalId` the answer must repeat).
+    pub pending_approval_id: Option<String>,
     pub result: Value,
     pub error: Option<String>,
     pub created_at: u64,
@@ -97,6 +100,7 @@ impl Fold {
             status: Status::Queued,
             stage: None,
             pending_approval: None,
+            pending_approval_id: None,
             result: Value::Null,
             error: None,
             created_at: first.at,
@@ -215,14 +219,24 @@ fn apply_data(view: &mut JobView, event: &Event) {
                 view.stage = Some(stage.to_string());
             }
         }
-        "approval.requested" => view.pending_approval = Some(d.clone()),
-        "approval.decided" => view.pending_approval = None,
+        "approval.requested" => {
+            let mut card = d.clone();
+            let id = card.as_object_mut().and_then(|o| o.remove(APPROVAL_ID_KEY));
+            view.pending_approval_id = id.as_ref().and_then(Value::as_str).map(str::to_string);
+            view.pending_approval = Some(card);
+        }
+        "approval.decided" => {
+            view.pending_approval = None;
+            view.pending_approval_id = None;
+        }
         "job.completed" | "job.cancelled" => {
             view.pending_approval = None;
+            view.pending_approval_id = None;
             view.result = d.get("result").cloned().unwrap_or(Value::Null);
         }
         "job.failed" => {
             view.pending_approval = None;
+            view.pending_approval_id = None;
             view.result = d.get("result").cloned().unwrap_or(Value::Null);
             view.error = Some(
                 d.get("error")
@@ -233,6 +247,7 @@ fn apply_data(view: &mut JobView, event: &Event) {
         }
         "job.interrupted" => {
             view.pending_approval = None;
+            view.pending_approval_id = None;
             view.error = Some(
                 d.get("reason")
                     .and_then(Value::as_str)
