@@ -195,22 +195,22 @@ fn failed() -> Response<Body> {
 }
 
 /// core `readJson`: at most 1 MiB, an empty body is `{}`.
-async fn read_json(body: Body) -> Result<JValue, Response<Body>> {
+async fn read_json(body: Body) -> Result<JValue, Box<Response<Body>>> {
     let read = crate::account_routes::read_body(body, BODY_LIMIT)
         .await
-        .map_err(|()| reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true))?;
+        .map_err(|()| Box::new(reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)))?;
     if read.over {
-        return Err(reply::error(
+        return Err(Box::new(reply::error(
             StatusCode::PAYLOAD_TOO_LARGE,
             "Request exceeds size limit",
             true,
-        ));
+        )));
     }
     if read.bytes.is_empty() {
         return Ok(JValue::Obj(Vec::new()));
     }
     wtf16::parse(&String::from_utf8_lossy(&read.bytes))
-        .map_err(|_| reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true))
+        .map_err(|_| Box::new(reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true)))
 }
 
 /// `String(x || '')`.
@@ -393,7 +393,11 @@ pub fn service(app: &Arc<App>) -> Arc<Service> {
 }
 
 /// What core says for one start.
-async fn resolve(app: &Arc<App>, user: &str, project: &str) -> Result<Resolved, Response<Body>> {
+async fn resolve(
+    app: &Arc<App>,
+    user: &str,
+    project: &str,
+) -> Result<Resolved, Box<Response<Body>>> {
     let body = json!({ "user": user, "projectId": project });
     let Some((status, bytes)) = app
         .config
@@ -401,32 +405,36 @@ async fn resolve(app: &Arc<App>, user: &str, project: &str) -> Result<Resolved, 
         .node_call(ENGINE_PATH, &body, ENGINE_DEADLINE)
         .await
     else {
-        return Err(reply::error(
+        return Err(Box::new(reply::error(
             StatusCode::SERVICE_UNAVAILABLE,
             UNAVAILABLE,
             true,
-        ));
+        )));
     };
     if status == 404 {
-        return Err(reply::error(
+        return Err(Box::new(reply::error(
             StatusCode::NOT_FOUND,
             "project not found",
             true,
-        ));
+        )));
     }
     let parsed = (status == 200)
         .then(|| wtf16::parse(&String::from_utf8_lossy(&bytes)).ok())
         .flatten()
         .filter(JValue::is_object);
     let Some(facts) = parsed else {
-        return Err(reply::error(
+        return Err(Box::new(reply::error(
             StatusCode::SERVICE_UNAVAILABLE,
             UNAVAILABLE,
             true,
-        ));
+        )));
     };
     if facts.get("machine").as_bool() == Some(true) {
-        return Err(reply::error(StatusCode::CONFLICT, ON_A_MACHINE, true));
+        return Err(Box::new(reply::error(
+            StatusCode::CONFLICT,
+            ON_A_MACHINE,
+            true,
+        )));
     }
     let e = facts.get("engine");
     let text = |v: &JValue| v.as_str().filter(|s| !s.is_empty()).map(str::to_string);
@@ -503,11 +511,11 @@ pub async fn serve(
         Action::Start(_) => {
             let body = match read_json(body).await {
                 Ok(b) => b,
-                Err(r) => return r,
+                Err(r) => return *r,
             };
             let resolved = match resolve(app, &user, &project_id).await {
                 Ok(r) => r,
-                Err(r) => return r,
+                Err(r) => return *r,
             };
             let work = tokio::task::spawn_blocking(move || {
                 let project = Project {
@@ -526,7 +534,7 @@ pub async fn serve(
         Action::Decide(_, task) => {
             let body = match read_json(body).await {
                 Ok(b) => b,
-                Err(r) => return r,
+                Err(r) => return *r,
             };
             let (decision, approval) = (
                 text_of(body.get("decision")),
