@@ -14,11 +14,43 @@
 //! The order is core's: the flag (404), the administrator (403), the project (404), the method (405),
 //! the body (400/413), then the service's own answers.
 //!
+//! The Planner preparation (core code-service.cjs `PLANNER_PREPARATION`, the Code pipeline #705)
+//! runs here too, through crates/code-pipeline's driver over code-harness's `pipeline_host`, with
+//! the role engine (crates/role-engine) on [`FrontRoles`] and the verifier (crates/code-verify,
+//! `CODE_VERIFY_ENDPOINT`). It is offered exactly when Node offers it: features.codeHarness and
+//! features.codePipeline on (read from the front's own settings, as features.cjs reads them, with
+//! codePipeline and codeMerge available exactly when features.cjs's `codeSandboxReason` says so:
+//! `CODE_HARNESS_ENDPOINT` set and not blank) and Code mode in the sandbox. Its start needs the role engine's endpoint
+//! from core's engine facts (`role`, an additive fact): a core without it answers the Planner start
+//! with Node's 409 "The Planner pipeline is not set up on this server.". Flags off, the front
+//! offers and runs exactly what it did before.
+//!
+//! The Planner review of a direct task (core code-harness.cjs `reviewGate`, #519) runs here too
+//! (code-harness's `review_gate`): features.plannerReview is read once per direct start (an
+//! unreadable setting is off), and with it on the finished, released change goes to the reviewer
+//! (code-review.cjs `createPlannerReview` over the same role engine as the Planner: a review alone
+//! pins the task's model for that task) and then on a `review_change` card, answered through the
+//! decide route below. A core that gives no `role` fact gets Node's "No reviewer model is
+//! configured on this server." on that card; one whose reviewer cannot be built here (the HTTP
+//! client failing) gets review_gate's `Unreachable` ("The reviewer could not be reached."). The
+//! switch-flip condition "codePipeline and plannerReview off" therefore goes away: the front runs
+//! both, so `NOEVIA_CODE_EXECUTOR=rust` no longer has to wait for either flag to be off.
+//!
+//! features.plannerReview is read as features.cjs `selected` reads it: the env value, else the
+//! typed `feature:plannerReview` row, else (missing or not `'true'`/`'false'`) the legacy
+//! `feature:astraReview` row, else the default (off).
+//!
 //! Named differences (each refused, never run differently):
-//! - the Code role on an inference machine (core's relay, #1853) is refused with 409;
-//! - the Planner preparation is not offered and no Planner review runs (`codePipeline`,
-//!   `plannerReview` stay Node's): the switch stays off where either flag is on;
-//! - a Cowork session's task start from chat stays Node's, which refuses it while the front owns Code.
+//! - the Code role on an inference machine (core's relay, #1853) is refused with 409, for the
+//!   Planner and the review too (so no role call ever goes to a machine);
+//! - the inference budget check (core `modelManager.loadRefusal`) is core's, asked over its bridge:
+//!   when core cannot answer, the Planner's pin is refused as over budget ([`BUDGET_UNCHECKED`])
+//!   rather than pinned unchecked;
+//! - a Cowork session's task start from chat stays Node's, which refuses it while the front owns Code;
+//! - the role engine's endpoint and the engine key a Planner task uses are a snapshot taken from
+//!   core's engine facts at its start, for the life of that task; Node's `codeRoleEndpoint` and
+//!   `engineKey` re-read them at each use, so a Code role or key changed mid-task reaches Node's
+//!   next role call but not the front's.
 //!
 //! The lease: a task holds the inference admission authority's maintenance-only lease (the one
 //! Node's latch takes as `modelManager.enterInference()`, as Node's own Code tasks hold) for its run.
@@ -36,10 +68,13 @@ use axum::{
     response::IntoResponse,
 };
 use code_harness::executor::{Egress, Engine, Fail, Lease};
+use code_harness::pipeline_host::{EngineRoles, Flag, PipeHost, PipeVerify};
+use code_harness::review_gate::{PlannerReview, Reviewer, Unconfigured, Unreachable};
 use code_harness::service::{
-    default_harnesses, parse_repos, parse_user, Inference, Options, Project, Resolved, Service,
-    APPROVAL_TIMEOUT,
+    default_harnesses, parse_repos, parse_user, Inference, Options, Parts, Project, Resolved,
+    Service, Setup, APPROVAL_TIMEOUT,
 };
+use code_pipeline::driver;
 use engine_admission::{Admission, Ask};
 use js_json::{to_js_string, wtf16, JValue};
 use serde_json::json;
@@ -52,6 +87,9 @@ pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";
 const ENGINE_PATH: &str = "/internal/code/engine";
 const ENGINE_DEADLINE: Duration = Duration::from_secs(5);
 const UNAVAILABLE: &str = "Code tasks are unavailable right now. Try again shortly.";
+/// The Planner's pin when core cannot say whether the model fits the inference budget.
+pub const BUDGET_UNCHECKED: &str =
+    "The inference memory budget could not be checked, so no model was pinned for this task.";
 const ON_A_MACHINE: &str = "The Code role runs on an inference machine, which this server's native Code executor cannot reach yet. Move the Code role back to this machine, or ask an administrator.";
 /// core `readJson`'s limit.
 const BODY_LIMIT: usize = 1024 * 1024;
@@ -70,6 +108,8 @@ pub struct Settings {
     pub harness_user: Option<String>,
     pub path: Option<String>,
     pub lang: Option<String>,
+    /// `CODE_VERIFY_ENDPOINT`: the pipeline's verifier.
+    pub verify_endpoint: Option<String>,
 }
 
 impl Settings {
@@ -92,7 +132,17 @@ impl Settings {
             harness_user: get("CODE_HARNESS_USER"),
             path: get("PATH"),
             lang: get("LANG"),
+            verify_endpoint: set("CODE_VERIFY_ENDPOINT"),
         }
+    }
+
+    /// features.cjs `codeSandboxReason(env) === null`: `CODE_HARNESS_ENDPOINT` not blank after JS's
+    /// `trim` (Unicode white space and U+FEFF, without U+0085).
+    pub fn sandbox_available(&self) -> bool {
+        self.endpoint.as_deref().is_some_and(|e| {
+            !e.trim_matches(|c: char| c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}'))
+                .is_empty()
+        })
     }
 
     /// The sandbox wins when both are set (code-acp.cjs `createAcpTransport`).
@@ -375,6 +425,275 @@ impl Inference for FrontGate {
     }
 }
 
+fn log_code(entry: &JValue) {
+    println!("[code] {}", wtf16::stringify(entry).unwrap_or_default());
+}
+
+/// features.cjs `enabled(name)` for a restart-free flag: the env value, else the admin setting,
+/// else the default; an unreadable setting is off.
+pub fn feature(app: &App, feature: server_features::Feature) -> bool {
+    let env = server_features::Feature::ALL
+        .iter()
+        .position(|f| *f == feature)
+        .and_then(|i| app.config.feature_context_env.get(i).copied().flatten());
+    let stored = if env.is_some() {
+        None
+    } else {
+        // features.cjs `selected`: the typed row, then the declared legacy row
+        // (`feature:astraReview` for plannerReview) when the new one is missing or not typed.
+        app.writes.writer().ok().and_then(|w| {
+            w.read(|r| server_account::feature_context::startup::selected(r, feature))
+                .ok()
+                .flatten()
+                .map(|on| if on { "true" } else { "false" })
+        })
+    };
+    server_features::evaluate_with_context(feature, env, stored, availability(app, feature), None)
+        .enabled
+}
+
+/// features.cjs's runtime availability for the flags Code mode reads: the Code-sandbox ones
+/// (codePipeline, codeMerge) exactly when `codeSandboxReason` is null, i.e. `CODE_HARNESS_ENDPOINT`
+/// is set and not blank (JS `trim`); every other flag Code mode reads (codeHarness, plannerReview,
+/// executorGuard, constrainedPlanDecoding) has no runtime availability and needs none.
+fn availability(app: &App, feature: server_features::Feature) -> server_features::Availability {
+    use server_features::{Availability, AvailabilityKind};
+    match server_features::spec(feature).availability {
+        AvailabilityKind::CodeSandbox if app.config.code.sandbox_available() => {
+            Availability::Available
+        }
+        AvailabilityKind::CodeSandbox => Availability::Unavailable,
+        _ => Availability::Unknown,
+    }
+}
+
+/// The flags the pipeline reads during a run (core index.cjs `merge`, `constrain`, the guard).
+fn pipeline_flag(app: &App, flag: Flag) -> bool {
+    use server_features::Feature;
+    feature(
+        app,
+        match flag {
+            Flag::Merge => Feature::CodeMerge,
+            Flag::Constrain => Feature::ConstrainedPlanDecoding,
+            Flag::Guard => Feature::ExecutorGuard,
+        },
+    )
+}
+
+/// core index.cjs's `pipeline: { enabled, create }` for the front.
+struct FrontPipeline {
+    app: std::sync::Weak<App>,
+    rt: tokio::runtime::Handle,
+    verify: Arc<code_verify::Adapter>,
+}
+
+/// core's `role` engine fact (index.cjs `codeRoleEndpoint`): `None` when core did not give one.
+pub fn role_endpoint(facts: &JValue) -> Option<role_engine::Endpoint> {
+    let role = facts.get("role");
+    if !role.is_object() {
+        return None;
+    }
+    let text = |v: &JValue| v.as_str().filter(|s| !s.is_empty()).map(str::to_string);
+    Some(role_engine::Endpoint {
+        base_url: text(role.get("baseUrl")),
+        api_key: text(role.get("apiKey")),
+        model: text(role.get("model")),
+        provider: JValue::obj([(
+            "capabilities",
+            JValue::obj([(
+                "jsonSchemaParam",
+                JValue::Bool(role.get("jsonSchema").as_bool() == Some(true)),
+            )]),
+        )]),
+        external: role.get("external").as_bool() == Some(true),
+        machine: None,
+    })
+}
+
+impl FrontPipeline {
+    /// This start's Code role engine (core's `role` fact) and its key, or `None` without one.
+    fn roles(&self, resolved: &Resolved) -> Option<(EngineRoles<FrontRoles>, Option<String>)> {
+        let endpoint = role_endpoint(resolved.facts.as_ref()?)?;
+        let client = model_stream::client().ok()?;
+        let engine_key = endpoint.api_key.clone();
+        let engine = role_engine::RoleEngine::new(FrontRoles {
+            endpoint,
+            app: self.app.clone(),
+            client,
+        });
+        let roles = EngineRoles {
+            engine: Arc::new(engine),
+            blocking: Arc::new(role_engine::Blocking::with_handle(self.rt.clone())),
+        };
+        Some((roles, engine_key))
+    }
+}
+
+impl Setup for FrontPipeline {
+    fn enabled(&self) -> bool {
+        use server_features::Feature;
+        self.app.upgrade().is_some_and(|app| {
+            feature(&app, Feature::CodeHarness) && feature(&app, Feature::CodePipeline)
+        })
+    }
+
+    fn review_enabled(&self) -> bool {
+        self.app
+            .upgrade()
+            .is_some_and(|app| feature(&app, server_features::Feature::PlannerReview))
+    }
+
+    fn reviewer(&self, resolved: &Resolved) -> Arc<dyn Reviewer> {
+        // No `role` fact from core: Node's "no reviewer configured". A role fact but no reviewer
+        // (the HTTP client could not be built): review_gate's `Unreachable`.
+        if resolved.facts.as_ref().and_then(role_endpoint).is_none() {
+            return Arc::new(Unconfigured);
+        }
+        match self.roles(resolved) {
+            Some((roles, _)) => Arc::new(PlannerReview::new(
+                Arc::new(roles),
+                Arc::new(|e| log_code(&e)),
+            )),
+            None => Arc::new(Unreachable),
+        }
+    }
+
+    fn create(&self, parts: Parts, resolved: &Resolved) -> Option<driver::Deps> {
+        let (roles, engine_key) = self.roles(resolved)?;
+        let app = self.app.clone();
+        let flag = move |f: Flag| app.upgrade().is_some_and(|a| pipeline_flag(&a, f));
+        Some(driver::Deps::new(
+            parts.jobs,
+            parts.workspaces,
+            parts.harness,
+            Some(Arc::new(roles)),
+            Some(Arc::new(PipeVerify {
+                adapter: self.verify.clone(),
+                workspaces: parts.tree,
+            })),
+            parts.approvals,
+            Arc::new(PipeHost {
+                flag: Arc::new(flag),
+                engine_key,
+                log: Arc::new(|e| log_code(&e)),
+                now: Arc::new(server_projects::task_store::date_now),
+            }),
+        ))
+    }
+}
+
+/// The role engine's dependencies in the front (core index.cjs `createRoleEngine({...})`): this
+/// start's endpoint, the front's HTTP client (no redirect, no proxy), the sidecars' models as
+/// the keep-list (core's facts), the roles file beside models.ini, core's budget check, no
+/// admission (production passes none) and no machines (refused before any start).
+pub struct FrontRoles {
+    endpoint: role_engine::Endpoint,
+    app: std::sync::Weak<App>,
+    client: reqwest::Client,
+}
+
+/// A response body, chunk by chunk.
+pub struct FrontBody(Option<reqwest::Response>);
+
+fn transport(detail: impl ToString) -> role_engine::TransportError {
+    role_engine::TransportError {
+        detail: detail.to_string(),
+    }
+}
+
+impl role_engine::Body for FrontBody {
+    async fn read(&mut self) -> Result<Option<Vec<u8>>, role_engine::TransportError> {
+        match self.0.as_mut() {
+            None => Ok(None),
+            Some(r) => r
+                .chunk()
+                .await
+                .map(|c| c.map(|b| b.to_vec()))
+                .map_err(transport),
+        }
+    }
+    fn cancel(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl role_engine::Deps for FrontRoles {
+    type Body = FrontBody;
+
+    fn engine(&self) -> Option<role_engine::Endpoint> {
+        Some(self.endpoint.clone())
+    }
+
+    async fn fetch(
+        &self,
+        req: role_engine::Request,
+        cancel: role_engine::Cancel,
+    ) -> Result<role_engine::Response<FrontBody>, role_engine::TransportError> {
+        let method = if req.method == "GET" {
+            reqwest::Method::GET
+        } else {
+            reqwest::Method::POST
+        };
+        let mut b = self.client.request(method, &req.url);
+        for (k, v) in &req.headers {
+            b = b.header(k.as_str(), v.as_str());
+        }
+        if let Some(body) = req.body {
+            b = b.body(body);
+        }
+        if let Some(ms) = req.timeout_ms {
+            b = b.timeout(Duration::from_millis(ms));
+        }
+        let sent = tokio::select! {
+            r = b.send() => r.map_err(transport)?,
+            () = cancel.cancelled() => return Err(transport("aborted")),
+        };
+        Ok(role_engine::Response {
+            status: sent.status().as_u16(),
+            body: FrontBody(Some(sent)),
+        })
+    }
+
+    async fn keep(&self) -> Option<Vec<String>> {
+        let app = self.app.upgrade()?;
+        crate::model_state_routes::sidecar_names(&app)
+            .await
+            .map(|names| names.into_iter().collect())
+    }
+
+    fn system_roles(&self) -> std::collections::HashMap<String, String> {
+        self.app
+            .upgrade()
+            .map(|a| crate::model_kind::roles_beside(a.config.sizing.presets_path()))
+            .unwrap_or_default()
+    }
+
+    async fn budget_refusal(&self, model: &str) -> Option<role_engine::BudgetRefusal> {
+        use crate::model_maint::node_lease::LoadDecision;
+        let unchecked = || role_engine::BudgetRefusal {
+            error: Some(BUDGET_UNCHECKED.into()),
+        };
+        let Some(app) = self.app.upgrade() else {
+            return Some(unchecked());
+        };
+        match app.config.maint.node.load_refusal(model).await {
+            LoadDecision::Proceed => None,
+            LoadDecision::Refused(r) => Some(role_engine::BudgetRefusal {
+                error: r.get("error").and_then(|e| e.as_str()).map(str::to_string),
+            }),
+            LoadDecision::Unavailable => Some(unchecked()),
+        }
+    }
+
+    fn log(&self, entry: JValue) {
+        log_code(&entry);
+    }
+
+    fn now(&self) -> f64 {
+        server_projects::task_store::date_now()
+    }
+}
+
 /// The process's Code service, made on first use.
 pub fn service(app: &Arc<App>) -> Arc<Service> {
     app.code_service
@@ -402,15 +721,24 @@ pub fn service(app: &Arc<App>) -> Arc<Service> {
                 engine: Arc::new(Engine::default),
                 inference: None,
                 guard: Arc::new(|| false),
-                log: Arc::new(|entry| {
-                    println!("[code] {}", wtf16::stringify(&entry).unwrap_or_default());
-                }),
+                log: Arc::new(|entry| log_code(&entry)),
                 now: Arc::new(server_projects::task_store::date_now),
                 timeout: APPROVAL_TIMEOUT,
                 base_path: s.path.clone(),
                 base_lang: s.lang.clone(),
                 new_id: Arc::new(server_projects::source_jobs::new_id),
                 epoch: server_projects::source_jobs::new_id(),
+                pipeline: Some(Arc::new(FrontPipeline {
+                    app: Arc::downgrade(app),
+                    rt: rt.clone(),
+                    verify: Arc::new(code_verify::Adapter::new(Some(Box::new(
+                        code_verify::Verify::new(code_verify::Options {
+                            log: Box::new(|e| log_code(&e.to_json())),
+                            ..code_verify::Options::new(s.verify_endpoint.clone())
+                        }),
+                    )
+                        as Box<dyn code_verify::Verifier>))),
+                })),
             })
         })
         .clone()
@@ -454,6 +782,7 @@ async fn resolve(app: Arc<App>, user: String, project: String) -> Result<Resolve
         engine: Some(engine),
         inference: Some(Arc::new(gate)),
         context: facts.get("context").as_str().unwrap_or("").to_string(),
+        facts: Some(facts),
     })
 }
 
@@ -645,6 +974,41 @@ mod tests {
     }
 
     #[test]
+    fn the_role_fact_is_the_role_engines_endpoint_or_nothing() {
+        let facts =
+            |role: &str| wtf16::parse(&format!(r#"{{"engine":null,"role":{role}}}"#)).unwrap();
+        for missing in ["null", "7", r#""qa""#, "[]"] {
+            assert!(role_endpoint(&facts(missing)).is_none(), "{missing}");
+        }
+        assert!(role_endpoint(&wtf16::parse(r#"{"engine":null}"#).unwrap()).is_none());
+        let e = role_endpoint(&facts(
+            r#"{"baseUrl":"http://qa-provider.invalid:8080/v1","apiKey":"qa-key","model":"qa-model","external":false,"jsonSchema":true}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            e.base_url.as_deref(),
+            Some("http://qa-provider.invalid:8080/v1")
+        );
+        assert_eq!(
+            (e.api_key.as_deref(), e.model.as_deref()),
+            (Some("qa-key"), Some("qa-model"))
+        );
+        assert!(!e.external && e.machine.is_none());
+        assert!(role_engine::supports_json_schema(&e.provider));
+        let bare = role_endpoint(&facts(
+            r#"{"baseUrl":"","apiKey":null,"external":"yes","jsonSchema":1}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            (bare.base_url, bare.api_key, bare.model),
+            (None, None, None)
+        );
+        assert!(!bare.external && !role_engine::supports_json_schema(&bare.provider));
+        let external = role_endpoint(&facts(r#"{"external":true}"#)).unwrap();
+        assert!(external.external);
+    }
+
+    #[test]
     fn the_settings_are_read_as_core_reads_them() {
         let env = |pairs: &[(&str, &str)]| {
             let owned: Vec<(String, String)> = pairs
@@ -667,8 +1031,11 @@ mod tests {
             ("CODE_HARNESS_ENDPOINT", "code-sandbox:7000"),
             ("CODE_HARNESS_COMMAND", "opencode"),
             ("CODE_HARNESS_ARGS", " acp  --qa "),
+            ("CODE_VERIFY_ENDPOINT", "unix:/qa/verify.sock"),
         ]));
         assert!(on.executor);
+        assert_eq!(on.verify_endpoint.as_deref(), Some("unix:/qa/verify.sock"));
+        assert!(off.verify_endpoint.is_none());
         assert_eq!(
             on.transport(),
             Some(code_acp::Transport::Socket("code-sandbox:7000".into())),
@@ -684,6 +1051,170 @@ mod tests {
                 command: "opencode".into(),
                 args: vec!["acp".into(), "--qa".into()],
             })
+        );
+    }
+
+    /// The front as it boots: `env` as the process environment, `settings` in the settings table.
+    fn front(env: &[(&str, &str)], settings: &[(&str, &str)]) -> (tempfile::TempDir, Arc<App>) {
+        let dir = tempfile::tempdir().unwrap();
+        let db =
+            server_store::rusqlite::Connection::open(server_store::db_path(dir.path())).unwrap();
+        db.execute_batch(include_str!(
+            "../../../crates/server-store/tests/fixtures/node-schema.sql"
+        ))
+        .unwrap();
+        for (k, v) in settings {
+            db.execute("INSERT INTO settings(key, value) VALUES(?1, ?2)", [k, v])
+                .unwrap();
+        }
+        drop(db);
+        let data = dir.path().to_string_lossy().into_owned();
+        let config = crate::config::Config::from_lookup(|k| match k {
+            "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+            "UI_DATA_DIR" => Some(data.clone()),
+            _ => env
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| (*v).to_string()),
+        })
+        .unwrap();
+        (dir, App::new(config))
+    }
+
+    /// What the front offers and reads for one deployment: (codePipeline, FrontPipeline::enabled,
+    /// the Planner in the service's preparation list, the merge flag the pipeline reads).
+    fn offered(env: &[(&str, &str)], settings: &[(&str, &str)]) -> (bool, bool, bool, bool) {
+        use server_features::Feature;
+        let (dir, app) = front(env, settings);
+        let setup = FrontPipeline {
+            app: Arc::downgrade(&app),
+            rt: tokio::runtime::Handle::current(),
+            verify: Arc::new(code_verify::Adapter::new(None)),
+        };
+        let tenant = dir.path().join("qa-user");
+        std::fs::create_dir_all(&tenant).unwrap();
+        let facts = service(&app).facts(tenant.to_str().unwrap()).unwrap();
+        let list = facts.get("promptPreparation");
+        assert!(
+            matches!(list, JValue::Arr(l) if l.len() >= 3),
+            "the preparation list"
+        );
+        let planner = matches!(list, JValue::Arr(l) if l
+            .iter()
+            .any(|p| p.get("id").as_str() == Some(PLANNER_PREPARATION_ID)));
+        (
+            feature(&app, Feature::CodePipeline),
+            setup.enabled(),
+            planner,
+            pipeline_flag(&app, Flag::Merge),
+        )
+    }
+
+    const PLANNER_PREPARATION_ID: &str = code_harness::service::PLANNER_PREPARATION.0;
+    const SANDBOX: (&str, &str) = ("CODE_HARNESS_ENDPOINT", "code-sandbox:7000");
+    const ALL_ON: [(&str, &str); 3] = [
+        ("feature:codeHarness", "true"),
+        ("feature:codePipeline", "true"),
+        ("feature:codeMerge", "true"),
+    ];
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_planner_is_offered_with_its_flags_on_in_the_sandbox() {
+        assert_eq!(offered(&[SANDBOX], &ALL_ON), (true, true, true, true));
+        // The env value wins over the setting, as features.cjs reads it.
+        assert_eq!(
+            offered(
+                &[SANDBOX, ("NOEVIA_FEATURE_CODE_PIPELINE", "true")],
+                &[("feature:codeHarness", "true")]
+            ),
+            (true, true, true, false)
+        );
+        // The other flags the pipeline reads have no runtime availability.
+        let (_dir, app) = front(
+            &[],
+            &[
+                ("feature:executorGuard", "true"),
+                ("feature:constrainedPlanDecoding", "true"),
+                ("feature:codeHarness", "true"),
+            ],
+        );
+        assert!(pipeline_flag(&app, Flag::Guard));
+        assert!(pipeline_flag(&app, Flag::Constrain));
+        assert!(feature(&app, server_features::Feature::CodeHarness));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn no_planner_without_the_sandbox() {
+        assert_eq!(offered(&[], &ALL_ON), (false, false, false, false));
+        // codeSandboxReason trims: a blank endpoint is no sandbox.
+        assert_eq!(
+            offered(&[("CODE_HARNESS_ENDPOINT", " \u{feff}\t")], &ALL_ON),
+            (false, false, false, false)
+        );
+        // A command transport (spawn) is not the sandbox either.
+        assert_eq!(
+            offered(&[("CODE_HARNESS_COMMAND", "opencode")], &ALL_ON),
+            (false, false, false, false)
+        );
+    }
+
+    /// features.cjs `selected` (features.cjs:146-150): the env value, else the typed new row, else
+    /// the legacy `feature:astraReview` row when the new one is missing or not typed, else off.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_review_flag_falls_back_to_its_legacy_row() {
+        use server_features::Feature;
+        const NEW: &str = "feature:plannerReview";
+        const OLD: &str = "feature:astraReview";
+        const ENV: &str = "NOEVIA_FEATURE_PLANNER_REVIEW";
+        let review = |env: &[(&str, &str)], settings: &[(&str, &str)]| {
+            let (_dir, app) = front(env, settings);
+            feature(&app, Feature::PlannerReview)
+        };
+        assert!(!review(&[], &[]), "the default is off");
+        assert!(review(&[], &[(OLD, "true")]), "only the legacy row");
+        assert!(!review(&[], &[(OLD, "false")]));
+        assert!(review(&[], &[(NEW, "true")]));
+        assert!(
+            !review(&[], &[(NEW, "false"), (OLD, "true")]),
+            "the new row wins"
+        );
+        assert!(review(&[], &[(NEW, "true"), (OLD, "false")]));
+        // An untyped new row is no value: the legacy row decides.
+        assert!(review(&[], &[(NEW, "yes"), (OLD, "true")]));
+        assert!(!review(&[], &[(NEW, "TRUE"), (OLD, "false")]));
+        assert!(
+            !review(&[], &[(NEW, "1"), (OLD, "on")]),
+            "an untyped legacy row is no value either"
+        );
+        // The env value wins over both rows.
+        assert!(!review(&[(ENV, "false")], &[(OLD, "true")]));
+        assert!(review(&[(ENV, "on")], &[(NEW, "false"), (OLD, "false")]));
+        // Only plannerReview has a legacy name: no other flag reads it.
+        let (_dir, app) = front(&[], &[(OLD, "true"), ("feature:codeHarness", "true")]);
+        assert!(feature(&app, Feature::CodeHarness));
+        assert!(feature(&app, Feature::PlannerReview));
+        assert!(!feature(&app, Feature::CodePipeline));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn no_planner_with_its_flags_off() {
+        assert_eq!(offered(&[SANDBOX], &[]), (false, false, false, false));
+        assert_eq!(
+            offered(
+                &[SANDBOX],
+                &[
+                    ("feature:codeHarness", "false"),
+                    ("feature:codePipeline", "true")
+                ]
+            ),
+            (true, false, false, false)
+        );
+        assert_eq!(
+            offered(
+                &[SANDBOX, ("NOEVIA_FEATURE_CODE_PIPELINE", "false")],
+                &ALL_ON
+            ),
+            (false, false, false, true)
         );
     }
 }

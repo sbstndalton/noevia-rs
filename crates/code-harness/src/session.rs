@@ -105,7 +105,7 @@ impl Ended {
             }
         }
     }
-    fn end(&self) {
+    pub(crate) fn end(&self) {
         if self.ended.swap(true, Ordering::SeqCst) {
             return;
         }
