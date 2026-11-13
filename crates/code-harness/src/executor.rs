@@ -651,7 +651,11 @@ impl Executor {
         // The try: the terminal row for what the work answered.
         let caught = match outcome {
             Ok(result) => {
-                let kind = if aborted { "job.cancelled" } else { "job.completed" };
+                let kind = if aborted {
+                    "job.cancelled"
+                } else {
+                    "job.completed"
+                };
                 self.deps
                     .jobs
                     .append(task_id, kind, JValue::obj([("result", result)]))

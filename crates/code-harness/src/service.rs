@@ -684,9 +684,9 @@ impl Service {
             context: resolved.context,
             tenant_id: user_id.map(str::to_string),
             engine: resolved.engine,
-            inference: resolved.inference.map(|g| {
-                Arc::new(move || g.enter()) as crate::executor::Gate
-            }),
+            inference: resolved
+                .inference
+                .map(|g| Arc::new(move || g.enter()) as crate::executor::Gate),
         })?;
         let mut out = match started {
             JValue::Obj(items) => items,
@@ -709,18 +709,22 @@ impl Service {
     /// `jobs.list({ projectId, kind: 'code', active: true }).length`: an unreadable journal counts,
     /// as jobs.cjs lists it whatever the filter.
     fn active(&self, tenant: &Tenant, project_id: &str) -> bool {
-        tenant.store.ids().iter().any(|id| match tenant.store.get(id) {
-            Ok(Some(job)) => {
-                job.project_id.as_str() == Some(project_id)
-                    && job.kind.as_str() == Some("code")
-                    && !matches!(
-                        job.status.as_str(),
-                        Some("completed" | "failed" | "cancelled" | "interrupted")
-                    )
-            }
-            Ok(None) => false,
-            Err(_) => true,
-        })
+        tenant
+            .store
+            .ids()
+            .iter()
+            .any(|id| match tenant.store.get(id) {
+                Ok(Some(job)) => {
+                    job.project_id.as_str() == Some(project_id)
+                        && job.kind.as_str() == Some("code")
+                        && !matches!(
+                            job.status.as_str(),
+                            Some("completed" | "failed" | "cancelled" | "interrupted")
+                        )
+                }
+                Ok(None) => false,
+                Err(_) => true,
+            })
     }
 
     /// `decide(workspace, project, taskId, decision, approvalId)`.

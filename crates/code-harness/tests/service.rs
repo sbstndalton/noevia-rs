@@ -299,8 +299,7 @@ fn every_node_service_answer_replays() {
                 }
                 a
             } else if let JValue::Arr(d) = op.get("decide") {
-                let [task, decision, card] =
-                    [&d[0], &d[1], &d[2]].map(|v| sub(v, &tasks, &cards));
+                let [task, decision, card] = [&d[0], &d[1], &d[2]].map(|v| sub(v, &tasks, &cards));
                 routed(
                     200,
                     service.decide(&t, &project_id, &task, &decision, &card),
@@ -345,7 +344,14 @@ fn every_node_service_answer_replays() {
                 std::thread::sleep(Duration::from_millis(100));
                 JValue::obj([(
                     "waited",
-                    JValue::Str(if ended(&tenant, &task) { "ended" } else { "running" }.into()),
+                    JValue::Str(
+                        if ended(&tenant, &task) {
+                            "ended"
+                        } else {
+                            "running"
+                        }
+                        .into(),
+                    ),
                 )])
             } else if let Some(ms) = op.get("sleep").as_num() {
                 std::thread::sleep(Duration::from_millis(ms as u64));
@@ -387,9 +393,17 @@ fn every_node_service_answer_replays() {
                 .map(|l| norm(&JValue::Str(l.clone()), &b))
                 .collect(),
         );
-        assert_eq!(text(&sent), text(sc.get("sandboxLines")), "{name}: sandbox lines");
+        assert_eq!(
+            text(&sent),
+            text(sc.get("sandboxLines")),
+            "{name}: sandbox lines"
+        );
         let logged = JValue::Arr(logs.lock().unwrap().clone());
-        assert_eq!(text(&norm(&logged, &b)), text(sc.get("logs")), "{name}: logs");
+        assert_eq!(
+            text(&norm(&logged, &b)),
+            text(sc.get("logs")),
+            "{name}: logs"
+        );
         let calls = JValue::Arr(
             egress
                 .map(|e| e.calls.lock().unwrap().clone())

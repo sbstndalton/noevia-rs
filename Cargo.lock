@@ -491,6 +491,7 @@ dependencies = [
  "sha2",
  "stream-guard",
  "tempfile",
+ "url",
 ]
 
 [[package]]
@@ -2143,6 +2144,8 @@ dependencies = [
  "brotli",
  "bytes",
  "chat-mirror-sched",
+ "code-acp",
+ "code-harness",
  "code-net-guard",
  "context-fit",
  "dav-parse",

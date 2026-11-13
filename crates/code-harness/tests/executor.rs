@@ -231,6 +231,7 @@ fn every_node_task_run_replays() {
         panic!()
     };
     for (name, sc) in all {
+        eprintln!("scenario {name}");
         let dir = tempfile::tempdir().unwrap();
         let base = fs::canonicalize(dir.path()).unwrap();
         let b = base.to_str().unwrap().to_string();
@@ -294,7 +295,9 @@ fn every_node_task_run_replays() {
         let slot: Arc<OnceLock<Arc<Executor>>> = Arc::new(OnceLock::new());
         let canceller = slot.clone();
         // Node's generator opens no sandbox for a task that cannot start.
-        let sandboxed = (!script.is_empty()).then(|| {
+        // Node's sandbox heard nothing: the run never connected, so none is opened here either.
+        let connects = matches!(sc.get("sandboxLines"), JValue::Arr(l) if !l.is_empty());
+        let sandboxed = (!script.is_empty() && connects).then(|| {
             sandbox(
                 script.clone(),
                 Box::new(move || canceller.get().unwrap().cancel(TASK).unwrap()),
@@ -337,41 +340,47 @@ fn every_node_task_run_replays() {
         });
         let _ = slot.set(executor.clone());
         let started = executor.start(StartRequest {
-                project_id: Some("qa-project".into()),
-                repo_path: repo.to_str().unwrap().to_string(),
-                prompt: sc
-                    .get("prompt")
-                    .as_str()
-                    .unwrap_or("Write NEW.md for the QA test.")
-                    .to_string(),
-                capabilities: strings("capabilities"),
-                domains: strings("domains"),
-                harness: "opencode".into(),
-                model: None,
-                sandbox_kind: "sandbox".into(),
-                prompt_preparation: "direct".into(),
-                context: String::new(),
-                tenant_id: Some("qa-tenant".into()),
-                engine: None,
-                inference: None,
-            });
+            project_id: Some("qa-project".into()),
+            repo_path: repo.to_str().unwrap().to_string(),
+            prompt: sc
+                .get("prompt")
+                .as_str()
+                .unwrap_or("Write NEW.md for the QA test.")
+                .to_string(),
+            capabilities: strings("capabilities"),
+            domains: strings("domains"),
+            harness: "opencode".into(),
+            model: None,
+            sandbox_kind: "sandbox".into(),
+            prompt_preparation: "direct".into(),
+            context: String::new(),
+            tenant_id: Some("qa-tenant".into()),
+            engine: None,
+            inference: None,
+        });
         let started = match started {
             Ok(v) => v,
             Err(e) => JValue::obj([("error", JValue::Str(e.message))]),
         };
         let deadline = Instant::now() + Duration::from_secs(30);
-        while started.get("error").as_str().is_none() && !matches!(
-            jobs.status(TASK).as_deref(),
-            Some("completed" | "failed" | "cancelled")
-        ) || executor.is_live(TASK)
+        while started.get("error").as_str().is_none()
+            && !matches!(
+                jobs.status(TASK).as_deref(),
+                Some("completed" | "failed" | "cancelled")
+            )
+            || executor.is_live(TASK)
         {
             assert!(Instant::now() < deadline, "{name}: the task never ended");
             std::thread::sleep(Duration::from_millis(10));
         }
-        let lines = sandboxed.map(|(_, t)| t.join().unwrap()).unwrap_or_default();
+        let lines = sandboxed
+            .map(|(_, t)| t.join().unwrap())
+            .unwrap_or_default();
+        // Node's recorder learns the tree only when the agent connects (`connect`'s `cwd`).
         let tree = started
             .get("workspace")
             .as_str()
+            .filter(|_| connects)
             .unwrap_or("\u{0}no tree\u{0}")
             .to_string();
         assert_eq!(
@@ -380,11 +389,18 @@ fn every_node_task_run_replays() {
             "{name}: started"
         );
         let rows = fs::read_to_string(tenant.join("jobs").join(format!("{TASK}.jsonl")));
-        let record = fs::read_to_string(tenant.join("code-workspaces").join(format!("{TASK}.json")));
+        let record =
+            fs::read_to_string(tenant.join("code-workspaces").join(format!("{TASK}.json")));
         let JValue::Arr(want) = sc.get("journal") else {
             assert!(sc.get("journal").is_nullish(), "{name}");
-            assert!(rows.is_err() && record.is_err(), "{name}: a task that never started left files");
-            assert!(lines.is_empty() && logs.lock().unwrap().is_empty(), "{name}");
+            assert!(
+                rows.is_err() && record.is_err(),
+                "{name}: a task that never started left files"
+            );
+            assert!(
+                lines.is_empty() && logs.lock().unwrap().is_empty(),
+                "{name}"
+            );
             continue;
         };
         let journal: Vec<JValue> = rows
@@ -522,7 +538,9 @@ fn the_inference_lease_is_taken_before_the_run_and_held_until_it_ends() {
                 return;
             }
             let (stream, _) = listener.accept().unwrap();
-            stream.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(20)))
+                .unwrap();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
             let mut writer = stream;
             let mut l = String::new();
@@ -532,12 +550,20 @@ fn the_inference_lease_is_taken_before_the_run_and_held_until_it_ends() {
             };
             next(&mut reader);
             next(&mut reader);
-            writer.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1}}\n").unwrap();
+            writer
+                .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1}}\n")
+                .unwrap();
             next(&mut reader);
-            writer.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa\"}}\n").unwrap();
+            writer
+                .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa\"}}\n")
+                .unwrap();
             next(&mut reader);
             wait.recv_timeout(Duration::from_secs(20)).unwrap();
-            writer.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n").unwrap();
+            writer
+                .write_all(
+                    b"{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n",
+                )
+                .unwrap();
             let mut rest = String::new();
             let _ = reader.read_line(&mut rest);
         });
@@ -612,7 +638,10 @@ fn the_inference_lease_is_taken_before_the_run_and_held_until_it_ends() {
             assert_eq!(jobs.status(TASK).as_deref(), Some("completed"));
             let deadline = Instant::now() + Duration::from_secs(5);
             while held.load(Ordering::SeqCst) {
-                assert!(Instant::now() < deadline, "the lease was kept after the run");
+                assert!(
+                    Instant::now() < deadline,
+                    "the lease was kept after the run"
+                );
                 std::thread::sleep(Duration::from_millis(10));
             }
         }

@@ -187,7 +187,11 @@ fn answer(status: StatusCode, body: &JValue) -> Response<Body> {
 }
 
 fn failed() -> Response<Body> {
-    reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Code request failed", true)
+    reply::error(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Code request failed",
+        true,
+    )
 }
 
 /// core `readJson`: at most 1 MiB, an empty body is `{}`.
@@ -272,7 +276,10 @@ impl Egress for FrontEgress {
             ])
         };
         let handle = grant.get("handle").as_str().unwrap_or("").to_string();
-        let Ok(done) = self.rt.block_on(self.issuer.revoke(&handle, Some(10_000.0))) else {
+        let Ok(done) = self
+            .rt
+            .block_on(self.issuer.revoke(&handle, Some(10_000.0)))
+        else {
             return Ok(uncertain());
         };
         let done = wtf16::parse(&done.to_string()).unwrap_or(JValue::Null);
@@ -394,17 +401,29 @@ async fn resolve(app: &Arc<App>, user: &str, project: &str) -> Result<Resolved, 
         .node_call(ENGINE_PATH, &body, ENGINE_DEADLINE)
         .await
     else {
-        return Err(reply::error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE, true));
+        return Err(reply::error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            UNAVAILABLE,
+            true,
+        ));
     };
     if status == 404 {
-        return Err(reply::error(StatusCode::NOT_FOUND, "project not found", true));
+        return Err(reply::error(
+            StatusCode::NOT_FOUND,
+            "project not found",
+            true,
+        ));
     }
     let parsed = (status == 200)
         .then(|| wtf16::parse(&String::from_utf8_lossy(&bytes)).ok())
         .flatten()
         .filter(JValue::is_object);
     let Some(facts) = parsed else {
-        return Err(reply::error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE, true));
+        return Err(reply::error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            UNAVAILABLE,
+            true,
+        ));
     };
     if facts.get("machine").as_bool() == Some(true) {
         return Err(reply::error(StatusCode::CONFLICT, ON_A_MACHINE, true));
@@ -460,8 +479,10 @@ pub async fn serve(
     let record = {
         let (data_dir, user, id) = (data_dir.clone(), user.clone(), project_id.clone());
         let switch = app.config.rust_projects;
-        tokio::task::spawn_blocking(move || task_routes::project_record(&data_dir, &user, switch, &id))
-            .await
+        tokio::task::spawn_blocking(move || {
+            task_routes::project_record(&data_dir, &user, switch, &id)
+        })
+        .await
     };
     let record = match record {
         Ok(Ok(Some(r))) => r,
@@ -554,7 +575,10 @@ mod tests {
     #[test]
     fn the_actions_are_cores_pattern_less_the_reads() {
         let p = |m: &str, path: &str| parse(m, path);
-        assert_eq!(p("POST", "/api/projects/qa/code"), Some(Action::Start("qa".into())));
+        assert_eq!(
+            p("POST", "/api/projects/qa/code"),
+            Some(Action::Start("qa".into()))
+        );
         assert_eq!(
             p("POST", "/api/projects/qa/code/approve"),
             Some(Action::Start("qa".into())),
@@ -575,7 +599,11 @@ mod tests {
             ("DELETE", format!("/api/projects/qa/code/{T}/cancel")),
             ("GET", "/api/projects/qa/code/cancel".to_string()),
         ] {
-            assert_eq!(p(m, &path), Some(Action::NotAllowed("qa".into())), "{m} {path}");
+            assert_eq!(
+                p(m, &path),
+                Some(Action::NotAllowed("qa".into())),
+                "{m} {path}"
+            );
         }
         for (m, path) in [
             ("GET", "/api/projects/qa/code".to_string()),
@@ -583,7 +611,10 @@ mod tests {
             ("POST", "/api/projects//code".to_string()),
             ("POST", "/api/projects/qa/codes".to_string()),
             ("POST", format!("/api/projects/qa/code/{T}/merge")),
-            ("POST", "/api/projects/qa/code/0123ABCD-0123-4abc-8def-0123456789ab/cancel".to_string()),
+            (
+                "POST",
+                "/api/projects/qa/code/0123ABCD-0123-4abc-8def-0123456789ab/cancel".to_string(),
+            ),
             ("POST", format!("/api/projects/qa/code/{T}x")),
             ("POST", "/api/projects/qa/browser".to_string()),
             ("POST", "/api/projects/a/b/code".to_string()),
@@ -605,7 +636,10 @@ mod tests {
         assert!(!off.executor);
         assert!(off.transport().is_none());
         for v in ["", "node", "Rust", "1", "true"] {
-            assert!(!Settings::from_lookup(&env(&[(SWITCH, v)])).executor, "{v:?}");
+            assert!(
+                !Settings::from_lookup(&env(&[(SWITCH, v)])).executor,
+                "{v:?}"
+            );
         }
         let on = Settings::from_lookup(&env(&[
             (SWITCH, "rust"),
