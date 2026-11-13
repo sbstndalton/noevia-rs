@@ -2215,6 +2215,7 @@ dependencies = [
  "offsite-backup-format",
  "policy-leaves",
  "preset-reload",
+ "project-retrieval",
  "prompt-framing",
  "provider-egress",
  "rand_core 0.6.4",

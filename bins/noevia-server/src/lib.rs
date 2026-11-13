@@ -76,6 +76,7 @@ pub mod model_manager_scan;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
+pub mod native_retrieval;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
 pub mod offsite_engine;
@@ -484,6 +485,8 @@ pub const FEATURES: &[&str] = &[
     "legacy-root-claim",
     "project-store",
     "rust-research",
+    // Rust port track R4: POST /v1/retrieval/search on the store listener (native_retrieval.rs).
+    "rust-retrieval-v1",
     "rust-task-reads",
     "rust-tool-approvals",
     "noevia-research-jobs-store/1",
