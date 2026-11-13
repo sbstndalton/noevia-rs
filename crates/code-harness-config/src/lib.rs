@@ -15,7 +15,8 @@
 //! - [`write_harness_config`] / [`write_pinned`]: the symlink-safe write (no link in any directory
 //!   component, no link or directory at the target, a fresh `O_CREAT|O_EXCL` file mode `0o600`,
 //!   new directories mode `0o700`) and the hand-over to the harness user through an injectable
-//!   [`Handover`] ([`Chown`] in production), all through directory descriptors.
+//!   [`Handover`] ([`Chown`] in production), all through directory descriptors: the root is
+//!   opened without following a link, and the file is handed over before the directories made for it.
 //! - [`cwd_pin_paths`]: the pinned paths that land in the working tree and must never be committed.
 //!
 //! Proved against fixtures recorded from the Node module (`tools/gen-fixtures.cjs`, replayed by
@@ -27,12 +28,16 @@
 //!
 //! Regenerating: `node tools/gen-fixtures.cjs <noevia-core>/server` rewrites
 //! `tests/fixtures/code-harness-config.v1.json` (deterministic; the sha256 of the Node source it
-//! exercised is in the fixture's `source` field). Synthetic inputs only.
+//! exercised is in the fixture's `source` field; the recorder runs without root, stubbing the
+//! `fchown` hand-over and fixing the umask, as its header says). Synthetic inputs only.
 //!
-//! Named difference from Node, `fd-walk` (see the `write` module): the write walks directory
-//! descriptors, so a link swapped in after a component was checked is refused instead of
-//! followed, and the hand-over goes through descriptors, never a path. The JSON files cannot fail
-//! to serialise in practice; if one did, the result is a 500 refusal rather than an empty file.
+//! Named differences from Node (see the `write` module): `no-proc` (Node refuses a host without
+//! `/proc/self/fd`; this port walks with `openat` and needs no `/proc`) and `typed-errors` (a
+//! Node `fs` error is a [`PinError::Io`] with Node's syscall name, a path component Node cannot
+//! spell is [`PinError::NotAComponent`]). The directory walk and the hand-over by descriptor
+//! (the file first, then the directories made for it, innermost first) are Node's own since
+//! noevia-core#367, and replayed from the fixture. The JSON files cannot fail to serialise in
+//! practice; if one did, the result is a 500 refusal rather than an empty file.
 //!
 //! Two Node behaviours are kept on purpose and covered by the
 //! fixture: a missing working directory is refused with the same "needs a private home directory"

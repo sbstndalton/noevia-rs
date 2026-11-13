@@ -5,8 +5,11 @@
 //!   limits: the exact files (base, path, bytes) and record fields, or the exact refusal;
 //! - `dshPatch` directly, `cwdPinPaths` per harness id, the exported constants;
 //! - `writeHarnessConfig` and `writePinned` in fresh temp dirs with pre-placed links, files and
-//!   directories: the outcome, every `lchown` call (path, uid, gid), and the whole tree afterwards
-//!   (type, mode & 0o777, bytes, link target), temp paths written as `<T>`.
+//!   directories: the outcome, every hand-over (`fs.fchownSync` as the recorder's stub saw it:
+//!   the path its descriptor names, uid, gid, in call order: the file first, then the made
+//!   directories innermost first), and the whole tree afterwards (type, mode & 0o777, bytes, link
+//!   target), temp paths written as `<T>`. The recorder runs unprivileged, so it stubs the
+//!   hand-over (see its header); the real `fchown` of this port is covered in `races.rs`.
 #![cfg(unix)]
 #![allow(
     clippy::unwrap_used,
@@ -27,8 +30,9 @@ use code_harness_config::{
 use js_json::JValue;
 
 /// The sha256 of the core `server/code-harness-config.cjs` the fixture was recorded from (core
-/// a72ae943). A fixture regenerated from another source fails here until this is updated on purpose.
-const NODE_SOURCE_SHA256: &str = "70d0ac519134df6db07e2378abfb7df1793ddfe97c1ac709ede923eec3c3f753";
+/// main 0c294a3, after the directory-descriptor walk of noevia-core#367). A fixture regenerated
+/// from another source fails here until this is updated on purpose.
+const NODE_SOURCE_SHA256: &str = "cef37d871ad30dffe9d6c6fb516f4e1088e969d127dee226db58be3c6627ddf3";
 
 fn fixture() -> JValue {
     js_json::parse(include_str!("fixtures/code-harness-config.v1.json")).unwrap()
@@ -47,7 +51,7 @@ fn fixture_is_from_the_pinned_node_source() {
     );
 }
 
-/// Records each hand-over as Node's mocked `lchownSync` saw it (full path, uid, gid), changes
+/// Records each hand-over as Node's stubbed `fchownSync` saw it (path, uid, gid), changes
 /// nothing, and fails the `fail_at`-th call with EPERM.
 struct Recorder {
     t: String,
@@ -313,6 +317,16 @@ fn errno_name(e: &std::io::Error) -> &'static str {
     }
 }
 
+fn owner_of(o: &JValue) -> Option<Owner> {
+    match o {
+        JValue::Obj(_) => Some(Owner {
+            uid: o.get("uid").as_num().unwrap() as u32,
+            gid: o.get("gid").as_num().unwrap() as u32,
+        }),
+        _ => None,
+    }
+}
+
 fn fill(s: &str, t: &str) -> String {
     s.replace("<T>", t)
 }
@@ -473,7 +487,7 @@ fn writes_match_node() {
                 Path::new(&root),
                 p.get("relative").as_str().unwrap(),
                 p.get("content").as_str().unwrap(),
-                None,
+                owner_of(p.get("owner")),
                 &mut chown,
             )
             .map(|()| None)
@@ -481,13 +495,7 @@ fn writes_match_node() {
             let c = case.get("call");
             let cwd = st(c.get("cwd")).map(|s| fill(s, &ts));
             let home = st(c.get("home")).map(|s| fill(s, &ts));
-            let owner = match c.get("owner") {
-                JValue::Obj(_) => Some(Owner {
-                    uid: c.get("owner").get("uid").as_num().unwrap() as u32,
-                    gid: c.get("owner").get("gid").as_num().unwrap() as u32,
-                }),
-                _ => None,
-            };
+            let owner = owner_of(c.get("owner"));
             let req = WriteRequest {
                 cwd: cwd.as_deref().map(Path::new),
                 home: home.as_deref().map(Path::new),

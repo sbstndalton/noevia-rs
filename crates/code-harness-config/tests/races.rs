@@ -1,6 +1,8 @@
-//! The descriptor walk (named difference `fd-walk`): links swapped in after a check, the real
-//! hand-over never following a link, and links already at the target. Deterministic: every swap
-//! happens inside the hand-over hook, between the check of a component and the walk entering it.
+//! The descriptor walk (Node's own since noevia-core#367, which the fixture replays for everything
+//! that can be recorded): what a recording cannot hold, namely links and directories swapped in
+//! after a check, a root that is a link, the real `fchown` never following a link, and links
+//! already at the target. Deterministic: every swap happens inside the `opening` hook, between the
+//! check of a component and the walk entering it.
 #![cfg(unix)]
 #![allow(
     clippy::unwrap_used,
@@ -117,7 +119,7 @@ fn a_link_planted_after_the_directory_check_is_refused() {
     assert_eq!(err.status(), Some(409));
     assert_eq!(
         err.to_string(),
-        "Refused to pin the harness configuration: .claude is a symbolic link."
+        "Refused to pin the harness configuration: .claude it was replaced while it was being checked."
     );
     assert_eq!(
         listing(&outside),
@@ -142,16 +144,16 @@ fn an_ancestor_swapped_after_the_walk_entered_it_is_not_followed() {
     fs::create_dir(cwd.join("a")).unwrap();
     let (a, out) = (cwd.join("a"), outside.clone());
     let mut hook = Swap {
-        on_dir: |made: &Path| {
+        on_dir: nothing,
+        on_open: |next: &Path| {
             // `a/b` was just made, `a` is already held: move `a` away and point its name outside,
             // where a matching `b` waits for a write by path.
-            if made.ends_with("a/b") {
+            if next.ends_with("a/b") {
                 fs::rename(&a, a.with_file_name("a.moved")).unwrap();
                 fs::create_dir(out.join("b")).unwrap();
                 symlink(&out, &a).unwrap();
             }
         },
-        on_open: nothing,
         files: Vec::new(),
     };
     write_pinned(
@@ -176,6 +178,61 @@ fn an_ancestor_swapped_after_the_walk_entered_it_is_not_followed() {
         [cwd.join("a/b/f")],
         "the file was handed over (through its descriptor)"
     );
+}
+
+#[test]
+fn an_existing_directory_replaced_by_another_after_the_check_is_refused() {
+    let (_t, cwd, _home, outside) = layout();
+    fs::create_dir(cwd.join("a")).unwrap();
+    let a = cwd.join("a");
+    let mut hook = Swap {
+        on_dir: nothing,
+        on_open: |next: &Path| {
+            // `a` was checked as a directory; before it is entered, another directory takes its name.
+            if next == a.as_path() {
+                fs::rename(&a, a.with_file_name("a.moved")).unwrap();
+                fs::create_dir(&a).unwrap();
+            }
+        },
+        files: Vec::new(),
+    };
+    let err = write_pinned(&cwd, "a/f", "pinned\n", None, &mut hook).unwrap_err();
+    assert_eq!(err.status(), Some(409));
+    assert_eq!(
+        err.to_string(),
+        "Refused to pin the harness configuration: a it was replaced while it was being checked."
+    );
+    assert!(listing(&cwd.join("a")).is_empty());
+    assert!(listing(&cwd.join("a.moved")).is_empty());
+    assert_eq!(listing(&outside), ["keep.txt"]);
+}
+
+#[test]
+fn a_root_that_is_a_link_is_not_opened() {
+    let (t, _cwd, _home, outside) = layout();
+    let root = t.path().join("rootlink");
+    symlink(&outside, &root).unwrap();
+    let mut hook = Swap {
+        on_dir: nothing,
+        on_open: nothing,
+        files: Vec::new(),
+    };
+    for relative in ["f.txt", "a/f.txt"] {
+        let err = write_pinned(&root, relative, "pinned\n", None, &mut hook).unwrap_err();
+        let PinError::Io {
+            syscall, source, ..
+        } = &err
+        else {
+            panic!("{err:?}")
+        };
+        assert_eq!(*syscall, "open", "{relative}");
+        // ELOOP or ENOTDIR, whichever this kernel answers `O_DIRECTORY|O_NOFOLLOW` on a link.
+        assert!(
+            matches!(source.raw_os_error(), Some(40 | 20)),
+            "{relative}: {source:?}"
+        );
+    }
+    assert_eq!(listing(&outside), ["keep.txt"]);
 }
 
 #[test]
