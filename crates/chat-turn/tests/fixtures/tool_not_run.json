@@ -1,0 +1,17 @@
+{
+  "name": "a call the turn does not run",
+  "model": "synthetic-model",
+  "ttft": 0.1,
+  "upstream": [
+    {"tool": {"name": "fetch", "args": {"url": "https://example.invalid/"}, "not_run": "Not run: this step only writes the final answer."}},
+    {"delta": "No tool output."}
+  ],
+  "expected": [
+    {"type": "telemetry", "phase": "streaming", "model": "synthetic-model", "timeToFirstToken": 0.1},
+    {"type": "tool", "index": 0, "name": "fetch", "args": {"url": "https://example.invalid/"}},
+    {"type": "tool_result", "index": 0, "name": "fetch", "text": "Not run: this step only writes the final answer.", "notRun": true},
+    {"type": "delta", "text": "No tool output."},
+    {"type": "telemetry", "phase": "complete", "model": "synthetic-model", "timeToFirstToken": 0.1},
+    {"type": "done", "model": "synthetic-model"}
+  ]
+}

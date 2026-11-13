@@ -1,0 +1,11 @@
+{
+  "name": "provider fails mid-reply: error and no done",
+  "model": "synthetic-model",
+  "ttft": 0.3,
+  "upstream": [{"delta": "Start"}, {"fail": "synthetic upstream unreachable"}, {"delta": "never sent"}],
+  "expected": [
+    {"type": "telemetry", "phase": "streaming", "model": "synthetic-model", "timeToFirstToken": 0.3},
+    {"type": "delta", "text": "Start"},
+    {"type": "error", "text": "synthetic upstream unreachable"}
+  ]
+}

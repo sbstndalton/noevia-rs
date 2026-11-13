@@ -1,0 +1,13 @@
+{
+  "name": "token budget reached",
+  "model": "synthetic-model",
+  "ttft": 0.2,
+  "upstream": [{"delta": "Partial"}, {"length": true}],
+  "expected": [
+    {"type": "telemetry", "phase": "streaming", "model": "synthetic-model", "timeToFirstToken": 0.2},
+    {"type": "delta", "text": "Partial"},
+    {"type": "warning", "text": "The model reached its thinking/answer token budget. This reply may be incomplete; try Low thinking or a narrower question."},
+    {"type": "telemetry", "phase": "complete", "model": "synthetic-model", "timeToFirstToken": 0.2},
+    {"type": "done", "model": "synthetic-model"}
+  ]
+}

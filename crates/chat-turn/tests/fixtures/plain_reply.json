@@ -1,0 +1,13 @@
+{
+  "name": "plain reply, two deltas",
+  "model": "synthetic-model",
+  "ttft": 0.5,
+  "upstream": [{"delta": "Hel"}, {"delta": "lo"}],
+  "expected": [
+    {"type": "telemetry", "phase": "streaming", "model": "synthetic-model", "timeToFirstToken": 0.5},
+    {"type": "delta", "text": "Hel"},
+    {"type": "delta", "text": "lo"},
+    {"type": "telemetry", "phase": "complete", "model": "synthetic-model", "timeToFirstToken": 0.5},
+    {"type": "done", "model": "synthetic-model"}
+  ]
+}
