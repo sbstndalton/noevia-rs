@@ -453,6 +453,14 @@ const longHistory = (exchanges, n) => Array.from({ length: exchanges }, (_, i) =
   { role: 'assistant', content: longText(`QA answer ${i + 1}.`, n) },
 ]).flat();
 
+// The project files and retrieval of the #1793 cases.
+const QA_KNOWLEDGE = {
+  files: [{ name: 'qa-notes.txt', content: 'QA notes: the gate code is QA-ORCHID-42.', attachment: { id: 'qa-att-notes' } },
+    { name: 'qa-placed.txt', content: 'QA placed text about the gate.' }],
+  retrieval: { placed: [{ file: 'qa-placed.txt', body: 'QA placed text about the gate.', kind: 'excerpt', score: 0.5 }],
+    injected: [{ file: 'qa-notes.txt', body: 'QA notes: the gate code is QA-ORCHID-42.', kind: 'file' }],
+    block: 'QA project files:\n[qa-notes.txt]\nQA notes: the gate code is QA-ORCHID-42.' },
+};
 const CASES = [
   { name: 'plain', about: 'A plain reply in two deltas, with usage and timings, ended by [DONE].',
     rounds: [{ frames: [chunk({ role: 'assistant', content: '' }), chunk({ content: 'Hello from ' }), chunk({ content: 'QA.' }), finish('stop'), usage(52, 5, 25), { done: true }] }] },
@@ -598,6 +606,20 @@ const CASES = [
       injected: [{ file: 'qa-placed.txt', body: '[Page 2]\nQA placed text about the gate.', kind: 'file' }, { file: 'qa-notes.txt', body: 'QA notes: the gate code is QA-ORCHID-42.', kind: 'file' }],
       block: 'QA project files:\n[qa-notes.txt]\nQA notes: the gate code is QA-ORCHID-42.\n[qa-placed.txt]\nQA placed text about the gate.' },
     rounds: [answer('The gate code is qa-orchid-42.')] },
+  { name: 'injected_source_declined', about: 'An answer that quotes an injected file, then a write declined: the paused reply re-sends nothing.',
+    decision: 'deny', project: { files: QA_KNOWLEDGE.files }, retrieval: QA_KNOWLEDGE.retrieval,
+    rounds: [{ frames: [chunk({ content: 'The code is qa-orchid-42. ' }), toolCall('drive_trash_file', '{"fileId":"qa-file-9"}'), finish('tool_calls')] }] },
+  { name: 'injected_source_final_pass', about: 'Three tool rounds, then the final-answer round quotes the injected file: the list is re-sent before telemetry.',
+    project: { files: QA_KNOWLEDGE.files }, retrieval: QA_KNOWLEDGE.retrieval,
+    rounds: [
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-a"}', 'qa-s1'), finish('tool_calls')] },
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-b"}', 'qa-s2'), finish('tool_calls')] },
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-c"}', 'qa-s3'), finish('tool_calls')] },
+      answer('From the notes: QA-ORCHID-42.')] },
+  { name: 'excerpts_only', about: 'Retrieval placed excerpts and injected no whole file: handed off, nothing to re-attribute.',
+    project: { files: QA_KNOWLEDGE.files },
+    retrieval: { placed: QA_KNOWLEDGE.retrieval.placed, injected: [{ file: 'qa-notes.txt', body: 'QA notes: the gate code is QA-ORCHID-42.', kind: 'excerpt' }], block: 'QA excerpts.' },
+    rounds: [answer('The code is QA-ORCHID-42.')] },
   { name: 'injected_source_not_quoted', about: 'An injected knowledge file the answer does not quote: the reply keeps its first sources only.',
     project: { files: [{ name: 'qa-notes.txt', content: 'QA notes: the gate code is QA-ORCHID-42.', attachment: { id: 'qa-att-notes' } },
       { name: 'qa-placed.txt', content: 'QA placed text about the gate.' }] },
