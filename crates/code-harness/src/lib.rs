@@ -49,6 +49,7 @@
 pub mod files;
 mod js;
 pub mod meta;
+pub mod session;
 pub mod tool_schemas;
 
 pub use meta::{
