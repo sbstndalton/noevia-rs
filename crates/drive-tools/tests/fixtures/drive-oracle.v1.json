@@ -1,5 +1,9 @@
 {
   "oracle": "noevia-core server/gdrive-tools.cjs (execute, describeTarget) with server/gdrive-files.cjs stubbed; cap 60; now controlled",
+  "sources": {
+    "server/gdrive-tools.cjs": "4829829e378cac40f888ea169c2793c0e1605268246771968c37b9fb8ff5a2c9",
+    "server/mcp.cjs": "8a20cc410642344d6feb73ecfe661cc100f5649d79fe6ceee1661f725e9aa077"
+  },
   "cap": 60,
   "cases": [
     {
@@ -529,6 +533,113 @@
     },
     {
       "op": "execute",
+      "tool": "drive_read_file",
+      "args": {
+        "fileId": "a3"
+      },
+      "scope": {
+        "exchangeKey": "ex8"
+      },
+      "now": 2800001,
+      "connected": true,
+      "stub": {
+        "value": {
+          "meta": {
+            "id": "a3",
+            "name": "Edge",
+            "version": "4"
+          },
+          "text": "edge",
+          "truncated": false
+        }
+      },
+      "expect": "Edge:\nedge"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "a3",
+        "content": "y"
+      },
+      "scope": {
+        "exchangeKey": "ex8"
+      },
+      "now": 4600001,
+      "connected": true,
+      "stub": {
+        "value": {
+          "id": "a3",
+          "name": "Plan",
+          "version": "8"
+        }
+      },
+      "expect": "Updated Plan (id a3).",
+      "expectVersion": "4"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_read_file",
+      "args": {
+        "fileId": "a3"
+      },
+      "scope": {
+        "chatKey": "c9"
+      },
+      "now": 4600001,
+      "connected": true,
+      "stub": {
+        "value": {
+          "meta": {
+            "id": "a3",
+            "name": "Edge",
+            "version": "4"
+          },
+          "text": "edge",
+          "truncated": false
+        }
+      },
+      "expect": "Edge:\nedge"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": " a3 ",
+        "content": "y"
+      },
+      "scope": {
+        "chatKey": "c9"
+      },
+      "now": 4600001,
+      "connected": true,
+      "stub": {
+        "value": {
+          "id": " a3 ",
+          "name": "Plan",
+          "version": "8"
+        }
+      },
+      "expect": "Updated Plan (id  a3 ).",
+      "expectVersion": "4"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "a3",
+        "content": "y"
+      },
+      "scope": {
+        "chatKey": "c8"
+      },
+      "now": 4600001,
+      "connected": true,
+      "stub": null,
+      "expect": "ERROR: drive_update_file replaces the whole file, so it only runs on a file read in full with drive_read_file in this same reply (a read from an earlier message does not count). Read it again first. Nothing was changed."
+    },
+    {
+      "op": "execute",
       "tool": "drive_update_file",
       "args": {
         "fileId": "noevia projects/a.md",
@@ -537,7 +648,7 @@
       "scope": {
         "exchangeKey": "ex6"
       },
-      "now": 2800001,
+      "now": 4600001,
       "connected": true,
       "stub": {
         "value": {
@@ -557,7 +668,7 @@
       "scope": {
         "exchangeKey": "ex7"
       },
-      "now": 2800001,
+      "now": 4600001,
       "connected": true,
       "stub": {
         "value": {

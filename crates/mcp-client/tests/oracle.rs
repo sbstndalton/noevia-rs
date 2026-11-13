@@ -1,5 +1,5 @@
 //! Differential test against the Node oracle: `tests/fixtures/mcp-oracle.v1.json` was recorded by
-//! `handoff/foundation/R5/scripts/record-oracles.cjs` calling noevia-core's mcp.cjs
+//! `crates/drive-tools/tests/generate_oracles.cjs` calling noevia-core's mcp.cjs
 //! `resultToText` and `withBuiltInHeaders` on synthetic inputs. The fixture's `structured_json`
 //! is the JS `JSON.stringify` of `structuredContent`, which is what the caller passes in here.
 #![allow(

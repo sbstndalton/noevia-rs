@@ -1,5 +1,5 @@
 //! Differential test against the Node oracle: `tests/fixtures/drive-oracle.v1.json` was recorded
-//! by `handoff/foundation/R5/scripts/record-oracles.cjs` running noevia-core's gdrive-tools.cjs
+//! by `crates/drive-tools/tests/generate_oracles.cjs` running noevia-core's gdrive-tools.cjs
 //! `execute` and `describeTarget` with the Drive file module stubbed (synthetic data only).
 //! Each case replays the same call through this crate's pure functions, with the stub's answer
 //! as input, and must give the recorded text, the recorded expectVersion and the recorded plan.

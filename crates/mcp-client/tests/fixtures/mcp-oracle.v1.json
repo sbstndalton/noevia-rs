@@ -1,5 +1,9 @@
 {
   "oracle": "noevia-core server/mcp.cjs resultToText and withBuiltInHeaders",
+  "sources": {
+    "server/gdrive-tools.cjs": "4829829e378cac40f888ea169c2793c0e1605268246771968c37b9fb8ff5a2c9",
+    "server/mcp.cjs": "8a20cc410642344d6feb73ecfe661cc100f5649d79fe6ceee1661f725e9aa077"
+  },
   "protocol_version": "2025-06-18",
   "result_to_text": [
     {
