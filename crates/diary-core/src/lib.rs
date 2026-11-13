@@ -6,6 +6,8 @@
 
 pub mod assembler;
 pub mod context;
+#[cfg(unix)]
+pub mod external_sources;
 pub mod follow_up;
 pub mod llm;
 pub mod pipeline;
