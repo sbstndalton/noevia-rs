@@ -60,6 +60,17 @@ async function main() {
   });
   const diary = await listen((req, res) => { req.resume(); res.writeHead(503, { 'content-type': 'application/json' }); res.end('{"detail":"synthetic diary"}'); });
   const store = await startProjectStore(dataDir, { maintenance: true, reranker: true });
+  // Row H: Core registers its start with the front's admission authority over its project-store port. The stand-in
+  // store does not know that route, so a gateway in front of it hands that one route to the test's own responder
+  // (NOEVIA_SESSION_PORT, backed by the real authority) and everything else to the stand-in store.
+  const SESSION = '/v1/inference-admission/session';
+  const gateway = await listen((req, res) => {
+    const to = new URL(req.url, 'http://gateway').pathname === SESSION && process.env.NOEVIA_SESSION_PORT
+      ? Number(process.env.NOEVIA_SESSION_PORT) : store.port;
+    const up = http.request({ host: '127.0.0.1', port: to, path: req.url, method: req.method, headers: req.headers }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); });
+    up.on('error', () => { res.writeHead(502); res.end(); });
+    req.pipe(up);
+  });
   const probe = await listen(() => {}); // a free port for Core's listener: held only to learn it
   const uiPort = probe.port;
   await new Promise((r) => probe.server.close(r));
@@ -70,7 +81,7 @@ async function main() {
     MODEL_LOADER_URL: '', MCP_SERVERS: '', COWORK_DECISION_URL: '', COWORK_SYSTEM_ONE_URL: '', DIARY_BACKUP_WORKER_INTERVAL_MS: '3600000',
     MODEL_MANAGER_KIND: 'llamacpp', MODEL_MANAGER_BASE_URL: `http://127.0.0.1:${router.port}`,
     LLAMACPP_PRESET_PATH: ini, LLAMACPP_MODELS_PATH: modelsDir,
-    NOEVIA_PROJECT_STORE_PORT: String(store.port), NOEVIA_PROJECT_STORE_TOKEN: store.token,
+    NOEVIA_PROJECT_STORE_PORT: String(gateway.port), NOEVIA_PROJECT_STORE_TOKEN: store.token,
     NOEVIA_START_ID: startId || crypto.randomBytes(16).toString('hex'),
     ...(process.env.DAV_PARSE_WASM ? { DAV_PARSE_WASM: process.env.DAV_PARSE_WASM } : {}),
     // The real front build the test runs, which the paired Core's embedding owner verifies at boot.
@@ -100,7 +111,7 @@ async function main() {
     child.kill('SIGTERM');
     await new Promise((r) => { const t = setTimeout(r, 5000); child.once('exit', () => { clearTimeout(t); r(); }); });
     if (child.exitCode === null) child.kill('SIGKILL');
-    router.server.close(); diary.server.close(); await store.close?.();
+    router.server.close(); diary.server.close(); gateway.server.close(); await store.close?.();
     fs.rmSync(root, { recursive: true, force: true });
   };
   const ready = () => new Promise((resolve) => {

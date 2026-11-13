@@ -21,8 +21,10 @@
 //! built from them. This crate has no HTTP; the front maps [`Error`] to statuses.
 
 pub mod backing;
+pub mod events;
 mod lists;
 mod pages;
+pub mod tools;
 
 pub use backing::Backing;
 
@@ -265,3 +267,5 @@ impl Store {
 mod backing_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tools_tests;

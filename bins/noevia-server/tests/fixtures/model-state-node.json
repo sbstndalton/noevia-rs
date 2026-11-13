@@ -1,0 +1,142 @@
+{
+  "source": "noevia-core b2ec000^ server/models.cjs clearedRoles",
+  "rows": [
+    {
+      "name": "fast only",
+      "model": "synthetic-gone",
+      "before": {
+        "fast": "synthetic-gone",
+        "smart": "qa-b"
+      },
+      "cleared": [
+        "fast"
+      ],
+      "after": {
+        "fast": "qa-b",
+        "smart": "qa-b"
+      }
+    },
+    {
+      "name": "smart only",
+      "model": "synthetic-gone",
+      "before": {
+        "fast": "qa-a",
+        "smart": "synthetic-gone"
+      },
+      "cleared": [
+        "smart"
+      ],
+      "after": {
+        "fast": "qa-a",
+        "smart": "qa-a"
+      }
+    },
+    {
+      "name": "both required",
+      "model": "synthetic-gone",
+      "before": {
+        "fast": "synthetic-gone",
+        "smart": "synthetic-gone"
+      },
+      "cleared": [
+        "fast",
+        "smart"
+      ],
+      "after": null
+    },
+    {
+      "name": "optional roles",
+      "model": "synthetic-gone",
+      "before": {
+        "fast": "qa-a",
+        "smart": "qa-b",
+        "vision": "synthetic-gone",
+        "code": "synthetic-gone",
+        "creative": "synthetic-gone"
+      },
+      "cleared": [
+        "vision",
+        "code",
+        "creative"
+      ],
+      "after": {
+        "fast": "qa-a",
+        "smart": "qa-b"
+      }
+    },
+    {
+      "name": "all five",
+      "model": "synthetic-gone",
+      "before": {
+        "fast": "synthetic-gone",
+        "smart": "qa-b",
+        "vision": "synthetic-gone",
+        "code": "synthetic-gone",
+        "creative": "synthetic-gone"
+      },
+      "cleared": [
+        "fast",
+        "vision",
+        "code",
+        "creative"
+      ],
+      "after": {
+        "fast": "qa-b",
+        "smart": "qa-b"
+      }
+    },
+    {
+      "name": "untouched",
+      "model": "synthetic-gone",
+      "before": {
+        "fast": "qa-a",
+        "smart": "qa-b",
+        "code": "qa-c"
+      },
+      "cleared": [],
+      "after": {
+        "fast": "qa-a",
+        "smart": "qa-b",
+        "code": "qa-c"
+      }
+    },
+    {
+      "name": "unset",
+      "model": "synthetic-gone",
+      "before": null,
+      "cleared": [],
+      "after": null
+    },
+    {
+      "name": "fast falls back past a gone smart",
+      "model": "synthetic-gone",
+      "before": {
+        "fast": "synthetic-gone",
+        "smart": "synthetic-gone",
+        "code": "qa-c"
+      },
+      "cleared": [
+        "fast",
+        "smart"
+      ],
+      "after": null
+    },
+    {
+      "name": "extra keys kept",
+      "model": "synthetic-gone",
+      "before": {
+        "fast": "synthetic-gone",
+        "smart": "qa-b",
+        "note": "keep"
+      },
+      "cleared": [
+        "fast"
+      ],
+      "after": {
+        "fast": "qa-b",
+        "smart": "qa-b",
+        "note": "keep"
+      }
+    }
+  ]
+}

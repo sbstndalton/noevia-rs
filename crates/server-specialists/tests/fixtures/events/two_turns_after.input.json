@@ -1,0 +1,6 @@
+{"after": "qa-a1", "history": [
+  {"id": "qa-u1", "role": "user", "content": "QA first question"},
+  {"id": "qa-a1", "role": "assistant", "content": "QA first answer"},
+  {"id": "qa-u2", "role": "user", "content": "QA second question"},
+  {"id": "qa-a2", "role": "assistant", "content": "QA second answer"}
+]}

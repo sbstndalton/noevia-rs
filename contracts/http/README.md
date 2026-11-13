@@ -1039,8 +1039,16 @@ leaves it unset (https://huggingface.co).
   deleted model's file is gone may be filed under the old identity (Core cleared its cache on delete).
 - **Kept on Node, and why.** `POST /api/models/evidence/recheck` runs an image probe that may load the model after
   Node's admission check (the inference budget, the memory-watchdog quarantine and the probe cache are Node memory);
-  `/api/model-manager`, load/unload/delete/pull/downloads, the preset GET/PUT, machines, reranker, assignments,
-  idle-unload and prune-missing are chat-bound or engine-live (roles, last-loaded, leases, the load gate).
+  `/api/model-manager`, pull/downloads, the preset GET/PUT, machines, reranker, assignments,
+  idle-unload are chat-bound or engine-live (roles, last-loaded, leases, the load gate).
+- **Load and unload (R3 piece 3).** `POST /api/models/load` and `/unload` are the front's (`load_model.rs`). A load asks
+  Core's budget decision first (the bridge `load-refusal`; no answer means nothing loads, 503), then takes a lease from
+  the gate's queue (`Gate::lease`, the one-model-at-a-time authority; the router's own fence stands under the load),
+  lists the router, loads under the lease and waits for the model to be ready. The handler is not spawned: a client that
+  leaves the queue starts no switch. A budget refusal is `502 load failed: 409` as in Core (the route never passed its
+  text on). The `mtp` field is Core's llama.cpp answer (400); an engine other than llama.cpp is "model management is
+  disabled" here, as for the delete. `tests/model_load.rs` replays 41 answers Core gave, recorded with Core's real
+  manager and gate client over scripted transports (`tests/fixtures/load-model/record-load.cjs`, Core `76cc868`).
 - **Tests.** `tests/model_reload.rs` replays 38 answers Core gave (`tests/fixtures/model-maint/record-reload.cjs`) and
   `tests/model_evidence.rs` 26 scenarios (`record-evidence.cjs`), both recorded at Core `b6113b57`.
 

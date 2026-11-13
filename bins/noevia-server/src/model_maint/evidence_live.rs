@@ -205,7 +205,7 @@ impl Maint {
         Ok(Some(Live { identity, hash }))
     }
 
-    fn cache_identity(&self, model: &str, live: Option<&Live>) {
+    pub(crate) fn cache_identity(&self, model: &str, live: Option<&Live>) {
         if let Ok(mut cache) = self.identities.lock() {
             if cache.len() >= IDENTITY_CACHE && !cache.iter().any(|(k, _, _)| k == model) {
                 cache.remove(0);

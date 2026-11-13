@@ -151,6 +151,8 @@ pub enum Answer {
     Drop,
     /// Answer after a pause.
     After(Duration, u16, String),
+    /// An event stream (the inference gate's lease queue): after a pause, these event blocks, then the end.
+    Events(Duration, String),
 }
 
 pub type Handler = Arc<dyn Fn(&Req) -> Answer + Send + Sync>;
@@ -233,6 +235,13 @@ pub async fn engine_on(
                 }
                 match answer {
                     Answer::Drop | Answer::After(..) => {}
+                    Answer::Events(wait, text) => {
+                        tokio::time::sleep(wait).await;
+                        let reply = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n{text}"
+                        );
+                        let _ = s.write_all(reply.as_bytes()).await;
+                    }
                     Answer::Reply(code, text) => {
                         let reply = if code == 204 {
                             "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n".to_string()

@@ -1463,12 +1463,10 @@ mod tests {
         }
         for p in [
             "/api/model-manager",
-            "/api/models/delete",
             "/api/models/mtp-artifact",
             "/api/models/pull",
             "/api/models/reranker/",
             "/api/models/rerankerx",
-            "/api/models/load",
             "/api/models/preset/",
             "/api/models/downloads/",
             "/api/models/capabilitiesx",
@@ -1513,6 +1511,7 @@ mod tests {
                 (crate::calibration_routes::PATH, &[][..]),
                 (crate::calibration_cancel_routes::PATH, &[][..]),
                 (crate::model_routes::CAPABILITIES, &["GET"][..]),
+                (crate::model_maint::DELETE, &["POST"][..]),
                 (crate::model_downloads_read::PATH, &["GET"][..]),
                 (crate::model_sizing::ESTIMATE, &["GET"][..]),
                 (crate::model_maint::EVIDENCE, &["GET"][..]),
@@ -1522,9 +1521,12 @@ mod tests {
                 (crate::model_state_routes::BUDGET, &["GET"][..]),
                 (crate::idle_unload_read::PATH, &["GET"][..]),
                 (crate::model_state_routes::INSTALLED, &["GET"][..]),
+                (crate::model_maint::LOAD, &["POST"][..]),
+                (crate::model_maint::UNLOAD, &["POST"][..]),
                 (crate::inference_machines::PATH, &[][..]),
                 (crate::preset_read_routes::PATH, &["GET"][..]),
                 (crate::model_sizing::SUGGEST, &["GET"][..]),
+                (crate::model_maint::PRUNE, &["POST"][..]),
                 (crate::reranker_routes::PATH, &[][..]),
                 (crate::model_maint::RELOAD, &["POST"][..]),
             ]
