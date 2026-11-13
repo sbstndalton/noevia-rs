@@ -1,5 +1,6 @@
-//! Admission cases from `fixtures/autotune-start.v1.json` (hand-derived from noevia-core
-//! `llamacpp-full-autotune.cjs` `start`; see the file's `source` field).
+//! Node's own answers from `fixtures/autotune-start.node.json` (recorded by
+//! `fixtures/record-node.cjs` from noevia-core `llamacpp-full-autotune.cjs` `start`; the source's
+//! sha256 is in the file) replayed against [`autotune_start::admit`].
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -8,57 +9,90 @@
 )]
 
 use autotune_start::{admit, Mode, Plan, Start};
-use serde_json::Value;
+use js_json::JValue;
 
-fn cases() -> Vec<Value> {
+fn recording() -> JValue {
     let text = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/fixtures/autotune-start.v1.json"
+        "/tests/fixtures/autotune-start.node.json"
     ))
     .expect("fixture file");
-    let f: Value = serde_json::from_str(&text).expect("fixture JSON");
-    assert_eq!(f["version"], 1);
-    f["cases"].as_array().expect("cases array").clone()
+    js_json::parse(&text).expect("fixture JSON")
 }
 
-fn flag(input: &Value, key: &str) -> bool {
-    input.get(key).and_then(Value::as_bool).unwrap_or(false)
+fn present<'a>(input: &'a JValue, key: &str) -> Option<&'a JValue> {
+    let v = input.get(key);
+    (!matches!(v, JValue::Undefined)).then_some(v)
 }
+
+/// What the route does with a body Node throws on while coercing it (an own non-callable
+/// `toString`: `Number()` raises a TypeError, which reaches the router as an internal error). The
+/// native admission refuses it as any other value that is not a number: a named difference.
+const NAMED_DIFFERENCE_THROWS: (u16, &str) = (
+    400,
+    "Choose a prompt time limit between 15 and 1800 seconds.",
+);
 
 #[test]
-fn every_case_matches_the_node_admission() {
-    let cases = cases();
-    assert_eq!(cases.len(), 28, "fixture case count changed");
-    for case in &cases {
-        let name = case["name"].as_str().expect("name");
-        let input = &case["input"];
+fn every_case_matches_the_recorded_node_answer() {
+    let f = recording();
+    assert_eq!(f.get("version").as_num(), Some(2.0));
+    let sha = f.get("sourceSha256").as_str().expect("source sha");
+    assert_eq!(sha.len(), 64, "source sha256");
+    let JValue::Arr(cases) = f.get("cases") else {
+        panic!("cases array")
+    };
+    assert!(
+        cases.len() >= 70,
+        "fixture case count shrank: {}",
+        cases.len()
+    );
+    let (mut admitted, mut refused, mut throws) = (0, 0, 0);
+    for case in cases {
+        let name = case.get("name").as_str().expect("name");
+        let input = case.get("input");
         let start = Start {
-            confirm_pause: input.get("confirmPause"),
-            mode: input.get("mode"),
-            prompt_budget_seconds: input.get("promptBudgetSeconds"),
-            bulk: flag(input, "bulk"),
-            run_active: flag(input, "runActive"),
-            system_model: flag(input, "systemModel"),
+            confirm_pause: present(input, "confirmPause"),
+            mode: present(input, "mode"),
+            prompt_budget_seconds: present(input, "promptBudgetSeconds"),
+            // routes/models.cjs: `untuned: body?.untuned === true`.
+            bulk: input.get("untuned") == &JValue::Bool(true),
+            run_active: input.get("runActive") == &JValue::Bool(true),
+            system_model: input.get("systemModel") == &JValue::Bool(true),
         };
-        let got = admit(&start);
-        let want = &case["expect"];
-        if let Some(ok) = want.get("ok") {
-            let mode = match ok["mode"].as_str() {
+        let got = admit(&start).map_err(|r| (r.status, r.message.to_owned()));
+        let node = case.get("node");
+        if !matches!(node.get("throws"), JValue::Undefined) {
+            throws += 1;
+            let (status, message) = NAMED_DIFFERENCE_THROWS;
+            assert_eq!(got, Err((status, message.to_owned())), "{name}");
+            continue;
+        }
+        let status = node.get("status").as_num().expect("status") as u16;
+        if status == 202 {
+            admitted += 1;
+            let mode = match node.get("mode").as_str() {
                 Some("fast") => Mode::Fast,
                 Some("long") => Mode::Long,
-                other => panic!("{name}: bad expected mode {other:?}"),
+                other => panic!("{name}: recorded mode {other:?}"),
             };
-            let want_plan = Plan {
-                mode,
-                prompt_budget_seconds: ok["promptBudgetSeconds"].as_u64().expect("seconds") as u32,
-            };
-            assert_eq!(got, Ok(want_plan), "{name}");
+            let seconds = node.get("promptBudgetSeconds").as_num().expect("seconds") as u32;
+            assert_eq!(
+                got,
+                Ok(Plan {
+                    mode,
+                    prompt_budget_seconds: seconds
+                }),
+                "{name}"
+            );
         } else {
-            let refuse = &want["refuse"];
-            let status = refuse["status"].as_u64().expect("status") as u16;
-            let message = refuse["message"].as_str().expect("message");
-            let got = got.map_err(|r| (r.status, r.message.to_owned()));
+            refused += 1;
+            let message = node.get("error").as_str().expect("error");
             assert_eq!(got, Err((status, message.to_owned())), "{name}");
         }
     }
+    assert!(
+        admitted >= 20 && refused >= 40 && throws == 1,
+        "{admitted} {refused} {throws}"
+    );
 }

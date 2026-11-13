@@ -11,4 +11,5 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-serde_json = "1"
+js-json = { path = "../js-json" }
+llamacpp-presets = { path = "../llamacpp-presets" }

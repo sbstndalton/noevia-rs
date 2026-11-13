@@ -3,12 +3,14 @@
 //! Oracle: noevia-core `server/llamacpp-full-autotune.cjs`, `start`, lines 1604-1622 (the checks
 //! that need only the request and two facts from state). The steps after them in Node (the flush,
 //! the scan, the ladder read, the long-profile dry run, the job record) are not here.
+//! `tests/fixtures/autotune-start.node.json` is Node's own answer for every case, recorded by
+//! `tests/fixtures/record-node.cjs` (source sha256 in the file).
 //!
 //! Pure: nothing is started, held or written. The caller reads the body fields as raw JSON values
 //! (so a hostile type reaches the same refusal Node gives) and supplies `run_active` and
 //! `system_model`. The checks run in Node's order and the first failure wins.
 
-use serde_json::Value;
+use js_json::JValue;
 
 /// Fast tunes the model's own section with today's prompt time limit (Node `MODES.fast`).
 pub const FAST_DEFAULT_SECONDS: u32 = 120;
@@ -53,14 +55,14 @@ pub struct Refusal {
 #[derive(Debug, Clone, Copy)]
 pub struct Start<'a> {
     /// `confirmPause`: only the JSON value `true` passes (Node `!== true`).
-    pub confirm_pause: Option<&'a Value>,
+    pub confirm_pause: Option<&'a JValue>,
     /// `mode`: absent means Fast (Node's destructuring default). Present but not one of the two
     /// strings (including `null`) is refused.
-    pub mode: Option<&'a Value>,
+    pub mode: Option<&'a JValue>,
     /// `promptBudgetSeconds`: absent or `null` means the mode's default (Node `??`).
-    pub prompt_budget_seconds: Option<&'a Value>,
-    /// `untuned`: the bulk run over every configured chat model. Node's truthiness is applied by
-    /// the caller.
+    pub prompt_budget_seconds: Option<&'a JValue>,
+    /// `untuned`: the bulk run over every configured chat model. The route passes
+    /// `body.untuned === true`, so only the JSON value `true` makes a bulk run.
     pub bulk: bool,
     /// Node `starting` or the job's status is `running`.
     pub run_active: bool,
@@ -71,13 +73,13 @@ pub struct Start<'a> {
 /// Admit or refuse a start. Order: confirm, mode, Long with bulk, time limit, active run, system
 /// model. The first failure is returned.
 pub fn admit(start: &Start<'_>) -> Result<Plan, Refusal> {
-    if start.confirm_pause != Some(&Value::Bool(true)) {
+    if start.confirm_pause != Some(&JValue::Bool(true)) {
         return Err(refuse(400, CONFIRM_PAUSE));
     }
     let mode = match start.mode {
         None => Mode::Fast,
-        Some(Value::String(s)) if s == "fast" => Mode::Fast,
-        Some(Value::String(s)) if s == "long" => Mode::Long,
+        Some(JValue::Str(s)) if s == "fast" => Mode::Fast,
+        Some(JValue::Str(s)) if s == "long" => Mode::Long,
         Some(_) => return Err(refuse(400, CHOOSE_MODE)),
     };
     if mode == Mode::Long && start.bulk {
@@ -88,7 +90,7 @@ pub fn admit(start: &Start<'_>) -> Result<Plan, Refusal> {
         Mode::Long => LONG_DEFAULT_SECONDS,
     };
     let seconds = match start.prompt_budget_seconds {
-        None | Some(Value::Null) => f64::from(default),
+        None | Some(JValue::Null | JValue::Undefined) => f64::from(default),
         Some(v) => js_number(v),
     };
     let prompt_budget_seconds = whole_seconds(seconds).ok_or(refuse(400, CHOOSE_SECONDS))?;
@@ -123,36 +125,20 @@ fn whole_seconds(x: f64) -> Option<u32> {
     }
 }
 
-/// The subset of JavaScript `Number(value)` that a JSON body can carry: booleans, numbers,
-/// strings (decimal, `0x`/`0o`/`0b` integers, empty and whitespace-only as 0). Anything else is
-/// NaN and so refused. Not covered: one-element arrays (JS coerces them to their element).
-fn js_number(v: &Value) -> f64 {
+/// JavaScript `Number(value)` for a JSON value: `ToPrimitive` first (an array becomes its
+/// `join(',')`, so `[120]` and `["0x78"]` are 120; an object is `"[object Object]"`), then
+/// `StringToNumber` with JS whitespace (`\u{feff}` trims, `\u{85}` does not). A radix literal past
+/// 2^53 (which `llamacpp_presets::to_number` does not decide exactly) is far above 1800, so NaN
+/// refuses it the same way.
+fn js_number(v: &JValue) -> f64 {
     match v {
-        Value::Bool(b) => f64::from(u8::from(*b)),
-        Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
-        Value::String(s) => js_string_number(s),
-        Value::Null => 0.0,
-        Value::Array(_) | Value::Object(_) => f64::NAN,
+        JValue::Bool(b) => f64::from(u8::from(*b)),
+        JValue::Num(n) => *n,
+        JValue::Null => 0.0,
+        JValue::Undefined => f64::NAN,
+        JValue::Str(_) | JValue::Arr(_) | JValue::Obj(_) => js_json::to_js_string(v)
+            .ok()
+            .and_then(|s| llamacpp_presets::to_number(&s.encode_utf16().collect::<Vec<_>>()))
+            .unwrap_or(f64::NAN),
     }
-}
-
-fn js_string_number(s: &str) -> f64 {
-    let t = s.trim();
-    if t.is_empty() {
-        return 0.0;
-    }
-    let radix = match t.get(..2) {
-        Some("0x") | Some("0X") => Some(16),
-        Some("0o") | Some("0O") => Some(8),
-        Some("0b") | Some("0B") => Some(2),
-        _ => None,
-    };
-    if let Some(radix) = radix {
-        return t
-            .get(2..)
-            .and_then(|digits| u64::from_str_radix(digits, radix).ok())
-            .map_or(f64::NAN, |n| n as f64);
-    }
-    // Rust accepts `inf` and `nan`, which JS Number does not; both end as non-finite, so both refuse.
-    t.parse::<f64>().unwrap_or(f64::NAN)
 }
