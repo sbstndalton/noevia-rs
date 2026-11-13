@@ -12,7 +12,8 @@
 // Drive-tool and tool-exchange modules. Only the edges are stubs, and each records what the turn
 // asked of it: the engine (a scripted fetch answering with real Response objects), the model
 // manager (one loaded model, a configured context size), the approval gate (a fixed answer), the
-// stores (chat list, titles, transcript append) and the audit log. Everything is synthetic and
+// stores (chat list, titles, transcript append), the audit log and, for the project edit cases, a
+// Project documents box as MCP discovery offers it (its server only answers the call). Everything is synthetic and
 // QA-named; the engine is a .invalid host and nothing touches the network.
 //
 // Deterministic by construction: the clock is frozen at FIXED_NOW (TZ=UTC), crypto.randomUUID is a
@@ -25,8 +26,10 @@
 //   requests  every engine request: url, headers, the parsed body, whether it was the chat endpoint, whether it
 //             streamed, and the deadline its signal carried (timeoutMs: AbortSignal.timeout's, or null)
 //   stores    the calls into the stores (saveChats, chatTitles.save, transcripts.appendIfLast, ...)
-//   bridge    the two tool bridges the native executor calls (execute: every field it sends, and the text, the
-//             failure flag, the error it threw or that the client left meanwhile; target: the card's target)
+//   bridge    the tool bridges the native executor calls (execute: every field it sends, and the text, the
+//             failure flag, the error it threw or that the client left meanwhile; target: the card's target;
+//             edit-target: a project file edit's resolution, as the bridge answers it: {path, account, digest}
+//             or {error})
 //   stubs     after the hand-off's cut, every answer of the other stubs, in order: the tool policy, the chat-wide
 //             grant, the approval decision, the tombstones, the template tools gate and the engine's busy signal
 //   files     the workspace files after the turn (context state, partial), parsed, run-local ids out
@@ -79,6 +82,7 @@ const SOURCES = {
   'server/announced-action.cjs': null,
   'server/search-query.cjs': null,
   'server/prompt-framing.cjs': null,
+  'server/project-edit-target.cjs': null,
   'server/dav-parse.lock': null,
 };
 for (const rel of Object.keys(SOURCES)) {
@@ -134,6 +138,13 @@ const chatLists = require(path.join(server, 'chat-lists.cjs'));
 const realReadTombstones = chatLists.readTombstones;
 let onTombstones = null;
 chatLists.readTombstones = (dir) => { const ids = realReadTombstones(dir); onTombstones?.(ids); return ids; };
+// A project file edit's resolutions (chat.cjs calls project-edit-target.cjs resolveEditTarget before the card, after
+// the answer and before the run), each logged as the edit-target bridge answers it. A case's `editChanges[k]` is
+// what the project looks like (fields over the stored ones) at the k-th resolution: its files changed meanwhile.
+const editTargets = require(path.join(server, 'project-edit-target.cjs'));
+const realResolveEditTarget = editTargets.resolveEditTarget;
+let onEditTarget = null;
+editTargets.resolveEditTarget = (project, rawArgs, options) => (onEditTarget ? onEditTarget(project, rawArgs, options) : realResolveEditTarget(project, rawArgs, options));
 const { createChatHandler } = require(path.join(server, 'chat.cjs'));
 const { createToolboxes } = require(path.join(server, 'toolboxes.cjs'));
 const { createDriveTools } = require(path.join(server, 'gdrive-tools.cjs'));
@@ -258,6 +269,14 @@ async function runTurn(c, { handoff = false } = {}) {
     let cut = false;
     const stub = (op, entry) => { if (cut) log.stubs.push({ op, ...entry }); return entry.answer; };
     onTombstones = (ids) => stub('tombstones', { answer: [...ids].sort() });
+    let editResolutions = 0;
+    onEditTarget = (proj, rawArgs, options) => {
+      const changed = c.editChanges && c.editChanges[editResolutions++];
+      const found = realResolveEditTarget(proj && changed ? { ...proj, ...changed } : proj, rawArgs, options);
+      log.bridge.push({ op: 'edit-target', args: rawArgs, found: found.error ? { error: found.error }
+        : { path: found.path, account: found.account || null, digest: editTargets.targetDigest(found.path, found.account || null) } });
+      return found;
+    };
     // `policy`: tool name -> mode, or a list of modes for its calls after the cut (the last repeats; the
     // preparation sees the first). Otherwise writes ask and reads run.
     const policyCalls = new Map();
@@ -289,10 +308,15 @@ async function runTurn(c, { handoff = false } = {}) {
       if (c.leaveInTool === tool) { res.destroyed = true; res.emit('close'); }
       return (c.toolResults && c.toolResults[tool]) || `QA ${tool} result: synthetic-file.txt (1 KB)`;
     } };
+    // `docs`: the Project documents box (noevia's own MCP server, QA_DOCS_BOX) is discovered; its server answers each call.
+    const executeMcp = async (name) => { log.executions.push(name); return (c.toolResults && c.toolResults[name]) || `QA ${name} result: done.`; };
     const toolbox = createToolboxes({
       boxes: [driveTools.box], driveTools, offered: (id) => id !== 'gdrive',
-      mcpBoxes: () => [], mcpTools: () => new Map(), prefill: { budgetFor: () => null, rateFor: () => 0 }, requestScope,
+      mcpBoxes: () => (c.docs ? [QA_DOCS_BOX] : []), mcpTools: () => (c.docs ? QA_DOCS_TOOLS : new Map()), executeMcp,
+      prefill: { budgetFor: () => null, rateFor: () => 0 }, requestScope,
       scope: requestScope, documentSources: { notice: () => '' }, workspace: () => ({ dir }),
+      // `pageSave`: the coworker page tool (#2446), offered in a coworker's conversation (a `specialist-` project).
+      ...(c.pageSave ? { specialistTools: require(path.join(server, 'specialist-page-save.cjs')).createPageSave({ store: { specialistPageSave: async () => ({ status: 500 }) } }) } : {}),
     });
 
     const res = new EventEmitter();
@@ -375,7 +399,7 @@ async function runTurn(c, { handoff = false } = {}) {
       // The bridge call as the native executor makes it: every field of its request (rust-chat-native.cjs EXECUTE_PATH).
       executeToolCall: async (proj, name, args, allowed, signal, outcome, options) => {
         const asked = { op: 'execute', projectId: proj ? proj.id : null, name, args, allowed: [...allowed], routes: [...(options.routes || [])],
-          chatKey: options.chatKey ?? null, exchangeKey: options.exchangeKey ?? null };
+          chatKey: options.chatKey ?? null, exchangeKey: options.exchangeKey ?? null, ...(options.editTarget !== undefined ? { editTarget: options.editTarget } : {}) };
         const wasLeft = res.destroyed;
         let text;
         try { text = await toolbox.executeToolCall(proj, name, args, allowed, signal, outcome, options); }
@@ -398,6 +422,8 @@ async function runTurn(c, { handoff = false } = {}) {
         log.bridge.push({ op: 'target', name, args: rawArgs, found });
         return found;
       },
+      // #687: `storageAccount`, the storage account the user has connected (a plain-named file's edit moves it there).
+      editStorageAccount: () => c.storageAccount || null,
       recordUsage: (_ws, model, reported) => store('recordUsage', { model, reported }),
       recordToolUse: (_ws, name) => store('recordToolUse', { name }),
       chatTitles: c.titles ? { save: (listId, chatId, title, first) => store('chatTitles.save', { listId, chatId, title, first }), autoNamed: (listId, chatId, first) => { store('chatTitles.autoNamed', { listId, chatId, first }); return c.titles.autoNamed !== false; } } : null,
@@ -429,7 +455,8 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, rounds: c.rounds || [], chunks: log.chunks },
+        retrieval: c.retrieval || null, docs: c.docs === true, pageSave: c.pageSave === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null,
+        rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
       files: listFiles(dir),
@@ -461,6 +488,19 @@ const QA_KNOWLEDGE = {
     injected: [{ file: 'qa-notes.txt', body: 'QA notes: the gate code is QA-ORCHID-42.', kind: 'file' }],
     block: 'QA project files:\n[qa-notes.txt]\nQA notes: the gate code is QA-ORCHID-42.' },
 };
+// The Project documents box (#648) as MCP discovery offers it from noevia's own server, and a project using it.
+const DOCS_TOOL = (name, properties) => ({ type: 'function', function: { name, description: `QA ${name}: a synthetic project document tool.`,
+  parameters: { type: 'object', properties, required: Object.keys(properties) } } });
+const QA_DOCS_BOX = { id: 'qa-docs', label: 'QA documents', source: 'mcp', server: 'qa-internal', reads: ['project_read_file'], tools: [
+  DOCS_TOOL('project_read_file', { name: { type: 'string' } }),
+  DOCS_TOOL('project_append_file', { name: { type: 'string' }, text: { type: 'string' } }),
+  DOCS_TOOL('project_replace_text', { name: { type: 'string' }, find: { type: 'string' }, replace: { type: 'string' } })] };
+const QA_DOCS_TOOLS = new Map(QA_DOCS_BOX.tools.map((t) => [t.function.name, { readOnly: t.function.name === 'project_read_file', serverId: 'qa-internal' }]));
+const QA_DOCS_FILES = [{ name: 'qa-notes.txt', content: 'QA notes line one.' }, { name: 'qa-plan.txt', content: 'QA plan: draft.' }];
+const QA_DOCS = { toolboxes: ['core', 'qa-docs'], files: QA_DOCS_FILES };
+// A storage account digest (project-edit-target.cjs storageAccount): synthetic.
+const QA_ACCOUNT = '5ca1ab1e'.repeat(8);
+const APPEND = '{"name":"qa-notes.txt","text":"QA appended line."}';
 const CASES = [
   { name: 'plain', about: 'A plain reply in two deltas, with usage and timings, ended by [DONE].',
     rounds: [{ frames: [chunk({ role: 'assistant', content: '' }), chunk({ content: 'Hello from ' }), chunk({ content: 'QA.' }), finish('stop'), usage(52, 5, 25), { done: true }] }] },
@@ -627,6 +667,29 @@ const CASES = [
       injected: [{ file: 'qa-notes.txt', body: 'QA notes: the gate code is QA-ORCHID-42.', kind: 'file' }],
       block: 'QA project files:\n[qa-notes.txt]\nQA notes: the gate code is QA-ORCHID-42.' },
     rounds: [answer('I do not know the code.')] },
+  { name: 'edit_approved', about: 'A project file append (#648): resolved before its card, which names the file; approved, run pinned to it.',
+    docs: true, project: QA_DOCS, decision: 'approve',
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('Appended the line.')] },
+  { name: 'edit_declined', about: 'A project file text replacement whose card is declined: the reply ends with the paused note.',
+    docs: true, project: QA_DOCS, decision: 'deny',
+    rounds: [{ frames: [toolCall('project_replace_text', '{"name":"qa-plan.txt","find":"draft","replace":"final"}'), finish('tool_calls')] }] },
+  { name: 'edit_name_unresolved', about: 'An edit naming no project file: refused before any card, nothing asked or run.',
+    docs: true, project: QA_DOCS,
+    rounds: [{ frames: [toolCall('project_append_file', '{"name":"qa-missing.txt","text":"QA line."}'), finish('tool_calls')] }, answer('There is no such file.')] },
+  { name: 'edit_files_changed_on_card', about: 'The file is removed while the card is open: approved, then refused as no longer editable.',
+    docs: true, project: QA_DOCS, decision: 'approve', editChanges: [null, { files: [QA_DOCS_FILES[1]] }],
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('The file was gone.')] },
+  { name: 'edit_moved_on_card', about: 'With storage connected the plain file moves into the project folder; the folder changes while the card is open: refused, naming the new file.',
+    docs: true, project: { ...QA_DOCS, reservedFolder: 'QA Folder' }, storageAccount: QA_ACCOUNT, decision: 'approve', editChanges: [null, { reservedFolder: 'QA Folder 2' }],
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('The file moved.')] },
+  { name: 'edit_changed_before_dispatch', about: 'The file is removed after the checks after the answer, before the run: refused, the chat grant revoked.',
+    docs: true, project: QA_DOCS, decision: 'approve', editChanges: [null, null, { files: [] }],
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('It changed before the run.')] },
+  { name: 'edit_chat_wide_grant', about: 'An append under "Allow for this chat" with storage connected: no card; the move into the project folder is pinned with its account.',
+    docs: true, project: { ...QA_DOCS, reservedFolder: 'QA Folder' }, storageAccount: QA_ACCOUNT, chatWide: true,
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('Appended under the chat grant.')] },
+  { name: 'page_save_stays_in_node', about: 'A coworker conversation offers the page save (#2446): the hand-off is refused (page-save) and Node runs the turn.',
+    pageSave: true, project: { id: 'specialist-qa', name: 'QA Coworker' }, rounds: [answer('A coworker reply.')] },
 ];
 
 (async () => {

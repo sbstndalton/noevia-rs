@@ -29,7 +29,9 @@ use std::sync::Mutex;
 use std::task::{Context, Poll, Waker};
 
 use chat_turn::after::{Keep, Saving};
-use chat_turn::host::{Answer, EngineRequest, GateRefusal, Host, Read, Target, ToolRun};
+use chat_turn::host::{
+    Answer, EditTarget, EngineRequest, GateRefusal, Host, Read, Target, ToolRun,
+};
 use chat_turn::js;
 use chat_turn::native::{self, Ended, Helpers, Process};
 use chat_turn::prepared::Prepared;
@@ -439,6 +441,30 @@ impl Host for Script {
         }
     }
 
+    async fn edit_target(&self, project_id: Option<&str>, name: &str, args: &str) -> EditTarget {
+        let next = self.bridge.lock().unwrap().remove(0);
+        assert_eq!(
+            (next.get("op").as_str(), next.get("args").as_str()),
+            (Some("edit-target"), Some(args)),
+            "{name}: the edit target asked"
+        );
+        // chat.cjs resolves against the turn's own project (`project ? getProject(project.id) : null`).
+        assert_eq!(
+            project_id,
+            self.case.get("input").get("project").get("id").as_str()
+        );
+        let found = next.get("found");
+        match (found.get("error").as_str(), found.get("path").as_str()) {
+            (Some(e), _) => EditTarget::Refused(e.to_string()),
+            (None, Some(path)) => EditTarget::Found {
+                path: path.to_string(),
+                account: found.get("account").as_str().map(str::to_string),
+                digest: found.get("digest").as_str().unwrap().to_string(),
+            },
+            _ => EditTarget::Failed,
+        }
+    }
+
     async fn permission_binding(
         &self,
         chat_id: Option<&str>,
@@ -532,6 +558,11 @@ impl Host for Script {
         let JValue::Obj(fields) = &asked else {
             panic!()
         };
+        assert_eq!(
+            next.get("editTarget").as_str(),
+            run.edit_target.as_deref(),
+            "the tool run's editTarget"
+        );
         for (k, v) in fields {
             assert_eq!(
                 js::stringify(next.get(k)),
@@ -683,7 +714,15 @@ fn every_prepared_turn_reads() {
         panic!()
     };
     let mut read = 0;
+    let mut refused = Vec::new();
     for c in cases.iter().filter(|c| c.get("handoff").is_object()) {
+        let name = c.get("name").as_str().unwrap();
+        if let Some(why) = c.get("handoff").get("refused").as_str() {
+            // A turn core keeps: no frame, Node runs it.
+            assert_eq!(c.get("handoff").get("prepared"), &JValue::Null, "{name}");
+            refused.push(format!("{name}: {why}"));
+            continue;
+        }
         let p = Prepared::read(c.get("handoff").get("prepared"))
             .unwrap_or_else(|e| panic!("{}: {e:?}", c.get("name").as_str().unwrap()));
         assert!(p.model.starts_with("qa"));
@@ -694,9 +733,22 @@ fn every_prepared_turn_reads() {
             5.0
         };
         assert_eq!(c.get("handoff").get("before").as_num(), Some(before));
+        // The project edit tools are named for the gate (chat.cjs projectEditTool) exactly when offered.
+        let offered = |n: &str| {
+            p.tools
+                .iter()
+                .any(|t| t.get("function").get("name").as_str() == Some(n))
+        };
+        let edits: Vec<&str> = ["project_append_file", "project_replace_text"]
+            .into_iter()
+            .filter(|n| offered(n))
+            .collect();
+        assert_eq!(p.edit_tools, edits, "{name}");
         read += 1;
     }
     assert!(read >= 30);
+    // The coworker page save (#2446) is the one recorded turn still kept in Node.
+    assert_eq!(refused, ["page_save_stays_in_node: page-save"]);
 }
 
 #[test]
@@ -827,7 +879,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 55, "{ran:?}");
+    assert_eq!(ran.len(), 62, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is

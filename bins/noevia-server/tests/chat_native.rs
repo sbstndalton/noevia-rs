@@ -602,6 +602,12 @@ async fn core_service(
                 js::obj(Vec::<(String, JValue)>::new())
             })
         }
+        "/internal/chat/tools/edit-target" => {
+            let Some(next) = tool_bridge(&mut sc, "edit-target", &sent) else {
+                return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
+            };
+            ok(next.get("found").clone())
+        }
         "/internal/chat/tools/execute" => {
             let Some(next) = tool_bridge(&mut sc, "execute", &sent) else {
                 return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));

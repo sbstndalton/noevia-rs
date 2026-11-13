@@ -43,7 +43,7 @@ use axum::http::{header, HeaderValue, Response};
 use bytes::Bytes;
 use chat_turn::after::{Keep, Saving};
 use chat_turn::handoff::{Frames, Piece};
-use chat_turn::host::{Answer, EngineRequest, GateRefusal, Host, Read, Target, ToolRun};
+use chat_turn::host::{Answer, EditTarget, EngineRequest, GateRefusal, Host, Read, Target, ToolRun};
 use chat_turn::js;
 use chat_turn::native::{self, Helpers, Process};
 use chat_turn::prepared::Prepared;
@@ -951,6 +951,38 @@ impl Host for FrontHost {
         }
     }
 
+    async fn edit_target(&self, project_id: Option<&str>, name: &str, args: &str) -> EditTarget {
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("projectId", project_id.map_or(JValue::Null, js::s)),
+            ("name", js::s(name)),
+            ("args", js::s(args)),
+        ]);
+        match self
+            .core("/internal/chat/tools/edit-target", &body, BRIDGE_TIMEOUT)
+            .await
+        {
+            Some((200, v)) => {
+                if let Some(e) = v.get("error").as_str() {
+                    return EditTarget::Refused(e.to_string());
+                }
+                match (v.get("path").as_str(), v.get("digest").as_str()) {
+                    (Some(path), Some(digest))
+                        if digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit()) =>
+                    {
+                        EditTarget::Found {
+                            path: path.to_string(),
+                            account: v.get("account").as_str().map(str::to_string),
+                            digest: digest.to_string(),
+                        }
+                    }
+                    _ => EditTarget::Failed,
+                }
+            }
+            _ => EditTarget::Failed,
+        }
+    }
+
     async fn permission_binding(
         &self,
         chat_id: Option<&str>,
@@ -1035,6 +1067,10 @@ impl Host for FrontHost {
             ),
             ("chatKey", run.chat_key.clone().map_or(JValue::Null, js::s)),
             ("exchangeKey", js::s(run.exchange_key.clone())),
+            (
+                "editTarget",
+                run.edit_target.clone().map_or(JValue::Null, js::s),
+            ),
         ]);
         // Node's tool gets the turn's abort signal when the client leaves and the turn still takes its
         // answer: the front asks core to abort the run, and waits for it.
