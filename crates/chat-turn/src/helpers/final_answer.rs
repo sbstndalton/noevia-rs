@@ -39,7 +39,7 @@ pub fn source_links(result: &str) -> Vec<String> {
     let Some(re) = URL_RE.as_ref() else {
         return Vec::new();
     };
-    for (s, e) in re.find_all(&all) {
+    for (s, e) in re.find_iter(&all) {
         let found = all.get(s..e).unwrap_or_default();
         let url =
             super::js_regex::strip_trailing(found, |u| ".,;:!?".encode_utf16().any(|p| p == u));

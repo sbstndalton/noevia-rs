@@ -119,30 +119,171 @@ fn clean_search_query_as_node() {
 }
 
 #[test]
-fn clean_search_args_as_node_with_the_named_difference() {
-    let cases = section("cleanSearchArgs");
-    let mut differences = 0;
-    for case in cases {
-        let (label, name, raw, want) = (
+fn clean_search_args_as_node_with_the_named_differences() {
+    let (mut unsupported, mut throws) = (0, 0);
+    for case in section("cleanSearchArgs") {
+        let (label, name, raw) = (
             s(get(case, "label")),
             s(get(case, "name")),
             s(get(case, "raw")),
-            s(get(case, "out")),
         );
         let got = helpers::clean_search_args(name, raw);
-        if case.get("difference").as_str() == Some("unsupported") {
-            // Named difference: js_json refuses these arguments; Rust keeps them, Node rewrote them.
-            assert_eq!(got, raw, "{label}");
-            assert_ne!(
-                want, raw,
-                "{label}: Node no longer rewrites it, drop the difference"
-            );
-            differences += 1;
-        } else {
-            assert_eq!(got, want, "{label} {name:?} {raw:?}");
+        match case.get("difference").as_str() {
+            Some("unsupported") => {
+                // Named difference 1: js_json refuses these arguments; Rust keeps them, Node rewrote them.
+                assert_eq!(got, raw, "{label}");
+                assert_ne!(
+                    s(get(case, "out")),
+                    raw,
+                    "{label}: Node no longer rewrites it"
+                );
+                unsupported += 1;
+            }
+            Some("throws") => {
+                // Named difference 2: Node's JSON.stringify ran out of stack and threw; Rust keeps them.
+                assert_eq!(s(get(case, "throws")), "RangeError", "{label}");
+                assert!(matches!(case.get("out"), JValue::Undefined), "{label}");
+                assert_eq!(got, raw, "{label}");
+                throws += 1;
+            }
+            _ => assert_eq!(got, s(get(case, "out")), "{label} {name:?} {raw:?}"),
         }
     }
-    assert_eq!(differences, 2);
+    assert_eq!((unsupported, throws), (2, 1));
+}
+
+/// A recorded value with every string as its UTF-16 code units.
+fn as_units(v: &JValue) -> JValue {
+    match v {
+        JValue::Str(t) => JValue::Arr(
+            helpers::units(t)
+                .into_iter()
+                .map(|u| JValue::Num(f64::from(u)))
+                .collect(),
+        ),
+        JValue::Arr(items) => JValue::Arr(items.iter().map(as_units).collect()),
+        other => other.clone(),
+    }
+}
+
+/// Inputs holding U+10F800..U+10FFFF: in js_json::wtf16 form (the caller rule) those characters
+/// are lone surrogates, so the Rust result is Node's result for the lone-surrogate string.
+#[test]
+fn wtf16_form_of_the_reserved_range_is_read_as_node_reads_lone_surrogates() {
+    let mut differs = 0;
+    for case in section("outOfDomain") {
+        let (input, mapped, real) = (
+            s(get(case, "input")),
+            get(case, "mapped"),
+            get(case, "real"),
+        );
+        assert!(input.chars().any(|c| wtf16::lone_unit(c).is_some()));
+        differs += usize::from(&as_units(mapped) != real);
+        match s(get(case, "fn")) {
+            "cleanSearchQuery" => assert_eq!(helpers::clean_search_query(input), s(mapped)),
+            "cleanSearchArgs" => {
+                assert_eq!(helpers::clean_search_args("web_search", input), s(mapped))
+            }
+            "announcesToolAction" => {
+                assert_eq!(
+                    Some(helpers::announces_tool_action(input)),
+                    mapped.as_bool()
+                )
+            }
+            "sourceLinks" => assert_eq!(helpers::source_links(input), strings(mapped)),
+            other => panic!("unknown {other}"),
+        }
+    }
+    assert!(differs > 0);
+}
+
+/// Seeded random token soup recorded from Node, through every helper.
+#[test]
+fn random_text_as_node() {
+    let notes = strings(get(get(&RECORDED, "toolRouteNotes"), "notes"));
+    let cases = section("random");
+    assert!(cases.len() >= 500);
+    let (gdrive, web) = (["gdrive".to_string()], ["web-search".to_string()]);
+    for case in cases {
+        let text = s(get(case, "text"));
+        assert_eq!(
+            helpers::clean_search_query(text),
+            s(get(case, "query")),
+            "{text:?}"
+        );
+        assert_eq!(
+            Some(helpers::announces_tool_action(text)),
+            get(case, "announces").as_bool(),
+            "{text:?}"
+        );
+        assert_eq!(
+            helpers::source_links(text),
+            strings(get(case, "links")),
+            "{text:?}"
+        );
+        // JSON.stringify({ query: text, n: 1 }), lone surrogates escaped as Node writes them.
+        let args = JValue::Obj(vec![
+            ("query".into(), JValue::Str(text.into())),
+            ("n".into(), JValue::Num(1.0)),
+        ]);
+        let raw = wtf16::stringify(&args).unwrap();
+        assert_eq!(
+            helpers::clean_search_args("web_search", &raw),
+            s(get(case, "args")),
+            "{text:?}"
+        );
+        let input = RouteInput {
+            message: text,
+            offered: &gdrive,
+            on_server: &web,
+            automatic: get(case, "automatic").as_bool().unwrap(),
+            gate_none: true,
+            automatic_web: get(case, "automaticWeb").as_bool().unwrap(),
+            ..RouteInput::default()
+        };
+        let want = &notes[get(case, "notes").as_num().unwrap() as usize];
+        assert_eq!(&helpers::tool_route_notes(&input), want, "{text:?}");
+    }
+}
+
+/// Inputs V8 cleans in linear (repeated wrappers) or bounded time (a long `CITE_TAIL` scan):
+/// the recorded result, well under two seconds each even in a debug build.
+#[test]
+fn hostile_queries_as_node_in_bounded_time() {
+    for case in section("hostile") {
+        let [input, want] = arr(case) else {
+            panic!("case")
+        };
+        let started = std::time::Instant::now();
+        assert_eq!(helpers::clean_search_query(s(input)), s(want));
+        let took = started.elapsed();
+        assert!(
+            took.as_secs_f64() < 2.0,
+            "{} units took {took:?}",
+            s(input).len()
+        );
+    }
+}
+
+/// Recursion depth follows the pattern, not the text: megabyte inputs on a 256 KiB stack.
+#[test]
+fn recursion_does_not_grow_with_the_text() {
+    let run = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(|| {
+            let big = "Search the web: I will read https://qa.invalid/x. ".repeat(20_000);
+            let spaced = format!("cite sources for {}x", "a ".repeat(200_000));
+            for text in [&big, &spaced, &" ".repeat(1_000_000)] {
+                let _ = helpers::clean_search_query(text);
+                let _ = helpers::announces_tool_action(text);
+                let _ = helpers::source_links(text);
+                let _ = helpers::tool_route_notes(&RouteInput {
+                    message: text,
+                    ..RouteInput::default()
+                });
+            }
+        });
+    run.unwrap().join().unwrap();
 }
 
 #[test]
@@ -220,8 +361,8 @@ fn tool_route_notes_as_node() {
     }
 }
 
-/// Inputs no recording covers: long, repetitive, lone-surrogate-heavy and pseudo-random text.
-/// Nothing may panic, recursion must not grow with the text, and results keep their invariants.
+/// Inputs no recording covers (long, repetitive, deeply nested, lone-surrogate-heavy): nothing
+/// panics. Results are checked against Node in `random_text_as_node`.
 #[test]
 fn odd_inputs_do_not_panic() {
     let mut seed = 0x5eed_u32;
@@ -237,8 +378,7 @@ fn odd_inputs_do_not_panic() {
         let text: String = (0..len)
             .map(|_| alphabet[next() as usize % alphabet.len()])
             .collect();
-        let cleaned = helpers::clean_search_query(&text);
-        assert!(cleaned == text || js_json::wtf16::len(&cleaned) >= 3);
+        let _ = helpers::clean_search_query(&text);
         let _ = helpers::announces_tool_action(&text);
         assert!(helpers::source_links(&text).len() <= helpers::MAX_SOURCES);
         let _ = helpers::clean_search_args("web_search", &text);

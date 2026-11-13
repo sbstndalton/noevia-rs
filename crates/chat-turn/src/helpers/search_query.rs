@@ -35,6 +35,7 @@ static CITE_TAIL: Pattern = LazyLock::new(|| {
         true,
     )
     .ok()
+    .map(Regex::memoized)
 });
 static SEARCH_NAME: Pattern = LazyLock::new(|| Regex::new("search", true).ok());
 
@@ -57,6 +58,11 @@ fn remove(re: &Pattern, text: &[u16]) -> Vec<u16> {
     }
 }
 
+/// `text.replace(re, '')` for one of the `^` patterns: a narrower window of the same buffer.
+fn strip<'t>(re: &Pattern, text: &'t [u16]) -> &'t [u16] {
+    re.as_ref().map_or(text, |re| re.strip_prefix(text))
+}
+
 /// Whether `text` holds "cite" in any ASCII case: every `CITE_TAIL` match does, so text without it
 /// skips the pattern's backtracking.
 fn mentions_cite(text: &[u16]) -> bool {
@@ -73,23 +79,29 @@ fn mentions_cite(text: &[u16]) -> bool {
 }
 
 fn clean_units(query: &[u16]) -> Option<Vec<u16>> {
-    let mut text = trim(query).to_vec();
+    // The leading patterns and `trim` only ever take units off the ends, so each pass narrows one
+    // window of the query, and an unchanged length is an unchanged text.
+    let mut text = trim(query);
     loop {
-        let previous = text.clone();
-        let step = remove(&LEADING, &text);
-        let step = remove(&SEARCH_WRAPPER, &step);
-        let step = remove(&CITE_LEAD, &step);
-        text = trim(&step).to_vec();
-        if text == previous {
+        let previous = text.len();
+        text = trim(strip(
+            &CITE_LEAD,
+            strip(&SEARCH_WRAPPER, strip(&LEADING, text)),
+        ));
+        if text.len() == previous {
             break;
         }
     }
-    if mentions_cite(&text) {
-        text = remove(&CITE_TAIL, &text);
-    }
+    let tail;
+    let text = if mentions_cite(text) {
+        tail = remove(&CITE_TAIL, text);
+        tail.as_slice()
+    } else {
+        text
+    };
     let trailing = |u: u16| is_js_space(u) || ".?!;,:".encode_utf16().any(|p| p == u);
-    let text = trim(strip_trailing(&text, trailing)).to_vec();
-    (text.len() >= 3).then_some(text)
+    let text = trim(strip_trailing(text, trailing));
+    (text.len() >= 3).then(|| text.to_vec())
 }
 
 /// `cleanSearchQuery(query)`: the question a search query should carry. The input unchanged when

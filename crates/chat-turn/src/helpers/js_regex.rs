@@ -11,9 +11,19 @@
 //!
 //! Supported syntax: literals, `\` escapes (`\s \w \b` and an escaped punctuation unit), classes
 //! with ranges and negation, `(?:...)` and `(...)` groups (no captures are read), `|`, the greedy
-//! quantifiers `* + ?` on a single unit or class, and `?` on a group. Only single units and classes
-//! repeat without bound, and they are matched by a loop, so recursion depth is bounded by the
-//! pattern, never by the text.
+//! quantifiers `* + ?` on a single unit or class, and `?` on a group that cannot match empty. Only
+//! single units and classes repeat without bound, and they are matched by a loop, so recursion
+//! depth is bounded by the pattern, never by the text (`tests/node_helpers.rs` runs megabyte
+//! inputs on a 256 KiB stack).
+//!
+//! Cost: a pattern that starts with `^` is tried at position 0 only. A pattern compiled with
+//! [`Regex::memoized`] records, per repetition and text position, that the rest of the pattern
+//! failed there. That is exact because every point of the pattern has one fixed continuation (no
+//! captures or backreferences are read, and an optional group never matches empty), and a scan
+//! stops at its first success; it bounds the work of a pattern such as `CITE_TAIL` to
+//! O(text x pattern) plus the repetition loops, where V8 backtracks cubically.
+
+use std::cell::RefCell;
 
 /// JavaScript's `\s` and the set `String.prototype.trim` removes (WhiteSpace and LineTerminator).
 pub fn is_js_space(u: u16) -> bool {
@@ -77,7 +87,8 @@ impl Set {
 enum Node {
     Unit(u16),
     Set(Set),
-    Rep(Set, usize, usize),
+    /// A class repeated `min..=max` times; the last field numbers it for the memo.
+    Rep(Set, usize, usize, usize),
     Alt(Vec<Vec<Node>>),
     Opt(Vec<Node>),
     Start,
@@ -90,6 +101,8 @@ enum Node {
 pub struct Regex {
     seq: Vec<Node>,
     icase: bool,
+    reps: usize,
+    memo: bool,
 }
 
 /// Why a pattern did not compile (only constant patterns are compiled; a test compiles each).
@@ -99,6 +112,17 @@ pub struct PatternError;
 struct Parser {
     src: Vec<char>,
     at: usize,
+    reps: usize,
+}
+
+/// Whether a sequence can match the empty string.
+fn nullable(seq: &[Node]) -> bool {
+    seq.iter().all(|n| match n {
+        Node::Unit(_) | Node::Set(_) => false,
+        Node::Rep(_, min, _, _) => *min == 0,
+        Node::Alt(alts) => alts.iter().any(|a| nullable(a)),
+        Node::Opt(_) | Node::Start | Node::End | Node::WordBoundary => true,
+    })
 }
 
 fn unit(c: char) -> Result<u16, PatternError> {
@@ -161,10 +185,16 @@ impl Parser {
             if self.peek() == Some('?') {
                 return Err(PatternError); // lazy quantifiers are not used
             }
+            self.reps += 1;
+            let id = self.reps - 1;
             seq.push(match atom {
-                Node::Unit(u) => Node::Rep(set_of(vec![(u, u)], false, false), min, max),
-                Node::Set(s) => Node::Rep(s, min, max),
-                Node::Alt(_) if (min, max) == (0, 1) => Node::Opt(vec![atom]),
+                Node::Unit(u) => Node::Rep(set_of(vec![(u, u)], false, false), min, max, id),
+                Node::Set(s) => Node::Rep(s, min, max, id),
+                // JS fails an empty iteration of `?`; a group that can match empty is refused so
+                // that every point of the pattern keeps one continuation (see the memo).
+                Node::Alt(_) if (min, max) == (0, 1) && !nullable(std::slice::from_ref(&atom)) => {
+                    Node::Opt(vec![atom])
+                }
                 _ => return Err(PatternError),
             });
         }
@@ -247,69 +277,43 @@ impl Regex {
         let mut p = Parser {
             src: source.chars().collect(),
             at: 0,
+            reps: 0,
         };
         let seq = p.alternation()?;
         if p.at != p.src.len() {
             return Err(PatternError);
         }
-        Ok(Regex { seq, icase })
+        Ok(Regex {
+            seq,
+            icase,
+            reps: p.reps,
+            memo: false,
+        })
     }
 
-    fn run(
-        &self,
-        text: &[u16],
-        seq: &[Node],
-        pos: usize,
-        k: &mut dyn FnMut(usize) -> bool,
-    ) -> bool {
-        let Some((first, rest)) = seq.split_first() else {
-            return k(pos);
-        };
-        let at = |i: usize| text.get(i).copied();
-        match first {
-            Node::Unit(u) => {
-                at(pos).is_some_and(|c| c == *u || (self.icase && fold(c) == fold(*u)))
-                    && self.run(text, rest, pos + 1, k)
-            }
-            Node::Set(s) => {
-                at(pos).is_some_and(|c| s.matches(c, self.icase))
-                    && self.run(text, rest, pos + 1, k)
-            }
-            Node::Rep(s, min, max) => {
-                let mut n = 0usize;
-                while n < *max && at(pos + n).is_some_and(|c| s.matches(c, self.icase)) {
-                    n += 1;
-                }
-                if n < *min {
-                    return false;
-                }
-                (*min..=n)
-                    .rev()
-                    .any(|len| self.run(text, rest, pos + len, k))
-            }
-            Node::Alt(alts) => alts
-                .iter()
-                .any(|alt| self.run(text, alt, pos, &mut |end| self.run(text, rest, end, k))),
-            Node::Opt(inner) => {
-                self.run(text, inner, pos, &mut |end| {
-                    end != pos && self.run(text, rest, end, k)
-                }) || self.run(text, rest, pos, k)
-            }
-            Node::Start => pos == 0 && self.run(text, rest, pos, k),
-            Node::End => pos == text.len() && self.run(text, rest, pos, k),
-            Node::WordBoundary => {
-                let before = pos.checked_sub(1).and_then(at).is_some_and(is_word);
-                let after = at(pos).is_some_and(is_word);
-                before != after && self.run(text, rest, pos, k)
-            }
-        }
+    /// The same pattern, matched with the failure memo (see the module notes).
+    pub fn memoized(mut self) -> Regex {
+        self.memo = true;
+        self
     }
 
     /// The first match at or after `from`: its start and end, as `exec` with `lastIndex = from`.
     pub fn find_from(&self, text: &[u16], from: usize) -> Option<(usize, usize)> {
-        (from..=text.len()).find_map(|start| {
+        let anchored = matches!(self.seq.first(), Some(Node::Start));
+        let last = if anchored { 0 } else { text.len() };
+        let m = Matcher {
+            re: self,
+            text,
+            width: text.len() + 1,
+            failed: RefCell::new(if self.memo {
+                vec![0u64; (self.reps * (text.len() + 1)).div_ceil(64)]
+            } else {
+                Vec::new()
+            }),
+        };
+        (from..=last).find_map(|start| {
             let mut end = None;
-            self.run(text, &self.seq, start, &mut |e| {
+            m.run(&self.seq, start, &mut |e| {
                 end = Some(e);
                 true
             });
@@ -320,6 +324,15 @@ impl Regex {
     /// `re.test(text)` for a non-global `re`.
     pub fn test(&self, text: &[u16]) -> bool {
         self.find_from(text, 0).is_some()
+    }
+
+    /// `text.replace(re, '')` for a non-global `re` that starts with `^`: what follows the match
+    /// (the text itself when there is none), without a copy.
+    pub fn strip_prefix<'t>(&self, text: &'t [u16]) -> &'t [u16] {
+        match self.find_from(text, 0) {
+            Some((0, e)) => text.get(e..).unwrap_or_default(),
+            _ => text,
+        }
     }
 
     /// `text.replace(re, '')` for a non-global `re`: the first match removed.
@@ -334,18 +347,95 @@ impl Regex {
         }
     }
 
-    /// The spans `text.matchAll(re)` yields for a global `re` (an empty match steps one unit on).
-    pub fn find_all(&self, text: &[u16]) -> Vec<(usize, usize)> {
-        let mut out = Vec::new();
-        let mut from = 0usize;
-        while from <= text.len() {
-            let Some((s, e)) = self.find_from(text, from) else {
-                break;
-            };
-            out.push((s, e));
-            from = if e == s { e + 1 } else { e };
+    /// The spans `text.matchAll(re)` yields for a global `re`, lazily (an empty match steps one
+    /// unit on).
+    pub fn find_iter<'r, 't>(
+        &'r self,
+        text: &'t [u16],
+    ) -> impl Iterator<Item = (usize, usize)> + use<'r, 't> {
+        let mut from = Some(0usize);
+        std::iter::from_fn(move || {
+            let (s, e) = self.find_from(text, from?)?;
+            from = Some(if e == s { e + 1 } else { e }).filter(|&f| f <= text.len());
+            Some((s, e))
+        })
+    }
+}
+
+/// One scan of one text.
+struct Matcher<'r, 't> {
+    re: &'r Regex,
+    text: &'t [u16],
+    width: usize,
+    /// Bit `rep * width + pos`: the pattern after repetition `rep` failed from `pos`.
+    failed: RefCell<Vec<u64>>,
+}
+
+impl Matcher<'_, '_> {
+    fn known_failure(&self, rep: usize, pos: usize) -> bool {
+        let bit = rep * self.width + pos;
+        self.failed
+            .try_borrow()
+            .is_ok_and(|f| f.get(bit / 64).is_some_and(|w| w & (1 << (bit % 64)) != 0))
+    }
+
+    fn note_failure(&self, rep: usize, pos: usize) {
+        let bit = rep * self.width + pos;
+        if let Ok(mut f) = self.failed.try_borrow_mut() {
+            if let Some(w) = f.get_mut(bit / 64) {
+                *w |= 1 << (bit % 64);
+            }
         }
-        out
+    }
+
+    fn run(&self, seq: &[Node], pos: usize, k: &mut dyn FnMut(usize) -> bool) -> bool {
+        let Some((first, rest)) = seq.split_first() else {
+            return k(pos);
+        };
+        let icase = self.re.icase;
+        let at = |i: usize| self.text.get(i).copied();
+        match first {
+            Node::Unit(u) => {
+                at(pos).is_some_and(|c| c == *u || (icase && fold(c) == fold(*u)))
+                    && self.run(rest, pos + 1, k)
+            }
+            Node::Set(s) => {
+                at(pos).is_some_and(|c| s.matches(c, icase)) && self.run(rest, pos + 1, k)
+            }
+            Node::Rep(s, min, max, id) => {
+                let mut n = 0usize;
+                while n < *max && at(pos + n).is_some_and(|c| s.matches(c, icase)) {
+                    n += 1;
+                }
+                if n < *min {
+                    return false;
+                }
+                (*min..=n).rev().any(|len| {
+                    let p = pos + len;
+                    if self.re.memo && self.known_failure(*id, p) {
+                        return false;
+                    }
+                    let ok = self.run(rest, p, k);
+                    if !ok && self.re.memo {
+                        self.note_failure(*id, p);
+                    }
+                    ok
+                })
+            }
+            Node::Alt(alts) => alts
+                .iter()
+                .any(|alt| self.run(alt, pos, &mut |end| self.run(rest, end, k))),
+            Node::Opt(inner) => {
+                self.run(inner, pos, &mut |end| self.run(rest, end, k)) || self.run(rest, pos, k)
+            }
+            Node::Start => pos == 0 && self.run(rest, pos, k),
+            Node::End => pos == self.text.len() && self.run(rest, pos, k),
+            Node::WordBoundary => {
+                let before = pos.checked_sub(1).and_then(at).is_some_and(is_word);
+                let after = at(pos).is_some_and(is_word);
+                before != after && self.run(rest, pos, k)
+            }
+        }
     }
 }
 

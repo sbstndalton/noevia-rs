@@ -43,6 +43,15 @@ const announced = require(path.join(core, 'server/announced-action.cjs'));
 const finalAnswer = require(path.join(core, 'server/final-answer.cjs'));
 const { toolRouteNotes } = require(path.join(core, 'server/tool-route-notes.cjs'));
 const { automaticBoxesFor } = require(path.join(core, 'server/tools-mode.cjs'));
+// tool-gate.cjs prefetchableSearch answers false when dav-parse.wasm does not load, which would silently change
+// automaticWeb; refuse to record without it.
+try {
+  const probe = require(path.join(core, 'server/dav-parse-wasm.cjs')).toolGateQueries(['QA probe']);
+  if (!Array.isArray(probe?.prefetchable) || typeof probe.prefetchable[0] !== 'boolean') throw new Error('no prefetchable answer');
+} catch (error) {
+  process.stderr.write(`dav-parse.wasm did not load (build server/wasm/dav-parse.wasm in the checkout): ${error?.message || error}\n`);
+  process.exit(2);
+}
 
 // ---- determinism -----------------------------------------------------------------------------------------------
 function mulberry32(seed) {
@@ -134,6 +143,7 @@ const ARGS = [
   ['bigNumberUnchanged', '{"query":"QA plain","n":1e400}'],
   ['nested', `{"query":"Search the web: QA nested","x":${deep(50, '1')}}`],
   ['tooDeep', `{"query":"Search the web: QA deep","x":${deep(200, '1')}}`, 'unsupported'],
+  ['stackDeep', `{"query":"Search the web: QA stack","x":${deep(10000, '1')}}`, 'throws'],
   ['proto', '{"__proto__":{"a":1},"query":"Search the web: QA proto"}'],
   ['escapes', '{"query":"Search the web: QA \\u0041 \\n \\"quote\\" \\/ slash \\\\ back"}'],
   ['lineSeparators', '{"query":"Search the web: QA \u2028\u2029 sep","s":"</script>"}'],
@@ -156,7 +166,7 @@ for (const [label, raw, difference] of ARGS) cleanArgs.push({ label, name: 'web_
   }
 }
 for (const c of cleanArgs) {
-  c.out = cleanSearchArgs(c.name, c.raw);
+  try { c.out = cleanSearchArgs(c.name, c.raw); } catch (error) { c.throws = error.name; }
   if (c.difference === undefined) delete c.difference;
 }
 
@@ -266,6 +276,57 @@ const routeNotes = routeInputs.map((input) => {
   return { ...call, automaticWeb: automaticBoxesFor(input.message).includes('web-search'), out: noteIndex.get(out) };
 });
 
+// ---- characters U+10F800..U+10FFFF: outside the wtf16 domain ----------------------------------------------------
+// A Rust caller holds JS text in js_json::wtf16 form, where these code points stand for lone surrogates (U+10F800 is
+// \ud800). Each input is recorded in that form (`input`, lone surrogates), with Node's result for it (`mapped`) and
+// Node's result for the real characters (`real`, every string as its UTF-16 code units: wtf16 cannot carry them);
+// the replay checks the Rust result is `mapped`.
+const toMapped = (s) => s.replace(/[\u{10F800}-\u{10FFFF}]/gu, (c) => String.fromCharCode(0xd800 + c.codePointAt(0) - 0x10f800));
+const REAL = ['Search the web: a\u{10F800}', 'Search the web: QA \u{10FFFF} x', '\u{10F800}', 'Search the web: \u{10F800}\u{10FBFF}'];
+const asUnits = (v) => (typeof v === 'string' ? Array.from({ length: v.length }, (_, i) => v.charCodeAt(i)) : Array.isArray(v) ? v.map(asUnits) : v);
+const outOfDomain = [];
+for (const r of REAL) outOfDomain.push({ fn: 'cleanSearchQuery', input: toMapped(r), real: asUnits(cleanSearchQuery(r)), mapped: cleanSearchQuery(toMapped(r)) });
+for (const r of [`I will read\u{10F800}`, `${'\u{10F800}'.repeat(140)} I will read`, `${'y'.repeat(270)}\u{10FFFF}I will read`]) {
+  outOfDomain.push({ fn: 'announcesToolAction', input: toMapped(r), real: asUnits(announced.announcesToolAction(r)), mapped: announced.announcesToolAction(toMapped(r)) });
+}
+for (const r of [`${U}/${'\u{10FFFD}'.repeat(10)}`, `${U}/${'a'.repeat(250)}${'\u{10F800}'.repeat(150)}`]) {
+  outOfDomain.push({ fn: 'sourceLinks', input: toMapped(r), real: asUnits(finalAnswer.sourceLinks(r)), mapped: finalAnswer.sourceLinks(toMapped(r)) });
+}
+for (const r of REAL) {
+  const raw = JSON.stringify({ query: r });
+  outOfDomain.push({ fn: 'cleanSearchArgs', input: toMapped(raw), real: asUnits(cleanSearchArgs('web_search', raw)), mapped: cleanSearchArgs('web_search', toMapped(raw)) });
+}
+
+// ---- seeded random text through every helper --------------------------------------------------------------------
+const TOKENS = ['cite', 'Cite', 'CITE', 'sources', 'source', 'links', 'for', 'and', 'please', 'search', 'Search the web:', 'web search:',
+  'google online', 'I', 'i', 'will', "I'll", 'I’ll', 'let me', "let's", 'read', 'check', 'look up', 'go through', 'first,', `${U}/r`,
+  'http://QA.invalid/', 'HTTPS://', '.', '!', '?', ':', ';', ',', '-', '"', '“', '(', ')', ' ', '  ', '\n', '\t', '᠎', '﻿', 'K',
+  'ſ', 'ı', 'İ', '\ud83d', '\ude00', '😀', ' ', '　', '​', ' ', 'QA', 'nextcloud', 'google drive', 'latest', 'files',
+  'x'.repeat(40)];
+const random = [];
+{
+  const rand = mulberry32(0x1e57);
+  for (let i = 0; i < 500; i += 1) {
+    const parts = [];
+    if (rand() < 0.25) parts.push('y'.repeat(230 + Math.floor(rand() * 80)), pick(rand, ['😀', '\ud83d', '']));
+    const count = 1 + Math.floor(rand() * 30);
+    for (let j = 0; j < count; j += 1) parts.push(pick(rand, TOKENS), rand() < 0.6 ? ' ' : '');
+    if (rand() < 0.3) parts.push(pick(rand, SEPARATORS), pick(rand, ANNOUNCEMENTS), pick(rand, SUFFIXES));
+    const text = parts.join('');
+    const noteInput = { message: text, offered: ['gdrive'], onServer: ['web-search'], automatic: rand() < 0.3, gateNone: true };
+    const out = toolRouteNotes(noteInput);
+    if (!noteIndex.has(out)) { noteIndex.set(out, notes.length); notes.push(out); }
+    random.push({ text, query: cleanSearchQuery(text), announces: announced.announcesToolAction(text), links: finalAnswer.sourceLinks(text),
+      args: cleanSearchArgs('web_search', JSON.stringify({ query: text, n: 1 })), automatic: noteInput.automatic,
+      automaticWeb: automaticBoxesFor(text).includes('web-search'), notes: noteIndex.get(out) });
+  }
+}
+
+// ---- inputs V8 handles in linear or bounded time, replayed under a time limit --------------------------------------
+const hostile = ['web search: '.repeat(4000) + 'QA', `x${' '.repeat(2000)}cite sources for${' '.repeat(2000)}.x`,
+  `${'Search the web: '.repeat(500)}${'cite sources '.repeat(300)}QA`, `QA ${'cite sources for '.repeat(400)}`]
+  .map((q) => [q, cleanSearchQuery(q)]);
+
 // ---- the recording ---------------------------------------------------------------------------------------------
 const fixture = {
   version: 1,
@@ -282,12 +343,15 @@ const fixture = {
   sourceLinks,
   fallbackText,
   toolRouteNotes: { notes, cases: routeNotes },
+  outOfDomain,
+  random,
+  hostile,
 };
 const text = `${JSON.stringify(fixture, null, 1)}\n`;
 const check = process.argv.indexOf('--check');
 if (check > 0) {
   const committed = fs.readFileSync(process.argv[check + 1], 'utf8');
   if (committed !== text) { process.stderr.write('the recording differs from the committed fixture: record it again\n'); process.exit(1); }
-  process.stderr.write(`ok: ${cleanQuery.length} queries, ${cleanArgs.length} args, ${announces.length} replies, ${sourceLinks.length} link texts, ${routeNotes.length} route cases recorded as committed\n`);
+  process.stderr.write(`ok: ${cleanQuery.length} queries, ${cleanArgs.length} args, ${announces.length} replies, ${sourceLinks.length} link texts, ${routeNotes.length} route cases, ${random.length} random texts recorded as committed\n`);
 } else process.stdout.write(text);
 setImmediate(() => process.exit(0));

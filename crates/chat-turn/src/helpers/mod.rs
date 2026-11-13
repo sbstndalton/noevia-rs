@@ -10,9 +10,16 @@
 //!   source links a tool result carries, and the reply text when that round writes nothing;
 //! - [`route_notes`] (`server/tool-route-notes.cjs`): the system notes about this chat's tools.
 //!
-//! Text is JavaScript text: every length, slice and regex step counts UTF-16 code units, and a
-//! `&str` may carry lone surrogates in `js_json::wtf16` form (a lone unit held as its mapped
-//! character), which is how a Rust caller holds what Node would hold.
+//! Text is JavaScript text: every length, slice and regex step counts UTF-16 code units.
+//!
+//! **Caller rule: every `&str` is in `js_json::wtf16` form**, as the native turn holds what Node
+//! would hold (it reads model frames and tool results with `js_json::wtf16`). In that form a lone
+//! surrogate unit is held as its mapped character in U+10F800..=U+10FFFF, so such a character is
+//! read as the one lone unit it stands for (counted as one unit, written back as a `\udxxx`
+//! escape), never as the real code point. A real character of that range (Supplementary Private
+//! Use Area-B, last 2,048 code points) cannot be held in wtf16 form at all: `wtf16::parse` refuses
+//! it, so it never reaches these functions from a wtf16 caller. The replay checks the mapped
+//! reading against Node's result for the lone-surrogate string (`outOfDomain` in the recording).
 //!
 //! Named differences from Node, each tested in `tests/node_helpers.rs`:
 //! - **Arguments `js_json` cannot hold.** [`search_query::clean_search_args`] returns the
@@ -20,6 +27,11 @@
 //!   `JSON.parse` would accept them: a number outside the `f64` range (Node turns `1e400` into
 //!   `Infinity` and writes it back as `null`), or nesting deeper than about 128 levels. Node
 //!   rewrites such arguments when their query has a wrapper to remove.
+//! - **Arguments nested too deep for Node's stack.** From a few thousand levels of nesting,
+//!   Node's `cleanSearchArgs` throws `RangeError` (its `JSON.stringify` runs out of stack) when the
+//!   query needs cleaning, and `chat.cjs` does not catch it, so the Node turn fails.
+//!   [`search_query::clean_search_args`] returns such arguments unchanged (`js_json` refuses them as
+//!   unsupported). The recording holds a 10,000-level case marked `throws`.
 //! - **Automatic web rule taken as an input.** [`route_notes::tool_route_notes`] does not run
 //!   `tools-mode.cjs` `automaticBoxesFor` (Tools: Automatic); the caller passes whether it would
 //!   add Web search for this message ([`route_notes::RouteInput::automatic_web`]). The recording
