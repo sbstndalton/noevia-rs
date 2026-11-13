@@ -129,62 +129,33 @@ impl Exchange<'_> {
         Ok(messages)
     }
 
-    /// The answer half of an exchange (writes nothing): context, the companion's answer under
-    /// `budget`, the log marker. `emit` (a streamed exchange) receives the model's delta, mtp and
-    /// answer events; with `status` the two status events of `_run_exchange` too.
-    #[allow(clippy::too_many_arguments)]
+    /// The companion's answer to already built `messages` under `budget` (Python starts the
+    /// exchange deadline after the context build), and the log marker. Writes nothing. `emit` (a
+    /// streamed exchange) receives the model's delta, mtp and answer events.
     pub async fn answer(
         &self,
-        message: &str,
-        session: &[Value],
-        day: NaiveDate,
-        extra_context: &str,
+        messages: &[Message],
         budget: &Budget,
         mut emit: Option<&mut (dyn FnMut(Value) + Send)>,
-        trace: Option<&mut RetrievalTrace>,
-        status: bool,
     ) -> Result<Answered, ExchangeError> {
-        let mut send = |e: Value| {
-            if let Some(f) = emit.as_mut() {
-                f(e);
-            }
-        };
-        if status {
-            send(json!({"type": "status", "text": "Reading diary entries and memory…"}));
-        }
-        let messages = to_json(&self.context(message, session, day, extra_context, trace)?);
+        let messages = to_json(messages);
         let cap = Some(self.max_answer_tokens);
-        if status {
-            send(json!({"type": "status", "text": "Generating companion response…"}));
-        }
         let main = self.main;
         let answered = match emit.as_mut() {
             Some(f) => {
                 let mut forward = |e: Event| f(e.to_json());
                 let msgs = &messages;
                 budget
-                    .run(true, None, |p| async move {
-                        main.chat_stream(msgs, &mut forward, 0.7, cap, Some(&p))
-                            .await
-                    })
+                    .run(true, None, |p| async move { main.chat_stream(msgs, &mut forward, 0.7, cap, Some(&p)).await })
                     .await
             }
             None => {
                 let msgs = &messages;
-                budget
-                    .run(false, None, |p| async move {
-                        main.chat(msgs, 0.7, cap, None, Some(&p)).await
-                    })
-                    .await
+                budget.run(false, None, |p| async move { main.chat(msgs, 0.7, cap, None, Some(&p)).await }).await
             }
         };
         let reply = match answered {
-            Err(why) => {
-                return Err(ExchangeError::Timeout {
-                    nothing_saved: true,
-                    why,
-                })
-            }
+            Err(why) => return Err(ExchangeError::Timeout { nothing_saved: true, why }),
             Ok(Err(e)) => return Err(ExchangeError::Model(e)),
             Ok(Ok(r)) => r,
         };
@@ -197,12 +168,7 @@ impl Exchange<'_> {
         if visible.is_empty() {
             return Err(ExchangeError::Model(LlmError::EmptyAnswer));
         }
-        Ok(Answered {
-            messages,
-            visible,
-            marker,
-            truncated,
-        })
+        Ok(Answered { messages, visible, marker, truncated })
     }
 
     /// One exchange. `session` holds the replayable turns of this conversation and is updated;
@@ -218,23 +184,22 @@ impl Exchange<'_> {
         mut emit: Option<&mut (dyn FnMut(Value) + Send)>,
         mut trace: Option<&mut RetrievalTrace>,
     ) -> Result<Map<String, Value>, ExchangeError> {
+        let send = |e: Value, emit: &mut Option<&mut (dyn FnMut(Value) + Send)>| {
+            if let Some(f) = emit.as_mut() {
+                f(e);
+            }
+        };
+        send(json!({"type": "status", "text": "Reading diary entries and memory…"}), &mut emit);
+        let messages = self.context(message, session, day, extra_context, trace.as_deref_mut())?;
+        // Python starts the exchange deadline after the context is built.
         let budget = Budget::new(None, None);
+        send(json!({"type": "status", "text": "Generating companion response…"}), &mut emit);
         let answered = {
             let forward: Option<&mut (dyn FnMut(Value) + Send)> = match emit.as_mut() {
                 Some(f) => Some(&mut **f),
                 None => None,
             };
-            self.answer(
-                message,
-                session,
-                day,
-                extra_context,
-                &budget,
-                forward,
-                trace.as_deref_mut(),
-                true,
-            )
-            .await?
+            self.answer(&messages, &budget, forward).await?
         };
         let Answered {
             visible, truncated, ..

@@ -761,6 +761,26 @@ impl<'h> Journal<'h> {
             .is_some())
     }
 
+    /// The documents marked dirty (Python `journal.dirty_documents()`).
+    pub fn dirty_documents(&self) -> Result<Vec<String>, Error> {
+        // The same statement as Python (no ORDER BY: the planner reads the primary-key index).
+        let mut stmt = self.conn.prepare("SELECT document FROM dirty_documents")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// An index effect of another connection under this tenant's primary reservation (the
+    /// retrieval index's writes: Python's `index_publication`), refused when the index outbox
+    /// holds paths (Python drains it first; that stays with Python).
+    pub fn index_publication<T>(&self, effect: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+        self.primary_reservation(|r| {
+            if !r.outbox()?.is_empty() {
+                return Err(Error::other("index outbox not drained"));
+            }
+            r.publish(effect)
+        })
+    }
+
     pub fn clear_dirty(&self, document: &str) -> Result<(), Error> {
         self.publication(|| {
             self.conn

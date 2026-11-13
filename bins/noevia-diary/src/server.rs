@@ -476,6 +476,9 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
         if parts.method == Method::POST && path == "/internal/answer" {
             return crate::answer::internal(app, &query, &headers, body).await;
         }
+        if parts.method == Method::POST && path == "/internal/reindex" {
+            return crate::reindex::internal(app, &query, &headers, body).await;
+        }
         return control(&app, &parts.method, &path, &headers);
     }
     // Only Python's forwarder knows the secret; everything else is refused before any work.

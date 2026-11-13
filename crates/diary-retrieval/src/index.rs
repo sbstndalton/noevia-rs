@@ -299,6 +299,15 @@ impl<E: Embedder, P: Publication> Retriever<E, P> {
         Self::with_connection(conn, registered, embedder, publication, options)
     }
 
+    /// As [`Retriever::open`] for an index file that must already exist: never creates the file
+    /// or its directory (a missing file is an error).
+    pub fn open_existing(path: &Path, embedder: E, publication: P, options: Options) -> Result<Self> {
+        let registered = sqlite_vec_loader::register().is_ok();
+        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        conn.busy_timeout(options.busy_timeout)?;
+        Self::with_connection(conn, registered, embedder, publication, options)
+    }
+
     /// As [`Retriever::open`] on an already opened connection. `vec_registered` says whether the
     /// vector extension was registered before it was opened.
     pub fn with_connection(

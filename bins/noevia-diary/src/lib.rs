@@ -12,6 +12,7 @@ pub mod health;
 pub mod managed;
 pub mod py;
 pub mod recovery;
+pub mod reindex;
 pub mod server;
 pub mod storage_gate;
 pub mod workspace;

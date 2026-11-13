@@ -18,10 +18,17 @@ use diary_retrieval::Target;
 
 use crate::model::{Client, Config, EmbedError};
 
+/// Where the active target comes from: the shared configuration, or a value the caller read from
+/// the configuration Python holds in memory (its refusals and runtime changes included).
+enum Active {
+    Config(Arc<Mutex<EmbeddingConfig>>),
+    Fixed(Target),
+}
+
 pub struct HttpEmbedder {
     /// `llm.base_url`, `llm.api_key`, `llm.timeout_s`, `llm.max_retries`.
     engine: Config,
-    config: Arc<Mutex<EmbeddingConfig>>,
+    active: Active,
     clients: Mutex<HashMap<String, Arc<Client>>>,
     handle: tokio::runtime::Handle,
 }
@@ -38,12 +45,12 @@ impl HttpEmbedder {
         config: Arc<Mutex<EmbeddingConfig>>,
         handle: tokio::runtime::Handle,
     ) -> Self {
-        Self {
-            engine,
-            config,
-            clients: Mutex::new(HashMap::new()),
-            handle,
-        }
+        Self { engine, active: Active::Config(config), clients: Mutex::new(HashMap::new()), handle }
+    }
+
+    /// An embedder whose active target is `active` (Python's live configuration, sent per call).
+    pub fn fixed(engine: Config, active: Target, handle: tokio::runtime::Handle) -> Self {
+        Self { engine, active: Active::Fixed(active), clients: Mutex::new(HashMap::new()), handle }
     }
 
     fn client(&self, target: &Target) -> Result<Arc<Client>, String> {
@@ -118,7 +125,10 @@ impl HttpEmbedder {
 
 impl Embedder for HttpEmbedder {
     fn active(&self) -> Target {
-        locked(&self.config).active()
+        match &self.active {
+            Active::Config(c) => locked(c).active(),
+            Active::Fixed(t) => t.clone(),
+        }
     }
 
     fn embed(&self, target: &Target, texts: &[&str], kind: Kind) -> Result<Vec<Vec<f64>>, String> {

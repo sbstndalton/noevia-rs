@@ -17,7 +17,7 @@
 //! Request JSON (all from Python's own state for this exchange):
 //! `{"mode": "context" | "answer", "message", "turns": [...replayable turns], "day": "YYYY-MM-DD",
 //!   "extra_context", "trace": bool, "max_answer_tokens", "cfg": {"context": {...}, "retrieval":
-//!   {...}}, "system_prompt", "stream": bool}`.
+//!   {...}}, "system_prompt", "stream": bool, "embedding": {Python's live embedding config}}`.
 //! Replies: `context` → `{"messages", "trace"}`; `answer` → `{"visible", "marker", "truncated",
 //! "trace"}`, or with `stream` an event stream of the model's events and a final
 //! `{"type": "answered", ...}` or `{"type": "failed", "failure": ...}` event.
@@ -36,7 +36,6 @@ use diary_core::assembler::{Assembler, Store, StoreError};
 use diary_core::pipeline::Pipeline;
 use diary_core::retrieval_trace::RetrievalTrace;
 use diary_core::streaming::{self, Failure};
-use diary_retrieval::embedding::config::EmbeddingConfig;
 use diary_retrieval::index::{Embedder, Options, Retriever};
 use diary_retrieval::{slots, Publication};
 use serde::Deserialize;
@@ -86,6 +85,18 @@ struct AnswerRequest {
     system_prompt: String,
     #[serde(default)]
     stream: bool,
+    /// Python's live embedding configuration (`shared_for(cfg).config.get()`): its in-memory
+    /// refusals and runtime changes decide the active target, never a re-read of the state file.
+    embedding: Value,
+}
+
+/// The active target of Python's live embedding configuration, or None (declined) when it is
+/// damaged, refused (its profile is "unavailable") or not a valid target.
+pub(crate) fn live_target(snapshot: &Value) -> Option<diary_retrieval::Target> {
+    if snapshot.get("damaged").is_some_and(|d| !d.is_null() && d != &json!("")) {
+        return None;
+    }
+    diary_retrieval::embedding::target::normalize_target(snapshot.get("active")?).ok()
 }
 
 /// The tenant's corpus as the assembler reads it: no lock, nothing written. The memory block is
@@ -236,8 +247,7 @@ fn serve(
     let Ok(memory) = answer_store::memory_text(&store) else {
         return crate::server::decline();
     };
-    let state = app.data_root.join("embedding-config.json");
-    let Ok(embedding) = EmbeddingConfig::new(&cfg.embedding_seed, Some(&state)) else {
+    let Some(active) = live_target(&req.embedding) else {
         return crate::server::decline();
     };
     let engine = ClientConfig {
@@ -252,13 +262,13 @@ fn serve(
             .unwrap_or(diary_core::llm::DEFAULT_MAX_REASONING_TOKENS),
         ..ClientConfig::default()
     };
-    let embedder = Arc::new(HttpEmbedder::new(
-        engine.clone(),
-        Arc::new(Mutex::new(embedding)),
-        handle.clone(),
-    ));
-    let Ok(retriever) = Retriever::open(
-        &root.join("managed-index.db"),
+    let embedder = Arc::new(HttpEmbedder::fixed(engine.clone(), active, handle.clone()));
+    let index_path = root.join("managed-index.db");
+    if !index_path.is_file() {
+        return crate::server::decline();
+    }
+    let Ok(retriever) = Retriever::open_existing(
+        &index_path,
         Shared(embedder.clone()),
         ReadOnly,
         Options {
@@ -268,6 +278,10 @@ fn serve(
     ) else {
         return crate::server::decline();
     };
+    // Without vector support the search would fall back to direct files where Python retrieves.
+    if !retriever.vec_available() {
+        return crate::server::decline();
+    }
     // Python's search would adopt a legacy table here (a write): leave it to Python.
     if slots::needs_legacy_adoption(retriever.connection(), Some(&embedder.active()))
         .unwrap_or(true)
@@ -326,18 +340,16 @@ fn serve(
             Err(_) => crate::server::decline(),
         };
     }
+    let messages = match handle.block_on(async {
+        exchange.context(&req.message, &req.turns, day, &req.extra_context, trace.as_mut())
+    }) {
+        Ok(m) => m,
+        Err(_) => return crate::server::decline(),
+    };
+    // Python starts the exchange deadline after the context is built.
     let budget = Budget::new(None, None);
     if !req.stream {
-        let out = handle.block_on(exchange.answer(
-            &req.message,
-            &req.turns,
-            day,
-            &req.extra_context,
-            &budget,
-            None,
-            trace.as_mut(),
-            false,
-        ));
+        let out = handle.block_on(exchange.answer(&messages, &budget, None));
         return match out {
             Ok(a) => json_reply(
                 200,
@@ -355,16 +367,7 @@ fn serve(
             frames.push(streaming::frame(&e));
         }
     };
-    let out = handle.block_on(exchange.answer(
-        &req.message,
-        &req.turns,
-        day,
-        &req.extra_context,
-        &budget,
-        Some(&mut sink),
-        trace.as_mut(),
-        false,
-    ));
+    let out = handle.block_on(exchange.answer(&messages, &budget, Some(&mut sink)));
     let last = match out {
         Ok(a) => {
             json!({"type": "answered", "visible": a.visible, "marker": a.marker, "truncated": a.truncated,
