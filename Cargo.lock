@@ -3036,6 +3036,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "role-engine"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "role-context",
+ "sha2",
+ "stream-guard",
+ "tokio",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

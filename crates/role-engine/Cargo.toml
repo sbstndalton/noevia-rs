@@ -1,0 +1,18 @@
+[package]
+name = "role-engine"
+version = "0.1.0"
+description = "noevia-core's role-engine.cjs in Rust: one pinned model per Code pipeline task, the shared cache prefix across roles, and guarded streaming role calls with one bounded correction (R7)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+role-context = { path = "../role-context" }
+stream-guard = { path = "../stream-guard" }
+sha2 = "=0.10.9"
+tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
