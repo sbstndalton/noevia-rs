@@ -15,6 +15,10 @@ use crate::context::is_python_space;
 
 pub const THINKING_MODEL_HINT: &str = "Output must be the final answer only. Do not show reasoning; do not wrap the answer in quotes or code fences.";
 
+/// A failed step (Python: any exception the step catches and falls back from).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Failed;
+
 /// Which deadline an aux call runs under (Python passes the exchange budget, or a fresh one).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuxBudget {
@@ -27,7 +31,7 @@ pub enum AuxBudget {
 /// One aux model call: (system prompt, user prompt) → the reply text, or a failure of any kind
 /// (model error, deadline). Implementations send temperature 0.1, max_tokens 2048, no stop.
 pub trait Aux {
-    fn call(&mut self, budget: AuxBudget, system: &str, prompt: &str) -> Result<String, ()>;
+    fn call(&mut self, budget: AuxBudget, system: &str, prompt: &str) -> Result<String, Failed>;
 }
 
 /// The corpus side of a save.
@@ -43,14 +47,14 @@ pub trait Journal {
         claude_text: &str,
     ) -> Result<String, (bool, String)>;
     fn index_enabled(&self) -> bool;
-    fn standing_sections_text(&mut self, max_chars: i64) -> Result<String, ()>;
+    fn standing_sections_text(&mut self, max_chars: i64) -> Result<String, Failed>;
     /// Python `update_standing_sections`: Ok(Some(id)) when INDEX.md changed.
     fn update_standing_sections(
         &mut self,
         open_questions: &Value,
         timeline: &Value,
         today: &str,
-    ) -> Result<Option<String>, ()>;
+    ) -> Result<Option<String>, Failed>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,7 +72,7 @@ pub struct NativeWriteUnavailable;
 /// Python `str.format(**fields)` for templates that use `{name}` fields and `{{` / `}}` only.
 /// Anything else (a format spec, an index, an unknown name, a lone brace) is an error, as it is
 /// for the Python call.
-pub fn format_template(template: &str, fields: &[(&str, &str)]) -> Result<String, ()> {
+pub fn format_template(template: &str, fields: &[(&str, &str)]) -> Result<String, Failed> {
     let mut out = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
     while let Some(c) = chars.next() {
@@ -81,17 +85,17 @@ pub fn format_template(template: &str, fields: &[(&str, &str)]) -> Result<String
                 chars.next();
                 out.push('}');
             }
-            '}' => return Err(()),
+            '}' => return Err(Failed),
             '{' => {
                 let mut name = String::new();
                 loop {
                     match chars.next() {
                         Some('}') => break,
                         Some(c) if c.is_alphanumeric() || c == '_' => name.push(c),
-                        _ => return Err(()),
+                        _ => return Err(Failed),
                     }
                 }
-                let (_, value) = fields.iter().find(|(k, _)| *k == name).ok_or(())?;
+                let (_, value) = fields.iter().find(|(k, _)| *k == name).ok_or(Failed)?;
                 out.push_str(value);
             }
             c => out.push(c),
@@ -149,7 +153,7 @@ pub fn summary_prose(out: &str) -> String {
 
 /// Python `_json_extract`: the first JSON object of a model reply (defensive against prose and
 /// fences).
-pub fn json_extract(text: &str) -> Result<String, ()> {
+pub fn json_extract(text: &str) -> Result<String, Failed> {
     let mut text = strip(text).to_owned();
     if text.starts_with("```") {
         text = text.trim_matches('`').to_owned();
@@ -157,17 +161,17 @@ pub fn json_extract(text: &str) -> Result<String, ()> {
             text = text.chars().skip(4).collect();
         }
     }
-    let start = text.find('{').ok_or(())?;
-    let end = text.rfind('}').ok_or(())?;
+    let start = text.find('{').ok_or(Failed)?;
+    let end = text.rfind('}').ok_or(Failed)?;
     if end <= start {
-        return Err(());
+        return Err(Failed);
     }
-    text.get(start..=end).map(str::to_owned).ok_or(())
+    text.get(start..=end).map(str::to_owned).ok_or(Failed)
 }
 
 /// Python `data.get(key) or []` on a parsed reply (a non-object reply fails like `AttributeError`).
-fn ops<'a>(data: &'a Value, key: &str, empty: &'a Value) -> Result<&'a Value, ()> {
-    let obj = data.as_object().ok_or(())?;
+fn ops<'a>(data: &'a Value, key: &str, empty: &'a Value) -> Result<&'a Value, Failed> {
+    let obj = data.as_object().ok_or(Failed)?;
     Ok(match obj.get(key) {
         Some(v) if crate::pyconv::truthy(v) => v,
         _ => empty,
@@ -180,8 +184,11 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    fn template(&self, key: &str) -> Result<&str, ()> {
-        self.templates.get(key).and_then(Value::as_str).ok_or(())
+    fn template(&self, key: &str) -> Result<&str, Failed> {
+        self.templates
+            .get(key)
+            .and_then(Value::as_str)
+            .ok_or(Failed)
     }
 
     fn aux(
@@ -190,7 +197,7 @@ impl Pipeline {
         budget: AuxBudget,
         key: &str,
         fields: &[(&str, &str)],
-    ) -> Result<String, ()> {
+    ) -> Result<String, Failed> {
         let prompt = format_template(self.template(key)?, fields)?;
         aux.call(budget, THINKING_MODEL_HINT, &prompt)
     }
@@ -207,7 +214,7 @@ impl Pipeline {
             ],
         ) {
             Ok(verdict) => keeps(&verdict),
-            Err(()) => true, // a classifier failure must never lose a diary entry
+            Err(Failed) => true, // a classifier failure must never lose a diary entry
         }
     }
 
@@ -220,7 +227,7 @@ impl Pipeline {
             &[("assistant_message", assistant_message)],
         ) {
             Ok(out) => summary_prose(&out),
-            Err(()) => strip(assistant_message).to_owned(),
+            Err(Failed) => strip(assistant_message).to_owned(),
         }
     }
 
@@ -236,7 +243,7 @@ impl Pipeline {
         if !store.index_enabled() {
             return false;
         }
-        let run = |aux: &mut dyn Aux, store: &mut dyn Journal| -> Result<bool, ()> {
+        let run = |aux: &mut dyn Aux, store: &mut dyn Journal| -> Result<bool, Failed> {
             let current = store.standing_sections_text(4000)?;
             let fields = [
                 ("user_message", user_message),
@@ -254,7 +261,7 @@ impl Pipeline {
                 ("today", today),
             ];
             let raw = self.aux(aux, AuxBudget::Maintenance, "index_edit", &fields)?;
-            let data: Value = serde_json::from_str(&json_extract(&raw)?).map_err(|_| ())?;
+            let data: Value = serde_json::from_str(&json_extract(&raw)?).map_err(|_| Failed)?;
             let empty = json!([]);
             let changed = store.update_standing_sections(
                 ops(&data, "open_questions", &empty)?,

@@ -3,7 +3,7 @@
 //! and fake store: outcome, progress events, every aux prompt and every store call must match.
 #![allow(clippy::indexing_slicing)] // serde_json `Value[...]` on fixture data
 
-use diary_core::pipeline::{self, Aux, AuxBudget, Journal, Pipeline};
+use diary_core::pipeline::{self, Aux, AuxBudget, Failed, Journal, Pipeline};
 use serde_json::{json, Value};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -14,7 +14,7 @@ struct FakeAux {
 }
 
 impl Aux for FakeAux {
-    fn call(&mut self, _budget: AuxBudget, system: &str, prompt: &str) -> Result<String, ()> {
+    fn call(&mut self, _budget: AuxBudget, system: &str, prompt: &str) -> Result<String, Failed> {
         self.calls.push(json!({"system": system, "prompt": prompt, "temperature": 0.1, "max_tokens": 2048, "stop": null}));
         let reply = if self.script.is_empty() {
             json!({"raise": true})
@@ -22,7 +22,7 @@ impl Aux for FakeAux {
             self.script.remove(0)
         };
         if reply["raise"].as_bool().unwrap_or(false) {
-            return Err(());
+            return Err(Failed);
         }
         Ok(reply["text"].as_str().unwrap_or("").to_owned())
     }
@@ -52,10 +52,10 @@ impl Journal for FakeStore {
     fn index_enabled(&self) -> bool {
         self.spec["index_enabled"].as_bool().unwrap_or(true)
     }
-    fn standing_sections_text(&mut self, max_chars: i64) -> Result<String, ()> {
+    fn standing_sections_text(&mut self, max_chars: i64) -> Result<String, Failed> {
         self.calls.push(json!(["standing", max_chars]));
         if self.spec["standing_raise"].as_bool().unwrap_or(false) {
-            return Err(());
+            return Err(Failed);
         }
         Ok("## Open questions\n- synthetic".into())
     }
@@ -64,10 +64,10 @@ impl Journal for FakeStore {
         open: &Value,
         timeline: &Value,
         today: &str,
-    ) -> Result<Option<String>, ()> {
+    ) -> Result<Option<String>, Failed> {
         self.calls.push(json!(["update", open, timeline, today]));
         match self.spec["update"].as_str() {
-            Some("raise") => Err(()),
+            Some("raise") => Err(Failed),
             Some("changed") => Ok(Some("qa-journal-1".into())),
             _ => Ok(None),
         }
