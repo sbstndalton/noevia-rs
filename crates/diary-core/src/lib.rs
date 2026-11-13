@@ -8,6 +8,7 @@ pub mod assembler;
 pub mod context;
 pub mod follow_up;
 pub mod llm;
+pub mod pipeline;
 pub mod pyconv;
 pub mod retrieval_trace;
 pub mod streaming;
