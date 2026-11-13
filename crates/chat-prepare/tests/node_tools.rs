@@ -9,7 +9,9 @@
     clippy::indexing_slicing
 )]
 
-use chat_prepare::offer::{self, OfferInput, Routed, ToolTurn};
+use std::cell::RefCell;
+
+use chat_prepare::offer::{self, OfferInput, Routing, ToolTurn};
 use chat_prepare::route_notes::{self, NotesInput};
 use chat_prepare::toolboxes::{self, NameNotText, Resolve, Resolved, Toolbox, Writes};
 use chat_prepare::tools_mode::{self, Additions};
@@ -75,7 +77,7 @@ const BLOCKS: [(&str, &str, [f64; 2]); 10] = [
     ),
 ];
 /// The modules the port follows, pinned: a change must be reviewed against the port.
-const PINNED: [(&str, &str); 6] = [
+const PINNED: [(&str, &str); 7] = [
     (
         "server/tools-mode.cjs",
         "8374113b31413ed8f6aeab4d2ff388d24370858a9c5cff125f7728e2c33cdb50",
@@ -99,6 +101,10 @@ const PINNED: [(&str, &str); 6] = [
     (
         "server/project-edit-target.cjs",
         "3f99c8fd3c2e6b948c3da827f07000bd543cb04508098446a6d10439fb721307",
+    ),
+    (
+        "server/chat-tool-routing.cjs",
+        "a1a0e37b1d08fdd38028be911a79d3f46ecf39abb9adeb8ce6456ccc1ec2c80d",
     ),
 ];
 /// The lookahead `EXPLICIT_WEB_RE` holds and the port drops (see `tools_mode`).
@@ -369,9 +375,16 @@ fn budgets_and_estimates_match_node() {
         let got = JValue::obj([
             ("model", JValue::from(model)),
             ("measured", c.get("measured").clone()),
+            ("measuredMachine", c.get("measuredMachine").clone()),
             ("cap", num(toolboxes::tool_cap_for(model) as f64)),
             ("budget", num(budget)),
-            ("scoped", num(budget)),
+            (
+                "scoped",
+                num(toolboxes::tool_token_budget_for(
+                    model,
+                    measured(c.get("measuredMachine")),
+                )),
+            ),
         ]);
         d.check(c.get("model"), &stringify(c), &stringify(&got));
     }
@@ -402,8 +415,8 @@ fn write_flags_match_node() {
             .filter(|c| c.get("catalogue").as_str() == Some(name))
         {
             let n = text(c.get("name"));
-            // toolboxes.cjs isWriteTool (the page save is chat.cjs's addition).
-            let got = !writes.read_only(n) || sw(n);
+            // chat.cjs's isWriteTool (the page save always, else toolboxes.cjs's).
+            let got = writes.is_write(n);
             assert_eq!(
                 read_only.iter().any(|r| r == n),
                 writes.read_only(n),
@@ -657,12 +670,49 @@ fn replay(f: &JValue, c: &JValue) -> Result<(), String> {
         out.get("privateStripped"),
         JValue::Bool(sel.private_stripped),
     );
-    let routed = match c.get("routing") {
-        JValue::Null | JValue::Undefined => None,
-        r => Some(Routed {
-            ids: texts(r.get("ids")),
-            narrowed: r.get("narrowed") == &JValue::Bool(true),
-        }),
+    // The ranking's answer (`'down'`: the embeddings failed; `null`: the router is off).
+    let ranked = match c.get("ranked") {
+        r @ JValue::Arr(_) => Some(texts(r)),
+        _ => None,
+    };
+    let routing_json = |r: &JValue| {
+        JValue::obj([
+            ("ids", r.get("ids").clone()),
+            ("routed", r.get("routed").clone()),
+            ("narrowed", JValue::Bool(r.get("narrowed").truthy())),
+        ])
+    };
+    let port_routing = |r: &Routing| {
+        JValue::obj([
+            ("ids", strs(&r.ids)),
+            ("routed", JValue::Bool(r.routed)),
+            ("narrowed", JValue::Bool(r.narrowed)),
+        ])
+    };
+    let answer = offer::routing(&turn, &sel, ranked.as_deref());
+    same(
+        "routerAnswer",
+        &routing_json(&items(out, "routerAnswers")[0]),
+        port_routing(&answer),
+    );
+    // Never a box the turn does not carry, whatever the ranking names.
+    if let Some(id) = answer.ids.iter().find(|id| !sel.selected.contains(id)) {
+        same(
+            "router kept a box the turn does not carry",
+            &JValue::Null,
+            JValue::from(id.as_str()),
+        );
+    }
+    let asked: RefCell<Vec<JValue>> = RefCell::new(Vec::new());
+    let prefill = |model: &str, scope: Option<&str>| {
+        let mut call = vec![JValue::from(model), num(14000.0)];
+        call.extend(scope.map(JValue::from));
+        asked.borrow_mut().push(JValue::Arr(call));
+        measured(c.get(if scope.is_some() {
+            "measuredMachine"
+        } else {
+            "measured"
+        }))
     };
     let policy = c.get("policy");
     let write_mode = c.get("writeMode").as_str().unwrap_or("ask");
@@ -678,27 +728,24 @@ fn replay(f: &JValue, c: &JValue) -> Result<(), String> {
         &turn,
         &sel,
         OfferInput {
-            routed,
+            ranked,
             model: text(c.get("model")),
-            measured: measured(c.get("measured")),
+            prefill: &prefill,
+            machine_scope: (provider == "machine").then_some("machine:qa"),
             policy_blocks: &blocks,
             template_gate: provider == "local" && c.get("props") == &JValue::Bool(true),
         },
     )
-    .map_err(|NameNotText| "NameNotText".to_string())?;
-    let routing = out.get("routing");
+    .map_err(|r| format!("{r:?}"))?;
     same(
         "routing",
-        &JValue::obj([
-            ("ids", routing.get("ids").clone()),
-            ("routed", routing.get("routed").clone()),
-            ("narrowed", JValue::Bool(routing.get("narrowed").truthy())),
-        ]),
-        JValue::obj([
-            ("ids", strs(&o.routing.ids)),
-            ("routed", JValue::Bool(o.routing.routed)),
-            ("narrowed", JValue::Bool(o.routing.narrowed)),
-        ]),
+        &routing_json(out.get("routing")),
+        port_routing(&o.routing),
+    );
+    same(
+        "budgetCalls",
+        out.get("budgetCalls"),
+        JValue::Arr(asked.borrow().clone()),
     );
     same(
         "automaticOnlyWrites",
@@ -743,10 +790,18 @@ fn turns_match_node() {
         .collect();
     assert!(!named.is_empty(), "the refused tool name is recorded");
     let mut failed = Vec::new();
+    let mut thrown = 0;
     let turns = items(&f, "turns");
     for (k, c) in turns.iter().enumerate() {
         let got = replay(&f, c);
-        if named.contains(&k) {
+        if let Some(t) = c.get("out").get("thrown").as_str() {
+            // Node throws (a null tool read by routeNotes): the port refuses the turn as well.
+            assert_eq!(t, "TypeError");
+            thrown += 1;
+            if got != Err("Thrown".to_string()) {
+                failed.push(format!("turn {k}: Node threw, the port gave {got:?}"));
+            }
+        } else if named.contains(&k) {
             // Named difference: Node offers a tool named by a number; the port refuses the turn.
             if got != Err("NameNotText".to_string()) {
                 failed.push(format!("turn {k}: expected NameNotText, got {got:?}"));
@@ -756,6 +811,20 @@ fn turns_match_node() {
         }
     }
     assert!(turns.len() >= 450, "only {} turns recorded", turns.len());
+    assert!(thrown >= 1, "no turn on which Node throws was recorded");
+    // The recording holds rankings that name boxes the turn does not carry (stripped, not
+    // connected, unknown); every replay above checks the router kept none of them.
+    let impossible = turns
+        .iter()
+        .filter(|c| {
+            let shown = texts(&items(c.get("out"), "routerShown")[0]);
+            matches!(c.get("ranked"), JValue::Arr(r) if r.iter().any(|id| !shown.iter().any(|s| Some(s.as_str()) == id.as_str())))
+        })
+        .count();
+    assert!(
+        impossible >= 10,
+        "only {impossible} impossible rankings recorded"
+    );
     assert!(
         failed.is_empty(),
         "{} of {} turns differ:\n{}",

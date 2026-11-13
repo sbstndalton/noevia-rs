@@ -26,7 +26,9 @@
 //   turns       chat.cjs's own lines (cut out of the pinned chat.cjs, run as they are): isWriteTool and policyMode,
 //               requestToolboxes, the hybrid route's private-tools check, the block from automaticLocal to
 //               resolveFor(model), the tool gate line, activeTools to routeNotes and the frame's tool fields, over
-//               stub seams (the router, the gate, the policy, the account's connections). No Inference machines, no
+//               stub seams (the gate, the policy, the account's connections) and core's own chat-tool-routing.cjs select
+//               with its ranking (tool-router.cjs route) answering the case's boxes, impossible ones included, and an
+//               embedding stub. The prefill stub answers per scope; its calls are recorded. No Inference machines, no
 //               move to a tool-capable role, no long-context profile: those are later slices.
 // Each source file's sha256 is recorded, so a changed Node file needs a fresh recording. Node's console output goes to
 // stderr; stdout is the fixture.
@@ -66,6 +68,11 @@ const { createDriveTools } = serverRequire('gdrive-tools.cjs');
 const { createKiwixTools } = serverRequire('kiwix.cjs');
 const pageSave = serverRequire('specialist-page-save.cjs');
 const toolModes = serverRequire('tools-mode.cjs');
+// The ranking is a seam: route() answers the case's boxes as a set (as its own does), whatever it is shown; select is core's.
+let rankedCase = null;
+const toolRouterLib = serverRequire('tool-router.cjs');
+toolRouterLib.route = () => ({ boxes: [...new Set(rankedCase)], reasons: {}, skipped: [], routed: true });
+const { createChatToolRouter } = serverRequire('chat-tool-routing.cjs');
 const routeNotesLib = serverRequire('tool-route-notes.cjs');
 const egress = serverRequire('provider-egress.cjs');
 const { isInAppBox } = serverRequire('toolbox-flags.cjs');
@@ -103,15 +110,17 @@ const NAMES = cut('names', "        const names = activeTools.map((t) => t.funct
 const FRAME = cut('frame', '          messages: wire, tools: activeTools, routes: [...toolRoutes],',
   "templateGate: provider.id === DEFAULT_PROVIDER_ID && typeof modelManager?.props === 'function',\n");
 const AsyncFunction = (async () => {}).constructor;
+/** chat.cjs's own isWriteTool over a createToolboxes' isWriteTool (the cut lines, run as they are). */
+const chatIsWriteTool = (injected) => new Function('specialistPageSave', 'injectedIsWriteTool', 'toolPolicy', `${WRITES}return isWriteTool;`)(pageSave, injected, null);
 const PARAMS = ['project', 'body', 'message', 'mappedHistory', 'chatUser', 'authService', 'DEFAULT_TOOLBOXES', 'CONNECTOR_BOXES', 'connectedBoxes',
   'allToolboxes', 'resolveTools', 'injectedIsWriteTool', 'oauthServerIds', 'accountReady', 'automaticToolsReady', 'toolPolicy', 'specialistPageSave',
   'projectEditTool', 'isInAppBox', 'chatToolRouter', 'toolGate', 'chatFrame', 'steering', 'routeTarget', 'autoRoles', 'routedRole', 'wantsAuto',
   'getProvider', 'DEFAULT_PROVIDER_ID', 'provider', 'externalProvider', 'egress', 'chatgptProvider', 'providerFetch', 'fetch', 'model', 'routingModes',
   'diaryExtras', 'wire', 'msgs', 'sys', 'normalizeReplayHistory', 'replaySource', 'replayOptions', 'require', 'send', 'pinnedSkill', 'autoSkills',
-  'modelManager'];
-const runTurn = new AsyncFunction(...PARAMS, `${OFFBOX}${LEADS}${WRITES}${REQUEST}${PRIVATE}${TOOLS}${GATE}${ACTIVE}${NAMES}`
+  'modelManager', 'budgetCalls'];
+const runTurn = new AsyncFunction(...PARAMS, `${OFFBOX}${LEADS}${WRITES}${REQUEST}${PRIVATE}const budgetMark = budgetCalls.length;\n${TOOLS}${GATE}${ACTIVE}${NAMES}`
   + `const frameFields = {\n${FRAME}};\ndelete frameFields.messages;\n`
-  + 'return { automaticTools, automaticLocal, cloudUngranted: cloudUngranted(), selectedBoxes, automaticAdded, privateStripped, routing, '
+  + 'return { budgetMark, automaticTools, automaticLocal, cloudUngranted: cloudUngranted(), selectedBoxes, automaticAdded, privateStripped, routing, '
   + 'automaticOnlyWrites: [...automaticOnlyWrites], resolved: { ...resolved, tools: resolved.tools.map((t) => t.function.name), routes: [...resolved.routes] }, frameFields };');
 
 // ── Deterministic inputs ────────────────────────────────────────────────────────────────────
@@ -171,7 +180,7 @@ const CATALOGUES = {
 
 // One createToolboxes per catalogue, with the case's Drive connection and prefill measurement read at call time.
 let driveConnected = false;
-let measured = null;
+let measured = null, measuredMachine = null;
 const budgetCalls = [];
 function toolboxesFor(name) {
   const c = CATALOGUES[name];
@@ -184,7 +193,7 @@ function toolboxesFor(name) {
     mcpBoxes: () => mcp,
     mcpTools: () => new Map(mcp.flatMap((b) => b.tools.filter((t) => t && t.function).map((t) => [t.function.name, { readOnly: !c.serverWrites.includes(t.function.name), serverId: b.server }]))),
     offered: (id) => !c.notOffered.includes(id),
-    prefill: { budgetFor: (model, target, scope) => { budgetCalls.push(scope === undefined ? [model, target] : [model, target, scope]); return measured; }, rateFor: () => 0.5 },
+    prefill: { budgetFor: (model, target, scope) => { budgetCalls.push(scope === undefined ? [model, target] : [model, target, scope]); return scope === undefined ? measured : measuredMachine; }, rateFor: () => 0.5 },
   });
 }
 const TB = Object.fromEntries(Object.keys(CATALOGUES).map((k) => [k, toolboxesFor(k)]));
@@ -204,7 +213,8 @@ const boxRecord = (b) => ({ id: b.id, label: b.label, source: b.source, inApp: b
   for (const model of MODELS) {
     for (const m of MEASURED) {
       measured = m;
-      budgets.push({ model, measured: m, cap: toolboxesLib.toolCapFor(model), budget: TB.plain.toolTokenBudgetFor(model), scoped: TB.plain.toolTokenBudgetFor(model, 'machine:qa') });
+      measuredMachine = pick(MEASURED);
+      budgets.push({ model, measured: m, measuredMachine, cap: toolboxesLib.toolCapFor(model), budget: TB.plain.toolTokenBudgetFor(model), scoped: TB.plain.toolTokenBudgetFor(model, 'machine:qa') });
     }
   }
   measured = null;
@@ -216,7 +226,7 @@ const boxRecord = (b) => ({ id: b.id, label: b.label, source: b.source, inApp: b
   for (const [k, c] of Object.entries(catalogues)) {
     const names = [...new Set([...c.boxes.flatMap((b) => b.tools.map((t) => t?.function?.name)), ...c.boxes.flatMap((b) => b.reads), 'unknown_qa', '', 'space_page_save', 'more_tools'])]
       .filter((n) => typeof n === 'string');
-    for (const name of names) writes.push({ catalogue: k, name, write: TB[k].isWriteTool(name) });
+    for (const name of names) writes.push({ catalogue: k, name, write: chatIsWriteTool(TB[k].isWriteTool)(name) });
   }
 
   // ── resolveTools as chat.cjs calls it ─────────────────────────────────────────────────────
@@ -225,7 +235,7 @@ const boxRecord = (b) => ({ id: b.id, label: b.label, source: b.source, inApp: b
     'qa-big', 'qa-many', 'qa-dup', 'qa-weird', 'qa-numeric', 'unknown-qa'];
   const SKIPS = [[], ['web_search'], ['read_project_file', 'qa_big_3'], ['space_page_save'], ['nc_notes_search_notes', 'qa_dup_only', 'get_current_time']];
   const addResolve = (catalogue, ids, model, skip, projectId, m, scope) => {
-    measured = m;
+    measured = m; measuredMachine = m;
     const project = projectId === undefined ? null : { id: projectId };
     const out = TB[catalogue].resolveTools({ ...project, toolsMode: 'manual', toolboxes: ids }, model, (n) => skip.includes(n), ...(scope ? [{ measureScope: scope }] : []));
     // The kept tools by name and by the sha256 of their JSON text (the frame's tools are recorded in full in `turns`).
@@ -365,8 +375,13 @@ const boxRecord = (b) => ({ id: b.id, label: b.label, source: b.source, inApp: b
     const c = viaJson(input);
     driveConnected = c.driveConnected === true;
     measured = c.measured ?? null;
+    measuredMachine = c.measuredMachine ?? null;
+    rankedCase = Array.isArray(c.ranked) ? c.ranked : null;
     budgetCalls.length = 0;
+    const routerAnswers = [];
     const tb = TB[c.catalogue];
+    const router = createChatToolRouter({ enabled: () => c.ranked !== null && c.ranked !== undefined, boxes: tb.allToolboxes,
+      embed: async (texts) => { if (c.ranked === 'down') throw new Error('QA embeddings down'); return texts.map(() => [1, 0]); } });
     const routerShown = [], gateShown = [], sent = [];
     const provider = PROVIDERS[c.provider];
     const chatUser = c.user ? { id: c.user } : null;
@@ -378,21 +393,28 @@ const boxRecord = (b) => ({ id: b.id, label: b.label, source: b.source, inApp: b
       automaticToolsReady: () => (b) => { const r = (c.ready || {})[b.id]; if (r === 'throw') throw new Error('qa'); return r === undefined ? true : r; },
       toolPolicy: { mode: (_u, name, isWrite) => (c.policy || {})[name] || (isWrite ? c.writeMode || 'ask' : 'allow') },
       specialistPageSave: pageSave, projectEditTool: (name) => EDIT_TOOLS.has(name), isInAppBox,
-      chatToolRouter: { select: async (ids, message) => { routerShown.push([...ids]); return c.routing ? { ids: c.routing.ids, routed: true, narrowed: c.routing.narrowed } : { ids, routed: false, reason: 'off' }; } },
+      chatToolRouter: { select: async (ids, message) => { routerShown.push([...ids]); const a = await router.select(ids, message); routerAnswers.push({ ...a }); return a; } },
       toolGate: c.gate === null ? null : { evaluate: async (message, tools) => { gateShown.push(tools.map((t) => t.function.name)); return c.gate === 'none' ? { decision: 'none' } : { decision: c.gate }; } },
       chatFrame: null, steering: null, routeTarget: ROUTES[c.route], autoRoles: () => null, routedRole: null, wantsAuto: false,
       getProvider: () => PROVIDERS.local, DEFAULT_PROVIDER_ID, provider, externalProvider: egress.isExternalProvider(provider), egress,
       chatgptProvider: false, providerFetch: null, fetch: null, model: c.model, routingModes: null, diaryExtras: c.noExtras ? undefined : { PROJECT_ID: DIARY_EXTRAS_ID },
       wire: [], msgs: [], sys: '', normalizeReplayHistory: () => [], replaySource: [], replayOptions: {},
       require: (m) => serverRequire(m.replace(/^\.\//, '')), send: (e) => sent.push(e), pinnedSkill: null, autoSkills: [],
-      modelManager: c.props ? { props: () => null } : {},
+      modelManager: c.props ? { props: () => null } : {}, budgetCalls,
     };
-    const out = await runTurn(...PARAMS.map((p) => args[p]));
+    let out;
+    try { out = await runTurn(...PARAMS.map((p) => args[p])); } catch (e) {
+      // Node throws (routeNotes reads `tool.function` of a null tool): the turn fails; recorded as such.
+      if (!(e instanceof TypeError)) throw e;
+      turns.push(viaJson({ ...c, seams: { connected: tb.connectedBoxes(chatUser), diaryEnabled: !!(chatUser && c.diary === true), externalProvider: args.externalProvider,
+        stripPrivate: egress.stripPrivateToolboxes(['diary'], provider).length === 1 }, out: { thrown: e.constructor.name, routerShown, routerAnswers } }));
+      return;
+    }
     const record = viaJson({
       ...c,
       seams: { connected: tb.connectedBoxes(chatUser), diaryEnabled: !!(chatUser && c.diary === true), externalProvider: args.externalProvider,
-        stripPrivate: egress.stripPrivateToolboxes(['diary'], provider).length === 1, budgetCalls },
-      out: { ...out, routerShown, gateShown, sent },
+        stripPrivate: egress.stripPrivateToolboxes(['diary'], provider).length === 1 },
+      out: { ...out, budgetMark: undefined, preBudgetCalls: budgetCalls.slice(0, out.budgetMark), budgetCalls: budgetCalls.slice(out.budgetMark), routerShown, routerAnswers, gateShown, sent },
     });
     turns.push(record);
     const named = (b) => b.tools.some((t) => t && t.function && t.function.name && typeof t.function.name !== 'string');
@@ -401,7 +423,7 @@ const boxRecord = (b) => ({ id: b.id, label: b.label, source: b.source, inApp: b
     }
   }
   const T = (over) => addTurn({ catalogue: 'full', project: null, message: 'hi', history: [], body: {}, user: 'qa-user', diary: false, oauth: ['qa-oauth'], signedIn: [],
-    driveConnected: true, ready: {}, policy: {}, writeMode: 'ask', routing: null, gate: null, model: 'qa-model', measured: null, provider: 'local', route: 'none', props: true, ...over });
+    driveConnected: true, ready: {}, policy: {}, writeMode: 'ask', ranked: null, gate: null, model: 'qa-model', measured: null, measuredMachine: 4321, provider: 'local', route: 'none', props: true, ...over });
   // Hand-made edges.
   await T({ catalogue: 'plain' });
   await T({ catalogue: 'plain', driveConnected: false });
@@ -428,10 +450,24 @@ const boxRecord = (b) => ({ id: b.id, label: b.label, source: b.source, inApp: b
   await T({ body: { turnToolboxes: 'web-crawl' } });
   await T({ project: { id: 'qa-p5', toolboxes: ['qa-oauth', 'core'] }, signedIn: ['qa-oauth'] });
   await T({ project: { id: 'qa-p5', toolboxes: ['qa-oauth', 'core', 'qa-oauth'] } });
-  await T({ message: 'latest QA news in my calendar', routing: { ids: ['gdrive'], narrowed: true } });
-  await T({ message: 'what is the latest QA news?', routing: { ids: ['gdrive', 'core'], narrowed: false } });
-  await T({ message: 'what is the latest QA news?', routing: { ids: ['core'], narrowed: false } });
-  await T({ project: { id: 'qa-p6', toolboxes: ['core', 'web-search', 'qa-many'] }, routing: { ids: ['qa-many'], narrowed: true }, model: 'qa-model-9B-it' });
+  await T({ message: 'latest QA news in my calendar', ranked: ['gdrive'] });
+  await T({ message: 'what is the latest QA news?', ranked: ['gdrive', 'core'] });
+  await T({ message: 'what is the latest QA news?', ranked: ['core'] });
+  await T({ project: { id: 'qa-p6', toolboxes: ['core', 'web-search', 'qa-many'] }, ranked: ['qa-many'], model: 'qa-model-9B-it' });
+  // The ranking names boxes this turn does not carry: stripped, not connected, duplicated, unknown, or all of them.
+  await T({ project: { id: 'qa-rt1', toolboxes: ['diary', 'core', 'web-search'] }, diary: true, provider: 'cloud', ranked: ['diary', 'web-search'] });
+  await T({ project: { id: 'qa-rt1', toolboxes: ['diary', 'core', 'web-search'] }, diary: true, provider: 'cloud', ranked: ['diary'] });
+  await T({ project: { id: 'qa-rt2', toolboxes: ['nextcloud-files', 'web-search', 'core'] }, route: 'ungranted', ranked: ['nextcloud-files', 'web-search'] });
+  await T({ project: { id: 'qa-rt3', toolboxes: ['core', 'web-search'] }, driveConnected: false, ranked: ['gdrive', 'core'] });
+  await T({ project: { id: 'qa-rt4', toolboxes: ['core', 'web-search', 'core'] }, ranked: ['web-search', 'core', 'web-search', 'qa-many'] });
+  await T({ project: { id: 'qa-rt5', toolboxes: ['core', 'unknown-qa', 'web-search'] }, ranked: ['core'] });
+  await T({ project: { id: 'qa-rt6', toolboxes: ['core', 'unknown-qa'] }, ranked: ['unknown-qa'] });
+  await T({ project: { id: 'qa-rt7', toolboxes: ['core', 'web-search'] }, ranked: [] });
+  await T({ project: { id: 'qa-rt7', toolboxes: ['core', 'web-search'] }, ranked: 'down' });
+  await T({ project: { id: 'qa-rt8', toolsMode: 'auto' }, message: 'what is the latest QA release', diary: false, ranked: ['diary', 'gdrive', 'web-search'] });
+  await T({ project: { id: 'qa-rt9', toolboxes: ['qa-big'] }, measured: 2000, measuredMachine: 9000, provider: 'machine' });
+  // Node throws: routeNotes reaches the null tool of an offered box whose named tools are all blocked.
+  await T({ project: { id: 'qa-rt10', toolboxes: ['core', 'qa-weird'] }, policy: { '𝒬𝒜_search_𝟙': 'block', [`qa_${'long_'.repeat(60)}name`]: 'block', '\ud800qa_lone': 'block' } });
   await T({ message: 'search the web for QA', policy: { web_search: 'block' } });
   await T({ message: 'search the web for QA', writeMode: 'block', policy: { web_news: 'allow' } });
   await T({ project: { id: 'qa-p7', toolboxes: ['core', 'gdrive', 'nextcloud-files', 'web-search', 'project-docs'], files: [{ name: 'qa.md' }] }, route: 'ungranted' });
@@ -467,13 +503,13 @@ const boxRecord = (b) => ({ id: b.id, label: b.label, source: b.source, inApp: b
   const PROJECTS = [null, { id: 'qa-r1', toolsMode: 'auto' }, { id: 'qa-r2', toolboxes: ['core', 'web-search'] }, { id: 'qa-r3', toolsMode: 'manual', toolboxes: ['nextcloud-files', 'core', 'gdrive', 'qa-dup'] },
     { id: 'qa-r4', toolsMode: 'auto', toolboxes: ['project-docs', 'qa-many'], docsToolboxDefaulted: true, files: [{ name: 'a' }] }, { id: 'specialist-qa-r', toolboxes: ['core', 'qa-many'] },
     { id: 'qa-r5', toolboxes: ['qa-big', 'diary', 'qa-oauth', 'web-search', 'core'] }, { id: 'qa-r6', toolboxes: [] }];
-  const ROUTINGS = [null, null, { ids: ['web-search'], narrowed: true }, { ids: ['core', 'gdrive'], narrowed: false }, { ids: [], narrowed: true }, { ids: ['qa-many', 'unknown-qa'], narrowed: true }];
+  const RANKED = [null, null, ['web-search'], ['core', 'gdrive'], [], ['qa-many', 'unknown-qa'], 'down', ['gdrive', 'diary', 'nextcloud-files', 'core', 'web-search']];
   const GATES = [null, 'none', { tool: 'web_search', mode: 'prefetch' }];
   for (let n = 0; n < 400; n += 1) {
     await T({ catalogue: pick(['full', 'full', 'offered', 'dupid', 'plain']), project: pick(PROJECTS), message: pick(MESSAGES.slice(0, 500)), history: some(HIST, 0.15),
       body: rand() < 0.2 ? { turnToolboxes: some(IDS, 0.2), compactOnly: rand() < 0.2 } : {}, user: rand() < 0.9 ? 'qa-user' : null, diary: rand() < 0.5,
       signedIn: rand() < 0.5 ? ['qa-oauth'] : [], driveConnected: rand() < 0.6, ready: pick(READY), policy: pick([{}, { web_search: 'block' }, { read_project_file: 'block', drive_read_file: 'block' }]),
-      writeMode: pick(['ask', 'block', 'allow']), routing: pick(ROUTINGS), gate: pick(GATES), model: pick(MODELS), measured: pick(MEASURED),
+      writeMode: pick(['ask', 'block', 'allow']), ranked: pick(RANKED), gate: pick(GATES), model: pick(MODELS), measured: pick(MEASURED), measuredMachine: pick(MEASURED),
       provider: pick(['local', 'local', 'lan', 'cloud', 'machine']), route: pick(['none', 'none', 'local', 'cloud', 'ungranted']), props: rand() < 0.8 });
   }
 

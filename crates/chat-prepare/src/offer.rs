@@ -10,8 +10,10 @@
 //!    for the message (#1550/#1692), the external-provider strip (rule 2 of provider-egress.cjs;
 //!    the caller's `strip_private` is that strip's verdict on the provider) and the ungranted
 //!    cloud route's strip (#1646).
-//! 2. The tool router (`chatToolRouter.select(selectedBoxes, message)`): the caller's answer,
-//!    `None` when it kept the selection, else the boxes it ranked and whether it narrowed.
+//! 2. The tool router (`chatToolRouter.select(selectedBoxes, message)`): the embedding ranking
+//!    (`tool-router.cjs` `route`) is the caller's answer, `None` when it did not route; [`routing`]
+//!    is `chat-tool-routing.cjs` `select` around it: nothing to narrow with one box, and only boxes
+//!    it was shown are kept, so the ranking can never add one the turn does not carry.
 //! 3. [`offer`]: the additions kept ahead of the routed boxes, the writes only an addition
 //!    reaches (asked per call, #1550), the account's blocks, `resolveTools` for the answering
 //!    model, `more_tools` when routing narrowed, the `tools_scope` event and the frame's facts.
@@ -161,6 +163,8 @@ pub fn request_toolboxes(t: &ToolTurn<'_>, added: &[String]) -> Vec<String> {
             }
         }
     }
+    // Known Node behaviour, kept for parity (chat.cjs:536): only the FIRST "diary" is removed, so a
+    // project list naming the Diary twice keeps the second one without the add-on. Being filed.
     if !t.diary_enabled {
         if let Some(k) = selected.iter().position(|s| s == "diary") {
             selected.remove(k);
@@ -243,14 +247,7 @@ pub fn select(t: &ToolTurn<'_>) -> Selection {
     }
 }
 
-/// The tool router's answer when it ranked the boxes (`routed: true`).
-#[derive(Debug, Clone, PartialEq)]
-pub struct Routed {
-    pub ids: Vec<String>,
-    pub narrowed: bool,
-}
-
-/// `routing` after the additions are kept in it.
+/// `routing` (after [`offer`], with the additions kept in it).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Routing {
     pub ids: Vec<String>,
@@ -260,12 +257,15 @@ pub struct Routing {
 
 /// What [`offer`] reads besides the turn and its selection.
 pub struct OfferInput<'a> {
-    /// The router's answer (`None`: it kept the selection).
-    pub routed: Option<Routed>,
+    /// The ranking's boxes (`route(...).boxes` when it routed; `None`: the router is off, the
+    /// embeddings failed or nothing matched).
+    pub ranked: Option<Vec<String>>,
     /// The answering model.
     pub model: &'a str,
-    /// `prefill.budgetFor(model, 14000[, provider.id on a machine])` when a truthy number.
-    pub measured: Option<f64>,
+    /// `prefill.budgetFor(model, 14000, scope)`: the measured budget when a truthy number.
+    pub prefill: &'a dyn Fn(&str, Option<&str>) -> Option<f64>,
+    /// `measureScope`: `provider.id` when the provider is an Inference machine (`measuredOn`).
+    pub machine_scope: Option<&'a str>,
     /// `toolPolicy.mode(chatUser?.id, name, isWrite) === 'block'`.
     pub policy_blocks: &'a dyn Fn(&str, bool) -> bool,
     /// `templateGate`: the default provider, and a model manager that reads `/props`.
@@ -301,20 +301,75 @@ fn names_of(boxes: &[Toolbox], ids: &[String]) -> Result<Vec<String>, NameNotTex
     Ok(out)
 }
 
-/// Step 3: the routed selection resolved for the answering model.
-pub fn offer(t: &ToolTurn<'_>, sel: &Selection, o: OfferInput<'_>) -> Result<Offer, NameNotText> {
-    let mut routing = match o.routed {
-        None => Routing {
+/// `chat-tool-routing.cjs` `select(selectedBoxes, message)` given the ranking's answer: the rows it
+/// ranks are the selected boxes this server offers; with at most one, or no ranking, it keeps the
+/// selection, and so with a box whose tools it cannot read. Otherwise the ranked ids it was shown (`result.boxes.filter((id) =>
+/// inSelection.has(id))`, unique as the ranking's set is), in its order, narrowed when fewer than
+/// the boxes shown.
+pub fn routing(t: &ToolTurn<'_>, sel: &Selection, ranked: Option<&[String]>) -> Routing {
+    let rows: Vec<&String> = sel
+        .selected
+        .iter()
+        .filter(|id| t.boxes.iter().any(|b| &&b.id == id))
+        .collect();
+    let mut shown: Vec<&String> = Vec::new();
+    for id in &rows {
+        if !shown.contains(id) {
+            shown.push(id);
+        }
+    }
+    // `boxText` reads `t.function` of every tool of every row (the last box of an id, as the
+    // `available` map holds it) before any embedding: a null tool throws there, and the router
+    // keeps the selection ("embeddings unavailable").
+    let readable = rows.iter().all(|id| {
+        t.boxes
+            .iter()
+            .rev()
+            .find(|b| &&b.id == id)
+            .is_none_or(|b| !b.tools.iter().any(JValue::is_nullish))
+    });
+    match ranked {
+        Some(ranked) if rows.len() > 1 && readable && !ranked.is_empty() => {
+            let mut ids: Vec<String> = Vec::new();
+            for id in ranked {
+                if shown.contains(&id) && !ids.contains(id) {
+                    ids.push(id.clone());
+                }
+            }
+            let narrowed = ids.len() < shown.len();
+            Routing {
+                ids,
+                routed: true,
+                narrowed,
+            }
+        }
+        _ => Routing {
             ids: sel.selected.clone(),
             routed: false,
             narrowed: false,
         },
-        Some(r) => Routing {
-            ids: r.ids,
-            routed: true,
-            narrowed: r.narrowed,
-        },
-    };
+    }
+}
+
+/// Why [`offer`] built nothing; the turn stays in Node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refused {
+    /// [`NameNotText`]: Node would offer a tool under a non-text name.
+    NameNotText,
+    /// Node throws: `routeNotes` reads `tool.function` of a `null` or `undefined` tool of an
+    /// offered box that no offered tool matched before it.
+    Thrown,
+}
+
+impl From<NameNotText> for Refused {
+    fn from(_: NameNotText) -> Refused {
+        Refused::NameNotText
+    }
+}
+
+/// Step 3: the routed selection resolved for the answering model.
+pub fn offer(t: &ToolTurn<'_>, sel: &Selection, o: OfferInput<'_>) -> Result<Offer, Refused> {
+    let mut routing = routing(t, sel, o.ranked.as_deref());
     if routing.routed && !sel.added.is_empty() {
         let mut all = routing.ids.clone();
         all.extend(
@@ -366,7 +421,7 @@ pub fn offer(t: &ToolTurn<'_>, sel: &Selection, o: OfferInput<'_>) -> Result<Off
             model: o.model,
             skip: &blocked,
             specialist,
-            measured: o.measured,
+            measured: (o.prefill)(o.model, o.machine_scope),
         },
     )?;
     let mut active_tools = resolved.tools.clone();
@@ -387,14 +442,29 @@ pub fn offer(t: &ToolTurn<'_>, sel: &Selection, o: OfferInput<'_>) -> Result<Off
         .iter()
         .filter_map(|tool| tool.get("function").get("name").as_str())
         .collect();
-    let offered = ids
-        .iter()
-        .filter(|id| match t.boxes.iter().find(|b| &&b.id == id) {
-            Some(b) => b.text_names().any(|n| names.contains(&n)),
-            None => true,
-        })
-        .cloned()
-        .collect();
+    // routeNotes' `offered`: a box this server does not offer is kept, one of its own only with a
+    // tool in activeTools (`tools.some((tool) => names.has(tool.function?.name))`).
+    let mut offered = Vec::new();
+    for id in ids {
+        let mut keep = true;
+        if let Some(b) = t.boxes.iter().find(|b| &b.id == id) {
+            keep = false;
+            for tool in &b.tools {
+                if tool.is_nullish() {
+                    return Err(Refused::Thrown);
+                }
+                if let Some(n) = tool.get("function").get("name").as_str() {
+                    if names.contains(&n) {
+                        keep = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if keep {
+            offered.push(id.clone());
+        }
+    }
     let pick = |f: &dyn Fn(&str) -> bool| {
         names
             .iter()
