@@ -585,7 +585,11 @@ async fn core_service(
         }
         "/internal/chat/turn" => {
             sc.handoff_header = headers.get("x-noevia-chat-handoff").cloned();
-            if headers.get("x-noevia-chat-handoff-caps").map(String::as_str) != Some("skills") {
+            if headers
+                .get("x-noevia-chat-handoff-caps")
+                .map(String::as_str)
+                != Some("skills")
+            {
                 sc.errors.push(format!(
                     "turn: caps header {:?}",
                     headers.get("x-noevia-chat-handoff-caps")
@@ -653,7 +657,10 @@ async fn core_service(
             // Core records the read in the account's skill ledger, as Node's turn did.
             if next.get("ledger").is_object() {
                 if let Ok(dir) = server_projects::store::user_dir(&sc.data, &sc.user) {
-                    let _ = std::fs::write(dir.join("skill-history.json"), js::stringify(next.get("ledger")));
+                    let _ = std::fs::write(
+                        dir.join("skill-history.json"),
+                        js::stringify(next.get("ledger")),
+                    );
                 }
             }
             ok(js::obj([("loaded", next.get("loaded").clone())]))
@@ -1073,7 +1080,8 @@ fn state_files(dir: &Path, user: &str, window: (f64, f64)) -> BTreeMap<String, S
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
         // The skill ledger is core's (written through the skills bridges), listed as Node's run lists it.
-        if (name.starts_with("context-") && name.ends_with(".json")) || name == "skill-history.json" {
+        if (name.starts_with("context-") && name.ends_with(".json")) || name == "skill-history.json"
+        {
             add(name, &e.path());
         } else if name == "chat-partials" {
             for p in std::fs::read_dir(e.path()).unwrap().flatten() {
