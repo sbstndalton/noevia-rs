@@ -287,6 +287,11 @@ fn every_node_session_replays() {
                     text(job.get("result")),
                     "{name}: blocked result"
                 );
+                // The halt comes a moment after the refusal that reached the limit.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while !host.halted.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
                 assert!(
                     host.halted.load(Ordering::SeqCst),
                     "{name}: the agent was not stopped"
