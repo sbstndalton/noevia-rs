@@ -714,18 +714,17 @@ fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
         saving.observe(e, *left);
     }
     let left = matches!(ended, Ended::Left);
-    let chat = prepared.record.then(|| {
-        case.get("input")
-            .get("body")
-            .get("chatId")
-            .as_str()
-            .unwrap()
-            .to_string()
-    });
+    let chat = case
+        .get("input")
+        .get("body")
+        .get("chatId")
+        .as_str()
+        .map(str::to_string);
     // The lease goes back as the response ends or the client leaves, before the store is asked.
     saving.finish(
         &script,
         chat.as_deref(),
+        prepared.record,
         &prepared.message,
         left,
         FIXED_NOW as i64,
@@ -753,20 +752,20 @@ fn every_prepared_turn_reads() {
         let p = Prepared::read(c.get("handoff").get("prepared"))
             .unwrap_or_else(|e| panic!("{}: {e:?}", c.get("name").as_str().unwrap()));
         assert!(p.model.starts_with("qa"));
-        // meta, telemetry, status, status, tools_scope; and the reply's first `sources` with retrieval, the
-        // reply's `warning` (an image not read) before tools_scope.
+        // The cut comes right after the preparation's `tools_scope`, the last event core sends before it.
         let JValue::Arr(events) = c.get("events") else {
             panic!()
         };
-        let preamble = events
+        let scope = events
             .iter()
-            .take_while(|e| e.get("type").as_str() != Some("tools_scope"));
-        let warned = preamble
-            .filter(|e| e.get("type").as_str() == Some("warning"))
-            .count();
-        let retrieval = usize::from(c.get("input").get("retrieval").is_object());
-        let before = (5 + retrieval + warned) as f64;
-        assert_eq!(c.get("handoff").get("before").as_num(), Some(before));
+            .position(|e| e.get("type").as_str() == Some("tools_scope"))
+            .unwrap_or_else(|| panic!("{}: no tools_scope", c.get("name").as_str().unwrap()));
+        assert_eq!(
+            c.get("handoff").get("before").as_num(),
+            Some((scope + 1) as f64),
+            "{}",
+            c.get("name").as_str().unwrap()
+        );
         // The project edit tools are named for the gate (chat.cjs projectEditTool) exactly when offered.
         let offered = |n: &str| {
             p.tools
@@ -915,7 +914,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 73, "{ran:?}");
+    assert_eq!(ran.len(), 77, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
@@ -1029,6 +1028,23 @@ fn an_edit_the_bridge_cannot_resolve_after_the_card_is_refused_without_revoking(
         );
         assert!(script.executions.lock().unwrap().is_empty(), "{at}");
     }
+}
+
+/// Core keeps a turn whose prepared frame is longer than its cap in Node (rust-chat-native.cjs
+/// `frameTooLarge`); the front's reader must take every frame up to that cap, or such a turn would fail
+/// after core let it go.
+#[test]
+fn the_reader_takes_every_frame_core_hands_off() {
+    let f = fixture();
+    let cap = f
+        .get("preparedCap")
+        .as_num()
+        .expect("the recording names core's cap") as usize;
+    assert!(
+        cap <= chat_turn::handoff::PREPARED_CAP,
+        "core {cap} > front {}",
+        chat_turn::handoff::PREPARED_CAP
+    );
 }
 
 /// The front spawns the turn on its runtime: `native::run` must be `Send` for a `Send + Sync` host.

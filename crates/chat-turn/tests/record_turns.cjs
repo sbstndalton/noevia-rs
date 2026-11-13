@@ -606,6 +606,12 @@ const CASES = [
     rounds: [summary('QA summary of the earlier turns, part one.'), summary('QA summary of the earlier turns, part two.'), answer('Answer after compaction.')] },
   { name: 'context_too_full', about: 'The current message alone does not fit: an error event, no engine request.', ctxSize: 2048,
     body: { message: longText('QA huge message.', 400) }, rounds: [] },
+  { name: 'compact_only', about: 'The Compact action: the context fit is forced, the older turns summarised, the meter sent, then done (no answer, no title).',
+    body: { compactOnly: true, history: longHistory(4, 5) }, rounds: [summary('QA compacted summary of the earlier turns.')] },
+  { name: 'compact_only_short', about: 'The Compact action on a chat with one earlier exchange.',
+    body: { compactOnly: true, history: longHistory(1, 2) }, rounds: [] },
+  { name: 'compact_only_fails', about: 'The Compact action whose summary request fails: the error, the transcript unchanged.',
+    body: { compactOnly: true, history: longHistory(4, 5) }, rounds: [{ status: 500, body: JSON.stringify({ error: { message: 'QA engine failure' } }) }] },
   { name: 'thinking_cut', about: 'Reasoning past the thinking cap with no answer: the stream is cut, the answer asked for once more.',
     rounds: [{ frames: [chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), { wait: true }, chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), finish('stop')] },
       answer('The answer after the cut.')] },
@@ -741,6 +747,9 @@ const CASES = [
   { name: 'image_described', about: 'A Vision role describes the image before the cut (its own lease and request); the answer gets the description.',
     ...QA_IMAGE, visionRole: 'qa-vision',
     rounds: [summary('QA description: a white square with one dot.'), answer('The chart has one dot.')] },
+  { name: 'image_description_failed', about: 'The Vision role cannot describe the image (its request fails): the status and warning say so, and the answering model, which can see, is handed the image.',
+    ...QA_IMAGE, visionRole: 'qa-vision', vision: SEES,
+    rounds: [{ status: 500, body: JSON.stringify({ error: { message: 'QA vision failure' } }) }, answer('Read the chart directly: one dot.')] },
   { name: 'page_save_stays_in_node', about: 'A coworker conversation offers the page save (#2446): the hand-off is refused (page-save) and Node runs the turn.',
     pageSave: true, project: { id: 'specialist-qa', name: 'QA Coworker' }, rounds: [answer('A coworker reply.')] },
 ];
@@ -767,6 +776,9 @@ const CASES = [
     generator: 'crates/chat-turn/tests/record_turns.cjs (noevia-core server/chat.cjs handleChat)',
     fixedNow: new RealDate(FIXED_NOW).toISOString(),
     sources: SOURCES,
+    // The hand-off frame's size cap core keeps to (rust-chat-native.cjs PREPARED_CAP, when it has one): the front's
+    // reader (crates/chat-turn handoff.rs) must accept every frame up to it.
+    preparedCap: (() => { try { return require(path.join(server, 'rust-chat-native.cjs')).PREPARED_CAP ?? null; } catch { return null; } })(),
     tools,
     cases,
   };

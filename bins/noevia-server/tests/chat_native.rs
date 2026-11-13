@@ -209,7 +209,10 @@ type Shared = Arc<Mutex<Script>>;
 
 /// How many of the recorded engine requests core made before the hand-off.
 fn pre_cut_requests(case: &JValue) -> usize {
-    case.get("handoff").get("requests").as_num().map_or(0, |n| n as usize)
+    case.get("handoff")
+        .get("requests")
+        .as_num()
+        .map_or(0, |n| n as usize)
 }
 
 /// Every model lease the turn took was given back (a DELETE of its id).

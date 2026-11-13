@@ -392,11 +392,13 @@ async fn drive(
     let left = matches!(ended, native::Ended::Left) || host.left();
     let keep = Arc::clone(&host);
     let message = p.message.clone();
+    let (turn_chat, record) = (p.chat_id.clone(), p.record);
     let _ = tokio::task::spawn_blocking(move || {
         if let Ok(saving) = keep.saving.lock() {
             saving.finish(
                 &*keep,
-                chat.as_deref(),
+                turn_chat.as_deref(),
+                record,
                 &message,
                 left,
                 crate::identity::now_ms(),
