@@ -125,6 +125,7 @@
    "sandboxKind": "sandbox",
    "noCreate": false,
    "inference": null,
+   "holdClaim": false,
    "ops": [
     {
      "facts": true
@@ -1080,6 +1081,7 @@
    "sandboxKind": "sandbox",
    "noCreate": false,
    "inference": null,
+   "holdClaim": false,
    "ops": [
     {
      "start": {
@@ -1691,6 +1693,7 @@
    "sandboxKind": "sandbox",
    "noCreate": false,
    "inference": null,
+   "holdClaim": false,
    "ops": [
     {
      "start": {
@@ -1958,6 +1961,7 @@
    "sandboxKind": "sandbox",
    "noCreate": false,
    "inference": null,
+   "holdClaim": false,
    "ops": [
     {
      "start": {
@@ -2389,6 +2393,7 @@
    "sandboxKind": "sandbox",
    "noCreate": false,
    "inference": null,
+   "holdClaim": false,
    "ops": [
     {
      "start": {
@@ -2708,6 +2713,7 @@
    "sandboxKind": "sandbox",
    "noCreate": false,
    "inference": null,
+   "holdClaim": false,
    "ops": [
     {
      "facts": true
@@ -2791,6 +2797,7 @@
    "sandboxKind": "spawn",
    "noCreate": false,
    "inference": null,
+   "holdClaim": false,
    "ops": [
     {
      "facts": true
@@ -2874,6 +2881,7 @@
    "sandboxKind": "sandbox",
    "noCreate": true,
    "inference": null,
+   "holdClaim": false,
    "ops": [
     {
      "facts": true
@@ -2963,6 +2971,7 @@
    "sandboxKind": "sandbox",
    "noCreate": false,
    "inference": "paused",
+   "holdClaim": false,
    "ops": [
     {
      "start": {
@@ -2988,6 +2997,7 @@
    "sandboxKind": "sandbox",
    "noCreate": false,
    "inference": "refuses",
+   "holdClaim": false,
    "ops": [
     {
      "start": {
@@ -3049,6 +3059,270 @@
       "data": {
        "error": "Coding tasks wait while noevia tunes or reconfigures models. Start this task when that finishes."
       }
+     }
+    ]
+   },
+   "logs": []
+  },
+  "cancel-during-claim": {
+   "enabled": true,
+   "sandboxKind": "sandbox",
+   "noCreate": false,
+   "inference": null,
+   "holdClaim": true,
+   "ops": [
+    {
+     "startHeld": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner"
+     }
+    },
+    {
+     "cancel": "<T1>"
+    },
+    {
+     "facts": true
+    },
+    {
+     "releaseClaim": true
+    },
+    {
+     "waitEnd": "<T1>"
+    },
+    {
+     "cancel": "<T1>"
+    },
+    {
+     "facts": true
+    }
+   ],
+   "answers": [
+    {
+     "waited": "claiming"
+    },
+    {
+     "status": 200,
+     "body": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "cancelled",
+      "stage": null,
+      "error": null,
+      "task": null,
+      "branch": null,
+      "baseSha": null,
+      "headSha": null,
+      "meta": null,
+      "identityHash": null,
+      "createdAt": 5000,
+      "updatedAt": 5000,
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "steps": [],
+      "plan": null,
+      "assistantOutput": null,
+      "approval": null,
+      "result": null
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       },
+       {
+        "id": "planner",
+        "label": "Planner",
+        "available": true,
+        "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    },
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/qa-task",
+      "workspace": "/qa/work/qa-task",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "planner",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "ended"
+    },
+    {
+     "status": 200,
+     "body": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "cancelled",
+      "stage": null,
+      "error": null,
+      "task": null,
+      "branch": null,
+      "baseSha": null,
+      "headSha": null,
+      "meta": null,
+      "identityHash": null,
+      "createdAt": 5000,
+      "updatedAt": 5000,
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "steps": [],
+      "plan": null,
+      "assistantOutput": null,
+      "approval": null,
+      "result": null
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       },
+       {
+        "id": "planner",
+        "label": "Planner",
+        "available": true,
+        "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.cancelled",
+      "at": 5000,
+      "data": {}
      }
     ]
    },

@@ -7,7 +7,8 @@
 //! Every answer, each task's journal and the log lines must match: the preparation list and the
 //! start's answer with the flag on and off, in the sandbox or not, a pipeline that cannot be built,
 //! the plan card and the accept card answered through decide, a cancel on the plan card, the
-//! one-task rule, the maintenance pause and a refused lease.
+//! one-task rule, the maintenance pause, a refused lease and a cancel while the workspace is being
+//! claimed (jobs.cjs `cancel` with no controller yet: `job.cancelled` at once, the run never starts).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -21,8 +22,8 @@ use code_harness::service::{
 };
 use code_pipeline::driver::{self, Connect, JobCtx, Pin, RunHandle, Signal};
 use js_json::{wtf16, JValue};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 const FIXTURE: &str = concat!(
@@ -63,13 +64,41 @@ impl driver::Workspaces for Ws {
     }
 }
 
+/// A claim held until the scenario lets it answer (`holdClaim`): the task it claims for, and
+/// whether it was let go.
+#[derive(Default)]
+struct Hold {
+    state: Mutex<(Option<String>, bool)>,
+    moved: Condvar,
+}
+
+impl Hold {
+    /// Waits (at most 10 s) until `done` says so.
+    fn wait(&self, done: impl Fn(&(Option<String>, bool)) -> bool) -> (Option<String>, bool) {
+        let state = self.state.lock().unwrap();
+        let (state, _) = self
+            .moved
+            .wait_timeout_while(state, Duration::from_secs(10), |s| !done(s))
+            .unwrap();
+        state.clone()
+    }
+}
+
 struct Harness {
     standins: JValue,
     handles: Mutex<Vec<JValue>>,
+    hold: Option<Arc<Hold>>,
+    panics: Arc<AtomicBool>,
 }
 
 impl driver::Harness for Harness {
-    fn claim_run(&self, _: &JValue) -> Result<RunHandle, driver::Fail> {
+    fn claim_run(&self, req: &JValue) -> Result<RunHandle, driver::Fail> {
+        assert!(!self.panics.load(Ordering::SeqCst), "QA: the claim panics");
+        if let Some(hold) = &self.hold {
+            hold.state.lock().unwrap().0 = req.get("taskId").as_str().map(str::to_string);
+            hold.moved.notify_all();
+            hold.wait(|s| s.1);
+        }
         let mut h = self.handles.lock().unwrap();
         h.push(JValue::obj([
             ("workspace", self.standins.get("workspace").clone()),
@@ -209,6 +238,8 @@ impl driver::Host for Host {
 struct QaSetup {
     enabled: bool,
     create: bool,
+    hold: Option<Arc<Hold>>,
+    panics: Arc<AtomicBool>,
     standins: JValue,
     logs: Logs,
 }
@@ -226,6 +257,8 @@ impl Setup for QaSetup {
                 Arc::new(Harness {
                     standins: st.clone(),
                     handles: Mutex::new(Vec::new()),
+                    hold: self.hold.clone(),
+                    panics: self.panics.clone(),
                 }),
                 Some(Arc::new(Roles(st.get("answers").clone()))),
                 Some(Arc::new(Verify)),
@@ -316,7 +349,8 @@ fn the_planner_preparation_answers_as_core_recorded_it() {
     let JValue::Obj(scenarios) = fixture.get("scenarios") else {
         panic!("no scenarios")
     };
-    assert!(scenarios.len() >= 10);
+    assert!(scenarios.len() >= 11);
+    assert!(scenarios.iter().any(|(n, _)| n == "cancel-during-claim"));
     for (name, sc) in scenarios {
         let base = tempfile::tempdir().unwrap();
         let dir = base.path().join("tenant");
@@ -325,6 +359,7 @@ fn the_planner_preparation_answers_as_core_recorded_it() {
         let logs: Logs = Arc::new(Mutex::new(Vec::new()));
         let ids = Arc::new(AtomicUsize::new(0));
         let service_logs = logs.clone();
+        let hold = (sc.get("holdClaim").as_bool() == Some(true)).then(|| Arc::new(Hold::default()));
         let service = Service::new(Options {
             repos: vec![Repo {
                 id: "qa-repo".into(),
@@ -355,6 +390,8 @@ fn the_planner_preparation_answers_as_core_recorded_it() {
             pipeline: Some(Arc::new(QaSetup {
                 enabled: sc.get("enabled").as_bool() == Some(true),
                 create: sc.get("noCreate").as_bool() != Some(true),
+                hold: hold.clone(),
+                panics: Arc::new(AtomicBool::new(false)),
                 standins: standins.clone(),
                 logs: logs.clone(),
             })),
@@ -387,82 +424,113 @@ fn the_planner_preparation_answers_as_core_recorded_it() {
         let JValue::Arr(ops) = sc.get("ops") else {
             panic!("{name}: no ops")
         };
-        let mut answers = Vec::new();
-        for op in ops {
-            let answer = if op.get("start").is_object() {
-                let a = route(
-                    202.0,
-                    service.start(&dir, Some("qa-user"), &project, &resolve, op.get("start")),
-                );
-                if let Some(t) = a.get("body").get("taskId").as_str() {
-                    if !tasks.iter().any(|x| x == t) {
-                        tasks.push(t.to_string());
+        let answers = std::thread::scope(|scope| {
+            let mut answers = Vec::new();
+            let mut pending = None;
+            for op in ops {
+                let answer = if op.get("startHeld").is_object() {
+                    let (service, dir, project, resolve, body) =
+                        (&service, &dir, &project, &resolve, op.get("startHeld"));
+                    pending = Some(scope.spawn(move || {
+                        service.start(dir, Some("qa-user"), project, resolve, body)
+                    }));
+                    let held = hold.as_ref().unwrap().wait(|s| s.0.is_some()).0;
+                    if let Some(t) = &held {
+                        if !tasks.iter().any(|x| x == t) {
+                            tasks.push(t.clone());
+                        }
                     }
-                }
-                a
-            } else if let JValue::Arr(d) = op.get("decide") {
-                let (t, decision, card) = (
-                    sub(&d[0], &tasks, &cards),
-                    sub(&d[1], &tasks, &cards),
-                    sub(&d[2], &tasks, &cards),
-                );
-                route(
-                    200.0,
-                    service.decide(&dir, "qa-project", &t, &decision, &card),
-                )
-            } else if op.get("cancel").as_str().is_some() {
-                let t = sub(op.get("cancel"), &tasks, &cards);
-                route(200.0, service.cancel(&dir, "qa-project", &t))
-            } else if op.get("facts").truthy() {
-                route(200.0, service.facts(&dir))
-            } else if op.get("waitCard").as_str().is_some() {
-                let t = sub(op.get("waitCard"), &tasks, &cards);
-                let deadline = Instant::now() + Duration::from_secs(10);
-                let mut card = JValue::Null;
-                while Instant::now() < deadline {
-                    let c = service
-                        .facts(&dir)
-                        .unwrap()
-                        .get("approvals")
-                        .get(&t)
-                        .clone();
-                    if c.is_object()
-                        && !cards
-                            .iter()
-                            .any(|k| Some(k.as_str()) == c.get("id").as_str())
-                    {
-                        card = c;
-                        break;
+                    JValue::obj([(
+                        "waited",
+                        s(if held.is_some() { "claiming" } else { "none" }),
+                    )])
+                } else if op.get("releaseClaim").truthy() {
+                    let hold = hold.as_ref().unwrap();
+                    hold.state.lock().unwrap().1 = true;
+                    hold.moved.notify_all();
+                    let a = route(202.0, pending.take().unwrap().join().unwrap());
+                    if let Some(t) = a.get("body").get("taskId").as_str() {
+                        if !tasks.iter().any(|x| x == t) {
+                            tasks.push(t.to_string());
+                        }
                     }
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                if let Some(id) = card.get("id").as_str() {
-                    cards.push(id.to_string());
-                }
-                JValue::obj([(
-                    "waited",
-                    if card.is_object() {
-                        card.get("action").clone()
-                    } else {
-                        s("none")
-                    },
-                )])
-            } else if op.get("waitEnd").as_str().is_some() {
-                let t = sub(op.get("waitEnd"), &tasks, &cards);
-                let deadline = Instant::now() + Duration::from_secs(10);
-                while !ended(&dir, &t) && Instant::now() < deadline {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                std::thread::sleep(Duration::from_millis(50));
-                JValue::obj([(
-                    "waited",
-                    s(if ended(&dir, &t) { "ended" } else { "running" }),
-                )])
-            } else {
-                panic!("{name}: unknown op {}", text(op))
-            };
-            answers.push(answer);
-        }
+                    a
+                } else if op.get("start").is_object() {
+                    let a = route(
+                        202.0,
+                        service.start(&dir, Some("qa-user"), &project, &resolve, op.get("start")),
+                    );
+                    if let Some(t) = a.get("body").get("taskId").as_str() {
+                        if !tasks.iter().any(|x| x == t) {
+                            tasks.push(t.to_string());
+                        }
+                    }
+                    a
+                } else if let JValue::Arr(d) = op.get("decide") {
+                    let (t, decision, card) = (
+                        sub(&d[0], &tasks, &cards),
+                        sub(&d[1], &tasks, &cards),
+                        sub(&d[2], &tasks, &cards),
+                    );
+                    route(
+                        200.0,
+                        service.decide(&dir, "qa-project", &t, &decision, &card),
+                    )
+                } else if op.get("cancel").as_str().is_some() {
+                    let t = sub(op.get("cancel"), &tasks, &cards);
+                    route(200.0, service.cancel(&dir, "qa-project", &t))
+                } else if op.get("facts").truthy() {
+                    route(200.0, service.facts(&dir))
+                } else if op.get("waitCard").as_str().is_some() {
+                    let t = sub(op.get("waitCard"), &tasks, &cards);
+                    let deadline = Instant::now() + Duration::from_secs(10);
+                    let mut card = JValue::Null;
+                    while Instant::now() < deadline {
+                        let c = service
+                            .facts(&dir)
+                            .unwrap()
+                            .get("approvals")
+                            .get(&t)
+                            .clone();
+                        if c.is_object()
+                            && !cards
+                                .iter()
+                                .any(|k| Some(k.as_str()) == c.get("id").as_str())
+                        {
+                            card = c;
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    if let Some(id) = card.get("id").as_str() {
+                        cards.push(id.to_string());
+                    }
+                    JValue::obj([(
+                        "waited",
+                        if card.is_object() {
+                            card.get("action").clone()
+                        } else {
+                            s("none")
+                        },
+                    )])
+                } else if op.get("waitEnd").as_str().is_some() {
+                    let t = sub(op.get("waitEnd"), &tasks, &cards);
+                    let deadline = Instant::now() + Duration::from_secs(10);
+                    while !ended(&dir, &t) && Instant::now() < deadline {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                    JValue::obj([(
+                        "waited",
+                        s(if ended(&dir, &t) { "ended" } else { "running" }),
+                    )])
+                } else {
+                    panic!("{name}: unknown op {}", text(op))
+                };
+                answers.push(answer);
+            }
+            answers
+        });
         let JValue::Arr(want) = sc.get("answers") else {
             panic!("{name}: no answers")
         };
@@ -486,4 +554,94 @@ fn the_planner_preparation_answers_as_core_recorded_it() {
         let got = JValue::Arr(logs.lock().unwrap().clone());
         assert_eq!(text(&got), text(sc.get("logs")), "{name}: logs");
     }
+}
+
+/// Not Node's (a JS host function cannot panic the process): a host trait that panics inside
+/// the start fails the job it created as jobs.run's catch does, the start answers the route's
+/// 500, and the task is no longer live, so the next Planner start is not held by it.
+#[test]
+fn a_start_that_panics_fails_its_job_and_leaves_nothing_live() {
+    let fixture = wtf16::parse(&std::fs::read_to_string(FIXTURE).unwrap()).unwrap();
+    let base = tempfile::tempdir().unwrap();
+    let dir = base.path().join("tenant");
+    std::fs::create_dir_all(&dir).unwrap();
+    let dir = dir.to_str().unwrap().to_string();
+    let ids = Arc::new(AtomicUsize::new(0));
+    let panics = Arc::new(AtomicBool::new(true));
+    let service = Service::new(Options {
+        repos: vec![Repo {
+            id: "qa-repo".into(),
+            path: "/qa/repos/qa-repo".into(),
+        }],
+        harnesses: default_harnesses(Some("opencode"), Some("0.0.0-qa")),
+        sandboxed: true,
+        transport: None,
+        tree_root: None,
+        harness_user: None,
+        egress: None,
+        engine: Arc::new(code_harness::executor::Engine::default),
+        inference: None,
+        guard: Arc::new(|| false),
+        log: Arc::new(|_| {}),
+        now: Arc::new(|| 5000.0),
+        timeout: Duration::from_secs(60),
+        base_path: None,
+        base_lang: None,
+        new_id: Arc::new(move || {
+            let n = ids.fetch_add(1, Ordering::SeqCst) + 1;
+            format!("00000000-0000-4000-8000-{n:012}")
+        }),
+        epoch: "qa-epoch".into(),
+        pipeline: Some(Arc::new(QaSetup {
+            enabled: true,
+            create: true,
+            hold: None,
+            panics: panics.clone(),
+            standins: fixture.get("standins").clone(),
+            logs: Arc::new(Mutex::new(Vec::new())),
+        })),
+    });
+    let record = JValue::obj([("id", s("qa-project"))]);
+    let project = Project {
+        id: "qa-project",
+        record: &record,
+    };
+    let resolve = || Ok(Resolved::default());
+    let body = wtf16::parse(
+        r#"{"repository":"qa-repo","prompt":"QA: greet.","promptPreparation":"planner","approvePlan":true}"#,
+    )
+    .unwrap();
+    let answer = route(
+        202.0,
+        service.start(&dir, Some("qa-user"), &project, &resolve, &body),
+    );
+    assert_eq!(
+        text(&answer),
+        r#"{"status":500,"body":{"error":"Code request failed"}}"#
+    );
+    let first = "00000000-0000-4000-8000-000000000001";
+    let rows = journal(&dir, first).unwrap();
+    let last = rows.last().unwrap();
+    assert_eq!(last.get("type").as_str(), Some("job.failed"));
+    assert_eq!(
+        last.get("data").get("error").as_str(),
+        Some("Code pipeline could not start.")
+    );
+    // Not live: a cancel finds a finished task (no signal, no second terminal row).
+    let view = route(200.0, service.cancel(&dir, "qa-project", first));
+    assert_eq!(view.get("body").get("status").as_str(), Some("failed"));
+    assert_eq!(journal(&dir, first).unwrap().len(), rows.len());
+    // The next Planner start (whose claim answers) is not held by the failed one.
+    panics.store(false, Ordering::SeqCst);
+    let next = service
+        .start(&dir, Some("qa-user"), &project, &resolve, &body)
+        .unwrap();
+    let next = next.get("taskId").as_str().unwrap().to_string();
+    assert_ne!(next, first);
+    service.cancel(&dir, "qa-project", &next).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !ended(&dir, &next) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(ended(&dir, &next));
 }

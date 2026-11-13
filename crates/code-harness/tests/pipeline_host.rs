@@ -253,6 +253,7 @@ fn a_planner_task_runs_through_the_real_store_worktree_and_executor() {
         live: Arc::new(Mutex::new(HashMap::new())),
         start: Arc::new(code_harness::pipeline_host::StartState {
             signal: Signal::new(),
+            phase: Mutex::new(code_harness::pipeline_host::Phase::Queued),
             task: Mutex::new(None),
             gate: None,
             lease: Mutex::new(None),
