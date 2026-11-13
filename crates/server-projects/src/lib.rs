@@ -109,6 +109,7 @@ pub mod storage_latch;
 pub mod store;
 pub mod store_api;
 pub mod sync;
+mod task_authority;
 pub mod task_journals;
 pub mod task_store;
 pub mod toolbox_picker;

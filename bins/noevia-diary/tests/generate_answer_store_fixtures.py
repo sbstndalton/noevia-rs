@@ -2,7 +2,13 @@
 
 Usage (CPython 3.12 only, the Diary requirements installed; the import writes only under a temp dir):
 
-    <venv>/bin/python -I bins/noevia-diary/tests/generate_answer_store_fixtures.py <noevia-services>/diary
+    <venv>/bin/python -I bins/noevia-diary/tests/generate_answer_store_fixtures.py <noevia-services>/diary <cli>
+
+<cli> is a diary-corpus-write-cli built from this repository (`cargo build --release -p diary-corpus-write-cli`;
+its sources are unchanged since the noevia-rs pin the frozen Diary image builds it from). The log_exchange cases
+are recorded twice: with DIARY_CORPUS_WRITE_IMPL unset (Python's own formatter) and with it set to rust (Python
+calls the native prepare_append/apply_append transform through that binary, which corpus_write_native.BINARY is
+pointed at; the pinned module source is not changed).
 
 The real CorpusStore (get_day_text, log_exchange, apply_pending), ManagedCorpusBackend, Journal and
 workspace_files.memory_text (sha256 pinned, noevia-services origin/main 6d0ba0e) run over synthetic managed
@@ -12,7 +18,10 @@ tenants in a temp dir. Each case records what the Python code returned or left b
   include_markers=True, for a grid of days x caps;
 - memory_text: workspace_files.memory_text(store) over synthetic workspace trees;
 - log_exchange: the xid, every stored file and every journal row after CorpusStore.log_exchange on a fresh
-  tenant (scaffold) and on existing ones, plus transient failures that leave the row pending.
+  tenant (scaffold) and on existing ones, plus transient failures that leave the row pending, and the state of
+  the rows that existed before the call (an earlier pending row is applied first and can block the new one);
+- log_exchange_native: the same cases with DIARY_CORPUS_WRITE_IMPL=rust (a pending row is then the raised
+  NativeWriteUnavailable, recorded with its message).
 
 Synthetic text only. uuid.uuid4 is replaced by a counter so the xids are reproducible; the Rust test maps its
 own random xid onto the recorded one.
@@ -79,10 +88,11 @@ def load(diary_dir):
         os.environ.pop(key, None)
     sys.path.insert(0, str(root))
     from agent import corpus as fmt  # noqa: E402
-    from agent import corpus_store, journal, managed_storage, workspace_files  # noqa: E402
+    from agent import corpus_store, corpus_write_native, journal, managed_storage, workspace_files  # noqa: E402
     from agent.config import Config  # noqa: E402
     check_loaded(root)
-    return pathlib.Path(tmp), fmt, corpus_store, journal, managed_storage, workspace_files, Config
+    return (pathlib.Path(tmp), fmt, corpus_store, journal, managed_storage, workspace_files, Config,
+            corpus_write_native)
 
 
 # ---------------------------------------------------------------- spec helpers
@@ -118,7 +128,7 @@ class Run:
     """One synthetic managed tenant under the real Python store."""
 
     def __init__(self, mods, tmp, name, settings, tree, journal_rows=()):
-        self.tmp, self.fmt, corpus_store, journal, managed_storage, self.workspace_files, Config = mods
+        self.tmp, self.fmt, corpus_store, journal, managed_storage, self.workspace_files, Config, _ = mods
         self.root = tmp / name / "users" / TENANT
         self.managed = managed_storage.ManagedCorpusBackend(self.root, TENANT)
         self.db = self.root / "managed-diary.db"
@@ -449,7 +459,18 @@ def exchange_journal_row(day="2030-01-05", xid="00000000-0000-4000-8000-00000000
     return ("exchange", {"scaffold": False, "xid": xid, "day": day, "sub_header": "09:00", "body": "x", "month": "m", "document": "d", "month_label": "l"}, True)
 
 
-def log_cases(mods, tmp):
+def pending_exchange_row(day, sub_header, xid, document):
+    """An earlier exchange whose apply never succeeded: a full payload, as log_exchange enqueued it."""
+    body = f"**Me:** An earlier question.\n\n**Assistant:** An earlier answer.\n\n<!-- xid:{xid} -->\n"
+    d = date.fromisoformat(day)
+    return ("exchange", {"scaffold": False, "xid": xid, "day": day, "sub_header": sub_header, "body": body,
+                         "month": f"{d.year}-{d.month:02d}.md", "document": document, "month_label": f"{d.strftime('%B')} {d.year}"},
+            False)
+
+
+def log_cases(mods, tmp, mode):
+    """mode "python": DIARY_CORPUS_WRITE_IMPL unset; "rust": Python calls the native transform."""
+    native_write = mods[7]
     monthly = {"entry_layout": "monthly", "index_enabled": False, "month_file_template": "{year}-{month02}.md"}
     daily = {"entry_layout": "daily", "index_enabled": False}
     named = {"entry_layout": "monthly", "index_enabled": False, "monthly_prefix": "Journal", "month_file_template": "Diary - {month_name} {year}.md"}
@@ -493,7 +514,7 @@ def log_cases(mods, tmp):
     # The template cannot be listed (a repeated field is a duplicate regex group): Python raises before it
     # enqueues anything, for a tenant with no exchange yet.
     dup = {"entry_layout": "monthly", "index_enabled": False, "month_file_template": "{year}-{year}.md"}
-    run = Run(mods, tmp, "log-raises", dup, {}, [])
+    run = Run(mods, tmp, f"log-{mode}-raises", dup, {}, [])
     d = date(2030, 1, 6)
     try:
         run.store.log_exchange(d, "T", "me", "assistant", now=datetime(2030, 1, 6, 14, 32))
@@ -508,7 +529,7 @@ def log_cases(mods, tmp):
     })
     run.close()
     for i, (name, settings, tree, rows, (day, hhmm, topic, me, claude)) in enumerate(defs):
-        run = Run(mods, tmp, f"log-{i}", settings, tree, rows)
+        run = Run(mods, tmp, f"log-{mode}-{i}", settings, tree, rows)
         d = date.fromisoformat(day)
         now = datetime.combine(d, datetime.strptime(hhmm, "%H:%M").time())
         Counter.n = 0
@@ -519,7 +540,7 @@ def log_cases(mods, tmp):
             "journal_before": [{"kind": k, "payload": json.dumps(p, ensure_ascii=False), "applied": int(a)} for k, p, a in rows],
             "args": {"day": day, "now": hhmm, "topic": topic, "me": me, "claude": claude},
             "expected": {"xid": xid, "files": run.files_after(), "journal": run.journal_after()[len(before_journal):],
-                         "pending": bool(run.journal.pending_count())},
+                         "earlier": run.journal_after()[:len(before_journal)], "pending": bool(run.journal.pending_count())},
         })
         run.close()
 
@@ -529,38 +550,78 @@ def log_cases(mods, tmp):
         ("pending-parent-is-a-file-daily", daily, [("Entries", "a file where the folder should be\n")], [], plain),
         ("pending-parent-is-a-file-monthly", monthly, [("2030-01.md/x", "y")], [], plain),
         ("pending-after-earlier-exchange", daily, [("Entries", "a file where the folder should be\n")], [exchange_journal_row()], plain),
+        # An earlier UNAPPLIED exchange is applied first (apply_pending, in journal order); its document is
+        # blocked, so the pass stops there: it gains an attempt and the error, the new row stays untried.
+        ("pending-earlier-unapplied-exchange-blocked", daily, [("Entries", "a file where the folder should be\n")],
+         [pending_exchange_row("2030-01-05", "09:00 \u2014 Earlier", "00000000-0000-4000-8000-00000000c401",
+                              "Entries/2030/January/January 5, 2030.md")], plain),
+        # Only the earlier row's document is blocked: the new exchange's own document is writable but is
+        # not tried, because the pass stops at the first failure (ordering is preserved).
+        ("pending-earlier-unapplied-blocks-a-writable-exchange", monthly, [("2029-12.md/x", "y")],
+         [pending_exchange_row("2029-12-31", "23:00 \u2014 Earlier", "00000000-0000-4000-8000-00000000c402", "2029-12.md")], plain),
     ]
     for i, (name, settings, files, rows, (day, hhmm, topic, me, claude)) in enumerate(blocked):
-        run = Run(mods, tmp, f"log-blocked-{i}", settings, {"files": files}, rows)
+        run = Run(mods, tmp, f"log-{mode}-blocked-{i}", settings, {"files": files}, rows)
         d = date.fromisoformat(day)
         now = datetime.combine(d, datetime.strptime(hhmm, "%H:%M").time())
         Counter.n = 0
         before_journal = run.journal_after()
-        xid = run.store.log_exchange(d, topic, me, claude, now=now)
+        expected = {}
+        try:
+            xid = run.store.log_exchange(d, topic, me, claude, now=now)
+        except native_write.NativeWriteUnavailable as exc:
+            # Only the native mode raises for a pending row; the xid is then only in the row.
+            assert mode == "rust", name
+            expected["native_unavailable"] = str(exc)
+            xid = json.loads(run.journal_after()[len(before_journal)]["payload"])["xid"]
+        else:
+            assert mode == "python", name
         pending = bool(run.journal.pending_count())
         assert pending, name
+        expected.update({"xid": xid, "files": run.files_after(), "journal": run.journal_after()[len(before_journal):],
+                         "earlier": run.journal_after()[:len(before_journal)], "pending": pending})
         cases.append({
             "name": name, "settings": settings, "tree": spec_tree({"files": files}),
             "journal_before": [{"kind": k, "payload": json.dumps(p, ensure_ascii=False), "applied": int(a)} for k, p, a in rows],
             "args": {"day": day, "now": hhmm, "topic": topic, "me": me, "claude": claude},
-            "expected": {"xid": xid, "files": run.files_after(), "journal": run.journal_after()[len(before_journal):], "pending": pending},
+            "expected": expected,
         })
         run.close()
     return cases
 
 
+def native_mode(mods, cli):
+    """Point the pinned module at the given CLI and select it, then prove a store can reach it."""
+    native_write = mods[7]
+    cli = pathlib.Path(cli).resolve()
+    if not (cli.is_file() and os.access(cli, os.X_OK)):
+        sys.exit(f"refusing: {cli} is not an executable diary-corpus-write-cli")
+    native_write.BINARY = str(cli)
+    os.environ[native_write.SELECTOR] = "rust"
+    run = Run(mods, mods[0], "native-probe", {"entry_layout": "daily", "index_enabled": False}, {})
+    assert run.store._corpus_write_impl == "rust"
+    run.store.require_write_transform()  # raises NativeWriteUnavailable if the transform cannot answer
+    run.close()
+
+
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         sys.exit(__doc__)
     mods = load(sys.argv[1])
     uuid.uuid4 = counted_uuid4
     tmp = mods[0]
+    day_text = day_cases(mods, tmp)
+    memory_text = memory_cases(mods, tmp)
+    log_python = log_cases(mods, tmp, "python")
+    native_mode(mods, sys.argv[2])
+    log_native = log_cases(mods, tmp, "rust")
     out = {
         "source": "noevia-services origin/main 6d0ba0e (diary/agent, sha256 pinned in the generator)",
         "tenant": TENANT,
-        "day_text": day_cases(mods, tmp),
-        "memory_text": memory_cases(mods, tmp),
-        "log_exchange": log_cases(mods, tmp),
+        "day_text": day_text,
+        "memory_text": memory_text,
+        "log_exchange": log_python,
+        "log_exchange_native": log_native,
     }
     check_loaded(pathlib.Path(sys.argv[1]).resolve())
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")

@@ -40,6 +40,31 @@
 //!    its `job.created` row names (another job's, or a 400 when it has none). A finished job whose
 //!    time is not a number sorts last (V8 leaves that order unspecified).
 //!
+//! 8. A journal whose recorded revision `n` is not a number (never written by either store) is
+//!    inconsistent for [`Store::append_authority`] (409, "…inconsistent; review required").
+//!    jobs.cjs went on with JS `+` on it (`"1" + 1` is `"11"`) and wrote such values onward.
+//! 9. When the completeness report port refuses the job a move into `reviewing` is judged on (a
+//!    shape it does not model, which this store can write as Node does: a step still open whose id
+//!    is an object or array, or an artifact, checkpoint or uncertainty nested past the report's
+//!    parse depth of 65 levels, which the reader still takes up to 128),
+//!    the move is refused with 409 "The completeness report does not allow review (unverified:
+//!    impl_refused)", without the list of checks jobs.cjs put before that entry. Neither store
+//!    lets such a move through: Node's report is unverified too.
+//! 10. The lifecycle authority is claimed once per canonical jobs directory in the process
+//!     (refused, status-less, "Task lifecycle authority was already claimed for this jobs
+//!     directory in this process"), whichever [`Store`] over that directory asks, through any
+//!     spelling or symbolic link of its path. jobs.cjs claims once per process ("…already
+//!     claimed in this process"): one process here may host several workspaces, one claim each.
+//!
+//! **Lifecycle authority** (#701). `task.stage` and `task.revision` are written only through
+//! [`Store::append_authority`] with the [`LifecycleAuthority`] this store issued; [`Store::append`]
+//! refuses them (403) as jobs.cjs does without its token. The authority is handed out once per
+//! jobs directory in the process (difference 10) and is no authority on another store. With it,
+//! the event is checked and its data rebuilt as jobs.cjs `boundAuthorityEvent` does, in the same
+//! order with the same statuses and messages; a move into `reviewing` records the hash of the
+//! completeness report built from the journal's current revision window (completeness-report
+//! crate), never from caller data.
+//!
 //! Recover and cancel ask the host's `live`/`abort` without the store's lock.
 
 use crate::task_journals::{self as journals, Job};
@@ -78,9 +103,13 @@ pub const TYPES: [&str; 25] = [
     "task.stage",
     "task.revision",
 ];
-/// The lifecycle authority events (#701): only the pipeline writes them, and this store has no
-/// path for that yet, so every append of one is refused as jobs.cjs refuses one without the token.
+/// The lifecycle authority events (#701): [`Store::append`] refuses both (403) as jobs.cjs refuses
+/// them without the token; only [`Store::append_authority`], with the store's
+/// [`LifecycleAuthority`], writes them.
 pub const AUTHORITY_TYPES: [&str; 2] = ["task.stage", "task.revision"];
+pub use crate::task_authority::{
+    MAX_EXPECTED_ARTIFACTS, MAX_REVISIONS, MAX_STAGE_EVENTS, MAX_STAGE_REASON,
+};
 const REVIEW_TYPES: [&str; 3] = ["review.requested", "review.completed", "review.failed"];
 const MAX_ASSISTANT_OUTPUT_EVENT_BYTES: usize = 1024;
 const MAX_ASSISTANT_OUTPUT_EVENTS: usize = 64;
@@ -99,7 +128,7 @@ pub struct Refusal {
 }
 
 impl Refusal {
-    fn new(status: Option<u16>, message: impl Into<String>) -> Self {
+    pub(crate) fn new(status: Option<u16>, message: impl Into<String>) -> Self {
         Refusal {
             status,
             message: message.into(),
@@ -156,6 +185,18 @@ pub struct NewJob<'a> {
 }
 
 type Clock = Box<dyn Fn() -> f64 + Send + Sync>;
+
+/// The lifecycle capability (jobs.cjs `LIFECYCLE_AUTHORITY`): what [`Store::append_authority`]
+/// needs to write `task.stage` / `task.revision`. It has no public constructor, is neither `Clone`
+/// nor serialisable, and [`Store::claim_lifecycle_authority`] hands out one per jobs directory in
+/// the process, to the pipeline that claims it first; it is valid only on the store that issued it.
+#[derive(Debug)]
+pub struct LifecycleAuthority {
+    store: u64,
+}
+
+/// Each store's identity, for the authority it issues.
+static STORES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 type Ids = Box<dyn Fn() -> String + Send + Sync>;
 
 /// One workspace's job store.
@@ -165,6 +206,39 @@ pub struct Store {
     now: Clock,
     new_id: Ids,
     lock: Mutex<()>,
+    serial: u64,
+}
+
+/// The jobs directories whose lifecycle authority this process has handed out, by canonical path
+/// (difference 10). Never released, as jobs.cjs's flag is never reset.
+static CLAIMED: Mutex<std::collections::BTreeSet<PathBuf>> =
+    Mutex::new(std::collections::BTreeSet::new());
+
+/// `dir` made absolute with every existing part resolved (symbolic links, `.` and `..`), and the
+/// parts that do not exist yet (no link among them) normalised lexically. `None` when the path
+/// cannot be made absolute.
+fn canonical_dir(dir: &Path) -> Option<PathBuf> {
+    let absolute = std::path::absolute(dir).ok()?;
+    let mut rest = Vec::new();
+    let mut base = absolute.as_path();
+    let resolved = loop {
+        if let Ok(found) = fs::canonicalize(base) {
+            break found;
+        }
+        rest.push(base.file_name().map(std::ffi::OsStr::to_owned));
+        base = base.parent()?;
+    };
+    let mut out = resolved;
+    for part in rest.into_iter().rev() {
+        match part {
+            Some(name) => out.push(name),
+            // A trailing `..` (file_name is None): one level up.
+            None => {
+                out.pop();
+            }
+        }
+    }
+    Some(out)
 }
 
 /// The milliseconds since the epoch, as `Date.now()`.
@@ -193,6 +267,7 @@ impl Store {
             now,
             new_id,
             lock: Mutex::new(()),
+            serial: STORES.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         }
     }
 
@@ -261,6 +336,43 @@ impl Store {
         self.append_unlocked(id, kind, data, false)
     }
 
+    /// jobs.cjs `claimLifecycleAuthority`, once per jobs directory in this process (difference
+    /// 10): a second claim for the same canonical directory is refused whichever [`Store`] asks,
+    /// as Node refuses a second claim in its process. A directory whose path cannot be resolved
+    /// is refused too.
+    pub fn claim_lifecycle_authority(&self) -> Result<LifecycleAuthority, Refusal> {
+        let refused = || {
+            Refusal::new(
+                None,
+                "Task lifecycle authority was already claimed for this jobs directory in this process",
+            )
+        };
+        let key = canonical_dir(&self.root).ok_or_else(refused)?;
+        let mut claimed = CLAIMED
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !claimed.insert(key) {
+            return Err(refused());
+        }
+        Ok(LifecycleAuthority { store: self.serial })
+    }
+
+    /// jobs.cjs `append(id, type, data, LIFECYCLE_AUTHORITY)`: `task.stage` and `task.revision`
+    /// are checked against the journal and written with data rebuilt from known fields (see
+    /// [`crate::task_authority`]); every other type is [`Store::append`]. An authority issued by
+    /// another store is no authority here (403, as without one).
+    pub fn append_authority(
+        &self,
+        id: &str,
+        kind: &str,
+        data: JValue,
+        authority: &LifecycleAuthority,
+    ) -> Result<JValue, Refusal> {
+        let _held = self.guard();
+        let held = authority.store == self.serial;
+        self.append_with(id, kind, data, false, held)
+    }
+
     fn append_unlocked(
         &self,
         id: &str,
@@ -268,13 +380,25 @@ impl Store {
         data: JValue,
         creating: bool,
     ) -> Result<JValue, Refusal> {
+        self.append_with(id, kind, data, creating, false)
+    }
+
+    fn append_with(
+        &self,
+        id: &str,
+        kind: &str,
+        data: JValue,
+        creating: bool,
+        authority: bool,
+    ) -> Result<JValue, Refusal> {
         if !TYPES.contains(&kind) {
             return Err(Refusal::new(
                 None,
                 format!("Unknown job event type: {kind}"),
             ));
         }
-        if AUTHORITY_TYPES.contains(&kind) {
+        let lifecycle = AUTHORITY_TYPES.contains(&kind);
+        if lifecycle && !authority {
             return Err(Refusal::new(
                 Some(403),
                 "Task lifecycle events are server-only",
@@ -297,14 +421,25 @@ impl Store {
         if status.is_some_and(|s| TERMINAL.contains(&s)) && !late_artifact {
             return Err(Refusal::new(Some(409), "Job already finished"));
         }
+        let code = finished
+            .as_ref()
+            .is_some_and(|j| j.kind.as_str() == Some("code"));
+        if lifecycle {
+            // jobs.cjs reads only known fields of the caller's data, whatever it holds.
+            let Some(known) = finished.as_ref().filter(|_| code) else {
+                return Err(Refusal::new(
+                    None,
+                    "Task lifecycle events belong to Code jobs",
+                ));
+            };
+            let data = crate::task_authority::bound(id, kind, &data, current, known)?;
+            return self.write_event(id, kind, data, &journal);
+        }
         let mut data = match data {
             JValue::Undefined => JValue::Obj(Vec::new()),
             JValue::Obj(items) => js_object(JValue::Obj(items), 0)?,
             _ => return Err(Refusal::new(None, "Job event data is an object")),
         };
-        let code = finished
-            .as_ref()
-            .is_some_and(|j| j.kind.as_str() == Some("code"));
         if kind == "assistant.output" {
             if !code {
                 return Err(Refusal::new(None, "Assistant output belongs to Code jobs"));
@@ -346,6 +481,19 @@ impl Store {
                 }
             };
         }
+        self.write_event(id, kind, data, &journal)
+    }
+
+    /// The row after `journal`'s last one: `{job, seq, type, at, data}`, chained when the journal
+    /// or the store is, written and (when chained) fsynced with its directory.
+    fn write_event(
+        &self,
+        id: &str,
+        kind: &str,
+        data: JValue,
+        journal: &Journal,
+    ) -> Result<JValue, Refusal> {
+        let current = &journal.rows;
         let mut event = vec![
             ("job".to_string(), JValue::Str(id.to_string())),
             ("seq".to_string(), JValue::Num((current.len() + 1) as f64)),
@@ -712,7 +860,7 @@ const MAX_DATA_DEPTH: usize = 128;
 /// An object as a JS object holds it: array-index keys first, ascending, and a repeated key's
 /// last value in its first place, at every level. What JSON.stringify then writes is what Node
 /// would write, and what a reader parses back is the same object, so a chained row's hash holds.
-fn js_object(v: JValue, depth: usize) -> Result<JValue, Refusal> {
+pub(crate) fn js_object(v: JValue, depth: usize) -> Result<JValue, Refusal> {
     if depth > MAX_DATA_DEPTH {
         return Err(Refusal::new(None, "Job event data is nested too deep"));
     }

@@ -570,6 +570,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-pipeline"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "prompt-framing",
+ "review-verdict",
+ "role-context",
+ "sha2",
+]
+
+[[package]]
 name = "code-sandbox-supervisor"
 version = "0.1.0"
 dependencies = [
@@ -2132,6 +2143,7 @@ dependencies = [
  "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",
+ "http-body",
  "http-body-util",
  "regex",
  "reqwest",
@@ -3042,6 +3054,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "role-engine"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "role-context",
+ "sha2",
+ "stream-guard",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3510,6 +3534,7 @@ dependencies = [
 name = "server-projects"
 version = "0.1.0"
 dependencies = [
+ "completeness-report",
  "js-json",
  "libc",
  "prompt-framing",

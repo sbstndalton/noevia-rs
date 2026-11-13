@@ -1,0 +1,18 @@
+[package]
+name = "code-pipeline"
+version = "0.1.0"
+description = "noevia-core's Code pipeline in Rust, its model-free and I/O-free pieces: the executor brief, plan validation and hash, the audit report, feedback texts, approval cards and results; the async driver builds on it (R7)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+review-verdict = { path = "../review-verdict" }
+role-context = { path = "../role-context" }
+prompt-framing = { path = "../prompt-framing" }
+sha2 = "=0.10.9"
