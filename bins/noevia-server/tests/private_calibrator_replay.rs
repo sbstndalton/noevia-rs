@@ -151,6 +151,8 @@ impl Replay {
         let mut c = self.cur.lock().unwrap();
         loop {
             if c.mismatch.is_some() {
+                // Past a mismatch every deadline is over, so no loop of the calibrator spins on.
+                c.clock = f64::INFINITY;
                 return None;
             }
             let Some(head) = self.events.get(c.pos) else {
@@ -303,6 +305,14 @@ fn head_ms(e: &JValue) -> f64 {
     e.get("ms").as_num().unwrap_or(0.0)
 }
 
+/// An async dependency's answer; past a mismatch it never settles (the replay has failed).
+async fn later(e: Option<JValue>) -> Result<JValue, Fail> {
+    if e.is_none() {
+        std::future::pending::<()>().await;
+    }
+    answer(e)
+}
+
 /// A dependency answer: `result`, or the recorded throw.
 fn answer(e: Option<JValue>) -> Result<JValue, Fail> {
     match e {
@@ -338,7 +348,7 @@ impl Body for ReplayBody {
     fn read(&mut self) -> impl Future<Output = Result<Option<Vec<u8>>, Fail>> + Send {
         let e = self.r.take("stream.read", &[("stream", JValue::Num(self.id as f64))]);
         async move {
-            let v = answer(e)?;
+            let v = later(e).await?;
             if v.get("done").truthy() {
                 return Ok(None);
             }
@@ -361,11 +371,11 @@ impl Engine for ReplayEngine {
     type Body = ReplayBody;
     fn raw_models(&self, _abort: Option<Abort>) -> impl Future<Output = Result<JValue, Fail>> + Send {
         let e = self.0.take("rawModels", &[]);
-        async move { answer(e) }
+        async move { later(e).await }
     }
     fn request(&self, call: Call, abort: Option<Abort>) -> impl Future<Output = Result<JValue, Fail>> + Send {
         let e = self.0.take("request", &call_args(&call, &abort));
-        async move { answer(e) }
+        async move { later(e).await }
     }
     fn stream(&self, path: &str, body: JValue, _abort: Abort) -> impl Future<Output = Result<ReplayBody, Fail>> + Send {
         let id = {
@@ -376,7 +386,7 @@ impl Engine for ReplayEngine {
         let e = self.0.take("stream", &[("path", JValue::from(path)), ("method", JValue::from("POST")), ("body", body)]);
         let r = Arc::clone(&self.0);
         async move {
-            let v = answer(e)?;
+            let v = later(e).await?;
             Ok(ReplayBody {
                 r,
                 id,
@@ -398,19 +408,19 @@ impl Engine for ReplayEngine {
     }
     fn presets_commit(&self, candidate: JValue) -> impl Future<Output = Result<(), Fail>> + Send {
         let e = self.0.take("presets.commit", &[("candidate", candidate)]);
-        async move { answer(e).map(|_| ()) }
+        async move { later(e).await.map(|_| ()) }
     }
     fn invalidate_baseline(&self, tag: &str) -> impl Future<Output = Result<bool, Fail>> + Send {
         let e = self.0.take("invalidateBaseline", &[("tag", JValue::from(tag))]);
-        async move { answer(e).map(|v| v.truthy()) }
+        async move { later(e).await.map(|v| v.truthy()) }
     }
     fn conservative_for(&self, model: &str) -> impl Future<Output = Result<JValue, Fail>> + Send {
         let e = self.0.take("conservativeFor", &[("model", JValue::from(model))]);
-        async move { answer(e) }
+        async move { later(e).await }
     }
     fn identity_for(&self, model: &str) -> impl Future<Output = Result<JValue, Fail>> + Send {
         let e = self.0.take("identityFor", &[("model", JValue::from(model))]);
-        async move { answer(e) }
+        async move { later(e).await }
     }
     fn held(&self) -> bool {
         answer(self.0.take("held", &[])).is_ok_and(|v| v.truthy())
@@ -422,8 +432,10 @@ impl Engine for ReplayEngine {
         self.0.cur.lock().unwrap().clock
     }
     fn sleep(&self, ms: f64) -> impl Future<Output = ()> + Send {
-        let _ = self.0.take("sleep", &[("ms", JValue::Num(ms))]);
-        async {}
+        let e = self.0.take("sleep", &[("ms", JValue::Num(ms))]);
+        async move {
+            let _ = later(e).await;
+        }
     }
     fn tick(&self, _ms: f64) -> impl Future<Output = ()> + Send {
         std::future::pending()
@@ -444,15 +456,15 @@ impl Hooks for ReplayHooks {
     }
     fn apply_unlocked(&self, body: JValue) -> impl Future<Output = Result<JValue, Fail>> + Send {
         let e = self.0.take("hook applyUnlocked", &[("arg", body)]);
-        async move { answer(e) }
+        async move { later(e).await }
     }
     fn foreign_held(&self, rows: JValue) -> impl Future<Output = Result<Vec<JValue>, Fail>> + Send {
         let e = self.0.take("hook foreignHeld", &[("arg", rows)]);
-        async move { answer(e).map(|v| js::items(&v).to_vec()) }
+        async move { later(e).await.map(|v| js::items(&v).to_vec()) }
     }
     fn foreign_wait(&self, legacy: Fail) -> impl Future<Output = Result<(), Fail>> + Send {
         let e = self.0.take("hook foreignWait", &[("arg", error_json(&legacy))]);
-        async move { answer(e).map(|_| ()) }
+        async move { later(e).await.map(|_| ()) }
     }
     fn on_write(&self, revision: &str) {
         let _ = self.0.take("hook onWrite", &[("arg", JValue::from(revision))]);
@@ -507,6 +519,10 @@ fn replay(path: &std::path::Path) -> Result<(), String> {
     // The runner's awaited calls settle; their answers are compared.
     let pending = std::mem::take(&mut replay.cur.lock().unwrap().pending);
     for (at, h) in pending {
+        if replay.cur.lock().unwrap().mismatch.is_some() {
+            h.abort();
+            continue;
+        }
         let got = rt.block_on(async { tokio::time::timeout(Duration::from_secs(10), h).await });
         match got {
             Ok(Ok(r)) => replay.check_result(at, &replay.events[at].v.clone(), &r),
@@ -519,15 +535,16 @@ fn replay(path: &std::path::Path) -> Result<(), String> {
         }
     }
     let c = replay.cur.lock().unwrap();
-    if let Some(m) = &c.mismatch {
-        return Err(m.clone());
-    }
-    if c.pos < replay.events.len() {
-        return Err(format!("stopped at event {} ({}) of {}", c.pos, label(&replay.events[c.pos].v), replay.events.len()));
-    }
+    let outcome = if let Some(m) = &c.mismatch {
+        Err(m.clone())
+    } else if c.pos < replay.events.len() {
+        Err(format!("stopped at event {} ({}) of {}", c.pos, label(&replay.events[c.pos].v), replay.events.len()))
+    } else {
+        Ok(())
+    };
     drop(c);
-    rt.shutdown_timeout(Duration::from_millis(100));
-    Ok(())
+    rt.shutdown_background();
+    outcome
 }
 
 #[test]

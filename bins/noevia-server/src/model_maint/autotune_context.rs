@@ -143,7 +143,7 @@ enum Slot {
     Probe,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Inner {
     /// `state.job` (`Null`: none yet).
     job: JValue,
@@ -174,7 +174,10 @@ struct Token {
 enum Facts {
     /// Stale, the backend was down, or an identity/ladder that is not ready.
     No,
-    Row { row: JValue, key: String },
+    Row {
+        row: JValue,
+        key: String,
+    },
 }
 
 /// `preparationFacts`: stale (no `preparedToken`), not ready (`identityReady: false`), or ready.
@@ -307,11 +310,15 @@ fn identity_valid(v: &JValue) -> bool {
         return false;
     }
     let null_or_str = |k: &str| matches!(v.get(k), JValue::Null | JValue::Str(_));
-    let hex64 = |s: &str| s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    let hex64 =
+        |s: &str| s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
     ["arch", "quant", "hardware"].iter().all(|k| null_or_str(k))
         && v.get("artifact").as_str().is_some_and(|s| !s.is_empty())
         && v.get("profile").as_str().is_some_and(hex64)
-        && matches!(v.get("build"), JValue::Null | JValue::Str(_) | JValue::Obj(_))
+        && matches!(
+            v.get("build"),
+            JValue::Null | JValue::Str(_) | JValue::Obj(_)
+        )
 }
 
 /// `Number.isInteger(n)`.
@@ -356,7 +363,13 @@ impl<E: Engine, H: Hooks + 'static> Clone for PrivateCalibrator<E, H> {
 impl<E: Engine, H: Hooks + 'static> PrivateCalibrator<E, H> {
     /// `contextFactory(hooks)`: reads the models.ini revision the stage starts from. `fill_only`
     /// is fillCheck's calibrator; `memory_floor_gib` is `autoconfig.memoryFloorGib || 2`.
-    pub fn new(engine: E, hooks: H, fill_only: bool, memory_floor_gib: f64, limits: Limits) -> Self {
+    pub fn new(
+        engine: E,
+        hooks: H,
+        fill_only: bool,
+        memory_floor_gib: f64,
+        limits: Limits,
+    ) -> Self {
         let revision = engine.presets_snapshot().1;
         let (done, _) = tokio::sync::watch::channel(true);
         PrivateCalibrator {
@@ -370,8 +383,13 @@ impl<E: Engine, H: Hooks + 'static> PrivateCalibrator<E, H> {
                 inner: Mutex::new(Inner {
                     job: JValue::Null,
                     probe: JValue::Null,
+                    job_object: 0,
+                    cancel_requested: false,
+                    inflight: None,
+                    controller: 0,
                     next_object: 1,
-                    ..Inner::default()
+                    launching: false,
+                    evidence: Vec::new(),
                 }),
                 controller: Abort::default(),
                 departed: Abort::default(),
@@ -466,7 +484,7 @@ struct RunSteps<'a, E: Engine, H: Hooks> {
     last: Option<Fail>,
 }
 
-impl<E: Engine, H: Hooks> Steps for RunSteps<'_, E, H> {
+impl<E: Engine, H: Hooks + 'static> Steps for RunSteps<'_, E, H> {
     async fn step(&mut self, ctx: f64, kind: Kind) -> Result<bool, Stop> {
         match self.core.step(Slot::State, ctx, kind).await {
             Ok(passed) => Ok(passed),
@@ -483,7 +501,7 @@ impl<E: Engine, H: Hooks> Steps for RunSteps<'_, E, H> {
     }
 }
 
-impl<E: Engine, H: Hooks> RunSteps<'_, E, H> {
+impl<E: Engine, H: Hooks + 'static> RunSteps<'_, E, H> {
     fn fail(&mut self, s: Stop) -> Fail {
         self.last.take().unwrap_or_else(|| match s {
             Stop::Cancelled => cancelled(),
@@ -492,7 +510,7 @@ impl<E: Engine, H: Hooks> RunSteps<'_, E, H> {
     }
 }
 
-impl<E: Engine, H: Hooks> Core<E, H> {
+impl<E: Engine, H: Hooks + 'static> Core<E, H> {
     // ── state ────────────────────────────────────────────────────────────────
 
     fn inner(&self) -> MutexGuard<'_, Inner> {
@@ -515,7 +533,12 @@ impl<E: Engine, H: Hooks> Core<E, H> {
         self.with_job(slot, |j| js::set(j, key, value));
     }
 
-    fn with_step<T>(&self, slot: Slot, index: usize, f: impl FnOnce(&mut JValue) -> T) -> Option<T> {
+    fn with_step<T>(
+        &self,
+        slot: Slot,
+        index: usize,
+        f: impl FnOnce(&mut JValue) -> T,
+    ) -> Option<T> {
         self.with_job(slot, |j| {
             js::get_mut(j, "steps")
                 .and_then(js::items_mut)
@@ -525,7 +548,10 @@ impl<E: Engine, H: Hooks> Core<E, H> {
     }
 
     fn model(&self, slot: Slot) -> String {
-        self.job_get(slot, "model").as_str().unwrap_or("").to_string()
+        self.job_get(slot, "model")
+            .as_str()
+            .unwrap_or("")
+            .to_string()
     }
 
     /// `state.job?.model`.
@@ -621,8 +647,20 @@ impl<E: Engine, H: Hooks> Core<E, H> {
         }
         let profile = js::json_copy(&self.engine.presets_get(model));
         let revision = self.engine.presets_snapshot().1;
-        let conservative = js::json_copy(&self.engine.conservative_for(model).await.unwrap_or(JValue::Null));
-        let identity = js::json_copy(&self.engine.identity_for(model).await.unwrap_or(JValue::Null));
+        let conservative = js::json_copy(
+            &self
+                .engine
+                .conservative_for(model)
+                .await
+                .unwrap_or(JValue::Null),
+        );
+        let identity = js::json_copy(
+            &self
+                .engine
+                .identity_for(model)
+                .await
+                .unwrap_or(JValue::Null),
+        );
         if !identity_valid(&identity) {
             return Prep::NotReady;
         }
@@ -681,7 +719,13 @@ impl<E: Engine, H: Hooks> Core<E, H> {
         {
             return Ok(stale());
         }
-        let or_zero = |n: f64| if n.is_nan() || n == 0.0 { None } else { Some(n) };
+        let or_zero = |n: f64| {
+            if n.is_nan() || n == 0.0 {
+                None
+            } else {
+                Some(n)
+            }
+        };
         let native = or_zero(js::number(facts.row.get("meta").get("n_ctx_train")))
             .or_else(|| or_zero(js::number(facts.conservative.get("native"))))
             .unwrap_or(0.0);
@@ -906,7 +950,10 @@ impl<E: Engine, H: Hooks> Core<E, H> {
         while self.engine.now() < deadline {
             match self.listing(None).await {
                 Ok(rows) => {
-                    if rows.iter().find(|m| id_of(m) == Some(model)).and_then(status_of)
+                    if rows
+                        .iter()
+                        .find(|m| id_of(m) == Some(model))
+                        .and_then(status_of)
                         == Some("unloaded")
                     {
                         return Ok(());
@@ -989,7 +1036,9 @@ impl<E: Engine, H: Hooks> Core<E, H> {
             js::set(r, "minAvailableGib", JValue::Num(old.min(rounded)));
         });
         if value < self.floor_gib {
-            self.with_step(slot, index, |r| js::set(r, "memoryFloorHit", JValue::Bool(true)));
+            self.with_step(slot, index, |r| {
+                js::set(r, "memoryFloorHit", JValue::Bool(true))
+            });
             abort.abort();
             return false;
         }
@@ -1048,7 +1097,11 @@ impl<E: Engine, H: Hooks> Core<E, H> {
                 js::set(r, "cause", JValue::from(cause));
             }
             let started = js::number(r.get("startedAt"));
-            js::set(r, "seconds", JValue::Num(js_round((now - started) / 1000.0)));
+            js::set(
+                r,
+                "seconds",
+                JValue::Num(js_round((now - started) / 1000.0)),
+            );
         });
         if let Some(evidence) = evidence {
             if self.job_get(slot, "evidenceWanted") == JValue::Bool(true) {
@@ -1062,7 +1115,12 @@ impl<E: Engine, H: Hooks> Core<E, H> {
     }
 
     /// `stepOnce(job, ctx, kind)`: `Some(passed)`, or `None` to repeat it.
-    async fn step_once(self: &Arc<Self>, slot: Slot, ctx: f64, kind: Kind) -> Result<Option<bool>, Fail> {
+    async fn step_once(
+        self: &Arc<Self>,
+        slot: Slot,
+        ctx: f64,
+        kind: Kind,
+    ) -> Result<Option<bool>, Fail> {
         if self.cancel_requested() {
             return Err(cancelled());
         }
@@ -1097,7 +1155,13 @@ impl<E: Engine, H: Hooks> Core<E, H> {
         self.save();
         // Memory freed by the previous unload can take a moment to return.
         let mut waited = 0;
-        while self.engine.read_memory().is_some_and(|v| v < self.floor_gib) {
+        // `readMemory() != null && readMemory() < floor`: two reads, as Node makes them.
+        while self.engine.read_memory().is_some()
+            && self
+                .engine
+                .read_memory()
+                .is_some_and(|v| v < self.floor_gib)
+        {
             if waited >= 30 {
                 let floor = plain(self.floor_gib);
                 self.with_step(slot, index, |r| {
@@ -1147,7 +1211,14 @@ impl<E: Engine, H: Hooks> Core<E, H> {
                 reason,
                 cause,
                 evidence,
-            }) => Ok(Some(self.finish(slot, index, status, reason.as_deref(), cause, evidence))),
+            }) => Ok(Some(self.finish(
+                slot,
+                index,
+                status,
+                reason.as_deref(),
+                cause,
+                evidence,
+            ))),
             Err(e) => {
                 if e.cancelled || self.cancel_requested() {
                     self.finish(slot, index, "skipped", Some("Cancelled."), None, None);
@@ -1157,7 +1228,14 @@ impl<E: Engine, H: Hooks> Core<E, H> {
                     Err(e)
                 } else if self.floor_hit(slot, index) {
                     let oom = self.oom();
-                    Ok(Some(self.finish(slot, index, "failed", Some(&oom), Some("oom"), None)))
+                    Ok(Some(self.finish(
+                        slot,
+                        index,
+                        "failed",
+                        Some(&oom),
+                        Some("oom"),
+                        None,
+                    )))
                 } else {
                     match self.wait_for_backend().await {
                         Err(lost) => Err(lost),
@@ -1391,7 +1469,11 @@ impl<E: Engine, H: Hooks> Core<E, H> {
                 .clone()
         };
         let n = js::number(&parallel);
-        let slots = if n.is_nan() || n == 0.0 { 1.0 } else { n.max(1.0) };
+        let slots = if n.is_nan() || n == 0.0 {
+            1.0
+        } else {
+            n.max(1.0)
+        };
         let fill = self.job_get(slot, "fill").as_num();
         let target = match fill {
             Some(f) if is_integer(f) && f > 0.0 => f,
@@ -1411,7 +1493,15 @@ impl<E: Engine, H: Hooks> Core<E, H> {
             PAD.repeat(repeats as usize)
         );
         let result = self
-            .stream_long(&model, &content, abort, slot, index, budget_s * 1000.0, want_detail)
+            .stream_long(
+                &model,
+                &content,
+                abort,
+                slot,
+                index,
+                budget_s * 1000.0,
+                want_detail,
+            )
             .await?;
         if self.floor_hit(slot, index) {
             return Ok(oom());
@@ -1451,7 +1541,11 @@ impl<E: Engine, H: Hooks> Core<E, H> {
                 prompt_seconds,
             } => {
                 self.with_step(slot, index, |r| {
-                    js::set(r, "promptTokens", prompt_tokens.map_or(JValue::Null, JValue::Num));
+                    js::set(
+                        r,
+                        "promptTokens",
+                        prompt_tokens.map_or(JValue::Null, JValue::Num),
+                    );
                     if let Some(p) = prompt_per_second.filter(|p| *p != 0.0 && !p.is_nan()) {
                         js::set(r, "promptPerSecond", JValue::Num(js_round(p)));
                     }
@@ -1498,7 +1592,10 @@ impl<E: Engine, H: Hooks> Core<E, H> {
             .await
         {
             let n = js::items(r.get("body").get("tokens")).len();
-            if r.get("ok").truthy() && n > 0 && matches!(r.get("body").get("tokens"), JValue::Arr(_)) {
+            if r.get("ok").truthy()
+                && n > 0
+                && matches!(r.get("body").get("tokens"), JValue::Arr(_))
+            {
                 return n as f64 / 50.0;
             }
         }
@@ -1596,7 +1693,10 @@ impl<E: Engine, H: Hooks> Core<E, H> {
                 None
             };
             return Ok(Long::Failed {
-                error: format!("The engine rejected the long prompt (HTTP {}).", plain(status)),
+                error: format!(
+                    "The engine rejected the long prompt (HTTP {}).",
+                    plain(status)
+                ),
                 status: JValue::Num(status),
                 detail,
             });
@@ -1699,7 +1799,11 @@ impl<E: Engine, H: Hooks> Core<E, H> {
             Ok(c) => c,
             Err(stop) => return Err(steps.fail(stop)),
         };
-        self.job_set(s, "result", JValue::obj([("loadCtx", JValue::Num(load_ctx))]));
+        self.job_set(
+            s,
+            "result",
+            JValue::obj([("loadCtx", JValue::Num(load_ctx))]),
+        );
         let chosen = match verify_long(&grid, load_ctx, budget, &mut steps).await {
             Ok(c) => c,
             Err(stop) => return Err(steps.fail(stop)),
@@ -1747,8 +1851,16 @@ impl<E: Engine, H: Hooks> Core<E, H> {
         } else {
             "Calibration failed."
         };
-        self.job_set(s, "status", JValue::from(if e.cancelled { "cancelled" } else { "failed" }));
-        self.job_set(s, "phase", JValue::from(if e.cancelled { "Cancelled" } else { "Failed" }));
+        self.job_set(
+            s,
+            "status",
+            JValue::from(if e.cancelled { "cancelled" } else { "failed" }),
+        );
+        self.job_set(
+            s,
+            "phase",
+            JValue::from(if e.cancelled { "Cancelled" } else { "Failed" }),
+        );
         if !e.cancelled {
             let m = if e.message.is_empty() {
                 "Calibration failed."
@@ -1830,16 +1942,28 @@ impl<E: Engine, H: Hooks> Core<E, H> {
                 ("promptBudgetSeconds", budget),
                 ("fill", opts.get("fill").clone()),
                 ("steps", JValue::Arr(Vec::new())),
-                ("evidenceWanted", JValue::Bool(opts.get("evidence") == &JValue::Bool(true))),
+                (
+                    "evidenceWanted",
+                    JValue::Bool(opts.get("evidence") == &JValue::Bool(true)),
+                ),
             ]);
         }
         let passed = self.step(Slot::Probe, ctx, Kind::Long).await?;
         let i = self.inner();
         let steps = js::items(i.probe.get("steps"));
         let last = steps.len().checked_sub(1);
-        let record = last.and_then(|n| steps.get(n)).cloned().unwrap_or(JValue::Obj(Vec::new()));
+        let record = last
+            .and_then(|n| steps.get(n))
+            .cloned()
+            .unwrap_or(JValue::Obj(Vec::new()));
         let truthy_or_null = |v: &JValue| if v.truthy() { v.clone() } else { JValue::Null };
-        let nullish_or_null = |v: &JValue| if v.is_nullish() { JValue::Null } else { v.clone() };
+        let nullish_or_null = |v: &JValue| {
+            if v.is_nullish() {
+                JValue::Null
+            } else {
+                v.clone()
+            }
+        };
         let cause = if passed {
             JValue::Null
         } else if record.get("cause").truthy() {
@@ -1851,7 +1975,10 @@ impl<E: Engine, H: Hooks> Core<E, H> {
             ("passed".to_string(), JValue::Bool(passed)),
             ("cause".to_string(), cause),
             ("reason".to_string(), truthy_or_null(record.get("reason"))),
-            ("revision".to_string(), truthy_or_null(i.probe.get("lastRevision"))),
+            (
+                "revision".to_string(),
+                truthy_or_null(i.probe.get("lastRevision")),
+            ),
         ];
         if !passed {
             if let Some((_, _, ev)) = i
@@ -1862,7 +1989,10 @@ impl<E: Engine, H: Hooks> Core<E, H> {
                 out.push(("evidence".to_string(), ev.clone()));
             }
         }
-        out.push(("promptSeconds".to_string(), nullish_or_null(record.get("promptSeconds"))));
+        out.push((
+            "promptSeconds".to_string(),
+            nullish_or_null(record.get("promptSeconds")),
+        ));
         out.push((
             "promptPerSecond".to_string(),
             nullish_or_null(record.get("promptPerSecond")),
