@@ -2,18 +2,36 @@
 
 The oracle for the auto-tune's private calibrator (core `llamacpp-calibration.cjs` `createCalibrator`
 as the manager's `contextFactory` builds it: no state file, a no-op hold, the runner's hooks spread
-last). Node's own `server/llamacpp-full-autotune.test.cjs` is run with `calibrator-preload.cjs`; every
-call such a calibrator (or the contextFactory's `start`/`current()` around it) makes on its
-dependencies, and every call the runner makes on the context object, is recorded in order.
+last). Two Node test files are run with `calibrator-preload.cjs`: core's own
+`server/llamacpp-full-autotune.test.cjs` (traces `NNN-*.json`) and `scenarios.test.cjs` beside this
+file (traces `SNNN-*.json`). Every call such a calibrator (or the contextFactory's `start`/`current()`
+around it) makes on its dependencies, and every call the runner makes on the context object, is
+recorded in order.
+
+`scenarios.test.cjs` builds core's native model manager (`server/model-manager.cjs`) over a synthetic
+engine (QA-named models, a temp `models.ini`), takes the manager's own `contextFactory` (through the
+preload's recording factory) and drives it as the runner does, for the branches core's tests barely
+reach: probe evidence and causes, `cancelProbe`, foreign clients (`foreignWait`/`foreignHeld`),
+aborts during start and during a run, stale starts, refused writes and restores, the memory floor
+(per-call `readMemory`), and engine failures. Whatever Node does is the oracle; each scenario only
+asserts that it reached the branch it is about. Every scenario has a 15 s node:test timeout (a
+scenario that never settles fails alone). That timeout cannot stop a loop that never yields to the
+event loop: without the recorder's clock the calibrator's time is real and the scenarios' sleeps
+return at once, so a scenario must keep its deadlines short or end its waits itself.
 
 Re-record (from a noevia-core checkout at the commit in `SOURCES.sha256`, `server/wasm/dav-parse.wasm` present):
 
-    timeout 1500 ~/bin/devrun node bins/noevia-server/tests/fixtures/private-calibrator/record-node.cjs \
-      <core> bins/noevia-server/tests/fixtures/private-calibrator/traces
-    timeout 1500 ~/bin/devrun node bins/noevia-server/tests/fixtures/private-calibrator/record-node.cjs <core> --baseline
+    # on the N5 builder (owner decision 19), from this checkout; <core> = the core checkout, npm ci done in <core>/server
+    timeout 1700 ~/bin/n5run --with <core> --timeout 1600 -- \
+      'node bins/noevia-server/tests/fixtures/private-calibrator/record-node.cjs <core> bins/noevia-server/tests/fixtures/private-calibrator/traces'
+    timeout 1700 ~/bin/n5run --with <core> --timeout 1600 -- \
+      'node bins/noevia-server/tests/fixtures/private-calibrator/record-node.cjs <core> --baseline'
 
-Both print the node:test counts; they must match. Recording twice gives byte-identical directories.
-Public calibrators (with a state file) are not recorded.
+Both print the node:test counts per file (`core`, `scenarios`); they must match. Recording twice
+gives byte-identical directories. Public calibrators (with a state file) are not recorded.
+`SOURCES.sha256` holds the core files at the recorded commit (paths relative to the core checkout);
+each trace's `sourceSha256.test` is the hash of the test file it came from (`scenarios.test.cjs`
+for `S*`).
 
 ## Top level
 ```json
@@ -30,6 +48,9 @@ Public calibrators (with a state file) are not recorded.
 - `config.readMemory`: the value `readMemory()` returned (constant; `null` = it returned null; the
   key is ABSENT when it was never called). It is not recorded per call (the calibrator also samples it
   on a real `setInterval`). A trace where it varied has `replayable: false`, `why: ["readMemory varies"]`.
+  Exception: `"calls"` when the calibrator was given `timeouts.memoryPoll >= 1e8` (its memory
+  `setInterval` never fires, so every read comes from its own code): each read is then a sync
+  `readMemory` event, in order, and may vary.
 - `config.timeouts`: the `timeouts` the calibrator was given (merged over Node's defaults:
   load 600000, smoke 180000, long 7200000, unload 60000, poll 500, memoryPoll 1000, recover 180000).
 - Optional `afterEnd: true` (something was dropped after the test ended), `openAtEnd: n` (n calls had
@@ -69,6 +90,7 @@ Each is `{ "dep": ..., <args>, "result" | "throws", "during"? }`. `throws` is
 | `invalidateBaseline` | `tag`, `result` | |
 | `conservativeFor` / `identityFor` | `model`, `result`/`throws` | |
 | `held` | `result` | the manager's `maintenance.held()` inside the contextFactory's `current()`; sync |
+| `readMemory` | `result` (GiB or null) | only when `config.readMemory` is `"calls"`; sync |
 | `sleep` | `ms` | |
 | `randomInt` | `min`, `max`, `result` | sync |
 | `randomUUID` | `result` | sync |
