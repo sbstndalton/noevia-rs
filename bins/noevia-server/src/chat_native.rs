@@ -112,7 +112,7 @@ impl Switch {
 }
 
 /// The approval registry's calls a native turn makes (chat port S9's `approval_registry`).
-pub(crate) trait Approvals: Send + Sync {
+pub trait Approvals: Send + Sync {
     /// The chat's permission binding for `scope` (chat.cjs permissionContext), or `Err` when it cannot
     /// be verified (store failing, chat moved, deleted or held elsewhere, workspace revoked).
     fn binding(&self, user: &str, chat: &str, scope: &str, holder: &JValue) -> Result<JValue, ()>;
@@ -128,9 +128,20 @@ pub(crate) trait Approvals: Send + Sync {
     fn revoke(&self, user: &str, chat: Option<&str>);
 }
 
+/// The registry [`install_approvals`] stored (tests only).
+static INSTALLED: std::sync::OnceLock<Arc<dyn Approvals>> = std::sync::OnceLock::new();
+
+/// Test-only seam until chat port S9 lands: stores a process-wide approval registry, which
+/// [`approvals`] then returns, so an end-to-end test can run the native path. Nothing in the binary
+/// calls this; a second call is ignored (the first registry stays).
+#[doc(hidden)]
+pub fn install_approvals(a: Arc<dyn Approvals>) {
+    let _ = INSTALLED.set(a);
+}
+
 /// The approval registry, when this front holds one (S9). `None`: the native executor never engages.
 pub(crate) fn approvals(_app: &Arc<App>) -> Option<Arc<dyn Approvals>> {
-    None
+    INSTALLED.get().cloned()
 }
 
 /// Whether this turn goes native: the switch names the account and this front can run it.
