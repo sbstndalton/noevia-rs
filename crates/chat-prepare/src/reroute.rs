@@ -18,7 +18,10 @@
 //!
 //! [`Reroute`] owns that order and asks the caller for every seam ([`Seam`]: the fresh
 //! `autoRoles()` read, each `allowsTools` question, each `resolveFor` and `servedCatalogue()`) as
-//! [`crate::roles::Routing`] does for P5b; the pieces above stay public for it.
+//! [`crate::roles::Routing`] does for P5b; the pieces above stay public for it. It starts from
+//! P5b's [`Routed`] once the caller has done P5b's pre-load work: `use()` (only when the turn is
+//! not aborted) and `cancel()` right after the pick, before the first `resolveFor` (P6a). No
+//! recorded turn is aborted, so that guard is documented, not recorded.
 //!
 //! What the turn then sends of it: the meta event's `model`, `route` (the moved role),
 //! `routingDecision` ([`Moved::decision`]) and `contextProfile` ([`LongPick::context_profile`]),
@@ -412,9 +415,32 @@ pub enum Reply {
     Catalogue(JValue),
 }
 
-/// The final route of the turn.
+/// What [`Reroute`] reads besides P5b's route ([`Routed`]), whose `wantsAuto` and provider row it
+/// takes from that route.
+#[derive(Debug, Clone, Copy)]
+pub struct RerouteTurn<'a> {
+    /// The turn's project record; `null` without one.
+    pub project: &'a JValue,
+    /// `DEFAULT_PROVIDER_ID`.
+    pub default_provider_id: &'a str,
+    /// `body.compactOnly` is truthy.
+    pub compact_only: bool,
+    /// `routeTarget?.row` is truthy (a routing mode's cloud route); false under the preconditions.
+    pub route_row: bool,
+    /// `localToolsGate`: `typeof modelManager?.props === 'function'`.
+    pub local_tools_gate: bool,
+    /// [`gate_says_tool_needed`] of the tool gate's answer.
+    pub gate_needs_tool: bool,
+}
+
+/// The final route of the turn: P5b's [`Routed`] after the move and the profile. The caller reads
+/// the model, role and decision from here, never from the [`Routed`] it started from.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rerouted {
+    /// `wantsAuto`.
+    pub wants_auto: bool,
+    /// The provider row (`provider`; without Inference machines the move never changes it).
+    pub provider: JValue,
     /// `model`.
     pub model: JValue,
     /// `routedRole`.
@@ -425,16 +451,20 @@ pub struct Rerouted {
     pub context_profile: Option<&'static str>,
     /// `contextSwitch`: the status line is [`status_event`]`(true, ..)`.
     pub context_switch: bool,
-    /// The log lines, in order (the move's, the long-profile module's once per handler).
-    pub lines: Vec<String>,
 }
 
 /// One step of [`Reroute`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum Step {
     Ask(Seam),
-    /// The route, or [`Halt::Thrown`] (Node throws) or [`Halt::OutOfOrder`] (a caller bug).
-    Done(Result<Rerouted, Halt>),
+    /// The route, or [`Halt::Thrown`] (Node throws) or [`Halt::OutOfOrder`] (a caller bug); and,
+    /// either way, the log lines written so far, in order (the move's, written before the
+    /// catalogue read, then the long-profile module's once per handler): a throw in the
+    /// long-context step still owes the move's line.
+    Done {
+        route: Result<Rerouted, Halt>,
+        lines: Vec<String>,
+    },
 }
 
 enum Stage {
@@ -450,41 +480,66 @@ enum Stage {
 /// chat.cjs ~1337-1400 for one turn, in its order: the move (#1550) with its fresh roles read and
 /// its template questions, `resolveFor` the moved model, the long-context profile (#1079) with its
 /// catalogue read, and `resolveFor` the final model when it changed.
+///
+/// It starts after P5b's [`crate::roles::Step::Done`] and its pre-load work: the pre-load's
+/// `use()` (only when the turn is not aborted, Node's `!chatSignal.signal.aborted`) and `cancel()`
+/// come right after the pick, before the first `resolveFor` (P6a's [`crate::offer::offer`]), the
+/// tool gate and everything here. The recordings never abort a turn, so that guard is not recorded.
 pub struct Reroute<'a> {
     t: MoveTurn<'a>,
     stage: Stage,
     out: Rerouted,
+    lines: Vec<String>,
     resolved_for: JValue,
     log: &'a mut LongProfileLog,
 }
 
 impl<'a> Reroute<'a> {
     /// `routed` is P5b's route, whose tools the caller resolved first (`resolveFor(model)`);
-    /// `log` is the handler's [`LongProfileLog`].
-    pub fn new(t: MoveTurn<'a>, routed: &Routed, log: &'a mut LongProfileLog) -> Self {
+    /// `wantsAuto` and whether the provider is the default one come from it. `log` is the
+    /// handler's [`LongProfileLog`].
+    pub fn new(t: RerouteTurn<'a>, routed: Routed, log: &'a mut LongProfileLog) -> Self {
+        let mt = MoveTurn {
+            project: t.project,
+            wants_auto: routed.wants_auto,
+            compact_only: t.compact_only,
+            route_row: t.route_row,
+            default_provider: routed.provider.get("id").as_str() == Some(t.default_provider_id),
+            local_tools_gate: t.local_tools_gate,
+            gate_needs_tool: t.gate_needs_tool,
+        };
         Reroute {
-            t,
+            t: mt,
             stage: Stage::Start,
+            resolved_for: routed.model.clone(),
             out: Rerouted {
-                model: routed.model.clone(),
+                wants_auto: routed.wants_auto,
+                provider: routed.provider,
+                model: routed.model,
                 role: routed.role,
-                decision: routed.decision.clone(),
+                decision: routed.decision,
                 context_profile: None,
                 context_switch: false,
-                lines: Vec::new(),
             },
-            resolved_for: routed.model.clone(),
+            lines: Vec::new(),
             log,
         }
     }
 
-    /// The next seam, given the answer to the last one.
+    /// The next seam, given the answer to the last one. A reply to a seam that was not asked, a
+    /// step after [`Step::Done`], or an Automatic route without a role ends with
+    /// [`Halt::OutOfOrder`].
     pub fn step(&mut self, reply: Reply) -> Step {
         match (std::mem::replace(&mut self.stage, Stage::Over), reply) {
-            (Stage::Start, Reply::Start) => match self.out.role {
-                Some(_) if tool_move_applies(&self.t) => self.ask(Stage::Roles, Seam::AutoRoles),
-                _ => self.long(),
-            },
+            (Stage::Start, Reply::Start) => {
+                if !tool_move_applies(&self.t) {
+                    return self.long();
+                }
+                match self.out.role {
+                    Some(_) => self.ask(Stage::Roles, Seam::AutoRoles),
+                    None => self.halt(Halt::OutOfOrder),
+                }
+            }
             (Stage::Roles, Reply::AutoRoles(roles)) => {
                 let Some(routed) = self.out.role else {
                     return self.halt(Halt::OutOfOrder);
@@ -504,7 +559,7 @@ impl<'a> Reroute<'a> {
                     return self.long();
                 }
                 match moved.log_line() {
-                    Ok(Some(line)) => self.out.lines.push(line),
+                    Ok(Some(line)) => self.lines.push(line),
                     Ok(None) => {}
                     Err(Thrown) => return self.halt(Halt::Thrown),
                 }
@@ -521,7 +576,7 @@ impl<'a> Reroute<'a> {
                     Err(Thrown) => return self.halt(Halt::Thrown),
                 };
                 if let Some(line) = picked.log_line().and_then(|l| self.log.admit(l)) {
-                    self.out.lines.push(line);
+                    self.lines.push(line);
                 }
                 self.out.context_profile = Some(picked.context_profile);
                 self.out.context_switch = picked.context_switch;
@@ -560,17 +615,23 @@ impl<'a> Reroute<'a> {
 
     fn done(&mut self) -> Step {
         self.stage = Stage::Over;
-        Step::Done(Ok(self.out.clone()))
+        Step::Done {
+            route: Ok(self.out.clone()),
+            lines: std::mem::take(&mut self.lines),
+        }
     }
 
     fn halt(&mut self, h: Halt) -> Step {
         self.stage = Stage::Over;
-        Step::Done(Err(h))
+        Step::Done {
+            route: Err(h),
+            lines: std::mem::take(&mut self.lines),
+        }
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -641,5 +702,103 @@ mod tests {
         // Above 32 lines the set is cleared before the next new one.
         assert!(log.admit(line(33)).is_some());
         assert_eq!(log.admit(line(0)), Some(line(0)));
+    }
+
+    fn routed(role: Option<Role>) -> Routed {
+        Routed {
+            wants_auto: true,
+            project_provider: JValue::Undefined,
+            provider: json(r#"{"id":"default"}"#),
+            model: JValue::from("qa-fast-4b"),
+            role,
+            decision: JValue::Null,
+        }
+    }
+
+    /// The steps of `replies` on a fresh Automatic turn with Context: High that needs a tool.
+    fn walk(role: Option<Role>, replies: &[Reply]) -> Vec<Step> {
+        let project = json(r#"{"routing":"auto","contextProfile":"high"}"#);
+        let mut log = LongProfileLog::default();
+        let mut r = Reroute::new(
+            RerouteTurn {
+                project: &project,
+                default_provider_id: "default",
+                compact_only: false,
+                route_row: false,
+                local_tools_gate: true,
+                gate_needs_tool: true,
+            },
+            routed(role),
+            &mut log,
+        );
+        replies.iter().map(|reply| r.step(reply.clone())).collect()
+    }
+
+    fn out_of_order(step: &Step) -> bool {
+        matches!(
+            step,
+            Step::Done {
+                route: Err(Halt::OutOfOrder),
+                ..
+            }
+        )
+    }
+
+    #[test]
+    fn a_reply_out_of_order_ends_the_reroute() {
+        let roles = json(r#"{"fast":"qa-fast-4b","smart":"qa-smart-27b"}"#);
+        let catalogue = json(r#"[{"name":"qa-smart-27b","longVariant":"qa-smart-27b-long"}]"#);
+        let path = [
+            Reply::Start,
+            Reply::AutoRoles(roles),
+            Reply::AllowsTools(false),
+            Reply::AllowsTools(true),
+            Reply::Resolved,
+            Reply::Catalogue(catalogue),
+            Reply::Resolved,
+        ];
+        let steps = walk(Some(Role::Fast), &path);
+        let asked: Vec<Step> = [
+            Seam::AutoRoles,
+            Seam::AllowsTools(JValue::from("qa-fast-4b")),
+            Seam::AllowsTools(JValue::from("qa-smart-27b")),
+            Seam::Resolve(JValue::from("qa-smart-27b")),
+            Seam::ServedCatalogue,
+            Seam::Resolve(JValue::from("qa-smart-27b-long")),
+        ]
+        .into_iter()
+        .map(Step::Ask)
+        .collect();
+        assert_eq!(steps[..6], asked[..]);
+        let Step::Done {
+            route: Ok(done),
+            lines,
+        } = &steps[6]
+        else {
+            panic!("{:?}", steps[6]);
+        };
+        assert_eq!(done.model, JValue::from("qa-smart-27b-long"));
+        assert_eq!(lines.len(), 1);
+        // A wrong reply at each stage (the stage's own reply swapped for another).
+        for at in 0..path.len() {
+            let mut wrong = path[..at].to_vec();
+            wrong.push(match path[at] {
+                Reply::Resolved => Reply::Start,
+                _ => Reply::Resolved,
+            });
+            let steps = walk(Some(Role::Fast), &wrong);
+            assert!(out_of_order(&steps[at]), "stage {at}: {:?}", steps[at]);
+            // The move's line, written before the catalogue read, is kept on the error path.
+            let Step::Done { lines, .. } = &steps[at] else {
+                unreachable!()
+            };
+            assert_eq!(lines.len(), usize::from(at >= 4), "stage {at}");
+        }
+        // A step after Done.
+        let mut after = path.to_vec();
+        after.push(Reply::Start);
+        assert!(out_of_order(&walk(Some(Role::Fast), &after)[7]));
+        // Start while the move applies but the Automatic route has no role.
+        assert!(out_of_order(&walk(None, &[Reply::Start])[0]));
     }
 }

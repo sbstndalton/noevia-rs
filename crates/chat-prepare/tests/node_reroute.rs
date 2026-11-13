@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use chat_prepare::effort::Engine;
 use chat_prepare::offer::{self, Offer, OfferInput, Selection, ToolTurn};
-use chat_prepare::reroute::{self, LongProfileLog, MoveTurn, Reroute, ToolMove};
+use chat_prepare::reroute::{self, LongProfileLog, MoveTurn, Reroute, RerouteTurn, ToolMove};
 use chat_prepare::roles::{self, Classification, Halt, Preload, Role, Routing};
 use chat_prepare::route::{self, RouteTurn};
 use chat_prepare::toolboxes::{Toolbox, Writes};
@@ -334,7 +334,6 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out, log: &mut LongProfi
         Ok(r) => r,
         Err(h) => return halt(out, h),
     };
-    let wants = routed.wants_auto;
     let provider = routed.provider.clone();
     let model = routed.model.clone();
 
@@ -407,21 +406,24 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out, log: &mut LongProfi
     };
 
     // P5c: the move (#1550) and the long-context profile (#1079), through their seam order.
-    let mt = MoveTurn {
+    let rt = RerouteTurn {
         project: &project,
-        wants_auto: wants,
+        default_provider_id: DEFAULT,
         compact_only,
         route_row: false,
-        default_provider,
         local_tools_gate: props,
         gate_needs_tool: reroute::gate_says_tool_needed(&gate),
     };
-    let mut rr = Reroute::new(mt, &routed, log);
+    let mut rr = Reroute::new(rt, routed, log);
     let mut reply = reroute::Reply::Start;
     let rerouted = loop {
         let seam = match rr.step(reply) {
             reroute::Step::Ask(seam) => seam,
-            reroute::Step::Done(r) => break r,
+            reroute::Step::Done { route, lines } => {
+                // The lines written before a throw are owed too (the move's, then the throw).
+                out.lines = lines;
+                break route;
+            }
         };
         reply = match seam {
             // The fresh read after the gate: roles saved meanwhile (`rolesLater`) when the case has them.
@@ -450,7 +452,7 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out, log: &mut LongProfi
         Ok(r) => r,
         Err(h) => return halt(out, h),
     };
-    out.lines = rerouted.lines.clone();
+    let (wants, provider) = (rerouted.wants_auto, rerouted.provider.clone());
     let model = rerouted.model.clone();
     let role = rerouted.role;
     let decision = rerouted.decision.clone();

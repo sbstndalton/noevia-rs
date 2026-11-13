@@ -26,7 +26,7 @@
 //          Recorded: those calls, the refusal (json), the meta event's model, route, routingDecision, contextProfile
 //          and sampling, the status line after it, the tools_scope event, the `[tools] ... cannot take tools` and
 //          `[long-profile]` lines, and the reply request's model and tools (names and the sha256 of their JSON); or
-//          what handleChat threw. Most turns get a handler of their own; a group runs on one (`handler`), as the
+//          what handleChat threw (with the lines written before it). No turn is aborted (the pre-load's use() guard). Most turns get a handler of their own; a group runs on one (`handler`), as the
 //          long-profile failure line is logged once per handler.
 // Each source file's sha256 is recorded (and chat.cjs's ported blocks), so a changed Node file needs a fresh recording.
 // Node's console output goes to stderr; stdout is the fixture.
@@ -396,6 +396,9 @@ const decision = (role) => ({ role, routingDecision: { status: 'accepted', role,
     catalogues: [[longRow(FAST), longRow(SMART, { longLoaded: true }), row(CODE)]], message: WEB });
   await addTurn('move_then_no_long', { project: AUTO({ contextProfile: 'high' }), roles: ROLES, classification: decision('fast'), gate: NEEDS, toolsOk: { [FAST]: false },
     catalogues: [[longRow(FAST), row(SMART), row(CODE)]], message: WEB });
+  // The move's line is written (chat.cjs:1359) before the catalogue read whose null row throws.
+  await addTurn('move_then_null_row_throws', { project: AUTO({ contextProfile: 'high' }), roles: ROLES, classification: decision('fast'), gate: NEEDS,
+    toolsOk: { [FAST]: false }, catalogues: [LONG_CAT, [longRow(SMART), null]], message: WEB });
   await addTurn('no_move_long', { project: AUTO({ contextProfile: 'high' }), roles: ROLES, classification: decision('fast'), gate: NEEDS, toolsOk: { [FAST]: false, [SMART]: false, [CODE]: false },
     catalogues: [LONG_CAT], message: WEB });
 

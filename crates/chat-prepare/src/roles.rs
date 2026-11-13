@@ -416,7 +416,9 @@ pub enum Step {
     /// The route, or why the turn ends; and, either way, what the caller still does: the pre-load
     /// and, once an Automatic pick was made, the resend log entry (`recordResend` runs before the
     /// 400 for a pick with no model, so a refused turn can owe it too). The entry is written
-    /// before the pre-load's `use()`/`cancel()`.
+    /// before the pre-load's `use()`/`cancel()`, which come right after the pick, before the first
+    /// `resolveFor` (P6a's [`crate::offer::offer`]) and [`crate::reroute`]; `use()` only when the
+    /// turn is not aborted (Node's `!chatSignal.signal.aborted`). No recorded turn is aborted.
     Done {
         route: Result<Routed, Halt>,
         preload: Preload,
