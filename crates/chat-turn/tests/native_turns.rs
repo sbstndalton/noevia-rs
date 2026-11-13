@@ -85,6 +85,8 @@ struct Script {
     executions: Mutex<Vec<String>>,
     uuids: Mutex<u64>,
     leased: Mutex<bool>,
+    /// The turn's lease: the recorder's gate counts the leases taken before the cut (a Vision role's description).
+    lease: String,
     loaded: Mutex<bool>,
     /// Every event the turn sent, the client's leaving aside, with whether it had left.
     observed: Mutex<Vec<(JValue, bool)>>,
@@ -110,6 +112,13 @@ fn chunks_of(recorded: &JValue) -> Vec<Chunk> {
             _ => Chunk::Bytes(base64(c.get("b64").as_str().unwrap())),
         })
         .collect()
+}
+
+/// How many engine requests and store calls the recorded turn made before the cut (a Vision role's
+/// description: its request and its lease); the native turn starts after them.
+fn before_cut(case: &JValue) -> (usize, usize) {
+    let count = |k: &str| case.get("handoff").get(k).as_num().unwrap_or(0.0) as usize;
+    (count("requests"), count("stores"))
 }
 
 fn base64(text: &str) -> Vec<u8> {
@@ -140,10 +149,16 @@ impl Script {
             _ => Vec::new(),
         };
         let (recorded_bridge, recorded_stubs) = (recorded("bridge"), recorded("stubs"));
+        let (skip, before) = before_cut(&case);
+        let earlier = recorded("stores")
+            .iter()
+            .take(before)
+            .filter(|s| s.get("op").as_str() == Some("modelManager.acquireLease"))
+            .count();
         Script {
             case,
             rounds,
-            next: Mutex::new(0),
+            next: Mutex::new(skip),
             left: Mutex::new(false),
             events: Mutex::new(Vec::new()),
             requests: Mutex::new(Vec::new()),
@@ -155,6 +170,7 @@ impl Script {
             executions: Mutex::new(Vec::new()),
             uuids: Mutex::new(0),
             leased: Mutex::new(false),
+            lease: format!("qa-lease-{}", earlier + 1),
             loaded: Mutex::new(case_loaded),
             observed: Mutex::new(Vec::new()),
         }
@@ -225,9 +241,9 @@ impl Host for Script {
         *self.leased.lock().unwrap() = true;
         self.store(
             "modelManager.acquireLease",
-            vec![("model", js::s(model)), ("lease", js::s("qa-lease-1"))],
+            vec![("model", js::s(model)), ("lease", js::s(self.lease.clone()))],
         );
-        Ok(Some(vec![("X-Noevia-Lease".into(), "qa-lease-1".into())]))
+        Ok(Some(vec![("X-Noevia-Lease".into(), self.lease.clone())]))
     }
 
     async fn health(&self) -> Option<JValue> {
@@ -352,7 +368,7 @@ impl Host for Script {
 
     fn release_lease(&self) {
         if std::mem::take(&mut *self.leased.lock().unwrap()) {
-            self.store("lease.release", vec![("lease", js::s("qa-lease-1"))]);
+            self.store("lease.release", vec![("lease", js::s(self.lease.clone()))]);
         }
     }
 
@@ -734,12 +750,19 @@ fn every_prepared_turn_reads() {
         let p = Prepared::read(c.get("handoff").get("prepared"))
             .unwrap_or_else(|e| panic!("{}: {e:?}", c.get("name").as_str().unwrap()));
         assert!(p.model.starts_with("qa"));
-        // meta, telemetry, status, status, tools_scope; and the reply's first `sources` with retrieval.
-        let before = if c.get("input").get("retrieval").is_object() {
-            6.0
-        } else {
-            5.0
+        // meta, telemetry, status, status, tools_scope; and the reply's first `sources` with retrieval, the
+        // reply's `warning` (an image not read) before tools_scope.
+        let JValue::Arr(events) = c.get("events") else {
+            panic!()
         };
+        let preamble = events
+            .iter()
+            .take_while(|e| e.get("type").as_str() != Some("tools_scope"));
+        let warned = preamble
+            .filter(|e| e.get("type").as_str() == Some("warning"))
+            .count();
+        let retrieval = usize::from(c.get("input").get("retrieval").is_object());
+        let before = (5 + retrieval + warned) as f64;
         assert_eq!(c.get("handoff").get("before").as_num(), Some(before));
         // The project edit tools are named for the gate (chat.cjs projectEditTool) exactly when offered.
         let offered = |n: &str| {
@@ -801,9 +824,11 @@ fn the_native_continuation_is_node_after_the_cut() {
             kinds(&got),
             kinds(&want)
         );
+        let (skip, earlier) = before_cut(c);
         let JValue::Arr(requests) = c.get("requests") else {
             panic!()
         };
+        let requests = &requests[skip..];
         let sent = script.requests.lock().unwrap().clone();
         assert_eq!(sent.len(), requests.len(), "{name}: engine requests");
         for (i, (s, r)) in sent.iter().zip(requests).enumerate() {
@@ -865,7 +890,7 @@ fn the_native_continuation_is_node_after_the_cut() {
             let JValue::Arr(stores) = c.get("stores") else {
                 panic!()
             };
-            let want: Vec<String> = stores.iter().map(js::stringify).collect();
+            let want: Vec<String> = stores[earlier..].iter().map(js::stringify).collect();
             let got: Vec<String> = script
                 .stores
                 .lock()
@@ -887,7 +912,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 67, "{ran:?}");
+    assert_eq!(ran.len(), 73, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
