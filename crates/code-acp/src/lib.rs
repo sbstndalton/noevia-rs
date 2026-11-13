@@ -10,13 +10,31 @@
 //! Every line written is `JSON.stringify(message)` in Node's key order, so a transcript of this
 //! client and of Node's is the same bytes (tests/replay.rs, recorded from code-acp.cjs).
 //!
-//! **Differences from Node** (tested):
+//! **Differences from Node** (tested where they can be):
 //! 1. The 16 MiB line cap counts bytes, not UTF-16 units (Node measured the decoded buffer).
-//! 2. A line that `JSON.parse` reads but this port cannot hold (a character of
-//!    U+10F800..U+10FFFF, a number past the `f64` range) is logged as not JSON-RPC and dropped.
+//! 2. A line `JSON.parse` reads but this port cannot hold (a character of U+10F800..U+10FFFF, a
+//!    number past the `f64` range, nesting deeper than about 128 levels) is logged as not
+//!    JSON-RPC and dropped.
 //! 3. The claude-code harness's pinned settings are read without following a link below the
-//!    task's home (the harness owns it); Node followed any link it found there.
-//! 4. A port past 65535 is refused as a bad endpoint (Node threw when connecting).
+//!    task's home (the harness owns it), and only up to 1 MiB; Node followed any link it found
+//!    there and sent what it read to the agent.
+//! 4. A port past 65535 is refused as a bad endpoint (Node threw when connecting); connecting is
+//!    bounded by the handshake deadline and stops at a cancel; a task cancelled before it connects
+//!    never connects.
+//! 5. At most [`MAX_IN_FLIGHT`] of the agent's requests wait on a handler at once; the rest are
+//!    answered `-32603` "Too many requests at once." (Node started one async handler per request,
+//!    without limit).
+//! 6. Only a string method names a handler: a method that is an object property name in JS
+//!    (`constructor`, `toString`, …) or a one-element array is unsupported (`-32601`), and a
+//!    `null` line is ignored rather than logged with a stack trace. Replies to requests handled at
+//!    the same time may go out in either order.
+//! 7. A spawned agent is put in its own process group, not its own session (`setsid` needs code
+//!    this crate does not allow); its exit, not its stdout closing, ends the connection, and it is
+//!    reaped.
+//!
+//! Writes go through a queue and a writer thread, as Node's socket buffers them: a write blocked
+//! on an agent that stopped reading never holds up a cancel. A stop gives queued lines (a
+//! `session/cancel`) a moment to go out, then closes. Dropping a [`Connection`] stops the agent.
 //!
 //! Requests from the agent are each answered on their own thread, as Node's async handlers run
 //! concurrently: a permission waiting for a person does not hold up session updates.
@@ -31,7 +49,7 @@ use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -196,21 +214,31 @@ impl Options {
 
 type Reply = mpsc::Sender<Result<JValue, Error>>;
 
+/// How many of the agent's requests may be waiting on a handler at once.
+pub const MAX_IN_FLIGHT: usize = 64;
+/// How long a stop waits for queued lines (a `session/cancel`) to go out before closing.
+const DRAIN: Duration = Duration::from_millis(250);
+
 enum Stopper {
     Socket(TcpStream),
     Spawn {
-        child: Mutex<Child>,
+        pid: rustix::process::Pid,
         grace: Duration,
     },
 }
 
 struct Shared {
-    writer: Mutex<Box<dyn Write + Send>>,
+    /// The writer thread's queue (Node's socket buffers its writes; a blocked write never holds
+    /// up a cancel). `None` once stopped.
+    out: Mutex<Option<mpsc::Sender<Vec<u8>>>>,
+    written: Mutex<Option<mpsc::Receiver<()>>>,
     pending: Mutex<HashMap<u64, Reply>>,
     closed: Mutex<Option<Error>>,
     next_id: AtomicU64,
     stopper: Stopper,
     stopped: AtomicBool,
+    exited: Arc<AtomicBool>,
+    in_flight: AtomicUsize,
     log: Box<dyn Fn(&str) + Send + Sync>,
     handlers: Arc<dyn Handlers>,
 }
@@ -240,6 +268,7 @@ impl Shared {
         }
     }
 
+    /// Queues one line; false once the connection is closed.
     fn send(&self, message: &JValue) -> bool {
         if self.closed().is_some() {
             return false;
@@ -248,18 +277,11 @@ impl Shared {
             return false;
         };
         line.push('\n');
-        let written = self
-            .writer
-            .lock()
-            .map_err(|_| std::io::Error::other("writer poisoned"))
-            .and_then(|mut w| w.write_all(line.as_bytes()).and_then(|()| w.flush()));
-        match written {
-            Ok(()) => true,
-            Err(e) => {
-                self.fail(Error::new(e.to_string()));
-                false
-            }
-        }
+        let Ok(out) = self.out.lock() else {
+            return false;
+        };
+        out.as_ref()
+            .is_some_and(|tx| tx.send(line.into_bytes()).is_ok())
     }
 
     fn notify(&self, method: &str, params: JValue) {
@@ -299,27 +321,39 @@ impl Shared {
         rx
     }
 
+    /// Closes the queue, gives what is in it a moment to go out, then closes the connection (a
+    /// socket) or stops the agent's process group (SIGTERM, then SIGKILL after the grace).
     fn stop(&self) {
         if self.stopped.swap(true, Ordering::SeqCst) {
             return;
+        }
+        if let Ok(mut out) = self.out.lock() {
+            out.take();
+        }
+        if let Some(rx) = self.written.lock().ok().and_then(|mut w| w.take()) {
+            let _ = rx.recv_timeout(DRAIN);
         }
         match &self.stopper {
             Stopper::Socket(stream) => {
                 let _ = stream.shutdown(Shutdown::Both);
             }
-            Stopper::Spawn { child, grace } => {
-                let Ok(child) = child.lock() else {
+            Stopper::Spawn { pid, grace } => {
+                let pid = *pid;
+                if self.exited.load(Ordering::SeqCst) {
                     return;
-                };
-                let pid = rustix::process::Pid::from_child(&child);
+                }
                 if rustix::process::kill_process_group(pid, rustix::process::Signal::TERM).is_err()
                 {
                     let _ = rustix::process::kill_process(pid, rustix::process::Signal::TERM);
                 }
-                let grace = *grace;
-                std::thread::spawn(move || {
+                let (grace, exited) = (*grace, self.exited.clone());
+                let _ = std::thread::Builder::new().spawn(move || {
                     std::thread::sleep(grace);
-                    let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
+                    // Only a group whose leader has not been reaped: its id cannot have been reused.
+                    if !exited.load(Ordering::SeqCst) {
+                        let _ =
+                            rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
+                    }
                 });
             }
         }
@@ -402,48 +436,62 @@ impl Shared {
         } else {
             JValue::Obj(Vec::new())
         };
+        // Bounded: an agent cannot make noevia start threads without limit.
+        if self.in_flight.fetch_add(1, Ordering::SeqCst) >= MAX_IN_FLIGHT {
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            self.reply_error(&id, INTERNAL, "Too many requests at once.", None);
+            return;
+        }
         let me = self.clone();
-        std::thread::spawn(move || {
-            let handlers = me.handlers.clone();
-            let answer = match which {
-                0 => handlers
-                    .request_permission(&params)
-                    .map(|outcome| JValue::obj([("outcome", outcome)])),
-                1 => handlers.read_text_file(&params),
-                _ => handlers.write_text_file(&params),
-            };
-            match answer {
-                Ok(result) => {
-                    let result = if result.is_nullish() {
-                        JValue::Null
-                    } else {
-                        result
-                    };
-                    me.send(&JValue::obj([
-                        ("jsonrpc", JValue::Str("2.0".into())),
-                        ("id", id),
-                        ("result", result),
-                    ]));
+        let failed_id = id.clone();
+        let spawned = std::thread::Builder::new()
+            .name("code-acp request".into())
+            .spawn(move || {
+                let handlers = me.handlers.clone();
+                let answer = match which {
+                    0 => handlers
+                        .request_permission(&params)
+                        .map(|outcome| JValue::obj([("outcome", outcome)])),
+                    1 => handlers.read_text_file(&params),
+                    _ => handlers.write_text_file(&params),
+                };
+                match answer {
+                    Ok(result) => {
+                        let result = if result.is_nullish() {
+                            JValue::Null
+                        } else {
+                            result
+                        };
+                        me.send(&JValue::obj([
+                            ("jsonrpc", JValue::Str("2.0".into())),
+                            ("id", id),
+                            ("result", result),
+                        ]));
+                    }
+                    Err(r) => {
+                        let invalid = r.code == Some(INVALID_PARAMS);
+                        let message = if r.message.is_empty() {
+                            "refused".to_string()
+                        } else {
+                            r.message
+                        };
+                        let data = r
+                            .data
+                            .filter(|d| invalid && matches!(d, JValue::Obj(_) | JValue::Arr(_)));
+                        me.reply_error(
+                            &id,
+                            if invalid { INVALID_PARAMS } else { INTERNAL },
+                            &message,
+                            data,
+                        );
+                    }
                 }
-                Err(r) => {
-                    let invalid = r.code == Some(INVALID_PARAMS);
-                    let message = if r.message.is_empty() {
-                        "refused".to_string()
-                    } else {
-                        r.message
-                    };
-                    let data = r
-                        .data
-                        .filter(|d| invalid && matches!(d, JValue::Obj(_) | JValue::Arr(_)));
-                    me.reply_error(
-                        &id,
-                        if invalid { INVALID_PARAMS } else { INTERNAL },
-                        &message,
-                        data,
-                    );
-                }
-            }
-        });
+                me.in_flight.fetch_sub(1, Ordering::SeqCst);
+            });
+        if spawned.is_err() {
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            self.reply_error(&failed_id, INTERNAL, "Too many requests at once.", None);
+        }
     }
 }
 
@@ -467,8 +515,24 @@ pub(crate) fn js_trim(s: &str) -> &str {
     })
 }
 
-/// Reads lines until the stream ends, dispatching each; then the connection is closed with
-/// `on_close`'s reason.
+/// Writes queued lines in order until the queue closes or a write fails.
+fn write_loop(
+    shared: Arc<Shared>,
+    rx: mpsc::Receiver<Vec<u8>>,
+    mut to: Box<dyn Write + Send>,
+    done: mpsc::Sender<()>,
+) {
+    for line in rx {
+        if let Err(e) = to.write_all(&line).and_then(|()| to.flush()) {
+            shared.fail(Error::new(e.to_string()));
+            break;
+        }
+    }
+    let _ = done.send(());
+}
+
+/// Reads lines until the stream ends, dispatching each. A socket's end closes the connection; a
+/// child's stdout closing does not (its exit does, as Node's `exit` event).
 fn read_loop(shared: Arc<Shared>, mut from: Box<dyn Read + Send>) {
     let mut buffer: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 64 * 1024];
@@ -496,51 +560,61 @@ fn read_loop(shared: Arc<Shared>, mut from: Box<dyn Read + Send>) {
             }
         }
     }
-    let reason = match &shared.stopper {
-        Stopper::Socket(_) => "The coding sandbox closed the connection.".to_string(),
-        Stopper::Spawn { child, .. } => exit_reason(child),
+    if let Stopper::Socket(_) = shared.stopper {
+        shared.fail(Error::public(
+            "The coding sandbox closed the connection.",
+            "The coding harness stopped unexpectedly.",
+        ));
+    }
+}
+
+/// Waits for the spawned agent to exit (reaping it), then closes the connection with
+/// `The harness exited (${signal || code}).`.
+fn wait_loop(shared: Arc<Shared>, mut child: Child) {
+    use std::os::unix::process::ExitStatusExt;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+            Err(_) => break None,
+        }
+    };
+    shared.exited.store(true, Ordering::SeqCst);
+    let what = match status.map(|s| (s.signal(), s.code())) {
+        Some((Some(sig), _)) => signal_name(sig),
+        Some((None, Some(code))) => code.to_string(),
+        _ => "null".into(),
     };
     shared.fail(Error::public(
-        reason,
+        format!("The harness exited ({what})."),
         "The coding harness stopped unexpectedly.",
     ));
 }
 
-/// `The harness exited (${signal || code}).`, once the child has gone (its stdout closed).
-fn exit_reason(child: &Mutex<Child>) -> String {
-    use std::os::unix::process::ExitStatusExt;
-    let deadline = Instant::now() + Duration::from_secs(2);
-    loop {
-        let status = child
-            .lock()
-            .ok()
-            .and_then(|mut c| c.try_wait().ok().flatten());
-        if let Some(status) = status {
-            let what = match (status.signal(), status.code()) {
-                (Some(sig), _) => signal_name(sig),
-                (None, Some(code)) => code.to_string(),
-                (None, None) => "null".into(),
-            };
-            return format!("The harness exited ({what}).");
-        }
-        if Instant::now() >= deadline {
-            return "The harness exited (null).".into();
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-}
-
+/// Node's names for the signals a harness dies of.
 fn signal_name(sig: i32) -> String {
-    match sig {
-        1 => "SIGHUP".into(),
-        2 => "SIGINT".into(),
-        6 => "SIGABRT".into(),
-        9 => "SIGKILL".into(),
-        11 => "SIGSEGV".into(),
-        13 => "SIGPIPE".into(),
-        15 => "SIGTERM".into(),
-        n => format!("signal {n}"),
-    }
+    let name = match sig {
+        1 => "SIGHUP",
+        2 => "SIGINT",
+        3 => "SIGQUIT",
+        4 => "SIGILL",
+        5 => "SIGTRAP",
+        6 => "SIGABRT",
+        7 => "SIGBUS",
+        8 => "SIGFPE",
+        9 => "SIGKILL",
+        10 => "SIGUSR1",
+        11 => "SIGSEGV",
+        12 => "SIGUSR2",
+        13 => "SIGPIPE",
+        14 => "SIGALRM",
+        15 => "SIGTERM",
+        24 => "SIGXCPU",
+        25 => "SIGXFSZ",
+        31 => "SIGSYS",
+        n => return format!("signal {n}"),
+    };
+    name.to_string()
 }
 
 /// Node's errno name for a failed spawn (`spawn <command> ENOENT`).
@@ -557,7 +631,28 @@ fn errno_name(e: &std::io::Error) -> String {
     name.to_string()
 }
 
-/// An open ACP session.
+/// Lossy UTF-8 of a byte stream read in chunks: a character split across two reads is kept whole
+/// (Node's StringDecoder), bad bytes become U+FFFD.
+struct Utf8Stream {
+    carry: Vec<u8>,
+}
+
+impl Utf8Stream {
+    fn push(&mut self, bytes: &[u8]) -> String {
+        self.carry.extend_from_slice(bytes);
+        let keep = match std::str::from_utf8(&self.carry) {
+            Ok(_) => 0,
+            Err(e) if e.error_len().is_none() => self.carry.len() - e.valid_up_to(),
+            Err(_) => 0,
+        };
+        let cut = self.carry.len() - keep;
+        let text = String::from_utf8_lossy(self.carry.get(..cut).unwrap_or(&[])).into_owned();
+        self.carry.drain(..cut);
+        text
+    }
+}
+
+/// An open ACP session. Dropping it stops the agent.
 pub struct Connection {
     shared: Arc<Shared>,
     session_id: String,
@@ -568,9 +663,21 @@ pub struct Connection {
     hook: u64,
 }
 
+impl Drop for Connection {
+    fn drop(&mut self) {
+        self.cancel.remove(self.hook);
+        self.shared.stop();
+    }
+}
+
 impl Connection {
     pub fn session_id(&self) -> &str {
         &self.session_id
+    }
+
+    /// The session id as the agent gave it (a number stays a number on the wire).
+    pub fn session(&self) -> &JValue {
+        &self.session_value
     }
 
     /// What the agent said about itself at `initialize` (`{ name, version, protocolVersion }`).
@@ -613,8 +720,60 @@ impl Connection {
     }
 }
 
+fn cancelled() -> Error {
+    Error::public("Cancelled", "The task was cancelled.")
+}
+
+/// Connects to `host:port` within `deadline`, giving up at once on a cancel.
+fn reach(host: &str, port: u16, deadline: Instant, cancel: &Cancel) -> Result<TcpStream, Error> {
+    use std::net::ToSocketAddrs;
+    let (tx, rx) = mpsc::channel();
+    let target = format!("{host}:{port}");
+    let budget = deadline.saturating_duration_since(Instant::now());
+    std::thread::Builder::new()
+        .spawn(move || {
+            let attempt = (|| {
+                let mut last = std::io::Error::other("no address");
+                for addr in target.to_socket_addrs()? {
+                    match TcpStream::connect_timeout(&addr, budget.max(Duration::from_millis(1))) {
+                        Ok(s) => return Ok(s),
+                        Err(e) => last = e,
+                    }
+                }
+                Err(last)
+            })();
+            let _ = tx.send(attempt);
+        })
+        .map_err(|e| Error::new(e.to_string()))?;
+    loop {
+        if cancel.is_cancelled() {
+            return Err(cancelled());
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(Error::public(
+                "The coding harness did not answer.",
+                "The coding harness did not answer.",
+            ));
+        }
+        match rx.recv_timeout(left.min(Duration::from_millis(25))) {
+            Ok(Ok(stream)) => return Ok(stream),
+            Ok(Err(e)) => {
+                return Err(Error::public(
+                    format!("The coding sandbox is unreachable ({e})."),
+                    "The coding harness stopped unexpectedly.",
+                ))
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(Error::new("The coding sandbox is unreachable."))
+            }
+        }
+    }
+}
+
 /// code-acp.cjs `connectAcp`: the handshake (`initialize`, then `session/new` with no MCP
-/// servers), refused or abandoned after `options.handshake`.
+/// servers), refused or abandoned after `options.handshake` (connecting included).
 pub fn connect(
     options: Options,
     handlers: Arc<dyn Handlers>,
@@ -639,29 +798,25 @@ pub fn connect(
         options.proxy.as_ref(),
         options.home.as_deref(),
     );
+    if cancel.is_cancelled() {
+        return Err(cancelled());
+    }
+    let deadline = Instant::now() + options.handshake;
     let log = options.log;
-    let mut stderr_pipe: Option<std::process::ChildStderr> = None;
+    let mut child_parts: Option<(Child, Option<std::process::ChildStderr>)> = None;
     let (writer, reader, stopper): (Box<dyn Write + Send>, Box<dyn Read + Send>, Stopper) =
         match transport {
             Transport::Socket(endpoint) => {
                 let (host, port) = split_endpoint(&endpoint)?;
-                let unreachable = |e: std::io::Error| {
+                let stream = reach(&host, port, deadline, &cancel)?;
+                let broken = |e: std::io::Error| {
                     Error::public(
                         format!("The coding sandbox is unreachable ({e})."),
                         "The coding harness stopped unexpectedly.",
                     )
                 };
-                let stream = TcpStream::connect((host.as_str(), port)).map_err(unreachable)?;
-                let mut start = wtf16::stringify(&JValue::obj([
-                    ("noevia", JValue::Str("start".into())),
-                    ("cwd", JValue::Str(options.cwd.clone())),
-                    ("env", child_env.clone()),
-                ]))
-                .unwrap_or_default();
-                start.push('\n');
-                let mut w = stream.try_clone().map_err(unreachable)?;
-                w.write_all(start.as_bytes()).map_err(unreachable)?;
-                let r = stream.try_clone().map_err(unreachable)?;
+                let w = stream.try_clone().map_err(broken)?;
+                let r = stream.try_clone().map_err(broken)?;
                 (Box::new(w), Box::new(r), Stopper::Socket(stream))
             }
             Transport::Spawn { command, args } => {
@@ -686,49 +841,93 @@ pub fn connect(
                         "The coding harness stopped unexpectedly.",
                     )
                 })?;
-                let stdin = child.stdin.take();
-                let stdout = child.stdout.take();
-                stderr_pipe = child.stderr.take();
-                let (Some(stdin), Some(stdout)) = (stdin, stdout) else {
+                let pid = rustix::process::Pid::from_child(&child);
+                let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+                    let _ = child.kill();
+                    let _ = child.wait();
                     return Err(Error::new("The harness could not be started."));
                 };
+                let stderr = child.stderr.take();
+                child_parts = Some((child, stderr));
                 (
                     Box::new(stdin),
                     Box::new(stdout),
                     Stopper::Spawn {
-                        child: Mutex::new(child),
+                        pid,
                         grace: options.grace,
                     },
                 )
             }
         };
+    let (out_tx, out_rx) = mpsc::channel::<Vec<u8>>();
+    let (done_tx, done_rx) = mpsc::channel::<()>();
     let shared = Arc::new(Shared {
-        writer: Mutex::new(writer),
+        out: Mutex::new(Some(out_tx)),
+        written: Mutex::new(Some(done_rx)),
         pending: Mutex::new(HashMap::new()),
         closed: Mutex::new(None),
         next_id: AtomicU64::new(1),
         stopper,
         stopped: AtomicBool::new(false),
+        exited: Arc::new(AtomicBool::new(false)),
+        in_flight: AtomicUsize::new(0),
         log,
         handlers,
     });
-    if let Some(mut stderr) = stderr_pipe {
-        // What the agent writes to stderr is logged, a chunk at a time, as Node's onLog.
-        let shared = shared.clone();
-        std::thread::spawn(move || {
-            let mut buf = [0u8; 8192];
-            while let Ok(n) = stderr.read(&mut buf) {
-                if n == 0 {
-                    break;
-                }
-                let text = String::from_utf8_lossy(buf.get(..n).unwrap_or(&[])).into_owned();
-                (shared.log)(&wtf16::slice(&text, 2000));
+    let start = |what: &str, f: Box<dyn FnOnce() + Send>| {
+        std::thread::Builder::new()
+            .name(format!("code-acp {what}"))
+            .spawn(f)
+            .map(|_| ())
+            .map_err(|e| Error::new(e.to_string()))
+    };
+    // The socket's first line is noevia's own start message; everything after it is ACP.
+    if let Stopper::Socket(_) = shared.stopper {
+        let mut line = wtf16::stringify(&JValue::obj([
+            ("noevia", JValue::Str("start".into())),
+            ("cwd", JValue::Str(options.cwd.clone())),
+            ("env", child_env.clone()),
+        ]))
+        .unwrap_or_default();
+        line.push('\n');
+        if let Ok(out) = shared.out.lock() {
+            if let Some(tx) = out.as_ref() {
+                let _ = tx.send(line.into_bytes());
             }
-        });
+        }
     }
     {
-        let shared = shared.clone();
-        std::thread::spawn(move || read_loop(shared, reader));
+        let shared2 = shared.clone();
+        start(
+            "writer",
+            Box::new(move || write_loop(shared2, out_rx, writer, done_tx)),
+        )?;
+        let shared2 = shared.clone();
+        start("reader", Box::new(move || read_loop(shared2, reader)))?;
+    }
+    if let Some((child, stderr)) = child_parts {
+        if let Some(mut stderr) = stderr {
+            // What the agent writes to stderr is logged, a chunk at a time, as Node's onLog.
+            let shared2 = shared.clone();
+            start(
+                "stderr",
+                Box::new(move || {
+                    let mut buf = [0u8; 8192];
+                    let mut text = Utf8Stream { carry: Vec::new() };
+                    while let Ok(n) = stderr.read(&mut buf) {
+                        if n == 0 {
+                            break;
+                        }
+                        let chunk = text.push(buf.get(..n).unwrap_or(&[]));
+                        if !chunk.is_empty() {
+                            (shared2.log)(&wtf16::slice(&chunk, 2000));
+                        }
+                    }
+                }),
+            )?;
+        }
+        let shared2 = shared.clone();
+        start("waiter", Box::new(move || wait_loop(shared2, child)))?;
     }
 
     // Cancellation is wired before the handshake: an agent that never answers has no session
@@ -741,7 +940,7 @@ pub fn connect(
                 shared.notify("session/cancel", JValue::obj([("sessionId", id)]));
             }
             shared.stop();
-            shared.fail(Error::public("Cancelled", "The task was cancelled."));
+            shared.fail(cancelled());
         }))
     };
     let abandon = |e: Error| {
@@ -750,13 +949,9 @@ pub fn connect(
         e
     };
     if cancel.is_cancelled() {
-        shared.stop();
-        shared.fail(Error::public("Cancelled", "The task was cancelled."));
-        return Err(abandon(
-            shared.closed().unwrap_or_else(|| Error::new("Cancelled")),
-        ));
+        shared.fail(cancelled());
+        return Err(abandon(shared.closed().unwrap_or_else(cancelled)));
     }
-    let deadline = Instant::now() + options.handshake;
     let wait = |rx: mpsc::Receiver<Result<JValue, Error>>| -> Result<JValue, Error> {
         let left = deadline.saturating_duration_since(Instant::now());
         match rx.recv_timeout(left) {

@@ -145,6 +145,38 @@ const SCENARIOS = {
     options: { cwd: '/qa/tree', harness: 'claude-code' },
     script: [],
   },
+  // Keys whose value is undefined keep their place until agentEnv deletes them.
+  'env-order': {
+    options: { cwd: '/qa/tree', harness: 'opencode', env: { QA: '1', HOME: '', TMPDIR: '', '7': 'index key' } },
+    script: [
+      { expect: true }, { expect: true },
+      { send: reply(1, { protocolVersion: [[2]] }) },
+      { expect: true },
+      { send: reply(2, { sessionId: 42 }) },
+      { prompt: 'QA' },
+      { expect: true },
+      // A float id, non-object lines, then a reply carrying both an error and a result.
+      { send: line({ jsonrpc: '2.0', id: 7.5, method: 'fs/read_text_file', params: { path: 'a' } }) },
+      { expect: true },
+      { send: '5\n"x"\n[]\n{}\n' },
+      { send: line({ jsonrpc: '2.0', id: 3, error: { code: 1, message: 'both' }, result: { ignored: true } }) },
+      { expectClose: true },
+    ],
+    answers: { readTextFile: [{ ok: { content: 'float id' } }] },
+  },
+  'spawn-exit': {
+    transport: 'spawn',
+    options: { cwd: '/qa/tree', harness: 'opencode', command: 'qa-agent', args: ['--acp'] },
+    script: [
+      { expect: true },
+      { send: reply(1, {}) },
+      { expect: true },
+      { send: reply(2, { sessionId: 'qa-spawned' }) },
+      { prompt: 'QA' },
+      { expect: true },
+      { exit: 3 },
+    ],
+  },
   'handshake-timeout': {
     options: { cwd: '/qa/tree', harness: 'opencode', handshakeMs: 100 },
     script: [{ expect: true }, { expect: true }, { expectClose: true }],
@@ -181,6 +213,15 @@ async function run(name, sc) {
   };
   socket.destroy = () => { if (destroyed) return; destroyed = true; transcript.closed = true; if (closeWaiter) closeWaiter(); setImmediate(() => socket.emit('close')); };
   const connectFn = (port, host) => { transcript.connectedTo = [host, port]; setImmediate(() => socket.emit('connect')); return socket; };
+  // The spawn transport's fake child: its stdin is the socket's write side, its stdout emits.
+  const child = new EventEmitter();
+  child.pid = 2147483646; // no such process: Node's group kill fails and falls back to child.kill
+  child.kill = () => { transcript.closed = true; if (closeWaiter) closeWaiter(); return true; };
+  child.stdin = { write: (t) => socket.write(t) };
+  child.stdout = new EventEmitter(); child.stdout.setEncoding = () => {};
+  child.stderr = new EventEmitter(); child.stderr.setEncoding = () => {};
+  const spawnFn = (command, args, opts) => { transcript.spawned = { command, args, cwd: opts.cwd, env: opts.env }; return child; };
+  const spawned = sc.transport === 'spawn';
   const answers = JSON.parse(JSON.stringify(sc.answers || {}));
   const answer = (handler, params) => {
     transcript.handlers.push({ handler, params: params === undefined ? null : params });
@@ -197,8 +238,8 @@ async function run(name, sc) {
   };
   const controller = new AbortController();
   const { handshakeMs, ...options } = sc.options;
-  const connecting = connectAcp({ endpoint: 'qa-sandbox:9000', home, ...options, handlers, signal: controller.signal,
-    onLog: (t) => transcript.logs.push(t), connectFn, ...(handshakeMs ? { handshakeMs } : {}) })
+  const connecting = connectAcp({ ...(spawned ? {} : { endpoint: 'qa-sandbox:9000' }), home, ...options, handlers, signal: controller.signal,
+    onLog: (t) => transcript.logs.push(t), connectFn, spawnFn, ...(handshakeMs ? { handshakeMs } : {}) })
     .then((c) => { transcript.connect = { ok: { sessionId: c.sessionId, agent: c.agent } }; return c; },
       (e) => { transcript.connect = { error: errorOf(e) }; return null; });
   let seen = 0, prompting = null;
@@ -209,7 +250,7 @@ async function run(name, sc) {
       seen++;
     } else if (step.send !== undefined) {
       await new Promise((r) => setImmediate(r));
-      socket.emit('data', step.send);
+      (spawned ? child.stdout : socket).emit('data', step.send);
       await new Promise((r) => setImmediate(r));
     } else if (step.prompt !== undefined) {
       const conn = await connecting;
@@ -217,6 +258,8 @@ async function run(name, sc) {
         (e) => { transcript.prompt = { error: errorOf(e) }; });
     } else if (step.abort) {
       controller.abort();
+    } else if (step.exit !== undefined) {
+      child.emit('exit', step.exit, null);
     } else if (step.close) {
       socket.emit('close');
     } else if (step.expectClose) {
