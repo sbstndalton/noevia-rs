@@ -101,8 +101,10 @@ pub trait Host: Sync {
         &self,
         model: &str,
     ) -> impl Future<Output = Result<Option<Vec<(String, String)>>, GateRefusal>> + Send;
-    /// Gives the model's lease back: called once when the turn ends or its client leaves, before what
-    /// it keeps is saved.
+    /// Gives the model's lease back: the turn calls it once when it ends, before what it keeps is
+    /// saved. The implementation also gives it back itself the moment the client leaves (Node's
+    /// `close` handler, before the turn's audit, tool-use count and save), so a later call finds
+    /// nothing to give back and does nothing.
     fn release_lease(&self);
     /// The model manager's `health()` body, or `None` when it did not answer ok.
     fn health(&self) -> impl Future<Output = Option<JValue>> + Send;
