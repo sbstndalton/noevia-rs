@@ -1477,6 +1477,151 @@
      ],
      "rejected": [],
      "answer": "ERROR: Google Drive could not be reached."
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "op": "execute",
+      "user": {
+       "id": "user-1",
+       "role": "member"
+      },
+      "name": "drive_get_metadata",
+      "arguments": {
+       "fileId": "e1"
+      },
+      "chatKey": null,
+      "exchangeKey": "ex-1",
+      "cap": 8000
+     },
+     "script": {
+      "http": [
+       {
+        "status": 200,
+        "json": {
+         "id": "e1",
+         "name": "QA e1.txt",
+         "mimeType": [],
+         "size": [],
+         "modifiedTime": [
+          2026,
+          11
+         ],
+         "version": "7",
+         "webViewLink": []
+        }
+       }
+      ],
+      "sessions": []
+     },
+     "requests": [
+      {
+       "method": "GET",
+       "url": "http://127.0.0.1:9/drive/v3/files/e1?fields=id%2Cname%2CmimeType%2Csize%2CmodifiedTime%2CcreatedTime%2CwebViewLink%2Ctrashed%2Cversion",
+       "headers": {
+        "Authorization": "Bearer qa-token-user-1-1"
+       },
+       "body": null
+      }
+     ],
+     "rejected": [],
+     "answer": "- QA e1.txt (id e1) ·  ·  bytes · changed 2026,11\nLink: "
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "op": "execute",
+      "user": {
+       "id": "user-1",
+       "role": "member"
+      },
+      "name": "drive_get_metadata",
+      "arguments": {
+       "fileId": "e2"
+      },
+      "chatKey": null,
+      "exchangeKey": "ex-1",
+      "cap": 8000
+     },
+     "script": {
+      "http": [
+       {
+        "status": 200,
+        "json": {
+         "id": 7,
+         "name": {
+          "a": 1
+         },
+         "mimeType": "text/plain",
+         "size": 0,
+         "modifiedTime": "",
+         "version": "7",
+         "webViewLink": "https://drive.example.test/e2"
+        }
+       }
+      ],
+      "sessions": []
+     },
+     "requests": [
+      {
+       "method": "GET",
+       "url": "http://127.0.0.1:9/drive/v3/files/e2?fields=id%2Cname%2CmimeType%2Csize%2CmodifiedTime%2CcreatedTime%2CwebViewLink%2Ctrashed%2Cversion",
+       "headers": {
+        "Authorization": "Bearer qa-token-user-1-1"
+       },
+       "body": null
+      }
+     ],
+     "rejected": [],
+     "answer": "- [object Object] (id 7) · text/plain\nLink: https://drive.example.test/e2"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "op": "execute",
+      "user": {
+       "id": "user-1",
+       "role": "member"
+      },
+      "name": "drive_get_metadata",
+      "arguments": {
+       "fileId": "e3"
+      },
+      "chatKey": null,
+      "exchangeKey": "ex-1",
+      "cap": 8000
+     },
+     "script": {
+      "http": [
+       {
+        "status": 200,
+        "json": {
+         "id": "e3",
+         "name": {
+          "toString": 1
+         },
+         "mimeType": "text/plain",
+         "size": "12",
+         "modifiedTime": "2026-11-01T10:00:00.000Z",
+         "version": "7",
+         "webViewLink": "https://drive.example.test/e3"
+        }
+       }
+      ],
+      "sessions": []
+     },
+     "requests": [
+      {
+       "method": "GET",
+       "url": "http://127.0.0.1:9/drive/v3/files/e3?fields=id%2Cname%2CmimeType%2Csize%2CmodifiedTime%2CcreatedTime%2CwebViewLink%2Ctrashed%2Cversion",
+       "headers": {
+        "Authorization": "Bearer qa-token-user-1-1"
+       },
+       "body": null
+      }
+     ],
+     "rejected": [],
+     "answer": "ERROR: Google Drive could not be reached."
     }
    ]
   },
@@ -2314,6 +2459,112 @@
       },
       "name": "drive_read_file",
       "arguments": {
+       "fileId": "arr"
+      },
+      "chatKey": null,
+      "exchangeKey": "ex-1",
+      "cap": 8000
+     },
+     "script": {
+      "http": [
+       {
+        "status": 200,
+        "json": {
+         "id": "arr",
+         "name": "QA arr.txt",
+         "mimeType": [
+          "application/vnd.google-apps.document"
+         ],
+         "size": "12",
+         "modifiedTime": "2026-11-01T10:00:00.000Z",
+         "version": "7",
+         "webViewLink": "https://drive.example.test/arr"
+        }
+       },
+       {
+        "status": 200,
+        "text": "qa array export"
+       }
+      ],
+      "sessions": []
+     },
+     "requests": [
+      {
+       "method": "GET",
+       "url": "http://127.0.0.1:9/drive/v3/files/arr?fields=id%2Cname%2CmimeType%2Csize%2CmodifiedTime%2CcreatedTime%2CwebViewLink%2Ctrashed%2Cversion",
+       "headers": {
+        "Authorization": "Bearer qa-token-user-1-1"
+       },
+       "body": null
+      },
+      {
+       "method": "GET",
+       "url": "http://127.0.0.1:9/drive/v3/files/arr/export?mimeType=text%2Fplain",
+       "headers": {
+        "Authorization": "Bearer qa-token-user-1-1"
+       },
+       "body": null
+      }
+     ],
+     "rejected": [],
+     "answer": "QA arr.txt:\nqa array export"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "op": "execute",
+      "user": {
+       "id": "user-1",
+       "role": "member"
+      },
+      "name": "drive_read_file",
+      "arguments": {
+       "fileId": "num"
+      },
+      "chatKey": null,
+      "exchangeKey": "ex-1",
+      "cap": 8000
+     },
+     "script": {
+      "http": [
+       {
+        "status": 200,
+        "json": {
+         "id": "num",
+         "name": "QA num.txt",
+         "mimeType": 5,
+         "size": "12",
+         "modifiedTime": "2026-11-01T10:00:00.000Z",
+         "version": "7",
+         "webViewLink": "https://drive.example.test/num"
+        }
+       }
+      ],
+      "sessions": []
+     },
+     "requests": [
+      {
+       "method": "GET",
+       "url": "http://127.0.0.1:9/drive/v3/files/num?fields=id%2Cname%2CmimeType%2Csize%2CmodifiedTime%2CcreatedTime%2CwebViewLink%2Ctrashed%2Cversion",
+       "headers": {
+        "Authorization": "Bearer qa-token-user-1-1"
+       },
+       "body": null
+      }
+     ],
+     "rejected": [],
+     "answer": "ERROR: QA num.txt is 5; only text files and Google Docs, Sheets and Slides can be read."
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "op": "execute",
+      "user": {
+       "id": "user-1",
+       "role": "member"
+      },
+      "name": "drive_read_file",
+      "arguments": {
        "fileId": "bin"
       },
       "chatKey": null,
@@ -2945,6 +3196,54 @@
      ],
      "rejected": [],
      "answer": "Created QA c3.txt (id c3): https://drive.example.test/c3"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "op": "execute",
+      "user": {
+       "id": "user-1",
+       "role": "member"
+      },
+      "name": "drive_create_file",
+      "arguments": {
+       "name": "QA.txt",
+       "content": "x"
+      },
+      "chatKey": null,
+      "exchangeKey": "ex-1",
+      "cap": 8000
+     },
+     "script": {
+      "http": [
+       {
+        "status": 200,
+        "json": {
+         "id": "c4",
+         "name": "QA c4.txt",
+         "mimeType": "text/plain",
+         "size": "12",
+         "modifiedTime": "2026-11-01T10:00:00.000Z",
+         "version": "7",
+         "webViewLink": []
+        }
+       }
+      ],
+      "sessions": []
+     },
+     "requests": [
+      {
+       "method": "POST",
+       "url": "http://127.0.0.1:9/upload/drive/v3/files?uploadType=multipart&fields=id%2Cname%2CmimeType%2Csize%2CmodifiedTime%2CcreatedTime%2CwebViewLink%2Ctrashed%2Cversion",
+       "headers": {
+        "Content-Type": "multipart/related; boundary=noevia0123456789abcdef",
+        "Authorization": "Bearer qa-token-user-1-1"
+       },
+       "body": "--noevia0123456789abcdef\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{\"name\":\"QA.txt\",\"mimeType\":\"text/plain\"}\r\n--noevia0123456789abcdef\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\nx\r\n--noevia0123456789abcdef--"
+      }
+     ],
+     "rejected": [],
+     "answer": "Created QA c4.txt (id c4): "
     },
     {
      "at": 1800000000000,

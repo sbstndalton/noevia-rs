@@ -76,6 +76,10 @@ const SCENARIOS = [
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_get_metadata', args: { fileId: 'm3' }, ...X, http: [status(404)] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_get_metadata', args: { fileId: 'm3' }, ...X, http: [status(403)] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_get_metadata', args: { fileId: 'm4' }, ...X, http: [json(null)] },
+    // Truthy values that write as "" (an array), and other shapes JS turns into text.
+    { op: 'execute', user: MEMBER('user-1'), name: 'drive_get_metadata', args: { fileId: 'e1' }, ...X, http: [json(file('e1', { size: [], webViewLink: [], mimeType: [], modifiedTime: [2026, 11] }))] },
+    { op: 'execute', user: MEMBER('user-1'), name: 'drive_get_metadata', args: { fileId: 'e2' }, ...X, http: [json(file('e2', { name: { a: 1 }, id: 7, size: 0, modifiedTime: '' }))] },
+    { op: 'execute', user: MEMBER('user-1'), name: 'drive_get_metadata', args: { fileId: 'e3' }, ...X, http: [json(file('e3', { name: { toString: 1 } }))] },
   ] },
   { name: 'read, then update only what was read in full in this exchange', steps: [
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_read_file', args: { fileId: 'f1' }, ...X, http: [json(file('f1')), text('qa line one\nqa line two é 😀', 206)] },
@@ -94,6 +98,8 @@ const SCENARIOS = [
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_read_file', args: { fileId: 'sheet' }, ...X, http: [json(file('sheet', { mimeType: 'application/vnd.google-apps.spreadsheet' })), text('a,b\n1,2')] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_read_file', args: { fileId: 'json1' }, ...X, http: [json(file('json1', { mimeType: 'application/json' })), text('{"qa":1}')] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_read_file', args: { fileId: 'img' }, ...X, http: [json(file('img', { mimeType: 'image/png' }))] },
+    { op: 'execute', user: MEMBER('user-1'), name: 'drive_read_file', args: { fileId: 'arr' }, ...X, http: [json(file('arr', { mimeType: ['application/vnd.google-apps.document'] })), text('qa array export')] },
+    { op: 'execute', user: MEMBER('user-1'), name: 'drive_read_file', args: { fileId: 'num' }, ...X, http: [json(file('num', { mimeType: 5 }))] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_read_file', args: { fileId: 'bin' }, ...X, http: [json(file('bin', { mimeType: '' }))] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_read_file', args: { fileId: 'bad8' }, ...X, http: [json(file('bad8')), bytes('71610aff fe c3 28 e2 82 f0 9f 98'.replace(/ /g, ''))] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_read_file', args: { fileId: 'forb' }, ...X, http: [json(file('forb')), status(403)] },
@@ -109,6 +115,7 @@ const SCENARIOS = [
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_update_file', args: { fileId: 'c1', content: 'edited after create' }, ...X, http: [json(file('c1', { name: 'QA notes.md', mimeType: 'text/markdown' })), json(file('c1', { version: '8' }))] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_create_file', args: { name: 'QA.bin', content: 5, mimeType: 'image/png' }, ...X, http: [json(file('c2', { webViewLink: undefined, version: undefined }))] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_create_file', args: { name: 'QA.json', content: '{}', mimeType: 'application/json' }, ...X, http: [json(file('c3'))] },
+    { op: 'execute', user: MEMBER('user-1'), name: 'drive_create_file', args: { name: 'QA.txt', content: 'x' }, ...X, http: [json(file('c4', { webViewLink: [] }))] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_create_file', args: { name: '   ', content: 'x' }, ...X, http: [] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_create_file', args: { name: 'x'.repeat(256), content: 'x' }, ...X, http: [] },
     { op: 'execute', user: MEMBER('user-1'), name: 'drive_create_file', args: { name: 'QA.txt', content: 'x' }, ...X, http: [status(204)] },

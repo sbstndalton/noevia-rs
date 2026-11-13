@@ -12,10 +12,18 @@
 //! and [`describe_target`] by `tests/gdrive_tools_oracle.rs` (every HTTP request with its headers and
 //! body, every refused sign-in, every answer).
 //!
+//! Text is JS text: the request and Drive's replies are read with `js_json::wtf16`, so a lone surrogate (a
+//! model's broken emoji, a file name cut in half) is kept as core keeps it. It is written back as core
+//! writes it: as the `\udxxx` escape in JSON, as U+FFFD bytes in a file's content, and it makes an address
+//! or a header impossible (core's `encodeURIComponent` and fetch throw: the generic text).
+//!
 //! Named differences: a read cut that would split a character's two UTF-16 units leaves the character out
 //! (`drive-tools` `shape_read`); a Drive `mimeType` that names an `Object.prototype` member (`toString`,
-//! `__proto__`) is a plain unknown type here (core's lookup would find the prototype's function).
-use drive_tools::{plan_write, FileLine, ReadGate, Tool, UpdateCheck, WritePlan};
+//! `__proto__`) is a plain unknown type here (core's lookup would find the prototype's function); a
+//! redirect from Drive is not followed (the generic text; core's fetch follows it, which would carry the
+//! access token to wherever it points).
+use drive_tools::{ReadGate, Tool, UpdateCheck};
+use js_json::wtf16;
 use js_json::JValue;
 use std::future::Future;
 use std::sync::Mutex;
@@ -28,6 +36,10 @@ const FIELDS: &str = "id,name,mimeType,size,modifiedTime,createdTime,webViewLink
 const UNREACHABLE: &str = "Google Drive could not be reached.";
 const NOT_CONNECTED: &str =
     "ERROR: Google Drive is not connected for this account. Connect it in Settings → Connectors.";
+/// core `describeTarget`'s refusal of an id that is not Drive's.
+const NOT_A_FILE_ID_TAIL: &str = " is not a Google Drive file id. The Google Drive tools only change files in the connected Google Drive; to change a file uploaded to this project, use the project file tools (project_append_file or project_replace_text)";
+/// The longest chat or exchange key taken (Node's are ids).
+const MAX_KEY: usize = 256;
 
 /// The calling account, as Node's request scope names it.
 #[derive(Clone, Debug, PartialEq)]
@@ -131,7 +143,7 @@ fn clean(v: &JValue, name: &str, max: usize) -> Result<String, Fail> {
     if text.is_empty() {
         return Err(fail(format!("{name} is required")));
     }
-    if js_json::js_len(&text) > max {
+    if wtf16::len(&text) > max {
         return Err(fail(format!("{name} is too long")));
     }
     Ok(text)
@@ -142,7 +154,8 @@ fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
-fn word_id(id: &str) -> bool {
+/// `/^[\w-]+$/` (also core's account id rule).
+pub(crate) fn word_id(id: &str) -> bool {
     !id.is_empty()
         && id
             .bytes()
@@ -158,8 +171,26 @@ fn file_id(v: &JValue) -> Result<String, Fail> {
     Ok(id)
 }
 
-fn enc(s: &str) -> String {
-    crate::gdrive::encode_uri_component(s)
+/// `encodeURIComponent(s)`: a lone surrogate throws (`URIError`).
+fn enc(s: &str) -> Result<String, Fail> {
+    if s.chars().any(|c| wtf16::lone_unit(c).is_some()) {
+        return Err(THROWN);
+    }
+    Ok(crate::gdrive::encode_uri_component(s))
+}
+
+/// `Buffer.from(s, 'utf8')`: a lone surrogate is written as U+FFFD.
+fn utf8(s: &str) -> Vec<u8> {
+    s.chars()
+        .map(|c| {
+            if wtf16::lone_unit(c).is_some() {
+                '\u{FFFD}'
+            } else {
+                c
+            }
+        })
+        .collect::<String>()
+        .into_bytes()
 }
 
 /// JS `Number(v)`.
@@ -174,14 +205,14 @@ fn number(v: &JValue) -> Result<f64, Fail> {
     })
 }
 
-/// core `EXPORTS[mimeType]`.
-fn export_of(mime: &JValue) -> Option<&'static str> {
-    match mime.as_str()? {
+/// core `EXPORTS[mimeType]` (the key is `String(mimeType)`).
+fn export_of(mime: &JValue) -> Result<Option<&'static str>, Fail> {
+    Ok(match s(mime)?.as_str() {
         "application/vnd.google-apps.document" => Some("text/plain"),
         "application/vnd.google-apps.spreadsheet" => Some("text/csv"),
         "application/vnd.google-apps.presentation" => Some("text/plain"),
         _ => None,
-    }
+    })
 }
 
 /// core `TEXTUAL.test(meta.mimeType || '')`.
@@ -208,27 +239,33 @@ fn textual(mime: &JValue) -> Result<bool, Fail> {
             .is_some_and(|rest| APPS.iter().any(|a| rest.starts_with(a))))
 }
 
-/// core `line(f)`'s inputs (`f.name` of `null` throws, as in JS).
-fn file_line(f: &JValue) -> Result<FileLine, Fail> {
+/// `` `${f[k]}` `` when `f[k]` is truthy (an array may be truthy and still write as `""`).
+fn present(f: &JValue, k: &str) -> Result<Option<String>, Fail> {
+    let v = f.get(k);
+    if v.truthy() {
+        Ok(Some(s(v)?))
+    } else {
+        Ok(None)
+    }
+}
+
+/// core `line(f)` (`f.name` of `null` throws, as in JS).
+fn line(f: &JValue) -> Result<String, Fail> {
     if f.is_nullish() {
         return Err(THROWN);
     }
-    let opt = |k: &str| -> Result<Option<String>, Fail> {
-        let v = f.get(k);
-        if v.truthy() {
-            Ok(Some(s(v)?))
-        } else {
-            Ok(None)
-        }
-    };
-    Ok(FileLine {
-        name: s(f.get("name"))?,
-        id: s(f.get("id"))?,
-        mime_type: opt("mimeType")?,
-        size: opt("size")?,
-        modified_time: opt("modifiedTime")?,
-        web_view_link: opt("webViewLink")?,
-    })
+    let mime = present(f, "mimeType")?.unwrap_or_else(|| "file".into());
+    let size = present(f, "size")?
+        .map(|v| format!(" · {v} bytes"))
+        .unwrap_or_default();
+    let changed = present(f, "modifiedTime")?
+        .map(|v| format!(" · changed {v}"))
+        .unwrap_or_default();
+    Ok(format!(
+        "- {} (id {}) · {mime}{size}{changed}",
+        s(f.get("name"))?,
+        s(f.get("id"))?
+    ))
 }
 
 /// core `gdrive-broker.cjs` `brokerError(r)`: the text of a refused token.
@@ -313,12 +350,12 @@ async fn call<B: Backend>(
     if r.capped {
         return Err(THROWN);
     }
-    js_json::parse(&String::from_utf8_lossy(&r.body)).map_err(|_| THROWN)
+    wtf16::parse(&String::from_utf8_lossy(&r.body)).map_err(|_| THROWN)
 }
 
 async fn metadata<B: Backend>(b: &B, user: &User, id: &JValue) -> Result<JValue, Fail> {
     let id = file_id(id)?;
-    let url = format!("{}/files/{}?fields={}", b.api(), enc(&id), enc(FIELDS));
+    let url = format!("{}/files/{}?fields={}", b.api(), enc(&id)?, enc(FIELDS)?);
     call(b, user, "GET", url, None, None).await
 }
 
@@ -331,10 +368,10 @@ async fn list<B: Backend>(b: &B, user: &User, q: &str, limit: &JValue) -> Result
     let url = format!(
         "{}/files?q={}&orderBy={}&pageSize={}&fields={}",
         b.api(),
-        enc(q),
-        enc("modifiedTime desc"),
+        enc(q)?,
+        enc("modifiedTime desc")?,
         js_json::number_to_string(n),
-        enc(&format!("files({FIELDS})"))
+        enc(&format!("files({FIELDS})"))?
     );
     let r = call(b, user, "GET", url, None, None).await?;
     if r.is_nullish() {
@@ -349,14 +386,10 @@ async fn list<B: Backend>(b: &B, user: &User, q: &str, limit: &JValue) -> Result
 }
 
 /// `r.length ? r.map(line) : <none>` over what `list` gave.
-fn lines(files: &JValue) -> Result<Option<Vec<FileLine>>, Fail> {
+fn lines(files: &JValue) -> Result<Option<Vec<String>>, Fail> {
     match files {
         JValue::Arr(items) if items.is_empty() => Ok(None),
-        JValue::Arr(items) => items
-            .iter()
-            .map(file_line)
-            .collect::<Result<_, _>>()
-            .map(Some),
+        JValue::Arr(items) => items.iter().map(line).collect::<Result<_, _>>().map(Some),
         // A string or an object with a truthy `length` has no `map`: a TypeError.
         JValue::Str(_) => Err(THROWN),
         JValue::Obj(_) if files.get("length").truthy() => Err(THROWN),
@@ -450,20 +483,24 @@ async fn run<B: Backend>(
             );
             let files = list(b, user, &q, args.get("limit")).await?;
             Ok(match lines(&files)? {
-                Some(l) => drive_tools::found_reply(&l),
+                Some(l) => format!("Found {}:\n{}", l.len(), l.join("\n")),
                 None => drive_tools::NO_MATCHES.into(),
             })
         }
         Tool::ListRecent => {
             let files = list(b, user, "trashed=false", args.get("limit")).await?;
             Ok(match lines(&files)? {
-                Some(l) => drive_tools::recent_reply(&l),
+                Some(l) => l.join("\n"),
                 None => drive_tools::NO_FILES.into(),
             })
         }
         Tool::GetMetadata => {
             let f = metadata(b, user, args.get("fileId")).await?;
-            Ok(drive_tools::metadata_reply(&file_line(&f)?))
+            let first = line(&f)?;
+            Ok(match present(&f, "webViewLink")? {
+                Some(link) => format!("{first}\nLink: {link}"),
+                None => first,
+            })
         }
         Tool::ReadFile => {
             let meta = metadata(b, user, args.get("fileId")).await?;
@@ -471,7 +508,7 @@ async fn run<B: Backend>(
                 return Err(THROWN);
             }
             let mime = meta.get("mimeType");
-            let export = export_of(mime);
+            let export = export_of(mime)?;
             if export.is_none() && !textual(mime)? {
                 let kind = if mime.truthy() {
                     s(mime)?
@@ -489,13 +526,13 @@ async fn run<B: Backend>(
                     format!(
                         "{}/files/{}/export?mimeType={}",
                         b.api(),
-                        enc(&id),
-                        enc(as_type)
+                        enc(&id)?,
+                        enc(as_type)?
                     ),
                     Vec::new(),
                 ),
                 None => (
-                    format!("{}/files/{}?alt=media", b.api(), enc(&id)),
+                    format!("{}/files/{}?alt=media", b.api(), enc(&id)?),
                     vec![("Range".to_string(), format!("bytes=0-{MAX_READ}"))],
                 ),
             };
@@ -538,18 +575,18 @@ async fn run<B: Backend>(
             };
             let boundary = b.boundary();
             let file_name = clean(args.get("name"), "name", 255)?;
-            let head = js_json::stringify(&JValue::obj([
+            let head = wtf16::stringify(&JValue::obj([
                 ("name", JValue::Str(file_name)),
                 ("mimeType", JValue::Str(mime.clone())),
             ]))
             .ok_or(THROWN)?;
             let mut multipart = format!("--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{head}\r\n--{boundary}\r\nContent-Type: {mime}; charset=UTF-8\r\n\r\n").into_bytes();
-            multipart.extend_from_slice(body.as_bytes());
+            multipart.extend_from_slice(&utf8(&body));
             multipart.extend_from_slice(format!("\r\n--{boundary}--").as_bytes());
             let url = format!(
                 "{}/files?uploadType=multipart&fields={}",
                 b.upload(),
-                enc(FIELDS)
+                enc(FIELDS)?
             );
             let content_type = format!("multipart/related; boundary={boundary}");
             let f = call(b, user, "POST", url, Some(&content_type), Some(multipart)).await?;
@@ -565,13 +602,11 @@ async fn run<B: Backend>(
                 true,
                 b.now_ms(),
             )?;
-            let link = f.get("webViewLink");
-            let link = if link.truthy() { Some(s(link)?) } else { None };
-            Ok(drive_tools::created_reply(
-                &s(f.get("name"))?,
-                &s(f.get("id"))?,
-                link.as_deref(),
-            ))
+            let created = format!("Created {} (id {})", s(f.get("name"))?, s(f.get("id"))?);
+            Ok(match present(&f, "webViewLink")? {
+                Some(link) => format!("{created}: {link}"),
+                None => created,
+            })
         }
         Tool::UpdateFile => {
             let id = args.get("fileId").as_str();
@@ -588,7 +623,7 @@ async fn run<B: Backend>(
                 return Err(THROWN);
             }
             let mime = meta.get("mimeType");
-            if export_of(mime).is_some() || !textual(mime)? {
+            if export_of(mime)?.is_some() || !textual(mime)? {
                 return Err(fail(format!(
                     "{} is not a plain text file, so noevia will not overwrite it.",
                     s(meta.get("name"))?
@@ -601,14 +636,14 @@ async fn run<B: Backend>(
                 }
             }
             let content = match args.get("content") {
-                JValue::Str(c) => c.clone().into_bytes(),
+                JValue::Str(c) => utf8(c),
                 _ => Vec::new(),
             };
             let url = format!(
                 "{}/files/{}?uploadType=media&fields={}",
                 b.upload(),
-                enc(&s(meta.get("id"))?),
-                enc(FIELDS)
+                enc(&s(meta.get("id"))?)?,
+                enc(FIELDS)?
             );
             let content_type = format!("{}; charset=UTF-8", s(mime)?);
             let f = call(b, user, "PATCH", url, Some(&content_type), Some(content)).await?;
@@ -631,7 +666,7 @@ async fn run<B: Backend>(
         }
         Tool::TrashFile => {
             let id = file_id(args.get("fileId"))?;
-            let url = format!("{}/files/{}?fields={}", b.api(), enc(&id), enc(FIELDS));
+            let url = format!("{}/files/{}?fields={}", b.api(), enc(&id)?, enc(FIELDS)?);
             let f = call(
                 b,
                 user,
@@ -675,7 +710,7 @@ pub async fn describe_target<B: Backend>(
     let args = match raw {
         JValue::Str(text) => {
             let text = if text.is_empty() { "{}" } else { text.as_str() };
-            match js_json::parse(text) {
+            match wtf16::parse(text) {
                 Ok(v) => {
                     parsed = v;
                     &parsed
@@ -688,20 +723,32 @@ pub async fn describe_target<B: Backend>(
     if !matches!(args, JValue::Obj(_)) {
         return JValue::Null;
     }
-    let text = |k: &str| args.get(k).as_str();
-    let plan = plan_write(tool, text("name"), text("fileId"));
     let error = |e: String| JValue::obj([("error", JValue::Str(e))]);
-    let file_id = match plan {
-        WritePlan::NoTarget => return JValue::Null,
-        WritePlan::NewFile { target } => {
-            return JValue::obj([
-                ("target", JValue::Str(target)),
-                ("kind", JValue::Str("drive-new".into())),
-            ])
+    let trimmed = |k: &str| match args.get(k) {
+        JValue::Str(t) => {
+            let units: Vec<u16> = t.encode_utf16().collect();
+            String::from_utf16_lossy(policy_leaves::js_trim(&units))
         }
-        WritePlan::Refused(text) => return error(text),
-        WritePlan::ExistingFile { file_id } => file_id,
+        _ => String::new(),
     };
+    if tool == Tool::CreateFile {
+        let name = trimmed("name");
+        if name.is_empty() {
+            return JValue::Null;
+        }
+        return JValue::obj([
+            ("target", JValue::Str(wtf16::slice(&name, 255))),
+            ("kind", JValue::Str("drive-new".into())),
+        ]);
+    }
+    if !matches!(tool, Tool::UpdateFile | Tool::TrashFile) {
+        return JValue::Null;
+    }
+    let file_id = trimmed("fileId");
+    if !(word_id(&file_id) && file_id.len() <= 200) {
+        let shown = wtf16::stringify(&JValue::Str(wtf16::slice(&file_id, 200))).unwrap_or_default();
+        return error(format!("{shown}{NOT_A_FILE_ID_TAIL}"));
+    }
     let generic =
         |f: Fail| error(f.0.unwrap_or_else(|| "Google Drive could not be reached".into()));
     let user = match account(user) {
@@ -796,13 +843,13 @@ pub async fn op(
     op: &str,
     user: Option<User>,
     body: &JValue,
-) -> Result<JValue, &'static str> {
+) -> Result<String, &'static str> {
     let name = match body.get("name") {
         JValue::Str(n) if !n.is_empty() && n.len() <= 256 => n.clone(),
         _ => return Err("invalid name"),
     };
     let key = |k: &str| match body.get(k) {
-        JValue::Str(v) => Ok(Some(v.clone())),
+        JValue::Str(v) if v.len() <= MAX_KEY => Ok(Some(v.clone())),
         JValue::Null | JValue::Undefined => Ok(None),
         _ => Err("invalid scope"),
     };
@@ -812,7 +859,7 @@ pub async fn op(
     let args = body.get("arguments");
     if op == "target" {
         let target = describe_target(&b, user.as_ref(), &name, args).await;
-        return Ok(JValue::obj([("target", target)]));
+        return answer(JValue::obj([("target", target)]));
     }
     let cap = match body.get("cap") {
         JValue::Num(n) if n.fract() == 0.0 && (1.0..=1_048_576.0).contains(n) => *n as usize,
@@ -825,5 +872,31 @@ pub async fn op(
         exchange_key: exchange.as_deref(),
     };
     let text = execute(&b, &drive.tools, user.as_ref(), &name, args, scope, cap).await;
-    Ok(JValue::obj([("text", JValue::Str(text))]))
+    answer(JValue::obj([("text", JValue::Str(text))]))
+}
+
+/// The answer as JSON text, lone surrogates written as `\udxxx` (as `JSON.stringify` writes them).
+fn answer(v: JValue) -> Result<String, &'static str> {
+    wtf16::stringify(&v).ok_or("unwritable answer")
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_lone_surrogate_is_written_as_core_writes_it() {
+        let text = wtf16::parse(r#""qa \ud83d é""#).unwrap();
+        let JValue::Str(text) = text else {
+            unreachable!()
+        };
+        // Buffer.from(s, 'utf8'): U+FFFD for the lone half.
+        assert_eq!(utf8(&text), "qa \u{FFFD} é".as_bytes());
+        // encodeURIComponent throws on it; a whole character is encoded.
+        assert_eq!(enc(&text), Err(THROWN));
+        assert_eq!(enc("qa é").unwrap(), "qa%20%C3%A9");
+        // `.length` counts the half as one unit.
+        assert_eq!(wtf16::len(&text), 6);
+    }
 }

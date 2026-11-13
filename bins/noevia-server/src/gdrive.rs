@@ -1553,7 +1553,14 @@ impl Drive {
         let method = reqwest::Method::from_bytes(req.method.as_bytes()).map_err(|_| ())?;
         let mut builder = client.request(method, req.url.as_str()).bearer_auth(bearer);
         for (k, v) in &req.headers {
-            builder = builder.header(k.as_str(), v.as_str());
+            // A header value is a ByteString to fetch: characters up to U+00FF are its bytes, anything
+            // above is refused (the request does not go).
+            let bytes = v
+                .chars()
+                .map(|c| u8::try_from(u32::from(c)).map_err(|_| ()))
+                .collect::<Result<Vec<u8>, ()>>()?;
+            let value = reqwest::header::HeaderValue::from_bytes(&bytes).map_err(|_| ())?;
+            builder = builder.header(k.as_str(), value);
         }
         if let Some(body) = req.body {
             builder = builder.body(body);

@@ -432,7 +432,12 @@ pub async fn serve(
 // The internal operations.
 
 fn internal(status: u16, body: &JValue) -> Response<Body> {
-    let mut res = Response::new(Body::from(js_json::stringify(body).unwrap_or_default()));
+    internal_text(status, js_json::stringify(body).unwrap_or_default())
+}
+
+/// [`internal`] for an answer already written as JSON text.
+fn internal_text(status: u16, text: String) -> Response<Body> {
+    let mut res = Response::new(Body::from(text));
     *res.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     res.headers_mut().insert(
         "content-type",
@@ -465,14 +470,6 @@ fn internal_fail(e: &Fail) -> Response<Body> {
 /// id the table does not know, `Err` (503) when the table cannot be read. An unreadable table is
 /// not an answer: calling the caller a member would send an administrator to their own Drive
 /// instead of the backup's, and the request would look like it worked.
-/// An account id the users table can hold (`[\w-]+`); anything else is never an administrator.
-fn word_id_ok(id: &str) -> bool {
-    !id.is_empty()
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
-}
-
 async fn is_admin(app: &Arc<App>, user: &str) -> Result<bool, Fail> {
     let (a, u) = (Arc::clone(app), user.to_owned());
     let unreadable = || Fail::new("The account could not be checked. Try again shortly.", 503);
@@ -496,11 +493,21 @@ async fn is_admin(app: &Arc<App>, user: &str) -> Result<bool, Fail> {
 pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Response<Body> {
     let unavailable = || internal(503, &JValue::obj([("error", s("unavailable"))]));
     let Some(app) = app else { return unavailable() };
+    // Track R5: with NOEVIA_RUST_DRIVE_TOOLS off, a Drive tool is a 404 whatever else holds (Node runs it).
+    if (op == "tool" || op == "target") && !app.config.google.tools {
+        return internal(404, &JValue::obj([("error", s("not found"))]));
+    }
     let Some(drive) = gdrive::of(&app) else {
         return unavailable();
     };
-    let body = match js_json::parse(&String::from_utf8_lossy(raw)) {
-        Ok(b @ JValue::Obj(_)) => b,
+    // A tool call's arguments are the model's text: read losslessly (a lone surrogate is kept).
+    let parsed = if op == "tool" || op == "target" {
+        js_json::wtf16::parse(&String::from_utf8_lossy(raw)).ok()
+    } else {
+        js_json::parse(&String::from_utf8_lossy(raw)).ok()
+    };
+    let body = match parsed {
+        Some(b @ JValue::Obj(_)) => b,
         _ => return internal(400, &JValue::obj([("error", s("invalid JSON"))])),
     };
     if op == "reseal" {
@@ -524,13 +531,10 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
     // Track R5: the chat's Drive tools (gdrive_tools.rs), behind NOEVIA_RUST_DRIVE_TOOLS. `user` may be
     // null (the tool then says to sign in).
     if op == "tool" || op == "target" {
-        if !drive.settings.tools {
-            return internal(404, &JValue::obj([("error", s("not found"))]));
-        }
         let user = match body.get("user") {
             JValue::Str(u) if u.len() <= 256 => {
                 let admin = body.get("admin").as_bool() == Some(true)
-                    && word_id_ok(u)
+                    && crate::gdrive_tools::word_id(u)
                     && match is_admin(&app, u).await {
                         Ok(admin) => admin,
                         Err(e) => return internal_fail(&e),
@@ -544,7 +548,7 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
             _ => return internal(400, &JValue::obj([("error", s("invalid user"))])),
         };
         return match crate::gdrive_tools::op(drive, op, user, &body).await {
-            Ok(answer) => internal(200, &answer),
+            Ok(answer) => internal_text(200, answer),
             Err(why) => internal(400, &JValue::obj([("error", s(why))])),
         };
     }
