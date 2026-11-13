@@ -3,7 +3,7 @@
  "generator": "crates/chat-turn/tests/record_turns.cjs (noevia-core server/chat.cjs handleChat)",
  "fixedNow": "2026-11-13T12:00:00.000Z",
  "sources": {
-  "server/chat.cjs": "c45310e1cf247aba23c4555c0cc5d245d337aebcd0816ff228277163dd5a2903",
+  "server/chat.cjs": "5df8993d9f653fcb3380fe48d5fd33405d91e8f854339b4f922865c4f758a4f3",
   "server/chat-context.cjs": "b7b804906d9d874fbcadecbe248b8bb718e96feb0f07de670f6a1c88d8863f51",
   "server/chat-partial.cjs": "d5d0da3548157fb90523354e86af153715dc801250a5864634558c65f330958d",
   "server/chat-interrupted-turn.cjs": "30a6816c8c651773b16fc2efaf50e8b9f291e286fdc80ce46e882a411cdaf76d",

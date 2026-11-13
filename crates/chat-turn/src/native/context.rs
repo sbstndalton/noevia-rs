@@ -31,6 +31,33 @@ fn gate_error(text: &str, code: Option<&str>, retryable: Option<bool>) -> JValue
     event("error", pairs)
 }
 
+/// One preparation's hold on its state file (chat-context.cjs `busy`).
+struct Preparing<'a> {
+    set: &'a std::sync::Mutex<std::collections::HashSet<String>>,
+    key: String,
+}
+
+impl<'a> Preparing<'a> {
+    fn take(
+        set: &'a std::sync::Mutex<std::collections::HashSet<String>>,
+        key: String,
+    ) -> Option<Self> {
+        let fresh = set
+            .lock()
+            .map(|mut b| b.insert(key.clone()))
+            .unwrap_or(false);
+        fresh.then_some(Preparing { set, key })
+    }
+}
+
+impl Drop for Preparing<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut b) = self.set.lock() {
+            b.remove(&self.key);
+        }
+    }
+}
+
 /// The context id chat.cjs uses: `chatId || spaceId`, and `undefined` (its own file) without either.
 pub(crate) fn context_id(chat: Option<&str>, space: Option<&str>) -> String {
     chat.filter(|c| !c.is_empty())
@@ -84,22 +111,16 @@ impl<H: Host> Turn<'_, H> {
             return Err(Ended::Left);
         }
         let id = context_id(p.context_id.as_deref(), None);
-        // chat-context.cjs `prepare`: one preparation per chat at a time in this process.
-        let busy = self
-            .process
-            .preparing
-            .lock()
-            .map(|mut b| !b.insert(id.clone()))
-            .unwrap_or(true);
-        if busy {
+        // chat-context.cjs `prepare`: one preparation per state file (an account's chat) at a time in this
+        // process; given back however the fit ends, a dropped turn included.
+        let Some(_preparing) = Preparing::take(
+            &self.process.preparing,
+            format!("{}\u{0}{id}", host.user_id()),
+        ) else {
             return Err(self
                 .fail("This chat is already preparing context. Wait for that request to finish."));
-        }
-        let fitted = self.fit(&id, limit, &limit_source).await;
-        if let Ok(mut b) = self.process.preparing.lock() {
-            b.remove(&id);
-        }
-        fitted
+        };
+        self.fit(&id, limit, &limit_source).await
     }
 
     async fn fit(&mut self, id: &str, limit: u64, limit_source: &str) -> Result<Fit, Ended> {

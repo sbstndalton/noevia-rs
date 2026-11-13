@@ -74,6 +74,16 @@ pub struct ToolRun {
     pub exchange_key: String,
 }
 
+/// What the native turn asks of the process that runs it.
+///
+/// Duties of an implementation (Node does these through the response and its `chatSignal`):
+/// - every future returns promptly once the client has left (`left()` true), as Node's abort ends each
+///   request, wait and read; a request the client's leaving cut short must not count as answered;
+/// - `emit` writes the event and also gives it to the turn record ([`crate::after::Saving::observe`])
+///   with whether the client had left, and the 4 s partial saver writes `record.partial_entry()` with
+///   the running marker while the turn runs (chat-partial.cjs);
+/// - `permission_binding` fails (`Err`) when the workspace was revoked or is no longer the user's, as
+///   chat.cjs's final check (`currentWorkspace().userId`, `revoked`) refuses then.
 pub trait Host: Sync {
     /// An engine answer's body.
     type Body: Send;
@@ -91,6 +101,9 @@ pub trait Host: Sync {
         &self,
         model: &str,
     ) -> impl Future<Output = Result<Option<Vec<(String, String)>>, GateRefusal>> + Send;
+    /// Gives the model's lease back: called once when the turn ends or its client leaves, before what
+    /// it keeps is saved.
+    fn release_lease(&self);
     /// The model manager's `health()` body, or `None` when it did not answer ok.
     fn health(&self) -> impl Future<Output = Option<JValue>> + Send;
     /// The model manager's `load(model)`; whether it answered ok.

@@ -71,19 +71,33 @@ impl RecentWrites {
         chats.drain(..over);
     }
 
+    /// recent-writes.cjs `has`: through `live()`, which drops the chat's expired writes (and the chat).
     pub fn has(&self, user: &str, chat: Option<&str>, fp: &str, now: f64) -> bool {
         let Some(key) = Self::key(user, chat) else {
             return false;
         };
-        self.chats.lock().is_ok_and(|chats| {
-            chats
-                .iter()
-                .find(|(k, _)| *k == key)
-                .is_some_and(|(_, list)| {
-                    list.iter()
-                        .any(|(f, at)| f == fp && now - at <= RECENT_TTL_MS)
-                })
-        })
+        let Ok(mut chats) = self.chats.lock() else {
+            return false;
+        };
+        let Some(at) = chats.iter().position(|(k, _)| *k == key) else {
+            return false;
+        };
+        let live: Writes = chats
+            .get(at)
+            .map(|(_, l)| {
+                l.iter()
+                    .filter(|(_, t)| now - t <= RECENT_TTL_MS)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        let found = live.iter().any(|(f, _)| f == fp);
+        if live.is_empty() {
+            chats.remove(at);
+        } else if let Some(entry) = chats.get_mut(at) {
+            entry.1 = live;
+        }
+        found
     }
 }
 
@@ -147,6 +161,8 @@ pub struct Outcome {
 /// The turn's tool state shared across its rounds.
 pub struct Tools<'a> {
     pub allowed: HashSet<String>,
+    /// The offered tool names in the order chat.cjs's `allowedToolNames` Set holds them.
+    pub allowed_order: Vec<String>,
     pub writes: HashSet<String>,
     pub public: HashSet<String>,
     pub automatic_only_writes: HashSet<String>,
@@ -200,7 +216,7 @@ enum Gate {
 impl<'a> Tools<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        allowed: HashSet<String>,
+        allowed: Vec<String>,
         writes: HashSet<String>,
         public: HashSet<String>,
         automatic_only_writes: HashSet<String>,
@@ -222,7 +238,8 @@ impl<'a> Tools<'a> {
     ) -> Self {
         let (chat_id, chat_key, grant_scope, grant_holder, recent) = chat;
         Tools {
-            allowed,
+            allowed: allowed.iter().cloned().collect(),
+            allowed_order: allowed,
             writes,
             public,
             automatic_only_writes,
@@ -312,7 +329,7 @@ impl<'a> Tools<'a> {
                                         project_id: self.project_id.clone(),
                                         name: call.name.clone(),
                                         args: call.args.clone(),
-                                        allowed: self.allowed.iter().cloned().collect(),
+                                        allowed: self.allowed_order.clone(),
                                         routes: self.routes.clone(),
                                         chat_key: self.chat_key.clone(),
                                         exchange_key: self.exchange_key.clone(),
@@ -455,7 +472,8 @@ impl<'a> Tools<'a> {
                 Target::Found { target, kind } => {
                     if !target.is_empty() {
                         *card_target = Some(target);
-                        target_kind = kind;
+                        // `targetKind` is shown only when truthy, and compared as `kind || null`.
+                        target_kind = kind.filter(|k| !k.is_empty());
                     }
                 }
                 Target::None => {}
@@ -473,6 +491,10 @@ impl<'a> Tools<'a> {
                 )
                 .await
             {
+                // chat.cjs permissionContext: null only for a turn with no chat id; with one it binds or throws.
+                Ok(JValue::Null) if self.chat_id.is_some() => {
+                    return Gate::Result(PERMISSION_UNVERIFIED.into())
+                }
                 Ok(b) => b,
                 Err(()) => return Gate::Result(PERMISSION_UNVERIFIED.into()),
             };
@@ -570,8 +592,10 @@ impl<'a> Tools<'a> {
                 .await
             {
                 Target::Refused(_) => return self.revoked(host, TARGET_CHANGED),
-                Target::Found { target, kind } if !target.is_empty() => (Some(target), kind),
-                Target::Found { kind, .. } => (None, kind),
+                Target::Found { target, kind } if !target.is_empty() => {
+                    (Some(target), kind.filter(|k| !k.is_empty()))
+                }
+                Target::Found { kind, .. } => (None, kind.filter(|k| !k.is_empty())),
                 Target::None => (None, None),
             };
             if target.as_deref() != shown || kind != kind_was {
@@ -587,9 +611,13 @@ impl<'a> Tools<'a> {
                     &self.grant_holder,
                 )
                 .await;
+            // chat-grant-context.cjs `matches`: both bindings there, the same user, scope, chat and context.
+            let matches = |a: &JValue, b: &JValue| {
+                a.is_object() && b.is_object() && js::stringify(a) == js::stringify(b)
+            };
             let ok = match &fresh {
                 Ok(now) => {
-                    (self.chat_id.is_none() || js::stringify(&binding) == js::stringify(now))
+                    (self.chat_id.is_none() || matches(&binding, now))
                         && !(used_grant
                             && !asked
                             && !host.chat_wide_approved(

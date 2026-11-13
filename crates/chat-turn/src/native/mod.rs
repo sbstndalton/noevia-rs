@@ -17,7 +17,10 @@
 //! - frames `js_json::wtf16` cannot parse (numbers past f64, nesting past its limit) are skipped, where
 //!   `JSON.parse` would read them;
 //! - `CONTEXT_LOG` round logs are not written; the step-supervision decision is not asked (a turn with
-//!   it on is not handed off).
+//!   it on is not handed off);
+//! - a non-streaming fallback reply whose tool call names a non-string `function.name` keeps it as its
+//!   text; Node keeps the raw value, so its `tool` event carries it and the call is refused as unchecked
+//!   (tool-exchange.cjs CHECK_FAULT).
 
 mod context;
 mod stream;
@@ -127,7 +130,13 @@ pub(crate) struct Turn<'a, H: Host> {
     lease: Vec<(String, String)>,
     exchange: Exchange,
     decoder: Utf8Stream,
+    /// chat.cjs `exchangeKey`, drawn before the lease as there.
+    exchange_key: String,
 }
+
+/// What index.cjs writes when a turn's handler throws after the stream began (a state file that cannot
+/// be saved mid-turn): the reply ends here, with no `done`.
+pub const FAILED_TEXT: &str = "The request could not be completed. Please retry.";
 
 /// Runs the rest of a prepared turn.
 pub async fn run<H: Host>(
@@ -144,11 +153,14 @@ pub async fn run<H: Host>(
         lease: Vec::new(),
         exchange: Exchange::new(p.model.clone(), p.started_at, true),
         decoder: Utf8Stream::new(),
+        exchange_key: host.uuid(),
     };
-    match t.prepare().await {
+    let ended = match t.prepare().await {
         Ok(fit) => t.rounds(fit).await,
         Err(ended) => ended,
-    }
+    };
+    host.release_lease();
+    ended
 }
 
 /// `Math.max(...keys) + 1` of a round's calls.
@@ -192,7 +204,8 @@ impl<H: Host> Turn<'_, H> {
     }
 
     /// The round's budget, its continuation compaction, and the meter saved (and sent).
-    async fn budget(&self, s: &mut Rounds, fit: &Fit, round: i32) -> Result<(), ()> {
+    /// `Err(true)`: the turn ends at once (no close); `Err(false)`: the round loop ends (the close follows).
+    async fn budget(&self, s: &mut Rounds, fit: &Fit, round: i32) -> Result<(), bool> {
         let host = self.host;
         let p = self.p;
         let tools = JValue::Arr(p.tools.clone());
@@ -216,7 +229,7 @@ impl<H: Host> Turn<'_, H> {
                 Ok(c) => c,
                 Err(refused) => {
                     host.emit(&event("error", vec![("text", js::s(refused.0))]));
-                    return Err(());
+                    return Err(false);
                 }
             };
             s.messages = c.messages;
@@ -263,9 +276,9 @@ impl<H: Host> Turn<'_, H> {
             js::count(s.continuation.map_or(fit.covered, |(_, c)| c)),
         );
         js::set(&mut snapshot, "meter", meter.clone());
-        if let Err(e) = host.save_state(&id, &snapshot) {
-            host.emit(&event("error", vec![("text", js::s(e))]));
-            return Err(());
+        if host.save_state(&id, &snapshot).is_err() {
+            host.emit(&event("error", vec![("text", js::s(FAILED_TEXT))]));
+            return Err(true);
         }
         if !compacted && (round > 0 || s.changed) {
             host.emit(&Self::context_event(meter));
@@ -354,7 +367,7 @@ impl<H: Host> Turn<'_, H> {
                 names(&p.recent_writes),
             ),
             p.project_id.clone(),
-            host.uuid(),
+            self.exchange_key.clone(),
             p.decline_ends_reply,
             &self.process.recent_writes,
             self.helpers.reduce_tool_result,
@@ -366,8 +379,10 @@ impl<H: Host> Turn<'_, H> {
             if round >= if s.final_pass { 4 } else { 3 } || host.left() {
                 break;
             }
-            if self.budget(&mut s, &fit, round).await.is_err() {
-                break;
+            match self.budget(&mut s, &fit, round).await {
+                Ok(()) => {}
+                Err(true) => return Ended::Error,
+                Err(false) => break,
             }
             let mut body = self.body(&s, &fit);
             // chat.cjs takes the round's start before its request (the prefill sample's clock).
