@@ -14,10 +14,12 @@ pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
+pub mod chat_admission;
 pub mod chat_edge;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
 pub mod chat_turn;
+pub mod chat_wire;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -441,6 +443,19 @@ use std::sync::Arc;
 /// inference gate. A Cowork start that passes goes to Core's `/internal/chat/cowork`. Core removes its
 /// own limiter (rust-chat-edge.cjs). The supervisor and assemble-release pair them.
 ///
+/// `rust-chat-wire`: this build writes the chat turn's event stream itself (chat_wire.rs, chat port
+/// S7): it asks Core's relayed turn for NDJSON (`x-noevia-chat-wire: ndjson/1`) and writes the
+/// headers, one frame per event, the 5 s `: keep-alive` comment and the end; a Core that answers with
+/// its own event stream is refused (502). Core writes the relayed turn's events as NDJSON
+/// (rust-chat-wire.cjs). The supervisor and assemble-release pair them.
+///
+/// `rust-chat-admission`: this build takes Core's inference gate for a chat turn, a Cowork start and
+/// the Diary local exchange itself, with an admission lease (chat_admission.rs, chat port S8;
+/// crates/engine-admission): at most 3 s of waiting, ended when the client leaves, Node's 503 and its
+/// `[chat] 503` line answered here. The call carries the lease and Core does not enter the gate for it
+/// again (rust-chat-admission.cjs); the S6 gate hold and probe are gone. The supervisor and
+/// assemble-release pair them.
+///
 /// `chat-activity`: this build records each authenticated request's account in
 /// `UI_DATA_DIR/chat-activity.json` (chat_activity.rs, chat port S3), which core's change journal
 /// reader merges as request starts (chat-activity.cjs). Either side alone keeps today's behaviour.
@@ -577,6 +592,8 @@ pub const FEATURES: &[&str] = &[
     "rust-chat-framing-suggest",
     "rust-chat-turn",
     "rust-chat-edge",
+    "rust-chat-wire",
+    "rust-chat-admission",
     "chat-activity",
     // GET /api/chats/search (#1450) and GET /api/chats/{chatId}/export (#1471): core rust-chat-search.cjs
     // `RUST_CHAT_SEARCH_OWNED` and rust-chat-export.cjs `RUST_CHAT_EXPORT_OWNED` refuse them.
@@ -1363,8 +1380,8 @@ async fn handle(
                     reply::error(StatusCode::INTERNAL_SERVER_ERROR, "read error", false)
                 })
         }
-        // Chat port S6: the Diary local exchange counts its call on the shared budget first.
-        _ => chat_edge::forward_node(&app, conn, req, whatwg.as_deref()).await,
+        // Node-owned: forwarded without a client-named lease (#2485).
+        _ => chat_edge::forward_node(&app, conn, req).await,
     }
 }
 

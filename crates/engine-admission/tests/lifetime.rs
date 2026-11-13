@@ -108,7 +108,8 @@ async fn a_grant_that_arrives_after_its_ttl_is_refused_and_given_back() {
         Some(Refused {
             status: 503,
             message: "The model is busy. Try again shortly.".into(),
-            code: None
+            code: None,
+            retry_after: None,
         })
     );
     tokio::time::sleep(Duration::from_millis(100)).await;

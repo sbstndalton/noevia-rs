@@ -185,7 +185,8 @@ impl Research {
         })
     }
 
-    /// The front's one client of Node's inference admission (also the Diary local exchange's).
+    /// The front's one client of Node's inference admission: research's model steps, the chat
+    /// admission (chat_admission.rs) and the Diary local exchange take the same leases.
     pub fn admission(&self) -> Arc<Admission> {
         Arc::clone(&self.admission)
     }
