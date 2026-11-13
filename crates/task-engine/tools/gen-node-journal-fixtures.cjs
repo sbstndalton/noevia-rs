@@ -4,7 +4,8 @@
 // test (tests/differential.rs) replays the same operations through task-engine and compares.
 //
 // Usage: node tools/gen-node-journal-fixtures.cjs <noevia-core>/server > tests/fixtures/node-journals.v1.json
-// Synthetic data only: fixed ids, a fixed clock, no tenant or model data.
+// Synthetic data only: fixed ids, a fixed clock, no tenant or model data. deriveLifecycle confirms its
+// fold through the dav-parse wasm: put the build pinned by server/dav-parse.lock at server/wasm/ first.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -12,6 +13,15 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const serverDir = path.resolve(process.argv[2] || '');
+// The recorded sources; a changed Node file needs a fresh recording (and a reviewed diff).
+const SOURCES = {
+  'server/jobs.cjs': '3a04aea9e594428d62cb5dc7f29eb937d322c6b24d83c9b2d9b08211366e5457',
+  'server/task-lifecycle.cjs': 'f99c9f9387f647fd579fbcd3acc6c6a19531995313cd4cc6894b333633ec5da1',
+};
+for (const [rel, want] of Object.entries(SOURCES)) {
+  const got = crypto.createHash('sha256').update(fs.readFileSync(path.join(serverDir, path.basename(rel)))).digest('hex');
+  if (got !== want) { process.stderr.write(`source hash mismatch for ${rel}: ${got}\n`); process.exit(1); }
+}
 const jobsModule = require(path.join(serverDir, 'jobs.cjs'));
 const lifecycle = require(path.join(serverDir, 'task-lifecycle.cjs'));
 
@@ -143,7 +153,8 @@ function run(name, ops) {
   const events = rows.map((r) => ({ ...r }));
   const view = jobs.get(id);
   let lifecycleState = null;
-  try { lifecycleState = lifecycle.deriveLifecycleJs(events); } catch { lifecycleState = null; }
+  // deriveLifecycle: the production fold (the JS answer, confirmed by the pinned dav-parse wasm port).
+  try { lifecycleState = lifecycle.deriveLifecycle(events); } catch { lifecycleState = null; }
   fs.rmSync(dir, { recursive: true, force: true });
   return {
     name,
@@ -169,4 +180,4 @@ function run(name, ops) {
 }
 
 const scenarios = Object.entries(SCENARIOS).map(([name, ops]) => run(name, ops));
-process.stdout.write(`${JSON.stringify({ version: 1, generator: 'tools/gen-node-journal-fixtures.cjs', scenarios }, null, 1)}\n`);
+process.stdout.write(`${JSON.stringify({ version: 1, generator: 'tools/gen-node-journal-fixtures.cjs', sources: SOURCES, scenarios }, null, 1)}\n`);

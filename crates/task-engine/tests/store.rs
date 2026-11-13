@@ -258,6 +258,22 @@ fn failure_messages_are_clipped_to_500_characters() {
 }
 
 #[test]
+fn failure_clip_counts_utf16_units_and_never_splits_a_pair() {
+    // `String(...).slice(0, 500)` counts UTF-16 units: 250 emoji fill it exactly.
+    let mut s = store_with(A);
+    s.fail(A, 2, &"😀".repeat(300)).unwrap();
+    assert_eq!(
+        s.get(A).unwrap().error.as_deref().unwrap(),
+        "😀".repeat(250)
+    );
+    // A cut that would split a pair drops the character (JS keeps a lone surrogate).
+    let mut s = store_with(A);
+    s.fail(A, 2, &format!("a{}", "😀".repeat(300))).unwrap();
+    let error = s.get(A).unwrap().error.clone().unwrap();
+    assert_eq!(error.encode_utf16().count(), 499);
+}
+
+#[test]
 fn recover_interrupts_only_unfinished_jobs_that_are_not_live() {
     let mut s = JobStore::new(Limits::default());
     s.create(A, 1, new_job("code", &[], None)).unwrap();

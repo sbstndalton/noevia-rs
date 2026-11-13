@@ -230,9 +230,18 @@ impl JobStore {
         self.append(id, at, "job.completed", json!({ "result": result }))
     }
 
-    /// `job.failed`. The message is clipped to 500 characters, as jobs.cjs clips it.
+    /// `job.failed`. The message is clipped to 500 UTF-16 code units, as jobs.cjs clips it
+    /// (`.slice(0, 500)`). Named difference: a cut inside a surrogate pair drops the whole
+    /// character, where JS keeps a lone surrogate (one unit shorter here).
     pub fn fail(&mut self, id: &str, at: u64, error: &str) -> Result<&JobView, EngineError> {
-        let error: String = error.chars().take(500).collect();
+        let mut units = 0;
+        let error: String = error
+            .chars()
+            .take_while(|c| {
+                units += c.len_utf16();
+                units <= 500
+            })
+            .collect();
         self.append(id, at, "job.failed", json!({ "error": error }))
     }
 
