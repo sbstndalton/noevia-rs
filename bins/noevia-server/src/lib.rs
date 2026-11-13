@@ -14,9 +14,12 @@ pub mod autotune_untuned_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
+pub mod chat_admission;
+pub mod chat_edge;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
 pub mod chat_turn;
+pub mod chat_wire;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -170,8 +173,9 @@ use std::sync::Arc;
 /// rust-diary-routes.cjs `RUST_DIARY_ROUTES_OWNED`), so the web supervisor pairs them.
 ///
 /// `rust-diary-local-exchange`: this build answers `/api/diary/local-exchange` (every method; a POST
-/// relays the companion exchange, streamed or not). The model throttle chat shares and the inference
-/// maintenance gate it holds stay Node's: the front takes them with an inference-admission lease
+/// relays the companion exchange, streamed or not). The inference maintenance gate it holds stays
+/// Node's (the `llm:` budget chat shares is this front's since chat port S6, chat_edge.rs): the front
+/// takes the gate with an inference-admission lease
 /// (`{ diaryExchange: { user } }`) that only a Core with that ask grants. Node refuses the route (core
 /// rust-diary-local-exchange.cjs `RUST_DIARY_LOCAL_EXCHANGE_OWNED`), so the web supervisor pairs them.
 ///
@@ -430,6 +434,25 @@ use std::sync::Arc;
 /// `/internal/chat/turn`, whose unchanged pipeline answers byte for byte; Core refuses any other
 /// POST /api/chat (rust-chat-turn.cjs). The supervisor and assemble-release pair them.
 ///
+/// `rust-chat-edge`: this build answers what routes/chat.cjs answered before a turn reached its loop
+/// (chat_edge.rs, chat port S6): the `llm:<user>` budget, which the Diary local exchange shares, the
+/// body cap, JSON, the request shape, the Cowork refusals and the Diary add-on gate, each after Core's
+/// inference gate. A Cowork start that passes goes to Core's `/internal/chat/cowork`. Core removes its
+/// own limiter (rust-chat-edge.cjs). The supervisor and assemble-release pair them.
+///
+/// `rust-chat-wire`: this build writes the chat turn's event stream itself (chat_wire.rs, chat port
+/// S7): it asks Core's relayed turn for NDJSON (`x-noevia-chat-wire: ndjson/1`) and writes the
+/// headers, one frame per event, the 5 s `: keep-alive` comment and the end; a Core that answers with
+/// its own event stream is refused (502). Core writes the relayed turn's events as NDJSON
+/// (rust-chat-wire.cjs). The supervisor and assemble-release pair them.
+///
+/// `rust-chat-admission`: this build takes Core's inference gate for a chat turn, a Cowork start and
+/// the Diary local exchange itself, with an admission lease (chat_admission.rs, chat port S8;
+/// crates/engine-admission): at most 3 s of waiting, ended when the client leaves, Node's 503 and its
+/// `[chat] 503` line answered here. The call carries the lease and Core does not enter the gate for it
+/// again (rust-chat-admission.cjs); the S6 gate hold and probe are gone. The supervisor and
+/// assemble-release pair them.
+///
 /// `chat-activity`: this build records each authenticated request's account in
 /// `UI_DATA_DIR/chat-activity.json` (chat_activity.rs, chat port S3), which core's change journal
 /// reader merges as request starts (chat-activity.cjs). Either side alone keeps today's behaviour.
@@ -565,6 +588,9 @@ pub const FEATURES: &[&str] = &[
     "rust-workspace",
     "rust-chat-framing-suggest",
     "rust-chat-turn",
+    "rust-chat-edge",
+    "rust-chat-wire",
+    "rust-chat-admission",
     "chat-activity",
     // GET /api/chats/search (#1450) and GET /api/chats/{chatId}/export (#1471): core rust-chat-search.cjs
     // `RUST_CHAT_SEARCH_OWNED` and rust-chat-export.cjs `RUST_CHAT_EXPORT_OWNED` refuse them.
@@ -668,9 +694,10 @@ pub struct App {
     /// The chat mirror and brain schedule, set once the server runs (`rust-chat-mirror-v1`);
     /// Node's triggers reach it over the project store.
     pub chat_mirror: std::sync::OnceLock<Arc<chat_mirror::ChatMirror>>,
-    /// core index.cjs's `llmRateLimiter` for the `chat-frame:<user>` buckets only (chat port S4):
-    /// no other key shared them.
-    pub(crate) framing_suggest_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
+    /// core index.cjs's `llmRateLimiter`, one map as in Node: the `chat-frame:<user>` buckets (chat
+    /// port S4) and the `llm:<user>` budget that the chat turn and the Diary local exchange share
+    /// (chat port S6, chat_edge.rs).
+    pub(crate) llm_rate: std::sync::Mutex<server_account::rate::RateLimiter>,
     /// Who made an authenticated request, for Node's chat change journal reader (chat port S3).
     pub activity: Arc<chat_activity::Activity>,
     pub reasoning_settings: Arc<tokio::sync::Semaphore>,
@@ -775,7 +802,7 @@ impl App {
             diary_connector_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
                 identity::now_ms(),
             )),
-            framing_suggest_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
+            llm_rate: std::sync::Mutex::new(server_account::rate::RateLimiter::new(
                 identity::now_ms(),
             )),
             activity: chat_activity::Activity::new(config.data_dir.clone()),
@@ -1350,7 +1377,8 @@ async fn handle(
                     reply::error(StatusCode::INTERNAL_SERVER_ERROR, "read error", false)
                 })
         }
-        _ => app.proxy.forward(conn.peer, req).await,
+        // Node-owned: forwarded without a client-named lease (#2485).
+        _ => chat_edge::forward_node(&app, conn, req).await,
     }
 }
 

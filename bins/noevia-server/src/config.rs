@@ -134,6 +134,9 @@ pub struct Config {
     /// DIARY_BASE_URL, DIARY_AUTH_TOKEN, DIARY_TENANT_KEY, DIARY_SOURCE as core index.cjs reads
     /// them. A DIARY_SOURCE other than `sidecar` stops startup, as it stops Node's.
     pub diary: server_diary::DiaryConfig,
+    /// The chat edge's environment (chat port S6): LLM_RATE_LIMIT and NOEVIA_FEATURE_CODE_HARNESS, as
+    /// core index.cjs and features.cjs read them.
+    pub chat_edge: crate::chat_edge::Settings,
 }
 
 /// The native ChatGPT status's startup inputs (#1373). Read once, as Node reads them once.
@@ -462,6 +465,7 @@ impl Config {
                 &get, None,
             )),
             diary: server_diary::DiaryConfig::from_lookup(&get)?,
+            chat_edge: crate::chat_edge::Settings::from_lookup(&get)?,
             google: crate::gdrive::Settings::from_lookup(&get),
             offsite: get("UI_DATA_DIR").filter(|d| !d.is_empty()).map(|d| {
                 crate::offsite_settings::Settings::from_lookup(&get, std::path::PathBuf::from(d))
