@@ -324,11 +324,11 @@ impl Host for Script {
         );
     }
 
-    fn engine_busy(&self) -> bool {
+    async fn engine_busy(&self) -> bool {
         false
     }
 
-    fn title_auto_named(&self, list: Option<&str>, chat: &str, first: &str) -> bool {
+    async fn title_auto_named(&self, list: Option<&str>, chat: &str, first: &str) -> bool {
         self.store(
             "chatTitles.autoNamed",
             vec![

@@ -134,9 +134,14 @@ pub trait Host: Sync {
     /// Remembers that `model`'s chat template refused tools, so later turns send none (#1015).
     fn mark_tools_unsupported(&self, model: &str);
     /// Other inference is in flight on the local engine (model manager `inferenceBusy(1)`).
-    fn engine_busy(&self) -> bool;
+    fn engine_busy(&self) -> impl Future<Output = bool> + Send;
     /// The chat still carries the title derived from its first message (projects store `chatAutoNamed`).
-    fn title_auto_named(&self, list: Option<&str>, chat: &str, first_message: &str) -> bool;
+    fn title_auto_named(
+        &self,
+        list: Option<&str>,
+        chat: &str,
+        first_message: &str,
+    ) -> impl Future<Output = bool> + Send;
     /// Saves a generated title over the derived one (projects store `setChatTitle`).
     fn title_save(&self, list: Option<&str>, chat: &str, title: &str, first_message: &str);
 
