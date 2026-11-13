@@ -688,7 +688,11 @@ fn every_prepared_turn_reads() {
             .unwrap_or_else(|e| panic!("{}: {e:?}", c.get("name").as_str().unwrap()));
         assert!(p.model.starts_with("qa"));
         // meta, telemetry, status, status, tools_scope; and the reply's first `sources` with retrieval.
-        let before = if c.get("input").get("retrieval").is_object() { 6.0 } else { 5.0 };
+        let before = if c.get("input").get("retrieval").is_object() {
+            6.0
+        } else {
+            5.0
+        };
         assert_eq!(c.get("handoff").get("before").as_num(), Some(before));
         read += 1;
     }
@@ -897,8 +901,10 @@ fn the_native_turn_can_be_spawned() {
     spawnable(&turn);
 }
 
-/// What core wrote for each hand-off, split by the front's frame reader at several chunk sizes: the
-/// frames before `prepared` are forwarded as written, and the `prepared` frame is the recorded one.
+/// What core wrote for each hand-off, on the front's NDJSON wire (chat port S7: rust-chat-wire.cjs writes
+/// `JSON.stringify(event) + "\n"` where the recording's event stream has `data: <same>\n\n`), split by
+/// the front's reader at several chunk sizes: the lines before `prepared` pass on as written, and the
+/// `prepared` line is the recorded frame.
 #[test]
 fn the_frame_reader_finds_every_recorded_hand_off() {
     use chat_turn::handoff::{Frames, Piece};
@@ -915,7 +921,14 @@ fn the_frame_reader_finds_every_recorded_hand_off() {
         };
         let lines: Vec<String> = raw
             .iter()
-            .map(|l| l.as_str().unwrap().to_string())
+            .map(|l| {
+                let sse = l.as_str().unwrap();
+                let json = sse
+                    .strip_prefix("data: ")
+                    .and_then(|t| t.strip_suffix("\n\n"))
+                    .unwrap_or_else(|| panic!("not one event frame: {sse:?}"));
+                format!("{json}\n")
+            })
             .collect();
         let bytes = lines.concat().into_bytes();
         let before: Vec<u8> = lines[..lines.len() - 1].concat().into_bytes();
