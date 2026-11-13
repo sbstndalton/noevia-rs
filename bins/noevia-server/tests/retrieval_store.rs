@@ -494,3 +494,66 @@ async fn the_reranker_picks_the_kept_hits() {
         "from the wider pool"
     );
 }
+
+/// sbstndalton/noevia#2538: core's own client (`server/rust-retrieval.cjs`, run by `node`) against
+/// this route over TCP: Node's six hits as the client returns them, and the client's null (search
+/// here) for a wrong secret and for the shared index. Needs `NOEVIA_CORE_CHECKOUT` at a core
+/// commit that has the client; without one it says so and passes.
+#[tokio::test]
+async fn cores_own_client_reads_the_routes_answers() {
+    let Some(core) = std::env::var_os("NOEVIA_CORE_CHECKOUT") else {
+        eprintln!("skipped: NOEVIA_CORE_CHECKOUT is not set");
+        return;
+    };
+    let client = Path::new(&core).join("server/rust-retrieval.cjs");
+    if !client.is_file() {
+        eprintln!("skipped: core at NOEVIA_CORE_CHECKOUT has no server/rust-retrieval.cjs");
+        return;
+    }
+    let r = rig("on", &[]).await;
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let router = r.router.clone();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let client = serde_json::to_string(client.to_str().unwrap()).unwrap();
+    let script = format!(
+        r#"const {{ createClient }} = require({client});
+const make = (token) => createClient({{ env: {{ NOEVIA_RUST_RETRIEVAL: 'on' }}, port: {port}, token, log: () => {{}} }});
+(async () => {{
+  const good = make({token}), bad = make('qa-wrong-secret-0123456789abcdef01234');
+  const out = {{
+    hits: await good.ask('qa-proj-1', 'echo echo echo', {user}, {{}}),
+    refused: await bad.ask('qa-proj-1', 'echo echo echo', {user}, {{}}),
+    shared: await good.ask('qa-proj-1', 'echo echo echo', null, {{}}),
+  }};
+  process.stdout.write(JSON.stringify(out));
+}})();"#,
+        token = serde_json::to_string(TOKEN).unwrap(),
+        user = serde_json::to_string(USER).unwrap(),
+    );
+    // On the blocking pool: the route is served by this test's runtime meanwhile.
+    let out = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("node")
+            .arg("-e")
+            .arg(script)
+            .output()
+    })
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(norm(&v["hits"]), norm(&Value::Array(r.want.clone())));
+    assert_eq!(
+        v["refused"],
+        Value::Null,
+        "a wrong secret: the client searches itself"
+    );
+    assert_eq!(v["shared"], Value::Null, "the shared index: deferred");
+}
