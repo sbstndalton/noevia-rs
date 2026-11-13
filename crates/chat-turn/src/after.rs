@@ -49,18 +49,27 @@ impl Saving {
         }
     }
 
-    /// The end of the turn. `chat`: the request's own chat id (ordinary chats only; `None` when the
-    /// turn keeps no record). `left`: the client went away. `now_ms`: the partial's `savedAt`.
+    /// The end of the turn. `chat`: the request's own chat id (`body.chatId` when it is text).
+    /// `record`: the turn keeps a record (and so a partial; chat.cjs has none for a compaction).
+    /// `left`: the client went away. `now_ms`: the partial's `savedAt`.
     pub fn finish<K: Keep>(
         &self,
         keep: &K,
         chat: Option<&str>,
+        record: bool,
         message: &str,
         left: bool,
         now_ms: i64,
     ) {
         let Some(raw) = chat else { return };
         let id = safe_chat_id(raw);
+        if !record {
+            // handleChatTurn's finally still removes a chat deleted while the turn ran.
+            if !id.is_empty() && keep.tombstoned(&id) {
+                keep.delete_unlisted(&id);
+            }
+            return;
+        }
         let mut kept = None;
         if left {
             let entry = self

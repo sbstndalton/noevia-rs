@@ -1,21 +1,33 @@
 //! One tool call of a native turn, from the model's request to the result the model and the client
-//! get: chat.cjs's tool loop (lines ~2250-2523) for the turns core hands off. Those carry no skills,
-//! no project-edit or coworker-page tools, no provenance policy and only the local default provider
+//! get: chat.cjs's tool loop (lines ~2250-2600) for the turns core hands off. Those carry no skills,
+//! no coworker-page tool, no provenance policy and only the local default provider
 //! (rust-chat-native.cjs `refusal`), so the parts of the loop for those are not here.
 //!
 //! In Node's order: the tool-exchange checks and the per-turn result cache (tool-exchange.cjs, the
 //! `tool-exchange` crate), a write after a declined one, an oversized call, the account's policy, the
-//! card's target (Drive writes, through the core bridge), the chat's permission binding and grant,
-//! the approval card and its answer, the checks after the answer (policy, target, binding), the call
-//! through the core bridge, the audit, then the model's copy (reduced and framed) and the chip's
-//! `tool_result` with its flags.
+//! card's target (a project file edit's stored file, #648, or a Drive write's, #659, through the core
+//! bridges), the chat's permission binding and grant, the approval card and its answer, the checks
+//! after the answer (policy, the edit's file again, the write's target, the binding, the edit's file
+//! once more), the call through the core bridge (an edit pinned to its file's digest), the audit, then
+//! the model's copy (reduced and framed) and the chip's `tool_result` with its flags.
+//!
+//! chat.cjs's approval target string (`approvalTarget()`, compared with the one shown before the run)
+//! is built only of values fixed before the card (the card's target, kind, edit file and account), so
+//! it cannot differ here and is not rebuilt.
+//!
+//! Named difference: a project file edit whose file the bridge gave no answer for at all
+//! ([`EditTarget::Failed`]: core unreachable, a timeout, a refusal of the call; Node has no bridge and
+//! `resolveEditTarget` never throws there, so this case is the executor's own) is refused with the
+//! lookup sentence (`The file this would change could not be looked up`) and audited `edit-target`,
+//! before the card and after it alike; it never revokes the chat's grant (a transport fault is not
+//! a changed file). Only extra refusals: never a run Node would refuse.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use js_json::JValue;
 
-use crate::host::{Host, Target, ToolRun};
+use crate::host::{EditTarget, Host, Target, ToolRun};
 use crate::js;
 
 pub const CHECK_FAULT: &str = "ERROR: the tool call could not be checked; tool was not run.";
@@ -26,6 +38,26 @@ const TARGET_CHANGED: &str =
 const BINDING_CHANGED: &str = "ERROR: the chat or permission target changed after approval; the tool was not run. Nothing was changed. Ask again.";
 const CANCELLED: &str = "ERROR: exchange cancelled; tool was not run.";
 const PERMISSION_CHANGED: &str = "ERROR: permission changed before dispatch; tool was not run.";
+const EDIT_TARGET_MOVED: &str =
+    "ERROR: the project target changed before dispatch; tool was not run. Ask again.";
+/// rust-chat-native.cjs (and chat.cjs for a write target): a lookup that could not be made.
+const LOOKUP_FAILED: &str = "The file this would change could not be looked up";
+
+/// A project file edit's file, as resolved before its card (#648).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Pin {
+    path: String,
+    account: Option<String>,
+    digest: String,
+}
+
+impl Pin {
+    /// chat.cjs: `again.path !== editTarget || (again.account || null) !== editAccount`.
+    fn same(&self, again: &EditTarget) -> bool {
+        matches!(again, EditTarget::Found { path, account, .. }
+            if *path == self.path && account.as_deref().filter(|a| !a.is_empty()) == self.account.as_deref())
+    }
+}
 
 /// One chat's recent writes: (fingerprint, when), oldest first.
 type Writes = Vec<(String, f64)>;
@@ -166,6 +198,8 @@ pub struct Tools<'a> {
     pub writes: HashSet<String>,
     pub public: HashSet<String>,
     pub automatic_only_writes: HashSet<String>,
+    /// The offered project file edit tools (chat.cjs `projectEditTool`).
+    pub edit_tools: HashSet<String>,
     pub routes: Vec<(String, String)>,
     pub chat_id: Option<String>,
     pub chat_key: Option<String>,
@@ -192,6 +226,15 @@ fn audit_denied<H: Host>(host: &H, name: &str, reason: &str) {
     );
 }
 
+/// An edit whose file the bridge gave no answer for (see the module doc): refused, audited, no revocation.
+fn lookup_failed<H: Host>(host: &H, name: &str) -> String {
+    audit_denied(host, name, "edit-target");
+    format!(
+        "ERROR: {} {name} was not run and nothing was changed.",
+        sentence(LOOKUP_FAILED)
+    )
+}
+
 fn blocked_text(name: &str) -> String {
     format!("ERROR: {name} is blocked in this account's settings, so it was not run. Do not retry it; tell the user they can change it in Settings → Connectors.")
 }
@@ -210,6 +253,7 @@ enum Gate {
         kind: Option<String>,
         /// For an asked call: the binding shown, whether a chat-wide grant was used, and whether it was asked.
         binding: Option<(JValue, bool, bool)>,
+        edit: Option<Pin>,
     },
 }
 
@@ -243,6 +287,7 @@ impl<'a> Tools<'a> {
             writes,
             public,
             automatic_only_writes,
+            edit_tools: HashSet::new(),
             routes,
             chat_id,
             chat_key,
@@ -306,15 +351,16 @@ impl<'a> Tools<'a> {
                             card_target: shown,
                             kind,
                             binding,
+                            edit,
                         } => {
                             match self
                                 .after_answer(
                                     host,
                                     call,
                                     &permission,
-                                    shown.as_deref(),
-                                    kind,
+                                    (shown.as_deref(), kind),
                                     binding,
+                                    edit.as_ref(),
                                 )
                                 .await
                             {
@@ -333,6 +379,7 @@ impl<'a> Tools<'a> {
                                         routes: self.routes.clone(),
                                         chat_key: self.chat_key.clone(),
                                         exchange_key: self.exchange_key.clone(),
+                                        edit_target: edit.as_ref().map(|p| p.digest.clone()),
                                     };
                                     match host.execute_tool(&run).await {
                                         Ok((text, f)) => {
@@ -343,6 +390,12 @@ impl<'a> Tools<'a> {
                                                     ("tool", js::s(call.name.clone())),
                                                     ("args", js::s(js::slice(&call.args, 500))),
                                                 ];
+                                                if let Some(p) = &edit {
+                                                    details.push((
+                                                        "target",
+                                                        js::s(js::slice(&p.path, 500)),
+                                                    ));
+                                                }
                                                 if let Some(s) = self.route(&call.name) {
                                                     details.push(("server", js::s(s)));
                                                 }
@@ -457,7 +510,34 @@ impl<'a> Tools<'a> {
             return Gate::Result(blocked_text(name));
         }
         let mut target_kind = None;
-        if write {
+        let mut edit = None;
+        if self.edit_tools.contains(name) {
+            // #648: the one stored file the edit would change, before anyone is asked; the call is pinned to it.
+            let refused = match self.edit_target(host, call).await {
+                EditTarget::Found {
+                    path,
+                    account,
+                    digest,
+                } => {
+                    *card_target = Some(path.clone());
+                    edit = Some(Pin {
+                        path,
+                        account: account.filter(|a| !a.is_empty()),
+                        digest,
+                    });
+                    None
+                }
+                EditTarget::Refused(error) => Some(error),
+                EditTarget::Failed => Some(LOOKUP_FAILED.to_string()),
+            };
+            if let Some(error) = refused {
+                audit_denied(host, name, "edit-target");
+                return Gate::Result(format!(
+                    "ERROR: {} {name} was not run and nothing was changed.",
+                    sentence(&error)
+                ));
+            }
+        } else if write {
             match host
                 .write_target(name, &call.args, self.chat_key.as_deref())
                 .await
@@ -564,7 +644,13 @@ impl<'a> Tools<'a> {
             card_target: card_target.clone(),
             kind: target_kind,
             binding: shown,
+            edit,
         }
+    }
+
+    async fn edit_target<H: Host>(&self, host: &H, call: &Call) -> EditTarget {
+        host.edit_target(self.project_id.as_deref(), &call.name, &call.args)
+            .await
     }
 
     /// The checks after the card's answer, before the call: `Some(result)` when it does not run.
@@ -573,9 +659,9 @@ impl<'a> Tools<'a> {
         host: &H,
         call: &Call,
         permission: &str,
-        shown: Option<&str>,
-        kind_was: Option<String>,
+        (shown, kind_was): (Option<&str>, Option<String>),
         asked_binding: Option<(JValue, bool, bool)>,
+        edit: Option<&Pin>,
     ) -> Option<String> {
         let name = call.name.as_str();
         let write = self.is_write(name);
@@ -586,7 +672,27 @@ impl<'a> Tools<'a> {
             audit_denied(host, name, "blocked");
             return Some(blocked_text(name));
         }
-        if write {
+        // An edit whose name now lands on another file (or none): the approval was for the file shown.
+        if let Some(pin) = edit {
+            let again = self.edit_target(host, call).await;
+            if again == EditTarget::Failed {
+                return Some(lookup_failed(host, name));
+            }
+            if !pin.same(&again) {
+                audit_denied(host, name, "edit-target-changed");
+                let now = match &again {
+                    EditTarget::Found { path, .. } => format!(
+                        "is no longer the file this name refers to (it now means {})",
+                        js::stringify(&js::s(path.clone()))
+                    ),
+                    _ => "can no longer be edited".to_string(),
+                };
+                return Some(format!(
+                    "ERROR: the project's files changed after approval, so {} {now}. {name} was not run and nothing was changed. Ask again if the edit is still wanted.",
+                    js::stringify(&js::s(pin.path.clone()))
+                ));
+            }
+        } else if write {
             let (target, kind) = match host
                 .write_target(name, &call.args, self.chat_key.as_deref())
                 .await
@@ -632,6 +738,16 @@ impl<'a> Tools<'a> {
                 return self.revoked(host, BINDING_CHANGED);
             }
         }
+        // The file may change during the final store read too.
+        if let Some(pin) = edit {
+            let now = self.edit_target(host, call).await;
+            if now == EditTarget::Failed {
+                return Some(lookup_failed(host, name));
+            }
+            if !pin.same(&now) {
+                return self.revoked(host, EDIT_TARGET_MOVED);
+            }
+        }
         if host.left() {
             return Some(CANCELLED.into());
         }
@@ -662,6 +778,33 @@ mod tests {
         assert_eq!(a, b);
         assert_ne!(fingerprint("w", None, "{"), fingerprint("w", None, "{}"));
         assert_eq!(fingerprint("w", Some(""), "{}"), fingerprint("w", None, ""));
+    }
+
+    #[test]
+    fn an_edit_is_the_same_file_only_with_the_same_path_and_account() {
+        let found = |path: &str, account: Option<&str>| EditTarget::Found {
+            path: path.into(),
+            account: account.map(str::to_string),
+            digest: "d".repeat(64),
+        };
+        let pin = Pin {
+            path: "qa-notes.txt".into(),
+            account: None,
+            digest: "e".repeat(64),
+        };
+        // The digest is not compared (chat.cjs compares the path and `account || null`).
+        assert!(pin.same(&found("qa-notes.txt", None)));
+        assert!(pin.same(&found("qa-notes.txt", Some(""))));
+        assert!(!pin.same(&found("qa-notes.txt", Some("qa-account"))));
+        assert!(!pin.same(&found("QA Folder/Text/qa-notes.txt", None)));
+        assert!(!pin.same(&EditTarget::Refused("gone".into())));
+        assert!(!pin.same(&EditTarget::Failed));
+        let moved = Pin {
+            account: Some("qa-account".into()),
+            ..pin
+        };
+        assert!(moved.same(&found("qa-notes.txt", Some("qa-account"))));
+        assert!(!moved.same(&found("qa-notes.txt", None)));
     }
 
     #[test]

@@ -21,6 +21,7 @@ pub mod chat_admission;
 pub mod chat_edge;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
+pub mod chat_native;
 pub mod chat_turn;
 pub mod chat_wire;
 #[cfg(feature = "rust-chatgpt-status")]

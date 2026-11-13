@@ -62,6 +62,26 @@ pub enum Target {
     Refused(String),
 }
 
+/// The stored file a project edit tool would change (project-edit-target.cjs `resolveEditTarget`,
+/// #648/#687), through core's `/internal/chat/tools/edit-target`, against the project as stored when asked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditTarget {
+    /// The stored path the edit writes (the card shows it), the storage account a move into the
+    /// project folder is bound to (`account || null`), and the digest the call is pinned to
+    /// (`targetDigest(path, account)`, 64 hex).
+    Found {
+        path: String,
+        account: Option<String>,
+        digest: String,
+    },
+    /// `resolveEditTarget`'s error, as it wrote it (the gate adds the final period).
+    Refused(String),
+    /// The bridge gave no readable answer (it could not be reached, or answered something else).
+    /// `resolveEditTarget` never throws in chat.cjs, so this case is the native executor's own: the
+    /// gate refuses the call as a target that could not be looked up (see `gate.rs`).
+    Failed,
+}
+
 /// One call to run through the tool engines (core's `/internal/chat/tools/execute`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolRun {
@@ -72,6 +92,8 @@ pub struct ToolRun {
     pub routes: Vec<(String, String)>,
     pub chat_key: Option<String>,
     pub exchange_key: String,
+    /// An approved project file edit's pinned file (`editTarget`: [`EditTarget::Found`]'s digest).
+    pub edit_target: Option<String>,
 }
 
 /// What the native turn asks of the process that runs it.
@@ -162,6 +184,13 @@ pub trait Host: Sync {
         args: &str,
         chat_key: Option<&str>,
     ) -> impl Future<Output = Target> + Send;
+    /// The stored file a project edit tool call would change (core bridge), for the turn's project.
+    fn edit_target(
+        &self,
+        project_id: Option<&str>,
+        name: &str,
+        args: &str,
+    ) -> impl Future<Output = EditTarget> + Send;
     /// The chat's permission binding for `scope` (chat.cjs `permissionContext`): `null` for a turn with
     /// no chat id, `Err` when it cannot be verified (store failing, chat moved, deleted or held elsewhere).
     fn permission_binding(

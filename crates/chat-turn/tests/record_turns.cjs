@@ -12,7 +12,8 @@
 // Drive-tool and tool-exchange modules. Only the edges are stubs, and each records what the turn
 // asked of it: the engine (a scripted fetch answering with real Response objects), the model
 // manager (one loaded model, a configured context size), the approval gate (a fixed answer), the
-// stores (chat list, titles, transcript append) and the audit log. Everything is synthetic and
+// stores (chat list, titles, transcript append), the audit log and, for the project edit cases, a
+// Project documents box as MCP discovery offers it (its server only answers the call). Everything is synthetic and
 // QA-named; the engine is a .invalid host and nothing touches the network.
 //
 // Deterministic by construction: the clock is frozen at FIXED_NOW (TZ=UTC), crypto.randomUUID is a
@@ -25,8 +26,10 @@
 //   requests  every engine request: url, headers, the parsed body, whether it was the chat endpoint, whether it
 //             streamed, and the deadline its signal carried (timeoutMs: AbortSignal.timeout's, or null)
 //   stores    the calls into the stores (saveChats, chatTitles.save, transcripts.appendIfLast, ...)
-//   bridge    the two tool bridges the native executor calls (execute: every field it sends, and the text, the
-//             failure flag, the error it threw or that the client left meanwhile; target: the card's target)
+//   bridge    the tool bridges the native executor calls (execute: every field it sends, and the text, the
+//             failure flag, the error it threw or that the client left meanwhile; target: the card's target;
+//             edit-target: a project file edit's resolution, as the bridge answers it: {path, account, digest}
+//             or {error})
 //   stubs     after the hand-off's cut, every answer of the other stubs, in order: the tool policy, the chat-wide
 //             grant, the approval decision, the tombstones, the template tools gate and the engine's busy signal
 //   files     the workspace files after the turn (context state, partial), parsed, run-local ids out
@@ -79,6 +82,7 @@ const SOURCES = {
   'server/announced-action.cjs': null,
   'server/search-query.cjs': null,
   'server/prompt-framing.cjs': null,
+  'server/project-edit-target.cjs': null,
   'server/dav-parse.lock': null,
 };
 for (const rel of Object.keys(SOURCES)) {
@@ -134,6 +138,13 @@ const chatLists = require(path.join(server, 'chat-lists.cjs'));
 const realReadTombstones = chatLists.readTombstones;
 let onTombstones = null;
 chatLists.readTombstones = (dir) => { const ids = realReadTombstones(dir); onTombstones?.(ids); return ids; };
+// A project file edit's resolutions (chat.cjs calls project-edit-target.cjs resolveEditTarget before the card, after
+// the answer and before the run), each logged as the edit-target bridge answers it. A case's `editChanges[k]` is
+// what the project looks like (fields over the stored ones) at the k-th resolution: its files changed meanwhile.
+const editTargets = require(path.join(server, 'project-edit-target.cjs'));
+const realResolveEditTarget = editTargets.resolveEditTarget;
+let onEditTarget = null;
+editTargets.resolveEditTarget = (project, rawArgs, options) => (onEditTarget ? onEditTarget(project, rawArgs, options) : realResolveEditTarget(project, rawArgs, options));
 const { createChatHandler } = require(path.join(server, 'chat.cjs'));
 const { createToolboxes } = require(path.join(server, 'toolboxes.cjs'));
 const { createDriveTools } = require(path.join(server, 'gdrive-tools.cjs'));
@@ -244,6 +255,10 @@ async function runTurn(c, { handoff = false } = {}) {
   mathSeed = 0x2026;
   logged = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-turn-'));
+  // The project's image sources (chat.cjs projectImages): `images` maps an asset id to its bytes (base64), written to
+  // the workspace's asset directory, kept apart from `dir` so `files` lists only what the turn wrote.
+  const assets = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-assets-'));
+  for (const [id, b64] of Object.entries(c.images || {})) fs.writeFileSync(path.join(assets, id), Buffer.from(b64, 'base64'));
   try {
     const user = { id: 'qa-user', role: 'admin' };
     const project = c.project === null ? null : {
@@ -258,6 +273,16 @@ async function runTurn(c, { handoff = false } = {}) {
     let cut = false;
     const stub = (op, entry) => { if (cut) log.stubs.push({ op, ...entry }); return entry.answer; };
     onTombstones = (ids) => stub('tombstones', { answer: [...ids].sort() });
+    let editResolutions = 0;
+    onEditTarget = (proj, rawArgs, options) => {
+      const k = editResolutions++;
+      const changed = c.editChanges && c.editChanges[k];
+      const account = c.editAccounts && c.editAccounts[k] !== undefined ? { ...options, storageAccount: c.editAccounts[k] } : options;
+      const found = realResolveEditTarget(proj && changed ? { ...proj, ...changed } : proj, rawArgs, account);
+      log.bridge.push({ op: 'edit-target', args: rawArgs, found: found.error ? { error: found.error }
+        : { path: found.path, account: found.account || null, digest: editTargets.targetDigest(found.path, found.account || null) } });
+      return found;
+    };
     // `policy`: tool name -> mode, or a list of modes for its calls after the cut (the last repeats; the
     // preparation sees the first). Otherwise writes ask and reads run.
     const policyCalls = new Map();
@@ -271,7 +296,7 @@ async function runTurn(c, { handoff = false } = {}) {
     };
     const workspace = {
       userId: user.id, dir, assertActive() {},
-      assetDir: () => path.join(dir, 'assets'),
+      assetDir: () => assets,
       transcripts: {
         appendIfLast: async (chatId, message, entry, options) => { store('transcripts.appendIfLast', { chatId, message, entry, options }); return c.appendOutcome || 'saved'; },
         deleteChat: async (chatId, options) => { store('transcripts.deleteChat', { chatId, options }); },
@@ -289,10 +314,15 @@ async function runTurn(c, { handoff = false } = {}) {
       if (c.leaveInTool === tool) { res.destroyed = true; res.emit('close'); }
       return (c.toolResults && c.toolResults[tool]) || `QA ${tool} result: synthetic-file.txt (1 KB)`;
     } };
+    // `docs`: the Project documents box (noevia's own MCP server, QA_DOCS_BOX) is discovered; its server answers each call.
+    const executeMcp = async (name) => { log.executions.push(name); return (c.toolResults && c.toolResults[name]) || `QA ${name} result: done.`; };
     const toolbox = createToolboxes({
       boxes: [driveTools.box], driveTools, offered: (id) => id !== 'gdrive',
-      mcpBoxes: () => [], mcpTools: () => new Map(), prefill: { budgetFor: () => null, rateFor: () => 0 }, requestScope,
+      mcpBoxes: () => (c.docs ? [QA_DOCS_BOX] : []), mcpTools: () => (c.docs ? QA_DOCS_TOOLS : new Map()), executeMcp,
+      prefill: { budgetFor: () => null, rateFor: () => 0 }, requestScope,
       scope: requestScope, documentSources: { notice: () => '' }, workspace: () => ({ dir }),
+      // `pageSave`: the coworker page tool (#2446), offered in a coworker's conversation (a `specialist-` project).
+      ...(c.pageSave ? { specialistTools: require(path.join(server, 'specialist-page-save.cjs')).createPageSave({ store: { specialistPageSave: async () => ({ status: 500 }) } }) } : {}),
     });
 
     const res = new EventEmitter();
@@ -365,17 +395,19 @@ async function runTurn(c, { handoff = false } = {}) {
       providerHeaders: (p, extra) => ({ 'Content-Type': 'application/json', ...(extra || {}), ...(p.apiKey && p.apiKey !== 'local' ? { Authorization: `Bearer ${p.apiKey}` } : {}) }),
       saveChats: (projectId, chats) => store('saveChats', { projectId, chats }), endpointApproved: () => true,
       diaryHeaders: () => ({}), diaryExtras: require(path.join(server, 'diary-extras.cjs')),
-      autoRoles: () => (c.auto ? { fast: MODEL, smart: MODEL } : null), lastLoadedModel: () => (c.lastLoaded === undefined ? null : c.lastLoaded),
+      // `visionRole`: the Vision role's model (a description request before the answer, chat.cjs describeImages).
+      autoRoles: () => (c.auto || c.visionRole ? { ...(c.auto ? { fast: MODEL, smart: MODEL } : {}), ...(c.visionRole ? { vision: c.visionRole } : {}) } : null), lastLoadedModel: () => (c.lastLoaded === undefined ? null : c.lastLoaded),
       // systemOneRouter.classifyWithDetails with no decision backend (system-one-router.cjs fallback branch).
       classifyFastOrSmart: async () => ({ role: c.auto || 'fast', routingDecision: { offered: [], scores: {}, selectedRole: null, effectiveRole: c.auto || 'fast',
         backend: 'legacy', model: null, calibrated: false, latencyMs: null, status: 'fallback', fallbackReason: 'disabled', fallbackCause: null } }), servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
-      visionProbe: async () => ({ supported: false, reason: 'none' }), visionDescriptions: new Map(), skillsIndexFor: () => [],
+      // `vision`: what the probe says of the answering model's image input (chat.cjs visionProbe).
+      visionProbe: async () => c.vision || { supported: false, reason: 'none' }, visionDescriptions: new Map(), skillsIndexFor: () => [],
       chatSkillRouter: { select: async () => ({ loaded: [] }) }, chatToolRouter: { select: async (ids) => ({ ids, routed: false }) },
       ...toolbox, oauthServerIds: () => new Set(), accountReady: () => true,
       // The bridge call as the native executor makes it: every field of its request (rust-chat-native.cjs EXECUTE_PATH).
       executeToolCall: async (proj, name, args, allowed, signal, outcome, options) => {
         const asked = { op: 'execute', projectId: proj ? proj.id : null, name, args, allowed: [...allowed], routes: [...(options.routes || [])],
-          chatKey: options.chatKey ?? null, exchangeKey: options.exchangeKey ?? null };
+          chatKey: options.chatKey ?? null, exchangeKey: options.exchangeKey ?? null, ...(options.editTarget !== undefined ? { editTarget: options.editTarget } : {}) };
         const wasLeft = res.destroyed;
         let text;
         try { text = await toolbox.executeToolCall(proj, name, args, allowed, signal, outcome, options); }
@@ -385,6 +417,8 @@ async function runTurn(c, { handoff = false } = {}) {
       },
       grantContext: async (raw) => grantFixture.context(raw, { holder: { kind: 'absent' } }),
       chatWideApproved: (userId, chatId, scope) => stub('chatWideApproved', { chatId, scope, answer: c.chatWide === true }),
+      // A grant ended by the per-call gate (a write target or project file that changed before the run).
+      revokeChatGrant: (userId, chatId) => store('revokeChatGrant', { userId, chatId }),
       // `leaveOnCard`: the client goes away while the card is open; the gate answers 'aborted' as its abortSignal fires.
       awaitApproval: async (request) => {
         const { abortSignal: _signal, ...asked } = request;
@@ -398,6 +432,9 @@ async function runTurn(c, { handoff = false } = {}) {
         log.bridge.push({ op: 'target', name, args: rawArgs, found });
         return found;
       },
+      // #687: `storageAccount`, the storage account the user has connected (a plain-named file's edit moves it there).
+      // `editAccounts[k]`: the account the k-th edit resolution sees instead (the user reconnected storage meanwhile).
+      editStorageAccount: () => c.storageAccount || null,
       recordUsage: (_ws, model, reported) => store('recordUsage', { model, reported }),
       recordToolUse: (_ws, name) => store('recordToolUse', { name }),
       chatTitles: c.titles ? { save: (listId, chatId, title, first) => store('chatTitles.save', { listId, chatId, title, first }), autoNamed: (listId, chatId, first) => { store('chatTitles.autoNamed', { listId, chatId, first }); return c.titles.autoNamed !== false; } } : null,
@@ -415,7 +452,9 @@ async function runTurn(c, { handoff = false } = {}) {
       const last = out.events[out.events.length - 1];
       const prepared = last?.type === 'prepared' ? last : null;
       const refused = logged.map((l) => /^\[chat\] native executor not used for this turn: (.+)$/.exec(l)?.[1]).find(Boolean) || null;
+      // `requests`, `stores`: how many engine requests and store calls came before the frame (a Vision role's description).
       return { prepared, refused, before: prepared ? out.events.length - 1 : null, requests: prepared ? log.requests.length : null,
+        stores: prepared ? log.stores.length : null,
         // What core wrote on the wire for it, frame by frame as res.write got them (the front's frame splitter reads these).
         raw: prepared ? out.raw : null };
     }
@@ -429,7 +468,8 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, rounds: c.rounds || [], chunks: log.chunks },
+        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
+        rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
       files: listFiles(dir),
@@ -437,6 +477,7 @@ async function runTurn(c, { handoff = false } = {}) {
     };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(assets, { recursive: true, force: true });
   }
 }
 
@@ -461,6 +502,28 @@ const QA_KNOWLEDGE = {
     injected: [{ file: 'qa-notes.txt', body: 'QA notes: the gate code is QA-ORCHID-42.', kind: 'file' }],
     block: 'QA project files:\n[qa-notes.txt]\nQA notes: the gate code is QA-ORCHID-42.' },
 };
+// The Project documents box (#648) as MCP discovery offers it from noevia's own server, and a project using it.
+const DOCS_TOOL = (name, properties) => ({ type: 'function', function: { name, description: `QA ${name}: a synthetic project document tool.`,
+  parameters: { type: 'object', properties, required: Object.keys(properties) } } });
+const QA_DOCS_BOX = { id: 'qa-docs', label: 'QA documents', source: 'mcp', server: 'qa-internal', reads: ['project_read_file'], tools: [
+  DOCS_TOOL('project_read_file', { name: { type: 'string' } }),
+  DOCS_TOOL('project_append_file', { name: { type: 'string' }, text: { type: 'string' } }),
+  DOCS_TOOL('project_replace_text', { name: { type: 'string' }, find: { type: 'string' }, replace: { type: 'string' } })] };
+const QA_DOCS_TOOLS = new Map(QA_DOCS_BOX.tools.map((t) => [t.function.name, { readOnly: t.function.name === 'project_read_file', serverId: 'qa-internal' }]));
+const QA_DOCS_FILES = [{ name: 'qa-notes.txt', content: 'QA notes line one.' }, { name: 'qa-plan.txt', content: 'QA plan: draft.' }];
+const QA_DOCS = { toolboxes: ['core', 'qa-docs'], files: QA_DOCS_FILES };
+// A storage account digest (project-edit-target.cjs storageAccount): synthetic.
+const QA_ACCOUNT = '5ca1ab1e'.repeat(8);
+const APPEND = '{"name":"qa-notes.txt","text":"QA appended line."}';
+// A project image source (#1512): a synthetic 1x1 PNG, attached to the turn's last user message.
+const QA_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4//8/AwAI/AL+p9akwQAAAABJRU5ErkJggg==';
+const QA_IMAGE = { project: { assets: [{ id: 'qa-asset-1', name: 'qa-chart.png', mime: 'image/png' }] }, images: { 'qa-asset-1': QA_PNG } };
+const SEES = { supported: true };
+// image_context_compacted: a small window and a long history; with the image's IMAGE_TOKENS two exchanges do not fit
+// beside a summary, so all older turns are summarised in one request and the image turn alone is kept.
+const IMAGE_CTX = 8192;
+const IMAGE_EXCHANGES = 6;
+const IMAGE_FILL = 20;
 const CASES = [
   { name: 'plain', about: 'A plain reply in two deltas, with usage and timings, ended by [DONE].',
     rounds: [{ frames: [chunk({ role: 'assistant', content: '' }), chunk({ content: 'Hello from ' }), chunk({ content: 'QA.' }), finish('stop'), usage(52, 5, 25), { done: true }] }] },
@@ -543,6 +606,12 @@ const CASES = [
     rounds: [summary('QA summary of the earlier turns, part one.'), summary('QA summary of the earlier turns, part two.'), answer('Answer after compaction.')] },
   { name: 'context_too_full', about: 'The current message alone does not fit: an error event, no engine request.', ctxSize: 2048,
     body: { message: longText('QA huge message.', 400) }, rounds: [] },
+  { name: 'compact_only', about: 'The Compact action: the context fit is forced, the older turns summarised, the meter sent, then done (no answer, no title).',
+    body: { compactOnly: true, history: longHistory(4, 5) }, rounds: [summary('QA compacted summary of the earlier turns.')] },
+  { name: 'compact_only_short', about: 'The Compact action on a chat with one earlier exchange.',
+    body: { compactOnly: true, history: longHistory(1, 2) }, rounds: [] },
+  { name: 'compact_only_fails', about: 'The Compact action whose summary request fails: the error, the transcript unchanged.',
+    body: { compactOnly: true, history: longHistory(4, 5) }, rounds: [{ status: 500, body: JSON.stringify({ error: { message: 'QA engine failure' } }) }] },
   { name: 'thinking_cut', about: 'Reasoning past the thinking cap with no answer: the stream is cut, the answer asked for once more.',
     rounds: [{ frames: [chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), { wait: true }, chunk({ reasoning_content: 'QA reasoning '.repeat(230) }), finish('stop')] },
       answer('The answer after the cut.')] },
@@ -627,6 +696,62 @@ const CASES = [
       injected: [{ file: 'qa-notes.txt', body: 'QA notes: the gate code is QA-ORCHID-42.', kind: 'file' }],
       block: 'QA project files:\n[qa-notes.txt]\nQA notes: the gate code is QA-ORCHID-42.' },
     rounds: [answer('I do not know the code.')] },
+  { name: 'edit_approved', about: 'A project file append (#648): resolved before its card, which names the file; approved, run pinned to it.',
+    docs: true, project: QA_DOCS, decision: 'approve',
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('Appended the line.')] },
+  { name: 'edit_declined', about: 'A project file text replacement whose card is declined: the reply ends with the paused note.',
+    docs: true, project: QA_DOCS, decision: 'deny',
+    rounds: [{ frames: [toolCall('project_replace_text', '{"name":"qa-plan.txt","find":"draft","replace":"final"}'), finish('tool_calls')] }] },
+  { name: 'edit_name_unresolved', about: 'An edit naming no project file: refused before any card, nothing asked or run.',
+    docs: true, project: QA_DOCS,
+    rounds: [{ frames: [toolCall('project_append_file', '{"name":"qa-missing.txt","text":"QA line."}'), finish('tool_calls')] }, answer('There is no such file.')] },
+  { name: 'edit_files_changed_on_card', about: 'The file is removed while the card is open: approved, then refused as no longer editable.',
+    docs: true, project: QA_DOCS, decision: 'approve', editChanges: [null, { files: [QA_DOCS_FILES[1]] }],
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('The file was gone.')] },
+  { name: 'edit_moved_on_card', about: 'With storage connected the plain file moves into the project folder; the folder changes while the card is open: refused, naming the new file.',
+    docs: true, project: { ...QA_DOCS, reservedFolder: 'QA Folder' }, storageAccount: QA_ACCOUNT, decision: 'approve', editChanges: [null, { reservedFolder: 'QA Folder 2' }],
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('The file moved.')] },
+  { name: 'edit_changed_before_dispatch', about: 'The file is removed after the checks after the answer, before the run: refused, the chat grant revoked.',
+    docs: true, project: QA_DOCS, decision: 'approve', editChanges: [null, null, { files: [] }],
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('It changed before the run.')] },
+  { name: 'edit_chat_wide_grant', about: 'An append under "Allow for this chat" with storage connected: no card; the move into the project folder is pinned with its account.',
+    docs: true, project: { ...QA_DOCS, reservedFolder: 'QA Folder' }, storageAccount: QA_ACCOUNT, chatWide: true,
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('Appended under the chat grant.')] },
+  { name: 'edit_allowed_by_policy', about: 'An append the account allows without asking: no card, resolved before the call and before the run, run pinned.',
+    docs: true, project: QA_DOCS, policy: { project_append_file: 'allow' },
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('Appended without asking.')] },
+  { name: 'edit_allow_then_ask', about: 'The append is allowed when the call starts and asks by the final check: not run (the permission changed).',
+    docs: true, project: QA_DOCS, policy: { project_append_file: ['allow', 'allow', 'ask'] },
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('The permission changed.')] },
+  { name: 'edit_blocked', about: 'The account blocks the append: refused before any file is looked up.',
+    docs: true, project: QA_DOCS, policy: { project_append_file: 'block' },
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('It is blocked.')] },
+  { name: 'edit_account_changed_on_card', about: 'The same file under another storage account while the card is open: refused, it now means the same path (the account differs).',
+    docs: true, project: { ...QA_DOCS, reservedFolder: 'QA Folder' }, storageAccount: QA_ACCOUNT, decision: 'approve', editAccounts: [undefined, 'b0a710ad'.repeat(8)],
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('The account changed.')] },
+  { name: 'edit_long_path', about: 'An approved append to a file whose name is longer than 500 UTF-16 units (an astral character at the cut): the audit keeps 500.',
+    docs: true, project: { ...QA_DOCS, files: [{ name: `qa-${'n'.repeat(495)}😀-long.txt`, content: 'QA long.' }] }, decision: 'approve',
+    rounds: [{ frames: [toolCall('project_append_file', JSON.stringify({ name: `qa-${'n'.repeat(495)}😀-long.txt`, text: 'QA line.' })), finish('tool_calls')] }, answer('Appended to the long file.')] },
+  { name: 'image_seen', about: 'A project image the answering model can see: it rides on the last user message as an image part.',
+    ...QA_IMAGE, vision: SEES, rounds: [answer('The QA chart shows one dot.')] },
+  { name: 'image_seen_tool_round', about: 'An attached image, then a tool round: every round sends the image part again.',
+    ...QA_IMAGE, vision: SEES,
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-img"}'), finish('tool_calls')] }, answer('The chart matches the file.')] },
+  { name: 'image_context_compacted', about: 'An attached image over the context budget: the older turns are summarised, the image is counted and kept (#1792).',
+    ...QA_IMAGE, vision: SEES, ctxSize: IMAGE_CTX, body: { history: longHistory(IMAGE_EXCHANGES, IMAGE_FILL) },
+    rounds: [summary('QA summary of the earlier turns before the chart.'), answer('Answer about the chart after compaction.')] },
+  { name: 'image_not_seen', about: 'The answering model cannot see images: Node clears them, says so and notes it for the model.',
+    ...QA_IMAGE, vision: { supported: false, reason: 'QA engine reports no image input.' }, rounds: [answer('I cannot see the chart.')] },
+  { name: 'image_missing', about: 'An image source whose stored file is gone: the warning, the note, nothing attached.',
+    project: QA_IMAGE.project, vision: SEES, rounds: [answer('The chart file is missing.')] },
+  { name: 'image_described', about: 'A Vision role describes the image before the cut (its own lease and request); the answer gets the description.',
+    ...QA_IMAGE, visionRole: 'qa-vision',
+    rounds: [summary('QA description: a white square with one dot.'), answer('The chart has one dot.')] },
+  { name: 'image_description_failed', about: 'The Vision role cannot describe the image (its request fails): the status and warning say so, and the answering model, which can see, is handed the image.',
+    ...QA_IMAGE, visionRole: 'qa-vision', vision: SEES,
+    rounds: [{ status: 500, body: JSON.stringify({ error: { message: 'QA vision failure' } }) }, answer('Read the chart directly: one dot.')] },
+  { name: 'page_save_stays_in_node', about: 'A coworker conversation offers the page save (#2446): the hand-off is refused (page-save) and Node runs the turn.',
+    pageSave: true, project: { id: 'specialist-qa', name: 'QA Coworker' }, rounds: [answer('A coworker reply.')] },
 ];
 
 (async () => {
@@ -651,6 +776,9 @@ const CASES = [
     generator: 'crates/chat-turn/tests/record_turns.cjs (noevia-core server/chat.cjs handleChat)',
     fixedNow: new RealDate(FIXED_NOW).toISOString(),
     sources: SOURCES,
+    // The hand-off frame's size cap core keeps to (rust-chat-native.cjs PREPARED_CAP, when it has one): the front's
+    // reader (crates/chat-turn handoff.rs) must accept every frame up to it.
+    preparedCap: (() => { try { return require(path.join(server, 'rust-chat-native.cjs')).PREPARED_CAP ?? null; } catch { return null; } })(),
     tools,
     cases,
   };

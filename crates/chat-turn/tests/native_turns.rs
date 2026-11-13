@@ -29,7 +29,9 @@ use std::sync::Mutex;
 use std::task::{Context, Poll, Waker};
 
 use chat_turn::after::{Keep, Saving};
-use chat_turn::host::{Answer, EngineRequest, GateRefusal, Host, Read, Target, ToolRun};
+use chat_turn::host::{
+    Answer, EditTarget, EngineRequest, GateRefusal, Host, Read, Target, ToolRun,
+};
 use chat_turn::js;
 use chat_turn::native::{self, Ended, Helpers, Process};
 use chat_turn::prepared::Prepared;
@@ -83,6 +85,8 @@ struct Script {
     executions: Mutex<Vec<String>>,
     uuids: Mutex<u64>,
     leased: Mutex<bool>,
+    /// The turn's lease: the recorder's gate counts the leases taken before the cut (a Vision role's description).
+    lease: String,
     loaded: Mutex<bool>,
     /// Every event the turn sent, the client's leaving aside, with whether it had left.
     observed: Mutex<Vec<(JValue, bool)>>,
@@ -108,6 +112,13 @@ fn chunks_of(recorded: &JValue) -> Vec<Chunk> {
             _ => Chunk::Bytes(base64(c.get("b64").as_str().unwrap())),
         })
         .collect()
+}
+
+/// How many engine requests and store calls the recorded turn made before the cut (a Vision role's
+/// description: its request and its lease); the native turn starts after them.
+fn before_cut(case: &JValue) -> (usize, usize) {
+    let count = |k: &str| case.get("handoff").get(k).as_num().unwrap_or(0.0) as usize;
+    (count("requests"), count("stores"))
 }
 
 fn base64(text: &str) -> Vec<u8> {
@@ -138,10 +149,16 @@ impl Script {
             _ => Vec::new(),
         };
         let (recorded_bridge, recorded_stubs) = (recorded("bridge"), recorded("stubs"));
+        let (skip, before) = before_cut(&case);
+        let earlier = recorded("stores")
+            .iter()
+            .take(before)
+            .filter(|s| s.get("op").as_str() == Some("modelManager.acquireLease"))
+            .count();
         Script {
             case,
             rounds,
-            next: Mutex::new(0),
+            next: Mutex::new(skip),
             left: Mutex::new(false),
             events: Mutex::new(Vec::new()),
             requests: Mutex::new(Vec::new()),
@@ -153,6 +170,7 @@ impl Script {
             executions: Mutex::new(Vec::new()),
             uuids: Mutex::new(0),
             leased: Mutex::new(false),
+            lease: format!("qa-lease-{}", earlier + 1),
             loaded: Mutex::new(case_loaded),
             observed: Mutex::new(Vec::new()),
         }
@@ -223,9 +241,12 @@ impl Host for Script {
         *self.leased.lock().unwrap() = true;
         self.store(
             "modelManager.acquireLease",
-            vec![("model", js::s(model)), ("lease", js::s("qa-lease-1"))],
+            vec![
+                ("model", js::s(model)),
+                ("lease", js::s(self.lease.clone())),
+            ],
         );
-        Ok(Some(vec![("X-Noevia-Lease".into(), "qa-lease-1".into())]))
+        Ok(Some(vec![("X-Noevia-Lease".into(), self.lease.clone())]))
     }
 
     async fn health(&self) -> Option<JValue> {
@@ -350,7 +371,7 @@ impl Host for Script {
 
     fn release_lease(&self) {
         if std::mem::take(&mut *self.leased.lock().unwrap()) {
-            self.store("lease.release", vec![("lease", js::s("qa-lease-1"))]);
+            self.store("lease.release", vec![("lease", js::s(self.lease.clone()))]);
         }
     }
 
@@ -439,6 +460,30 @@ impl Host for Script {
         }
     }
 
+    async fn edit_target(&self, project_id: Option<&str>, name: &str, args: &str) -> EditTarget {
+        let next = self.bridge.lock().unwrap().remove(0);
+        assert_eq!(
+            (next.get("op").as_str(), next.get("args").as_str()),
+            (Some("edit-target"), Some(args)),
+            "{name}: the edit target asked"
+        );
+        // chat.cjs resolves against the turn's own project (`project ? getProject(project.id) : null`).
+        assert_eq!(
+            project_id,
+            self.case.get("input").get("project").get("id").as_str()
+        );
+        let found = next.get("found");
+        match (found.get("error").as_str(), found.get("path").as_str()) {
+            (Some(e), _) => EditTarget::Refused(e.to_string()),
+            (None, Some(path)) => EditTarget::Found {
+                path: path.to_string(),
+                account: found.get("account").as_str().map(str::to_string),
+                digest: found.get("digest").as_str().unwrap().to_string(),
+            },
+            _ => EditTarget::Failed,
+        }
+    }
+
     async fn permission_binding(
         &self,
         chat_id: Option<&str>,
@@ -490,7 +535,15 @@ impl Host for Script {
         decision.as_str().unwrap().to_string()
     }
 
-    fn revoke_grant(&self, _chat_id: Option<&str>) {}
+    fn revoke_grant(&self, chat_id: Option<&str>) {
+        self.store(
+            "revokeChatGrant",
+            vec![
+                ("userId", js::s("qa-user")),
+                ("chatId", chat_id.map_or(JValue::Null, js::s)),
+            ],
+        );
+    }
 
     fn audit(&self, event: &str, details: &JValue) {
         self.store(
@@ -532,6 +585,11 @@ impl Host for Script {
         let JValue::Obj(fields) = &asked else {
             panic!()
         };
+        assert_eq!(
+            next.get("editTarget").as_str(),
+            run.edit_target.as_deref(),
+            "the tool run's editTarget"
+        );
         for (k, v) in fields {
             assert_eq!(
                 js::stringify(next.get(k)),
@@ -656,18 +714,17 @@ fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
         saving.observe(e, *left);
     }
     let left = matches!(ended, Ended::Left);
-    let chat = prepared.record.then(|| {
-        case.get("input")
-            .get("body")
-            .get("chatId")
-            .as_str()
-            .unwrap()
-            .to_string()
-    });
+    let chat = case
+        .get("input")
+        .get("body")
+        .get("chatId")
+        .as_str()
+        .map(str::to_string);
     // The lease goes back as the response ends or the client leaves, before the store is asked.
     saving.finish(
         &script,
         chat.as_deref(),
+        prepared.record,
         &prepared.message,
         left,
         FIXED_NOW as i64,
@@ -683,20 +740,49 @@ fn every_prepared_turn_reads() {
         panic!()
     };
     let mut read = 0;
+    let mut refused = Vec::new();
     for c in cases.iter().filter(|c| c.get("handoff").is_object()) {
+        let name = c.get("name").as_str().unwrap();
+        if let Some(why) = c.get("handoff").get("refused").as_str() {
+            // A turn core keeps: no frame, Node runs it.
+            assert_eq!(c.get("handoff").get("prepared"), &JValue::Null, "{name}");
+            refused.push(format!("{name}: {why}"));
+            continue;
+        }
         let p = Prepared::read(c.get("handoff").get("prepared"))
             .unwrap_or_else(|e| panic!("{}: {e:?}", c.get("name").as_str().unwrap()));
         assert!(p.model.starts_with("qa"));
-        // meta, telemetry, status, status, tools_scope; and the reply's first `sources` with retrieval.
-        let before = if c.get("input").get("retrieval").is_object() {
-            6.0
-        } else {
-            5.0
+        // In the recordings the cut comes right after the preparation's `tools_scope` (a pending route
+        // pre-load's `loadingModel` status could follow it; no case has one).
+        let JValue::Arr(events) = c.get("events") else {
+            panic!()
         };
-        assert_eq!(c.get("handoff").get("before").as_num(), Some(before));
+        let scope = events
+            .iter()
+            .position(|e| e.get("type").as_str() == Some("tools_scope"))
+            .unwrap_or_else(|| panic!("{}: no tools_scope", c.get("name").as_str().unwrap()));
+        assert_eq!(
+            c.get("handoff").get("before").as_num(),
+            Some((scope + 1) as f64),
+            "{}",
+            c.get("name").as_str().unwrap()
+        );
+        // The project edit tools are named for the gate (chat.cjs projectEditTool) exactly when offered.
+        let offered = |n: &str| {
+            p.tools
+                .iter()
+                .any(|t| t.get("function").get("name").as_str() == Some(n))
+        };
+        let edits: Vec<&str> = ["project_append_file", "project_replace_text"]
+            .into_iter()
+            .filter(|n| offered(n))
+            .collect();
+        assert_eq!(p.edit_tools, edits, "{name}");
         read += 1;
     }
     assert!(read >= 30);
+    // The coworker page save (#2446) is the one recorded turn still kept in Node.
+    assert_eq!(refused, ["page_save_stays_in_node: page-save"]);
 }
 
 #[test]
@@ -741,9 +827,11 @@ fn the_native_continuation_is_node_after_the_cut() {
             kinds(&got),
             kinds(&want)
         );
+        let (skip, earlier) = before_cut(c);
         let JValue::Arr(requests) = c.get("requests") else {
             panic!()
         };
+        let requests = &requests[skip..];
         let sent = script.requests.lock().unwrap().clone();
         assert_eq!(sent.len(), requests.len(), "{name}: engine requests");
         for (i, (s, r)) in sent.iter().zip(requests).enumerate() {
@@ -805,7 +893,7 @@ fn the_native_continuation_is_node_after_the_cut() {
             let JValue::Arr(stores) = c.get("stores") else {
                 panic!()
             };
-            let want: Vec<String> = stores.iter().map(js::stringify).collect();
+            let want: Vec<String> = stores[earlier..].iter().map(js::stringify).collect();
             let got: Vec<String> = script
                 .stores
                 .lock()
@@ -827,7 +915,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 55, "{ran:?}");
+    assert_eq!(ran.len(), 77, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
@@ -874,6 +962,115 @@ fn a_blocked_tool_is_not_offered_and_its_call_is_refused() {
         Some(r#"ERROR: tool "drive_get_metadata" is not enabled for this project"#)
     );
     assert!(!js::stringify(c.get("stubs")).contains(r#""op":"policy""#));
+}
+
+/// Named difference (gate.rs): an edit whose file the bridge gives no answer for, at the check after the
+/// card or the one before the run, is refused with the lookup sentence and audited `edit-target`; the
+/// chat's grant is not revoked and nothing runs. Node has no bridge, so this is the executor's own.
+#[test]
+fn an_edit_the_bridge_cannot_resolve_after_the_card_is_refused_without_revoking() {
+    let f = fixture();
+    let JValue::Arr(cases) = f.get("cases") else {
+        panic!()
+    };
+    let base = cases
+        .iter()
+        .find(|c| c.get("name").as_str() == Some("edit_approved"))
+        .unwrap();
+    for at in [1usize, 2] {
+        let mut case = base.clone();
+        let JValue::Arr(mut bridge) = case.get("bridge").clone() else {
+            panic!()
+        };
+        let edits: Vec<usize> = bridge
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.get("op").as_str() == Some("edit-target"))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            edits.len(),
+            3,
+            "edit_approved resolves its file three times"
+        );
+        js::set(
+            &mut bridge[edits[at]],
+            "found",
+            js::obj(Vec::<(String, JValue)>::new()),
+        );
+        js::set(&mut case, "bridge", JValue::Arr(bridge));
+        let (script, _) = replay(&f, &case);
+        let events = script.events.lock().unwrap().clone();
+        let result = events
+            .iter()
+            .map(|e| wtf16::parse(e).unwrap())
+            .find(|e| e.get("type").as_str() == Some("tool_result"))
+            .unwrap_or_else(|| panic!("{at}: no tool_result in {events:?}"));
+        assert_eq!(
+            result.get("text").as_str(),
+            Some("ERROR: The file this would change could not be looked up. project_append_file was not run and nothing was changed."),
+            "{at}"
+        );
+        let stores: Vec<String> = script
+            .stores
+            .lock()
+            .unwrap()
+            .iter()
+            .map(js::stringify)
+            .collect();
+        assert!(
+            !stores.iter().any(|s| s.contains("revokeChatGrant")),
+            "{at}: {stores:?}"
+        );
+        assert!(
+            stores.iter().any(|s| s.contains(r#""event":"tool.denied""#)
+                && s.contains(r#""reason":"edit-target""#)),
+            "{at}: {stores:?}"
+        );
+        assert!(script.executions.lock().unwrap().is_empty(), "{at}");
+    }
+}
+
+/// Core keeps a turn whose prepared frame is longer than its cap in Node (rust-chat-native.cjs
+/// `frameTooLarge`); the front's reader must take every frame up to that cap, or such a turn would fail
+/// after core let it go.
+#[test]
+fn the_reader_takes_every_frame_core_hands_off() {
+    let f = fixture();
+    let cap = f
+        .get("preparedCap")
+        .as_num()
+        .expect("the recording names core's cap") as usize;
+    assert!(
+        cap <= chat_turn::handoff::PREPARED_CAP,
+        "core {cap} > front {}",
+        chat_turn::handoff::PREPARED_CAP
+    );
+}
+
+/// The front spawns the turn on its runtime: `native::run` must be `Send` for a `Send + Sync` host.
+#[test]
+fn the_native_turn_can_be_spawned() {
+    fn spawnable<T: Send>(_: &T) {}
+    let f = fixture();
+    let JValue::Arr(cases) = f.get("cases") else {
+        panic!()
+    };
+    let prepared = Prepared::read(cases[0].get("handoff").get("prepared")).unwrap();
+    let script = Script::new(cases[0].clone());
+    let process = Process::default();
+    let helpers = Helpers {
+        clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
+        announces_tool_action: &chat_turn::helpers::announces_tool_action,
+        announced_note: chat_turn::helpers::ANNOUNCED_NOTE,
+        reduce_tool_result: &|text, cap| chat_turn::reduce::reduce_tool_result(text, cap).text,
+        source_links: &chat_turn::helpers::source_links,
+        fallback_text: &|s| chat_turn::helpers::fallback_text(s),
+        final_answer_note: chat_turn::helpers::FINAL_ANSWER_NOTE,
+        tool_result_cap: 8000,
+    };
+    let turn = native::run(&script, &process, &helpers, &prepared);
+    spawnable(&turn);
 }
 
 /// What core wrote for each hand-off, on the front's NDJSON wire (chat port S7: rust-chat-wire.cjs writes

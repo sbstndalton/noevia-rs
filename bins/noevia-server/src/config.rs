@@ -117,6 +117,9 @@ pub struct Config {
     /// store is configured, which the supervisor always does and Node needs): a front that could
     /// not tell a running reply from an interrupted one never starts there.
     pub start_id: Option<String>,
+    /// Track R8: which accounts' chat turns the native executor runs (`NOEVIA_CHAT_EXECUTOR`, chat_native.rs);
+    /// default: none (every turn relayed to core as before). A value it cannot read refuses startup.
+    pub chat_executor: crate::chat_native::Switch,
     /// GET /api/providers/chatgpt (M6, sbstndalton/noevia#1373). An invalid
     /// NOEVIA_FEATURE_CHATGPT_OAUTH refuses startup (Node does not start with one either).
     pub rust_chatgpt_status: Option<ChatgptStatus>,
@@ -396,6 +399,8 @@ impl Config {
             *slot = server_features::parse_env(get(server_features::spec(feature).env).as_deref())
                 .map_err(str::to_owned)?;
         }
+        let chat_executor =
+            crate::chat_native::Switch::parse(get("NOEVIA_CHAT_EXECUTOR").as_deref())?;
         let research = std::sync::Arc::new(crate::research_routes::Research::new(
             crate::research_routes::Settings::from_lookup(
                 &get,
@@ -405,6 +410,7 @@ impl Config {
         // #2516: off unless AUTOTUNE_RUNNER_IMPL=rust (Core then builds no auto-tuner).
         let autotune = crate::autotune_runner::build(&maint, &research, &get);
         Ok(Config {
+            chat_executor,
             host,
             port,
             trust_proxy: get("TRUST_PROXY").as_deref() == Some("true"),
