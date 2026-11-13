@@ -1,0 +1,2100 @@
+{
+ "v": 1,
+ "limit": 60,
+ "cases": [
+  {
+   "id": "plain",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "whitespace",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": " \n{\"message\":\"hi\"}\t "
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "empty-body",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": ""
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6ImludmFsaWQgSlNPTiJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "invalid-json",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{nope"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6ImludmFsaWQgSlNPTiJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "trailing-garbage",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"a\"} x"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6ImludmFsaWQgSlNPTiJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "bom",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "﻿{\"message\":\"a\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6ImludmFsaWQgSlNPTiJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "null",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "null"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InJlcXVlc3QgYm9keSBtdXN0IGJlIGEgSlNPTiBvYmplY3QifQ=="
+     }
+    }
+   ]
+  },
+  {
+   "id": "array",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "[]"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InJlcXVlc3QgYm9keSBtdXN0IGJlIGEgSlNPTiBvYmplY3QifQ=="
+     }
+    }
+   ]
+  },
+  {
+   "id": "string",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "\"hi\""
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InJlcXVlc3QgYm9keSBtdXN0IGJlIGEgSlNPTiBvYmplY3QifQ=="
+     }
+    }
+   ]
+  },
+  {
+   "id": "number",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "5"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InJlcXVlc3QgYm9keSBtdXN0IGJlIGEgSlNPTiBvYmplY3QifQ=="
+     }
+    }
+   ]
+  },
+  {
+   "id": "number-overflow-top",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "1e400"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InJlcXVlc3QgYm9keSBtdXN0IGJlIGEgSlNPTiBvYmplY3QifQ=="
+     }
+    }
+   ]
+  },
+  {
+   "id": "invalid-utf8",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "hex": "7b226d657373616765223a2261ffc32862227d"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "invalid-utf8-structure",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "hex": "7b226d657373616765223a226122ff7d"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6ImludmFsaWQgSlNPTiJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "deep-and-odd",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"x\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]],\"n\":1e400,\"s\":\"\\udc00􏿿\",\"message\":\"m\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "exactly-cap",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "big": 33554432
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "over-cap",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "big": 33554433
+     },
+     "node": {
+      "status": 413,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IlRoaXMgY2hhdCBpcyB0b28gbGFyZ2UgdG8gY29udGludWU7IHN0YXJ0IGEgbmV3IGNoYXQuIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "mode-chat",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"chat\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "mode-escaped-chat",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"ch\\u0061t\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "mode-code",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"code\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6Im1vZGUgbXVzdCBiZSBcImNoYXRcIiBvciBcImNvd29ya1wiIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "mode-null",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":null,\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6Im1vZGUgbXVzdCBiZSBcImNoYXRcIiBvciBcImNvd29ya1wiIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "mode-number",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":1,\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6Im1vZGUgbXVzdCBiZSBcImNoYXRcIiBvciBcImNvd29ya1wiIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "mode-case",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"Chat\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6Im1vZGUgbXVzdCBiZSBcImNoYXRcIiBvciBcImNvd29ya1wiIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "mode-duplicate-last-wins",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"code\",\"mode\":\"chat\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "mode-duplicate-last-refused",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"chat\",\"mode\":\"code\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6Im1vZGUgbXVzdCBiZSBcImNoYXRcIiBvciBcImNvd29ya1wiIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "skill-cowork",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":\"p1\",\"message\":\"x\",\"skill\":\"skill_00000000000000000000000000000000@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"turnToolboxes\":\"bad\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkEgcGlubmVkIFNraWxsIGFwcGxpZXMgdG8gY2hhdCB0dXJucyBvbmx5OyBDb3dvcmsgdGFza3MgZG8gbm90IGFjY2VwdCBvbmUgeWV0LiIsImNvZGUiOiJza2lsbF9waW5fdW5zdXBwb3J0ZWRfbW9kZSJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "skill-null-cowork-member",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":\"p1\",\"message\":\"x\",\"skill\":null}"
+     },
+     "node": {
+      "status": 403,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkNvd29yayBydW5zIHRoZSBjb2RpbmcgaGFybmVzcywgd2hpY2ggaXMgbGltaXRlZCB0byBhZG1pbmlzdHJhdG9ycy4iLCJtb2RlIjoiY293b3JrIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "skill-chat",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"chat\",\"message\":\"x\",\"skill\":\"anything\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "skill-false-cowork",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":\"p1\",\"message\":\"x\",\"skill\":false}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkEgcGlubmVkIFNraWxsIGFwcGxpZXMgdG8gY2hhdCB0dXJucyBvbmx5OyBDb3dvcmsgdGFza3MgZG8gbm90IGFjY2VwdCBvbmUgeWV0LiIsImNvZGUiOiJza2lsbF9waW5fdW5zdXBwb3J0ZWRfbW9kZSJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-string",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":\"web-search\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-number-item",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[1]}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-empty-id",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[\"\"]}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-null",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":null}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-object",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":{\"a\":\"b\"}}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-21",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[\"bb0\",\"bb1\",\"bb2\",\"bb3\",\"bb4\",\"bb5\",\"bb6\",\"bb7\",\"bb8\",\"bb9\",\"bb0\",\"bb1\",\"bb2\",\"bb3\",\"bb4\",\"bb5\",\"bb6\",\"bb7\",\"bb8\",\"bb9\",\"bb0\"]}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-id-81",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"]}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-nested",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[[\"a\"]]}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-20",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[\"bb0\",\"bb1\",\"bb2\",\"bb3\",\"bb4\",\"bb5\",\"bb6\",\"bb7\",\"bb8\",\"bb9\",\"bb0\",\"bb1\",\"bb2\",\"bb3\",\"bb4\",\"bb5\",\"bb6\",\"bb7\",\"bb8\",\"bb9\"]}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-empty-list",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[]}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-id-80",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"]}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-emoji-40",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-emoji-41",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀x\"]}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-lone-surrogates-80",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[\"\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\"]}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-lone-surrogates-81",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":[\"\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\\ud800\"]}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "images-13",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnImageIds\":[\"bb0\",\"bb1\",\"bb2\",\"bb3\",\"bb4\",\"bb5\",\"bb6\",\"bb7\",\"bb8\",\"bb9\",\"bb0\",\"bb1\",\"bb2\"]}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5JbWFnZUlkcyBtdXN0IGJlIGEgbGlzdCBvZiBhdCBtb3N0IDEyIGltYWdlIHNvdXJjZSBpZHMifQ=="
+     }
+    }
+   ]
+  },
+  {
+   "id": "images-12",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnImageIds\":[\"bb0\",\"bb1\",\"bb2\",\"bb3\",\"bb4\",\"bb5\",\"bb6\",\"bb7\",\"bb8\",\"bb9\",\"bb0\",\"bb1\"]}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "images-string",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnImageIds\":\"img\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5JbWFnZUlkcyBtdXN0IGJlIGEgbGlzdCBvZiBhdCBtb3N0IDEyIGltYWdlIHNvdXJjZSBpZHMifQ=="
+     }
+    }
+   ]
+  },
+  {
+   "id": "toolbox-before-images",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\",\"turnToolboxes\":\"x\",\"turnImageIds\":\"y\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6InR1cm5Ub29sYm94ZXMgbXVzdCBiZSBhIGxpc3Qgb2YgYXQgbW9zdCAyMCB0b29sYm94IGlkcyJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cowork-member",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":\"p1\",\"message\":\"x\"}"
+     },
+     "node": {
+      "status": 403,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkNvd29yayBydW5zIHRoZSBjb2RpbmcgaGFybmVzcywgd2hpY2ggaXMgbGltaXRlZCB0byBhZG1pbmlzdHJhdG9ycy4iLCJtb2RlIjoiY293b3JrIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "cowork-member-no-project",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"message\":\"x\"}"
+     },
+     "node": {
+      "status": 403,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkNvd29yayBydW5zIHRoZSBjb2RpbmcgaGFybmVzcywgd2hpY2ggaXMgbGltaXRlZCB0byBhZG1pbmlzdHJhdG9ycy4iLCJtb2RlIjoiY293b3JrIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "cowork-harness-off",
+   "account": {
+    "role": "admin",
+    "diary": true,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":\"p1\",\"message\":\"x\"}"
+     },
+     "node": {
+      "status": 409,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkNvd29yayBuZWVkcyB0aGUgY29kaW5nIGhhcm5lc3MsIHdoaWNoIGlzIG9mZiBvbiB0aGlzIHNlcnZlci4iLCJtb2RlIjoiY293b3JrIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "cowork-harness-off-no-project",
+   "account": {
+    "role": "admin",
+    "diary": true,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"message\":\"x\"}"
+     },
+     "node": {
+      "status": 409,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkNvd29yayBuZWVkcyB0aGUgY29kaW5nIGhhcm5lc3MsIHdoaWNoIGlzIG9mZiBvbiB0aGlzIHNlcnZlci4iLCJtb2RlIjoiY293b3JrIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "cowork-no-project",
+   "account": {
+    "role": "admin",
+    "diary": true,
+    "harness": true
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"message\":\"x\"}"
+     },
+     "node": {
+      "status": 409,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkNvd29yayBydW5zIGluc2lkZSBhIHByb2plY3Q7IG9wZW4gYSBwcm9qZWN0IGNoYXQgZmlyc3QuIiwibW9kZSI6ImNvd29yayJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cowork-empty-project",
+   "account": {
+    "role": "admin",
+    "diary": true,
+    "harness": true
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":\"\",\"message\":\"x\"}"
+     },
+     "node": {
+      "status": 409,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkNvd29yayBydW5zIGluc2lkZSBhIHByb2plY3Q7IG9wZW4gYSBwcm9qZWN0IGNoYXQgZmlyc3QuIiwibW9kZSI6ImNvd29yayJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cowork-number-project",
+   "account": {
+    "role": "admin",
+    "diary": true,
+    "harness": true
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":7,\"message\":\"x\"}"
+     },
+     "node": {
+      "status": 409,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkNvd29yayBydW5zIGluc2lkZSBhIHByb2plY3Q7IG9wZW4gYSBwcm9qZWN0IGNoYXQgZmlyc3QuIiwibW9kZSI6ImNvd29yayJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cowork-start",
+   "account": {
+    "role": "admin",
+    "diary": true,
+    "harness": true
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":\"p1\",\"repository\":\"demo\",\"message\":\"fix the test\"}"
+     },
+     "node": {
+      "pass": "cowork"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cowork-start-diary-space",
+   "account": {
+    "role": "admin",
+    "diary": false,
+    "harness": true
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":\"p1\",\"spaceId\":\"diary\",\"message\":\"x\"}"
+     },
+     "node": {
+      "pass": "cowork"
+     }
+    }
+   ]
+  },
+  {
+   "id": "diary-off",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"spaceId\":\"diary\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 404,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkRpYXJ5IGFkZC1vbiBpcyBkaXNhYmxlZCJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "diary-on",
+   "account": {
+    "role": "member",
+    "diary": true,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"spaceId\":\"diary\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "diary-escaped",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"spaceId\":\"di\\u0061ry\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 404,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IkRpYXJ5IGFkZC1vbiBpcyBkaXNhYmxlZCJ9"
+     }
+    }
+   ]
+  },
+  {
+   "id": "diary-other-space",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"spaceId\":\"free\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "diary-case",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"spaceId\":\"Diary\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "diary-number",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"spaceId\":1,\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "diary-after-shape",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"spaceId\":\"diary\",\"mode\":\"x\",\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6Im1vZGUgbXVzdCBiZSBcImNoYXRcIiBvciBcImNvd29ya1wiIn0="
+     }
+    }
+   ]
+  },
+  {
+   "id": "admin-plain",
+   "account": {
+    "role": "admin",
+    "diary": true,
+    "harness": true
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "extra-fields",
+   "account": {
+    "role": "member",
+    "diary": false,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"__proto__\":{\"mode\":\"code\"},\"constructor\":1,\"message\":\"m\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    }
+   ]
+  },
+  {
+   "id": "budget-shared-with-the-diary-local-exchange",
+   "account": {
+    "role": "member",
+    "diary": true,
+    "harness": false
+   },
+   "steps": [
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "diary"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{nope"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6ImludmFsaWQgSlNPTiJ9"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "big": 33554433
+     },
+     "node": {
+      "status": 413,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IlRoaXMgY2hhdCBpcyB0b28gbGFyZ2UgdG8gY29udGludWU7IHN0YXJ0IGEgbmV3IGNoYXQuIn0="
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"x\"}"
+     },
+     "node": {
+      "status": 400,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6Im1vZGUgbXVzdCBiZSBcImNoYXRcIiBvciBcImNvd29ya1wiIn0="
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "pass": "turn"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 429,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IlRvbyBtYW55IHJlcXVlc3RzIOKAlCB0aGUgbW9kZWwgZW5kcG9pbnQgaXMgc2hhcmVkOyB3YWl0IGEgbW9tZW50IGFuZCB0cnkgYWdhaW4ifQ=="
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 429,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IlBsZWFzZSB3YWl0IGJlZm9yZSBzZW5kaW5nIGFub3RoZXIgbWVzc2FnZSJ9"
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{nope"
+     },
+     "node": {
+      "status": 429,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IlRvbyBtYW55IHJlcXVlc3RzIOKAlCB0aGUgbW9kZWwgZW5kcG9pbnQgaXMgc2hhcmVkOyB3YWl0IGEgbW9tZW50IGFuZCB0cnkgYWdhaW4ifQ=="
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "big": 33554433
+     },
+     "node": {
+      "status": 429,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IlRvbyBtYW55IHJlcXVlc3RzIOKAlCB0aGUgbW9kZWwgZW5kcG9pbnQgaXMgc2hhcmVkOyB3YWl0IGEgbW9tZW50IGFuZCB0cnkgYWdhaW4ifQ=="
+     }
+    },
+    {
+     "route": "chat",
+     "body": {
+      "text": "{\"mode\":\"cowork\",\"projectId\":\"p1\",\"message\":\"x\"}"
+     },
+     "node": {
+      "status": 429,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IlRvbyBtYW55IHJlcXVlc3RzIOKAlCB0aGUgbW9kZWwgZW5kcG9pbnQgaXMgc2hhcmVkOyB3YWl0IGEgbW9tZW50IGFuZCB0cnkgYWdhaW4ifQ=="
+     }
+    },
+    {
+     "route": "diary",
+     "body": {
+      "text": "{\"message\":\"hi\"}"
+     },
+     "node": {
+      "status": 429,
+      "headers": {
+       "content-type": "application/json",
+       "cache-control": "no-store"
+      },
+      "body": "eyJlcnJvciI6IlBsZWFzZSB3YWl0IGJlZm9yZSBzZW5kaW5nIGFub3RoZXIgbWVzc2FnZSJ9"
+     }
+    }
+   ]
+  }
+ ]
+}
