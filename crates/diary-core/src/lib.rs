@@ -4,8 +4,10 @@
 //! Nothing here does I/O, reads the environment or touches the database; nothing calls this crate
 //! in production yet, so it changes no behaviour.
 
+pub mod assembler;
 pub mod context;
 pub mod follow_up;
+pub mod pyconv;
 pub mod retrieval_trace;
 pub mod tokens;
 mod unicode15;

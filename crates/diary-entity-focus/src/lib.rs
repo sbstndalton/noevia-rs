@@ -32,6 +32,17 @@ pub const EPSILON: f64 = 1e-9;
 
 /// Bounded CPython 3.12 / Unicode 15 lowercase, including contextual final sigma.
 /// Shared with metadata ordering; static tables only, no host Unicode or I/O.
+/// Python `str.isalnum()` for one character (CPython 3.12 / Unicode 15 tables); `\w` in a `str`
+/// regex is this or `_`.
+pub fn python_is_alnum(c: char) -> bool {
+    lexical::py_alnum(c)
+}
+
+/// Python `str.isdecimal()` for one character: what `\d` matches in a `str` regex.
+pub fn python_is_decimal(c: char) -> bool {
+    lexical::decimal_digit(c).is_some()
+}
+
 pub fn python_lower(value: &str) -> Result<String, Error> {
     if value.len() > MAX_QUERY_BYTES {
         return Err(Error::Capacity);

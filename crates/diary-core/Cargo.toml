@@ -13,6 +13,9 @@ workspace = true
 [dependencies]
 serde_json = "1"
 diary-entity-focus = { path = "../diary-entity-focus" }
+diary-temporal-focus = { path = "../diary-temporal-focus" }
+diary-score-gap = { path = "../diary-score-gap" }
+chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 sha2 = "0.10"

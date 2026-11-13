@@ -4,8 +4,8 @@
 //! embeddings, the query or credentials: `EntryRef` keeps the id, the day and the leading `HH:MM`
 //! of the header, nothing else.
 //!
-//! Not ported here: the operator and per-request switch (`trace_requested`, an I/O wrapper), the
-//! entity-focus stage (`set_focus`, stage 1b), and the `SafeTrace` wrapper. Rust returns errors
+//! Not ported here: the operator and per-request switch (`trace_requested`, an I/O wrapper) and
+//! the `SafeTrace` wrapper. The entity-focus stage block is built by the assembler. Rust returns errors
 //! explicitly, so the `failed` flag is kept as a plain field and `attach` drops a failed trace the
 //! same way the Python does.
 
@@ -124,6 +124,7 @@ pub struct RetrievalTrace {
     loaded: Vec<Loaded>,
     counts: Map<String, Value>,
     direct_fallback: Value,
+    focus: Value,
     score_gap: Value,
 }
 
@@ -144,6 +145,7 @@ impl RetrievalTrace {
             loaded: Vec::new(),
             counts: zero_counts(),
             direct_fallback: json!({"used": false, "found": false, "tokens": 0}),
+            focus: json!({"checked": false}),
             score_gap: json!({"gap": null, "applied": false, "best": null, "removed": []}),
         }
     }
@@ -218,6 +220,12 @@ impl RetrievalTrace {
         self.score_gap = Value::Object(block);
     }
 
+    /// Stage 1b (entity focus, services#116): the block as the assembler builds it, counts and
+    /// entry refs only (Python `set_focus`).
+    pub fn set_focus(&mut self, block: Value) {
+        self.focus = block;
+    }
+
     /// Record a chunk that went into the context.
     pub fn add_loaded(&mut self, row: &Value, tokens: u64, chars: u64) {
         self.loaded.push(Loaded {
@@ -266,7 +274,7 @@ impl RetrievalTrace {
             "budget": self.budget,
             "counts": self.counts,
             "direct_fallback": self.direct_fallback,
-            "focus": {"checked": false},
+            "focus": self.focus,
             "score_gap": self.score_gap,
         })
     }
