@@ -16,8 +16,12 @@ const CALIBRATION = path.join(SERVER, 'llamacpp-calibration.cjs');
 const RUNNER = path.join(SERVER, 'llamacpp-full-autotune.cjs');
 const MANAGER = path.join(SERVER, 'llamacpp-manager.cjs');
 const TEST = path.join(SERVER, 'llamacpp-full-autotune.test.cjs');
+const SCENARIOS = path.join(__dirname, 'scenarios.test.cjs');
+// TRACE_PREFIX: prepended to every trace file name (scenario traces are `S<NNN>-...`).
+const PREFIX = process.env.TRACE_PREFIX || '';
 const sha = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const SOURCES = { calibration: sha(CALIBRATION), manager: sha(MANAGER), runner: sha(RUNNER), test: sha(TEST) };
+const SOURCES = { calibration: sha(CALIBRATION), manager: sha(MANAGER), runner: sha(RUNNER),
+  test: sha(PREFIX ? SCENARIOS : TEST) };
 const T0 = 1700000000000;
 const als = new AsyncLocalStorage();
 const real = { writeFileSync: fs.writeFileSync, randomUUID: crypto.randomUUID, randomInt: crypto.randomInt };
@@ -195,7 +199,18 @@ function wrapDeps(tr, deps) {
     return p.then(r => { if (ev) { tr.clock += Math.max(1, Number(ms) || 0); settle(tr, ev, {}); } return r; },
       e => { if (ev) settle(tr, ev, { throws: thrown(e) }); throw e; });
   };
-  if (deps.readMemory) {
+  // A calibrator whose memory interval never fires (memoryPoll >= 1e8) reads memory only from its own
+  // code: every read is recorded, in order, and may vary.
+  const perCall = Number(deps.timeouts?.memoryPoll) >= 1e8;
+  if (deps.readMemory && perCall) {
+    const realRead = deps.readMemory;
+    tr.config.readMemory = 'calls';
+    d.readMemory = function () {
+      const v = foreign(tr, () => realRead.apply(this, arguments));
+      if (recording() === tr) syncEvent(tr, { dep: 'readMemory', result: v == null ? null : v });
+      return v;
+    };
+  } else if (deps.readMemory) {
     const realRead = deps.readMemory;
     d.readMemory = function () {
       const v = foreign(tr, () => realRead.apply(this, arguments));
@@ -306,12 +321,13 @@ calibration.createCalibrator = function createCalibrator(deps) {
 
 const full = require(RUNNER);
 const realFull = full.createFullAutotuner;
-full.createFullAutotuner = function createFullAutotuner(deps) {
-  if (!deps || typeof deps.contextFactory !== 'function') return realFull.call(this, deps);
+// The recording contextFactory for a runner's deps (also handed to scenarios.test.cjs, which drives
+// private calibrators without a runner).
+function recordingFactory(deps) {
   patchPresets(deps.presets);
   patchMaintenance(deps.maintenance);
   const factory = deps.contextFactory;
-  return realFull.call(this, { ...deps, contextFactory: hooks => {
+  return hooks => {
     const callbacks = Object.keys(hooks || {});
     const tr = newTrace(hooks && typeof hooks.contextCurrent === 'function' ? 'context' : 'fill', callbacks);
     const wrapped = wrapHooks(tr, hooks || {});
@@ -319,7 +335,12 @@ full.createFullAutotuner = function createFullAutotuner(deps) {
     let ctx;
     try { ctx = als.run({ tr, foreign: false }, () => factory(wrapped)); } finally { if (creating === tr) { creating = null; unreplayable(tr, 'no private calibrator was created'); } }
     return wrapContext(tr, ctx);
-  } });
+  };
+}
+globalThis.__privateCalibratorFactory = recordingFactory;
+full.createFullAutotuner = function createFullAutotuner(deps) {
+  if (!deps || typeof deps.contextFactory !== 'function') return realFull.call(this, deps);
+  return realFull.call(this, { ...deps, contextFactory: recordingFactory(deps) });
 };
 
 crypto.randomInt = function randomInt(...args) {
@@ -381,7 +402,7 @@ function write() {
     const headText = JSON.stringify(head);
     const body = events.map(e => JSON.stringify(e)).join(',\n');
     const text = headText.slice(0, -1) + ',"events":[\n' + body + '\n]}\n';
-    const name = String(tr.ordinal).padStart(3, '0') + '-' + slug(tr.test) + '-' + tr.instance + '.json';
+    const name = PREFIX + String(tr.ordinal).padStart(3, '0') + '-' + slug(tr.test) + '-' + tr.instance + '.json';
     real.writeFileSync(path.join(OUT, name), scrub(text));
   }
 }
