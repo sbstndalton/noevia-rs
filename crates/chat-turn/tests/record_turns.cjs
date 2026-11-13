@@ -26,6 +26,9 @@
 //   stores    the calls into the stores (saveChats, chatTitles.save, transcripts.appendIfLast, ...)
 //   files     the workspace files after the turn (context state, partial), parsed, run-local ids out
 //   record    createTurnRecord() fed with the events: the transcript entry the client keeps
+//   handoff   (a core with rust-chat-native.cjs) the same turn asked for by the front's native executor:
+//             { prepared: the frame | null, refused: the logged reason | null, before: events before the frame,
+//               requests: engine requests made before it }
 // The tool list a request offers is long and repeats: each distinct list is kept once under `tools` at the top,
 // and a request body's `tools` is { "$tools": <key> } (the first 16 hex of the list's JSON sha256).
 // The source files' sha256 are checked, so a changed Node file needs a fresh recording.
@@ -87,7 +90,9 @@ if (PINNED) {
 }
 
 // The Node modules log to the console; stdout is the fixture, so their lines go to stderr.
-for (const level of ['log', 'info', 'warn', 'error']) console[level] = (...args) => process.stderr.write(`${args.map(String).join(' ')}\n`);
+// A turn's own lines are also kept while it runs (`logged`), for the hand-off's refusal reason.
+let logged = [];
+for (const level of ['log', 'info', 'warn', 'error']) console[level] = (...args) => { const line = args.map(String).join(' '); logged.push(line); process.stderr.write(`${line}\n`); };
 
 // ── Determinism ─────────────────────────────────────────────────────────────────────────────
 const FIXED_NOW = Date.UTC(2026, 10, 13, 12, 0, 0);
@@ -202,9 +207,12 @@ function listFiles(dir) {
   return out;
 }
 
-async function runTurn(c) {
+// `handoff`: the front's native executor asks for the turn (rust-chat-native.cjs, when the core has it). The turn
+// then ends after its preparation with a `prepared` frame, or goes on in Node (the refusal is logged).
+async function runTurn(c, { handoff = false } = {}) {
   uuidCounter = 0;
   mathSeed = 0x2026;
+  logged = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-turn-'));
   try {
     const user = { id: 'qa-user', role: 'admin' };
@@ -309,11 +317,18 @@ async function runTurn(c) {
       recordToolUse: (_ws, name) => store('recordToolUse', { name }),
       chatTitles: c.titles ? { save: (listId, chatId, title, first) => store('chatTitles.save', { listId, chatId, title, first }), autoNamed: (listId, chatId, first) => { store('chatTitles.autoNamed', { listId, chatId, first }); return c.titles.autoNamed !== false; } } : null,
       sourceWaitMs: 0, streamIdleMs: c.streamIdleMs ?? 120000,
+      ...(handoff ? { nativeHandoff: { requested: () => true, supervising: () => false } } : {}),
     });
     const body = { message: 'QA hello', projectId: project ? project.id : undefined, chatId: 'qa-chat-1', history: [], ...(c.body || {}) };
     await handler.handleChat({}, res, body, { user });
     await new Promise((resolve) => setImmediate(resolve)); // the response's finish/close and what they release
     if (out.keepAlives) throw new Error(`${c.name}: a keep-alive was written; the turn ran into the 5 s heartbeat`);
+    if (handoff) {
+      const last = out.events[out.events.length - 1];
+      const prepared = last?.type === 'prepared' ? last : null;
+      const refused = logged.map((l) => /^\[chat\] native executor not used for this turn: (.+)$/.exec(l)?.[1]).find(Boolean) || null;
+      return { prepared, refused, before: prepared ? out.events.length - 1 : null, requests: prepared ? log.requests.length : null };
+    }
     // The script is exact: every round it names is asked for, and no other.
     if (upstream.used() !== (c.rounds || []).length) throw new Error(`${c.name}: the turn made ${upstream.used()} engine requests, the script has ${(c.rounds || []).length}`);
     const record = createTurnRecord({ now: () => FIXED_NOW });
@@ -434,7 +449,13 @@ const CASES = [
 
 (async () => {
   const cases = [];
-  for (const c of CASES) cases.push(await runTurn(c));
+  // The hand-off is recorded when the core has it (track R8, noevia-core#362): what the native executor gets.
+  const withHandoff = fs.existsSync(path.join(server, 'rust-chat-native.cjs'));
+  for (const c of CASES) {
+    const turn = await runTurn(c);
+    if (withHandoff && turn.http) turn.handoff = await runTurn(c, { handoff: true });
+    cases.push(turn);
+  }
   const tools = {};
   for (const c of cases) for (const r of c.requests) {
     if (!Array.isArray(r.body?.tools)) continue;
