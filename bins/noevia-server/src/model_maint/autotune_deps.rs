@@ -4,8 +4,9 @@
 //! maintenance hold, the reload guard, the evidence store and the Rust decisions Node reached
 //! through dav-parse.wasm. Built only when `AUTOTUNE_RUNNER_IMPL=rust`; nothing here runs otherwise.
 
+use super::autotune_context::{Limits, PrivateCalibrator};
 use super::{Hold, Maint};
-use autotune_runner::{Abort, Call, Context, Deps, Fail, Quirks, Release, Spawn, StageHooks};
+use autotune_runner::{Abort, Call, Deps, Fail, Quirks, Release, Spawn, StageHooks};
 use js_json::{wtf16, JValue};
 use serde_json::Value;
 use std::future::Future;
@@ -21,8 +22,6 @@ pub fn front_owns_runner(get: &impl Fn(&str) -> Option<String>) -> bool {
     get(IMPL_ENV).as_deref() == Some("rust")
 }
 
-/// What the runner cannot use until the private calibrator is native (step C1 of #2516).
-const CONTEXT_UNAVAILABLE: &str = "The context worker state changed or is unavailable.";
 /// The poll while chat is busy (`holdWhenIdle` waits for an idle engine).
 const IDLE_POLL: Duration = Duration::from_millis(500);
 /// How long a facts read from Core may take before the last answer stands.
@@ -122,6 +121,9 @@ pub struct FrontDeps {
     /// closed meanwhile): the lease authority's recovery ticket and this process's admission fence.
     owed: Mutex<std::collections::HashMap<String, (String, Option<super::gate::AdmissionFence>)>>,
     allow_below_q5: bool,
+    /// The private calibrator's free-memory floor (index.cjs:
+    /// `Number(LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB) || 2`).
+    memory_floor_gib: f64,
     /// EMBEDDING_MODEL (or EMBED_MODEL), EMBEDDING_NEXT_MODEL and RERANK_MODEL, until Core answers.
     env_sidecars: Vec<String>,
 }
@@ -157,6 +159,13 @@ impl FrontDeps {
             allow_below_q5: autotune_runner::kv::allow_below_q5(
                 get(autotune_runner::kv::KV_FLOOR_OVERRIDE_ENV).as_deref(),
             ),
+            memory_floor_gib: get("LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB")
+                .map(|v| {
+                    llamacpp_autoconfig::string_to_number(&v.encode_utf16().collect::<Vec<_>>())
+                        .unwrap_or(f64::NAN)
+                })
+                .filter(|n| *n != 0.0 && !n.is_nan())
+                .unwrap_or(2.0),
         }
     }
 
@@ -211,10 +220,7 @@ impl FrontDeps {
     /// `maintenance.assertCovered(stepMs)`: the hold (if any) still excludes everyone and covers a
     /// step of `step`.
     fn covered_for(&self, step: Duration) -> Result<(), Fail> {
-        match self.current.get() {
-            Some(hold) if !hold.may_start(step) => Err(coverage_error()),
-            _ => Ok(()),
-        }
+        covered(&self.current, step)
     }
 
     fn token(&self) -> Option<String> {
@@ -228,20 +234,124 @@ impl FrontDeps {
             .ok_or_else(|| Fail::new("The model server is not configured."))
     }
 
-    fn presets(&self) -> Result<crate::model_sizing::Presets, Fail> {
-        let ini =
-            self.maint.ini.as_ref().ok_or_else(|| {
-                Fail::new("Native preset editing; configure LLAMACPP_PRESET_PATH")
-            })?;
-        ini.read().map_err(|t| Fail::new(t.message))
-    }
-
     /// The router's own request, carrying the hold's token, with Node's budget check before a
     /// load (llamacpp-manager.cjs `request`: `overBudget(model)` answers a 409).
     async fn send(&self, call: &Call, abort: Option<&Abort>) -> Result<JValue, Fail> {
+        self.engine().send(call, abort).await
+    }
+
+    /// The private calibrator's view of the same engine, store and hold.
+    pub(crate) fn engine(&self) -> FrontEngine {
+        FrontEngine {
+            maint: Arc::clone(&self.maint),
+            current: Arc::clone(&self.current),
+            facts: Arc::clone(&self.facts),
+        }
+    }
+
+    /// long-profile.cjs `fileOf(row, presets)`: the row's `--model`, else its models.ini line.
+    fn file_of(&self, row: &JValue) -> Option<String> {
+        autotune_runner::model_path_from_args(row.get("status").get("args")).or_else(|| {
+            let id = row.get("id").as_str()?;
+            presets_of(&self.maint).ok()?.files(id).0
+        })
+    }
+}
+
+/// The engine, models.ini store and hold the runner works under, as the auto-tune's private
+/// calibrator uses them (`autotune_context::Engine`, the manager's `createCalibrator` deps for a
+/// private stage): the same covered request (`coveredRequest`: coverage for the whole step, the
+/// load decision, the hold's token, the end of a call when the hold is lost).
+#[derive(Clone)]
+pub struct FrontEngine {
+    maint: Arc<Maint>,
+    current: Arc<Current>,
+    facts: Arc<Mutex<(f64, Option<std::collections::HashSet<String>>)>>,
+}
+
+/// `assertCovered(step)` for the hold in `current`.
+fn covered(current: &Current, step: Duration) -> Result<(), Fail> {
+    match current.get() {
+        Some(hold) if !hold.may_start(step) => Err(coverage_error()),
+        _ => Ok(()),
+    }
+}
+
+/// The live models.ini, as the auto-tune's preset store reads it.
+fn presets_of(maint: &Maint) -> Result<crate::model_sizing::Presets, Fail> {
+    let ini = maint
+        .ini
+        .as_ref()
+        .ok_or_else(|| Fail::new("Native preset editing; configure LLAMACPP_PRESET_PATH"))?;
+    ini.read().map_err(|t| Fail::new(t.message))
+}
+
+/// `presets.get(model)`.
+fn presets_get_of(maint: &Maint, model: &str) -> JValue {
+    let Ok(p) = presets_of(maint) else {
+        return JValue::obj([
+            ("model", JValue::from(model)),
+            ("exists", JValue::Bool(false)),
+        ]);
+    };
+    let opts = |name: &str| {
+        p.span(name).map_or(JValue::Obj(Vec::new()), |(_, _, o)| {
+            JValue::Obj(
+                o.iter()
+                    .map(|(k, v)| ((*k).to_string(), JValue::from(v.as_str())))
+                    .collect(),
+            )
+        })
+    };
+    JValue::obj([
+        ("model", JValue::from(model)),
+        ("revision", JValue::from(p.revision.as_str())),
+        ("exists", JValue::Bool(p.span(model).is_some())),
+        ("options", opts(model)),
+        ("defaults", opts("*")),
+    ])
+}
+
+/// `presets.snapshot()`: `(text, revision)`.
+fn snapshot_of(maint: &Maint) -> (String, String) {
+    match maint.ini.as_ref().and_then(|ini| ini.snapshot().ok()) {
+        Some(s) => (s.text, s.revision),
+        None => (String::new(), String::new()),
+    }
+}
+
+/// `presets.commit(candidate, { backup })` under the hold in `current`.
+async fn commit_of(
+    maint: &Maint,
+    current: &Current,
+    candidate: &JValue,
+    backup: bool,
+) -> Result<(), Fail> {
+    let ini = maint
+        .ini
+        .clone()
+        .ok_or_else(|| Fail::new("Native preset editing; configure LLAMACPP_PRESET_PATH"))?;
+    covered(current, Duration::ZERO)?;
+    let c = super::ini::Candidate {
+        base_revision: candidate
+            .get("baseRevision")
+            .as_str()
+            .unwrap_or("")
+            .to_owned(),
+        text: candidate.get("text").as_str().unwrap_or("").to_owned(),
+        before: snapshot_of(maint).0,
+    };
+    ini.commit_reconciled(&c, backup).await.map_err(|e| Fail {
+        status: Some(e.status),
+        ..Fail::new(e.message)
+    })
+}
+
+impl FrontEngine {
+    async fn send(&self, call: &Call, abort: Option<&Abort>) -> Result<JValue, Fail> {
         // Row J: every router step first checks the lease covers the whole step (`coveredRequest`:
         // `assertCovered(timeout)`), and a step in flight ends when the lease is lost.
-        self.covered_for(Duration::from_millis(call.timeout_ms))?;
+        covered(&self.current, Duration::from_millis(call.timeout_ms))?;
         if call.method == "POST" && call.path == "/models/load" {
             let model = call
                 .body
@@ -275,14 +385,14 @@ impl FrontDeps {
                 }
             }
         }
-        let router = self.router()?;
+        let router = self.maint.router.as_ref().ok_or_else(|| Fail::new("The model server is not configured."))?;
         let method = if call.method == "POST" {
             reqwest::Method::POST
         } else {
             reqwest::Method::GET
         };
         let body = call.body.as_ref().map(to_v);
-        let token = self.token();
+        let token = self.current.get().and_then(|h| h.token());
         let send = router.request(
             method,
             &call.path,
@@ -320,12 +430,141 @@ impl FrontDeps {
         }
     }
 
-    /// long-profile.cjs `fileOf(row, presets)`: the row's `--model`, else its models.ini line.
-    fn file_of(&self, row: &JValue) -> Option<String> {
-        autotune_runner::model_path_from_args(row.get("status").get("args")).or_else(|| {
-            let id = row.get("id").as_str()?;
-            self.presets().ok()?.files(id).0
+}
+
+/// A streamed engine reply (the long-prompt test): its chunks until it ends or the step aborts.
+pub struct FrontBody {
+    response: Option<reqwest::Response>,
+    ok: bool,
+    status: u16,
+    abort: Abort,
+}
+
+impl super::autotune_context::Body for FrontBody {
+    fn ok(&self) -> bool {
+        self.ok
+    }
+    fn status(&self) -> f64 {
+        f64::from(self.status)
+    }
+    fn has_body(&self) -> bool {
+        self.response.is_some()
+    }
+    async fn read(&mut self) -> Result<Option<Vec<u8>>, Fail> {
+        let Some(response) = self.response.as_mut() else {
+            return Ok(None);
+        };
+        tokio::select! {
+            biased;
+            chunk = response.chunk() => match chunk {
+                Ok(Some(bytes)) => Ok(Some(bytes.to_vec())),
+                Ok(None) => Ok(None),
+                Err(_) => Err(fetch_failed(Some(&self.abort))),
+            },
+            () = self.abort.wait() => Err(fetch_failed(Some(&self.abort))),
+        }
+    }
+}
+
+/// How long one streamed engine reply may run (llamacpp-calibration.cjs `limits.long`).
+const STREAM_LIMIT: Duration = Duration::from_secs(7200);
+
+impl super::autotune_context::Engine for FrontEngine {
+    type Body = FrontBody;
+
+    async fn raw_models(&self, abort: Option<Abort>) -> Result<JValue, Fail> {
+        self.send(&Call::get("/models", 8000), abort.as_ref()).await
+    }
+
+    async fn request(&self, call: Call, abort: Option<Abort>) -> Result<JValue, Fail> {
+        self.send(&call, abort.as_ref()).await
+    }
+
+    async fn stream(&self, path: &str, body: JValue, abort: Abort) -> Result<FrontBody, Fail> {
+        covered(&self.current, Duration::ZERO)?;
+        let router = self
+            .maint
+            .router
+            .as_ref()
+            .ok_or_else(|| Fail::new("The model server is not configured."))?;
+        let token = self.current.get().and_then(|h| h.token());
+        let sent = router.stream(path, &to_v(&body), token.as_deref(), STREAM_LIMIT);
+        let response = tokio::select! {
+            biased;
+            r = sent => r.map_err(|_| fetch_failed(Some(&abort)))?,
+            () = abort.wait() => return Err(fetch_failed(Some(&abort))),
+        };
+        let status = response.status().as_u16();
+        Ok(FrontBody {
+            ok: response.status().is_success(),
+            status,
+            response: Some(response),
+            abort,
         })
+    }
+
+    fn presets_get(&self, model: &str) -> JValue {
+        presets_get_of(&self.maint, model)
+    }
+
+    fn presets_snapshot(&self) -> (String, String) {
+        snapshot_of(&self.maint)
+    }
+
+    async fn presets_commit(&self, candidate: JValue) -> Result<(), Fail> {
+        commit_of(&self.maint, &self.current, &candidate, true).await
+    }
+
+    async fn invalidate_baseline(&self, tag: &str) -> Result<bool, Fail> {
+        Ok(self.maint.guard.invalidate(tag).saved)
+    }
+
+    async fn conservative_for(&self, model: &str) -> Result<JValue, Fail> {
+        let inference = self.facts.lock().map(|f| f.0).unwrap_or(0.0);
+        let sizing = Arc::clone(&self.maint.sizing);
+        let listing = sizing.listing().await;
+        let m = model.to_owned();
+        Ok(tokio::task::spawn_blocking(move || sizing.conservative_for(&m, inference, &listing))
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(JValue::Null))
+    }
+
+    async fn identity_for(&self, model: &str) -> Result<JValue, Fail> {
+        Ok(super::calibration_facts::tune_identity(&self.maint, model)
+            .await
+            .unwrap_or(JValue::Null))
+    }
+
+    fn held(&self) -> bool {
+        self.current.get().is_some_and(|h| h.excluded())
+    }
+
+    fn read_memory(&self) -> Option<f64> {
+        super::calibration_worker::read_mem_available_gib()
+    }
+
+    fn now(&self) -> f64 {
+        super::calibration_worker::now_ms()
+    }
+
+    async fn sleep(&self, ms: f64) {
+        tokio::time::sleep(Duration::from_millis(ms.max(0.0) as u64)).await;
+    }
+
+    async fn tick(&self, ms: f64) {
+        tokio::time::sleep(Duration::from_millis(ms.max(0.0) as u64)).await;
+    }
+
+    fn random_int(&self, min: u32, max: u32) -> u32 {
+        let span = max.saturating_sub(min).max(1);
+        let raw = u32::from_str_radix(&super::calibration_worker::random_hex(4), 16).unwrap_or(0);
+        min + raw % span
+    }
+
+    fn random_uuid(&self) -> String {
+        super::calibration_worker::uuid()
     }
 }
 
@@ -358,36 +597,9 @@ impl Release for FrontRelease {
     }
 }
 
-/// Until the private calibrator is native (step C1): every context stage and fill probe is
-/// refused, as Node's worker answers when its state changed.
-pub struct NoContext;
-
-impl Context for NoContext {
-    async fn start(&self, _model: &str, _budget: f64) -> Result<JValue, Fail> {
-        Ok(JValue::obj([
-            ("ok", JValue::Bool(false)),
-            (
-                "body",
-                JValue::obj([("error", JValue::from(CONTEXT_UNAVAILABLE))]),
-            ),
-        ]))
-    }
-    async fn completion(&self) -> Result<(), Fail> {
-        Ok(())
-    }
-    fn status_job(&self, _model: &str) -> JValue {
-        JValue::Null
-    }
-    fn abort(&self) {}
-    async fn probe(&self, _model: &str, _opts: JValue) -> Result<JValue, Fail> {
-        Err(Fail::new(CONTEXT_UNAVAILABLE))
-    }
-    fn cancel_probe(&self) {}
-}
-
 impl Deps for FrontDeps {
     type Release = FrontRelease;
-    type Context = NoContext;
+    type Context = PrivateCalibrator<FrontEngine, StageHooks<FrontDeps>>;
 
     async fn raw_models(&self) -> Result<JValue, Fail> {
         self.send(&Call::get("/models", 8000), None).await
@@ -398,61 +610,17 @@ impl Deps for FrontDeps {
     }
 
     fn presets_get(&self, model: &str) -> JValue {
-        let Ok(p) = self.presets() else {
-            return JValue::obj([
-                ("model", JValue::from(model)),
-                ("exists", JValue::Bool(false)),
-            ]);
-        };
-        let opts = |name: &str| {
-            p.span(name).map_or(JValue::Obj(Vec::new()), |(_, _, o)| {
-                JValue::Obj(
-                    o.iter()
-                        .map(|(k, v)| ((*k).to_string(), JValue::from(v.as_str())))
-                        .collect(),
-                )
-            })
-        };
-        JValue::obj([
-            ("model", JValue::from(model)),
-            ("revision", JValue::from(p.revision.as_str())),
-            ("exists", JValue::Bool(p.span(model).is_some())),
-            ("options", opts(model)),
-            ("defaults", opts("*")),
-        ])
+        presets_get_of(&self.maint, model)
     }
 
     fn presets_snapshot(&self) -> (String, String) {
-        match self.maint.ini.as_ref().and_then(|ini| ini.snapshot().ok()) {
-            Some(s) => (s.text, s.revision),
-            None => (String::new(), String::new()),
-        }
+        snapshot_of(&self.maint)
     }
 
     async fn presets_commit(&self, candidate: JValue, options: JValue) -> Result<(), Fail> {
-        let ini =
-            self.maint.ini.clone().ok_or_else(|| {
-                Fail::new("Native preset editing; configure LLAMACPP_PRESET_PATH")
-            })?;
-        self.assert_covered()?;
-        let text = candidate.get("text").as_str().unwrap_or("").to_owned();
-        let base = candidate
-            .get("baseRevision")
-            .as_str()
-            .unwrap_or("")
-            .to_owned();
-        let before = self.presets_snapshot().0;
-        let c = super::ini::Candidate {
-            base_revision: base,
-            text,
-            before,
-        };
         // `backup: false` only when asked (auto-tune's later writes); the writer's default otherwise.
         let backup = options.get("backup") != &JValue::Bool(false);
-        ini.commit_reconciled(&c, backup).await.map_err(|e| Fail {
-            status: Some(e.status),
-            ..Fail::new(e.message)
-        })
+        commit_of(&self.maint, &self.current, &candidate, backup).await
     }
 
     async fn apply_unlocked(&self, body: JValue, write_options: JValue) -> Result<JValue, Fail> {
@@ -709,8 +877,14 @@ impl Deps for FrontDeps {
         })
     }
 
-    fn context(&self, _hooks: StageHooks<Self>, _fill_only: bool) -> NoContext {
-        NoContext
+    fn context(&self, hooks: StageHooks<Self>, fill_only: bool) -> Self::Context {
+        PrivateCalibrator::new(
+            self.engine(),
+            hooks,
+            fill_only,
+            self.memory_floor_gib,
+            Limits::default(),
+        )
     }
 
     async fn on_result(&self, model: &str, result: &JValue) -> Result<(), Fail> {
@@ -828,7 +1002,7 @@ impl Deps for FrontDeps {
             autotune_runner::decide::arg_of(row.get("status").get("args"), &["--mmproj", "-mm"])
                 .or_else(|| {
                     let id = row.get("id").as_str()?;
-                    self.presets().ok()?.files(id).1
+                    presets_of(&self.maint).ok()?.files(id).1
                 });
         autotune_runner::decide::long_section(text, row.get("id"), self.file_of(row), mmproj)
     }
