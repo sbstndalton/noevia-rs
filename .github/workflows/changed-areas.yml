@@ -1,0 +1,46 @@
+name: Detect changed areas
+# Called as jobs.changes by every workflow here. On a pull request, tools/ci/changed_areas.py
+# decides from the files it changes whether the heavy jobs run (full=true) or only the
+# workspace-wide fmt/clippy/test job does (full=false: only leaf crates nobody depends on or
+# names, plus docs). Any other event, a base other than main and any error give full=true; if
+# this job fails, the callers' gates run everything too. No concurrency group here:
+# a called workflow shares its caller's, which would cancel the caller.
+on:
+  workflow_call:
+    outputs:
+      full:
+        description: "'true' unless the pull request only changes leaf crates and docs"
+        value: ${{ jobs.changes.outputs.full }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      full: ${{ steps.decide.outputs.full || 'true' }}
+    steps:
+      # The pull request's merge commit; its first parent is the base it was merged onto.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 2
+      - name: Decide
+        id: decide
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "$GITHUB_EVENT_NAME event: everything runs."
+            exit 0
+          fi
+          # A stacked pull request diffs against its parent branch, and retargeting it to main
+          # starts no new run: only a pull request into main is judged by its own files.
+          if [ "$GITHUB_BASE_REF" != main ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+            echo "Base $GITHUB_BASE_REF is not main: everything runs."
+            exit 0
+          fi
+          python3 tools/ci/changed_areas.py --base HEAD^1 --head HEAD
