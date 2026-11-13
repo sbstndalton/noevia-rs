@@ -16,6 +16,10 @@
 //!    ([`model_changed`]), the caller calls [`crate::offer::offer`] again with the new model, as
 //!    chat.cjs calls `resolveFor(model)` (its prefill measurement is asked for the new model).
 //!
+//! [`Reroute`] owns that order and asks the caller for every seam ([`Seam`]: the fresh
+//! `autoRoles()` read, each `allowsTools` question, each `resolveFor` and `servedCatalogue()`) as
+//! [`crate::roles::Routing`] does for P5b; the pieces above stay public for it.
+//!
 //! What the turn then sends of it: the meta event's `model`, `route` (the moved role),
 //! `routingDecision` ([`Moved::decision`]) and `contextProfile` ([`LongPick::context_profile`]),
 //! the status line after the meta event ([`status_event`]), the move's log line
@@ -35,7 +39,7 @@
 
 use js_json::{wtf16, JValue};
 
-use crate::roles::{strict_eq, Role};
+use crate::roles::{strict_eq, Halt, Role, Routed};
 use crate::{tools_mode, Thrown};
 
 /// `tools-mode.cjs` `FALLBACK_ROLES`: the roles tried, in order, when the routed one cannot take
@@ -382,6 +386,187 @@ pub fn status_event(context_switch: bool, reading_images: bool) -> JValue {
         ("id", JValue::from(id)),
         ("text", JValue::from(text)),
     ])
+}
+
+/// What [`Reroute`] asks of its caller next.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Seam {
+    /// `autoRoles()`, read again for the move (chat.cjs:1355), after the gate answered.
+    AutoRoles,
+    /// `templateToolsGate.allowsTools(modelManager, model, signal)`.
+    AllowsTools(JValue),
+    /// `resolveFor(model)`: [`crate::offer::offer`] again with this model (its prefill measurement
+    /// is asked for it).
+    Resolve(JValue),
+    /// `servedCatalogue()` for the long-context profile.
+    ServedCatalogue,
+}
+
+/// The caller's answer to the last [`Seam`]; [`Reply::Start`] for the first step.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Reply {
+    Start,
+    AutoRoles(JValue),
+    AllowsTools(bool),
+    Resolved,
+    Catalogue(JValue),
+}
+
+/// The final route of the turn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Rerouted {
+    /// `model`.
+    pub model: JValue,
+    /// `routedRole`.
+    pub role: Option<Role>,
+    /// `routingDecision`.
+    pub decision: JValue,
+    /// `contextProfile` (`None`: the profile was not asked, the meta event leaves it out).
+    pub context_profile: Option<&'static str>,
+    /// `contextSwitch`: the status line is [`status_event`]`(true, ..)`.
+    pub context_switch: bool,
+    /// The log lines, in order (the move's, the long-profile module's once per handler).
+    pub lines: Vec<String>,
+}
+
+/// One step of [`Reroute`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Step {
+    Ask(Seam),
+    /// The route, or [`Halt::Thrown`] (Node throws) or [`Halt::OutOfOrder`] (a caller bug).
+    Done(Result<Rerouted, Halt>),
+}
+
+enum Stage {
+    Start,
+    Roles,
+    Allows(ToolMove, usize),
+    MovedResolved,
+    Catalogue,
+    FinalResolved,
+    Over,
+}
+
+/// chat.cjs ~1337-1400 for one turn, in its order: the move (#1550) with its fresh roles read and
+/// its template questions, `resolveFor` the moved model, the long-context profile (#1079) with its
+/// catalogue read, and `resolveFor` the final model when it changed.
+pub struct Reroute<'a> {
+    t: MoveTurn<'a>,
+    stage: Stage,
+    out: Rerouted,
+    resolved_for: JValue,
+    log: &'a mut LongProfileLog,
+}
+
+impl<'a> Reroute<'a> {
+    /// `routed` is P5b's route, whose tools the caller resolved first (`resolveFor(model)`);
+    /// `log` is the handler's [`LongProfileLog`].
+    pub fn new(t: MoveTurn<'a>, routed: &Routed, log: &'a mut LongProfileLog) -> Self {
+        Reroute {
+            t,
+            stage: Stage::Start,
+            out: Rerouted {
+                model: routed.model.clone(),
+                role: routed.role,
+                decision: routed.decision.clone(),
+                context_profile: None,
+                context_switch: false,
+                lines: Vec::new(),
+            },
+            resolved_for: routed.model.clone(),
+            log,
+        }
+    }
+
+    /// The next seam, given the answer to the last one.
+    pub fn step(&mut self, reply: Reply) -> Step {
+        match (std::mem::replace(&mut self.stage, Stage::Over), reply) {
+            (Stage::Start, Reply::Start) => match self.out.role {
+                Some(_) if tool_move_applies(&self.t) => self.ask(Stage::Roles, Seam::AutoRoles),
+                _ => self.long(),
+            },
+            (Stage::Roles, Reply::AutoRoles(roles)) => {
+                let Some(routed) = self.out.role else {
+                    return self.halt(Halt::OutOfOrder);
+                };
+                let tm = ToolMove::new(&self.out.model, routed, &roles);
+                self.ask_allows(tm, 0)
+            }
+            (Stage::Allows(tm, k), Reply::AllowsTools(ok)) => {
+                if !ok && k + 1 < tm.candidates().len() {
+                    return self.ask_allows(tm, k + 1);
+                }
+                let moved = match tm.settle(ok.then_some(k)) {
+                    Ok(moved) => moved,
+                    Err(Thrown) => return self.halt(Halt::Thrown),
+                };
+                if !moved.rerouted {
+                    return self.long();
+                }
+                match moved.log_line() {
+                    Ok(Some(line)) => self.out.lines.push(line),
+                    Ok(None) => {}
+                    Err(Thrown) => return self.halt(Halt::Thrown),
+                }
+                self.out.decision = moved.decision(&self.out.decision);
+                self.out.role = Some(moved.role);
+                self.out.model = moved.model;
+                self.resolved_for = self.out.model.clone();
+                self.ask(Stage::MovedResolved, Seam::Resolve(self.out.model.clone()))
+            }
+            (Stage::MovedResolved, Reply::Resolved) => self.long(),
+            (Stage::Catalogue, Reply::Catalogue(catalogue)) => {
+                let picked = match long_pick(&self.out.model, &catalogue) {
+                    Ok(p) => p,
+                    Err(Thrown) => return self.halt(Halt::Thrown),
+                };
+                if let Some(line) = picked.log_line().and_then(|l| self.log.admit(l)) {
+                    self.out.lines.push(line);
+                }
+                self.out.context_profile = Some(picked.context_profile);
+                self.out.context_switch = picked.context_switch;
+                self.out.model = picked.model;
+                if model_changed(&self.out.model, &self.resolved_for) {
+                    self.ask(Stage::FinalResolved, Seam::Resolve(self.out.model.clone()))
+                } else {
+                    self.done()
+                }
+            }
+            (Stage::FinalResolved, Reply::Resolved) => self.done(),
+            _ => self.halt(Halt::OutOfOrder),
+        }
+    }
+
+    fn ask(&mut self, stage: Stage, seam: Seam) -> Step {
+        self.stage = stage;
+        Step::Ask(seam)
+    }
+
+    fn ask_allows(&mut self, tm: ToolMove, k: usize) -> Step {
+        match tm.candidates().get(k).map(|c| c.model.clone()) {
+            Some(model) => self.ask(Stage::Allows(tm, k), Seam::AllowsTools(model)),
+            None => self.halt(Halt::OutOfOrder),
+        }
+    }
+
+    /// The long-context profile, when it applies; the model only changes there.
+    fn long(&mut self) -> Step {
+        if long_profile_applies(self.t.project, self.t.default_provider, self.t.route_row) {
+            self.ask(Stage::Catalogue, Seam::ServedCatalogue)
+        } else {
+            self.done()
+        }
+    }
+
+    fn done(&mut self) -> Step {
+        self.stage = Stage::Over;
+        Step::Done(Ok(self.out.clone()))
+    }
+
+    fn halt(&mut self, h: Halt) -> Step {
+        self.stage = Stage::Over;
+        Step::Done(Err(h))
+    }
 }
 
 #[cfg(test)]

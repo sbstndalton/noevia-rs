@@ -17,8 +17,8 @@ use std::collections::HashMap;
 
 use chat_prepare::effort::Engine;
 use chat_prepare::offer::{self, Offer, OfferInput, Selection, ToolTurn};
-use chat_prepare::reroute::{self, LongProfileLog, MoveTurn, ToolMove};
-use chat_prepare::roles::{self, Classification, Halt, Role};
+use chat_prepare::reroute::{self, LongProfileLog, MoveTurn, Reroute, ToolMove};
+use chat_prepare::roles::{self, Classification, Halt, Preload, Role, Routing};
 use chat_prepare::route::{self, RouteTurn};
 use chat_prepare::toolboxes::{Toolbox, Writes};
 use js_json::{wtf16, JValue};
@@ -219,6 +219,7 @@ fn halt(out: &mut Out, h: Halt) {
     match h {
         Halt::Refused(r) => out.refused = refusal(&r),
         Halt::Thrown => out.throws = true,
+        Halt::OutOfOrder => panic!("the replay answered a seam out of order"),
     }
 }
 
@@ -259,68 +260,83 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out, log: &mut LongProfi
     let body = c.get("body");
     let message = text(body.get("message"));
     let compact_only = body.get("compactOnly").truthy();
-    let wants = roles::wants_auto(&project, &auto_roles, DEFAULT);
-    let pid = roles::provider_id(wants, &project, DEFAULT);
-    let provider = facts.get("providers").get(text(&pid)).clone();
-    let rt = roles::Turn {
+
+    // P5b: which model answers, as which role, through its own seam order.
+    let code_project = || false;
+    let system_roles = HashMap::new();
+    let mut routing = Routing::new(roles::Turn {
         project: &project,
-        auto_roles: &auto_roles,
         default_provider_id: DEFAULT,
-        provider: &provider,
         message,
         manager_enabled: spec.get("managerEnabled") != &JValue::Bool(false),
         compact_only,
         task_mode: false,
         has_images: false,
-        code_project: false,
+        code_project: &code_project,
+        resend: body.get("resend"),
+        system_roles: &system_roles,
+    });
+    let mut reply = roles::Reply::Start;
+    let (route, preload, resend) = loop {
+        let seam = match routing.step(reply) {
+            roles::Step::Ask(seam) => seam,
+            roles::Step::Done {
+                route,
+                preload,
+                resend,
+            } => break (route, preload, resend),
+        };
+        reply = match seam {
+            roles::Seam::AutoRoles => {
+                ctx.seam(vec![JValue::from("autoRoles")]);
+                roles::Reply::AutoRoles(auto_roles.clone())
+            }
+            roles::Seam::Provider(id) => {
+                ctx.seam(vec![JValue::from("getProvider"), id.clone()]);
+                roles::Reply::Provider(facts.get("providers").get(text(&id)).clone())
+            }
+            roles::Seam::ServedCatalogue => roles::Reply::Catalogue(ctx.served_catalogue()),
+            roles::Seam::StartPreload(model) => {
+                ctx.seam(vec![JValue::from("startPreload"), model]);
+                roles::Reply::Preload { started: true }
+            }
+            roles::Seam::Classify => {
+                ctx.seam(vec![JValue::from("classify")]);
+                roles::Reply::Classified(match spec.get("classification") {
+                    JValue::Str(r) => Classification {
+                        role: Role::of(r).unwrap(),
+                        decision: JValue::Null,
+                    },
+                    o => Classification {
+                        role: Role::of(text(o.get("role"))).unwrap(),
+                        decision: o.get("routingDecision").clone(),
+                    },
+                })
+            }
+            roles::Seam::ModelsInstalled => {
+                ctx.seam(vec![JValue::from("modelsInstalled")]);
+                roles::Reply::Installed
+            }
+            roles::Seam::LastLoadedModel => {
+                ctx.seam(vec![JValue::from("lastLoadedModel")]);
+                roles::Reply::LastLoaded(or_null(spec.get("loaded")))
+            }
+        };
     };
-
-    // P5b: which model answers, as which role.
-    let mut model;
-    let mut role: Option<Role> = None;
-    let mut decision = JValue::Null;
-    if wants {
-        let catalogue = ctx.served_catalogue();
-        let check = match roles::auto_check(&rt, &catalogue) {
-            Ok(check) => check,
-            Err(h) => return halt(out, h),
-        };
-        // A pre-load (`startPreload`, P5b's) is no seam this recording logs.
-        ctx.seam(vec![JValue::from("classify")]);
-        let cls = match spec.get("classification") {
-            JValue::Str(r) => Classification {
-                role: Role::of(r).unwrap(),
-                decision: JValue::Null,
-            },
-            o => Classification {
-                role: Role::of(text(o.get("role"))).unwrap(),
-                decision: or_null(o.get("routingDecision")),
-            },
-        };
-        let picked = match roles::auto_pick(&rt, &catalogue, &check, &cls, body.get("resend")) {
-            Ok(p) => p,
-            Err(_) => return halt(out, Halt::Thrown),
-        };
-        model = picked.model;
-        role = Some(picked.role);
-        decision = picked.decision;
-    } else {
-        model = roles::manual_model(&project);
-        if roles::wants_loaded_model(&rt, &model) {
-            ctx.seam(vec![JValue::from("modelsInstalled")]);
-            ctx.seam(vec![JValue::from("lastLoadedModel")]);
-            model = or_null(spec.get("loaded"));
-        }
+    assert_eq!(resend, None, "no recorded turn is a resend");
+    // The pre-load's use and cancel right after the pick (its releaseIfUnused comes at the
+    // response's end, after the meta event).
+    if preload == Preload::Abandoned {
+        ctx.seam(vec![JValue::from("preload.use")]);
+        ctx.seam(vec![JValue::from("preload.cancel")]);
     }
-    if let Err(h) = roles::require_model(&rt, &model) {
-        return halt(out, h);
-    }
-    if roles::chat_guard_applies(&rt, wants, &model) {
-        let catalogue = ctx.served_catalogue();
-        if let Err(h) = roles::chat_guard(&model, &catalogue, &HashMap::new()) {
-            return halt(out, h);
-        }
-    }
+    let routed = match route {
+        Ok(r) => r,
+        Err(h) => return halt(out, h),
+    };
+    let wants = routed.wants_auto;
+    let provider = routed.provider.clone();
+    let model = routed.model.clone();
 
     // P6a: the tools, resolved for the routed model.
     let cat = facts.get("catalogue");
@@ -379,7 +395,6 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out, log: &mut LongProfi
         .expect("the recorded tools resolve")
     };
     let mut resolved = resolve(&model, &sel);
-    let mut resolved_for = model.clone();
     let gate = if spec.get("gate").is_nullish() || compact_only {
         JValue::Null
     } else {
@@ -391,7 +406,7 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out, log: &mut LongProfi
         spec.get("gate").clone()
     };
 
-    // P5c: the move to a tool-capable role (#1550).
+    // P5c: the move (#1550) and the long-context profile (#1079), through their seam order.
     let mt = MoveTurn {
         project: &project,
         wants_auto: wants,
@@ -401,60 +416,46 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out, log: &mut LongProfi
         local_tools_gate: props,
         gate_needs_tool: reroute::gate_says_tool_needed(&gate),
     };
-    if reroute::tool_move_applies(&mt) {
-        let routed = role.expect("an Automatic turn has a routed role");
-        // The fresh autoRoles() read (chat.cjs:1355), after the gate answered.
-        ctx.seam(vec![JValue::from("autoRoles")]);
-        let fresh = match spec.get("rolesLater") {
-            JValue::Undefined => auto_roles.clone(),
-            later => later.clone(),
+    let mut rr = Reroute::new(mt, &routed, log);
+    let mut reply = reroute::Reply::Start;
+    let rerouted = loop {
+        let seam = match rr.step(reply) {
+            reroute::Step::Ask(seam) => seam,
+            reroute::Step::Done(r) => break r,
         };
-        let tm = ToolMove::new(&model, routed, &fresh);
-        let mut first = None;
-        for (k, cand) in tm.candidates().iter().enumerate() {
-            ctx.seam(vec![JValue::from("allowsTools"), cand.model.clone()]);
-            let ok = match spec.get("toolsOk").get(text(&cand.model)) {
-                JValue::Bool(b) => *b,
-                _ => true,
-            };
-            if ok {
-                first = Some(k);
-                break;
+        reply = match seam {
+            // The fresh read after the gate: roles saved meanwhile (`rolesLater`) when the case has them.
+            reroute::Seam::AutoRoles => {
+                ctx.seam(vec![JValue::from("autoRoles")]);
+                reroute::Reply::AutoRoles(match spec.get("rolesLater") {
+                    JValue::Undefined => auto_roles.clone(),
+                    later => later.clone(),
+                })
             }
-        }
-        let Ok(moved) = tm.settle(first) else {
-            return halt(out, Halt::Thrown);
+            reroute::Seam::AllowsTools(m) => {
+                ctx.seam(vec![JValue::from("allowsTools"), m.clone()]);
+                reroute::Reply::AllowsTools(match spec.get("toolsOk").get(text(&m)) {
+                    JValue::Bool(b) => *b,
+                    _ => true,
+                })
+            }
+            reroute::Seam::Resolve(m) => {
+                resolved = resolve(&m, &sel);
+                reroute::Reply::Resolved
+            }
+            reroute::Seam::ServedCatalogue => reroute::Reply::Catalogue(ctx.served_catalogue()),
         };
-        if let Some(line) = moved.log_line().unwrap() {
-            out.lines.push(line);
-        }
-        if moved.rerouted {
-            decision = moved.decision(&decision);
-            model = moved.model.clone();
-            role = Some(moved.role);
-            resolved = resolve(&model, &sel);
-            resolved_for = model.clone();
-        }
-    }
-    // P5c: the long-context profile (#1079).
-    let mut context_profile = JValue::Null;
-    let mut context_switch = false;
-    if reroute::long_profile_applies(&project, default_provider, false) {
-        let catalogue = ctx.served_catalogue();
-        let picked = match reroute::long_pick(&model, &catalogue) {
-            Ok(p) => p,
-            Err(_) => return halt(out, Halt::Thrown),
-        };
-        if let Some(line) = picked.log_line().and_then(|l| log.admit(l)) {
-            out.lines.push(line);
-        }
-        context_profile = JValue::from(picked.context_profile);
-        context_switch = picked.context_switch;
-        model = picked.model;
-    }
-    if reroute::model_changed(&model, &resolved_for) {
-        resolved = resolve(&model, &sel);
-    }
+    };
+    let rerouted = match rerouted {
+        Ok(r) => r,
+        Err(h) => return halt(out, h),
+    };
+    out.lines = rerouted.lines.clone();
+    let model = rerouted.model.clone();
+    let role = rerouted.role;
+    let decision = rerouted.decision.clone();
+    let context_profile = rerouted.context_profile.map_or(JValue::Null, JValue::from);
+    let context_switch = rerouted.context_switch;
 
     // P5a with the final role, and what the turn sends.
     let r = route::route(&RouteTurn {

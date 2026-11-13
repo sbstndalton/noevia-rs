@@ -16,7 +16,8 @@
 //          no Inference machines, no routing modes, no native executor, chat framing off. The toolboxes are a real
 //          createToolboxes (core box, Drive box not connected, QA MCP boxes) over a prefill stub measuring per model.
 //          The seams are stubs that answer per case and log their calls in order, up to the meta event:
-//          servedCatalogue (an answer per call), modelsInstalled, lastLoadedModel, classifyFastOrSmart, the tool gate
+//          autoRoles (every read), getProvider, startPreload (a fake pre-load logging use and cancel), servedCatalogue
+//          (an answer per call), modelsInstalled, lastLoadedModel, classifyFastOrSmart, the tool gate
 //          (toolGate.evaluate, the tools it is shown), autoRoles() once the gate answered (the move's fresh read, which
 //          may answer roles saved meanwhile), the template tools gate (templateToolsGate.allowsTools: the move's
 //          question per candidate model) and the prefill measurement (budgetFor, which resolveTools asks per model).
@@ -71,6 +72,14 @@ const toolModes = serverRequire('tools-mode.cjs');
 const { missingRoles, staleRolesError } = serverRequire('auto-roles-check.cjs');
 const diaryExtras = serverRequire('diary-extras.cjs');
 const { createChatHandler } = serverRequire('chat.cjs');
+// The pre-load (#1863) is a seam as in record_roles.cjs: startPreload returns a fake pre-load that logs what is done
+// with it (chat.cjs reads startPreload off the module when it calls it).
+const routePreload = serverRequire('route-preload.cjs');
+routePreload.startPreload = async ({ model }) => {
+  current.seam(['startPreload', model]);
+  return { model, use: () => current.seam(['preload.use']), cancel: () => current.seam(['preload.cancel']),
+    releaseIfUnused: async () => { current.seam(['preload.releaseIfUnused']); }, pending: () => false, settled: Promise.resolve() };
+};
 
 // ── chat.cjs's ported lines ─────────────────────────────────────────────────────────────────
 const chatText = fs.readFileSync(path.join(root, 'server/chat.cjs'), 'utf8');
@@ -187,12 +196,12 @@ function handlerFor(dir, first) {
     HISTORY_CAP: 1000, DEFAULT_PROVIDER_ID: 'default', createToolExchange: () => async () => 'unused',
     currentWorkspace: () => ({ userId: 'qa-user', dir, assetDir: () => '/qa-only' }),
     getProject: (id) => (S().project && id === S().project.id ? structuredClone(S().project) : null), skillsIndexFor: () => [],
-    getProvider: (id) => structuredClone(PROVIDERS[id]), providerHeaders: () => ({}),
-    // Reads before the tool gate answered are P5b's (not logged); a read after it is the move's fresh one (chat.cjs:1355),
+    getProvider: (id) => { seam(['getProvider', id]); return structuredClone(PROVIDERS[id]); }, providerHeaders: () => ({}),
+    // Every read is logged; the ones before the tool gate answered are P5b's, a read after it is the move's fresh one (chat.cjs:1355),
     // which may see roles saved while the classifier, the gate and the prefill ran (`rolesLater`).
     autoRoles: () => {
-      if (!L().gateAsked) return structuredClone(S().roles ?? null);
       seam(['autoRoles']);
+      if (!L().gateAsked) return structuredClone(S().roles ?? null);
       return structuredClone(S().rolesLater === undefined ? S().roles ?? null : S().rolesLater);
     },
     visionDescriptions: new Map(), visionProbe: async () => ({ supported: false, reason: 'qa' }),
