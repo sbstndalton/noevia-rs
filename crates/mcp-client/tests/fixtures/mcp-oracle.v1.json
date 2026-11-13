@@ -1,0 +1,291 @@
+{
+  "oracle": "noevia-core server/mcp.cjs resultToText and withBuiltInHeaders",
+  "protocol_version": "2025-06-18",
+  "result_to_text": [
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "﻿ first "
+          },
+          {
+            "type": "image",
+            "data": "AAAA"
+          },
+          {
+            "type": "text",
+            "text": "second "
+          }
+        ]
+      },
+      "structured_json": null,
+      "expect": "first \n[image content omitted]\nsecond"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "x"
+          }
+        ]
+      },
+      "structured_json": null,
+      "expect": "x"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": 5
+          }
+        ]
+      },
+      "structured_json": null,
+      "expect": "[text content omitted]"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "resource_link"
+          },
+          {
+            "foo": 1
+          },
+          null,
+          {
+            "type": ""
+          }
+        ]
+      },
+      "structured_json": null,
+      "expect": "[resource_link content omitted]"
+    },
+    {
+      "input": {
+        "content": [],
+        "structuredContent": {
+          "b": 2,
+          "a": 1,
+          "nested": {
+            "z": [
+              1,
+              2
+            ]
+          }
+        }
+      },
+      "structured_json": "{\"b\":2,\"a\":1,\"nested\":{\"z\":[1,2]}}",
+      "expect": "{\"b\":2,\"a\":1,\"nested\":{\"z\":[1,2]}}"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "   "
+          }
+        ],
+        "structuredContent": {
+          "k": "v"
+        }
+      },
+      "structured_json": "{\"k\":\"v\"}",
+      "expect": "{\"k\":\"v\"}"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "partial"
+          }
+        ],
+        "structuredContent": {
+          "k": "v"
+        }
+      },
+      "structured_json": "{\"k\":\"v\"}",
+      "expect": "partial"
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": "  bad  "
+          }
+        ],
+        "isError": true
+      },
+      "structured_json": null,
+      "expect": "ERROR from tool: bad"
+    },
+    {
+      "input": {
+        "content": [],
+        "isError": true
+      },
+      "structured_json": null,
+      "expect": "ERROR from tool: (no detail)"
+    },
+    {
+      "input": {
+        "content": [],
+        "structuredContent": 0
+      },
+      "structured_json": null,
+      "expect": ""
+    },
+    {
+      "input": {
+        "content": [
+          {
+            "type": "text",
+            "text": ""
+          }
+        ],
+        "structuredContent": [
+          1,
+          "two"
+        ]
+      },
+      "structured_json": "[1,\"two\"]",
+      "expect": "[1,\"two\"]"
+    },
+    {
+      "input": {},
+      "structured_json": null,
+      "expect": ""
+    },
+    {
+      "input": null,
+      "structured_json": null,
+      "expect": ""
+    },
+    {
+      "input": "a string result",
+      "structured_json": null,
+      "expect": ""
+    }
+  ],
+  "built_in_headers": [
+    {
+      "extra": [
+        [
+          "Authorization",
+          "Bearer t"
+        ],
+        [
+          "MCP-Session-Id",
+          "forged"
+        ],
+        [
+          "accept",
+          "text/html"
+        ],
+        [
+          "Content-Type",
+          "x"
+        ],
+        [
+          "mcp-protocol-version",
+          "x"
+        ],
+        [
+          "X-Custom",
+          "1"
+        ]
+      ],
+      "builtIn": [
+        [
+          "MCP-Protocol-Version",
+          "2025-06-18"
+        ],
+        [
+          "mcp-session-id",
+          "real"
+        ]
+      ],
+      "expect": [
+        [
+          "Authorization",
+          "Bearer t"
+        ],
+        [
+          "X-Custom",
+          "1"
+        ],
+        [
+          "MCP-Protocol-Version",
+          "2025-06-18"
+        ],
+        [
+          "mcp-session-id",
+          "real"
+        ]
+      ]
+    },
+    {
+      "extra": [],
+      "builtIn": [
+        [
+          "MCP-Protocol-Version",
+          "2025-06-18"
+        ]
+      ],
+      "expect": [
+        [
+          "MCP-Protocol-Version",
+          "2025-06-18"
+        ]
+      ]
+    },
+    {
+      "extra": null,
+      "builtIn": [
+        [
+          "mcp-session-id",
+          "real"
+        ]
+      ],
+      "expect": [
+        [
+          "mcp-session-id",
+          "real"
+        ]
+      ]
+    },
+    {
+      "extra": [
+        [
+          "X-Trace",
+          "old"
+        ],
+        [
+          "X-Other",
+          "2"
+        ]
+      ],
+      "builtIn": [
+        [
+          "X-Trace",
+          "new"
+        ]
+      ],
+      "expect": [
+        [
+          "X-Trace",
+          "new"
+        ],
+        [
+          "X-Other",
+          "2"
+        ]
+      ]
+    }
+  ]
+}

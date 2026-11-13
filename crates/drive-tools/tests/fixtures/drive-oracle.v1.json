@@ -1,0 +1,576 @@
+{
+  "oracle": "noevia-core server/gdrive-tools.cjs (execute, describeTarget) with server/gdrive-files.cjs stubbed; cap 60; now controlled",
+  "cap": 60,
+  "cases": [
+    {
+      "op": "plan",
+      "tool": "drive_create_file",
+      "args": {
+        "name": "  notes.md \n",
+        "content": "x"
+      },
+      "expect": {
+        "target": "notes.md",
+        "kind": "drive-new"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_create_file",
+      "args": {
+        "name": "   ",
+        "content": "x"
+      },
+      "expect": {
+        "kind": "null"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_create_file",
+      "args": {
+        "name": 42,
+        "content": "x"
+      },
+      "expect": {
+        "kind": "null"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_create_file",
+      "args": {
+        "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "content": "x"
+      },
+      "expect": {
+        "target": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "kind": "drive-new"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_search_files",
+      "args": {
+        "query": "x"
+      },
+      "expect": {
+        "kind": "null"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_read_file",
+      "args": {
+        "fileId": "abc"
+      },
+      "expect": {
+        "kind": "null"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_trash_file",
+      "args": {
+        "fileId": "noevia projects/x/notes.md"
+      },
+      "expect": {
+        "error": "\"noevia projects/x/notes.md\" is not a Google Drive file id. The Google Drive tools only change files in the connected Google Drive; to change a file uploaded to this project, use the project file tools (project_append_file or project_replace_text)"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_trash_file",
+      "args": {
+        "fileId": "  "
+      },
+      "expect": {
+        "error": "\"\" is not a Google Drive file id. The Google Drive tools only change files in the connected Google Drive; to change a file uploaded to this project, use the project file tools (project_append_file or project_replace_text)"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_trash_file",
+      "args": {},
+      "expect": {
+        "error": "\"\" is not a Google Drive file id. The Google Drive tools only change files in the connected Google Drive; to change a file uploaded to this project, use the project file tools (project_append_file or project_replace_text)"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "content": "x"
+      },
+      "expect": {
+        "error": "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" is not a Google Drive file id. The Google Drive tools only change files in the connected Google Drive; to change a file uploaded to this project, use the project file tools (project_append_file or project_replace_text)"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "bad\"id\n",
+        "content": "x"
+      },
+      "expect": {
+        "error": "\"bad\\\"id\" is not a Google Drive file id. The Google Drive tools only change files in the connected Google Drive; to change a file uploaded to this project, use the project file tools (project_append_file or project_replace_text)"
+      }
+    },
+    {
+      "op": "plan",
+      "tool": "drive_unknown",
+      "args": {
+        "fileId": "x"
+      },
+      "expect": {
+        "kind": "null"
+      }
+    },
+    {
+      "op": "execute",
+      "tool": "drive_search_files",
+      "args": {
+        "query": "plan"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": [
+          {
+            "id": "a1",
+            "name": "Plan",
+            "mimeType": "text/plain",
+            "size": "12",
+            "modifiedTime": "2026-11-01T10:00:00Z"
+          },
+          {
+            "id": "b2",
+            "name": "Notes",
+            "mimeType": "",
+            "size": "",
+            "webViewLink": "https://example.test/b2"
+          }
+        ]
+      },
+      "expect": "Found 2:\n- Plan (id a1) · text/plain · 12 bytes · changed 2026-11-01T10:00:00Z\n- Notes (id b2) · file"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_search_files",
+      "args": {
+        "query": "none"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": []
+      },
+      "expect": "No matching files. noevia only sees files it created or was given in this Drive."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_list_recent",
+      "args": {},
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": []
+      },
+      "expect": "No files yet. noevia only sees files it created or was given in this Drive."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_list_recent",
+      "args": {},
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": [
+          {
+            "id": "c3",
+            "name": "Recent",
+            "mimeType": "application/json",
+            "size": "0",
+            "modifiedTime": "2026-11-02T08:00:00Z"
+          }
+        ]
+      },
+      "expect": "- Recent (id c3) · application/json · 0 bytes · changed 2026-11-02T08:00:00Z"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_get_metadata",
+      "args": {
+        "fileId": "a1"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "id": "a1",
+          "name": "Plan",
+          "mimeType": "text/plain",
+          "size": "12",
+          "modifiedTime": "2026-11-01T10:00:00Z",
+          "webViewLink": "https://example.test/a1"
+        }
+      },
+      "expect": "- Plan (id a1) · text/plain · 12 bytes · changed 2026-11-01T10:00:00Z\nLink: https://example.test/a1"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_get_metadata",
+      "args": {
+        "fileId": "a1"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "id": "a1",
+          "name": "Plan",
+          "mimeType": "text/plain",
+          "size": "12",
+          "modifiedTime": "2026-11-01T10:00:00Z",
+          "webViewLink": null
+        }
+      },
+      "expect": "- Plan (id a1) · text/plain · 12 bytes · changed 2026-11-01T10:00:00Z"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_create_file",
+      "args": {
+        "name": "n.md",
+        "content": "x"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "id": "n9",
+          "name": "n.md",
+          "webViewLink": "https://example.test/n9",
+          "version": "1"
+        }
+      },
+      "expect": "Created n.md (id n9): https://example.test/n9"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_create_file",
+      "args": {
+        "name": "n.md",
+        "content": "x"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "id": "n9",
+          "name": "n.md",
+          "webViewLink": null,
+          "version": "1"
+        }
+      },
+      "expect": "Created n.md (id n9)"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_trash_file",
+      "args": {
+        "fileId": "a1"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "id": "a1",
+          "name": "Plan"
+        }
+      },
+      "expect": "Moved Plan to the Drive trash."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_search_files",
+      "args": {
+        "query": "plan"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "error": {
+          "publicMessage": "quota"
+        }
+      },
+      "expect": "ERROR: quota"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_search_files",
+      "args": {
+        "query": "plan"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "error": {
+          "publicMessage": null
+        }
+      },
+      "expect": "ERROR: Google Drive could not be reached."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_search_files",
+      "args": {
+        "query": "plan"
+      },
+      "scope": {},
+      "now": 1000000,
+      "connected": false,
+      "stub": null,
+      "expect": "ERROR: Google Drive is not connected for this account. Connect it in Settings → Connectors."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_read_file",
+      "args": {
+        "fileId": "a1"
+      },
+      "scope": {
+        "exchangeKey": "ex1",
+        "chatKey": "c1"
+      },
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "meta": {
+            "id": "a1",
+            "name": "Plan",
+            "version": "7"
+          },
+          "text": "short body",
+          "truncated": false
+        }
+      },
+      "expect": "Plan:\nshort body"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "a1",
+        "content": "y"
+      },
+      "scope": {
+        "exchangeKey": "ex1",
+        "chatKey": "c1"
+      },
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "id": "a1",
+          "name": "Plan",
+          "version": "8"
+        }
+      },
+      "expect": "Updated Plan (id a1).",
+      "expectVersion": "7"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "a1",
+        "content": "y"
+      },
+      "scope": {
+        "exchangeKey": "ex2",
+        "chatKey": "c1"
+      },
+      "now": 1000000,
+      "connected": true,
+      "stub": null,
+      "expect": "ERROR: drive_update_file replaces the whole file, so it only runs on a file read in full with drive_read_file in this same reply (a read from an earlier message does not count). Read it again first. Nothing was changed."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_read_file",
+      "args": {
+        "fileId": "a1"
+      },
+      "scope": {
+        "exchangeKey": "ex3"
+      },
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "meta": {
+            "id": "a1",
+            "name": "Plan",
+            "version": "9"
+          },
+          "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "truncated": false
+        }
+      },
+      "expect": "Plan:\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n[truncated]"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "a1",
+        "content": "y"
+      },
+      "scope": {
+        "exchangeKey": "ex3"
+      },
+      "now": 1000000,
+      "connected": true,
+      "stub": null,
+      "expect": "ERROR: only part of this file was read, so replacing it would drop the rest. Nothing was changed."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_read_file",
+      "args": {
+        "fileId": "a1"
+      },
+      "scope": {
+        "exchangeKey": "ex4"
+      },
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "meta": {
+            "id": "a1",
+            "name": "Plan",
+            "version": "9"
+          },
+          "text": "tiny",
+          "truncated": true
+        }
+      },
+      "expect": "Plan:\ntiny\n[truncated]"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "a1",
+        "content": "y"
+      },
+      "scope": {
+        "exchangeKey": "ex4"
+      },
+      "now": 1000000,
+      "connected": true,
+      "stub": null,
+      "expect": "ERROR: only part of this file was read, so replacing it would drop the rest. Nothing was changed."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_read_file",
+      "args": {
+        "fileId": "a1"
+      },
+      "scope": {
+        "exchangeKey": "ex5"
+      },
+      "now": 1000000,
+      "connected": true,
+      "stub": {
+        "value": {
+          "meta": {
+            "id": "a1",
+            "name": "Plan",
+            "version": "5"
+          },
+          "text": "old",
+          "truncated": false
+        }
+      },
+      "expect": "Plan:\nold"
+    },
+    {
+      "op": "execute",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "a1",
+        "content": "y"
+      },
+      "scope": {
+        "exchangeKey": "ex5"
+      },
+      "now": 2800001,
+      "connected": true,
+      "stub": null,
+      "expect": "ERROR: drive_update_file replaces the whole file, so it only runs on a file read in full with drive_read_file in this same reply (a read from an earlier message does not count). Read it again first. Nothing was changed."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_update_file",
+      "args": {
+        "fileId": "noevia projects/a.md",
+        "content": "y"
+      },
+      "scope": {
+        "exchangeKey": "ex6"
+      },
+      "now": 2800001,
+      "connected": true,
+      "stub": {
+        "value": {
+          "id": "noevia projects/a.md",
+          "name": "Plan",
+          "version": "8"
+        }
+      },
+      "expect": "Updated Plan (id noevia projects/a.md)."
+    },
+    {
+      "op": "execute",
+      "tool": "drive_read_file",
+      "args": {
+        "fileId": "a2"
+      },
+      "scope": {
+        "exchangeKey": "ex7"
+      },
+      "now": 2800001,
+      "connected": true,
+      "stub": {
+        "value": {
+          "meta": {
+            "id": "a2",
+            "name": "Plän",
+            "version": "3"
+          },
+          "text": "éééééééééééééééééééé",
+          "truncated": false
+        }
+      },
+      "expect": "Plän:\néééééééééééééééééééé"
+    }
+  ]
+}

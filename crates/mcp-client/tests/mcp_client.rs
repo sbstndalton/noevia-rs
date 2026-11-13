@@ -60,8 +60,8 @@ fn reserved_headers_are_dropped_whatever_their_case_and_built_ins_follow() {
         pair("X-Custom", "1"),
     ];
     let built = [
-        ("MCP-Protocol-Version", PROTOCOL_VERSION.to_owned()),
-        ("mcp-session-id", "real".to_owned()),
+        ("MCP-Protocol-Version", PROTOCOL_VERSION),
+        ("mcp-session-id", "real"),
     ];
     let out = built_in_headers(&extra, &built);
     assert_eq!(

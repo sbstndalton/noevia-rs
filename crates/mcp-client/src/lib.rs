@@ -77,14 +77,21 @@ pub fn positive_env(value: Option<&str>, fallback: usize) -> usize {
 /// (matched lower-cased), then the built-in ones. `extra` keeps its order.
 pub fn built_in_headers(
     extra: &[(String, String)],
-    built_in: &[(&str, String)],
+    built_in: &[(&str, &str)],
 ) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = extra
         .iter()
         .filter(|(k, _)| !RESERVED_HEADERS.contains(&k.to_lowercase().as_str()))
         .cloned()
         .collect();
-    out.extend(built_in.iter().map(|(k, v)| ((*k).to_owned(), v.clone())));
+    // `{...out, ...builtIn}`: a built-in name that is already present takes the new value in
+    // its place; a new one is appended.
+    for (k, v) in built_in {
+        match out.iter_mut().find(|(ek, _)| ek == k) {
+            Some(slot) => slot.1 = (*v).to_owned(),
+            None => out.push(((*k).to_owned(), (*v).to_owned())),
+        }
+    }
     out
 }
 
