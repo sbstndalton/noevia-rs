@@ -37,11 +37,14 @@ pub struct ProjectTurn<'a> {
     /// `codeTasksFor(project) || []` (`[]` when it throws); read only when the project shares
     /// into Chat.
     pub code_tasks: &'a [JValue],
-    /// `rag.filesContext(...)`'s result (track R4); `None` or empty: no block.
+    /// `rag.filesContext(...)`'s result ([`crate::retrieval::Retrieved::files_block`]); `None` or
+    /// empty: no block.
     pub files_block: Option<&'a str>,
-    /// `sourceJobs.settle(...).notReady`; ignored on `compactOnly`, where Node does not wait.
+    /// `sourceJobs.settle(...).notReady` ([`crate::retrieval::Settled`]); ignored on `compactOnly`,
+    /// where Node does not wait.
     pub not_ready: &'a [NotReady],
-    /// `partialSources(readable, injected)` of what retrieval placed (#1513).
+    /// `partialSources(readable, injected)` of what retrieval placed (#1513,
+    /// [`crate::retrieval::Retrieved::partial_reads`]).
     pub partial_reads: &'a [Partial],
     /// The skill index, the auto-loaded skill block and the pinned skill block, in that order
     /// ([`crate::skills::parts`]; empty for none).

@@ -52,6 +52,15 @@
 //!   text is refused ([`toolboxes::NameNotText`], the turn stays in Node) where Node offers it. The hybrid route's
 //!   private-tools move, Inference machines, the tool-capable move (`toolCapableRoute`), the
 //!   prompt edits of the ungranted cloud route and the executor's refusal inputs are later slices.
+//! - [`retrieval`] (slice P2b): a project turn's knowledge-file retrieval around its two seams (the
+//!   file-job wait and `rag.filesContext`): the project id, whether and how the turn waits, the
+//!   request (the readable files, the question, `attached`, multimodal `images`), and what chat.cjs
+//!   keeps of the answer: the block, the reply's sources (`chat-sources.cjs` `buildSources`), the
+//!   partial reads (`source-coverage.cjs` `partialSources`, `coverageWarning`) and the prepared
+//!   frame's `sources` (`rust-chat-native.cjs` `injectedSources`). Recorded in
+//!   `tests/fixtures/node-retrieval.v1.json`, written by `tests/record_retrieval.cjs` (whole turns
+//!   through `createChatHandler` with the seams stubbed); no named differences. The images
+//!   multimodal retrieval finds are a later slice.
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!
@@ -91,8 +100,8 @@
 //! (`f.attachment?.state` of `null`), so such a turn is [`PrepareError::Thrown`] as in Node, where
 //! retrieval's skill check throws on it even earlier.
 //!
-//! Later slices: the retrieval itself and `partialSources` (P2b, which pass `filesBlock` and
-//! `partialReads` in here); the history's skill scrub and the automatic skill selection itself
+//! Later slices: the images of multimodal retrieval (#1726; [`retrieval`] gives `filesBlock`,
+//! `sourcesNotReady` and `partialReads` to [`ProjectTurn`]); the history's skill scrub and the automatic skill selection itself
 //! (its picks go to [`skills::parts`]); the brain block
 //! ([`Turn::trailing`], after the frame block) and the tool gate's use of [`frame::gate_bias`];
 //! image assets; and what happens to the wire once the route is known (off-box zone and history
@@ -107,6 +116,7 @@ pub mod memory;
 pub mod names;
 pub mod offer;
 pub mod project;
+pub mod retrieval;
 pub mod roles;
 pub mod route;
 pub mod route_notes;
