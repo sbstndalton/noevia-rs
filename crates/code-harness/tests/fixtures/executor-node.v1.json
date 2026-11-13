@@ -4,8 +4,8 @@
   "code-harness.cjs": "ec017f978fbe11b4905e7964f5959a251db362de6f41b29c8a13d66cb03f6fe6",
   "code-acp.cjs": "5521d82bca54984b40874865483447758cc7cb42ab5497ee3e42a592c874ffc2",
   "jobs.cjs": "3a04aea9e594428d62cb5dc7f29eb937d322c6b24d83c9b2d9b08211366e5457",
-  "code-workspace.cjs": "d8cb106b0b6b59013b7b522b85ff2862b36c8cef7cb93e73c61e0deea54c3577",
-  "code-harness-config.cjs": "70d0ac519134df6db07e2378abfb7df1793ddfe97c1ac709ede923eec3c3f753"
+  "code-workspace.cjs": "6241fc912ab6ae35be20c2456d47aa48aa68930250163a61c0012e17706bf632",
+  "code-harness-config.cjs": "cef37d871ad30dffe9d6c6fb516f4e1088e969d127dee226db58be3c6627ddf3"
  },
  "env": {
   "PATH": "/usr/local/bin:/usr/bin:/bin",
