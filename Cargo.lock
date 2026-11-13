@@ -3906,6 +3906,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tool-rate-limit"
+version = "0.1.0"
+dependencies = [
+ "policy-leaves",
+ "serde_json",
+]
+
+[[package]]
 name = "toolboxes-permitted"
 version = "0.1.0"
 dependencies = [
