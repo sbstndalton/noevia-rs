@@ -335,7 +335,11 @@ async fn ticks(host: Arc<FrontHost>, chat: Option<String>) {
         if host.left() {
             return;
         }
-        let entry = host.saving.lock().ok().and_then(|s| s.record.partial_entry());
+        let entry = host
+            .saving
+            .lock()
+            .ok()
+            .and_then(|s| s.record.partial_entry());
         if let Some(entry) = entry {
             let mut file = chat_turn::record::partial_file(&entry, crate::identity::now_ms());
             if let Some(start) = host.app.config.start_id.clone() {

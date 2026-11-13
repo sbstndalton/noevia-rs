@@ -159,6 +159,8 @@ struct Script {
     engine_leases: Vec<Option<String>>,
     asked: Vec<JValue>,
     executions: Vec<String>,
+    /// The ids of the model leases asked for (PUT with a `model`).
+    model_leases: Vec<String>,
     /// Engine streams held open by a `stall` or `leave`.
     held: Vec<http_body_util::channel::Sender<Bytes, std::io::Error>>,
     leaving: Arc<Leaving>,
@@ -183,6 +185,7 @@ impl Default for Script {
             engine_leases: Vec::new(),
             asked: Vec::new(),
             executions: Vec::new(),
+            model_leases: Vec::new(),
             held: Vec::new(),
             leaving: Arc::default(),
         }
@@ -190,6 +193,15 @@ impl Default for Script {
 }
 
 type Shared = Arc<Mutex<Script>>;
+
+/// Every model lease the turn took was given back (a DELETE of its id).
+fn model_lease_released(sc: &Script) -> bool {
+    !sc.model_leases.is_empty()
+        && sc.model_leases.iter().all(|id| {
+            let gone = format!("DELETE {LEASE_PATH}{id}");
+            sc.calls.iter().any(|c| c == &gone)
+        })
+}
 
 /// The stubs this test's fakes answer.
 const ANSWERED: &[&str] = &[
@@ -265,17 +277,26 @@ async fn read_req(req: Request<Incoming>) -> (String, String, HashMap<String, St
     )
 }
 
-/// The hand-off: the recorded frames, the `prepared` one pointed at the fake engine and started now.
+/// The hand-off on the front's NDJSON wire (chat port S7, core rust-chat-wire.cjs: `JSON.stringify(event)`
+/// and a line break where the recording's event stream has `data: <same>` and a blank line): the recorded
+/// lines, the `prepared` one pointed at the fake engine and started now.
 fn handoff(sc: &Script) -> Response<UpBody> {
     let mut lines: Vec<String> = arr(sc.case.get("handoff").get("raw"))
         .iter()
-        .map(|l| l.as_str().unwrap().to_string())
+        .map(|l| {
+            let sse = l.as_str().unwrap();
+            let json = sse
+                .strip_prefix("data: ")
+                .and_then(|t| t.strip_suffix("\n\n"))
+                .unwrap_or_else(|| panic!("not one event frame: {sse:?}"));
+            format!("{json}\n")
+        })
         .collect();
     let last = lines.pop().unwrap();
-    let mut prepared = wtf16::parse(last.strip_prefix("data: ").unwrap().trim_end()).unwrap();
+    let mut prepared = wtf16::parse(last.trim_end()).unwrap();
     js::set(&mut prepared, "upstreamUrl", js::s(sc.engine.clone()));
     js::set(&mut prepared, "startedAt", js::n(sc.started));
-    lines.push(format!("data: {}\n\n", js::stringify(&prepared)));
+    lines.push(format!("{}\n", js::stringify(&prepared)));
     let (mut tx, b) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(64);
     tokio::spawn(async move {
         for l in lines {
@@ -286,9 +307,8 @@ fn handoff(sc: &Script) -> Response<UpBody> {
     });
     Response::builder()
         .status(200)
-        .header("content-type", "text/event-stream")
-        .header("cache-control", "no-cache, no-transform")
-        .header("x-accel-buffering", "no")
+        .header("content-type", "application/x-ndjson")
+        .header("cache-control", "no-store")
         .body(b.boxed())
         .unwrap()
 }
@@ -405,8 +425,14 @@ async fn core_service(
     }
     if let Some(rest) = path.strip_prefix(LEASE_PATH) {
         if method == "PUT" {
+            // The model's lease ({model}) is the one the case refuses; the chat route's own admission
+            // ({gate}, chat port S8) is granted.
+            let for_model = !matches!(sent.get("model"), JValue::Undefined);
+            if for_model {
+                sc.model_leases.push(rest.to_string());
+            }
             let refusal = input.get("leaseRefusal");
-            if refusal.is_object() {
+            if refusal.is_object() && for_model {
                 return Ok(json(
                     503,
                     &js::obj([
@@ -434,6 +460,12 @@ async fn core_service(
     match path.as_str() {
         "/internal/chat/turn" => {
             sc.handoff_header = headers.get("x-noevia-chat-handoff").cloned();
+            if headers.get("x-noevia-chat-wire").map(String::as_str) != Some("ndjson/1") {
+                sc.errors.push(format!(
+                    "turn: wire header {:?}",
+                    headers.get("x-noevia-chat-wire")
+                ));
+            }
             Ok(handoff(&sc))
         }
         "/internal/chat/native/health" => ok(health(&sc)),
@@ -1053,13 +1085,7 @@ async fn run_case(
         let kept = want_kept
             .as_ref()
             .is_none_or(|want| kept_now(window).ok().as_ref() == Some(want));
-        let released = !leased
-            || script
-                .lock()
-                .unwrap()
-                .calls
-                .iter()
-                .any(|c| c.starts_with("DELETE ") && c.contains(LEASE_PATH));
+        let released = !leased || model_lease_released(&script.lock().unwrap());
         if (got == want_files && released && kept) || tokio::time::Instant::now() >= deadline {
             break got;
         }
@@ -1156,12 +1182,7 @@ async fn run_case(
             texts(&sc.stubs, "", (0.0, 0.0))
         ));
     }
-    if leased
-        && !sc
-            .calls
-            .iter()
-            .any(|c| c.starts_with("DELETE ") && c.contains(LEASE_PATH))
-    {
+    if leased && !model_lease_released(&sc) {
         return Err(format!("the lease was never given back: {:?}", sc.calls));
     }
 
