@@ -24,6 +24,7 @@ pub mod autotune_deps;
 pub mod calibration;
 pub mod calibration_facts;
 pub mod calibration_worker;
+pub mod autotune_context;
 pub mod evidence;
 pub mod evidence_live;
 pub mod evidence_recheck;
