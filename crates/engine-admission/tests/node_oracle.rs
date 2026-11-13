@@ -95,6 +95,7 @@ async fn every_recorded_admission_decision_is_the_callers_decision_again() {
                         status,
                         message: step["body"]["error"].as_str().unwrap().to_owned(),
                         code: step["body"]["code"].as_str().map(str::to_owned),
+                        retry_after: None,
                     };
                     assert_eq!(refused, want, "{name}");
                 }
