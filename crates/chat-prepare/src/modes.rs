@@ -115,7 +115,11 @@ pub enum Seam {
     /// `chatSignal.signal.aborted`: answered `true` when the turn was aborted.
     Aborted,
     /// `routingModes.setChatFlags(listProjectId, chatId, patch)`; its failure is ignored.
-    SetChatFlags { project_id: JValue, chat_id: JValue, patch: JValue },
+    SetChatFlags {
+        project_id: JValue,
+        chat_id: JValue,
+        patch: JValue,
+    },
 }
 
 /// The caller's answer to the last [`Seam`]; [`Reply::Start`] first. `Err(Thrown)`: the call
@@ -366,7 +370,11 @@ impl<'a> Modes<'a> {
                 let v = v?;
                 if !v.truthy() || prop(&v, "flagged")? != JValue::Bool(false) {
                     let f = v.opt("flag");
-                    self.flag = if f.truthy() { f.clone() } else { "unavailable".into() };
+                    self.flag = if f.truthy() {
+                        f.clone()
+                    } else {
+                        "unavailable".into()
+                    };
                     let c = v.opt("cause");
                     self.cause = if c.truthy() { c.clone() } else { JValue::Null };
                 }
@@ -559,7 +567,11 @@ impl<'a> Modes<'a> {
 
     /// The question's answer (`null` when `ask` threw).
     fn answered(&mut self, answer: &JValue) -> Result<Step, Halt> {
-        let choice = if answer.is_nullish() { &JValue::Undefined } else { answer.get("choice") };
+        let choice = if answer.is_nullish() {
+            &JValue::Undefined
+        } else {
+            answer.get("choice")
+        };
         let remember = !answer.is_nullish() && answer.get("remember").truthy();
         match choice.as_str() {
             Some("cloud") => {
@@ -580,7 +592,11 @@ impl<'a> Modes<'a> {
             (true, _) => "cancel",
             _ => "local",
         };
-        let flag = if self.out.flag.truthy() { self.out.flag.clone() } else { JValue::Null };
+        let flag = if self.out.flag.truthy() {
+            self.out.flag.clone()
+        } else {
+            JValue::Null
+        };
         let entry = JValue::obj([
             ("mode", self.settings.get("mode").clone()),
             ("route", JValue::from(route)),
@@ -673,7 +689,11 @@ pub fn has_diary_content(history: &JValue) -> Result<bool, Thrown> {
             continue;
         }
         let name = h.get("name");
-        let name = if name.truthy() { to_js_string(name).map_err(|_| Thrown)? } else { String::new() };
+        let name = if name.truthy() {
+            to_js_string(name).map_err(|_| Thrown)?
+        } else {
+            String::new()
+        };
         let b = name.as_bytes();
         let head = b.get(..5).is_some_and(|h| h.eq_ignore_ascii_case(b"diary"));
         if head && matches!(b.get(5), Some(b'_' | b'-')) {
@@ -688,7 +708,11 @@ pub fn has_diary_content(history: &JValue) -> Result<bool, Thrown> {
 pub fn attachment_names(project: &JValue) -> Result<Vec<String>, Thrown> {
     let mut names = Vec::new();
     for key in ["assets", "files"] {
-        let list = if project.truthy() { project.get(key) } else { &JValue::Undefined };
+        let list = if project.truthy() {
+            project.get(key)
+        } else {
+            &JValue::Undefined
+        };
         match list {
             JValue::Arr(items) => {
                 for item in items {
