@@ -56,3 +56,6 @@ jobs:
       - name: The core's own instruction-skill parts reproduce the committed recording
         # Synthetic QA projects, skills, pins and picks through server/chat.cjs, instruction-skills.cjs, skill-index.cjs and chat-skill-routing.cjs; no network.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_skills.cjs --check crates/chat-prepare/tests/fixtures/node-skills.v1.json
+      - name: The core's own reasoning effort, Fast thinking-off and sampling presets reproduce the committed recording
+        # Synthetic QA projects, settings, provider rows and messages through reasoning-effort.cjs, sampling-presets.cjs and chat.cjs's own lines; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_route.cjs --check crates/chat-prepare/tests/fixtures/node-route.v1.json

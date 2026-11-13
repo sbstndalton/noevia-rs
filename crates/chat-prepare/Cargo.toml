@@ -1,7 +1,7 @@
 [package]
 name = "chat-prepare"
 version = "0.1.0"
-description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, and the chat frame block, replayed byte for byte on recorded Node output. Nothing calls it yet."
+description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, the chat frame block, and a turn's reasoning effort, Fast thinking-off and sampling presets, replayed byte for byte on recorded Node output. Nothing calls it yet."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -25,3 +25,7 @@ chrono-tz = "=0.10.4"
 sha2 = "=0.10.9"
 # projectToolboxIds: the port core's dav-parse.wasm runs (workspace crate, depends on prompt-framing only).
 toolboxes-permitted = { path = "../toolboxes-permitted" }
+# reasoning-effort.cjs localEngine's `new URL(value).href` (the WHATWG URL Standard). MIT OR Apache-2.0; already in
+# Cargo.lock (prompt-framing uses it).
+url = "=2.5.8"
+

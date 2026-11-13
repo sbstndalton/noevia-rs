@@ -23,6 +23,14 @@
 //!   and chat.cjs's rules for reading the frame; [`frame::frame_part`] is the first
 //!   [`Turn::trailing`] part (recorded in `tests/fixtures/node-frame.v1.json`, written by
 //!   `tests/record_frame.cjs`).
+//! - [`route`] (slice P5a): what a routed turn asks of the model besides its messages: the
+//!   reasoning effort ([`effort`], `reasoning-effort.cjs`), the Fast route's thinking switch and
+//!   the task-aware sampling presets ([`sampling`], `sampling-presets.cjs` in full), as chat.cjs
+//!   ~1405-1430 computes them (recorded in `tests/fixtures/node-route.v1.json`, written by
+//!   `tests/record_route.cjs`, which runs those lines of the pinned chat.cjs). The routing that
+//!   decides `wantsAuto`, `routedRole` and the provider row is a later slice. No named
+//!   differences: every recorded case replays byte for byte (the provider URL comparison is the
+//!   `url` crate's WHATWG parser where Node's is its own; 5,444 recorded URL pairs and rows).
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!
@@ -70,12 +78,15 @@
 //! filter, the hybrid route's read-file hint, vision, route notes).
 
 pub mod account;
+pub mod effort;
 pub mod frame;
 pub mod history;
 pub mod js;
 pub mod memory;
 pub mod names;
 pub mod project;
+pub mod route;
+pub mod sampling;
 pub mod shared;
 pub mod skills;
 pub mod sources;

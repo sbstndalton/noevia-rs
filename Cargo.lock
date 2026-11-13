@@ -451,6 +451,7 @@ dependencies = [
  "regex",
  "sha2",
  "toolboxes-permitted",
+ "url",
 ]
 
 [[package]]
