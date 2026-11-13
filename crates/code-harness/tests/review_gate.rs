@@ -445,7 +445,7 @@ fn every_node_review_gate_run_replays() {
     let JValue::Obj(all) = f.get("scenarios") else {
         panic!()
     };
-    assert_eq!(all.len(), 14);
+    assert_eq!(all.len(), 15);
     for (name, sc) in all {
         eprintln!("scenario {name}");
         replay(name, sc);

@@ -7,6 +7,14 @@
 //! recording used); a synthetic verifier answers `CODE_VERIFY_ENDPOINT`. Answers whose shape is
 //! Node's are compared with the recordings in crates/code-harness/tests/fixtures (ids, commits and
 //! clocks normalized). QA-named data only; no network beyond loopback.
+//!
+//! Hermeticity: the test's own git calls run with HOME and the global and system git config
+//! pointed away. The front's git (code_workspace::git::Git) does not take its environment from
+//! `Config`: it passes `GIT_ENV_KEYS` (HOME, PATH, LANG, …) of the test process's own environment,
+//! as the server does in production. A test cannot redirect that without mutating the process
+//! environment for every test in the binary, which it does not do; so the front's worktree and
+//! branch commands see the host's `~/.gitconfig` and `/etc/gitconfig` (the builder and CI have
+//! neither with anything that changes these commands' results).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -269,7 +277,8 @@ enum Agent {
 #[derive(Default)]
 struct Sandbox {
     prompts: usize,
-    closed: usize,
+    /// Connections accepted and not yet closed.
+    open: usize,
 }
 
 fn rpc(id: &Value, result: Value) -> String {
@@ -295,6 +304,7 @@ async fn sandbox(mode: Arc<Mutex<Agent>>, state: Arc<Mutex<Sandbox>>) -> SocketA
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         while let Ok((c, _)) = listener.accept().await {
+            state.lock().unwrap().open += 1;
             let (mode, state, ask) = (Arc::clone(&mode), Arc::clone(&state), ask.clone());
             tokio::spawn(async move {
                 let (r, mut w) = c.into_split();
@@ -338,7 +348,7 @@ async fn sandbox(mode: Arc<Mutex<Agent>>, state: Arc<Mutex<Sandbox>>) -> SocketA
                         break;
                     }
                 }
-                state.lock().unwrap().closed += 1;
+                state.lock().unwrap().open -= 1;
             });
         }
     });
@@ -610,16 +620,13 @@ impl Rig {
                 let c = self.core.lock().unwrap();
                 (c.leases.clone(), c.released.clone())
             };
-            let closed = {
-                let s = self.sandbox.lock().unwrap();
-                s.closed >= s.prompts
-            };
-            if closed && leases.iter().all(|l| released.contains(l)) {
+            let open = self.sandbox.lock().unwrap().open;
+            if open == 0 && leases.iter().all(|l| released.contains(l)) {
                 return;
             }
             assert!(
                 Instant::now() < deadline,
-                "leases {leases:?} released {released:?}"
+                "leases {leases:?} released {released:?}, {open} sandbox connection(s) open"
             );
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
@@ -696,12 +703,18 @@ async fn switch_unset_the_actions_are_relayed_to_core_as_before() {
                 (202, &json!({"relayed": path})),
                 "{path}"
             );
-            let seen = r.core_seen.lock().unwrap().last().cloned().unwrap();
-            assert_eq!((seen.0.as_str(), seen.1.as_str()), ("POST", path.as_str()));
+            let relayed: Vec<Value> = r
+                .core_seen
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(m, p, _)| m == "POST" && *p == path)
+                .map(|(_, _, b)| b.clone())
+                .collect();
             assert_eq!(
-                seen.2,
-                body.unwrap_or(Value::Null),
-                "{path}: the body as sent"
+                relayed,
+                vec![body.unwrap_or(Value::Null)],
+                "{path}: relayed once, the body as sent"
             );
         }
         // Nothing was answered natively: no facts, no engine, no lease, no sandbox.
@@ -732,13 +745,20 @@ async fn a_direct_task_runs_cancels_and_stays_in_its_tenant() {
         let recorded = &fixture(SERVICE)["scenarios"]["cancel-while-waiting"];
         let answers = recorded["answers"].as_array().unwrap();
 
-        // The panel's facts are the front's, in Node's shape.
+        // The panel's facts are the front's, in Node's shape. The recording is code-service.cjs
+        // `facts()`, the loopback bridge's answer, which names the waiting cards (`approvals`).
+        // That map never reached the browser: Node's own GET /api/projects/{id}/code (routes/
+        // code.cjs before noevia-core 38084d2 moved the reads to the front) answered
+        // `{ repositories, capabilities, defaultCapabilities, harnesses, promptPreparation,
+        // sandboxed, network, networkState, tasks: service.list(...) }`, each card inside its task
+        // (`view(job, pendingFor(id))`); task_routes.rs `state` answers the same.
         let (status, state) = r.call(OWNER, "GET", &r.code(""), None).await;
         assert_eq!(status, 200);
         let mut node = answers[6]["body"].clone();
+        assert_eq!(node["approvals"], json!({}), "the bridge's facts name no card yet");
         node.as_object_mut().unwrap().remove("approvals");
         node["tasks"] = json!([]);
-        assert_eq!(state, node, "the facts as Node answers them");
+        assert_eq!(state, node, "the facts as Node's GET answered them");
 
         let (status, started) = r
             .start(json!({"repository": "qa-repo", "prompt": RUN}))
@@ -766,10 +786,20 @@ async fn a_direct_task_runs_cancels_and_stays_in_its_tenant() {
         assert_eq!(r.engine_asked(), 1, "one engine-facts call per start");
         let card_id = card["id"].as_str().unwrap().to_string();
 
-        // The member is refused before anything; the other administrator finds nothing.
+        // The owner's panel holds the task with its card, and no `approvals` map beside it.
+        let (status, mine) = r.call(OWNER, "GET", &r.code(""), None).await;
+        assert_eq!(status, 200);
+        assert!(mine.get("approvals").is_none(), "{mine}");
+        assert_eq!(mine["tasks"].as_array().unwrap().len(), 1, "{mine}");
+        assert_eq!(mine["tasks"][0]["id"], json!(task));
+        assert_eq!(mine["tasks"][0]["approval"], card);
+
+        // The member is refused before anything (the reads too); the other administrator finds nothing.
         let decide = json!({"decision": "approve", "approvalId": card_id});
         let other_task = r.code(&format!("/{task}"));
         for (method, tail, body) in [
+            ("GET", String::new(), None),
+            ("GET", format!("/{task}"), None),
             (
                 "POST",
                 String::new(),
@@ -794,13 +824,18 @@ async fn a_direct_task_runs_cancels_and_stays_in_its_tenant() {
                 "{tail}"
             );
         }
-        assert_eq!(r.call(OTHER, "GET", &other_task, None).await.0, 404);
+        assert_eq!(
+            r.call(OTHER, "GET", &other_task, None).await,
+            (404, json!({"error": "Task not found"}))
+        );
+        // Their panel is the empty one: no task, and no card of the owner's anywhere in it.
         let (status, theirs) = r.call(OTHER, "GET", &r.code(""), None).await;
         assert_eq!(
-            (status, &theirs["tasks"]),
-            (200, &json!([])),
+            (status, &theirs),
+            (200, &state),
             "no task or card of the owner's"
         );
+        assert!(!theirs.to_string().contains(&card_id), "{theirs}");
         assert_eq!(
             r.view(OWNER, &task).await.1["approval"]["id"],
             json!(card_id),
@@ -868,11 +903,13 @@ async fn the_planner_plans_runs_verifies_reviews_and_is_accepted_or_cancelled() 
             .start(json!({"repository": "qa-repo", "prompt": GREET, "promptPreparation": "planner", "approvePlan": true}))
             .await;
         assert_eq!(status, 202, "{started}");
-        assert_eq!(keys(&started), keys(&answers[1]["body"]));
-        assert_eq!(started["promptPreparation"], "planner");
         let task = started["taskId"].as_str().unwrap().to_string();
         let branch = started["branch"].as_str().unwrap().to_string();
         let base = r.base_sha();
+        // The recording's tree and branch are its stand-ins' (`/qa/work/qa-task`, `noevia/qa-task`).
+        let tree = started["workspace"].as_str().unwrap().to_string();
+        let pairs = [(tree.as_str(), "/qa/work/qa-task"), (branch.as_str(), "noevia/qa-task"), (task.as_str(), T1)];
+        assert_eq!(norm(&started, &pairs), answers[1]["body"], "the start answer as Node's");
 
         // approve_plan: Node's card (the same plan hashes the same).
         let card = r.card(&task, "approve_plan").await;
@@ -901,13 +938,42 @@ async fn the_planner_plans_runs_verifies_reviews_and_is_accepted_or_cancelled() 
             (base.as_str(), "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
             (head.as_str(), "1111111111111111111111111111111111111111"),
         ];
+        // Measured, not recorded: the verifier's clock (`durationMs`), and so the completeness
+        // report's hash over the test report. The report is built from the journal up to the
+        // `reviewing` stage, which carries its hash: those rows must be Node's (the measured clock
+        // normalized), and the card must carry the hash of exactly that report.
+        let ours_rows = r.journal(&task);
+        let gate = |rows: &[Value]| rows.iter().position(|j| j["type"] == "task.stage" && j["data"]["to"] == "reviewing").unwrap();
+        let (mine, theirs) = (gate(&ours_rows), gate(journal));
+        let clock = |rows: &[Value]| -> Vec<Value> {
+            rows.iter()
+                .map(|j| {
+                    let mut j = j.clone();
+                    if j["data"]["kind"] == "test-report" {
+                        assert!(j["data"]["durationMs"].is_u64(), "{j}");
+                        j["data"]["durationMs"] = json!(7);
+                    }
+                    if let Some(d) = j["data"].as_object_mut() {
+                        d.remove("reportHash");
+                    }
+                    j
+                })
+                .collect()
+        };
+        let window: Vec<Value> = ours_rows[..=mine].iter().map(|j| norm(j, &pairs)).collect();
+        assert_eq!(clock(&window), clock(&journal[..=theirs]), "the journal the report is built from, as Node's");
+        let hash = ours_rows[mine]["data"]["reportHash"].clone();
+        assert!(hash.as_str().is_some_and(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())), "{hash}");
         let mut ours = norm(&card, &pairs);
+        assert_eq!(ours["evidence"]["completeness"], json!({"reportHash": hash}), "the card carries the gate's report hash");
         let node_review = journal.iter().find(|j| j["type"] == "approval.requested" && j["data"]["action"] == "review_change").unwrap();
         let mut node_review = node_review["data"].clone();
         node_review["id"] = ours["id"].clone();
-        // Measured, not recorded: the verifier's own clock and the report hash over it.
-        ours["evidence"]["tests"]["durationMs"] = json!(7);
-        ours["evidence"]["completeness"]["reportHash"] = node_review["evidence"]["completeness"]["reportHash"].clone();
+        assert!(ours["evidence"]["tests"]["durationMs"].is_u64());
+        for v in [&mut ours, &mut node_review] {
+            v["evidence"]["tests"]["durationMs"] = json!(7);
+            v["evidence"].as_object_mut().unwrap().remove("completeness");
+        }
         assert_eq!(ours, node_review, "the review_change card as Node's");
         let (status, ok) = r.call(OWNER, "POST", &approve, Some(decide(card["id"].as_str().unwrap()))).await;
         assert_eq!((status, &ok), (200, &answers[6]["body"]));
@@ -950,7 +1016,9 @@ async fn a_reviewed_direct_task_that_is_denied_is_not_accepted() {
     within(async {
         let r = rig(Opts { executor: true, review: true, ..Opts::default() }).await;
         let recorded = fixture(GATE);
-        let accepted = &recorded["scenarios"]["approved-and-accepted"];
+        // Node's run of the same: the reviewer approves, the owner denies the card.
+        let denied = &recorded["scenarios"]["reviewed-and-denied"];
+        assert_eq!(denied["answers"], json!(["deny"]));
         let (status, started) = r.start(json!({"repository": "qa-repo", "prompt": RUN, "capabilities": ["read_repository", "edit_file"]})).await;
         assert_eq!(status, 202, "{started}");
         let task = started["taskId"].as_str().unwrap().to_string();
@@ -959,32 +1027,43 @@ async fn a_reviewed_direct_task_that_is_denied_is_not_accepted() {
         assert_eq!(*r.roles.lock().unwrap(), vec!["reviewer"], "the review alone pins and calls");
         let head = card["arguments"]["headSha"].as_str().unwrap().to_string();
         assert_eq!(head, git(&r.repo, &["rev-parse", &branch]));
-        let node_card = &accepted["asked"][0];
+        let node_card = &denied["asked"][0];
         for k in ["action", "title", "kind", "command", "reason", "diff"] {
             assert_eq!(card[k], node_card[k], "{k}");
         }
         assert_eq!(card["paths"], json!(["src/qa.js"]));
         assert_eq!(keys(&card["arguments"]), keys(&node_card["arguments"]));
         assert_eq!(card["review"]["verdict"], "approve");
-        assert_eq!(keys(&card["review"]), keys(&node_card["review"]));
+        let node_head = node_card["arguments"]["headSha"].as_str().unwrap();
+        let node_base = node_card["arguments"]["baseSha"].as_str().unwrap();
+        let base = card["arguments"]["baseSha"].as_str().unwrap().to_string();
+        let shas = [(head.as_str(), node_head), (base.as_str(), node_base)];
+        let mut review = norm(&card["review"], &shas);
+        review["summary"] = node_card["review"]["summary"].clone();
+        assert_eq!(review, node_card["review"], "the reviewer's verdict on the card as Node's (its summary is the role answer's)");
 
         let (status, ok) = r.call(OWNER, "POST", &r.code(&format!("/{task}/approve")), Some(json!({"decision": "deny", "approvalId": card["id"]}))).await;
         assert_eq!((status, ok), (200, json!({"ok": true})));
         let end = r.ended(&task).await;
         assert_eq!(end["status"], "completed");
+        let node_journal = denied["journal"].as_array().unwrap();
+        let node_last = node_journal.last().unwrap();
+        assert_eq!(node_last["type"], "job.completed", "Node completes a denied review too");
         let result = r.last(&task, "job.completed")["result"].clone();
+        let mut node = node_last["data"]["result"].clone();
         assert_eq!(
-            result["review"],
-            json!({"reviewed": true, "verdict": "approve", "accepted": false, "decision": "deny", "headSha": head}),
-            "denied: not accepted"
+            node["review"],
+            json!({"reviewed": true, "verdict": "approve", "accepted": false, "decision": "deny", "headSha": node_head}),
+            "Node's denied review: not accepted"
         );
+        assert_eq!(norm(&result["review"], &shas), node["review"], "denied: not accepted, as Node's");
         // The rest of the result as Node's (the tree, branch and identity are this run's).
-        let mut node = accepted["journal"].as_array().unwrap().last().unwrap()["data"]["result"].clone();
         for k in ["branch", "workspace", "identityHash", "review"] {
             node[k] = result[k].clone();
         }
         assert_eq!(result, node, "the result as Node's");
-        assert_eq!(r.last(&task, "approval.decided"), json!({"decision": "deny", "action": "review_change"}));
+        let node_decided = node_journal.iter().rev().find(|j| j["type"] == "approval.decided").unwrap();
+        assert_eq!(r.last(&task, "approval.decided"), node_decided["data"], "the decision as Node's");
         r.quiet().await;
     })
     .await;
