@@ -3736,6 +3736,1333 @@
     "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"Write NEW.md for the QA test.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}"
    ]
   },
+  "engine-throws-at-review": {
+   "capabilities": [
+    "read_repository",
+    "edit_file"
+   ],
+   "answers": [
+    "approve"
+   ],
+   "call": {
+    "ok": true,
+    "text": "{\"verdict\":\"approve\",\"summary\":\"QA change looks right.\",\"findings\":[]}",
+    "corrected": false
+   },
+   "engineThrowsAfter": 1,
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"plan\",\"entries\":[{\"content\":\"Write NEW.md\"},{\"content\":\"Say done\"}]}}}\n"
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":\"w1\",\"method\":\"fs/write_text_file\",\"params\":{\"path\":\"NEW.md\",\"content\":\"written by the QA agent\\n\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "commit": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "started": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "workspace": "<TREE>"
+   },
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 1,
+     "type": "job.created",
+     "at": 5000,
+     "data": {
+      "kind": "code",
+      "projectId": "qa-project",
+      "parentId": null,
+      "capabilities": [
+       "read_repository",
+       "edit_file"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 2,
+     "type": "job.started",
+     "at": 5000,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 3,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 4,
+     "type": "step.started",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "title": "Pin the harness configuration"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 5,
+     "type": "step.completed",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "file": "opencode.json",
+      "files": [
+       "./opencode.json"
+      ],
+      "permission": {
+       "edit": "ask",
+       "bash": "ask",
+       "webfetch": "ask"
+      },
+      "model": "local/qa-model",
+      "endpoint": "http://qa-engine.invalid:8080/v1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 6,
+     "type": "progress",
+     "at": 5000,
+     "data": {
+      "stage": "running"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 7,
+     "type": "plan.proposed",
+     "at": 5000,
+     "data": {
+      "question": null,
+      "subQuestions": [
+       "Write NEW.md",
+       "Say done"
+      ],
+      "truncated": false
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 8,
+     "type": "tool.completed",
+     "at": 5000,
+     "data": {
+      "name": "write_file",
+      "path": "NEW.md",
+      "bytes": 24
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 9,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "identityHash": "d3ffc12ba843e691d1616631d2dcc04a138651b2fe0ae53c7b13265804a67e28",
+      "identity": {
+       "backend": "acp",
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "model": "qa-model",
+       "provider": null,
+       "protocolVersion": 1,
+       "capabilities": [
+        "edit_file",
+        "read_repository"
+       ],
+       "promptPreparation": "direct",
+       "sandbox": "sandbox"
+      },
+      "meta": {
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "protocolVersion": 1,
+       "usage": null,
+       "context": null,
+       "commands": 0,
+       "failedCommands": 0,
+       "exitCodes": [],
+       "messageChunks": 0,
+       "limitations": [
+        "The harness did not report token usage.",
+        "No command exit codes were reported."
+       ]
+      },
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 10,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "identityHash": "d3ffc12ba843e691d1616631d2dcc04a138651b2fe0ae53c7b13265804a67e28",
+      "identity": {
+       "backend": "acp",
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "model": "qa-model",
+       "provider": null,
+       "protocolVersion": 1,
+       "capabilities": [
+        "edit_file",
+        "read_repository"
+       ],
+       "promptPreparation": "direct",
+       "sandbox": "sandbox"
+      },
+      "meta": {
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "protocolVersion": 1,
+       "usage": null,
+       "context": null,
+       "commands": 0,
+       "failedCommands": 0,
+       "exitCodes": [],
+       "messageChunks": 0,
+       "limitations": [
+        "The harness did not report token usage.",
+        "No command exit codes were reported."
+       ]
+      },
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 11,
+     "type": "review.requested",
+     "at": 5000,
+     "data": {
+      "status": "pending",
+      "reviewer": "planner",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "files": 1
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 12,
+     "type": "review.completed",
+     "at": 5000,
+     "data": {
+      "status": "completed",
+      "reviewer": "planner",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "verdict": "approve",
+      "summary": "QA change looks right.",
+      "findings": [],
+      "corrected": false
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 13,
+     "type": "approval.requested",
+     "at": 5000,
+     "data": {
+      "taskId": "00000000-0000-4000-8000-0000000000bb",
+      "action": "review_change",
+      "title": "Accept this change",
+      "kind": "review",
+      "command": "",
+      "paths": [
+       "NEW.md"
+      ],
+      "reason": "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.",
+      "arguments": {
+       "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+       "files": [
+        "NEW.md"
+       ]
+      },
+      "diff": null,
+      "review": {
+       "status": "completed",
+       "reviewer": "planner",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+       "verdict": "approve",
+       "summary": "QA change looks right.",
+       "findings": [],
+       "corrected": false
+      }
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 14,
+     "type": "approval.decided",
+     "at": 5000,
+     "data": {
+      "decision": "approve",
+      "action": "review_change"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 15,
+     "type": "job.completed",
+     "at": 5000,
+     "data": {
+      "result": {
+       "stopReason": "end_turn",
+       "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+       "identityHash": "d3ffc12ba843e691d1616631d2dcc04a138651b2fe0ae53c7b13265804a67e28",
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "tools": 0,
+       "approvals": 0,
+       "allowed": 0,
+       "refused": 0,
+       "denied": 0,
+       "workspace": "<TREE>",
+       "review": {
+        "reviewed": true,
+        "verdict": "approve",
+        "accepted": true,
+        "decision": "approve",
+        "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f"
+       }
+      }
+     }
+    }
+   ],
+   "asked": [
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000bb",
+     "action": "review_change",
+     "title": "Accept this change",
+     "kind": "review",
+     "command": "",
+     "paths": [
+      "NEW.md"
+     ],
+     "reason": "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.",
+     "arguments": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "files": [
+       "NEW.md"
+      ]
+     },
+     "diff": null,
+     "review": {
+      "status": "completed",
+      "reviewer": "planner",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "verdict": "approve",
+      "summary": "QA change looks right.",
+      "findings": [],
+      "corrected": false
+     }
+    }
+   ],
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-0000000000bb",
+     "event": "code.review_decided",
+     "decision": "approve",
+     "reviewed": true
+    }
+   ],
+   "reviewLogs": [
+    {
+     "event": "code.reviewed",
+     "verdict": "approve",
+     "findings": 0,
+     "corrected": false
+    }
+   ],
+   "reviewCalls": [
+    {
+     "pin": {
+      "taskId": "00000000-0000-4000-8000-0000000000bb"
+     }
+    },
+    {
+     "call": {
+      "role": "reviewer",
+      "state": {
+       "taskId": "00000000-0000-4000-8000-0000000000bb",
+       "tenantId": "qa-tenant",
+       "request": "Write NEW.md for the QA test.",
+       "capabilities": [
+        "read_repository",
+        "edit_file"
+       ],
+       "plan": {
+        "steps": [
+         {
+          "do": "Write NEW.md"
+         },
+         {
+          "do": "Say done"
+         }
+        ]
+       },
+       "execution": {
+        "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+        "changedFiles": [
+         "NEW.md"
+        ],
+        "summary": "0 tool calls; 0 allowed, 0 declined by the person, 0 refused by noevia."
+       },
+       "change": {
+        "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+        "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+        "files": [
+         {
+          "path": "NEW.md",
+          "patch": "diff --git a/NEW.md b/NEW.md\nnew file mode 100644\nindex 0000000..11236a9\n--- /dev/null\n+++ b/NEW.md\n@@ -0,0 +1 @@\n+written by the QA agent"
+         }
+        ],
+        "truncated": false
+       }
+      },
+      "schemaName": "planner_review",
+      "constrain": true,
+      "maxBytes": 65536
+     }
+    }
+   ],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<TREE>\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<TREE>\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"Write NEW.md for the QA test.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":\"w1\",\"result\":null}"
+   ]
+  },
+  "cancelled-at-the-card": {
+   "capabilities": [
+    "read_repository",
+    "edit_file"
+   ],
+   "answers": [
+    "cancel"
+   ],
+   "call": {
+    "ok": true,
+    "text": "{\"verdict\":\"approve\",\"summary\":\"QA change looks right.\",\"findings\":[]}",
+    "corrected": false
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"plan\",\"entries\":[{\"content\":\"Write NEW.md\"},{\"content\":\"Say done\"}]}}}\n"
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":\"w1\",\"method\":\"fs/write_text_file\",\"params\":{\"path\":\"NEW.md\",\"content\":\"written by the QA agent\\n\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "commit": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "started": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "workspace": "<TREE>"
+   },
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 1,
+     "type": "job.created",
+     "at": 5000,
+     "data": {
+      "kind": "code",
+      "projectId": "qa-project",
+      "parentId": null,
+      "capabilities": [
+       "read_repository",
+       "edit_file"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 2,
+     "type": "job.started",
+     "at": 5000,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 3,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 4,
+     "type": "step.started",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "title": "Pin the harness configuration"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 5,
+     "type": "step.completed",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "file": "opencode.json",
+      "files": [
+       "./opencode.json"
+      ],
+      "permission": {
+       "edit": "ask",
+       "bash": "ask",
+       "webfetch": "ask"
+      },
+      "model": "local/qa-model",
+      "endpoint": "http://qa-engine.invalid:8080/v1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 6,
+     "type": "progress",
+     "at": 5000,
+     "data": {
+      "stage": "running"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 7,
+     "type": "plan.proposed",
+     "at": 5000,
+     "data": {
+      "question": null,
+      "subQuestions": [
+       "Write NEW.md",
+       "Say done"
+      ],
+      "truncated": false
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 8,
+     "type": "tool.completed",
+     "at": 5000,
+     "data": {
+      "name": "write_file",
+      "path": "NEW.md",
+      "bytes": 24
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 9,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "identityHash": "d3ffc12ba843e691d1616631d2dcc04a138651b2fe0ae53c7b13265804a67e28",
+      "identity": {
+       "backend": "acp",
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "model": "qa-model",
+       "provider": null,
+       "protocolVersion": 1,
+       "capabilities": [
+        "edit_file",
+        "read_repository"
+       ],
+       "promptPreparation": "direct",
+       "sandbox": "sandbox"
+      },
+      "meta": {
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "protocolVersion": 1,
+       "usage": null,
+       "context": null,
+       "commands": 0,
+       "failedCommands": 0,
+       "exitCodes": [],
+       "messageChunks": 0,
+       "limitations": [
+        "The harness did not report token usage.",
+        "No command exit codes were reported."
+       ]
+      },
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 10,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "identityHash": "d3ffc12ba843e691d1616631d2dcc04a138651b2fe0ae53c7b13265804a67e28",
+      "identity": {
+       "backend": "acp",
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "model": "qa-model",
+       "provider": null,
+       "protocolVersion": 1,
+       "capabilities": [
+        "edit_file",
+        "read_repository"
+       ],
+       "promptPreparation": "direct",
+       "sandbox": "sandbox"
+      },
+      "meta": {
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "protocolVersion": 1,
+       "usage": null,
+       "context": null,
+       "commands": 0,
+       "failedCommands": 0,
+       "exitCodes": [],
+       "messageChunks": 0,
+       "limitations": [
+        "The harness did not report token usage.",
+        "No command exit codes were reported."
+       ]
+      },
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 11,
+     "type": "review.requested",
+     "at": 5000,
+     "data": {
+      "status": "pending",
+      "reviewer": "planner",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "files": 1
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 12,
+     "type": "review.completed",
+     "at": 5000,
+     "data": {
+      "status": "completed",
+      "reviewer": "planner",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "verdict": "approve",
+      "summary": "QA change looks right.",
+      "findings": [],
+      "corrected": false
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 13,
+     "type": "approval.requested",
+     "at": 5000,
+     "data": {
+      "taskId": "00000000-0000-4000-8000-0000000000bb",
+      "action": "review_change",
+      "title": "Accept this change",
+      "kind": "review",
+      "command": "",
+      "paths": [
+       "NEW.md"
+      ],
+      "reason": "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.",
+      "arguments": {
+       "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+       "files": [
+        "NEW.md"
+       ]
+      },
+      "diff": null,
+      "review": {
+       "status": "completed",
+       "reviewer": "planner",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+       "verdict": "approve",
+       "summary": "QA change looks right.",
+       "findings": [],
+       "corrected": false
+      }
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 14,
+     "type": "approval.decided",
+     "at": 5000,
+     "data": {
+      "decision": "aborted",
+      "action": "review_change"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 15,
+     "type": "job.cancelled",
+     "at": 5000,
+     "data": {
+      "result": {
+       "stopReason": "end_turn",
+       "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+       "identityHash": "d3ffc12ba843e691d1616631d2dcc04a138651b2fe0ae53c7b13265804a67e28",
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "tools": 0,
+       "approvals": 0,
+       "allowed": 0,
+       "refused": 0,
+       "denied": 0,
+       "workspace": "<TREE>",
+       "review": {
+        "reviewed": true,
+        "verdict": "approve",
+        "accepted": false,
+        "decision": "aborted",
+        "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f"
+       }
+      }
+     }
+    }
+   ],
+   "asked": [
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000bb",
+     "action": "review_change",
+     "title": "Accept this change",
+     "kind": "review",
+     "command": "",
+     "paths": [
+      "NEW.md"
+     ],
+     "reason": "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.",
+     "arguments": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "files": [
+       "NEW.md"
+      ]
+     },
+     "diff": null,
+     "review": {
+      "status": "completed",
+      "reviewer": "planner",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "verdict": "approve",
+      "summary": "QA change looks right.",
+      "findings": [],
+      "corrected": false
+     }
+    }
+   ],
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-0000000000bb",
+     "event": "code.review_decided",
+     "decision": "aborted",
+     "reviewed": true
+    }
+   ],
+   "reviewLogs": [
+    {
+     "event": "code.reviewed",
+     "verdict": "approve",
+     "findings": 0,
+     "corrected": false
+    }
+   ],
+   "reviewCalls": [
+    {
+     "pin": {
+      "taskId": "00000000-0000-4000-8000-0000000000bb"
+     }
+    },
+    {
+     "call": {
+      "role": "reviewer",
+      "state": {
+       "taskId": "00000000-0000-4000-8000-0000000000bb",
+       "tenantId": "qa-tenant",
+       "request": "Write NEW.md for the QA test.",
+       "capabilities": [
+        "read_repository",
+        "edit_file"
+       ],
+       "plan": {
+        "steps": [
+         {
+          "do": "Write NEW.md"
+         },
+         {
+          "do": "Say done"
+         }
+        ]
+       },
+       "execution": {
+        "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+        "changedFiles": [
+         "NEW.md"
+        ],
+        "summary": "0 tool calls; 0 allowed, 0 declined by the person, 0 refused by noevia."
+       },
+       "change": {
+        "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+        "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+        "files": [
+         {
+          "path": "NEW.md",
+          "patch": "diff --git a/NEW.md b/NEW.md\nnew file mode 100644\nindex 0000000..11236a9\n--- /dev/null\n+++ b/NEW.md\n@@ -0,0 +1 @@\n+written by the QA agent"
+         }
+        ],
+        "truncated": false
+       },
+       "credentials": {
+        "engine": "qa-engine-key"
+       }
+      },
+      "schemaName": "planner_review",
+      "constrain": true,
+      "maxBytes": 65536
+     }
+    }
+   ],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<TREE>\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<TREE>\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"Write NEW.md for the QA test.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":\"w1\",\"result\":null}"
+   ]
+  },
+  "release-failed": {
+   "capabilities": [
+    "read_repository",
+    "edit_file"
+   ],
+   "answers": [
+    "approve"
+   ],
+   "call": {
+    "ok": true,
+    "text": "{\"verdict\":\"approve\",\"summary\":\"QA change looks right.\",\"findings\":[]}",
+    "corrected": false
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"plan\",\"entries\":[{\"content\":\"Write NEW.md\"},{\"content\":\"Say done\"}]}}}\n"
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":\"w1\",\"method\":\"fs/write_text_file\",\"params\":{\"path\":\"NEW.md\",\"content\":\"written by the QA agent\\n\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "commit": true
+    },
+    {
+     "lock": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "started": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "workspace": "<TREE>"
+   },
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 1,
+     "type": "job.created",
+     "at": 5000,
+     "data": {
+      "kind": "code",
+      "projectId": "qa-project",
+      "parentId": null,
+      "capabilities": [
+       "read_repository",
+       "edit_file"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 2,
+     "type": "job.started",
+     "at": 5000,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 3,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 4,
+     "type": "step.started",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "title": "Pin the harness configuration"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 5,
+     "type": "step.completed",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "file": "opencode.json",
+      "files": [
+       "./opencode.json"
+      ],
+      "permission": {
+       "edit": "ask",
+       "bash": "ask",
+       "webfetch": "ask"
+      },
+      "model": "local/qa-model",
+      "endpoint": "http://qa-engine.invalid:8080/v1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 6,
+     "type": "progress",
+     "at": 5000,
+     "data": {
+      "stage": "running"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 7,
+     "type": "plan.proposed",
+     "at": 5000,
+     "data": {
+      "question": null,
+      "subQuestions": [
+       "Write NEW.md",
+       "Say done"
+      ],
+      "truncated": false
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 8,
+     "type": "tool.completed",
+     "at": 5000,
+     "data": {
+      "name": "write_file",
+      "path": "NEW.md",
+      "bytes": 24
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 9,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "identityHash": "d3ffc12ba843e691d1616631d2dcc04a138651b2fe0ae53c7b13265804a67e28",
+      "identity": {
+       "backend": "acp",
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "model": "qa-model",
+       "provider": null,
+       "protocolVersion": 1,
+       "capabilities": [
+        "edit_file",
+        "read_repository"
+       ],
+       "promptPreparation": "direct",
+       "sandbox": "sandbox"
+      },
+      "meta": {
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "protocolVersion": 1,
+       "usage": null,
+       "context": null,
+       "commands": 0,
+       "failedCommands": 0,
+       "exitCodes": [],
+       "messageChunks": 0,
+       "limitations": [
+        "The harness did not report token usage.",
+        "No command exit codes were reported."
+       ]
+      },
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 10,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "identityHash": "d3ffc12ba843e691d1616631d2dcc04a138651b2fe0ae53c7b13265804a67e28",
+      "identity": {
+       "backend": "acp",
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "model": "qa-model",
+       "provider": null,
+       "protocolVersion": 1,
+       "capabilities": [
+        "edit_file",
+        "read_repository"
+       ],
+       "promptPreparation": "direct",
+       "sandbox": "sandbox"
+      },
+      "meta": {
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "protocolVersion": 1,
+       "usage": null,
+       "context": null,
+       "commands": 0,
+       "failedCommands": 0,
+       "exitCodes": [],
+       "messageChunks": 0,
+       "limitations": [
+        "The harness did not report token usage.",
+        "No command exit codes were reported."
+       ]
+      },
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 11,
+     "type": "review.requested",
+     "at": 5000,
+     "data": {
+      "status": "pending",
+      "reviewer": "planner",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "files": null
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 12,
+     "type": "review.failed",
+     "at": 5000,
+     "data": {
+      "status": "failed",
+      "reviewer": "planner",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "code": "not_released",
+      "reason": "The workspace was not released cleanly, so its change was not read."
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 13,
+     "type": "approval.requested",
+     "at": 5000,
+     "data": {
+      "taskId": "00000000-0000-4000-8000-0000000000bb",
+      "action": "review_change",
+      "title": "Accept this change",
+      "kind": "review",
+      "command": "",
+      "paths": [],
+      "reason": "Not reviewed: The workspace was not released cleanly, so its change was not read. Review the change on its branch yourself before accepting it.",
+      "arguments": {
+       "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+       "files": []
+      },
+      "diff": null,
+      "review": {
+       "status": "failed",
+       "reviewer": "planner",
+       "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+       "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+       "code": "not_released",
+       "reason": "The workspace was not released cleanly, so its change was not read."
+      }
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 14,
+     "type": "approval.decided",
+     "at": 5000,
+     "data": {
+      "decision": "approve",
+      "action": "review_change"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 15,
+     "type": "job.completed",
+     "at": 5000,
+     "data": {
+      "result": {
+       "stopReason": "end_turn",
+       "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+       "identityHash": "d3ffc12ba843e691d1616631d2dcc04a138651b2fe0ae53c7b13265804a67e28",
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "tools": 0,
+       "approvals": 0,
+       "allowed": 0,
+       "refused": 0,
+       "denied": 0,
+       "workspace": "<TREE>",
+       "review": {
+        "reviewed": false,
+        "verdict": null,
+        "accepted": true,
+        "decision": "approve",
+        "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f"
+       }
+      }
+     }
+    }
+   ],
+   "asked": [
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000bb",
+     "action": "review_change",
+     "title": "Accept this change",
+     "kind": "review",
+     "command": "",
+     "paths": [],
+     "reason": "Not reviewed: The workspace was not released cleanly, so its change was not read. Review the change on its branch yourself before accepting it.",
+     "arguments": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "files": []
+     },
+     "diff": null,
+     "review": {
+      "status": "failed",
+      "reviewer": "planner",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "276fa0919b54cad1f557eab01759c7fbb744326f",
+      "code": "not_released",
+      "reason": "The workspace was not released cleanly, so its change was not read."
+     }
+    }
+   ],
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-0000000000bb",
+     "event": "code.review_decided",
+     "decision": "approve",
+     "reviewed": false
+    }
+   ],
+   "reviewLogs": [],
+   "reviewCalls": [],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<TREE>\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<TREE>\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"Write NEW.md for the QA test.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":\"w1\",\"result\":null}"
+   ]
+  },
   "flag-reader-throws": {
    "capabilities": [
     "read_repository",

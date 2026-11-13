@@ -25,6 +25,11 @@
 //! - A host with the flag on but no Code role engine for this start (a core that gives no `role`
 //!   fact) reviews with [`Unconfigured`]: Node's own answer for a reviewer with neither a provider
 //!   nor a role engine ("No reviewer model is configured on this server."), so the card says why.
+//! - A reviewer the host cannot build for this start (its `make` panics, or the front cannot set up
+//!   its HTTP client) reviews with [`Unreachable`]: Node builds its reviewer once at boot and has no
+//!   such failure; the nearest Node answer is the one for a review whose role engine throws
+//!   (code-review.cjs `reviewInSession`'s catch: `error`, "The reviewer could not be reached."),
+//!   which is what the card then says, rather than claiming no reviewer is configured.
 
 use crate::executor::{Approvals, Fail, Jobs};
 use crate::session::Ended;
@@ -133,8 +138,21 @@ impl Reviewer for Unconfigured {
     }
 }
 
+/// A reviewer that could not be built for this start: code-review.cjs's answer for a role engine
+/// that throws.
+pub struct Unreachable;
+
+impl Reviewer for Unreachable {
+    fn review(&self, _state: &JValue, _signal: &Signal) -> Outcome {
+        Err(RoleFail {
+            code: s("error"),
+            reason: s("The reviewer could not be reached."),
+        })
+    }
+}
+
 /// The review decided once for a start: `enabled` (features.plannerReview; a panic is off), then
-/// `make` for the reviewer.
+/// `make` for the reviewer (a panic is [`Unreachable`]).
 pub fn decide(
     enabled: &dyn Fn() -> bool,
     make: &dyn Fn() -> Arc<dyn Reviewer>,
@@ -145,7 +163,7 @@ pub fn decide(
     }
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(make))
         .ok()
-        .or_else(|| Some(Arc::new(Unconfigured)))
+        .or_else(|| Some(Arc::new(Unreachable)))
 }
 
 /// A log entry's own keys (the executor puts `at` and `taskId` first).

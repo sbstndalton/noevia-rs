@@ -27,6 +27,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -119,13 +120,25 @@ impl Egress for StubEgress {
 struct Scripted {
     answers: Mutex<VecDeque<String>>,
     asked: Log,
+    executor: Arc<OnceLock<Arc<Executor>>>,
 }
 
 impl Approvals for Scripted {
-    fn ask(&self, request: &JValue, _ended: &Arc<Ended>) -> String {
+    fn ask(&self, request: &JValue, ended: &Arc<Ended>) -> String {
         self.asked.lock().unwrap().push(request.clone());
         let next = self.answers.lock().unwrap().pop_front();
-        next.unwrap_or_else(|| "deny".into())
+        let answer = next.unwrap_or_else(|| "deny".into());
+        if answer != "cancel" {
+            return answer;
+        }
+        // The person cancels the task while this card waits: it is refused as `aborted`.
+        self.executor.get().unwrap().cancel(TASK).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !ended.is_ended() {
+            assert!(Instant::now() < deadline, "the card never ended");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        "aborted".into()
     }
 }
 
@@ -235,6 +248,14 @@ fn sandbox(
                     .unwrap();
                 git(Path::new(&tree), &["add", "NEW.md"]);
                 git(Path::new(&tree), &["commit", "-qm", "QA change"]);
+            } else if step.get("lock").as_bool() == Some(true) {
+                let tree = lines
+                    .iter()
+                    .map(|l| wtf16::parse(l).unwrap())
+                    .find(|m| m.get("method").as_str() == Some("session/new"))
+                    .map(|m| m.get("params").get("cwd").as_str().unwrap().to_string())
+                    .unwrap();
+                git(Path::new(&tree), &["worktree", "lock", &tree]);
             } else if step.get("cancel").as_bool() == Some(true) {
                 std::thread::sleep(Duration::from_millis(20));
                 on_cancel();
@@ -296,11 +317,15 @@ fn replay(name: &str, sc: &JValue) {
         }
     };
     let (asked, logs, review_logs, calls): (Log, Log, Log, Log) = Default::default();
+    let slot: Arc<OnceLock<Arc<Executor>>> = Arc::new(OnceLock::new());
     let approvals = Arc::new(Scripted {
         answers: Mutex::new(strings("answers").into()),
         asked: asked.clone(),
+        executor: slot.clone(),
     });
-    let slot: Arc<OnceLock<Arc<Executor>>> = Arc::new(OnceLock::new());
+    // `engineThrowsAfter`: the host's engine panics from that call on.
+    let throws_after = sc.get("engineThrowsAfter").as_num().map(|n| n as usize);
+    let engine_calls = AtomicUsize::new(0);
     let JValue::Arr(script) = sc.get("script") else {
         panic!()
     };
@@ -319,11 +344,17 @@ fn replay(name: &str, sc: &JValue) {
             .is_object()
             .then(|| Arc::new(StubEgress(sc.get("egress").clone())) as Arc<dyn Egress>),
         approvals,
-        engine: Box::new(|| Engine {
-            base_url: Some("http://qa-engine.invalid:8080/v1".into()),
-            api_key: Some("qa-engine-key".into()),
-            model: Some("qa-model".into()),
-            context_tokens: Some(8192.0),
+        engine: Box::new(move || {
+            let n = engine_calls.fetch_add(1, Ordering::SeqCst);
+            if throws_after.is_some_and(|after| n >= after) {
+                panic!("QA engine");
+            }
+            Engine {
+                base_url: Some("http://qa-engine.invalid:8080/v1".into()),
+                api_key: Some("qa-engine-key".into()),
+                model: Some("qa-model".into()),
+                context_tokens: Some(8192.0),
+            }
         }),
         transport: Some(Transport::Socket(format!("127.0.0.1:{port}"))),
         log: Box::new(move |e| sink.lock().unwrap().push(e)),
@@ -414,7 +445,7 @@ fn every_node_review_gate_run_replays() {
     let JValue::Obj(all) = f.get("scenarios") else {
         panic!()
     };
-    assert_eq!(all.len(), 11);
+    assert_eq!(all.len(), 14);
     for (name, sc) in all {
         eprintln!("scenario {name}");
         replay(name, sc);
@@ -436,7 +467,8 @@ fn the_fixture_was_recorded_from_these_sources() {
 }
 
 /// Without a role engine the review is Node's `unavailable`; the flag decides alone whether there
-/// is a gate (a reviewer that cannot be built still gets one, saying so).
+/// is a gate (a reviewer that cannot be built still gets one: Node's answer for a role engine that
+/// throws, not "no reviewer configured").
 #[test]
 fn a_reviewer_without_a_role_engine_says_so() {
     let signal = Signal::new();
@@ -448,6 +480,11 @@ fn a_reviewer_without_a_role_engine_says_so() {
         s("No reviewer model is configured on this server.")
     );
     let make = || -> Arc<dyn Reviewer> { panic!("QA make") };
-    assert!(review_gate::decide(&|| true, &make).is_some());
+    let built = review_gate::decide(&|| true, &make).unwrap();
+    let fail = built.review(&JValue::Null, &signal).err().unwrap();
+    assert_eq!(
+        (fail.code, fail.reason),
+        (s("error"), s("The reviewer could not be reached."))
+    );
     assert!(review_gate::decide(&|| false, &make).is_none());
 }

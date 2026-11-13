@@ -31,9 +31,14 @@
 //! (code-review.cjs `createPlannerReview` over the same role engine as the Planner: a review alone
 //! pins the task's model for that task) and then on a `review_change` card, answered through the
 //! decide route below. A core that gives no `role` fact gets Node's "No reviewer model is
-//! configured on this server." on that card. The switch-flip condition "codePipeline and
-//! plannerReview off" therefore goes away: the front runs both, so `NOEVIA_CODE_EXECUTOR=rust`
-//! no longer has to wait for either flag to be off.
+//! configured on this server." on that card; one whose reviewer cannot be built here (the HTTP
+//! client failing) gets review_gate's `Unreachable` ("The reviewer could not be reached."). The
+//! switch-flip condition "codePipeline and plannerReview off" therefore goes away: the front runs
+//! both, so `NOEVIA_CODE_EXECUTOR=rust` no longer has to wait for either flag to be off.
+//!
+//! features.plannerReview is read as features.cjs `selected` reads it: the env value, else the
+//! typed `feature:plannerReview` row, else (missing or not `'true'`/`'false'`) the legacy
+//! `feature:astraReview` row, else the default (off).
 //!
 //! Named differences (each refused, never run differently):
 //! - the Code role on an inference machine (core's relay, #1853) is refused with 409, for the
@@ -64,7 +69,7 @@ use axum::{
 };
 use code_harness::executor::{Egress, Engine, Fail, Lease};
 use code_harness::pipeline_host::{EngineRoles, Flag, PipeHost, PipeVerify};
-use code_harness::review_gate::{PlannerReview, Reviewer, Unconfigured};
+use code_harness::review_gate::{PlannerReview, Reviewer, Unconfigured, Unreachable};
 use code_harness::service::{
     default_harnesses, parse_repos, parse_user, Inference, Options, Parts, Project, Resolved,
     Service, Setup, APPROVAL_TIMEOUT,
@@ -427,7 +432,6 @@ fn log_code(entry: &JValue) {
 /// features.cjs `enabled(name)` for a restart-free flag: the env value, else the admin setting,
 /// else the default; an unreadable setting is off.
 pub fn feature(app: &App, feature: server_features::Feature) -> bool {
-    let spec = server_features::spec(feature);
     let env = server_features::Feature::ALL
         .iter()
         .position(|f| *f == feature)
@@ -435,27 +439,17 @@ pub fn feature(app: &App, feature: server_features::Feature) -> bool {
     let stored = if env.is_some() {
         None
     } else {
+        // features.cjs `selected`: the typed row, then the declared legacy row
+        // (`feature:astraReview` for plannerReview) when the new one is missing or not typed.
         app.writes.writer().ok().and_then(|w| {
-            w.read(|r| {
-                r.row(
-                    "SELECT CASE WHEN typeof(value)='text' AND value IN ('true','false') THEN value ELSE NULL END FROM settings WHERE key=?1",
-                    [spec.setting],
-                    |row| row.get::<_, Option<String>>(0),
-                )
-            })
-            .ok()
-            .flatten()
-            .flatten()
+            w.read(|r| server_account::feature_context::startup::selected(r, feature))
+                .ok()
+                .flatten()
+                .map(|on| if on { "true" } else { "false" })
         })
     };
-    server_features::evaluate_with_context(
-        feature,
-        env,
-        stored.as_deref(),
-        availability(app, feature),
-        None,
-    )
-    .enabled
+    server_features::evaluate_with_context(feature, env, stored, availability(app, feature), None)
+        .enabled
 }
 
 /// features.cjs's runtime availability for the flags Code mode reads: the Code-sandbox ones
@@ -550,12 +544,17 @@ impl Setup for FrontPipeline {
     }
 
     fn reviewer(&self, resolved: &Resolved) -> Arc<dyn Reviewer> {
+        // No `role` fact from core: Node's "no reviewer configured". A role fact but no reviewer
+        // (the HTTP client could not be built): review_gate's `Unreachable`.
+        if resolved.facts.as_ref().and_then(role_endpoint).is_none() {
+            return Arc::new(Unconfigured);
+        }
         match self.roles(resolved) {
             Some((roles, _)) => Arc::new(PlannerReview::new(
                 Arc::new(roles),
                 Arc::new(|e| log_code(&e)),
             )),
-            None => Arc::new(Unconfigured),
+            None => Arc::new(Unreachable),
         }
     }
 
@@ -1157,6 +1156,44 @@ mod tests {
             offered(&[("CODE_HARNESS_COMMAND", "opencode")], &ALL_ON),
             (false, false, false, false)
         );
+    }
+
+    /// features.cjs `selected` (features.cjs:146-150): the env value, else the typed new row, else
+    /// the legacy `feature:astraReview` row when the new one is missing or not typed, else off.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_review_flag_falls_back_to_its_legacy_row() {
+        use server_features::Feature;
+        const NEW: &str = "feature:plannerReview";
+        const OLD: &str = "feature:astraReview";
+        const ENV: &str = "NOEVIA_FEATURE_PLANNER_REVIEW";
+        let review = |env: &[(&str, &str)], settings: &[(&str, &str)]| {
+            let (_dir, app) = front(env, settings);
+            feature(&app, Feature::PlannerReview)
+        };
+        assert!(!review(&[], &[]), "the default is off");
+        assert!(review(&[], &[(OLD, "true")]), "only the legacy row");
+        assert!(!review(&[], &[(OLD, "false")]));
+        assert!(review(&[], &[(NEW, "true")]));
+        assert!(
+            !review(&[], &[(NEW, "false"), (OLD, "true")]),
+            "the new row wins"
+        );
+        assert!(review(&[], &[(NEW, "true"), (OLD, "false")]));
+        // An untyped new row is no value: the legacy row decides.
+        assert!(review(&[], &[(NEW, "yes"), (OLD, "true")]));
+        assert!(!review(&[], &[(NEW, "TRUE"), (OLD, "false")]));
+        assert!(
+            !review(&[], &[(NEW, "1"), (OLD, "on")]),
+            "an untyped legacy row is no value either"
+        );
+        // The env value wins over both rows.
+        assert!(!review(&[(ENV, "false")], &[(OLD, "true")]));
+        assert!(review(&[(ENV, "on")], &[(NEW, "false"), (OLD, "false")]));
+        // Only plannerReview has a legacy name: no other flag reads it.
+        let (_dir, app) = front(&[], &[(OLD, "true"), ("feature:codeHarness", "true")]);
+        assert!(feature(&app, Feature::CodeHarness));
+        assert!(feature(&app, Feature::PlannerReview));
+        assert!(!feature(&app, Feature::CodePipeline));
     }
 
     #[tokio::test(flavor = "multi_thread")]

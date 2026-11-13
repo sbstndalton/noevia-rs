@@ -62,10 +62,9 @@ pub trait Jobs: Send + Sync {
     fn append(&self, id: &str, kind: &str, data: JValue) -> Result<(), Fail>;
     fn status(&self, id: &str) -> Option<String>;
     /// jobs.cjs `get(id)`'s derived job as a JS value, for the review gate (the plan it sends,
-    /// the review it shows). `None`: not known, so neither is sent.
-    fn get(&self, _id: &str) -> Option<JValue> {
-        None
-    }
+    /// the review it shows). `None`: not known, so neither is sent. Required: an implementer
+    /// that cannot read its jobs says so here rather than by a default.
+    fn get(&self, id: &str) -> Option<JValue>;
 }
 
 /// The egress controller (the front's code_egress): a grant for named domains, its revoke with
@@ -844,7 +843,14 @@ impl Executor {
             .ok()
             .and_then(|r| r.clone())
             .unwrap_or(JValue::Null);
-        let engine = req.engine.clone().unwrap_or_else(|| (self.deps.engine)());
+        // code-harness.cjs: `try { engineKey = engine()?.apiKey || null; } catch {}`: a host
+        // engine that panics reviews without a key.
+        let engine_key = match &req.engine {
+            Some(e) => e.api_key.clone(),
+            None => catch_unwind(AssertUnwindSafe(|| (self.deps.engine)()))
+                .ok()
+                .and_then(|e| e.api_key),
+        };
         let log = |entry: Vec<(&str, JValue)>| self.log(task_id, entry);
         review_gate::Gate {
             task_id,
@@ -859,7 +865,7 @@ impl Executor {
             branch: handle.workspace.get("branch").clone(),
             base_sha: nullish(handle.workspace.get("baseSha")),
             head_sha: nullish(released.get("headSha")),
-            engine_key: engine.api_key,
+            engine_key,
             grant_token: handle
                 .grant
                 .as_ref()

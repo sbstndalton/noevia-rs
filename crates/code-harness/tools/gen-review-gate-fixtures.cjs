@@ -16,7 +16,12 @@
 // the task's tree, as the agent would), `domains` + `egress` (a stub controller granting
 // `qa-token`), and the reviewer: `flagThrows` (the flag reader throws: no gate), `pin` (a refused
 // pin's `{ code, reason }`), `call` (the session's answer), `callWaits` (the call returns only once
-// its signal aborts), `callCancels` (the call cancels the task first, then waits), `deadlineMs`.
+// its signal aborts), `callCancels` (the call cancels the task first, then waits), `deadlineMs`,
+// `engineThrowsAfter` (the host's `engine()` throws from that call on: the run's own call is the
+// first, the review's key read the second). An answer `cancel` cancels the task from the card and
+// answers `aborted` once the task's signal aborts (code-service.cjs's askApproval on a cancel). The
+// sandbox's `{ lock: true }` locks the task's worktree (`git worktree lock`), so its release cannot
+// remove it and records it as stuck: a failed workspace release before the review.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -72,6 +77,10 @@ const SCENARIOS = {
   'cancelled-run': { capabilities: ['read_repository'], call: APPROVE, script: [...HANDSHAKE, { cancel: true }, { expectClose: true }] },
   'agent-error': { capabilities: ['read_repository'], call: APPROVE,
     script: [...HANDSHAKE, { send: line({ jsonrpc: '2.0', id: 3, error: { code: -32000, message: 'QA agent failure' } }) }, { expectClose: true }] },
+  'engine-throws-at-review': { capabilities: ['read_repository', 'edit_file'], answers: ['approve'], call: APPROVE, engineThrowsAfter: 1, script: WRITES },
+  'cancelled-at-the-card': { capabilities: ['read_repository', 'edit_file'], answers: ['cancel'], call: APPROVE, script: WRITES },
+  'release-failed': { capabilities: ['read_repository', 'edit_file'], answers: ['approve'], call: APPROVE,
+    script: [...HANDSHAKE, PLAN, ...WRITE, { lock: true }, ...END] },
   'flag-reader-throws': { capabilities: ['read_repository', 'edit_file'], flagThrows: true, call: APPROVE, script: WRITES },
 };
 
@@ -109,6 +118,7 @@ function sandbox(script, tree, onCancel) {
           if (step.expect) { if (lines.length <= seen) await new Promise((r) => waiters.push(r)); seen++; }
           else if (step.send !== undefined) { await new Promise((r) => setTimeout(r, 5)); sock.write(step.send.split('<TREE>').join(tree())); }
           else if (step.commit) { gitIn(tree(), 'add', 'NEW.md'); gitIn(tree(), 'commit', '-qm', 'QA change'); }
+          else if (step.lock) { gitIn(tree(), 'worktree', 'lock', tree()); }
           else if (step.cancel) { await new Promise((r) => setTimeout(r, 20)); onCancel(); }
           else if (step.expectClose) { if (!closed) await new Promise((r) => { closeWaiter = r; }); }
         }
@@ -127,7 +137,7 @@ async function run(sc) {
   const workspaces = createCodeWorkspaces({ dir, epoch: 'qa-epoch', now: () => 5000 });
   const asked = [], logs = [], reviewLogs = [], reviewCalls = [];
   const answers = [...(sc.answers || [])];
-  let tree = null, harness = null;
+  let tree = null, harness = null, engineCalls = 0;
   const egress = sc.egress ? {
     endpoint: 'egress:3128',
     available: () => true,
@@ -156,8 +166,18 @@ async function run(sc) {
   const box = await sandbox(sc.script, () => tree, () => harness.cancel(ID));
   harness = createCodeHarness({
     jobs, workspaces, egress, now: () => 5000, log: (e) => logs.push(e), review,
-    engine: () => ({ baseUrl: 'http://qa-engine.invalid:8080/v1', model: 'qa-model', apiKey: 'qa-engine-key', contextTokens: 8192 }),
-    askApproval: async (request) => { asked.push(JSON.parse(JSON.stringify(request))); return answers.shift() ?? 'deny'; },
+    engine: () => {
+      if (sc.engineThrowsAfter !== undefined && engineCalls++ >= sc.engineThrowsAfter) throw Error('QA engine');
+      return { baseUrl: 'http://qa-engine.invalid:8080/v1', model: 'qa-model', apiKey: 'qa-engine-key', contextTokens: 8192 };
+    },
+    askApproval: async (request, { signal } = {}) => {
+      asked.push(JSON.parse(JSON.stringify(request)));
+      const answer = answers.shift() ?? 'deny';
+      if (answer !== 'cancel') return answer;
+      harness.cancel(ID);
+      await waitAbort(signal);
+      return 'aborted';
+    },
     guard: { enabled: () => false },
   });
   const transport = createAcpTransport({ endpoint: `127.0.0.1:${box.port}` });
