@@ -427,6 +427,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-turn"
+version = "0.1.0"
+dependencies = [
+ "context-fit",
+ "js-json",
+ "prompt-framing",
+ "provider-error",
+ "regex",
+ "serde_json",
+ "sha2",
+ "stream-guard",
+ "tool-exchange",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -959,6 +974,13 @@ name = "docx-text-cli"
 version = "0.1.0"
 dependencies = [
  "docx-text",
+ "serde_json",
+]
+
+[[package]]
+name = "drive-tools"
+version = "0.1.0"
+dependencies = [
  "serde_json",
 ]
 
@@ -1876,6 +1898,13 @@ name = "matchit"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
+
+[[package]]
+name = "mcp-client"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "mcp-frame"
@@ -3985,6 +4014,15 @@ dependencies = [
  "proptest",
  "ssrf-policy",
  "url",
+]
+
+[[package]]
+name = "tool-rate-limit"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "policy-leaves",
+ "serde_json",
 ]
 
 [[package]]
