@@ -698,6 +698,7 @@ dependencies = [
  "axum",
  "chrono",
  "diary-core",
+ "diary-retrieval",
  "http-body",
  "reqwest",
  "serde_json",

@@ -3,5 +3,7 @@
 //! behind `DIARY_RUST_ANSWER` (off by default) in a later step.
 
 pub mod deadline;
+pub mod embedder;
 pub mod exchange;
 pub mod model;
+pub mod search;
