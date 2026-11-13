@@ -1,36 +1,1553 @@
 {
-  "version": 1,
-  "source": "Hand-derived from noevia-core server/llamacpp-full-autotune.cjs start() lines 1604-1622 and MODES (lines 19-20). NOT recorded by running Node: the F4 recording (R6.md section 4b) is still to do. Inputs use the body keys Node reads; an absent key is left out of input, null is written as null.",
-  "cases": [
-    { "name": "fast default", "input": { "confirmPause": true }, "expect": { "ok": { "mode": "fast", "promptBudgetSeconds": 120 } } },
-    { "name": "long default", "input": { "confirmPause": true, "mode": "long" }, "expect": { "ok": { "mode": "long", "promptBudgetSeconds": 1800 } } },
-    { "name": "fast minimum 15", "input": { "confirmPause": true, "promptBudgetSeconds": 15 }, "expect": { "ok": { "mode": "fast", "promptBudgetSeconds": 15 } } },
-    { "name": "fast maximum 1800", "input": { "confirmPause": true, "promptBudgetSeconds": 1800 }, "expect": { "ok": { "mode": "fast", "promptBudgetSeconds": 1800 } } },
-    { "name": "null seconds uses mode default", "input": { "confirmPause": true, "mode": "fast", "promptBudgetSeconds": null }, "expect": { "ok": { "mode": "fast", "promptBudgetSeconds": 120 } } },
-    { "name": "numeric string seconds", "input": { "confirmPause": true, "promptBudgetSeconds": "120" }, "expect": { "ok": { "mode": "fast", "promptBudgetSeconds": 120 } } },
-    { "name": "hex string seconds (Number coercion)", "input": { "confirmPause": true, "promptBudgetSeconds": "0x78" }, "expect": { "ok": { "mode": "fast", "promptBudgetSeconds": 120 } } },
-    { "name": "single system model not bulk, not running", "input": { "confirmPause": true, "systemModel": false }, "expect": { "ok": { "mode": "fast", "promptBudgetSeconds": 120 } } },
-    { "name": "bulk with system model is allowed", "input": { "confirmPause": true, "bulk": true, "systemModel": true }, "expect": { "ok": { "mode": "fast", "promptBudgetSeconds": 120 } } },
-
-    { "name": "confirm absent", "input": {}, "expect": { "refuse": { "status": 400, "message": "Confirm that chat can pause and other model-server clients are stopped." } } },
-    { "name": "confirm string true is not true", "input": { "confirmPause": "true" }, "expect": { "refuse": { "status": 400, "message": "Confirm that chat can pause and other model-server clients are stopped." } } },
-    { "name": "confirm false beats a bad mode", "input": { "confirmPause": false, "mode": "turbo" }, "expect": { "refuse": { "status": 400, "message": "Confirm that chat can pause and other model-server clients are stopped." } } },
-    { "name": "mode null is present, not default", "input": { "confirmPause": true, "mode": null }, "expect": { "refuse": { "status": 400, "message": "Choose Fast or Long." } } },
-    { "name": "mode unknown", "input": { "confirmPause": true, "mode": "turbo" }, "expect": { "refuse": { "status": 400, "message": "Choose Fast or Long." } } },
-    { "name": "mode case differs", "input": { "confirmPause": true, "mode": "Fast" }, "expect": { "refuse": { "status": 400, "message": "Choose Fast or Long." } } },
-    { "name": "long with bulk", "input": { "confirmPause": true, "mode": "long", "bulk": true, "promptBudgetSeconds": 5 }, "expect": { "refuse": { "status": 400, "message": "A Long tune runs for one model at a time. Choose a model." } } },
-    { "name": "seconds 14 below range", "input": { "confirmPause": true, "promptBudgetSeconds": 14 }, "expect": { "refuse": { "status": 400, "message": "Choose a prompt time limit between 15 and 1800 seconds." } } },
-    { "name": "seconds 1801 above range", "input": { "confirmPause": true, "promptBudgetSeconds": 1801 }, "expect": { "refuse": { "status": 400, "message": "Choose a prompt time limit between 15 and 1800 seconds." } } },
-    { "name": "seconds fractional", "input": { "confirmPause": true, "promptBudgetSeconds": 120.5 }, "expect": { "refuse": { "status": 400, "message": "Choose a prompt time limit between 15 and 1800 seconds." } } },
-    { "name": "seconds non-numeric string", "input": { "confirmPause": true, "promptBudgetSeconds": "soon" }, "expect": { "refuse": { "status": 400, "message": "Choose a prompt time limit between 15 and 1800 seconds." } } },
-    { "name": "seconds empty string is Number 0", "input": { "confirmPause": true, "promptBudgetSeconds": "" }, "expect": { "refuse": { "status": 400, "message": "Choose a prompt time limit between 15 and 1800 seconds." } } },
-    { "name": "seconds true is Number 1", "input": { "confirmPause": true, "promptBudgetSeconds": true }, "expect": { "refuse": { "status": 400, "message": "Choose a prompt time limit between 15 and 1800 seconds." } } },
-    { "name": "seconds array refused (JS would coerce a one-element array; not modelled)", "input": { "confirmPause": true, "promptBudgetSeconds": [120] }, "expect": { "refuse": { "status": 400, "message": "Choose a prompt time limit between 15 and 1800 seconds." } } },
-
-    { "name": "running refused", "input": { "confirmPause": true, "runActive": true }, "expect": { "refuse": { "status": 409, "message": "Auto-tune is already running." } } },
-    { "name": "limit checked before running", "input": { "confirmPause": true, "runActive": true, "promptBudgetSeconds": 5 }, "expect": { "refuse": { "status": 400, "message": "Choose a prompt time limit between 15 and 1800 seconds." } } },
-    { "name": "single system model refused", "input": { "confirmPause": true, "systemModel": true }, "expect": { "refuse": { "status": 400, "message": "System routing model — not tuned" } } },
-    { "name": "running beats system model", "input": { "confirmPause": true, "runActive": true, "systemModel": true }, "expect": { "refuse": { "status": 409, "message": "Auto-tune is already running." } } },
-    { "name": "long with bulk beats the limit", "input": { "confirmPause": true, "mode": "long", "bulk": true, "promptBudgetSeconds": 5, "runActive": true }, "expect": { "refuse": { "status": 400, "message": "A Long tune runs for one model at a time. Choose a model." } } }
-  ]
+ "version": 1,
+ "source": "Recorded by tests/generate_fixtures.cjs from noevia-core server/llamacpp-full-autotune.cjs start() (sha256 in sources).",
+ "sources": {
+  "server/llamacpp-full-autotune.cjs": "f53b8fd7826bd78390b84d8c077411c4629fe2a070caeb540dfe7cbc0f27d5f1"
+ },
+ "cases": [
+  {
+   "input": {
+    "confirmPause": true,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": null,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 15,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 15
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 1800,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 1800
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 14,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 1801,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120.5,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 0,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": -15,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 1000,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 1000
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 1800.0000001,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 1e+21,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "120",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": " 120 ",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "\t120\n",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": " 120",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "﻿120",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "120",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "0x78",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "0X78",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "0o170",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "0b1111000",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "0x",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "0x+78",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "-0x78",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "1.2e2",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "120.",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": ".5e3",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 500
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "+120",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "-120",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "120abc",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "soon",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "   ",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "Infinity",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "inf",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": "NaN",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": true,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": false,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": [],
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": [
+     120
+    ],
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": [
+     "120"
+    ],
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": [
+     [
+      120
+     ]
+    ],
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": [
+     1,
+     2
+    ],
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": [
+     null
+    ],
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": [
+     true
+    ],
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": {},
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": {
+     "valueOf": 120
+    },
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": null,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": null,
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "fast",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "fast",
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "long",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "long",
+     "promptBudgetSeconds": 1800
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "long",
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "A Long tune runs for one model at a time. Choose a model."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "Fast",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "Fast",
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "turbo",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "turbo",
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "",
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": 1,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": 1,
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": [
+     "fast"
+    ],
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": [
+     "fast"
+    ],
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "constructor",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "constructor",
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "toString",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "toString",
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "__proto__",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "__proto__",
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "hasOwnProperty",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "hasOwnProperty",
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose Fast or Long."
+    }
+   }
+  },
+  {
+   "input": {
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Confirm that chat can pause and other model-server clients are stopped."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": null,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Confirm that chat can pause and other model-server clients are stopped."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": false,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Confirm that chat can pause and other model-server clients are stopped."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": "true",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Confirm that chat can pause and other model-server clients are stopped."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": 1,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Confirm that chat can pause and other model-server clients are stopped."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": [
+     true
+    ],
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Confirm that chat can pause and other model-server clients are stopped."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": {},
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Confirm that chat can pause and other model-server clients are stopped."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": false,
+    "mode": "turbo",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Confirm that chat can pause and other model-server clients are stopped."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "long",
+    "promptBudgetSeconds": 5,
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "A Long tune runs for one model at a time. Choose a model."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "long",
+    "promptBudgetSeconds": 5,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "mode": "long",
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "long",
+     "promptBudgetSeconds": 1800
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 5,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120,
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 5,
+    "bulk": true,
+    "runActive": false,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": true
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "System routing model — not tuned"
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 5,
+    "bulk": false,
+    "runActive": false,
+    "systemModel": true
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120,
+    "bulk": true,
+    "runActive": false,
+    "systemModel": true
+   },
+   "expect": {
+    "ok": {
+     "mode": "fast",
+     "promptBudgetSeconds": 120
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 5,
+    "bulk": true,
+    "runActive": false,
+    "systemModel": true
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120,
+    "bulk": false,
+    "runActive": true,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 409,
+     "message": "Auto-tune is already running."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 5,
+    "bulk": false,
+    "runActive": true,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120,
+    "bulk": true,
+    "runActive": true,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 409,
+     "message": "Auto-tune is already running."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 5,
+    "bulk": true,
+    "runActive": true,
+    "systemModel": false
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120,
+    "bulk": false,
+    "runActive": true,
+    "systemModel": true
+   },
+   "expect": {
+    "refuse": {
+     "status": 409,
+     "message": "Auto-tune is already running."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 5,
+    "bulk": false,
+    "runActive": true,
+    "systemModel": true
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 120,
+    "bulk": true,
+    "runActive": true,
+    "systemModel": true
+   },
+   "expect": {
+    "refuse": {
+     "status": 409,
+     "message": "Auto-tune is already running."
+    }
+   }
+  },
+  {
+   "input": {
+    "confirmPause": true,
+    "promptBudgetSeconds": 5,
+    "bulk": true,
+    "runActive": true,
+    "systemModel": true
+   },
+   "expect": {
+    "refuse": {
+     "status": 400,
+     "message": "Choose a prompt time limit between 15 and 1800 seconds."
+    }
+   }
+  }
+ ]
 }

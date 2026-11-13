@@ -123,21 +123,57 @@ fn whole_seconds(x: f64) -> Option<u32> {
     }
 }
 
-/// The subset of JavaScript `Number(value)` that a JSON body can carry: booleans, numbers,
-/// strings (decimal, `0x`/`0o`/`0b` integers, empty and whitespace-only as 0). Anything else is
-/// NaN and so refused. Not covered: one-element arrays (JS coerces them to their element).
+/// JavaScript `Number(value)` for a JSON value: booleans, numbers, strings (decimal, `Infinity`,
+/// `0x`/`0o`/`0b` integers, empty and whitespace-only as 0) and arrays (`Number(String(array))`,
+/// so `[120]` is 120 and `[1, 2]` is NaN). Objects are NaN.
 fn js_number(v: &Value) -> f64 {
     match v {
         Value::Bool(b) => f64::from(u8::from(*b)),
         Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
         Value::String(s) => js_string_number(s),
         Value::Null => 0.0,
-        Value::Array(_) | Value::Object(_) => f64::NAN,
+        Value::Array(_) => js_string(v).map_or(f64::NAN, |s| js_string_number(&s)),
+        Value::Object(_) => f64::NAN,
     }
 }
 
+/// `String(value)` of an array element as `Array.prototype.join` writes it (`null` is empty);
+/// `None` for an object (`[object Object]`, never a number).
+fn js_string(v: &Value) -> Option<String> {
+    match v {
+        Value::Null => Some(String::new()),
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::String(s) => Some(s.clone()),
+        Value::Array(items) => items
+            .iter()
+            .map(js_string)
+            .collect::<Option<Vec<_>>>()
+            .map(|parts| parts.join(",")),
+        Value::Object(_) => None,
+    }
+}
+
+/// `String.prototype.trim`'s set: ECMAScript WhiteSpace and LineTerminator (U+FEFF yes, U+0085 no).
+fn js_space(c: char) -> bool {
+    matches!(
+        c,
+        '\u{9}'..='\u{d}'
+            | ' '
+            | '\u{a0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200a}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+            | '\u{feff}'
+    )
+}
+
 fn js_string_number(s: &str) -> f64 {
-    let t = s.trim();
+    let t = s.trim_matches(js_space);
     if t.is_empty() {
         return 0.0;
     }
@@ -148,11 +184,20 @@ fn js_string_number(s: &str) -> f64 {
         _ => None,
     };
     if let Some(radix) = radix {
-        return t
-            .get(2..)
-            .and_then(|digits| u64::from_str_radix(digits, radix).ok())
-            .map_or(f64::NAN, |n| n as f64);
+        // Digits only: no sign, no separator (`from_str_radix` would take a leading `+`).
+        let digits = t.get(2..).unwrap_or("");
+        if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+            return f64::NAN;
+        }
+        return digits
+            .chars()
+            .filter_map(|c| c.to_digit(radix))
+            .fold(0.0, |n, d| n * f64::from(radix) + f64::from(d));
     }
-    // Rust accepts `inf` and `nan`, which JS Number does not; both end as non-finite, so both refuse.
+    // Rust also reads `inf`, `nan` and `infinity` in any case; JS knows only `Infinity`.
+    let bare = t.trim_start_matches(['+', '-']);
+    if bare.starts_with(|c: char| c.is_ascii_alphabetic()) && bare != "Infinity" {
+        return f64::NAN;
+    }
     t.parse::<f64>().unwrap_or(f64::NAN)
 }

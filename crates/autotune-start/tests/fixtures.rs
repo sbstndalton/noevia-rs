@@ -1,5 +1,5 @@
-//! Admission cases from `fixtures/autotune-start.v1.json` (hand-derived from noevia-core
-//! `llamacpp-full-autotune.cjs` `start`; see the file's `source` field).
+//! Admission cases from `fixtures/autotune-start.v1.json`, recorded from noevia-core's own
+//! `llamacpp-full-autotune.cjs` `start()` by `generate_fixtures.cjs` (sha256 in `sources`).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -28,10 +28,11 @@ fn flag(input: &Value, key: &str) -> bool {
 #[test]
 fn every_case_matches_the_node_admission() {
     let cases = cases();
-    assert_eq!(cases.len(), 28, "fixture case count changed");
+    assert!(cases.len() >= 100, "fixture case count changed");
     for case in &cases {
-        let name = case["name"].as_str().expect("name");
         let input = &case["input"];
+        let name = input.to_string();
+        let name = name.as_str();
         let start = Start {
             confirm_pause: input.get("confirmPause"),
             mode: input.get("mode"),
