@@ -129,6 +129,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "autotune-start"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "axum"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
