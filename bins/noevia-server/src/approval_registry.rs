@@ -1236,7 +1236,7 @@ mod tests {
             "../../../contracts/http/approvals-once.v1.json"
         ))
         .unwrap();
-        let cases = fixture["cases"].as_array().unwrap();
+        let cases = fixture.get("cases").and_then(Value::as_array).unwrap();
         assert_eq!(cases.len(), 6);
         for (i, case) in cases.iter().enumerate() {
             let (_d, live) = store();
@@ -1244,25 +1244,30 @@ mod tests {
             let b = binding(OWNER, "c1", "space:free", json!({"kind":"free"}), "0");
             let id = format!("q{i}");
             let mut q = write_q(&id, OWNER, Some("c1"), Some("space:free"), Some(b.clone()));
-            q.once = case["once"].as_bool().unwrap();
+            q.once = case.get("once").and_then(Value::as_bool).unwrap();
             r.open(q).unwrap();
             let live = r.grant_context(OWNER, &id);
             r.decide(
                 OWNER,
                 &id,
-                case["decision"].as_str().unwrap(),
+                case.get("decision")
+                    .and_then(Value::as_str).unwrap(),
                 false,
                 live.as_ref(),
             )
             .unwrap();
-            let want = match case["outcome"].as_str().unwrap() {
+            let want = match case
+                .get("outcome")
+                .and_then(Value::as_str).unwrap()
+            {
                 "approve" => Outcome::Approve,
                 _ => Outcome::Deny,
             };
             assert_eq!(r.wait(OWNER, &id).await, Ok(want), "{case}");
             assert_eq!(
                 r.granted(OWNER, "c1", "space:free", Some(&b)),
-                case["grant"].as_bool().unwrap(),
+                case.get("grant")
+                    .and_then(Value::as_bool).unwrap(),
                 "{case}"
             );
         }
