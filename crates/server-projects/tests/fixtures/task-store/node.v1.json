@@ -1,0 +1,4968 @@
+{
+ "generator": "crates/server-projects/tools/gen-task-store-fixtures.cjs",
+ "sources": {
+  "jobs.cjs": "3a04aea9e594428d62cb5dc7f29eb937d322c6b24d83c9b2d9b08211366e5457",
+  "code-plan.cjs": "966f6d39054b2948a6796cdbf1f8310c1a15ac461c56e63523ecaa3fe6b860f2",
+  "code-review-verdict.cjs": "fde7e49afb0a60ee035036d83fc984426017d9519c283d55023b2e8773c328e2",
+  "task-lifecycle.cjs": "f99c9f9387f647fd579fbcd3acc6c6a19531995313cd4cc6894b333633ec5da1"
+ },
+ "stores": {
+  "code": {
+   "kinds": [
+    "code"
+   ],
+   "maxJobs": 3,
+   "retainMs": 1000
+  },
+  "any": {},
+  "durable": {
+   "kinds": [
+    "code"
+   ],
+   "durable": true,
+   "maxJobs": 50,
+   "retainMs": 1209600000
+  },
+  "durableAll": {
+   "durable": true
+  }
+ },
+ "scenarios": {
+  "lifecycle-code": [
+   {
+    "op": "clock",
+    "t": 1000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "projectId": "qa-project",
+    "capabilities": [
+     "read",
+     "edit",
+     "edit"
+    ],
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":1000,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[\"read\",\"edit\"]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "clock",
+    "t": 1001,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "job.started",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 1001,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.started\",\"at\":1001,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":\"harness.config\",\"title\":\"Pin the harness configuration\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "step.started",
+      "at": 1001,
+      "data": {
+       "id": "harness.config",
+       "title": "Pin the harness configuration"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"step.started\",\"at\":1001,\"data\":{\"id\":\"harness.config\",\"title\":\"Pin the harness configuration\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"1\":null,\"2\":\"two\",\"id\":\"harness.config\",\"b\":1,\"a\":[1,0.1,0,1e+21,1e-7,123456789012345680000]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "step.completed",
+      "at": 1001,
+      "data": {
+       "1": null,
+       "2": "two",
+       "id": "harness.config",
+       "b": 1,
+       "a": [
+        1,
+        0.1,
+        0,
+        1e+21,
+        1e-7,
+        123456789012345680000
+       ]
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":4,\"type\":\"step.completed\",\"at\":1001,\"data\":{\"1\":null,\"2\":\"two\",\"id\":\"harness.config\",\"b\":1,\"a\":[1,0.1,0,1e+21,1e-7,123456789012345680000]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "progress",
+    "data": "{\"stage\":\"implementing\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "progress",
+      "at": 1001,
+      "data": {
+       "stage": "implementing"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":5,\"type\":\"progress\",\"at\":1001,\"data\":{\"stage\":\"implementing\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "approval.requested",
+    "data": "{\"taskId\":\"00000000-0000-4000-8000-000000000001\",\"action\":\"execute\",\"command\":\"npm test\",\"reason\":\"quote \\\" backslash \\\\ tab \\t nl \\n ctl \\u0001 \\u001f del  ls   ps   lone \\ud800 pair 😀\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "approval.requested",
+      "at": 1001,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "execute",
+       "command": "npm test",
+       "reason": "quote \" backslash \\ tab \t nl \n ctl \u0001 \u001f del  ls   ps   lone \ud800 pair 😀"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":6,\"type\":\"approval.requested\",\"at\":1001,\"data\":{\"taskId\":\"00000000-0000-4000-8000-000000000001\",\"action\":\"execute\",\"command\":\"npm test\",\"reason\":\"quote \\\" backslash \\\\ tab \\t nl \\n ctl \\u0001 \\u001f del  ls   ps   lone \\ud800 pair 😀\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "approval.decided",
+    "data": "{\"decision\":\"approve\",\"action\":\"execute\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "approval.decided",
+      "at": 1001,
+      "data": {
+       "decision": "approve",
+       "action": "execute"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":7,\"type\":\"approval.decided\",\"at\":1001,\"data\":{\"decision\":\"approve\",\"action\":\"execute\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "tool.started",
+    "data": "{\"id\":\"t1\",\"name\":\"bash\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "tool.started",
+      "at": 1001,
+      "data": {
+       "id": "t1",
+       "name": "bash"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":8,\"type\":\"tool.started\",\"at\":1001,\"data\":{\"id\":\"t1\",\"name\":\"bash\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "tool.completed",
+    "data": "{\"id\":\"t1\",\"failed\":false}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "tool.completed",
+      "at": 1001,
+      "data": {
+       "id": "t1",
+       "failed": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":9,\"type\":\"tool.completed\",\"at\":1001,\"data\":{\"id\":\"t1\",\"failed\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "tool.uncertain",
+    "data": "{\"id\":\"t2\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "tool.uncertain",
+      "at": 1001,
+      "data": {
+       "id": "t2"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":10,\"type\":\"tool.uncertain\",\"at\":1001,\"data\":{\"id\":\"t2\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "artifact.created",
+    "data": "{\"name\":\"diff\",\"kind\":\"patch\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "artifact.created",
+      "at": 1001,
+      "data": {
+       "name": "diff",
+       "kind": "patch"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":11,\"type\":\"artifact.created\",\"at\":1001,\"data\":{\"name\":\"diff\",\"kind\":\"patch\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "checkpoint.created",
+    "data": "{\"branch\":\"noevia/qa\",\"task\":\"QA task\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 12,
+      "type": "checkpoint.created",
+      "at": 1001,
+      "data": {
+       "branch": "noevia/qa",
+       "task": "QA task"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":12,\"type\":\"checkpoint.created\",\"at\":1001,\"data\":{\"branch\":\"noevia/qa\",\"task\":\"QA task\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "clock",
+    "t": 1500,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "job.completed",
+    "data": "{\"result\":{\"ok\":true,\"files\":2}}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 13,
+      "type": "job.completed",
+      "at": 1500,
+      "data": {
+       "result": {
+        "ok": true,
+        "files": 2
+       }
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":13,\"type\":\"job.completed\",\"at\":1500,\"data\":{\"result\":{\"ok\":true,\"files\":2}}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "progress",
+    "data": "{\"stage\":\"late\"}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Job already finished"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "artifact.created",
+    "data": "{\"name\":\"late\"}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Job already finished"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "cancel",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "completed",
+      "updatedAt": 1500
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "completed",
+      "updatedAt": 1500
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   }
+  ],
+  "refusals": [
+   {
+    "op": "clock",
+    "t": 2000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "not-a-job",
+    "type": "progress",
+    "data": "{}",
+    "result": {
+     "error": {
+      "status": 400,
+      "message": "Invalid job id"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "progress",
+    "data": "{}",
+    "result": {
+     "error": {
+      "status": 404,
+      "message": "No such job"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "no.such.type",
+    "data": "{}",
+    "result": {
+     "error": {
+      "status": null,
+      "message": "Unknown job event type: no.such.type"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "task.stage",
+    "data": "{\"to\":\"planning\"}",
+    "result": {
+     "error": {
+      "status": 403,
+      "message": "Task lifecycle events are server-only"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "task.revision",
+    "data": "{\"n\":1}",
+    "result": {
+     "error": {
+      "status": 403,
+      "message": "Task lifecycle events are server-only"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "NOT-A-JOB",
+    "result": {
+     "error": {
+      "status": 400,
+      "message": "Invalid job id"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": null
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "cancel",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": null
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "",
+    "result": {
+     "error": {
+      "status": null,
+      "message": "Job kind required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "code",
+    "parentId": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "error": {
+      "status": 404,
+      "message": "No such parent job"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "code",
+    "parentId": "bad",
+    "result": {
+     "error": {
+      "status": 400,
+      "message": "Invalid job id"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "code",
+    "capabilities": [
+     "read",
+     "edit"
+    ],
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000002"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":2000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[\"read\",\"edit\"]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000003",
+    "kind": "code",
+    "parentId": "00000000-0000-4000-8000-000000000002",
+    "capabilities": [
+     "read"
+    ],
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000003"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":2000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":\"00000000-0000-4000-8000-000000000002\",\"capabilities\":[\"read\"]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000004",
+    "kind": "code",
+    "parentId": "00000000-0000-4000-8000-000000000002",
+    "capabilities": [
+     "read",
+     "execute",
+     "install",
+     "execute"
+    ],
+    "result": {
+     "error": {
+      "status": 403,
+      "message": "A child job cannot widen capabilities: execute, install, execute"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "job.created",
+    "data": "{\"kind\":\"code\",\"capabilities\":[\"execute\"]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 2,
+      "type": "job.created",
+      "at": 2000,
+      "data": {
+       "kind": "code",
+       "capabilities": [
+        "execute"
+       ]
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.created\",\"at\":2000,\"data\":{\"kind\":\"code\",\"capabilities\":[\"execute\"]}}\n"
+      }
+     },
+     "removed": []
+    }
+   }
+  ],
+  "cancel-and-late-artifact": [
+   {
+    "op": "clock",
+    "t": 3000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":3000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "job.started",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 3000,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.started\",\"at\":3000,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "clock",
+    "t": 3001,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "cancel",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "cancelled",
+      "updatedAt": 3001
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"job.cancelled\",\"at\":3001,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "artifact.created",
+    "data": "{\"name\":\"partial\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "artifact.created",
+      "at": 3001,
+      "data": {
+       "name": "partial"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":4,\"type\":\"artifact.created\",\"at\":3001,\"data\":{\"name\":\"partial\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "progress",
+    "data": "{\"stage\":\"x\"}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Job already finished"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "browser",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000002"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":3001,\"data\":{\"kind\":\"browser\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "job.failed",
+    "data": "{\"error\":\"synthetic\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 2,
+      "type": "job.failed",
+      "at": 3001,
+      "data": {
+       "error": "synthetic"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.failed\",\"at\":3001,\"data\":{\"error\":\"synthetic\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "artifact.created",
+    "data": "{\"name\":\"late\"}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Job already finished"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   }
+  ],
+  "assistant-output": [
+   {
+    "op": "clock",
+    "t": 4000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":4000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"short\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "short",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"short\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+       "truncated": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"truncated\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxé\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+       "truncated": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":4,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"truncated\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"lone \\ud83d tail\",\"truncated\":true}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "lone � tail",
+       "truncated": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":5,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"lone � tail\",\"truncated\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":42,\"truncated\":\"yes\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":6,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":7,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":8,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":9,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":10,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":11,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 12,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":12,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 13,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":13,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 14,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":14,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 15,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":15,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 16,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":16,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 17,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":17,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 18,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":18,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 19,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":19,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 20,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":20,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 21,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":21,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 22,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":22,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 23,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":23,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 24,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":24,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 25,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":25,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 26,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":26,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 27,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":27,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 28,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":28,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 29,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":29,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 30,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":30,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 31,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":31,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 32,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":32,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 33,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":33,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 34,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":34,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 35,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":35,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 36,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":36,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 37,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":37,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 38,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":38,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 39,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":39,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 40,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":40,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 41,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":41,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 42,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":42,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 43,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":43,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 44,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":44,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 45,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":45,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 46,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":46,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 47,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":47,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 48,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":48,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 49,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":49,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 50,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":50,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 51,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":51,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 52,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":52,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 53,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":53,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 54,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":54,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 55,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":55,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 56,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":56,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 57,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":57,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 58,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":58,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 59,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":59,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 60,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":60,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 61,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":61,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 62,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":62,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 63,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":63,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 64,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":64,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"n\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 65,
+      "type": "assistant.output",
+      "at": 4000,
+      "data": {
+       "text": "n",
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":65,\"type\":\"assistant.output\",\"at\":4000,\"data\":{\"text\":\"n\",\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "assistant.output",
+    "data": "{\"text\":\"over the limit\"}",
+    "result": {
+     "error": {
+      "status": null,
+      "message": "Assistant output event limit reached"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "queued",
+      "updatedAt": 4000
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "browser",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000002"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":4000,\"data\":{\"kind\":\"browser\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "assistant.output",
+    "data": "{\"text\":\"not code\"}",
+    "result": {
+     "error": {
+      "status": null,
+      "message": "Assistant output belongs to Code jobs"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   }
+  ],
+  "plans-and-reviews": [
+   {
+    "op": "clock",
+    "t": 5000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":5000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "plan.proposed",
+    "data": "{\"question\":\"dropped\",\"subQuestions\":[\"one\",\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",7,null,{\"a\":1},[1,2],true,\"s0\",\"s1\",\"s2\",\"s3\",\"s4\",\"s5\",\"s6\",\"s7\",\"s8\",\"s9\",\"s10\",\"s11\",\"s12\",\"s13\",\"s14\",\"s15\",\"s16\",\"s17\",\"s18\",\"s19\"],\"extra\":1}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "plan.proposed",
+      "at": 5000,
+      "data": {
+       "question": null,
+       "subQuestions": [
+        "one",
+        "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé",
+        "7",
+        "",
+        "[object Object]",
+        "1,2",
+        "true",
+        "s0",
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s5",
+        "s6",
+        "s7",
+        "s8",
+        "s9",
+        "s10",
+        "s11",
+        "s12"
+       ],
+       "truncated": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"plan.proposed\",\"at\":5000,\"data\":{\"question\":null,\"subQuestions\":[\"one\",\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\",\"7\",\"\",\"[object Object]\",\"1,2\",\"true\",\"s0\",\"s1\",\"s2\",\"s3\",\"s4\",\"s5\",\"s6\",\"s7\",\"s8\",\"s9\",\"s10\",\"s11\",\"s12\"],\"truncated\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "plan.edited",
+    "data": "{\"subQuestions\":[\"only\"],\"truncated\":true}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "plan.edited",
+      "at": 5000,
+      "data": {
+       "question": null,
+       "subQuestions": [
+        "only"
+       ],
+       "truncated": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"plan.edited\",\"at\":5000,\"data\":{\"question\":null,\"subQuestions\":[\"only\"],\"truncated\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "plan.edited",
+    "data": "{\"subQuestions\":\"not a list\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "plan.edited",
+      "at": 5000,
+      "data": {
+       "question": null,
+       "subQuestions": [],
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":4,\"type\":\"plan.edited\",\"at\":5000,\"data\":{\"question\":null,\"subQuestions\":[],\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "plan.skipped",
+    "data": "{\"question\":\"q\",\"subQuestions\":[\"x\"],\"truncated\":true}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "plan.skipped",
+      "at": 5000,
+      "data": {
+       "question": null,
+       "subQuestions": [],
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":5,\"type\":\"plan.skipped\",\"at\":5000,\"data\":{\"question\":null,\"subQuestions\":[],\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "review.requested",
+    "data": "{\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"files\":3}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "review.requested",
+      "at": 5000,
+      "data": {
+       "status": "pending",
+       "reviewer": "planner",
+       "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "headSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "files": 3
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":6,\"type\":\"review.requested\",\"at\":5000,\"data\":{\"status\":\"pending\",\"reviewer\":\"planner\",\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"files\":3}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "review.completed",
+    "data": "{\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"verdict\":\"request_changes\",\"summary\":\"Fix the QA test.\",\"findings\":[{\"severity\":\"major\",\"file\":\"src/qa.rs\",\"message\":\"QA finding\"}],\"corrected\":false}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "review.completed",
+      "at": 5000,
+      "data": {
+       "status": "completed",
+       "reviewer": "planner",
+       "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "headSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "verdict": "request_changes",
+       "summary": "Fix the QA test.",
+       "findings": [
+        {
+         "severity": "major",
+         "file": "src/qa.rs",
+         "message": "QA finding"
+        }
+       ],
+       "corrected": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":7,\"type\":\"review.completed\",\"at\":5000,\"data\":{\"status\":\"completed\",\"reviewer\":\"planner\",\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"verdict\":\"request_changes\",\"summary\":\"Fix the QA test.\",\"findings\":[{\"severity\":\"major\",\"file\":\"src/qa.rs\",\"message\":\"QA finding\"}],\"corrected\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "review.completed",
+    "data": "{\"verdict\":\"approve\",\"grant\":\"everything\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "review.completed",
+      "at": 5000,
+      "data": {
+       "status": "failed",
+       "reviewer": "planner",
+       "baseSha": null,
+       "headSha": null,
+       "code": "invalid",
+       "reason": "The recorded verdict could not be read."
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":8,\"type\":\"review.completed\",\"at\":5000,\"data\":{\"status\":\"failed\",\"reviewer\":\"planner\",\"baseSha\":null,\"headSha\":null,\"code\":\"invalid\",\"reason\":\"The recorded verdict could not be read.\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "review.failed",
+    "data": "{\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"code\":\"stale\",\"reason\":\"The verdict was for an earlier revision.\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "review.failed",
+      "at": 5000,
+      "data": {
+       "status": "failed",
+       "reviewer": "planner",
+       "baseSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "headSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "code": "stale",
+       "reason": "The verdict was for an earlier revision."
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":9,\"type\":\"review.failed\",\"at\":5000,\"data\":{\"status\":\"failed\",\"reviewer\":\"planner\",\"baseSha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"headSha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"code\":\"stale\",\"reason\":\"The verdict was for an earlier revision.\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "queued",
+      "updatedAt": 5000
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "research",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000002"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":5000,\"data\":{\"kind\":\"research\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "plan.proposed",
+    "data": "{\"question\":\"kept\",\"subQuestions\":[\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",7],\"other\":{\"0\":2,\"z\":1}}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 2,
+      "type": "plan.proposed",
+      "at": 5000,
+      "data": {
+       "question": "kept",
+       "subQuestions": [
+        "éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        7
+       ],
+       "other": {
+        "0": 2,
+        "z": 1
+       }
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"plan.proposed\",\"at\":5000,\"data\":{\"question\":\"kept\",\"subQuestions\":[\"éééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",7],\"other\":{\"0\":2,\"z\":1}}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "plan.skipped",
+    "data": "{\"question\":\"kept too\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 3,
+      "type": "plan.skipped",
+      "at": 5000,
+      "data": {
+       "question": "kept too"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":3,\"type\":\"plan.skipped\",\"at\":5000,\"data\":{\"question\":\"kept too\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "review.requested",
+    "data": "{}",
+    "result": {
+     "error": {
+      "status": null,
+      "message": "Reviews belong to Code jobs"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   }
+  ],
+  "torn-tail": [
+   {
+    "op": "clock",
+    "t": 6000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000001.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{}}\n{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"progr",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{}}\n{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"progr"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "running",
+      "updatedAt": 11
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "progress",
+    "data": "{\"stage\":\"after the cut\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "progress",
+      "at": 6000,
+      "data": {
+       "stage": "after the cut"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "ess\",\"at\":6000,\"data\":{\"stage\":\"after the cut\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000002.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "result": {
+     "ok": null
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "job.started",
+    "result": {
+     "error": {
+      "status": 404,
+      "message": "No such job"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000003.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"torn\":\n{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":3,\"type\":\"job.started\",\"at\":12,\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"torn\":\n{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":3,\"type\":\"job.started\",\"at\":12,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "progress",
+    "data": "{}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000004.jsonl",
+    "text": "\n\n{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\r\n\n{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{\"note\":\"crlf above\"}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000004.jsonl": {
+       "whole": "\n\n{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\r\n\n{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{\"note\":\"crlf above\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000004",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "kind": "code",
+      "status": "running",
+      "updatedAt": 11
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000004",
+    "type": "progress",
+    "data": "{\"stage\":\"crlf\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000004",
+      "seq": 3,
+      "type": "progress",
+      "at": 6000,
+      "data": {
+       "stage": "crlf"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000004.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":3,\"type\":\"progress\",\"at\":6000,\"data\":{\"stage\":\"crlf\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000005.jsonl",
+    "hex": "7b226a6f62223a2230303030303030302d303030302d343030302d383030302d303030303030303030303035222c22736571223a312c2274797065223a226a6f622e63726561746564222c226174223a31302c2264617461223a7b226b696e64223a22636f6465222c2270726f6a6563744964223a2271612d70726f6a656374222c22706172656e744964223a6e756c6c2c226361706162696c6974696573223a5b5d7d2c22626164223a22fffec3227d0a",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "whole": null,
+       "hex": "7b226a6f62223a2230303030303030302d303030302d343030302d383030302d303030303030303030303035222c22736571223a312c2274797065223a226a6f622e63726561746564222c226174223a31302c2264617461223a7b226b696e64223a22636f6465222c2270726f6a6563744964223a2271612d70726f6a656374222c22706172656e744964223a6e756c6c2c226361706162696c6974696573223a5b5d7d2c22626164223a22fffec3227d0a"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000005",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "kind": "code",
+      "status": "queued",
+      "updatedAt": 10
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000005",
+    "type": "job.started",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000005",
+      "seq": 2,
+      "type": "job.started",
+      "at": 6000,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":2,\"type\":\"job.started\",\"at\":6000,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000006.jsonl",
+    "text": "",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000006.jsonl": {
+       "whole": ""
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000006",
+    "result": {
+     "ok": null
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000006",
+    "type": "job.started",
+    "result": {
+     "error": {
+      "status": 404,
+      "message": "No such job"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   }
+  ],
+  "hash-chain": [
+   {
+    "op": "clock",
+    "t": 7000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "durable",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "projectId": "qa-project",
+    "capabilities": [
+     "read"
+    ],
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":7000,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[\"read\"]},\"previous\":null,\"hash\":\"4fa412ea913a2f84bd29c3ab5016bd0b1bac3a302484dfd44ef5d8df830b00b4\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "durable",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "job.started",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 7000,
+      "data": {},
+      "previous": "4fa412ea913a2f84bd29c3ab5016bd0b1bac3a302484dfd44ef5d8df830b00b4",
+      "hash": "7c4353c6d18a29f49e0a6b3bf4641bf5bd6eb23b436fa62d34369735b7facf2b"
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.started\",\"at\":7000,\"data\":{},\"previous\":\"4fa412ea913a2f84bd29c3ab5016bd0b1bac3a302484dfd44ef5d8df830b00b4\",\"hash\":\"7c4353c6d18a29f49e0a6b3bf4641bf5bd6eb23b436fa62d34369735b7facf2b\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "durable",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "approval.requested",
+    "data": "{\"action\":\"edit\",\"path\":\"qa.txt\",\"lone\":\"\\udc00\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "approval.requested",
+      "at": 7000,
+      "data": {
+       "action": "edit",
+       "path": "qa.txt",
+       "lone": "\udc00"
+      },
+      "previous": "7c4353c6d18a29f49e0a6b3bf4641bf5bd6eb23b436fa62d34369735b7facf2b",
+      "hash": "16c4f9becc1b5c218b0ad32c1bf843d81984540eaaace04c5d8e63b2de1c5013"
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"approval.requested\",\"at\":7000,\"data\":{\"action\":\"edit\",\"path\":\"qa.txt\",\"lone\":\"\\udc00\"},\"previous\":\"7c4353c6d18a29f49e0a6b3bf4641bf5bd6eb23b436fa62d34369735b7facf2b\",\"hash\":\"16c4f9becc1b5c218b0ad32c1bf843d81984540eaaace04c5d8e63b2de1c5013\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "clock",
+    "t": 7001,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "approval.decided",
+    "data": "{\"decision\":\"deny\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "approval.decided",
+      "at": 7001,
+      "data": {
+       "decision": "deny"
+      },
+      "previous": "16c4f9becc1b5c218b0ad32c1bf843d81984540eaaace04c5d8e63b2de1c5013",
+      "hash": "cc2f85f293b055d2ed9ac3950ca9a04c431b53f209193185431bc0d6ee869257"
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":4,\"type\":\"approval.decided\",\"at\":7001,\"data\":{\"decision\":\"deny\"},\"previous\":\"16c4f9becc1b5c218b0ad32c1bf843d81984540eaaace04c5d8e63b2de1c5013\",\"hash\":\"cc2f85f293b055d2ed9ac3950ca9a04c431b53f209193185431bc0d6ee869257\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "running",
+      "updatedAt": 7001
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000002.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"0b09b1f1aa22e6e905d8bc8c7ee45eb0d9fac1d101341fe6bbb9dd3a6edb7773\"}\n{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{},\"previous\":\"0b09b1f1aa22e6e905d8bc8c7ee45eb0d9fac1d101341fe6bbb9dd3a6edb7773\",\"hash\":\"8d4e18be659c648d3c1dbe85ab294db1cff18624a64ab4cb8a86948c0db2aa05\"}\n{\"job\":\"00000000-0000-4000-8000-000000000002",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"0b09b1f1aa22e6e905d8bc8c7ee45eb0d9fac1d101341fe6bbb9dd3a6edb7773\"}\n{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{},\"previous\":\"0b09b1f1aa22e6e905d8bc8c7ee45eb0d9fac1d101341fe6bbb9dd3a6edb7773\",\"hash\":\"8d4e18be659c648d3c1dbe85ab294db1cff18624a64ab4cb8a86948c0db2aa05\"}\n{\"job\":\"00000000-0000-4000-8000-000000000002"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "progress",
+    "data": "{}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000003.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"7529c6fa88cd7016170e194e528559acd6a92e914cb31a72eed4765e7ea4ec28\"}\n{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{\"n\":2},\"previous\":\"7529c6fa88cd7016170e194e528559acd6a92e914cb31a72eed4765e7ea4ec28\",\"hash\":\"6977ac0911a563994c66b3569b8b8f9c470dc5e41bb1e8535b26dfc990faf4f3\"}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"7529c6fa88cd7016170e194e528559acd6a92e914cb31a72eed4765e7ea4ec28\"}\n{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{\"n\":2},\"previous\":\"7529c6fa88cd7016170e194e528559acd6a92e914cb31a72eed4765e7ea4ec28\",\"hash\":\"6977ac0911a563994c66b3569b8b8f9c470dc5e41bb1e8535b26dfc990faf4f3\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "progress",
+    "data": "{}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000004.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"de067ef34a95e0203f94dfdeaed79a365fb6a72b7c6b155f5b485e6171ded83f\"}\n{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":3,\"type\":\"job.started\",\"at\":11,\"data\":{},\"previous\":\"de067ef34a95e0203f94dfdeaed79a365fb6a72b7c6b155f5b485e6171ded83f\",\"hash\":\"c8efd8724ac1210c15df4e9b8d04c8162bae288207857c76300b2d8b42548796\"}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000004.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"de067ef34a95e0203f94dfdeaed79a365fb6a72b7c6b155f5b485e6171ded83f\"}\n{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":3,\"type\":\"job.started\",\"at\":11,\"data\":{},\"previous\":\"de067ef34a95e0203f94dfdeaed79a365fb6a72b7c6b155f5b485e6171ded83f\",\"hash\":\"c8efd8724ac1210c15df4e9b8d04c8162bae288207857c76300b2d8b42548796\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000004",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000005.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"f91b282f555c0e5d32ad4fe3ca8b7e007d1e704a0c34916f7e7bed6fa8f114f1\"}\n{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"f91b282f555c0e5d32ad4fe3ca8b7e007d1e704a0c34916f7e7bed6fa8f114f1\"}\n{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000005",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000005",
+    "type": "progress",
+    "data": "{}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000006.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{},\"previous\":null,\"hash\":\"81cd7b30560a781723426d3ef48cc4288c9abebbb9490d86231fade257006667\"}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000006.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{},\"previous\":null,\"hash\":\"81cd7b30560a781723426d3ef48cc4288c9abebbb9490d86231fade257006667\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000006",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "kind": "code",
+      "status": "running",
+      "updatedAt": 11
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000007.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000007\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"hash\":\"\"}\n{\"job\":\"00000000-0000-4000-8000-000000000007\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{},\"hash\":0}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000007.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000007\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"hash\":\"\"}\n{\"job\":\"00000000-0000-4000-8000-000000000007\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{},\"hash\":0}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000007",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000007",
+      "kind": "code",
+      "status": "running",
+      "updatedAt": 11
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000007",
+    "type": "progress",
+    "data": "{}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000007",
+      "seq": 3,
+      "type": "progress",
+      "at": 7001,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000007.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000007\",\"seq\":3,\"type\":\"progress\",\"at\":7001,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   }
+  ],
+  "durable-store": [
+   {
+    "op": "clock",
+    "t": 8000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000001.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "durable",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "durable",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "job.started",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000002.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"chat\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"torn",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"chat\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"torn"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "durable",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "kind": "chat",
+      "status": "queued",
+      "updatedAt": 10
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "durable",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "job.started",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 2,
+      "type": "job.started",
+      "at": 8000,
+      "data": {},
+      "previous": null,
+      "hash": "0b63672c48fefd69b94571fad1c504ff9a1def320aa644d48913e71a91025046"
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"chat\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.started\",\"at\":8000,\"data\":{},\"previous\":null,\"hash\":\"0b63672c48fefd69b94571fad1c504ff9a1def320aa644d48913e71a91025046\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000003.jsonl",
+    "text": "{\"torn",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "whole": "{\"torn"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "durable",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "result": {
+     "ok": null
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "durableAll",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000004.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"chat\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000004.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"chat\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "durableAll",
+    "id": "00000000-0000-4000-8000-000000000004",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "durableAll",
+    "uuid": "00000000-0000-4000-8000-000000000005",
+    "kind": "chat",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000005"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":1,\"type\":\"job.created\",\"at\":8000,\"data\":{\"kind\":\"chat\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"5011d4df5361dc3eba05959b44dd691407b37908af93bc60030f9f77db1bb8a4\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "durableAll",
+    "id": "00000000-0000-4000-8000-000000000005",
+    "type": "job.completed",
+    "data": "{\"result\":\"done\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000005",
+      "seq": 2,
+      "type": "job.completed",
+      "at": 8000,
+      "data": {
+       "result": "done"
+      },
+      "previous": "5011d4df5361dc3eba05959b44dd691407b37908af93bc60030f9f77db1bb8a4",
+      "hash": "2039342c52b2930d5c231178d4a536de0e9b5886f8b2c69a4b401dff8ca5847a"
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":2,\"type\":\"job.completed\",\"at\":8000,\"data\":{\"result\":\"done\"},\"previous\":\"5011d4df5361dc3eba05959b44dd691407b37908af93bc60030f9f77db1bb8a4\",\"hash\":\"2039342c52b2930d5c231178d4a536de0e9b5886f8b2c69a4b401dff8ca5847a\"}\n"
+      }
+     },
+     "removed": []
+    }
+   }
+  ],
+  "recover": [
+   {
+    "op": "clock",
+    "t": 9000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":9000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000002"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":9000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "job.started",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 2,
+      "type": "job.started",
+      "at": 9000,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.started\",\"at\":9000,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000003",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000003"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":9000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "job.started",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 2,
+      "type": "job.started",
+      "at": 9000,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":2,\"type\":\"job.started\",\"at\":9000,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "approval.requested",
+    "data": "{\"action\":\"execute\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 3,
+      "type": "approval.requested",
+      "at": 9000,
+      "data": {
+       "action": "execute"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":3,\"type\":\"approval.requested\",\"at\":9000,\"data\":{\"action\":\"execute\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000004",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000004"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000004.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":9000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000004",
+    "type": "job.failed",
+    "data": "{\"error\":\"done already\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000004",
+      "seq": 2,
+      "type": "job.failed",
+      "at": 9000,
+      "data": {
+       "error": "done already"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000004.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":2,\"type\":\"job.failed\",\"at\":9000,\"data\":{\"error\":\"done already\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000005",
+    "kind": "browser",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000005"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":1,\"type\":\"job.created\",\"at\":9000,\"data\":{\"kind\":\"browser\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000006.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\nnot json\n{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":3,\"type\":\"job.started\",\"at\":12,\"data\":{}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000006.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\nnot json\n{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":3,\"type\":\"job.started\",\"at\":12,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "notes.jsonl",
+    "text": "not a job\n",
+    "files": {
+     "written": {
+      "notes.jsonl": {
+       "whole": "not a job\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000007.json",
+    "text": "{}",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000007.json": {
+       "whole": "{}"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "clock",
+    "t": 9100,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "recover",
+    "store": "code",
+    "result": {
+     "ok": 3
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.interrupted\",\"at\":9100,\"data\":{\"reason\":\"The server restarted before this finished.\"}}\n"
+      },
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":3,\"type\":\"job.interrupted\",\"at\":9100,\"data\":{\"reason\":\"The server restarted before this finished.\"}}\n"
+      },
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":4,\"type\":\"job.interrupted\",\"at\":9100,\"data\":{\"reason\":\"The server restarted while waiting for approval; start again to be asked again.\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "recover",
+    "store": "code",
+    "result": {
+     "ok": 0
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "recover",
+    "store": "any",
+    "result": {
+     "ok": 1
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":2,\"type\":\"job.interrupted\",\"at\":9100,\"data\":{\"reason\":\"The server restarted before this finished.\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   }
+  ],
+  "prune": [
+   {
+    "op": "clock",
+    "t": 10000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":10000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "job.completed",
+    "data": "{}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.completed",
+      "at": 10000,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.completed\",\"at\":10000,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "clock",
+    "t": 10100,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000002"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":10100,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "job.cancelled",
+    "data": "{}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 2,
+      "type": "job.cancelled",
+      "at": 10100,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.cancelled\",\"at\":10100,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "clock",
+    "t": 10200,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000003",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000003"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":10200,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "job.failed",
+    "data": "{\"error\":\"x\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 2,
+      "type": "job.failed",
+      "at": 10200,
+      "data": {
+       "error": "x"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":2,\"type\":\"job.failed\",\"at\":10200,\"data\":{\"error\":\"x\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "clock",
+    "t": 10300,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000004",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000004"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000004.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":1,\"type\":\"job.created\",\"at\":10300,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000004",
+    "type": "job.interrupted",
+    "data": "{\"reason\":\"y\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000004",
+      "seq": 2,
+      "type": "job.interrupted",
+      "at": 10300,
+      "data": {
+       "reason": "y"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000004.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000004\",\"seq\":2,\"type\":\"job.interrupted\",\"at\":10300,\"data\":{\"reason\":\"y\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "clock",
+    "t": 10400,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000005",
+    "kind": "chat",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000005"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":1,\"type\":\"job.created\",\"at\":10400,\"data\":{\"kind\":\"chat\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000005",
+    "type": "job.completed",
+    "data": "{}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000005",
+      "seq": 2,
+      "type": "job.completed",
+      "at": 10400,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000005.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000005\",\"seq\":2,\"type\":\"job.completed\",\"at\":10400,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000006",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000006"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000006.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000006\",\"seq\":1,\"type\":\"job.created\",\"at\":10400,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000007.jsonl",
+    "text": "broken\n{\"job\":\"00000000-0000-4000-8000-000000000007\",\"seq\":1,\"type\":\"job.created\",\"at\":1,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000007.jsonl": {
+       "whole": "broken\n{\"job\":\"00000000-0000-4000-8000-000000000007\",\"seq\":1,\"type\":\"job.created\",\"at\":1,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "prune",
+    "store": "code",
+    "result": {
+     "ok": null
+    },
+    "files": {
+     "written": {},
+     "removed": [
+      "00000000-0000-4000-8000-000000000001.jsonl"
+     ]
+    }
+   },
+   {
+    "op": "clock",
+    "t": 11250,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "prune",
+    "store": "code",
+    "result": {
+     "ok": null
+    },
+    "files": {
+     "written": {},
+     "removed": [
+      "00000000-0000-4000-8000-000000000002.jsonl",
+      "00000000-0000-4000-8000-000000000003.jsonl"
+     ]
+    }
+   },
+   {
+    "op": "clock",
+    "t": 20000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000008",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000008"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000008.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000008\",\"seq\":1,\"type\":\"job.created\",\"at\":20000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": [
+      "00000000-0000-4000-8000-000000000004.jsonl"
+     ]
+    }
+   }
+  ],
+  "torn-differences": [
+   {
+    "op": "clock",
+    "t": 12000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000001.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{}}",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{}}"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "running",
+      "updatedAt": 11
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "progress",
+    "data": "{\"stage\":\"next\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "progress",
+      "at": 12000,
+      "data": {
+       "stage": "next"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\n{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"progress\",\"at\":12000,\"data\":{\"stage\":\"next\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "running",
+      "updatedAt": 12000
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "restart",
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "kind": "code",
+      "status": "queued",
+      "updatedAt": 12000
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000002.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"0b09b1f1aa22e6e905d8bc8c7ee45eb0d9fac1d101341fe6bbb9dd3a6edb7773\"}\n{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{},\"previous\":\"0b09b1f1aa22e6e905d8bc8c7ee45eb0d9fac1d101341fe6bbb9dd3a6edb7773\",\"hash\":\"8d4e18be659c648d3c1dbe85ab294db1cff18624a64ab4cb8a86948c0db2aa05\"}",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"0b09b1f1aa22e6e905d8bc8c7ee45eb0d9fac1d101341fe6bbb9dd3a6edb7773\"}\n{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"job.started\",\"at\":11,\"data\":{},\"previous\":\"0b09b1f1aa22e6e905d8bc8c7ee45eb0d9fac1d101341fe6bbb9dd3a6edb7773\",\"hash\":\"8d4e18be659c648d3c1dbe85ab294db1cff18624a64ab4cb8a86948c0db2aa05\"}"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "kind": "code",
+      "status": "running",
+      "updatedAt": 11
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "progress",
+    "data": "{}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 3,
+      "type": "progress",
+      "at": 12000,
+      "data": {},
+      "previous": "8d4e18be659c648d3c1dbe85ab294db1cff18624a64ab4cb8a86948c0db2aa05",
+      "hash": "232bf8ab4c5764186f30b95529df2fb56230c17f3d393168b413a5c7555bedda"
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]},\"previous\":null,\"hash\":\"0b09b1f1aa22e6e905d8bc8c7ee45eb0d9fac1d101341fe6bbb9dd3a6edb7773\"}\n{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":3,\"type\":\"progress\",\"at\":12000,\"data\":{},\"previous\":\"8d4e18be659c648d3c1dbe85ab294db1cff18624a64ab4cb8a86948c0db2aa05\",\"hash\":\"232bf8ab4c5764186f30b95529df2fb56230c17f3d393168b413a5c7555bedda\"}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "restart",
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "seed",
+    "name": "00000000-0000-4000-8000-000000000003.jsonl",
+    "text": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\nnot json\n",
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":10,\"data\":{\"kind\":\"code\",\"projectId\":\"qa-project\",\"parentId\":null,\"capabilities\":[]}}\nnot json\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "result": {
+     "ok": {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "kind": "code",
+      "status": "queued",
+      "updatedAt": 10
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "job.started",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 2,
+      "type": "job.started",
+      "at": 12000,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":2,\"type\":\"job.started\",\"at\":12000,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "restart",
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "get",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "Unreadable job journal; review required"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   }
+  ]
+ }
+}
