@@ -158,3 +158,73 @@ async fn with_the_switch_off_the_start_is_nodes() {
         .iter()
         .any(|r| r.method == "POST" && r.path == PATH));
 }
+
+async fn store_post(
+    addr: std::net::SocketAddr,
+    path: &str,
+    token: &str,
+    body: &str,
+) -> (u16, Value) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut s = tokio::net::TcpStream::connect(addr).await.unwrap();
+    s.write_all(
+        format!(
+            "POST {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nContent-Type: application/json\r\nx-noevia-store-token: {token}\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .as_bytes(),
+    )
+    .await
+    .unwrap();
+    let mut bytes = Vec::new();
+    tokio::time::timeout(Duration::from_secs(30), s.read_to_end(&mut bytes))
+        .await
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8(bytes).unwrap();
+    let (h, b) = text.split_once("\r\n\r\n").unwrap();
+    (
+        h.split_whitespace().nth(1).unwrap().parse().unwrap(),
+        serde_json::from_str(b).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cores_store_calls_read_the_run_and_flush_only_with_the_store_secret() {
+    let (_d, f, up, _e) = rig(true, None).await;
+    assert_eq!(
+        store_post(f.store, "/v1/autotune/state", "wrong", "{}")
+            .await
+            .0,
+        401
+    );
+    assert_eq!(
+        store_post(f.store, "/v1/autotune/state", STORE_TOKEN, "{}").await,
+        (200, json!({"running": false}))
+    );
+    // Nothing owed: the flush is a no-op, as Node's flushReload is.
+    assert_eq!(
+        store_post(
+            f.store,
+            "/v1/autotune/flush",
+            STORE_TOKEN,
+            r#"{"model":"synth"}"#
+        )
+        .await,
+        (200, json!({"flushed": true}))
+    );
+    assert_eq!(
+        store_post(f.store, "/v1/autotune/flush", STORE_TOKEN, "[1]")
+            .await
+            .0,
+        400
+    );
+    no_bridge(&up);
+    let (_d, off, _up, _e) = rig(false, None).await;
+    assert_eq!(
+        store_post(off.store, "/v1/autotune/state", STORE_TOKEN, "{}")
+            .await
+            .0,
+        503
+    );
+}
