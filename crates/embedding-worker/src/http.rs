@@ -254,7 +254,8 @@ impl Http {
             && body.get("nodeWorkersStopped") == Some(&Value::Bool(true))
             && body.get("start").and_then(Value::as_str) == Some(start)
             && body.get("indexOutboxStopped") == Some(&Value::Bool(true))
-            && body.get("foregroundBusy") == Some(&Value::Bool(false)))
+            && body.get("foregroundBusy") == Some(&Value::Bool(false))
+            && !crate::foreground::busy())
     }
     pub async fn media_ready(
         &self,
@@ -277,7 +278,20 @@ impl Http {
             && body.get("protocol").and_then(Value::as_str) == Some("rust-embedding-worker-v1")
             && body.get("start").and_then(Value::as_str) == Some(start)
             && body.get("mediaWorkersStopped") == Some(&Value::Bool(true))
-            && (!foreground || body.get("foregroundBusy") == Some(&Value::Bool(false))))
+            && (!foreground
+                || (body.get("foregroundBusy") == Some(&Value::Bool(false))
+                    && !crate::foreground::busy())))
+    }
+    /// One query vector, as core `rag.cjs` `embedFramed` asks for a single framed text: exactly one
+    /// item with a vector, else an error. A foreground read: no admission lease and no ownership
+    /// proof (Node's query embedding takes neither); same address rules, headers and caps as the
+    /// passes' requests.
+    pub async fn embed_query(&self, target: &Target, framed: &[u16]) -> Result<Vec<f32>, String> {
+        let mut vectors = self.once(target, &[framed.to_vec()]).await?;
+        match (vectors.pop(), vectors.is_empty()) {
+            (Some(v), true) if !v.is_empty() => Ok(v),
+            _ => Err("embeddings returned no vector".into()),
+        }
     }
     /// Notify the still-owned media scheduler without delegating any outbox work.
     pub async fn source_changed(

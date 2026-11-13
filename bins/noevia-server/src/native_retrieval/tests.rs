@@ -1,0 +1,372 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
+
+//! The native research retrieve over an index Node wrote (crates/project-retrieval F2-F6, S1), with
+//! the query vector Node bound answered by a stub: the first five of Node's hits, and every gate in
+//! front of the search.
+
+use super::*;
+use serde_json::{json, Value};
+use server_store::rusqlite;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+const FIXTURE: &str =
+    include_str!("../../../../crates/project-retrieval/tests/fixtures/F2-F6-search.json");
+const USER: &str = "0123abcd-0000-4000-8000-0000000000a1";
+const START: &str = "qa-start-r4";
+const NOW: f64 = 1_800_000_000_000.0;
+
+fn fixture() -> Value {
+    serde_json::from_str(FIXTURE).unwrap()
+}
+
+fn search_of(f: &Value, scenario: &str, note: &str) -> Value {
+    f["scenarios"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["name"] == scenario)
+        .unwrap()["searches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|q| q["note"] == note)
+        .unwrap()
+        .clone()
+}
+
+fn cell(v: &Value) -> rusqlite::types::Value {
+    match v {
+        Value::Null => rusqlite::types::Value::Null,
+        Value::Number(n) if n.is_i64() => rusqlite::types::Value::Integer(n.as_i64().unwrap()),
+        Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+        other => panic!("unexpected cell {other}"),
+    }
+}
+
+/// Rebuilds a Node-written index from its dump (as crates/project-retrieval/tests/search_parity.rs).
+fn rebuild(path: &Path, dump: &Value) {
+    embedding_worker::sqlite_vec_loader::register().unwrap();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let conn = rusqlite::Connection::open(path).unwrap();
+    for sql in dump["schema"].as_array().unwrap() {
+        conn.execute_batch(sql.as_str().unwrap()).unwrap();
+    }
+    for row in dump["chunks"].as_array().unwrap() {
+        let cols = [
+            "id",
+            "file",
+            "chunk_no",
+            "body",
+            "content_hash",
+            "version",
+            "direct",
+            "kind",
+            "meta",
+        ];
+        conn.execute(
+            "INSERT INTO chunks (id, file, chunk_no, body, content_hash, version, direct, kind, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rusqlite::params_from_iter(cols.iter().map(|c| cell(&row[*c]))),
+        )
+        .unwrap();
+    }
+    for row in dump["vec_meta"].as_array().unwrap() {
+        conn.execute(
+            "INSERT INTO vec_meta (key, value) VALUES (?, ?)",
+            rusqlite::params![row["key"].as_str().unwrap(), row["value"].as_str()],
+        )
+        .unwrap();
+    }
+    for (table, rows) in dump["vectors"].as_object().unwrap() {
+        for r in rows.as_array().unwrap() {
+            let blob: Vec<u8> = r["embedding"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|x| (x.as_f64().unwrap() as f32).to_le_bytes())
+                .collect();
+            let id = r["chunk_id"].as_i64().unwrap();
+            conn.execute(
+                &format!("INSERT INTO {table} (chunk_id, embedding) VALUES ({id}, ?)"),
+                [blob],
+            )
+            .unwrap();
+        }
+    }
+    for (table, rows) in dump["maps"].as_object().unwrap() {
+        for r in rows.as_array().unwrap() {
+            conn.execute(
+                &format!("INSERT INTO {table} (chunk_id, content_hash) VALUES (?, ?)"),
+                rusqlite::params![
+                    r["chunk_id"].as_i64().unwrap(),
+                    r["content_hash"].as_str().unwrap()
+                ],
+            )
+            .unwrap();
+        }
+    }
+}
+
+struct World {
+    dir: tempfile::TempDir,
+    query: Vec<f32>,
+    want: Vec<(String, String)>,
+    target: Value,
+}
+
+/// A data directory holding S1's index for project `qa-proj-1` and a saved embedding configuration
+/// whose active target is S1's.
+fn world() -> World {
+    let f = fixture();
+    let q = search_of(&f, "S1-map-slot", "mixed files");
+    let dir = tempfile::tempdir().unwrap();
+    rebuild(
+        &dir.path()
+            .join("users")
+            .join(USER)
+            .join("rag")
+            .join("qa-proj-1.db"),
+        &f["snapshots"][q["index"].as_str().unwrap()],
+    );
+    let target = q["target"].clone();
+    std::fs::write(
+        dir.path().join("embedding-config.json"),
+        json!({"version": 1, "active": target, "next": null, "previous": null}).to_string(),
+    )
+    .unwrap();
+    World {
+        query: q["query_vector"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_f64().unwrap() as f32)
+            .collect(),
+        want: q["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .take(RESEARCH_HITS)
+            .map(|h| {
+                (
+                    h["file"].as_str().unwrap().to_owned(),
+                    h["body"].as_str().unwrap().to_owned(),
+                )
+            })
+            .collect(),
+        target,
+        dir,
+    }
+}
+
+fn inputs<'a>(w: &'a World, env: &'a HashMap<String, String>) -> Inputs<'a> {
+    Inputs {
+        data_dir: w.dir.path(),
+        user: USER,
+        project: "qa-proj-1",
+        question: "alpha bravo",
+        start: START,
+        now_ms: NOW,
+        maintenance_held: false,
+        rerank_env: Some(env),
+    }
+}
+
+async fn run(w: &World, inputs: Inputs<'_>, calls: &AtomicUsize) -> Outcome {
+    let query = w.query.clone();
+    retrieve_with(
+        None,
+        Some("http://127.0.0.1:9"),
+        inputs,
+        |target, framed| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            // The search holds the foreground (`foreground()`), so native passes yield to it.
+            assert!(embedding_worker::foreground::busy());
+            assert_eq!(target.model, "qa-embed-map");
+            // The query framing Node sent (embeddinggemma-2, kind query).
+            assert_eq!(
+                String::from_utf16_lossy(&framed),
+                "task: search result | query: alpha bravo"
+            );
+            async move { Ok(query) }
+        },
+    )
+    .await
+}
+
+fn pairs(o: Outcome) -> Vec<(String, String)> {
+    match o {
+        Outcome::Hits(h) => h.into_iter().map(|h| (h.file, h.body)).collect(),
+        Outcome::Defer(why) => panic!("deferred: {why}"),
+    }
+}
+
+#[tokio::test]
+async fn answers_nodes_first_five_hits() {
+    let w = world();
+    let env = HashMap::new();
+    let calls = AtomicUsize::new(0);
+    let got = pairs(run(&w, inputs(&w, &env), &calls).await);
+    assert_eq!(got, w.want);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn defers_while_the_reranker_is_on_or_its_settings_are_unreadable() {
+    let w = world();
+    let calls = AtomicUsize::new(0);
+    let on: HashMap<String, String> = [
+        ("NOEVIA_FEATURE_RAG_RERANK".to_owned(), "1".to_owned()),
+        (
+            "RERANK_BASE_URL".to_owned(),
+            "http://qa-rerank:8080".to_owned(),
+        ),
+    ]
+    .into();
+    assert_eq!(
+        run(&w, inputs(&w, &on), &calls).await,
+        Outcome::Defer("reranker on")
+    );
+    let env = HashMap::new();
+    let mut i = inputs(&w, &env);
+    i.rerank_env = None;
+    assert_eq!(
+        run(&w, i, &calls).await,
+        Outcome::Defer("reranker settings unavailable")
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn defers_for_a_shared_engine_target_and_an_unreadable_configuration() {
+    let w = world();
+    let env = HashMap::new();
+    let calls = AtomicUsize::new(0);
+    let mut shared = w.target.clone();
+    shared["baseUrl"] = Value::Null;
+    std::fs::write(
+        w.dir.path().join("embedding-config.json"),
+        json!({"version": 1, "active": shared}).to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        run(&w, inputs(&w, &env), &calls).await,
+        Outcome::Defer("shared engine target")
+    );
+    std::fs::write(w.dir.path().join("embedding-config.json"), "{damaged").unwrap();
+    assert_eq!(
+        run(&w, inputs(&w, &env), &calls).await,
+        Outcome::Defer("embedding configuration unavailable")
+    );
+    std::fs::remove_file(w.dir.path().join("embedding-config.json")).unwrap();
+    // No saved configuration and no usable environment seed: refused, not guessed.
+    assert_eq!(
+        run(&w, inputs(&w, &env), &calls).await,
+        Outcome::Defer("embedding configuration unavailable")
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn no_hits_where_node_has_none_and_nothing_is_embedded() {
+    let w = world();
+    let env = HashMap::new();
+    let calls = AtomicUsize::new(0);
+    // No index file for this project: nothing created (#1776).
+    let mut i = inputs(&w, &env);
+    i.project = "qa-proj-missing";
+    assert_eq!(run(&w, i, &calls).await, Outcome::Hits(Vec::new()));
+    assert!(!w
+        .dir
+        .path()
+        .join("users")
+        .join(USER)
+        .join("rag")
+        .join("qa-proj-missing.db")
+        .exists());
+    // A project id that is a path, an account id that is not one.
+    let mut i = inputs(&w, &env);
+    i.project = "../qa-proj-1";
+    assert_eq!(run(&w, i, &calls).await, Outcome::Hits(Vec::new()));
+    let mut i = inputs(&w, &env);
+    i.user = "qa-not-an-account";
+    assert_eq!(run(&w, i, &calls).await, Outcome::Hits(Vec::new()));
+    // The maintenance lease is held: Node's gate refuses the query embedding.
+    let mut i = inputs(&w, &env);
+    i.maintenance_held = true;
+    assert_eq!(run(&w, i, &calls).await, Outcome::Hits(Vec::new()));
+    // The embedding service the target is on is turned off (the worker's current snapshot says so).
+    std::fs::write(
+        w.dir.path().join("embedding-worker-status.json"),
+        json!({"protocol": "rust-embedding-worker-v1", "start": START, "at": NOW - 1000.0,
+               "service": {"managed": true, "enabled": false}, "serviceAt": NOW - 2000.0})
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(
+        run(&w, inputs(&w, &env), &calls).await,
+        Outcome::Hits(Vec::new())
+    );
+    // The same snapshot from another start is not this process's: the search runs.
+    std::fs::write(
+        w.dir.path().join("embedding-worker-status.json"),
+        json!({"protocol": "rust-embedding-worker-v1", "start": "qa-start-old", "at": NOW - 1000.0,
+               "service": {"managed": true, "enabled": false}, "serviceAt": NOW - 2000.0})
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(pairs(run(&w, inputs(&w, &env), &calls).await), w.want);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn an_embedding_failure_or_a_wrong_width_is_no_hits() {
+    let w = world();
+    let env = HashMap::new();
+    let failed = retrieve_with(
+        None,
+        Some("http://127.0.0.1:9"),
+        inputs(&w, &env),
+        |_, _| async { Err("embeddings 500".to_owned()) },
+    )
+    .await;
+    assert_eq!(failed, Outcome::Hits(Vec::new()));
+    let wide = w.query.iter().copied().chain([0.5]).collect::<Vec<f32>>();
+    let wrong = retrieve_with(
+        None,
+        Some("http://127.0.0.1:9"),
+        inputs(&w, &env),
+        |_, _| async move { Ok(wide) },
+    )
+    .await;
+    assert_eq!(wrong, Outcome::Hits(Vec::new()));
+}
+
+#[test]
+fn modes_and_the_shadow_line() {
+    assert_eq!(Mode::parse(None), Ok(Mode::Off));
+    assert_eq!(Mode::parse(Some(" ")), Ok(Mode::Off));
+    assert_eq!(Mode::parse(Some("off")), Ok(Mode::Off));
+    assert_eq!(Mode::parse(Some("shadow")), Ok(Mode::Shadow));
+    assert_eq!(Mode::parse(Some("on")), Ok(Mode::On));
+    assert!(Mode::parse(Some("1")).is_err());
+    let a = ("a".to_owned(), "x".to_owned());
+    let b = ("b".to_owned(), "y".to_owned());
+    assert_eq!(
+        compare(&[a.clone(), b.clone()], &[a.clone(), b.clone()]),
+        "match (2 hits)"
+    );
+    assert_eq!(
+        compare(&[a.clone(), b.clone()], &[b.clone(), a.clone()]),
+        "differs (node 2 hits, native 2 hits, first difference at 0)"
+    );
+    assert_eq!(
+        compare(std::slice::from_ref(&a), &[a.clone(), b]),
+        "differs (node 1 hits, native 2 hits, first difference at 1)"
+    );
+    assert_eq!(compare(&[], &[]), "match (0 hits)");
+}
