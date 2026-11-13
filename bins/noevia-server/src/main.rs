@@ -219,6 +219,10 @@ async fn server_main() -> ExitCode {
     // `modelManager.calibration?.recover()`, which is off now that the worker is native).
     // The recovery takes the launch slot before the routes serve, so no launch races it.
     let _ = app.config.spawn_calibration_recovery();
+    // #2516: only with AUTOTUNE_RUNNER_IMPL=rust (Core's boot recovery is then off).
+    if let Some(autotune) = app.config.autotune.as_ref() {
+        autotune.spawn_boot();
+    }
     {
         let maint = std::sync::Arc::clone(&app.config.maint);
         tokio::spawn(async move {

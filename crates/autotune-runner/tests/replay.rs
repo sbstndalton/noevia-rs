@@ -1182,16 +1182,19 @@ impl Deps for Replay {
         let e = self
             .call("decide", |e| decide_check(e, "judge", &request), None)
             .await?;
+        self.check_native(&e);
         outcome(&e).map(|v| if v.is_nullish() { JValue::Null } else { v })
     }
 
     fn plan(&self, request: &JValue) -> Result<JValue, Fail> {
         let e = self.take_sync("decide", |e| decide_check(e, "plan", request))?;
+        self.check_native(&e);
         outcome(&e)
     }
 
     fn contention(&self, request: &JValue) -> Result<JValue, Fail> {
         let e = self.take_sync("decide", |e| decide_check(e, "contention", request))?;
+        self.check_native(&e);
         outcome(&e)
     }
 
@@ -1199,6 +1202,7 @@ impl Deps for Replay {
         let e = self.take_sync("decide", |e| {
             decide_check(e, "templateCaps", &JValue::from(template))
         })?;
+        self.check_native(&e);
         outcome(&e)
     }
 
@@ -1208,6 +1212,7 @@ impl Deps for Replay {
             ("bodyText", JValue::from(body_text)),
         ]);
         let e = self.take_sync("decide", |e| decide_check(e, "servingVerdict", &request))?;
+        self.check_native(&e);
         outcome(&e)
     }
 
@@ -1223,14 +1228,20 @@ impl Deps for Replay {
     fn long_pairs(&self, rows: &JValue) -> JValue {
         let request = JValue::obj([("rows", rows.clone())]);
         self.take_sync("decide", |e| decide_check(e, "longPairs", &request))
-            .map(|e| e.get("result").clone())
+            .map(|e| {
+                self.check_native(&e);
+                e.get("result").clone()
+            })
             .unwrap_or(JValue::Arr(Vec::new()))
     }
 
     fn long_section(&self, text: &str, row: &JValue) -> JValue {
         let request = JValue::obj([("text", JValue::from(text)), ("row", row.clone())]);
         self.take_sync("decide", |e| decide_check(e, "longSection", &request))
-            .map(|e| e.get("result").clone())
+            .map(|e| {
+                self.check_native(&e);
+                e.get("result").clone()
+            })
             .unwrap_or(JValue::Null)
     }
 
@@ -1308,6 +1319,96 @@ fn decide_check(e: &JValue, f: &str, request: &JValue) -> Result<(), String> {
         return Err(format!("decision {f} / Node {}", text(e.get("fn"))));
     }
     eq(&format!("{f} request"), e.get("request"), request)
+}
+
+/// A section's `key = value` line of models.ini (presets.files' `model` / `mmproj`).
+fn ini_value(ini: &str, section: &str, key: &str) -> Option<String> {
+    let mut inside = false;
+    for line in ini.split('\n') {
+        let t = line.trim();
+        if t.starts_with('[') {
+            inside = t.trim_start_matches('[').split(']').next() == Some(section);
+            continue;
+        }
+        if inside {
+            if let Some((k, v)) = t.split_once('=') {
+                if k.trim() == key {
+                    return Some(v.trim().to_string()).filter(|v| !v.is_empty());
+                }
+            }
+        }
+    }
+    None
+}
+
+impl Replay {
+    /// For a decision Node took with its own implementation (`injected: false`), the crate's
+    /// production answer must be the one Node recorded.
+    fn check_native(&self, e: &JValue) {
+        if e.get("injected") != &JValue::Bool(false) {
+            return;
+        }
+        // A Node test that patches the WASM module itself (trace 130's "synthetic planner fault")
+        // records its fault as the default implementation's: not a decision the crate takes.
+        if e.get("throws")
+            .get("message")
+            .as_str()
+            .is_some_and(|m| m.starts_with("synthetic "))
+        {
+            return;
+        }
+        let request = e.get("request");
+        let ini = self.ini();
+        let file_of = |row: &JValue| {
+            autotune_runner::model_path_from_args(row.get("status").get("args"))
+                .or_else(|| ini_value(&ini, row.get("id").as_str()?, "model"))
+        };
+        let native: Result<JValue, Fail> = match e.get("fn").as_str().unwrap_or("") {
+            "plan" => autotune_runner::decide::plan(request),
+            "contention" => autotune_runner::decide::contention(request),
+            "templateCaps" => {
+                autotune_runner::decide::template_caps(request.as_str().unwrap_or(""))
+            }
+            "servingVerdict" => autotune_runner::decide::serving_verdict(
+                request.get("status").as_num().unwrap_or(f64::NAN),
+                request.get("bodyText").as_str().unwrap_or(""),
+            ),
+            "judge" => Ok(autotune_runner::decide::judge(request)),
+            "longPairs" => Ok(autotune_runner::decide::long_pairs(
+                request.get("rows"),
+                file_of,
+            )),
+            "longSection" => {
+                let row = request.get("row");
+                let mmproj = autotune_runner::decide::arg_of(
+                    row.get("status").get("args"),
+                    &["--mmproj", "-mm"],
+                )
+                .or_else(|| ini_value(&ini, row.get("id").as_str()?, "mmproj"));
+                Ok(autotune_runner::decide::long_section(
+                    request.get("text").as_str().unwrap_or(""),
+                    row.get("id"),
+                    file_of(row),
+                    mmproj,
+                ))
+            }
+            _ => return,
+        };
+        let want = outcome(e);
+        let same = match (&native, &want) {
+            (Ok(a), Ok(b)) => normalize(a) == normalize(b),
+            (Err(_), Err(_)) => true,
+            _ => false,
+        };
+        if !same {
+            self.mismatch(format!(
+                "native {} differs from Node's: native {:?} / Node {:?}",
+                text(e.get("fn")),
+                native.map(|v| text(&v)),
+                want.map(|v| text(&v))
+            ));
+        }
+    }
 }
 
 /// Plays one trace; `Err` is the first divergence.

@@ -26,6 +26,9 @@ tenant-assertion = { path = "../../crates/tenant-assertion" }
 diary-corpus-parse = { path = "../../crates/diary-corpus-parse" }
 diary-workspace-export = { path = "../../crates/diary-workspace-export" }
 diary-corpus-write = { path = "../../crates/diary-corpus-write" }
+diary-core = { path = "../../crates/diary-core" }
+diary-answer = { path = "../../crates/diary-answer" }
+diary-retrieval = { path = "../../crates/diary-retrieval" }
 
 diary-index-transform = { path = "../../crates/diary-index-transform" }
 s3-sign = { path = "../../crates/s3-sign" }
