@@ -58,6 +58,9 @@ let current = null;
 // chat.cjs calls rm.preRule off the module: the real rule answers, the call is logged.
 const realPreRule = rm.preRule;
 rm.preRule = (text, opts) => { const flag = realPreRule(text, opts); current.seam(['preRule', String(text), flag]); return flag; };
+// mappedHistory as chat.cjs built it (hasDiaryContent's argument): the history the Rust side is given.
+const realHasDiary = rm.hasDiaryContent;
+rm.hasDiaryContent = (history) => { if (current.log.mappedHistory === null) current.log.mappedHistory = structuredClone(history); return realHasDiary(history); };
 const routePreload = serverRequire('route-preload.cjs');
 routePreload.startPreload = async ({ model }) => ({ model, use() {}, cancel() {}, releaseIfUnused: async () => {}, pending: () => false, settled: Promise.resolve() });
 
@@ -71,9 +74,12 @@ function rand() { // mulberry32
 const pick = (list) => list[Math.floor(rand() * list.length)];
 const viaJson = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 
+// One private-data MCP box (#1646): a turn that picks it on an ungranted hybrid cloud route moves local ('private-tools').
+const MCP = [{ id: 'qa-notes', label: 'QA notes', description: 'QA notes for QA', source: 'mcp', server: 'qa-notes',
+  tools: [{ type: 'function', function: { name: 'qa_notes_search', description: 'Search QA notes.', parameters: { type: 'object', properties: {} } } }], reads: ['qa_notes_search'] }];
 const driveTools = createDriveTools({ accounts: { forUser: () => ({ drive: { state: () => ({ state: 'none' }) } }) }, cap: 8000 });
 const TB = toolboxesLib.createToolboxes({ boxes: [driveTools.box], kiwixTools: null, driveTools, specialistTools: pageSave.createPageSave({ store: {} }),
-  mcpBoxes: () => [], mcpTools: () => new Map(), offered: () => true, prefill: { budgetFor: () => null, rateFor: () => 0.5 } });
+  mcpBoxes: () => MCP, mcpTools: () => new Map([['qa_notes_search', { readOnly: true, serverId: 'qa-notes' }]]), offered: () => true, prefill: { budgetFor: () => null, rateFor: () => 0.5 } });
 const PROVIDER = 'http://qa-default.invalid';
 const PROVIDERS = {
   default: { id: 'default', label: 'QA local', baseUrl: PROVIDER },
@@ -101,8 +107,9 @@ function handlerFor(dir, spec) {
   const routingModes = {
     enabled: () => { seam(['enabled']); return structuredClone(m().enabled); },
     settings: (project) => { seam(['settings', project ? project.id : null]); if (m().settings && m().settings.throws) throw new Error('QA'); return structuredClone(m().settings); },
-    sensitivity: (input) => { seam(['sensitivity', input.complete, input.chunks.length]); return settled(m().verdict); },
-    awaitChoice: ({ id, userId, chatId }) => { seam(['awaitChoice', id, userId, chatId]); return settled(m().choice); },
+    // `abortAt`: the response closes while that seam runs (chatSignal aborts).
+    sensitivity: (input) => { seam(['sensitivity', input.complete, input.chunks.length]); if (m().abortAt === 'sensitivity') current.res.emit('close'); return settled(m().verdict); },
+    awaitChoice: ({ id, userId, chatId }) => { seam(['awaitChoice', id, userId, chatId]); if (m().abortAt === 'awaitChoice') current.res.emit('close'); return settled(m().choice); },
     setChatFlags: (projectId, chatId, patch) => { seam(['setChatFlags', projectId, chatId, patch]); if (m().flagsThrow) throw new Error('QA'); },
     log: (entry) => { seam(['log', entry]); if (m().logThrows) throw new Error('QA'); },
     ...(spec.modes.openChoice === undefined ? {} : { openChoice: ({ id, userId, chatId }) => { seam(['openChoice', id, userId, chatId]); return settled(m().openChoice); } }),
@@ -142,7 +149,7 @@ async function addTurn(name, raw) {
   const spec = viaJson({ message: 'QA question', roles: ROLES, ...raw });
   process.env.NOEVIA_CONTRACT_FIXED_NOW = '2026-11-13T12:00:00Z';
   process.env.TZ = 'UTC';
-  const log = { requests: [], calls: [], meta: false, refused: null, modesOn: false };
+  const log = { requests: [], calls: [], meta: false, refused: null, modesOn: false, mappedHistory: null };
   log.seam = (entry) => { if (entry[0] === 'enabled') log.modesOn = true; if (!log.meta) log.calls.push(entry); };
   current = { spec, log, seam: log.seam };
   const rawEvents = [];
@@ -150,6 +157,7 @@ async function addTurn(name, raw) {
   res.writeHead = () => {}; res.setHeader = () => {};
   res.write = (line) => { const s = String(line); rawEvents.push(s); if (s.includes('"type":"meta"')) log.meta = true; return true; };
   res.end = () => { res.writableEnded = true; res.emit('finish'); };
+  current.res = res;
   const { handleChat } = handlerFor(fs.mkdtempSync(path.join(tmp, 'qa-')), spec);
   const body = { message: spec.message, ...(spec.project && !spec.free ? { projectId: spec.project.id } : {}), ...(spec.body || {}) };
   const from = logged.length;
@@ -165,8 +173,8 @@ async function addTurn(name, raw) {
   const routeEvents = events.filter((e) => ['route_pending', 'route_remembered'].includes(e.type) || (e.type === 'error' && !meta));
   const lines = logged.slice(from).filter((l) => l.startsWith('[routing]'));
   const reply = log.requests.find((r) => r.body.stream === true) || null;
-  if (!thrown && !meta && !log.refused && !routeEvents.some((e) => e.type === 'error')) throw new Error(`${name}: no meta event and no refusal; events: ${rawEvents.join('').slice(0, 600)}`);
-  turns.push({ name, spec, body, calls: log.calls, ...(thrown ? { throws: thrown } : {}), refused: log.refused, events: routeEvents,
+  if (!thrown && !meta && !log.refused && !routeEvents.some((e) => e.type === 'error') && !spec.modes.abortAt) throw new Error(`${name}: no meta event and no refusal; events: ${rawEvents.join('').slice(0, 600)}`);
+  turns.push({ name, spec, body, mappedHistory: log.mappedHistory, ended: !!res.writableEnded, calls: log.calls, ...(thrown ? { throws: thrown } : {}), refused: log.refused, events: routeEvents,
     meta: meta ? { model: meta.model, chatId: meta.chatId ?? null, route: meta.route ?? null, routing: meta.routing ?? null } : null, lines,
     reply: reply ? { model: reply.body.model, url: reply.url } : null });
 }
@@ -242,6 +250,23 @@ const withChat = { body: { chatId: CHAT } };
   await addTurn('hybrid_pre_force_local', { project: inProject({ forceLocal: true }), ...withChat, message: 'QA my diagnosis of asthma', modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR } });
   await addTurn('hybrid_compact', { project: P, message: '', body: { compactOnly: true, chatId: 'qa-compact', history: [{ role: 'user', content: 'QA q1' }, { role: 'assistant', content: 'QA a1' }] },
     modes: { enabled: true, settings: S('hybrid'), verdict: SENS, choice: { choice: 'cloud' } } });
+  // #1646: the private-data box on a cloud route: an ungranted hybrid route moves local, a granted one or Cloud mode stays.
+  const PRIV = (chat) => ({ body: { ...(chat ? { chatId: CHAT } : {}), turnToolboxes: ['qa-notes'] } });
+  await addTurn('private_hybrid_clear', { project: P, ...PRIV(false), modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR } });
+  await addTurn('private_hybrid_user_choice', { project: P, ...PRIV(false), modes: { enabled: true, settings: S('hybrid'), verdict: SENS, choice: { choice: 'cloud' } } });
+  await addTurn('private_hybrid_allow_cloud', { project: inProject({ allowCloud: true }), ...PRIV(true), modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR } });
+  await addTurn('private_hybrid_remembered', { project: inProject({}), ...PRIV(true), modes: { enabled: true, settings: S('hybrid'), verdict: SENS, choice: { choice: 'cloud', remember: true } } });
+  await addTurn('private_cloud_mode', { project: P, ...PRIV(false), modes: { enabled: true, settings: S('cloud') } });
+  // Aborted while the check or the question runs: nothing after the log entry and the line (no refusal, flag or event).
+  await addTurn('abort_during_check', { project: P, modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR, abortAt: 'sensitivity' } });
+  await addTurn('abort_during_question_remember', { project: inProject({}), ...withChat, modes: { enabled: true, settings: S('hybrid'), verdict: SENS, choice: { choice: 'cloud', remember: true }, abortAt: 'awaitChoice' } });
+  await addTurn('abort_before_cancel', { project: inProject({}), roles: { code: CODE }, ...withChat, modes: { enabled: true, settings: S('hybrid'), verdict: SENS, choice: { choice: 'local', remember: true }, abortAt: 'awaitChoice' } });
+  // mappedHistory: entries Node drops or maps (an empty content, a failed reply, a declined and an applied write).
+  await addTurn('history_mapped', { project: P, body: { history: [{ role: 'system', content: 'QA' }, { role: 'tool', name: 'diary_x', content: '' }, null,
+    { role: 'assistant', content: 'QA part', failed: true }, { role: 'tool', name: 'qa_notes_search', content: 'QA', declined: true },
+    { role: 'tool', name: 'diary_write', content: 'QA done', applied: true, target: 'QA target', args: '{}' }] }, modes: { enabled: true, settings: S('cloud') } });
+  await addTurn('history_dropped_diary', { project: P, body: { history: [{ role: 'tool', name: 'diary_x', content: '' }, { role: 'system', name: 'diary_y', content: 'QA' }] },
+    modes: { enabled: true, settings: S('cloud') } });
   await addTurn('weird_mode', { project: P, modes: { enabled: true, settings: S('QA'), verdict: CLEAR } });
 
   const MSGS = ['QA question', 'QA token: qa_live_0123456789abcdefghijklmnop', 'QA hi'];
@@ -256,7 +281,7 @@ const withChat = { body: { chatId: CHAT } };
     const chat = rand() < 0.7;
     await addTurn(`random_${n}`, {
       ...(free ? { freeChats: [{ id: CHAT, ...flags }] } : { project: inProject(flags) }), roles, message: pick(MSGS),
-      body: { ...(chat ? { chatId: CHAT } : {}), ...(free ? { spaceId: 'free' } : {}) }, classification: { role: pick(['fast', 'smart', 'code']) },
+      body: { ...(chat ? { chatId: CHAT } : {}), ...(free ? { spaceId: 'free' } : {}), ...(rand() < 0.4 ? { turnToolboxes: ['qa-notes'] } : {}) }, classification: { role: pick(['fast', 'smart', 'code']) },
       ...(rand() < 0.1 ? { noUser: true } : {}),
       modes: { enabled: rand() < 0.9, settings: S(mode, { cloud, whenSensitive: pick(['ask', 'ask', 'local']) }), verdict, choice,
         ...(rand() < 0.5 ? { openChoice: rand() < 0.85 } : {}) },

@@ -19,9 +19,12 @@
 //!
 //! Seams of this part that later slices port: `preRule` (the deterministic secret, IBAN, card and
 //! health rules) and `routerInput` (what the sensitivity check reads) are the caller's;
-//! [`PreText::Sent`] is the text [`sent_text`] joins. The turn's abort after the decision
-//! (`chatSignal.signal.aborted`: end the response, nothing else) is the caller's check, made right
-//! after [`Decided`] arrives; no recorded turn is aborted.
+//! [`PreText::Sent`] is the text [`sent_text`] joins. After the log entry and the `[routing]`
+//! line ([`Seam::Line`]) the turn's abort is asked ([`Seam::Aborted`], chat.cjs's
+//! `chatSignal.signal.aborted`), ahead of the cancel refusal and of the remembered choice: an
+//! aborted turn ends its response and nothing else ([`Decided::aborted`]): no refusal, no flag
+//! written, no event sent. Recorded turns abort while the sensitivity check or the routing
+//! question runs (the response's `close`).
 //!
 //! Later parts (not here): the wire changes once the route is known (the off-box zone of the time
 //! part and the brain block dropped (#815) — both keyed on [`off_box_turn`] —, the history filter,
@@ -50,9 +53,9 @@ pub struct ModesTurn<'a> {
     /// `body.spaceId`.
     pub space_id: &'a JValue,
     pub message: &'a str,
-    /// `attachmentNames.join('\n')`, see [`attachment_names`]; `None` when reading them threw
-    /// (the turn throws once the roles are read).
-    pub attachments: Option<&'a str>,
+    /// `attachmentNames`, see [`attachment_names`]; `None` when reading them threw (the turn
+    /// throws once the roles are read).
+    pub attachments: Option<&'a [String]>,
     /// `mappedHistory`.
     pub history: &'a JValue,
     /// `body.compactOnly` is truthy.
@@ -70,7 +73,7 @@ pub struct ModesTurn<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreText {
     Message(String),
-    /// `attachmentNames.join('\n')`.
+    /// `attachmentNames.join('\n')` (joined here from [`ModesTurn::attachments`]).
     Attachments(String),
     /// `sentText`, see [`sent_text`].
     Sent,
@@ -106,6 +109,11 @@ pub enum Seam {
     AwaitChoice(String),
     /// `routingModes.log(entry)`; its failure is ignored.
     Log(JValue),
+    /// The `[routing] ...` console line, written right after the log entry (also before the
+    /// cancel refusal).
+    Line(String),
+    /// `chatSignal.signal.aborted`: answered `true` when the turn was aborted.
+    Aborted,
     /// `routingModes.setChatFlags(listProjectId, chatId, patch)`; its failure is ignored.
     SetChatFlags { project_id: JValue, chat_id: JValue, patch: JValue },
 }
@@ -164,10 +172,11 @@ impl RouteTarget {
 /// The decision, once made.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Decided {
-    /// `None`: routing modes did not apply (flag off, no mode, a Manual turn).
+    /// `None`: routing modes did not apply (flag off, no mode, a Manual turn) or the turn was
+    /// aborted.
     pub target: Option<RouteTarget>,
-    /// The `[routing] ...` console line.
-    pub log_line: Option<String>,
+    /// The turn was aborted after the decision: end the response (when not yet ended) and return.
+    pub aborted: bool,
 }
 
 /// One step of [`Modes`].
@@ -195,6 +204,8 @@ enum Stage {
     Pending,
     Choice,
     Log,
+    Line,
+    Aborted,
     Flags,
     Remembered,
     Over,
@@ -361,6 +372,10 @@ impl<'a> Modes<'a> {
                 }
                 self.flagged()
             }
+            // `ask` throwing (the wire, the id, the event) is caught: no answer, fail closed.
+            (Stage::Stream | Stage::Id | Stage::Pending, Reply::Value(Err(Thrown))) => {
+                self.answered(&JValue::Null)
+            }
             (Stage::Stream, Reply::Done) => self.ask(Stage::Id, Seam::ChoiceId),
             (Stage::Id, Reply::Id(id)) => {
                 self.id = id.clone();
@@ -381,6 +396,13 @@ impl<'a> Modes<'a> {
             (Stage::Choice, Reply::Value(v)) => self.answered(&v.unwrap_or(JValue::Null)),
             (Stage::Log, Reply::Done) => {
                 let line = self.log_line()?;
+                self.ask(Stage::Line, Seam::Line(line))
+            }
+            (Stage::Line, Reply::Done) => self.ask(Stage::Aborted, Seam::Aborted),
+            (Stage::Aborted, Reply::Value(aborted)) => {
+                if aborted?.truthy() {
+                    return Ok(self.finish(None, true));
+                }
                 if self.out.cancel {
                     return Err(refused(
                         "Kept local, but no local model is set for Auto. Nothing was sent.",
@@ -402,7 +424,7 @@ impl<'a> Modes<'a> {
                             },
                         )
                     }
-                    _ => Ok(self.target(line)),
+                    _ => Ok(self.target()),
                 }
             }
             (Stage::Flags, Reply::Done) => {
@@ -412,20 +434,18 @@ impl<'a> Modes<'a> {
                 }
                 self.ask(Stage::Remembered, Seam::Send(JValue::Obj(ev)))
             }
-            (Stage::Remembered, Reply::Done) => {
-                let line = self.log_line()?;
-                Ok(self.target(line))
-            }
+            (Stage::Remembered, Reply::Done) => Ok(self.target()),
             _ => Err(Halt::OutOfOrder),
         }
     }
 
     fn none(&mut self) -> Step {
+        self.finish(None, false)
+    }
+
+    fn finish(&mut self, target: Option<RouteTarget>, aborted: bool) -> Step {
         self.stage = Stage::Over;
-        Step::Done(Ok(Decided {
-            target: None,
-            log_line: None,
-        }))
+        Step::Done(Ok(Decided { target, aborted }))
     }
 
     fn after_provider(&mut self, row: JValue) -> Result<Step, Halt> {
@@ -451,7 +471,7 @@ impl<'a> Modes<'a> {
         }
         match next {
             Stage::PreAttachments => {
-                let a = PreText::Attachments(self.t.attachments.unwrap_or_default().to_string());
+                let a = PreText::Attachments(self.t.attachments.unwrap_or_default().join("\n"));
                 self.ask(next, Seam::PreRule(a))
             }
             Stage::PreSent => self.ask(next, Seam::PreRule(PreText::Sent)),
@@ -570,7 +590,7 @@ impl<'a> Modes<'a> {
         self.ask(Stage::Log, Seam::Log(entry))
     }
 
-    fn log_line(&self) -> Result<Option<String>, Halt> {
+    fn log_line(&self) -> Result<String, Halt> {
         let s = |v: &JValue| to_js_string(v).map_err(|_| Halt::Thrown);
         let route = if self.out.cloud {
             "cloud"
@@ -587,28 +607,25 @@ impl<'a> Modes<'a> {
         if self.out.flag.truthy() {
             line.push_str(&format!(" flag={}", s(&self.out.flag)?));
         }
-        Ok(Some(line))
+        Ok(line)
     }
 
-    fn target(&mut self, log_line: Option<String>) -> Step {
-        self.stage = Stage::Over;
+    fn target(&mut self) -> Step {
         let o = &self.out;
         let cloud = o.cloud;
         let detail = (o.reason == "check-unavailable" && o.cause.truthy()).then(|| o.cause.clone());
         let hybrid_ungranted = self.mode() == Some("hybrid")
             && cloud
             && !(self.allow_cloud || o.remember == Some("cloud") || o.reason == "user-choice");
-        Step::Done(Ok(Decided {
-            target: Some(RouteTarget {
-                route: if cloud { "cloud" } else { "local" },
-                reason: JValue::from(o.reason),
-                detail,
-                cloud: self.settings.get("cloud").clone(),
-                row: cloud.then(|| self.row.clone()),
-                hybrid_ungranted,
-            }),
-            log_line,
-        }))
+        let target = RouteTarget {
+            route: if cloud { "cloud" } else { "local" },
+            reason: JValue::from(o.reason),
+            detail,
+            cloud: self.settings.get("cloud").clone(),
+            row: cloud.then(|| self.row.clone()),
+            hybrid_ungranted,
+        };
+        self.finish(Some(target), false)
     }
 }
 
@@ -666,9 +683,9 @@ pub fn has_diary_content(history: &JValue) -> Result<bool, Thrown> {
     Ok(false)
 }
 
-/// `attachmentNames.join('\n')`: the project's asset and file names that are text. Throws as
+/// `attachmentNames`: the project's asset and file names that are text. Throws as
 /// Node does for a `null` entry or a truthy list that is not an array.
-pub fn attachment_names(project: &JValue) -> Result<String, Thrown> {
+pub fn attachment_names(project: &JValue) -> Result<Vec<String>, Thrown> {
     let mut names = Vec::new();
     for key in ["assets", "files"] {
         let list = if project.truthy() { project.get(key) } else { &JValue::Undefined };
@@ -687,7 +704,7 @@ pub fn attachment_names(project: &JValue) -> Result<String, Thrown> {
             _ => {}
         }
     }
-    Ok(names.join("\n"))
+    Ok(names)
 }
 
 /// `sentText`: the system message without the brain block, then each message's text content
