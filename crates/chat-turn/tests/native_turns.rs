@@ -587,7 +587,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         if NOT_YET.iter().any(|(n, _)| *n == name) {
             continue;
         }
-        let (script, ended) = replay(&f, c);
+        let (script, _ended) = replay(&f, c);
         let JValue::Arr(events) = c.get("events") else {
             panic!()
         };
