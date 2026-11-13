@@ -129,6 +129,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "autotune-runner"
+version = "0.1.0"
+dependencies = [
+ "autotune-plan",
+ "autotune-start",
+ "js-json",
+ "llamacpp-autoconfig",
+ "llamacpp-presets",
+ "regex",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
+name = "autotune-start"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "llamacpp-presets",
+]
+
+[[package]]
 name = "axum"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
