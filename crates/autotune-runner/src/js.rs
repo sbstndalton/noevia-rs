@@ -42,6 +42,25 @@ pub fn locale_int(n: u64) -> String {
     out
 }
 
+/// `Number(text)` for a string.
+pub fn number_of_str(text: &str) -> f64 {
+    llamacpp_presets::to_number(&text.encode_utf16().collect::<Vec<_>>()).unwrap_or(f64::NAN)
+}
+
+/// `Number(v)` for a JSON value (`undefined` is NaN, `null` 0, arrays through `join`).
+pub fn number(v: &JValue) -> f64 {
+    match v {
+        JValue::Undefined => f64::NAN,
+        JValue::Null => 0.0,
+        JValue::Bool(b) => f64::from(u8::from(*b)),
+        JValue::Num(n) => *n,
+        JValue::Str(s) => number_of_str(s),
+        JValue::Arr(_) | JValue::Obj(_) => js_json::to_js_string(v)
+            .map(|s| number_of_str(&s))
+            .unwrap_or(f64::NAN),
+    }
+}
+
 /// `String(n)` for a JS number.
 pub fn num(n: f64) -> String {
     js_json::number_to_string(n)

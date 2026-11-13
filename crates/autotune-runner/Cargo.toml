@@ -11,5 +11,11 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+autotune-start = { path = "../autotune-start" }
 js-json = { path = "../js-json" }
+llamacpp-presets = { path = "../llamacpp-presets" }
 regex = "1"
+sha2 = "=0.10.9"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }

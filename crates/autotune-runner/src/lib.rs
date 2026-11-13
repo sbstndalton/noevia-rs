@@ -16,7 +16,49 @@
 //! foreign-client decision `tune-contention`, the load verdict, the long profile, the serving
 //! verdict) stay in those crates; this crate only orders the work around them.
 
+mod actor;
+pub mod deps;
+mod engine;
 pub mod js;
 pub mod kv;
+mod long;
 pub mod phases;
+mod planned;
 pub mod quality;
+pub mod runner;
+mod stages;
+
+pub use deps::{Abort, Call, Context, Deps, Fail, Hooks, Quirks, Release, Spawn};
+pub use runner::{Answer, Config, Runner, StageHooks, StartBody};
+
+use js_json::{wtf16, JValue};
+use sha2::{Digest, Sha256};
+
+/// `hash(value)`: sha256 hex of `JSON.stringify(value)`.
+pub fn hash(value: &JValue) -> String {
+    let text = wtf16::stringify(value).unwrap_or_default();
+    let digest = Sha256::digest(text.as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// `hash({ ...identity, profile: undefined })`: a model's identity without its profile part, so
+/// a tune's own writes do not change it.
+pub fn stable_identity(identity: &JValue) -> String {
+    let mut copy = js::spread(&[identity]);
+    js::set(&mut copy, "profile", JValue::Undefined);
+    hash(&copy)
+}
+
+/// model-system.cjs `modelPathFromArgs(args)`: the argument after `--model`/`-m`.
+pub fn model_path_from_args(args: &JValue) -> Option<String> {
+    let JValue::Arr(args) = args else {
+        return None;
+    };
+    let i = args
+        .iter()
+        .position(|a| matches!(a.as_str(), Some("--model" | "-m")))?;
+    args.get(i + 1)
+        .and_then(JValue::as_str)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string)
+}
