@@ -397,20 +397,26 @@ mod tests {
                         .unwrap_or("")
                         .to_owned();
                     let (status, body) = if first.contains("/renew") {
-                        (404, "{}")
-                    } else if first.starts_with("POST") {
+                        (404, "{}".to_owned())
+                    } else if first.starts_with("PUT") {
+                        // Row H: the front issued the ticket and names it in the path; Node echoes it.
+                        let id = first.split(' ').nth(1).and_then(|p| p.rsplit('/').next());
                         (
                             201,
-                            r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":150}"#,
+                            format!(r#"{{"lease":"{}","ttlMs":150}}"#, id.unwrap_or("")),
                         )
                     } else {
-                        (204, "")
+                        (204, String::new())
                     };
                     let reply = format!("HTTP/1.1 {status} X\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
                     let _ = s.write_all(reply.as_bytes()).await;
                 });
             }
         });
+        // A Node start is registered with this process's admission authority before any lease is issued.
+        engine_admission::authority::global()
+            .node_session("chat-admission-test", 1)
+            .unwrap();
         let admission = Arc::new(engine_admission::Admission::new(&base, Some("t")).unwrap());
         admission.enter_gate(Gate::Chat).await.unwrap()
     }
