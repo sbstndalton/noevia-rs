@@ -257,6 +257,23 @@ fn chain_hash(row: &JValue) -> bool {
 
 /// jobs.cjs `readJournal`, after the read.
 fn parse_rows(id: &str, raw: &[u8]) -> Parsed {
+    parse_rows_forced(id, raw, &|_| false)
+}
+
+/// [`parse_rows`] for a store that also chains by policy: `forced(first row)` is jobs.cjs's
+/// `durable && (!kinds || kinds.includes(rows[0]?.data?.kind))` (crate::task_store).
+pub(crate) fn parse_rows_with(
+    id: &str,
+    raw: &[u8],
+    forced: &dyn Fn(Option<&JValue>) -> bool,
+) -> Option<Vec<JValue>> {
+    match parse_rows_forced(id, raw, forced) {
+        Parsed::Rows(rows) => Some(rows),
+        Parsed::Damaged => None,
+    }
+}
+
+fn parse_rows_forced(id: &str, raw: &[u8], forced: &dyn Fn(Option<&JValue>) -> bool) -> Parsed {
     let text = String::from_utf8_lossy(raw);
     let lines: Vec<&str> = text.split('\n').filter(|l| !l.is_empty()).collect();
     let mut rows = Vec::with_capacity(lines.len());
@@ -265,7 +282,7 @@ fn parse_rows(id: &str, raw: &[u8]) -> Parsed {
         match wtf16::parse(line) {
             Ok(row) => rows.push(row),
             Err(_) => {
-                let chained = rows.first().is_some_and(chain_hash);
+                let chained = rows.first().is_some_and(chain_hash) || forced(rows.first());
                 if i + 1 == count && !chained {
                     break;
                 }
@@ -279,7 +296,7 @@ fn parse_rows(id: &str, raw: &[u8]) -> Parsed {
         return Parsed::Damaged;
     }
     let mut previous = JValue::Null;
-    let any_first = rows.first().is_some_and(chain_hash);
+    let any_first = rows.first().is_some_and(chain_hash) || forced(rows.first());
     for (i, row) in rows.iter().enumerate() {
         if !(any_first || chain_hash(row)) {
             continue;
@@ -530,7 +547,7 @@ fn s(text: &str) -> JValue {
 }
 
 /// core jobs.cjs `clipUtf8`: `(clipped, whether anything was left out)`; a lone surrogate reads as U+FFFD.
-fn clip_utf8(text: &str, max: usize) -> (String, bool) {
+pub(crate) fn clip_utf8(text: &str, max: usize) -> (String, bool) {
     let mut out = String::new();
     for c in text.chars() {
         let c = if wtf16::lone_unit(c).is_some() {
@@ -547,7 +564,7 @@ fn clip_utf8(text: &str, max: usize) -> (String, bool) {
 }
 
 /// core code-plan.cjs `boundCodePlan`: `{ subQuestions, truncated }`.
-fn bound_code_plan(status: &str, data: &JValue) -> JValue {
+pub(crate) fn bound_code_plan(status: &str, data: &JValue) -> JValue {
     let entries: &[JValue] = match data.get("subQuestions") {
         JValue::Arr(a) => a,
         _ => &[],
@@ -564,7 +581,8 @@ fn bound_code_plan(status: &str, data: &JValue) -> JValue {
                 to_js_string(entry).unwrap_or_default()
             };
             let (text, cut) = clip_utf8(&original, MAX_CODE_PLAN_ENTRY_BYTES);
-            truncated |= cut;
+            // code-plan.cjs: `text !== original`, which a lone surrogate read as U+FFFD makes true.
+            truncated |= cut || text != original;
             JValue::Str(text)
         })
         .collect();
@@ -608,7 +626,7 @@ fn to_review_js(v: &JValue) -> review_verdict::Js {
 }
 
 /// core code-review-verdict.cjs `boundReviewEvent`; a fault keeps a failed review that names nothing.
-fn bound_review(kind: &str, data: &JValue) -> JValue {
+pub(crate) fn bound_review(kind: &str, data: &JValue) -> JValue {
     let tag = review_verdict::Js::Str(kind.encode_utf16().collect());
     let bound = review_verdict::bound_review_event(&tag, &to_review_js(data)).ok();
     let parsed = bound.and_then(|event| {

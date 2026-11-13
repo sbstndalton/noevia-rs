@@ -10,8 +10,18 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The JS host side of core code-actions.cjs (`host`), for the Code harness session. Off by default,
+# so the dav-parse WebAssembly module's dependency graph is unchanged.
+host = ["dep:js-json"]
+
 [dependencies]
+js-json = { path = "../js-json", optional = true }
 prompt-framing = { path = "../prompt-framing" }
+
+[[test]]
+name = "host"
+required-features = ["host"]
 
 [dev-dependencies]
 proptest = "1"

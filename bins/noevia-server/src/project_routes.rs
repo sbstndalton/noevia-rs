@@ -174,6 +174,8 @@ pub enum Route {
     /// The Code and Browser task reads (sbstndalton/noevia#2257): `/api/code/active`, every method,
     /// and the GETs of a project's Code and Browser state and task.
     Tasks(crate::task_routes::Target),
+    /// A Code task action, only while the front runs Code tasks (code_routes.rs).
+    Code(crate::code_routes::Action),
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -487,7 +489,14 @@ pub async fn serve(
             .find(|(k, _)| k == "background")
             .is_some_and(|(_, v)| v == "1")
     });
-    let route = route(parts.method.as_str(), &path);
+    let route = route(parts.method.as_str(), &path).or_else(|| {
+        app.config
+            .code
+            .executor
+            .then(|| crate::code_routes::parse(parts.method.as_str(), &path))
+            .flatten()
+            .map(Route::Code)
+    });
     let Some(route) = route else {
         return app
             .proxy
@@ -538,6 +547,9 @@ pub async fn serve(
         )
         .await;
     }
+    if let Route::Code(action) = route {
+        return crate::code_routes::serve(app, authn, data_dir, action, body).await;
+    }
     if let Route::Research { project, shape } = &route {
         return crate::research_routes::serve(
             app,
@@ -558,7 +570,7 @@ pub async fn serve(
         .await;
     }
     let limit = match &route {
-        Route::Research { .. } | Route::Tasks(_) => None,
+        Route::Research { .. } | Route::Tasks(_) | Route::Code(_) => None,
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
@@ -1028,7 +1040,8 @@ pub async fn serve(
                 Route::Config { .. }
                 | Route::SkillInstall { .. }
                 | Route::Research { .. }
-                | Route::Tasks(_),
+                | Route::Tasks(_)
+                | Route::Code(_),
                 _,
             ) => Reply::internal(),
             // Answered above (source_job_routes).
