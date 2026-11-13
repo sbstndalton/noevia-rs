@@ -482,6 +482,7 @@ name = "code-harness"
 version = "0.1.0"
 dependencies = [
  "code-actions",
+ "code-workspace",
  "js-json",
  "rustix",
  "sha2",
@@ -516,6 +517,15 @@ dependencies = [
  "rustix",
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "code-workspace"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rustix",
  "tempfile",
 ]
 
