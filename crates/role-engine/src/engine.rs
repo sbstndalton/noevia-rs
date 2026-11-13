@@ -10,8 +10,8 @@
 //!
 //! Cancellation: a call takes a [`Cancel`] (Node's `signal`). It is checked where Node checks
 //! `signal.aborted`, and every transport await races it, as an aborted `fetch` rejects. A
-//! blocking caller on a std thread (the Code executor with code-acp's `Cancel`) drives a call
-//! with [`block_on`] and links its cancel with
+//! blocking caller on a std thread (the Code executor with code-acp's `Cancel`) drives calls
+//! with one [`Blocking`] and links its cancel with
 //! `acp_cancel.on_cancel(Box::new(move || token.cancel()))`.
 //!
 //! `call` never fails other than with a [`Failure`] (`{ ok: false, code, reason }`); no model
@@ -29,6 +29,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use stream_guard::{Schema, State, Validator, DEFAULT_MAX_DEPTH, MAX_GUARD_BYTES};
 use tokio::sync::watch;
+use zeroize::Zeroizing;
 
 const ROUTER_TIMEOUT_MS: u64 = 8000;
 const ROUTER_CAP: usize = 2 * 1024 * 1024;
@@ -85,16 +86,48 @@ impl Cancel {
     }
 }
 
-/// Runs a future to completion on this (std) thread with a current-thread runtime. Refuses
-/// inside a runtime (where tokio cannot block) instead of panicking.
-pub fn block_on<F: Future>(f: F) -> std::io::Result<F::Output> {
-    if tokio::runtime::Handle::try_current().is_ok() {
-        return Err(std::io::Error::other("block_on inside an async runtime"));
+/// A reusable blocking driver for a caller on a std thread (the Code executor): ONE runtime for
+/// every call, so a transport's pooled connections stay bound to a live runtime.
+///
+/// [`Blocking::block_on`] may be called from any thread that is not polling an async task: a
+/// plain std thread or a tokio `spawn_blocking` thread (several at once is fine). It must not be
+/// called from inside an async task or another `block_on` (tokio refuses to block a thread that
+/// drives tasks, by panicking): code already in async context awaits the call instead.
+pub struct Blocking {
+    driver: Driver,
+}
+
+enum Driver {
+    Own(tokio::runtime::Runtime),
+    Shared(tokio::runtime::Handle),
+}
+
+impl Blocking {
+    /// Owns one current-thread runtime (I/O and timers enabled), kept for the driver's life.
+    pub fn new() -> std::io::Result<Blocking> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        Ok(Blocking {
+            driver: Driver::Own(rt),
+        })
     }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    Ok(rt.block_on(f))
+
+    /// Drives calls on an existing MULTI-thread runtime (its workers run the I/O driver), e.g.
+    /// from that runtime's `spawn_blocking` threads.
+    pub fn with_handle(handle: tokio::runtime::Handle) -> Blocking {
+        Blocking {
+            driver: Driver::Shared(handle),
+        }
+    }
+
+    /// Runs `f` to completion on the calling thread (see the type's doc for which threads).
+    pub fn block_on<F: Future>(&self, f: F) -> F::Output {
+        match &self.driver {
+            Driver::Own(rt) => rt.block_on(f),
+            Driver::Shared(h) => h.block_on(f),
+        }
+    }
 }
 
 /// One HTTP request: a POST to `/chat/completions` (body = the payload's JSON text) or a GET of
@@ -165,10 +198,13 @@ pub struct BudgetRefusal {
     pub error: Option<String>,
 }
 
-/// An admission that refused or failed (`status` as the thrown error's).
+/// An admission that refused or failed: the thrown error's integer `status`, its `code` and its
+/// `publicMessage` (`inference_budget` / `inference_budget_unloaded` give `over_budget` with it).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AdmissionError {
     pub status: Option<i64>,
+    pub code: Option<String>,
+    pub public_message: Option<String>,
 }
 
 pub type Work<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -191,10 +227,10 @@ pub trait Deps: Send + Sync {
     fn loaded_models(&self) -> impl Future<Output = Option<Result<JValue, ()>>> + Send {
         async { None }
     }
-    /// The explicit roles of models.roles.json (model-system.cjs), as [`crate::section_roles_of`].
-    fn system_roles(&self) -> HashMap<String, String> {
-        HashMap::new()
-    }
+    /// The explicit roles of the roles file beside models.ini (model-system.cjs), as
+    /// [`crate::section_roles_of`] reads them. Required: Node always reads that file, and a model
+    /// it marks "chat" (even one named laya-…) counts as resident.
+    fn system_roles(&self) -> HashMap<String, String>;
     /// `admission(work, signal)`; the default runs the work (production has none).
     fn admit<'a, T: Send + 'a>(
         &'a self,
@@ -539,7 +575,7 @@ impl<D: Deps> RoleEngine<D> {
             .await
         {
             Ok(Ok(l)) => l,
-            Ok(Err(status)) | Err(AdmissionError { status }) => {
+            Ok(Err(status)) | Err(AdmissionError { status, .. }) => {
                 if aborted(&req.cancel) {
                     return fail("aborted", "The task was cancelled.");
                 }
@@ -1017,7 +1053,9 @@ impl<D: Deps> Session<D> {
                 status: Some(502),
                 code: "transport",
             };
-            if !plain_json(&schema_v, 0) || max_bytes.abs() > MAX_GUARD_BYTES as f64 {
+            // streamGuardOptions: a non-integer number (a roleDefaults override) throws too.
+            let whole = max_bytes.is_finite() && max_bytes.fract() == 0.0;
+            if !plain_json(&schema_v, 0) || !whole || max_bytes.abs() > MAX_GUARD_BYTES as f64 {
                 return Err(refused());
             }
             let schema = Schema::parse(stringify(&schema_v).as_bytes()).map_err(|_| refused())?;
@@ -1123,12 +1161,7 @@ impl<D: Deps> Session<D> {
             };
             match deps.admit(Box::pin(work), Some(cancel.clone())).await {
                 Ok(r) => r?,
-                Err(AdmissionError { status }) => {
-                    return Err(Stop::Error {
-                        status,
-                        code: "transport",
-                    })
-                }
+                Err(e) => return Err(admission_stop(e)),
             }
         };
         let base_entry = [
@@ -1142,48 +1175,27 @@ impl<D: Deps> Session<D> {
             ("constrained", call.outcome.applied.into()),
         ];
         let mut body = res.body;
-        let mut dec = SseDecoder::default();
         let mut text = String::new();
         let now = || deps.now();
-        let outcome = loop {
-            let item = match dec.next(&mut m, &now) {
-                Some(item) => item,
-                None => {
-                    let read = tokio::select! { biased; r = body.read() => r, () = cancel.cancelled() => Err(TransportError::default()) };
-                    match read {
-                        Ok(Some(bytes)) => {
-                            dec.push(&bytes, &mut m);
-                            continue;
-                        }
-                        Ok(None) => {
-                            m.complete = true;
-                            break Ok(None);
-                        }
-                        Err(_) => break Err(Stop::transport()),
-                    }
-                }
-            };
-            match item {
-                SseItem::Done => break Ok(None),
-                SseItem::EngineError => {
-                    break Err(Stop::Error {
-                        status: None,
-                        code: "engine_error",
-                    })
-                }
-                SseItem::Delta(d) => {
-                    if parent.is_cancelled() {
-                        break Err(Stop::GuardAbort);
-                    }
-                    text.push_str(&d);
-                    if let Some(v) = validator.feed(&units(&d)).cloned() {
-                        cancel.cancel();
-                        break Ok(Some(v));
-                    }
-                }
+        let end = sse_deltas(&mut body, &mut m, &now, cancel, |d| {
+            if parent.is_cancelled() {
+                return Some(Err(Stop::GuardAbort));
             }
+            text.push_str(&d);
+            let v = validator.feed(&units(&d)).cloned()?;
+            cancel.cancel();
+            Some(Ok(v))
+        })
+        .await;
+        let outcome = match end {
+            SseEnd::Complete => Ok(None),
+            SseEnd::Stopped(r) => r.map(Some),
+            SseEnd::EngineError => Err(Stop::Error {
+                status: None,
+                code: "engine_error",
+            }),
+            SseEnd::Transport => Err(Stop::transport()),
         };
-        body.cancel();
         let mut t: Vec<(String, JValue)> = base_entry
             .into_iter()
             .map(|(k, v)| (k.to_owned(), v))
@@ -1334,6 +1346,85 @@ impl<D: Deps> Session<D> {
     }
 }
 
+/// The call's `catch` for an error an admission threw.
+fn admission_stop(e: AdmissionError) -> Stop {
+    match e.code.as_deref() {
+        Some("inference_budget" | "inference_budget_unloaded") => {
+            Stop::Budget(e.public_message.unwrap_or_default())
+        }
+        Some("router_unavailable") => Stop::Router,
+        Some("no_stream") => Stop::Error {
+            status: e.status,
+            code: "no_stream",
+        },
+        Some("engine_error") => Stop::Error {
+            status: e.status,
+            code: "engine_error",
+        },
+        _ => Stop::Error {
+            status: e.status,
+            code: "transport",
+        },
+    }
+}
+
+/// How [`sse_deltas`] ended.
+#[derive(Debug, PartialEq)]
+pub enum SseEnd<T> {
+    /// `data: [DONE]` or the end of the body.
+    Complete,
+    /// The consumer stopped with this value.
+    Stopped(T),
+    /// An event with a truthy `error`.
+    EngineError,
+    /// A failed or cancelled read, or past a D4 cap.
+    Transport,
+}
+
+/// `sseDeltas` over a [`Body`]: every content delta goes to `on_delta`, which stops the stream by
+/// answering `Some`. A cancel wins over a ready body: it is checked before every read, so a body
+/// that is always ready with reasoning-only deltas still stops at once. The body is always
+/// cancelled at the end, as Node's `finally` cancels the reader.
+pub async fn sse_deltas<B: Body, N: Fn() -> f64, T>(
+    body: &mut B,
+    m: &mut Meter,
+    now: &N,
+    cancel: &Cancel,
+    mut on_delta: impl FnMut(String) -> Option<T>,
+) -> SseEnd<T> {
+    let mut dec = SseDecoder::default();
+    let end = loop {
+        let Some(item) = dec.next(m, now) else {
+            let read = tokio::select! {
+                biased;
+                () = cancel.cancelled() => Err(TransportError::default()),
+                r = body.read() => r,
+            };
+            match read {
+                Ok(Some(bytes)) => dec.push(&bytes, m),
+                Ok(None) => {
+                    m.complete = true;
+                    break SseEnd::Complete;
+                }
+                Err(_) => break SseEnd::Transport,
+            }
+            continue;
+        };
+        match item {
+            SseItem::Done => break SseEnd::Complete,
+            SseItem::EngineError => break SseEnd::EngineError,
+            SseItem::Overflow => break SseEnd::Transport,
+            SseItem::Delta(d) => {
+                if let Some(t) = on_delta(d) {
+                    break SseEnd::Stopped(t);
+                }
+            }
+        }
+    };
+    body.cancel();
+    end
+}
+
 /// role-context.cjs `askPort`'s outcomes other than a projection.
 enum Projection {
     Leak(Vec<JValue>),
@@ -1347,15 +1438,17 @@ fn impl_refused() -> Projection {
 /// `projectRoleContext` (op 1) / `projectSharedDossier` (op 2) through the `role-context` crate,
 /// on the same wire the wasm module takes: the projection, already canonical.
 fn project(op: u8, first: JValue, state: &JValue, key: &str) -> Result<JValue, Projection> {
-    let text = stringify(&JValue::Arr(vec![first, state.clone()]));
-    let mut input = Vec::with_capacity(text.len() + 1);
+    // Node zeroes the wire input and the reply (`fill(0)`) once the projection is read.
+    let text = Zeroizing::new(stringify(&JValue::Arr(vec![first, state.clone()])));
+    let mut input = Zeroizing::new(Vec::with_capacity(text.len() + 1));
     input.push(op);
     input.extend_from_slice(text.as_bytes());
     let (status, reply) = role_context::call(&input);
+    let reply = Zeroizing::new(reply);
     if status != 0 {
         return Err(impl_refused());
     }
-    let Ok(JValue::Obj(items)) = wtf16::parse(&reply) else {
+    let Ok(JValue::Obj(items)) = wtf16::parse(reply.as_str()) else {
         return Err(impl_refused());
     };
     let reply = JValue::Obj(items);

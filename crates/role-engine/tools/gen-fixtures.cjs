@@ -114,7 +114,15 @@ for (const roles of ROLE_TEXTS) {
 // ── sseDeltas ───────────────────────────────────────────────────────────────────────────────
 /** Script chunk: a string (UTF-8) or {b64} (raw bytes). */
 const bytesOf = (c) => (typeof c === 'string' ? Buffer.from(c, 'utf8') : Buffer.from(c.b64, 'base64'));
-function stubBody(chunks, req, onMarker) {
+/** A promise that only settles when `signal` aborts (an AbortError, as fetch rejects). */
+const untilAborted = (signal) => new Promise((_, reject) => {
+  const fail = () => reject(Object.assign(Error('This operation was aborted'), { name: 'AbortError' }));
+  if (!signal) return;
+  if (signal.aborted) fail(); else signal.addEventListener('abort', fail, { once: true });
+});
+// Chunk markers: {abort} aborts the step's signal and goes on; {pending} is a read that waits
+// until the request's signal aborts (the step's signal is aborted 5 ms later).
+function stubBody(chunks, req, onMarker, signal = null) {
   let i = 0;
   const reader = {
     async read() {
@@ -123,6 +131,7 @@ function stubBody(chunks, req, onMarker) {
         if (i >= chunks.length) return { done: true, value: undefined };
         const c = chunks[i++];
         if (c && c.abort) { onMarker(); continue; }
+        if (c && c.pending) { setTimeout(onMarker, 5); return untilAborted(signal); }
         return { done: false, value: new Uint8Array(bytesOf(c)) };
       }
     },
@@ -211,6 +220,10 @@ const ME = (o = {}) => E({ machine: MT, ...o });
 const READY = { ok: true };
 const BAD = { status: 200, chunks: [delta('{"other":'), delta('1}'), final()] };
 const ROUTER_CALL = [list(MODEL)];
+/** {head, tail, total}: head + 'x' padding + tail, exactly `total` UTF-8 bytes (kept small in the fixture). */
+const bigText = ({ head, tail, total }) => head + 'x'.repeat(total - head.length - tail.length) + tail;
+const ROUTER_CAP = 2 * 1024 * 1024;
+const BIG = (total) => ({ status: 200, big: { head: '{"data":[],"p":"', tail: '"}', total } });
 
 const SCENARIOS = {
   happy: { fetch: [list(MODEL), list(MODEL), okStream(), list(MODEL), okStream(GOOD, 1)], steps: [P(), C(), C({ role: 'reviewer', instructions: 'Review it.' }), { op: 'timings' }] },
@@ -276,6 +289,17 @@ const SCENARIOS = {
   local_to_machine: { engine: [E(), ME()], machines: { ready: [] }, fetch: [list(MODEL)], steps: [P(), C()] },
   machine_connect: { engine: [ME()], machines: { ready: [READY, READY, READY], connectError: true }, machineFetch: [{ throw: 'connect' }, { status: 502, chunks: [] }], steps: [P(), C(), C()] },
   machine_connect_plain: { engine: [ME()], machines: { ready: [READY, READY] }, machineFetch: [{ throw: 'connect' }], steps: [P(), C()] },
+  abort_pending_read: { fetch: [list(MODEL), list(MODEL), { status: 200, chunks: [reasoning('think'), { pending: true }, delta('{"answer":"x"}'), final()] }], steps: [P(), C({ abort: 'armed' }), { op: 'timings' }] },
+  abort_pending_fetch: { fetch: [list(MODEL), list(MODEL), { pendingFetch: true }], steps: [P(), C({ abort: 'armed' }), { op: 'timings' }] },
+  abort_pending_correction: { fetch: [list(MODEL), list(MODEL), BAD, list(MODEL), { status: 200, chunks: [{ pending: true }] }], steps: [P(), C({ abort: 'armed' }), { op: 'timings' }] },
+  machine_abort_pending_fetch: { engine: [ME()], machines: { ready: [READY, READY], connectError: true }, machineFetch: [{ pendingFetch: true }], steps: [P(), C({ abort: 'armed' })] },
+  admission_codes: { admission: ['pass', 'throwBudget', 'throwBudgetUnloaded', 'throwRouter', 'throwEngine', 'throwNoStream'], fetch: [list(MODEL)], steps: [P(), C(), C(), C(), C(), C()] },
+  budgets_fractional: { roleDefaults: { planner: { maxBytes: 12.5, maxTokens: 7.5 }, executor: { maxBytes: NaN }, auditor: { maxBytes: Infinity }, reviewer: { maxTokens: 9.5 } },
+    fetch: [list(MODEL), list(MODEL), okStream(), list(MODEL), okStream()], steps: [P(), C(), C({ role: 'executor' }), C({ role: 'auditor' }), C({ role: 'reviewer' }), C({ maxBytes: 4096 })] },
+  router_too_large: { fetch: [BIG(ROUTER_CAP + 1), BIG(ROUTER_CAP), BIG(ROUTER_CAP + 1)], steps: [P(), P(), C()] },
+  roles_file: { roles: '{"laya-chat":"chat","qa-coder-q4":"laya"}',
+    fetch: [{ status: 200, json: { data: [{ id: 'laya-chat', status: { value: 'loaded' } }, { id: 'laya-x', status: { value: 'loaded' } }] } }, { status: 200, json: { data: [{ id: MODEL, status: { value: 'loaded' } }, { id: 'laya-x', status: { value: 'loaded' } }] } }],
+    steps: [P({ model: MODEL }), P()] },
   machine_constrained_fallback: { engine: [ME({ provider: YES })], machines: { ready: [READY, READY], connectError: true }, machineFetch: [{ status: 422, chunks: [] }, BAD, okStream()], steps: [P(), C({ constrain: true })] },
 };
 
@@ -299,9 +323,11 @@ async function run(sc) {
       if (!next) throw Error('unscripted request');
       if (next.throw) throw new TypeError('fetch failed');
       if (next.abortThenThrow) { current?.abort(); throw Object.assign(Error('This operation was aborted'), { name: 'AbortError' }); }
+      // A fetch that waits until its signal aborts (the step's signal is aborted 5 ms later).
+      if (next.pendingFetch) { setTimeout(() => current?.abort(), 5); return untilAborted(init.signal); }
       const ok = next.status >= 200 && next.status < 300;
-      if (next.chunks) return { ok, status: next.status, body: stubBody(next.chunks, r, () => current?.abort()) };
-      return { ok, status: next.status, text: async () => ('text' in next ? next.text : JSON.stringify(next.json)) };
+      if (next.chunks) return { ok, status: next.status, body: stubBody(next.chunks, r, () => current?.abort(), init.signal) };
+      return { ok, status: next.status, text: async () => ('big' in next ? bigText(next.big) : 'text' in next ? next.text : JSON.stringify(next.json)) };
     };
   };
   const deps = {
@@ -319,6 +345,11 @@ async function run(sc) {
     const v = admissions();
     if (v === 'throw429') throw Object.assign(Error('busy'), { status: 429 });
     if (v === 'throw') throw Error('QA admission');
+    if (v === 'throwBudget') throw Object.assign(Error('x'), { code: 'inference_budget', publicMessage: 'QA admission budget.' });
+    if (v === 'throwBudgetUnloaded') throw Object.assign(Error('x'), { code: 'inference_budget_unloaded' });
+    if (v === 'throwRouter') throw Object.assign(Error('x'), { code: 'router_unavailable', status: 503 });
+    if (v === 'throwEngine') throw Object.assign(Error('x'), { code: 'engine_error', status: 418 });
+    if (v === 'throwNoStream') throw Object.assign(Error('x'), { code: 'no_stream', status: 1.5 });
     if (v === 'abort') current?.abort();
     return work();
   };
@@ -327,6 +358,8 @@ async function run(sc) {
     fetch: queue(sc.machineFetch, 'machine'),
     ...(sc.machines.connectError ? { connectError: (t, err) => { rec.calls.push('connectError'); return `QA ${t.machine.name} is unreachable.`; } } : {}),
   };
+  // The roles file beside models.ini, as model-system.cjs has read it.
+  MS.rememberSectionRoles(sc.roles || '');
   const engine = RE.createRoleEngine(deps);
   let session = null;
   for (const step of sc.steps) {
@@ -348,6 +381,7 @@ async function run(sc) {
     }
   }
   current = null;
+  MS.rememberSectionRoles('');
   return { ...sc, requests: rec.requests, calls: rec.calls, log: rec.log, results: rec.results };
 }
 

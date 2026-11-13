@@ -3053,6 +3053,7 @@ dependencies = [
  "sha2",
  "stream-guard",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]

@@ -2,7 +2,8 @@
 //! tools/gen-fixtures.cjs, replayed through the port and compared as JSON text in the fixture's
 //! tagged form: the pure functions row by row, and each scenario's results, the requests its stubs
 //! saw (url, method, headers, exact body bytes, reads, cancel), the dependency calls in order and
-//! the log entries. The scenarios run through [`role_engine::block_on`], as a blocking caller would.
+//! the log entries. The scenarios run through one [`role_engine::Blocking`], as a blocking caller
+//! would; the stubs' pending reads and fetches wait on the request's [`Cancel`].
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -14,6 +15,7 @@ use js_json::{wtf16, JValue};
 use role_engine::*;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 const TAG: &str = "$js";
 
@@ -41,6 +43,7 @@ fn decode(v: &JValue) -> JValue {
             Some("NaN") => JValue::Num(f64::NAN),
             Some("Infinity") => JValue::Num(f64::INFINITY),
             Some("-Infinity") => JValue::Num(f64::NEG_INFINITY),
+            Some("-0") => JValue::Num(-0.0),
             Some(other) => panic!("unknown tag {other}"),
             None => JValue::Obj(items.iter().map(|(k, x)| (k.clone(), decode(x))).collect()),
         },
@@ -55,6 +58,9 @@ fn text(v: &JValue) -> String {
         match v {
             JValue::Undefined => tag("undefined"),
             JValue::Num(n) if n.is_nan() => tag("NaN"),
+            JValue::Num(n) if *n == f64::INFINITY => tag("Infinity"),
+            JValue::Num(n) if *n == f64::NEG_INFINITY => tag("-Infinity"),
+            JValue::Num(n) if *n == 0.0 && n.is_sign_negative() => tag("-0"),
             JValue::Arr(items) => JValue::Arr(items.iter().map(enc).collect()),
             JValue::Obj(items) => {
                 JValue::Obj(items.iter().map(|(k, x)| (k.clone(), enc(x))).collect())
@@ -158,7 +164,25 @@ fn pure_rows() {
     assert!(n > 400, "{n} rows");
 }
 
-/// `for await (const d of sseDeltas(...))` with a consumer that stops after `take` deltas.
+/// A scripted body for the pure `sseDeltas` rows: counts reads and records the cancel.
+struct ChunkBody {
+    chunks: VecDeque<Vec<u8>>,
+    reads: u32,
+    cancelled: bool,
+}
+
+impl Body for ChunkBody {
+    async fn read(&mut self) -> Result<Option<Vec<u8>>, TransportError> {
+        self.reads += 1;
+        Ok(self.chunks.pop_front())
+    }
+    fn cancel(&mut self) {
+        self.cancelled = true;
+    }
+}
+
+/// `for await (const d of sseDeltas(...))` with a consumer that stops after `take` deltas,
+/// through [`sse_deltas`] (the engine's own read loop); reads and the cancel are measured.
 fn sse(chunks: &[JValue], take: Option<f64>) -> JValue {
     let clock = std::cell::Cell::new(1000.0);
     let now = || {
@@ -169,34 +193,27 @@ fn sse(chunks: &[JValue], take: Option<f64>) -> JValue {
         start: now(),
         ..Meter::default()
     };
-    let mut dec = SseDecoder::default();
-    let (mut deltas, mut error, mut reads, mut i) = (Vec::new(), JValue::Null, 0, 0);
-    loop {
-        match dec.next(&mut m, &now) {
-            None => {
-                reads += 1;
-                match chunks.get(i) {
-                    Some(c) => dec.push(&chunk_bytes(c), &mut m),
-                    None => {
-                        m.complete = true;
-                        break;
-                    }
-                }
-                i += 1;
-            }
-            Some(SseItem::Done) => break,
-            Some(SseItem::EngineError) => {
-                error = "engine_error".into();
-                break;
-            }
-            Some(SseItem::Delta(d)) => {
-                deltas.push(JValue::from(d));
-                if take.is_some_and(|t| deltas.len() as f64 >= t) {
-                    break;
-                }
-            }
-        }
-    }
+    let mut body = ChunkBody {
+        chunks: chunks.iter().map(chunk_bytes).collect(),
+        reads: 0,
+        cancelled: false,
+    };
+    let mut deltas = Vec::new();
+    let end = Blocking::new().unwrap().block_on(sse_deltas(
+        &mut body,
+        &mut m,
+        &now,
+        &Cancel::new(),
+        |d| {
+            deltas.push(JValue::from(d));
+            take.is_some_and(|t| deltas.len() as f64 >= t).then_some(())
+        },
+    ));
+    let error = match end {
+        SseEnd::EngineError => "engine_error".into(),
+        SseEnd::Transport => "transport".into(),
+        SseEnd::Complete | SseEnd::Stopped(()) => JValue::Null,
+    };
     let meter = JValue::obj([
         ("start", JValue::Num(m.start)),
         ("bytes", JValue::Num(m.bytes as f64)),
@@ -213,8 +230,8 @@ fn sse(chunks: &[JValue], take: Option<f64>) -> JValue {
         ("deltas", JValue::Arr(deltas)),
         ("error", error),
         ("m", meter),
-        ("reads", JValue::Num(f64::from(reads))),
-        ("cancelled", true.into()),
+        ("reads", JValue::Num(f64::from(body.reads))),
+        ("cancelled", body.cancelled.into()),
         ("clock", JValue::Num(clock.get())),
     ])
 }
@@ -261,6 +278,25 @@ struct StubBody {
     chunks: VecDeque<JValue>,
     rec: Option<Record>,
     current: Arc<Mutex<Cancel>>,
+    /// The request's cancel (`init.signal`).
+    cancel: Cancel,
+}
+
+/// Cancels the step's cancel 5 ms from now, from another thread (the generator's `setTimeout`).
+fn abort_soon(current: &Arc<Mutex<Cancel>>) {
+    let c = current.lock().unwrap().clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(5));
+        c.cancel();
+    });
+}
+
+/// A read or fetch that waits until `cancel` (an aborted fetch rejects).
+async fn until_cancelled<T>(cancel: &Cancel) -> Result<T, TransportError> {
+    cancel.cancelled().await;
+    Err(TransportError {
+        detail: "aborted".into(),
+    })
 }
 
 fn bump(rec: &Option<Record>, key: &str, f: impl FnOnce(&JValue) -> JValue) {
@@ -281,6 +317,10 @@ impl Body for StubBody {
             if c.get("abort").truthy() {
                 self.current.lock().unwrap().cancel();
                 continue;
+            }
+            if c.get("pending").truthy() {
+                abort_soon(&self.current);
+                return until_cancelled(&self.cancel).await;
             }
             return Ok(Some(chunk_bytes(&c)));
         }
@@ -325,7 +365,12 @@ impl Stub {
         self.calls.lock().unwrap().push(c);
     }
 
-    fn transport(&self, which: usize, req: Request) -> Result<Response<StubBody>, TransportError> {
+    async fn transport(
+        &self,
+        which: usize,
+        req: Request,
+        cancel: Cancel,
+    ) -> Result<Response<StubBody>, TransportError> {
         let headers = JValue::Obj(
             req.headers
                 .iter()
@@ -357,6 +402,10 @@ impl Stub {
             self.current.lock().unwrap().cancel();
             return Err(TransportError::default());
         }
+        if next.get("pendingFetch").truthy() {
+            abort_soon(&self.current);
+            return until_cancelled(&cancel).await;
+        }
         let status = next.get("status").as_num().unwrap() as u16;
         let current = self.current.clone();
         if let JValue::Arr(chunks) = next.get("chunks") {
@@ -366,10 +415,20 @@ impl Stub {
                     chunks: chunks.iter().cloned().collect(),
                     rec: Some(rec),
                     current,
+                    cancel,
                 },
             });
         }
+        let big = next.get("big");
         let t = match next.get("text") {
+            _ if big.is_object() => {
+                let (head, tail) = (s(big.get("head")), s(big.get("tail")));
+                let total = big.get("total").as_num().unwrap() as usize;
+                format!(
+                    "{head}{}{tail}",
+                    "x".repeat(total - head.len() - tail.len())
+                )
+            }
             JValue::Str(t) => t.clone(),
             _ => stringify(next.get("json")),
         };
@@ -379,6 +438,7 @@ impl Stub {
                 chunks: VecDeque::from([JValue::Str(t)]),
                 rec: None,
                 current,
+                cancel,
             },
         })
     }
@@ -417,9 +477,12 @@ impl Deps for Stub {
     async fn fetch(
         &self,
         req: Request,
-        _cancel: Cancel,
+        cancel: Cancel,
     ) -> Result<Response<StubBody>, TransportError> {
-        self.transport(0, req)
+        self.transport(0, req, cancel).await
+    }
+    fn system_roles(&self) -> HashMap<String, String> {
+        section_roles_of(&s(self.sc.get("roles")))
     }
     async fn keep(&self) -> Option<Vec<String>> {
         self.call("keep".into());
@@ -451,9 +514,22 @@ impl Deps for Stub {
             "admit:{}",
             if cancel.is_some() { "signal" } else { "none" }
         ));
+        let err = |status: Option<i64>, code: &str, msg: Option<&str>| {
+            Err(AdmissionError {
+                status,
+                code: (!code.is_empty()).then(|| code.to_owned()),
+                public_message: msg.map(str::to_owned),
+            })
+        };
         match seq.next().as_str() {
-            Some("throw429") => Err(AdmissionError { status: Some(429) }),
-            Some("throw") => Err(AdmissionError { status: None }),
+            Some("throw429") => err(Some(429), "", None),
+            Some("throw") => err(None, "", None),
+            Some("throwBudget") => err(None, "inference_budget", Some("QA admission budget.")),
+            Some("throwBudgetUnloaded") => err(None, "inference_budget_unloaded", None),
+            Some("throwRouter") => err(Some(503), "router_unavailable", None),
+            Some("throwEngine") => err(Some(418), "engine_error", None),
+            // status 1.5 is not an integer: Node logs null.
+            Some("throwNoStream") => err(None, "no_stream", None),
             Some("abort") => {
                 self.current.lock().unwrap().cancel();
                 Ok(work.await)
@@ -495,9 +571,9 @@ impl Deps for Stub {
     async fn machine_fetch(
         &self,
         req: Request,
-        _cancel: Cancel,
+        cancel: Cancel,
     ) -> Result<Response<StubBody>, TransportError> {
-        self.transport(1, req)
+        self.transport(1, req, cancel).await
     }
     fn machine_connect_error(&self, target: &JValue, _e: &TransportError) -> Option<String> {
         if !self.sc.get("machines").get("connectError").truthy() {
@@ -538,7 +614,8 @@ fn budgets(v: &JValue) -> HashMap<String, RoleBudget> {
 }
 
 async fn run(sc: &JValue) -> Vec<(&'static str, JValue)> {
-    let engine = RoleEngine::with_role_defaults(Stub::new(sc), budgets(sc.get("roleDefaults")));
+    let engine =
+        RoleEngine::with_role_defaults(Stub::new(sc), budgets(&decode(sc.get("roleDefaults"))));
     let mut session = None;
     let mut results = Vec::new();
     for step in arr(sc.get("steps")).iter().map(decode) {
@@ -618,8 +695,9 @@ fn scenarios_replay_node() {
         panic!("no scenarios")
     };
     let mut failures = Vec::new();
+    let driver = Blocking::new().expect("a runtime");
     for (name, sc) in scenarios {
-        for (key, got) in block_on(run(sc)).expect("a runtime") {
+        for (key, got) in driver.block_on(run(sc)) {
             let want = sc.get(key);
             if text(&got) != text(want) {
                 failures.push(format!(
@@ -630,6 +708,6 @@ fn scenarios_replay_node() {
             }
         }
     }
-    assert!(scenarios.len() >= 55, "{} scenarios", scenarios.len());
+    assert!(scenarios.len() >= 63, "{} scenarios", scenarios.len());
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
