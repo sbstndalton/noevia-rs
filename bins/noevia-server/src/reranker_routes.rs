@@ -85,6 +85,17 @@ fn load(reader: &Reader<'_>, env: Environment) -> Result<Settings, StoreError> {
         stored.as_deref(),
     ))
 }
+/// The reranker's effective environment, as `/v1/reranker/settings` gives it to Node, for this
+/// process's own retrieval (`native_retrieval`). Blocking: run it on the blocking pool.
+pub fn effective_env(app: &App) -> Result<std::collections::HashMap<String, String>, StoreError> {
+    app.identity.store_blocking()?.read(|r| {
+        Ok(load(r, app.config.reranker.0.clone())?
+            .effective_env()
+            .into_iter()
+            .map(|(k, v)| (k, String::from_utf16_lossy(&v)))
+            .collect())
+    })
+}
 pub async fn internal(app: Arc<App>, installed: Option<Vec<InstalledModel>>) -> Response<Body> {
     let result = tokio::task::spawn_blocking(move || {
         app.identity.store_blocking()?.read(|r| {
