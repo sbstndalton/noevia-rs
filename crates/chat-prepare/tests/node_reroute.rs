@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use chat_prepare::effort::Engine;
 use chat_prepare::offer::{self, Offer, OfferInput, Selection, ToolTurn};
-use chat_prepare::reroute::{self, MoveTurn, ToolMove};
+use chat_prepare::reroute::{self, LongProfileLog, MoveTurn, ToolMove};
 use chat_prepare::roles::{self, Classification, Halt, Role};
 use chat_prepare::route::{self, RouteTurn};
 use chat_prepare::toolboxes::{Toolbox, Writes};
@@ -229,7 +229,7 @@ fn names(tools: &[JValue]) -> Vec<JValue> {
         .collect()
 }
 
-fn replay(f: &JValue, c: &JValue) -> Out {
+fn replay(f: &JValue, c: &JValue, log: &mut LongProfileLog) -> Out {
     let spec = c.get("spec");
     let ctx = Ctx {
         spec,
@@ -246,12 +246,12 @@ fn replay(f: &JValue, c: &JValue) -> Out {
         lines: Vec::new(),
         reply: JValue::Null,
     };
-    run(f, c, &ctx, &mut out);
+    run(f, c, &ctx, &mut out, log);
     out.calls = ctx.calls.take();
     out
 }
 
-fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out) {
+fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out, log: &mut LongProfileLog) {
     let spec = ctx.spec;
     let facts = f.get("facts");
     let project = or_null(spec.get("project"));
@@ -403,7 +403,13 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out) {
     };
     if reroute::tool_move_applies(&mt) {
         let routed = role.expect("an Automatic turn has a routed role");
-        let tm = ToolMove::new(&model, routed, &auto_roles);
+        // The fresh autoRoles() read (chat.cjs:1355), after the gate answered.
+        ctx.seam(vec![JValue::from("autoRoles")]);
+        let fresh = match spec.get("rolesLater") {
+            JValue::Undefined => auto_roles.clone(),
+            later => later.clone(),
+        };
+        let tm = ToolMove::new(&model, routed, &fresh);
         let mut first = None;
         for (k, cand) in tm.candidates().iter().enumerate() {
             ctx.seam(vec![JValue::from("allowsTools"), cand.model.clone()]);
@@ -416,7 +422,9 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out) {
                 break;
             }
         }
-        let moved = tm.settle(first);
+        let Ok(moved) = tm.settle(first) else {
+            return halt(out, Halt::Thrown);
+        };
         if let Some(line) = moved.log_line().unwrap() {
             out.lines.push(line);
         }
@@ -437,7 +445,7 @@ fn run(f: &JValue, c: &JValue, ctx: &Ctx<'_>, out: &mut Out) {
             Ok(p) => p,
             Err(_) => return halt(out, Halt::Thrown),
         };
-        if let Some(line) = picked.log_line() {
+        if let Some(line) = picked.log_line().and_then(|l| log.admit(l)) {
             out.lines.push(line);
         }
         context_profile = JValue::from(picked.context_profile);
@@ -515,10 +523,21 @@ fn turns_match_node() {
     let f = fixture();
     let turns = items(&f, "turns");
     let mut failed = Vec::new();
+    let mut handlers: HashMap<String, LongProfileLog> = HashMap::new();
+    let mut shared = 0;
     let (mut moved, mut switched, mut thrown, mut unavailable, mut refused) = (0, 0, 0, 0, 0);
     for c in turns {
         let name = text(c.get("name"));
-        let got = replay(&f, c);
+        // One handler's log for a group of turns on one handler, a fresh one otherwise.
+        let mut own = LongProfileLog::default();
+        let log = match c.get("handler").as_str() {
+            Some(id) => {
+                shared += 1;
+                handlers.entry(id.to_string()).or_default()
+            }
+            None => &mut own,
+        };
+        let got = replay(&f, c, log);
         let mut d = Vec::new();
         let mut same = |what: &str, want: &JValue, got: &JValue| {
             if stringify(want) != stringify(got) {
@@ -575,7 +594,14 @@ fn turns_match_node() {
         unavailable >= 8,
         "only {unavailable} refused picks recorded"
     );
-    assert!(thrown >= 1, "no turn on which Node throws was recorded");
+    assert!(
+        thrown >= 2,
+        "only {thrown} turns on which Node throws recorded"
+    );
+    assert!(
+        shared >= 3,
+        "only {shared} turns on a shared handler recorded"
+    );
     assert!(refused >= 1, "no refused turn was recorded");
     assert!(
         failed.is_empty(),
@@ -623,8 +649,14 @@ fn unrecorded_inputs_follow_chat_cjs() {
         .map(|c| c.model.as_str().unwrap())
         .collect();
     assert_eq!(models, ["qa-a", "qa-b"]);
-    assert!(!tm.settle(Some(0)).rerouted);
-    assert!(!tm.settle(None).rerouted);
-    assert!(!tm.settle(Some(7)).rerouted);
-    assert_eq!(tm.settle(Some(1)).role, Role::Smart);
+    assert!(!tm.settle(Some(0)).unwrap().rerouted);
+    assert!(!tm.settle(None).unwrap().rerouted);
+    assert!(!tm.settle(Some(7)).unwrap().rerouted);
+    assert_eq!(tm.settle(Some(1)).unwrap().role, Role::Smart);
+    // Roles cleared before the move's fresh read: only the routed model is asked, and its refusal
+    // throws (`roles[role]` of null); a routed model that takes tools never reads them.
+    let gone = ToolMove::new(&JValue::from("qa-a"), Role::Fast, &JValue::Null);
+    assert_eq!(gone.candidates().len(), 1);
+    assert!(gone.settle(None).is_err());
+    assert!(!gone.settle(Some(0)).unwrap().rerouted);
 }

@@ -44,6 +44,13 @@ pub const FALLBACK_ROLES: [Role; 3] = [Role::Smart, Role::Code, Role::Fast];
 
 /// `gateSaysToolNeeded(gate)`: the gate's answer names a decision other than `'none'`. `gate` is
 /// `null` when there is no gate or the turn is `compactOnly`.
+///
+/// An answer without a truthy decision (`{}`, `{decision: null}`, `{decision: 0}`) is false here,
+/// as in Node, but chat.cjs's enforcement after the meta event (~2059: `gate.decision !== 'none'`,
+/// then `gate.decision.tool`) throws on `null` and `undefined`, and the native executor's refusal
+/// counts any decision but `'none'` as a gate pick: the caller must keep a turn whose gate answered
+/// without a decision object or `'none'` in Node (treat `{}` and `{decision: null}` as thrown).
+/// tool-gate.cjs always answers one.
 pub fn gate_says_tool_needed(gate: &JValue) -> bool {
     let decision = gate.get("decision");
     gate.truthy() && decision.truthy() && decision.as_str() != Some("none")
@@ -94,10 +101,17 @@ pub struct ToolMove {
     model: JValue,
     role: Role,
     candidates: Vec<Candidate>,
+    /// The fresh read answered `null` (no roles saved any more): `roles[role]` throws once the
+    /// routed model is refused.
+    roles_null: bool,
 }
 
 impl ToolMove {
-    /// `roles` is `autoRoles()`, read again (the same value as P5b's within a turn).
+    /// `model` and `routed` are the turn's routed model and role (P5b's, after the Creative move).
+    /// `roles` must be a fresh `autoRoles()` read made at this point, after the classifier, the
+    /// gate and the prefill waits (chat.cjs:1355 reads it again), not P5b's value: roles saved in
+    /// between are the ones the turn moves to. The routed model is still compared with P5b's.
+    /// A `null` read throws in Node once the routed model is refused ([`ToolMove::settle`]).
     pub fn new(model: &JValue, routed: Role, roles: &JValue) -> ToolMove {
         let mut candidates = vec![Candidate {
             model: model.clone(),
@@ -117,6 +131,7 @@ impl ToolMove {
             model: model.clone(),
             role: routed,
             candidates,
+            roles_null: matches!(roles, JValue::Null),
         }
     }
 
@@ -127,9 +142,14 @@ impl ToolMove {
     }
 
     /// The outcome given the index of the first candidate that takes tools (`None`: none does).
-    /// The routed model taking tools, or none doing so, keeps the turn where it is.
-    pub fn settle(&self, first_allowed: Option<usize>) -> Moved {
-        match first_allowed.and_then(|k| self.candidates.get(k).filter(|_| k > 0)) {
+    /// The routed model taking tools, or none doing so, keeps the turn where it is; with `null`
+    /// roles a refused routed model throws (the caller asked only the routed model then).
+    pub fn settle(&self, first_allowed: Option<usize>) -> Result<Moved, Thrown> {
+        if self.roles_null && first_allowed != Some(0) {
+            return Err(Thrown);
+        }
+        let to = first_allowed.and_then(|k| self.candidates.get(k).filter(|_| k > 0));
+        Ok(match to {
             Some(c) => Moved {
                 rerouted: true,
                 from: self.model.clone(),
@@ -142,7 +162,7 @@ impl ToolMove {
                 model: self.model.clone(),
                 role: self.role,
             },
-        }
+        })
     }
 }
 
@@ -212,8 +232,8 @@ pub struct LongPick {
 }
 
 impl LongPick {
-    /// `createLongProfiles`' `[long-profile] pick unavailable: <reason>` (logged once per handler
-    /// for the same text).
+    /// `createLongProfiles`' `[long-profile] pick unavailable: <reason>`; written through the
+    /// handler's [`LongProfileLog`], which drops a line already written.
     pub fn log_line(&self) -> Option<String> {
         self.unavailable
             .as_ref()
@@ -234,13 +254,65 @@ fn pick_request(model: &JValue, pairs: Vec<JValue>) -> Result<(JValue, bool), St
     // escape, which the module's JSON reader refuses as Node's wasm does).
     let text = wtf16::stringify(&request).ok_or_else(|| "input".to_string())?;
     let (status, reply) = long_profile::run_json(&text);
-    let reply = wtf16::parse(&reply).map_err(|_| "reply".to_string())?;
+    read_pick_reply(model, request.get("pairs"), status, &reply)
+}
+
+/// dav-parse-wasm.cjs `invoke` and `longProfilePick`'s check of the module's answer: a refusal's
+/// code (`'unknown'` without one, `'reply'` for text that is not JSON), and a reply whose `model`
+/// is the model or a name of the pairs, `long` a flag and `reason` one of `PICK_REASONS`, else
+/// `'reply'`. The crate answers so today; this keeps a drifted module failing closed as Node does.
+fn read_pick_reply(
+    model: &JValue,
+    pairs: &JValue,
+    status: u32,
+    reply: &str,
+) -> Result<(JValue, bool), String> {
+    let reply = wtf16::parse(reply).map_err(|_| "reply".to_string())?;
     if status != 0 {
         return Err(reply.get("error").as_str().unwrap_or("unknown").to_string());
     }
-    match (reply.get("model"), reply.get("long")) {
-        (m @ JValue::Str(_), JValue::Bool(long)) => Ok((m.clone(), *long)),
+    let picked = reply.get("model");
+    let mut known = vec![model];
+    if let JValue::Arr(pairs) = pairs {
+        for p in pairs {
+            known.push(p.get("base"));
+            known.push(p.get("long"));
+        }
+    }
+    let reason = reply.get("reason").as_str();
+    match reply.get("long") {
+        JValue::Bool(long)
+            if picked.as_str().is_some()
+                && known.iter().any(|k| strict_eq(k, picked))
+                && reason.is_some_and(|r| PICK_REASONS.contains(&r)) =>
+        {
+            Ok((picked.clone(), *long))
+        }
         _ => Err("reply".to_string()),
+    }
+}
+
+/// dav-parse-wasm.cjs `PICK_REASONS`.
+const PICK_REASONS: [&str; 4] = ["low", "high", "no_long", "is_long"];
+
+/// `createLongProfiles`' `log`: each distinct failure line once per handler, the set cleared when
+/// it holds more than 32. The caller keeps one per chat handler (one per process in index.cjs).
+#[derive(Debug, Clone, Default)]
+pub struct LongProfileLog {
+    logged: Vec<String>,
+}
+
+impl LongProfileLog {
+    /// The line to write, or `None` when this handler already wrote it.
+    pub fn admit(&mut self, line: String) -> Option<String> {
+        if self.logged.contains(&line) {
+            return None;
+        }
+        if self.logged.len() > 32 {
+            self.logged.clear();
+        }
+        self.logged.push(line.clone());
+        Some(line)
     }
 }
 
@@ -310,4 +382,79 @@ pub fn status_event(context_switch: bool, reading_images: bool) -> JValue {
         ("id", JValue::from(id)),
         ("text", JValue::from(text)),
     ])
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+
+    fn json(text: &str) -> JValue {
+        wtf16::parse(text).unwrap()
+    }
+
+    #[test]
+    fn a_gate_answer_without_a_decision_needs_no_tool() {
+        for gate in [
+            "null",
+            "{}",
+            r#"{"decision":null}"#,
+            r#"{"decision":0}"#,
+            r#"{"decision":"none"}"#,
+        ] {
+            assert!(!gate_says_tool_needed(&json(gate)), "{gate}");
+        }
+        assert!(gate_says_tool_needed(&json(
+            r#"{"decision":{"tool":"web_search"}}"#
+        )));
+    }
+
+    #[test]
+    fn a_forged_pick_reply_is_unavailable() {
+        let model = JValue::from("qa-a");
+        let pairs = json(r#"[{"base":"qa-a","long":"qa-a-long"}]"#);
+        let ok = r#"{"model":"qa-a-long","long":true,"reason":"high"}"#;
+        assert_eq!(
+            read_pick_reply(&model, &pairs, 0, ok),
+            Ok((JValue::from("qa-a-long"), true))
+        );
+        for forged in [
+            r#"{"model":"qa-other-long","long":true,"reason":"high"}"#,
+            r#"{"model":"qa-a-long","long":true,"reason":"best"}"#,
+            r#"{"model":"qa-a-long","long":"true","reason":"high"}"#,
+            r#"{"model":"qa-a-long","long":true}"#,
+            r#"{"model":5,"long":false,"reason":"low"}"#,
+            "null",
+            "not json",
+        ] {
+            assert_eq!(
+                read_pick_reply(&model, &pairs, 0, forged),
+                Err("reply".to_string()),
+                "{forged}"
+            );
+        }
+        assert_eq!(
+            read_pick_reply(&model, &pairs, 1, r#"{"error":"input"}"#),
+            Err("input".to_string())
+        );
+        assert_eq!(
+            read_pick_reply(&model, &pairs, 1, "{}"),
+            Err("unknown".to_string())
+        );
+    }
+
+    #[test]
+    fn a_failure_is_logged_once_per_handler() {
+        let mut log = LongProfileLog::default();
+        let line = |k: usize| format!("[long-profile] pick unavailable: qa-{k}");
+        assert_eq!(log.admit(line(0)), Some(line(0)));
+        assert_eq!(log.admit(line(0)), None);
+        for k in 1..=32 {
+            assert!(log.admit(line(k)).is_some());
+        }
+        assert_eq!(log.admit(line(0)), None);
+        // Above 32 lines the set is cleared before the next new one.
+        assert!(log.admit(line(33)).is_some());
+        assert_eq!(log.admit(line(0)), Some(line(0)));
+    }
 }

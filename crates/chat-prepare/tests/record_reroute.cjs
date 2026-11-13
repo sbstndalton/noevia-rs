@@ -17,14 +17,16 @@
 //          createToolboxes (core box, Drive box not connected, QA MCP boxes) over a prefill stub measuring per model.
 //          The seams are stubs that answer per case and log their calls in order, up to the meta event:
 //          servedCatalogue (an answer per call), modelsInstalled, lastLoadedModel, classifyFastOrSmart, the tool gate
-//          (toolGate.evaluate, the tools it is shown), the template tools gate (templateToolsGate.allowsTools: the move's
+//          (toolGate.evaluate, the tools it is shown), autoRoles() once the gate answered (the move's fresh read, which
+//          may answer roles saved meanwhile), the template tools gate (templateToolsGate.allowsTools: the move's
 //          question per candidate model) and the prefill measurement (budgetFor, which resolveTools asks per model).
 //          The long-context profile is core's own createLongProfiles over the wasm. A template check after the meta
 //          event (the request's own, outside this slice) answers true, so the reply request carries the offered tools.
 //          Recorded: those calls, the refusal (json), the meta event's model, route, routingDecision, contextProfile
 //          and sampling, the status line after it, the tools_scope event, the `[tools] ... cannot take tools` and
 //          `[long-profile]` lines, and the reply request's model and tools (names and the sha256 of their JSON); or
-//          what handleChat threw.
+//          what handleChat threw. Most turns get a handler of their own; a group runs on one (`handler`), as the
+//          long-profile failure line is logged once per handler.
 // Each source file's sha256 is recorded (and chat.cjs's ported blocks), so a changed Node file needs a fresh recording.
 // Node's console output goes to stderr; stdout is the fixture.
 
@@ -144,44 +146,56 @@ process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }));
 function modelsOf(spec) {
   const names = new Set();
   const add = (v) => { if (typeof v === 'string' && v) { names.add(v); names.add(`${v}-long`); } };
-  for (const v of Object.values(spec.roles || {})) add(v);
+  for (const v of [...Object.values(spec.roles || {}), ...Object.values(spec.rolesLater || {})]) add(v);
   add(spec.project?.model); add(spec.loaded);
   for (const c of spec.catalogues) for (const r of Array.isArray(c) ? c : []) { add(r?.name); add(r?.longVariant); }
   return [...names];
 }
 
-function handlerFor(dir, spec, log) {
+// One handler per turn, or one for a group of turns (`shared`): its stubs answer the running turn (`current`); whether
+// the manager has props and whether there is a tool gate are the first turn's.
+function handlerFor(dir, first) {
+  const S = () => current.spec, L = () => current.log;
+  const seam = (entry) => L().seam(entry);
   const fetch = async (url, init) => {
     if (!String(url).startsWith(PROVIDER)) throw new Error('QA: no network');
-    log.requests.push(JSON.parse(init.body));
+    L().requests.push(JSON.parse(init.body));
     return { ok: true, body: (async function* () { yield Buffer.from(`data: ${JSON.stringify({ choices: [{ delta: { content: 'QA ok' } }] })}\n\n`); })() };
   };
-  let catalogueCall = 0;
-  const seam = log.seam;
-  const loadedModels = modelsOf(spec);
   return createChatHandler({
-    modelManager: { enabled: spec.managerEnabled !== false,
-      health: async () => ({ ok: true, body: { all_models_loaded: loadedModels.map((m) => ({ model_name: m, loaded: true, recipe_options: { ctx_size: 1048576 } })) } }),
-      ...(spec.props === false ? {} : { props: async () => ({ ok: true, body: {} }) }) },
+    modelManager: { get enabled() { return S().managerEnabled !== false; },
+      health: async () => ({ ok: true, body: { all_models_loaded: modelsOf(S()).map((m) => ({ model_name: m, loaded: true, recipe_options: { ctx_size: 1048576 } })) } }),
+      ...(first.props === false ? {} : { props: async () => ({ ok: true, body: {} }) }) },
     templateToolsGate: {
       allowsTools: async (manager, model, signal, scope) => {
         seam(['allowsTools', model, ...(scope === undefined ? [] : [scope])]);
-        if (log.meta) return true;
-        const v = (spec.toolsOk || {})[model];
+        if (L().meta) return true;
+        const v = (S().toolsOk || {})[model];
         return v === undefined ? true : v;
       },
       markUnsupported() {},
     },
-    toolGate: spec.gate === null ? null : {
-      evaluate: async (message, tools, ...rest) => { seam(['gate', Array.isArray(tools) ? tools.map((t) => t?.function?.name) : null, rest.length]); return structuredClone(spec.gate); },
+    toolGate: first.gate === null ? null : {
+      evaluate: async (message, tools, ...rest) => {
+        seam(['gate', Array.isArray(tools) ? tools.map((t) => t?.function?.name) : null, rest.length]);
+        L().gateAsked = true;
+        return structuredClone(S().gate);
+      },
       record() {},
     },
     reasoningEffort: serverRequire('reasoning-effort.cjs'), authService: { audit() {}, diaryEnabled: () => true }, crypto, path, fs, fetch,
     HISTORY_CAP: 1000, DEFAULT_PROVIDER_ID: 'default', createToolExchange: () => async () => 'unused',
     currentWorkspace: () => ({ userId: 'qa-user', dir, assetDir: () => '/qa-only' }),
-    getProject: (id) => (spec.project && id === spec.project.id ? structuredClone(spec.project) : null), skillsIndexFor: () => [],
+    getProject: (id) => (S().project && id === S().project.id ? structuredClone(S().project) : null), skillsIndexFor: () => [],
     getProvider: (id) => structuredClone(PROVIDERS[id]), providerHeaders: () => ({}),
-    autoRoles: () => structuredClone(spec.roles ?? null), visionDescriptions: new Map(), visionProbe: async () => ({ supported: false, reason: 'qa' }),
+    // Reads before the tool gate answered are P5b's (not logged); a read after it is the move's fresh one (chat.cjs:1355),
+    // which may see roles saved while the classifier, the gate and the prefill ran (`rolesLater`).
+    autoRoles: () => {
+      if (!L().gateAsked) return structuredClone(S().roles ?? null);
+      seam(['autoRoles']);
+      return structuredClone(S().rolesLater === undefined ? S().roles ?? null : S().rolesLater);
+    },
+    visionDescriptions: new Map(), visionProbe: async () => ({ supported: false, reason: 'qa' }),
     chatSkillRouter: { select: async () => ({ loaded: [] }) }, oauthServerIds: () => new Set(), accountReady: () => true,
     chatToolRouter: { select: async (ids) => ({ ids, routed: false }) },
     DEFAULT_TOOLBOXES: TB.DEFAULT_TOOLBOXES, CONNECTOR_BOXES: TB.CONNECTOR_BOXES, connectedBoxes: TB.connectedBoxes, allToolboxes: TB.allToolboxes,
@@ -189,17 +203,17 @@ function handlerFor(dir, spec, log) {
     toolPolicy: { mode: () => 'allow' }, requestScope: { getStore: () => ({}) },
     rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: () => ({ text: 'reduced' }), diaryExtras,
     DIARY_BASE: 'http://qa-diary.invalid', TOOL_RESULT_CAP: 8000,
-    json: (res, status, body) => { log.refused = { status, body }; },
+    json: (res, status, body) => { L().refused = { status, body }; },
     saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
-    lastLoadedModel: () => { seam(['lastLoadedModel']); return spec.loaded ?? null; },
-    modelsInstalled: async () => { seam(['modelsInstalled']); return structuredClone(spec.catalogues[0]); },
+    lastLoadedModel: () => { seam(['lastLoadedModel']); return S().loaded ?? null; },
+    modelsInstalled: async () => { seam(['modelsInstalled']); return structuredClone(S().catalogues[0]); },
     servedCatalogue: async () => {
       seam(['servedCatalogue']);
-      const k = Math.min(catalogueCall, spec.catalogues.length - 1);
-      catalogueCall += 1;
-      return structuredClone(spec.catalogues[k]);
+      const k = Math.min(L().catalogueCall, S().catalogues.length - 1);
+      L().catalogueCall += 1;
+      return structuredClone(S().catalogues[k]);
     },
-    classifyFastOrSmart: async () => { seam(['classify']); return structuredClone(spec.classification); },
+    classifyFastOrSmart: async () => { seam(['classify']); return structuredClone(S().classification); },
     missingRoles, staleRolesError,
     chatWideApproved: () => false, recordUsage() {}, recordToolUse() {}, executeToolCall: async () => 'unused', awaitApproval: async () => 'deny',
     codeTasksFor: () => [], sourceJobs: { settle: async () => ({ notReady: [], aborted: false }) },
@@ -209,20 +223,21 @@ function handlerFor(dir, spec, log) {
 }
 
 const turns = [];
-async function addTurn(name, raw) {
+// `shared`: { id } of a handler several turns run on, in order (created by the first).
+async function addTurn(name, raw, shared = null) {
   const spec = viaJson({ message: 'QA question', gate: null, catalogues: [[]], ...raw });
-  const dir = fs.mkdtempSync(path.join(tmp, 'qa-'));
   process.env.NOEVIA_CONTRACT_FIXED_NOW = '2026-11-13T12:00:00Z';
   process.env.TZ = 'UTC';
-  const log = { requests: [], calls: [], meta: false, refused: null };
+  const log = { requests: [], calls: [], meta: false, refused: null, gateAsked: false, catalogueCall: 0 };
   log.seam = (entry) => { if (!log.meta) log.calls.push(entry); };
-  current = { spec, seam: log.seam };
+  current = { spec, log, seam: log.seam };
   const rawEvents = [];
   const res = new EventEmitter();
   res.writeHead = () => {}; res.setHeader = () => {};
   res.write = (line) => { const s = String(line); rawEvents.push(s); if (s.includes('"type":"meta"')) log.meta = true; return true; };
   res.end = () => { res.writableEnded = true; res.emit('finish'); };
-  const { handleChat } = handlerFor(dir, spec, log);
+  if (shared && !shared.handler) shared.handler = handlerFor(fs.mkdtempSync(path.join(tmp, 'qa-')), spec);
+  const { handleChat } = shared ? shared.handler : handlerFor(fs.mkdtempSync(path.join(tmp, 'qa-')), spec);
   const body = { message: spec.message, ...(spec.project && !spec.free ? { projectId: spec.project.id } : {}), ...(spec.body || {}) };
   const from = logged.length;
   let thrown = null;
@@ -237,7 +252,7 @@ async function addTurn(name, raw) {
   const reply = log.requests.find((r) => r.stream === true) || null;
   const toolsSha256 = (tools) => crypto.createHash('sha256').update(JSON.stringify(tools)).digest('hex');
   if (!thrown && !meta && !log.refused) throw new Error(`${name}: no meta event and no refusal; events: ${rawEvents.join('').slice(0, 600)}`);
-  turns.push({ name, spec, body, calls: log.calls, ...(thrown ? { throws: thrown } : {}), refused: log.refused,
+  turns.push({ name, handler: shared ? shared.id : null, spec, body, calls: log.calls, ...(thrown ? { throws: thrown } : {}), refused: log.refused,
     meta: meta ? { model: meta.model, route: meta.route ?? null, routingDecision: meta.routingDecision ?? null, contextProfile: meta.contextProfile ?? null,
       sampling: meta.sampling ?? null } : null,
     status: status ? { id: status.id, text: status.text } : null, scope, lines,
@@ -299,6 +314,17 @@ const decision = (role) => ({ role, routingDecision: { status: 'accepted', role,
     message: WEB, body: { turnToolboxes: ['qa-many', 'nextcloud-notes'] } });
   await addTurn('move_measured_budget', { project: AUTO(), roles: ROLES, classification: decision('fast'), gate: NEEDS, toolsOk: { [FAST]: false }, catalogues: [CAT], message: WEB,
     measured: { [FAST]: 99999, [SMART]: 1500 }, body: { turnToolboxes: ['qa-many'] } });
+  // The move reads autoRoles() again after the gate: roles saved meanwhile are the ones it moves to.
+  await addTurn('roles_saved_while_gate_ran', { project: AUTO(), roles: ROLES, rolesLater: { fast: FAST, smart: ALT, code: CODE }, classification: decision('fast'), gate: NEEDS,
+    toolsOk: { [FAST]: false }, catalogues: [CAT], message: WEB });
+  await addTurn('roles_later_without_smart', { project: AUTO(), roles: ROLES, rolesLater: { fast: FAST, code: CODE }, classification: decision('fast'), gate: NEEDS,
+    toolsOk: { [FAST]: false }, catalogues: [CAT], message: WEB });
+  await addTurn('roles_later_smart_is_routed_model', { project: AUTO(), roles: ROLES, rolesLater: { fast: FAST, smart: FAST, code: ALT }, classification: decision('fast'), gate: NEEDS,
+    toolsOk: { [FAST]: false }, catalogues: [CAT], message: WEB });
+  await addTurn('roles_later_cleared', { project: AUTO(), roles: ROLES, rolesLater: null, classification: decision('fast'), gate: NEEDS,
+    toolsOk: { [FAST]: false }, catalogues: [CAT], message: WEB });
+  await addTurn('roles_later_no_move_needed', { project: AUTO(), roles: ROLES, rolesLater: { fast: FAST, smart: ALT }, classification: decision('fast'), gate: NEEDS,
+    catalogues: [CAT], message: WEB });
   await addTurn('move_chit_chat', { project: AUTO(), roles: ROLES, classification: decision('fast'), gate: NEEDS, toolsOk: { [FAST]: false }, catalogues: [CAT], message: 'hi' });
   await addTurn('move_from_cloud_provider_never', { project: AUTO({ provider: 'qa-cloud', model: 'qa-cloud-model' }), roles: ROLES, gate: NEEDS, toolsOk: { 'qa-cloud-model': false },
     catalogues: [CAT], message: WEB });
@@ -343,6 +369,13 @@ const decision = (role) => ({ role, routingDecision: { status: 'accepted', role,
   await addTurn('model_too_long', { project: MANUAL(`qa-${'m'.repeat(520)}`, { contextProfile: 'high' }), catalogues: [[longRow(SMART)]] });
   await addTurn('model_unicode_long_id', { project: MANUAL('qa-é-27b', { contextProfile: 'high' }), catalogues: [[longRow('qa-é-27b')]] });
 
+  // One handler, several turns: a failure line is logged once per handler (createLongProfiles' `logged` set).
+  const shared = { id: 'qa-handler-1' };
+  await addTurn('shared_first_failure', { project: MANUAL(SMART, { contextProfile: 'high' }), catalogues: [[row(SMART, { longVariant: 'qa-other-long' })]] }, shared);
+  await addTurn('shared_same_failure_again', { project: MANUAL(SMART, { contextProfile: 'high' }), catalogues: [[row(SMART, { longVariant: 'qa-other-long' })]] }, shared);
+  await addTurn('shared_pick_ok', { project: MANUAL(SMART, { contextProfile: 'high' }), catalogues: [LONG_CAT] }, shared);
+  await addTurn('shared_failure_after_ok', { project: MANUAL(FAST, { contextProfile: 'high' }), catalogues: [[longRow(FAST), longRow(FAST)]] }, shared);
+
   // ── Both in one turn ────────────────────────────────────────────────────────────────────
   await addTurn('move_then_long', { project: AUTO({ contextProfile: 'high' }), roles: ROLES, classification: decision('fast'), gate: NEEDS, toolsOk: { [FAST]: false },
     measured: { [`${SMART}-long`]: 1500 }, catalogues: [LONG_CAT], message: WEB });
@@ -375,7 +408,6 @@ const decision = (role) => ({ role, routingDecision: { status: 'accepted', role,
     const second = rand() < 0.2 ? pick([null, cat.slice(0, int(1, 6)), [...cat, 'QA text row'], cat.map((r) => ({ ...r, longLoaded: !r.longLoaded }))]) : cat;
     const toolsOk = {};
     for (const m of POOL) if (rand() < 0.5) toolsOk[m] = rand() < 0.4;
-    for (const m of POOL) if (rand() < 0.2) toolsOk[`${m}-long`] = rand() < 0.5;
     const measured = {};
     for (const m of POOL) if (rand() < 0.2) measured[m] = pick([1500, 3000, 99999]);
     for (const m of POOL) if (rand() < 0.1) measured[`${m}-long`] = pick([1500, 3000]);
