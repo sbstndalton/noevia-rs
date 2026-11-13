@@ -56,6 +56,8 @@ pub use gate::Hold;
 pub const RELOAD: &str = "/api/models/presets/reload";
 pub const PRUNE: &str = crate::prune_missing::PATH;
 pub const DELETE: &str = crate::delete_model::PATH;
+pub const LOAD: &str = crate::load_model::LOAD;
+pub const UNLOAD: &str = crate::load_model::UNLOAD;
 pub const EVIDENCE: &str = "/api/models/evidence";
 pub const EVIDENCE_IMPORT: &str = "/api/models/evidence/import";
 
@@ -64,6 +66,8 @@ pub const ROUTES: &[&str] = &[
     RELOAD,
     PRUNE,
     DELETE,
+    LOAD,
+    UNLOAD,
     EVIDENCE,
     EVIDENCE_IMPORT,
     evidence_recheck::PATH,
@@ -74,7 +78,7 @@ const MISSING_TOKEN_WARNING: &str = "[inference-gate] INFERENCE_GATE_ADMIN_TOKEN
 /// The methods the front answers on each (routes.toml); every other method stays Node's.
 pub fn owned(method: &Method, path: &str) -> bool {
     match path {
-        RELOAD | PRUNE | DELETE | EVIDENCE_IMPORT | evidence_recheck::PATH => {
+        RELOAD | PRUNE | DELETE | LOAD | UNLOAD | EVIDENCE_IMPORT | evidence_recheck::PATH => {
             method == Method::POST
         }
         EVIDENCE => method == Method::GET,
@@ -690,6 +694,38 @@ pub async fn serve(
                 Err(_) => reply::error(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Could not delete the model.",
+                    true,
+                ),
+            }
+        }
+        LOAD | UNLOAD => {
+            // The body is read before anything else, as Core's route does.
+            let raw = match body_text(body, 1024 * 1024, Duration::from_secs(10)).await {
+                Ok(t) => t,
+                Err(413) => {
+                    return reply::error(
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        "Request exceeds size limit",
+                        true,
+                    )
+                }
+                Err(_) => return reply::error(StatusCode::BAD_REQUEST, "invalid JSON", true),
+            };
+            if path == LOAD {
+                // Not spawned: a client that leaves while the load waits in the gate's queue drops this future,
+                // which leaves the queue and starts no switch (its lease, if granted, is given back on drop).
+                let a = crate::load_model::run(app, crate::load_model::Verb::Load, &raw).await;
+                return text(a.status, a.body);
+            }
+            let app = Arc::clone(app);
+            let job = tokio::spawn(async move {
+                crate::load_model::run(&app, crate::load_model::Verb::Unload, &raw).await
+            });
+            match job.await {
+                Ok(a) => text(a.status, a.body),
+                Err(_) => reply::error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Could not unload the model.",
                     true,
                 ),
             }

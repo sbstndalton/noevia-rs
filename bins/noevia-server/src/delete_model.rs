@@ -56,14 +56,14 @@ fn object(pairs: &[(&str, Value)]) -> String {
     format!("{{{}}}", fields.join(","))
 }
 
-fn answer(status: u16, pairs: &[(&str, Value)]) -> Answer {
+pub(crate) fn answer(status: u16, pairs: &[(&str, Value)]) -> Answer {
     Answer {
         status,
         body: object(pairs),
     }
 }
 
-fn refuse(status: u16, error: &str) -> Answer {
+pub(crate) fn refuse(status: u16, error: &str) -> Answer {
     answer(status, &[("error", json!(error))])
 }
 
@@ -109,7 +109,7 @@ fn slice300(text: &str) -> String {
 }
 
 /// `refusalOf`: a refusal from the inference gate as (status, code, error, retryable), or `None`.
-fn refusal_of(status: u16, body: &Option<Value>) -> Option<(u16, String, String, bool)> {
+pub(crate) fn refusal_of(status: u16, body: &Option<Value>) -> Option<(u16, String, String, bool)> {
     if !(400..=599).contains(&status) {
         return None;
     }

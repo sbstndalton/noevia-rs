@@ -1,0 +1,1608 @@
+{
+  "coreRef": "76cc868",
+  "cases": [
+    {
+      "id": "load-success",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "GET /models",
+        "POST /models/load {\"model\":\"qa-model-a\"} lease=yes",
+        "GET /models"
+      ],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}",
+        "DELETE /gate/v1/leases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "leasesReleased": 1,
+      "scenario": {
+        "id": "load-success",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        },
+        "load": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "after": [
+          "loading",
+          "loaded"
+        ]
+      }
+    },
+    {
+      "id": "load-already-loaded",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "GET /models",
+        "POST /models/load {\"model\":\"qa-model-a\"} lease=yes",
+        "GET /models"
+      ],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}",
+        "DELETE /gate/v1/leases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "leasesReleased": 1,
+      "scenario": {
+        "id": "load-already-loaded",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        },
+        "load": [
+          {
+            "status": 400,
+            "body": {
+              "error": "model is already running"
+            }
+          }
+        ],
+        "after": [
+          "loaded"
+        ]
+      }
+    },
+    {
+      "id": "load-sleeping-model",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "GET /models"
+      ],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}",
+        "DELETE /gate/v1/leases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "leasesReleased": 1,
+      "scenario": {
+        "id": "load-sleeping-model",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "sleeping",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        },
+        "load": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "after": [
+          "loaded"
+        ]
+      }
+    },
+    {
+      "id": "load-no-gate-proceeds",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "GET /models",
+        "POST /models/load {\"model\":\"qa-model-a\"} lease=no",
+        "GET /models"
+      ],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}"
+      ],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-no-gate-proceeds",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "status": 404,
+          "body": {}
+        },
+        "load": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "after": [
+          "loaded"
+        ]
+      }
+    },
+    {
+      "id": "gate-queue-full",
+      "answer": {
+        "status": 429,
+        "body": {
+          "error": "The queue is full.",
+          "code": "inference_queue_full",
+          "retryable": true
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}"
+      ],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "gate-queue-full",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "status": 429,
+          "body": {
+            "error": {
+              "type": "gate_error",
+              "code": "inference_queue_full",
+              "message": "The queue is full.",
+              "retryable": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-unknown-model",
+      "answer": {
+        "status": 404,
+        "body": {
+          "error": "No such model.",
+          "code": "model_not_found",
+          "retryable": false
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-nope\",\"holder\":\"web\"}"
+      ],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "gate-unknown-model",
+        "verb": "load",
+        "name": "qa-nope",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "status": 404,
+          "body": {
+            "error": {
+              "type": "gate_error",
+              "code": "model_not_found",
+              "message": "No such model.",
+              "retryable": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "gate-maintenance-held",
+      "answer": {
+        "status": 503,
+        "body": {
+          "error": "A tune holds the engine.",
+          "code": "maintenance_held",
+          "retryable": true
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}"
+      ],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "gate-maintenance-held",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 1,
+                "waited_ms": 5
+              }
+            ],
+            [
+              "error",
+              {
+                "code": "maintenance_held",
+                "retryable": true,
+                "message": "A tune holds the engine."
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "gate-unreachable",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "The local model engine is not answering. Try again shortly.",
+          "code": "engine_unavailable",
+          "retryable": true
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}"
+      ],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "gate-unreachable",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "throws": true
+        }
+      }
+    },
+    {
+      "id": "gate-lease-garbled",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "The local model engine is not answering. Try again shortly.",
+          "code": "engine_unavailable",
+          "retryable": true
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}"
+      ],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "gate-lease-garbled",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "granted",
+              {
+                "lease": "nope"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "budget-fence-refused",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "load failed: 409"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "budget-fence-refused",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        },
+        "fence": true,
+        "load": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "after": [
+          "loaded"
+        ]
+      }
+    },
+    {
+      "id": "engine-load-refused-500",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "load failed: 500"
+        }
+      },
+      "threw": null,
+      "engine": [
+        "GET /models",
+        "POST /models/load {\"model\":\"qa-model-a\"} lease=yes"
+      ],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}",
+        "DELETE /gate/v1/leases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "leasesReleased": 1,
+      "scenario": {
+        "id": "engine-load-refused-500",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        },
+        "load": [
+          {
+            "status": 500,
+            "body": {
+              "error": "boom"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "engine-load-gate-refusal",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "The engine is busy.",
+          "code": "engine_busy",
+          "retryable": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "GET /models",
+        "POST /models/load {\"model\":\"qa-model-a\"} lease=yes"
+      ],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}",
+        "DELETE /gate/v1/leases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "leasesReleased": 1,
+      "scenario": {
+        "id": "engine-load-gate-refusal",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        },
+        "load": [
+          {
+            "status": 409,
+            "body": {
+              "error": {
+                "type": "gate_error",
+                "code": "engine_busy",
+                "message": "The engine is busy.",
+                "retryable": true
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "never-becomes-ready",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "load failed: 502"
+        }
+      },
+      "threw": null,
+      "engine": [
+        "GET /models",
+        "POST /models/load {\"model\":\"qa-model-a\"} lease=yes",
+        "GET /models"
+      ],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}",
+        "DELETE /gate/v1/leases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "leasesReleased": 1,
+      "scenario": {
+        "id": "never-becomes-ready",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        },
+        "load": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "after": [
+          "unloaded"
+        ]
+      }
+    },
+    {
+      "id": "router-listing-unreadable",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "load failed: 500"
+        }
+      },
+      "threw": null,
+      "engine": [
+        "GET /models",
+        "POST /models/load {\"model\":\"qa-model-a\"} lease=yes",
+        "GET /models"
+      ],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}",
+        "DELETE /gate/v1/leases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "leasesReleased": 1,
+      "scenario": {
+        "id": "router-listing-unreadable",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        },
+        "listing": "fail",
+        "load": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "load-installed-list-unreadable-still-loads",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "GET /models",
+        "POST /models/load {\"model\":\"qa-model-a\"} lease=yes",
+        "GET /models"
+      ],
+      "gate": [
+        "POST /gate/v1/leases {\"model\":\"qa-model-a\",\"holder\":\"web\"}",
+        "DELETE /gate/v1/leases/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "leasesReleased": 1,
+      "scenario": {
+        "id": "load-installed-list-unreadable-still-loads",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        },
+        "load": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ],
+        "after": [
+          "loaded"
+        ],
+        "installedFails": true
+      }
+    },
+    {
+      "id": "load-missing-file",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "This preset points at a model file that is not in the models folder — it cannot be loaded"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-missing-file",
+        "verb": "load",
+        "name": "qa-gone",
+        "models": [
+          {
+            "name": "qa-gone",
+            "status": "unloaded",
+            "file": false
+          },
+          {
+            "name": "qa-other",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "load-system-model",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "System routing model runs in its own service — it is not loaded or unloaded here"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-system-model",
+        "verb": "load",
+        "name": "laya_multilingual_f16",
+        "models": [
+          {
+            "name": "laya_multilingual_f16",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "load-sidecar-model",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "A running sidecar (embedding or reranking) manages this model — it is not loaded or unloaded here"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-sidecar-model",
+        "verb": "load",
+        "name": "qa-embed",
+        "models": [
+          {
+            "name": "qa-embed",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "env": {
+          "EMBEDDING_MODEL": "qa-embed"
+        },
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "load-mtp-on-llamacpp",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "Use the native preset editor to configure speculative decoding."
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-mtp-on-llamacpp",
+        "verb": "load",
+        "name": "qa-model-a",
+        "body": {
+          "name": "qa-model-a",
+          "mtp": true
+        },
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "lease": {
+          "sse": [
+            [
+              "queued",
+              {
+                "position": 2,
+                "waited_ms": 10
+              }
+            ],
+            [
+              "granted",
+              {
+                "lease": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "load-disabled",
+      "answer": {
+        "status": 404,
+        "body": {
+          "error": "model management is disabled"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-disabled",
+        "verb": "load",
+        "name": "qa-model-a",
+        "models": [],
+        "disabled": true
+      }
+    },
+    {
+      "id": "load-invalid-json",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "invalid JSON"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-invalid-json",
+        "verb": "load",
+        "raw": "{not json",
+        "models": []
+      }
+    },
+    {
+      "id": "load-name-required-empty-object",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "name required"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-name-required-empty-object",
+        "verb": "load",
+        "raw": "{}",
+        "models": []
+      }
+    },
+    {
+      "id": "load-name-required-empty-name",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "name required"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-name-required-empty-name",
+        "verb": "load",
+        "raw": "{\"name\":\"\"}",
+        "models": []
+      }
+    },
+    {
+      "id": "load-null-body",
+      "answer": null,
+      "threw": "Cannot read properties of null (reading 'name')",
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "load-null-body",
+        "verb": "load",
+        "raw": "null",
+        "models": []
+      }
+    },
+    {
+      "id": "unload-success",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-model-a\"} admin=no"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-success",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-not-loaded",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "unload failed: 404"
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-model-a\"} admin=no"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-not-loaded",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 404,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-in-use-can-force",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "qa-model-a is answering a request",
+          "code": "model_in_use",
+          "retryable": true,
+          "canForce": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-model-a\"} admin=no"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-in-use-can-force",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "admin": true,
+        "unload": [
+          {
+            "status": 409,
+            "body": {
+              "error": {
+                "type": "gate_error",
+                "code": "model_in_use",
+                "message": "qa-model-a is answering a request",
+                "retryable": true
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-in-use-cannot-force",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "qa-model-a is answering a request",
+          "code": "model_in_use",
+          "retryable": true,
+          "canForce": false
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-model-a\"} admin=no"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-in-use-cannot-force",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 409,
+            "body": {
+              "error": {
+                "type": "gate_error",
+                "code": "model_in_use",
+                "message": "qa-model-a is answering a request",
+                "retryable": true
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-force-success",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true,
+          "forced": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-model-a\",\"force\":true} admin=yes"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-force-success",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "body": {
+          "name": "qa-model-a",
+          "force": true
+        },
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "admin": true,
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-force-without-admin",
+      "answer": {
+        "status": 403,
+        "body": {
+          "error": "Unloading a model in use is not set up on this server.",
+          "code": "admin_required",
+          "retryable": false
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-force-without-admin",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "body": {
+          "name": "qa-model-a",
+          "force": true
+        },
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-force-refused",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "The engine is busy.",
+          "code": "engine_busy",
+          "retryable": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-model-a\",\"force\":true} admin=yes"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-force-refused",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "body": {
+          "name": "qa-model-a",
+          "force": true
+        },
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "admin": true,
+        "unload": [
+          {
+            "status": 409,
+            "body": {
+              "error": {
+                "type": "gate_error",
+                "code": "engine_busy",
+                "message": "The engine is busy.",
+                "retryable": true
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-force-engine-fails",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "unload failed: 500"
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-model-a\",\"force\":true} admin=yes"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-force-engine-fails",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "body": {
+          "name": "qa-model-a",
+          "force": true
+        },
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "admin": true,
+        "unload": [
+          {
+            "status": 500,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-force-not-true",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-model-a\"} admin=no"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-force-not-true",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "body": {
+          "name": "qa-model-a",
+          "force": "yes"
+        },
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-engine-fails-502",
+      "answer": {
+        "status": 502,
+        "body": {
+          "error": "unload failed: 500"
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-model-a\"} admin=no"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-engine-fails-502",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 500,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-unknown-model",
+      "answer": {
+        "status": 404,
+        "body": {
+          "error": "No such model.",
+          "code": "model_not_found",
+          "retryable": false
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-nope\"} admin=no"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-unknown-model",
+        "verb": "unload",
+        "name": "qa-nope",
+        "models": [
+          {
+            "name": "qa-model-a",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 404,
+            "body": {
+              "error": {
+                "type": "gate_error",
+                "code": "model_not_found",
+                "message": "No such model.",
+                "retryable": false
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-system-model",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "System routing model runs in its own service — it is not loaded or unloaded here"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-system-model",
+        "verb": "unload",
+        "name": "laya_multilingual_f16",
+        "models": [
+          {
+            "name": "laya_multilingual_f16",
+            "status": "loaded",
+            "file": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-sidecar-model",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "A running sidecar (embedding or reranking) manages this model — it is not loaded or unloaded here"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-sidecar-model",
+        "verb": "unload",
+        "name": "qa-embed",
+        "models": [
+          {
+            "name": "qa-embed",
+            "status": "loaded",
+            "file": true
+          }
+        ],
+        "env": {
+          "EMBEDDING_MODEL": "qa-embed"
+        }
+      }
+    },
+    {
+      "id": "unload-missing-file-allowed",
+      "answer": {
+        "status": 200,
+        "body": {
+          "ok": true
+        }
+      },
+      "threw": null,
+      "engine": [
+        "POST /models/unload {\"model\":\"qa-gone\"} admin=no"
+      ],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-missing-file-allowed",
+        "verb": "unload",
+        "name": "qa-gone",
+        "models": [
+          {
+            "name": "qa-gone",
+            "status": "loaded",
+            "file": false
+          },
+          {
+            "name": "qa-other",
+            "status": "unloaded",
+            "file": true
+          }
+        ],
+        "unload": [
+          {
+            "status": 200,
+            "body": {}
+          }
+        ]
+      }
+    },
+    {
+      "id": "unload-disabled",
+      "answer": {
+        "status": 404,
+        "body": {
+          "error": "model management is disabled"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-disabled",
+        "verb": "unload",
+        "name": "qa-model-a",
+        "models": [],
+        "disabled": true
+      }
+    },
+    {
+      "id": "unload-null-body",
+      "answer": null,
+      "threw": "Cannot read properties of null (reading 'name')",
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-null-body",
+        "verb": "unload",
+        "raw": "null",
+        "models": []
+      }
+    },
+    {
+      "id": "unload-invalid-json",
+      "answer": {
+        "status": 400,
+        "body": {
+          "error": "invalid JSON"
+        }
+      },
+      "threw": null,
+      "engine": [],
+      "gate": [],
+      "leasesReleased": 0,
+      "scenario": {
+        "id": "unload-invalid-json",
+        "verb": "unload",
+        "raw": "[",
+        "models": []
+      }
+    }
+  ]
+}

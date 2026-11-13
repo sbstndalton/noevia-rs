@@ -62,10 +62,10 @@ pub(crate) fn classify(method: &str, path: &str) -> Option<Kind> {
     {
         return Some(Kind::Missing);
     }
-    // The single-segment model wildcard also covers three substantive Node handlers.
+    // The single-segment model wildcard also covers two substantive Node handlers.
     // All other paths and methods that land on it reach the static fallback.
     if routes::route_for(path).is_some_and(|r| r.path == "/api/models/{*}")
-        && !((["/api/models/pull", "/api/models/unload"].contains(&path) && method == "POST")
+        && !((path == "/api/models/pull" && method == "POST")
             || (path == "/api/models/mtp-artifact" && method == "GET"))
     {
         return Some(Kind::Missing);
@@ -279,7 +279,6 @@ mod tests {
     fn substantive_model_wildcard_handlers_keep_their_owner() {
         for (method, path) in [
             ("POST", "/api/models/pull"),
-            ("POST", "/api/models/unload"),
             ("GET", "/api/models/mtp-artifact"),
         ] {
             assert!(classify(method, path).is_none(), "{method} {path}");

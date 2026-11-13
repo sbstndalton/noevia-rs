@@ -40,6 +40,7 @@ pub mod identity;
 pub mod idle_unload_read;
 pub mod inference_machines;
 pub mod legacy_proxy;
+pub mod load_model;
 pub mod machine_service;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
