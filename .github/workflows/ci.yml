@@ -287,6 +287,13 @@ jobs:
           repository: sbstndalton/noevia-web
           ref: ${{ steps.webref.outputs.sha }}
           path: web
+      # Chat port S7: tests/chat_turn.rs replays tests/fixtures/node-chat-wire.v1.json, the paired Core's own
+      # rust-chat-wire.cjs writing each recorded turn as its event stream and as the front's NDJSON. Regenerate it.
+      - name: The paired Core's chat wire reproduces the committed turns
+        run: |
+          set -euo pipefail
+          node bins/noevia-server/tests/chat-wire-oracle.cjs "$GITHUB_WORKSPACE/front-core" "$RUNNER_TEMP/node-chat-wire.json"
+          cmp "$RUNNER_TEMP/node-chat-wire.json" bins/noevia-server/tests/fixtures/node-chat-wire.v1.json
       - name: Front tests (SSE flush, client abort, forwarding, body cap, route ownership, code-net guard, timeouts)
         env:
           NOEVIA_WEB_API_TS: ${{ github.workspace }}/web/src/api.ts
