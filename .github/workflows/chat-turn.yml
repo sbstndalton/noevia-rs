@@ -1,0 +1,48 @@
+name: Recorded chat turns
+on:
+  push:
+    branches: [main]
+    paths: ['crates/chat-turn/**', '.github/workflows/chat-turn.yml']
+  pull_request:
+    paths: ['crates/chat-turn/**', '.github/workflows/chat-turn.yml']
+permissions:
+  contents: read
+jobs:
+  chat-turn-recording:
+    name: Chat turns recorded from core's chat.cjs reproduce
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read the recording's core pin
+        id: oracle
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < crates/chat-turn/tests/oracle-core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.oracle.outputs.sha }}
+          path: oracle-core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build dav-parse.wasm at the core's pinned noevia-rs ref
+        working-directory: oracle-core
+        run: |
+          set -euo pipefail
+          eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256|DAV_PARSE_WASM_SHA256)=[0-9a-f]+$' server/dav-parse.lock)"
+          [[ "$NOEVIA_RS_REF" =~ ^[0-9a-f]{40}$ ]]
+          curl -fsSL "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF" -o "$RUNNER_TEMP/rs.tgz"
+          echo "$NOEVIA_RS_SHA256  $RUNNER_TEMP/rs.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/rs-pin" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs-pin"
+          "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
+          echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
+      - name: The core's own handleChat reproduces the committed recording
+        # Synthetic QA turns through server/chat.cjs with a scripted engine and stub stores; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-turn/tests/record_turns.cjs --check crates/chat-turn/tests/fixtures/node-turns.v1.json

@@ -1,9 +1,9 @@
 //! Replays synthetic upstream streams through the relay and compares the events with fixtures.
 //!
 //! The fixtures under `fixtures/` are written by hand from noevia-core's `chat.cjs` (the source
-//! lines are cited in `src/relay.rs`). They are not recordings of a Node run: a recorded run needs
-//! the contract corpus recorder and a sandbox, which this draft does not run. The verification
-//! step should replace or check them against real output.
+//! lines are cited in `src/relay.rs`). They are not recordings of a Node run. The recorded turns
+//! (`fixtures/node-turns.v1.json`, `node_turns.rs`) are the contract; these go when the relay is
+//! rebuilt on them (track R8 step 4).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,

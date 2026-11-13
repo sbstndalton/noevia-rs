@@ -63,7 +63,7 @@ where
     I: IntoIterator<Item = Upstream>,
 {
     let mut run = Run {
-        turn: Turn::new(),
+        turn: Turn::resumed(),
         partial: Partial::new(),
         model,
         ttft: time_to_first_token,
