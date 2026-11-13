@@ -53,3 +53,6 @@ jobs:
       - name: The core's own chat frame steering reproduces the committed recording
         # Synthetic QA frames and lists through chat-frame-steering.cjs and chat-framing.cjs, and every code point; no network.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_frame.cjs --check crates/chat-prepare/tests/fixtures/node-frame.v1.json
+      - name: The core's own instruction-skill parts reproduce the committed recording
+        # Synthetic QA projects, skills, pins and picks through server/chat.cjs, instruction-skills.cjs, skill-index.cjs and chat-skill-routing.cjs; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_skills.cjs --check crates/chat-prepare/tests/fixtures/node-skills.v1.json
