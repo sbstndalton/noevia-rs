@@ -428,6 +428,17 @@ async fn external_sources_scan_in_python_key_order() {
     // Sorted by date (the undated-by-name note takes its modification day, today), then path.
     assert_eq!(v["sources"][0]["files"][0]["rel_path"], "sub/notes.txt");
     assert_eq!(v["sources"][0]["files"][0]["date_source"], "mtime");
+    // A file name that is not UTF-8 (Python's reply would be a 500): declined, Python answers.
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let odd = src.join(std::ffi::OsStr::from_bytes(b"qa-\xff.md"));
+        std::fs::write(&odd, "x").unwrap();
+        assert_eq!(
+            get(addr, "/api/external-sources", &forwarded()).await.0,
+            421
+        );
+        std::fs::remove_file(odd).unwrap();
+    }
     // Python's 401 shape, and the usual tenant refusals.
     let (s, _, body) = get(
         addr,

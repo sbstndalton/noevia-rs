@@ -1047,6 +1047,9 @@ fn external_sources(paths: &[String]) -> Response<Body> {
         let Ok(scan) = diary_core::external_sources::scan_source(p) else {
             return decline();
         };
+        if !python_serializes(&scan) {
+            return decline();
+        }
         scans.push(scan);
     }
     let total = scans.iter().fold(0i64, |n, s| {
@@ -1060,6 +1063,24 @@ fn external_sources(paths: &[String]) -> Response<Body> {
             total,
         },
     )
+}
+
+/// False where Python's reply is a 500 that this side would answer 200 (the crate's known
+/// differences): a file name that is not UTF-8 (Python keeps a lone surrogate, which its JSON
+/// encoder refuses; here it reads as U+FFFD) or a modification time Python cannot date.
+fn python_serializes(scan: &Value) -> bool {
+    scan.get("files")
+        .and_then(Value::as_array)
+        .is_none_or(|files| {
+            files.iter().all(|f| {
+                ["name", "rel_path"].iter().all(|k| {
+                    !f.get(*k)
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .contains('\u{FFFD}')
+                }) && f.get("date_source").and_then(Value::as_str) != Some("unavailable")
+            })
+        })
 }
 
 static NULL: Value = Value::Null;

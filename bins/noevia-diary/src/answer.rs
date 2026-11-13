@@ -299,8 +299,9 @@ fn serve(
     {
         return crate::server::decline();
     }
+    // Before any model call: declined, so Python answers (a 5xx means the model may have been called).
     let Ok(main) = handle.block_on(async { Client::new(engine) }) else {
-        return status(500);
+        return crate::server::decline();
     };
     let search = IndexSearch {
         retriever: Mutex::new(retriever),
