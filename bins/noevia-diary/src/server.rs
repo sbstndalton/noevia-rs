@@ -84,6 +84,9 @@ pub struct App {
     pub writers: Writers,
     /// Native replay state; retrieval indexing has a separate Python lifecycle.
     pub recovered: Mutex<HashMap<String, Arc<Mutex<crate::recovery::State>>>>,
+    /// R9: the internal answer endpoint's config (None: 404) and the companion engine it calls.
+    pub answer: Option<crate::answer::AnswerConfig>,
+    pub llm_main: health::ClientConfig,
 }
 
 impl App {
@@ -110,6 +113,8 @@ impl App {
             corpus_write_impl: cfg.corpus_write_impl,
             writers: Writers::default(),
             recovered: Mutex::new(HashMap::new()),
+            answer: cfg.answer,
+            llm_main: cfg.llm.main,
         }
     }
 }
@@ -467,6 +472,9 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     if path.starts_with("/internal/") {
         if parts.method == Method::POST && path == "/internal/fence" {
             return fence(app, &query, &headers).await;
+        }
+        if parts.method == Method::POST && path == "/internal/answer" {
+            return crate::answer::internal(app, &query, &headers, body).await;
         }
         return control(&app, &parts.method, &path, &headers);
     }

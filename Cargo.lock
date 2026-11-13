@@ -1996,11 +1996,13 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "diary-answer",
  "diary-backup-run",
  "diary-core",
  "diary-corpus-parse",
  "diary-corpus-write",
  "diary-index-transform",
+ "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",
  "http-body-util",

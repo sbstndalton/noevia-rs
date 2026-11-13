@@ -26,6 +26,7 @@ use crate::deadline::Progress;
 
 pub type Sleep = Arc<dyn Fn(f64) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
+#[derive(Debug, Clone)]
 pub struct Config {
     pub base_url: String,
     pub api_key: String,

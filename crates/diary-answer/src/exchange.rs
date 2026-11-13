@@ -69,6 +69,19 @@ impl Aux for AuxModel<'_> {
     }
 }
 
+/// What the answer half produced.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Answered {
+    /// The messages the companion was sent.
+    pub messages: Value,
+    /// The answer without reasoning or log marker (what is saved and shown).
+    pub visible: String,
+    /// The trailing log marker, if the model wrote one ("ok" | "skip").
+    pub marker: Option<&'static str>,
+    /// The provider stopped at the length cap.
+    pub truncated: bool,
+}
+
 pub struct Exchange<'a> {
     pub assembler: &'a Assembler<'a>,
     pub main: &'a Client,
@@ -87,31 +100,18 @@ fn to_json(messages: &[Message]) -> Value {
 }
 
 impl Exchange<'_> {
-    /// One exchange. `session` holds the replayable turns of this conversation and is updated;
-    /// `emit` (a streamed exchange) receives status, delta, answer and pipeline events.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn run(
+    /// The context assembly alone (the answering shadow compares it): the messages the companion
+    /// would be sent, the optional external reference included.
+    pub fn context(
         &self,
-        journal: &mut (dyn Journal + Send),
         message: &str,
-        session: &mut Vec<Value>,
+        session: &[Value],
         day: NaiveDate,
         extra_context: &str,
-        mut emit: Option<&mut (dyn FnMut(Value) + Send)>,
-        mut trace: Option<&mut RetrievalTrace>,
-    ) -> Result<Map<String, Value>, ExchangeError> {
-        let send = |e: Value, emit: &mut Option<&mut (dyn FnMut(Value) + Send)>| {
-            if let Some(f) = emit.as_mut() {
-                f(e);
-            }
-        };
-        send(
-            json!({"type": "status", "text": "Reading diary entries and memory…"}),
-            &mut emit,
-        );
+        trace: Option<&mut RetrievalTrace>,
+    ) -> Result<Vec<Message>, ExchangeError> {
         let built = tokio::task::block_in_place(|| {
-            self.assembler
-                .build(day, message, session, None, trace.as_deref_mut())
+            self.assembler.build(day, message, session, None, trace)
         });
         let mut messages = built.map_err(ExchangeError::Context)?;
         if !extra_context.is_empty() {
@@ -126,13 +126,37 @@ impl Exchange<'_> {
                 },
             );
         }
-        let messages = to_json(&messages);
-        let budget = Budget::new(None, None);
+        Ok(messages)
+    }
+
+    /// The answer half of an exchange (writes nothing): context, the companion's answer under
+    /// `budget`, the log marker. `emit` (a streamed exchange) receives the model's delta, mtp and
+    /// answer events; with `status` the two status events of `_run_exchange` too.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn answer(
+        &self,
+        message: &str,
+        session: &[Value],
+        day: NaiveDate,
+        extra_context: &str,
+        budget: &Budget,
+        mut emit: Option<&mut (dyn FnMut(Value) + Send)>,
+        trace: Option<&mut RetrievalTrace>,
+        status: bool,
+    ) -> Result<Answered, ExchangeError> {
+        let mut send = |e: Value| {
+            if let Some(f) = emit.as_mut() {
+                f(e);
+            }
+        };
+        if status {
+            send(json!({"type": "status", "text": "Reading diary entries and memory…"}));
+        }
+        let messages = to_json(&self.context(message, session, day, extra_context, trace)?);
         let cap = Some(self.max_answer_tokens);
-        send(
-            json!({"type": "status", "text": "Generating companion response…"}),
-            &mut emit,
-        );
+        if status {
+            send(json!({"type": "status", "text": "Generating companion response…"}));
+        }
         let main = self.main;
         let answered = match emit.as_mut() {
             Some(f) => {
@@ -166,13 +190,55 @@ impl Exchange<'_> {
         };
         let truncated = reply.truncated;
         // #1505: inline reasoning is removed again, so neither the entry nor the reply carries it.
-        let (visible, _marker) = llm::strip_log_marker(&llm::strip_reasoning(&reply.content, true));
+        let (visible, marker) = llm::strip_log_marker(&llm::strip_reasoning(&reply.content, true));
         if truncated && visible.is_empty() {
             return Err(ExchangeError::Model(LlmError::LengthCap));
         }
         if visible.is_empty() {
             return Err(ExchangeError::Model(LlmError::EmptyAnswer));
         }
+        Ok(Answered {
+            messages,
+            visible,
+            marker,
+            truncated,
+        })
+    }
+
+    /// One exchange. `session` holds the replayable turns of this conversation and is updated;
+    /// `emit` (a streamed exchange) receives status, delta, answer and pipeline events.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn run(
+        &self,
+        journal: &mut (dyn Journal + Send),
+        message: &str,
+        session: &mut Vec<Value>,
+        day: NaiveDate,
+        extra_context: &str,
+        mut emit: Option<&mut (dyn FnMut(Value) + Send)>,
+        mut trace: Option<&mut RetrievalTrace>,
+    ) -> Result<Map<String, Value>, ExchangeError> {
+        let budget = Budget::new(None, None);
+        let answered = {
+            let forward: Option<&mut (dyn FnMut(Value) + Send)> = match emit.as_mut() {
+                Some(f) => Some(&mut **f),
+                None => None,
+            };
+            self.answer(
+                message,
+                session,
+                day,
+                extra_context,
+                &budget,
+                forward,
+                trace.as_deref_mut(),
+                true,
+            )
+            .await?
+        };
+        let Answered {
+            visible, truncated, ..
+        } = answered;
         let handle = tokio::runtime::Handle::current();
         let outcome = tokio::task::block_in_place(|| {
             let mut aux = AuxModel {
@@ -180,7 +246,11 @@ impl Exchange<'_> {
                 exchange: &budget,
                 handle,
             };
-            let mut progress = |e: Value| send(e, &mut emit);
+            let mut progress = |e: Value| {
+                if let Some(f) = emit.as_mut() {
+                    f(e);
+                }
+            };
             self.pipeline.log_exchange(
                 &mut aux,
                 journal,
