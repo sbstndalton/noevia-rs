@@ -177,6 +177,10 @@ struct Script {
     /// Engine streams held open by a `stall` or `leave`.
     held: Vec<http_body_util::channel::Sender<Bytes, std::io::Error>>,
     leaving: Arc<Leaving>,
+    /// The chats core's revoke bridge was asked to revoke (Node's revokeChatGrant).
+    revokes: Vec<String>,
+    /// Set: core's revoke bridge fails, so the front revokes at its own registry instead.
+    revoke_fails: bool,
 }
 
 impl Default for Script {
@@ -202,6 +206,8 @@ impl Default for Script {
             quiet: None,
             held: Vec::new(),
             leaving: Arc::default(),
+            revokes: Vec::new(),
+            revoke_fails: false,
         }
     }
 }
@@ -248,7 +254,12 @@ const REGISTRY_CASES: &[(&str, &str)] = &[
     ("tool_approved", "approve"),
     ("tool_declined", "deny"),
     ("edit_approved", "approve_all"),
+    // The client leaves when the card shows: the question is withdrawn (#679), a late answer finds nothing.
+    ("approval_left", "leave"),
 ];
+
+/// Recorded cases also run with core's revoke bridge failing.
+const REVOKE_FAILS: &[&str] = &["grant_redeem_refused"];
 
 /// The stubs this test's fakes answer.
 const ANSWERED: &[&str] = &[
@@ -725,9 +736,41 @@ async fn core_service(
                     js::stringify(&stub)
                 ));
             }
-            Ok(ok_granted(stub.get("answer") == &JValue::Bool(true)))
+            let granted = stub.get("answer") == &JValue::Bool(true);
+            if input.get("approvalFront").get("leaveInGrant") == &JValue::Bool(true) {
+                // The client leaves while the check is out; the answer still comes once it has gone.
+                let leaving = Arc::clone(&sc.leaving);
+                drop(sc);
+                let (mut tx, b) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+                tokio::spawn(async move {
+                    leaving.leave.notify_one();
+                    leaving.wait_gone().await;
+                    let answer = if granted {
+                        js::obj([
+                            ("granted", JValue::Bool(true)),
+                            ("handle", js::s(GRANT_HANDLE)),
+                        ])
+                    } else {
+                        js::obj([("granted", JValue::Bool(false))])
+                    };
+                    let _ = tx.send_data(Bytes::from(js::stringify(&answer))).await;
+                });
+                return Ok(Response::builder()
+                    .status(200)
+                    .header("content-type", "application/json")
+                    .body(b.boxed())
+                    .unwrap());
+            }
+            Ok(ok_granted(granted))
         }
-        "/internal/chat/tools/revoke" => ok(js::obj([("revoked", JValue::Bool(true))])),
+        "/internal/chat/tools/revoke" => {
+            sc.revokes
+                .push(sent.get("chat").as_str().unwrap_or("").to_string());
+            if sc.revoke_fails {
+                return Ok(json(500, &js::obj([("error", js::s("QA revoke failure"))])));
+            }
+            ok(js::obj([("revoked", JValue::Bool(true))]))
+        }
         "/internal/chat/tools/execute" => {
             if sent.get("grant").is_object() {
                 if sent.get("grant").get("handle").as_str() != Some(GRANT_HANDLE) {
@@ -932,6 +975,8 @@ impl Approvals for TestApprovals {
         let answer = stub.get("answer").as_str().unwrap_or("approve").to_string();
         Box::pin(async move { answer })
     }
+
+    fn cancel(&self, _user: &str, _id: &str) {}
 }
 
 fn set_policy(data: &Path, user: &str, tool: &str, mode: &str) {
@@ -1086,7 +1131,12 @@ async fn chat(
                 if event.get("type").as_str() == Some("tool_pending")
                     && !decided.iter().any(|(d, _)| *d == id)
                 {
-                    let status = decide_card(f, &id, decision).await;
+                    let status = if decision == "leave" {
+                        leaving.leave.notify_one();
+                        0
+                    } else {
+                        decide_card(f, &id, decision).await
+                    };
                     decided.push((id, status));
                 }
             }
@@ -1268,7 +1318,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
         if SKIPPED.iter().any(|(n, _)| *n == name) || only.as_ref().is_some_and(|o| *o != name) {
             continue;
         }
-        match run_case(&fixture, case, &current, None).await {
+        match run_case(&fixture, case, &current, None, false).await {
             Ok(()) => ran.push(name),
             Err(e) => {
                 eprintln!("DIFFERS {name}: {e}");
@@ -1287,7 +1337,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
             .iter()
             .find(|c| c.get("name").as_str() == Some(name))
             .unwrap();
-        match run_case(&fixture, case, &current, Some(decision)).await {
+        match run_case(&fixture, case, &current, Some(decision), false).await {
             Ok(()) => ran.push(format!("{name} (front registry)")),
             Err(e) => {
                 eprintln!("DIFFERS {name} (front registry): {e}");
@@ -1296,6 +1346,23 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
         }
     }
     scripted();
+    // Core's revoke bridge failing: the front revokes at its own registry, which asks Node to acknowledge.
+    for name in REVOKE_FAILS {
+        if only.as_ref().is_some_and(|o| o != name) {
+            continue;
+        }
+        let case = cases
+            .iter()
+            .find(|c| c.get("name").as_str() == Some(name))
+            .unwrap();
+        match run_case(&fixture, case, &current, None, true).await {
+            Ok(()) => ran.push(format!("{name} (revoke bridge fails)")),
+            Err(e) => {
+                eprintln!("DIFFERS {name} (revoke bridge fails): {e}");
+                failures.push(format!("{name} (revoke bridge fails): {e}"));
+            }
+        }
+    }
     if only.is_none() {
         if let Err(e) = a_client_leaving_while_core_is_quiet_ends_cores_stream(&cases[0]).await {
             failures.push(e);
@@ -1311,7 +1378,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
     if only.is_none() {
         assert_eq!(
             ran.len() + SKIPPED.len(),
-            cases.len() + REGISTRY_CASES.len()
+            cases.len() + REGISTRY_CASES.len() + REVOKE_FAILS.len()
         );
     }
 }
@@ -1321,6 +1388,7 @@ async fn run_case(
     case: &JValue,
     current: &Arc<Mutex<Option<Shared>>>,
     decide: Option<&str>,
+    revoke_fails: bool,
 ) -> Result<(), String> {
     let input = case.get("input").clone();
     // With the front's registry its cards are the registry's: their recorded stubs are not asked for.
@@ -1339,6 +1407,7 @@ async fn run_case(
         stubs,
         // The engine requests core made before the cut (a Vision role's description) are core's own.
         round: pre_cut_requests(case),
+        revoke_fails,
         ..Script::default()
     }));
     *current.lock().unwrap() = Some(Arc::clone(&script));
@@ -1404,14 +1473,25 @@ async fn run_case(
     }
     if let Some(decision) = decide {
         let cards = arr(case.get("approvals")).len();
-        if decided.len() != cards || decided.iter().any(|(_, status)| *status != 200) {
+        if decided.len() != cards
+            || (decision != "leave" && decided.iter().any(|(_, status)| *status != 200))
+        {
             return Err(format!(
                 "{decision}: the cards answered {decided:?}, recorded {cards}"
             ));
         }
         // An answered card's question is gone: a second answer finds nothing (404).
         for (id, _) in &decided {
-            let again = decide_card(&f, id, decision).await;
+            let again = decide_card(
+                &f,
+                id,
+                if decision == "leave" {
+                    "approve_all"
+                } else {
+                    decision
+                },
+            )
+            .await;
             if again != 404 {
                 return Err(format!("{id} answered again: {again}"));
             }
@@ -1529,6 +1609,31 @@ async fn run_case(
     // The fakes' contract checks, the approval cards, the tools run, every recorded answer asked for.
     if !sc.errors.is_empty() {
         return Err(format!("bridge contract: {:?}", sc.errors));
+    }
+    // The grant revokes Node's turn made, asked of core's revoke bridge (Node's revokeChatGrant).
+    let want_revokes: Vec<String> = arr(case.get("stores"))
+        .iter()
+        .filter(|s| s.get("op").as_str() == Some("revokeChatGrant"))
+        .map(|s| s.get("chatId").as_str().unwrap_or("").to_string())
+        .collect();
+    if sc.revokes != want_revokes {
+        return Err(format!(
+            "grant revokes: front {:?} node {want_revokes:?}",
+            sc.revokes
+        ));
+    }
+    // With that bridge failing, the front's own revoke asks Node to acknowledge it.
+    if revoke_fails
+        && !want_revokes.is_empty()
+        && !sc
+            .calls
+            .iter()
+            .any(|c| c == "POST /internal/approvals/revoke")
+    {
+        return Err(format!(
+            "the front's fallback revoke asked no acknowledgement: {:?}",
+            sc.calls
+        ));
     }
     let asked = texts(&sc.asked, &f.user, window);
     let want = texts(&arr(case.get("approvals")), "", (0.0, 0.0));

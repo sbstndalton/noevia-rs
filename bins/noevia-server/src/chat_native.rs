@@ -150,6 +150,8 @@ pub trait Approvals: Send + Sync {
         user: &str,
         request: &JValue,
     ) -> Pin<Box<dyn std::future::Future<Output = String> + Send>>;
+    /// Withdraws an opened question the turn will not wait for any more (S9 `cancel`: the turn stopped).
+    fn cancel(&self, user: &str, id: &str);
 }
 
 /// The front's own registry (`App::approvals`) and grant contexts (server-projects chat_move).
@@ -249,6 +251,10 @@ impl Approvals for Registry {
                 Ok(_) | Err(_) => "unavailable".into(),
             }
         })
+    }
+
+    fn cancel(&self, user: &str, id: &str) {
+        self.app.approvals.cancel(user, id);
     }
 }
 
@@ -1248,7 +1254,9 @@ impl Host for FrontHost {
             ("exchangeKey", js::s(exchange_key)),
         ]);
         // A core without the grant bridge (404) or any other answer: no grant, so the card is asked (D17).
-        let (status, v) = self.core(GRANT_PATH, &body, BRIDGE_TIMEOUT).await?;
+        // Run to its answer when the client leaves meanwhile, as Node's grant check does: the gate then
+        // refuses as cancelled (with a grant) or as stopped on the card (without one).
+        let (status, v) = self.core_full(GRANT_PATH, &body, BRIDGE_TIMEOUT).await?;
         let handle = v.get("handle").as_str()?;
         (status == 200
             && v.get("granted") == &JValue::Bool(true)
@@ -1260,18 +1268,27 @@ impl Host for FrontHost {
     }
 
     async fn open_approval(&self, request: &JValue) -> bool {
-        !self.left() && self.approvals.open(&self.user, request)
+        self.approvals.open(&self.user, request)
     }
 
     async fn await_approval(&self, request: &JValue) -> String {
+        let id = request.get("id").as_str().unwrap_or("").to_string();
+        // rust-approval-registry.cjs wait: a turn already stopped, or stopped while waiting, withdraws the
+        // question (#679: a later answer finds nothing, and no grant comes of it).
+        let wait = self.approvals.wait(&self.user, request);
         if self.left() {
+            drop(wait);
+            self.approvals.cancel(&self.user, &id);
             return "aborted".into();
         }
-        let wait = self.approvals.wait(&self.user, request);
-        tokio::select! {
+        let answer = tokio::select! {
             d = wait => d,
             () = closed(&self.tx) => "aborted".into(),
+        };
+        if answer == "aborted" {
+            self.approvals.cancel(&self.user, &id);
         }
+        answer
     }
 
     async fn revoke_grant(&self, chat_id: Option<&str>) {
@@ -1374,7 +1391,10 @@ impl Host for FrontHost {
             {
                 Ran::Refused
             }
+            Some((200, v)) if v.get("redeem").as_str() == Some("aborted") => Ran::Aborted,
             Some((200, v)) if v.get("redeem").as_str().is_some() => Ran::Unavailable,
+            // A grant core refused to read (400) was never run: not checked.
+            Some((400, _)) if run.grant.is_some() => Ran::Unavailable,
             Some((200, v)) => Ran::Done {
                 text: v.get("text").as_str().unwrap_or("").to_string(),
                 failed: v.get("failed") == &JValue::Bool(true),

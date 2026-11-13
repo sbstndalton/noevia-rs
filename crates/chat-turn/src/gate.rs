@@ -402,23 +402,36 @@ impl<'a> Tools<'a> {
                                         chat_key: self.chat_key.clone(),
                                         exchange_key: self.exchange_key.clone(),
                                         edit_target: edit.as_ref().map(|p| p.digest.clone()),
-                                        grant: match (grant, &self.chat_id, final_binding) {
-                                            (Some(handle), Some(chat), Some(binding)) => {
-                                                Some(GrantRun {
-                                                    handle,
-                                                    chat: chat.clone(),
-                                                    scope: self.grant_scope.clone(),
-                                                    binding,
-                                                })
-                                            }
-                                            _ => None,
-                                        },
+                                        grant: None,
                                     };
-                                    let ran = host.execute_tool(&run).await;
+                                    // A grant used without a card must reach core with the call; one that
+                                    // cannot be carried (no chat, no final binding) never runs unfenced.
+                                    let carried = match (grant, &self.chat_id, final_binding) {
+                                        (None, ..) => Ok(run),
+                                        (Some(handle), Some(chat), Some(binding)) => Ok(ToolRun {
+                                            grant: Some(GrantRun {
+                                                handle,
+                                                chat: chat.clone(),
+                                                scope: self.grant_scope.clone(),
+                                                binding,
+                                            }),
+                                            ..run
+                                        }),
+                                        _ => Err(()),
+                                    };
+                                    let ran = match &carried {
+                                        Ok(run) => host.execute_tool(run).await,
+                                        Err(()) => Ran::Unavailable,
+                                    };
                                     // markWriteAttempt (a write may change what earlier reads saw) and the
                                     // round's write mark (#1456): chat.cjs sets both just before the call,
                                     // after the redeem, so a refused or unchecked redeem sets neither.
-                                    if write && !matches!(ran, Ran::Refused | Ran::Unavailable) {
+                                    if write
+                                        && !matches!(
+                                            ran,
+                                            Ran::Refused | Ran::Unavailable | Ran::Aborted
+                                        )
+                                    {
                                         self.cache.retain(|_, (_, w)| *w);
                                         wrote = true;
                                     }
@@ -428,6 +441,8 @@ impl<'a> Tools<'a> {
                                             .await
                                             .unwrap_or_default(),
                                         Ran::Unavailable => self.not_checked(host, &call.name),
+                                        // chat.cjs: the turn stopped between the redeem and the run.
+                                        Ran::Aborted => CANCELLED.to_string(),
                                         Ran::Done {
                                             text,
                                             not_run: true,

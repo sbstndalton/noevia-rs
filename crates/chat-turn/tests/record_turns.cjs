@@ -314,7 +314,8 @@ async function runTurn(c, { handoff = false } = {}) {
     // Port contract S9: core's own registry client over a scripted front (approval_registry.rs's answers).
     // `openRefused`: the front refuses to open the question; `waitUnavailable`: its wait fails; `leaveOnCard`: the
     // client leaves while the card is open (the wait ends with the turn's abort); `chatWide`: the chat holds a grant;
-    // `redeem`: 'refused' or 'unavailable' instead of a redeemed grant.
+    // `redeem`: 'refused' or 'unavailable' instead of a redeemed grant; `leaveInGrant`: the client leaves during the
+    // grant check.
     let tickets = 0;
     const front = async (op, payload, options = {}) => {
       if (op === 'open') return c.openRefused ? { status: 503, body: { error: 'too many open approvals', code: 'APPROVALS_FULL' } } : { status: 200, body: { opened: true } };
@@ -329,7 +330,11 @@ async function runTurn(c, { handoff = false } = {}) {
         return { status: 200, body: { outcome: c.decision || 'approve' } };
       }
       if (op === 'cancel') return { status: 200, body: { cancelled: true } };
-      if (op === 'granted') return { status: 200, body: c.chatWide ? { granted: true, ticket: `qa-ticket-${++tickets}` } : { granted: false } };
+      if (op === 'granted') {
+        // `leaveInGrant`: the client goes away while the grant check is at the front; its answer still comes.
+        if (c.leaveInGrant) { res.destroyed = true; res.emit('close'); }
+        return { status: 200, body: c.chatWide ? { granted: true, ticket: `qa-ticket-${++tickets}` } : { granted: false } };
+      }
       if (op === 'redeem') {
         if (c.redeem === 'unavailable') return { status: 503, body: { error: 'Approval revocation pending; retry' } };
         return { status: 200, body: { redeemed: c.redeem !== 'refused', protocol: REGISTRY_PROTOCOL, window_ms: 2000 } };
@@ -593,7 +598,7 @@ async function runTurn(c, { handoff = false } = {}) {
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
         retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
-        ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null } } : {}),
+        ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool || c.leaveInGrant ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null, ...(c.leaveInGrant ? { leaveInGrant: true } : {}) } } : {}),
         rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
@@ -776,6 +781,10 @@ const CASES = [
     rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-31"}'), finish('tool_calls')] }, answer('The permission could not be checked.')] },
   { name: 'grant_revoked_in_tool', about: 'A write under the chat grant revoked while its tool runs: the fence stops the outbound write (notRun).', chatWide: true, revokeInTool: 'drive_trash_file',
     rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-32"}'), finish('tool_calls')] }, answer('The write was stopped before it was sent.')] },
+  { name: 'grant_check_left', about: 'The client leaves while the grant check is asked; the chat holds a grant: the write is not run (cancelled).', chatWide: true, leaveInGrant: true,
+    rounds: [{ frames: [chunk({ content: 'Trashing it. ' }), toolCall('drive_trash_file', '{"fileId":"qa-file-35"}'), finish('tool_calls')] }] },
+  { name: 'grant_check_left_no_grant', about: 'The client leaves while the grant check is asked; no grant: the card is opened and stopped at once.', leaveInGrant: true,
+    rounds: [{ frames: [chunk({ content: 'Trashing it. ' }), toolCall('drive_trash_file', '{"fileId":"qa-file-36"}'), finish('tool_calls')] }] },
   { name: 'approval_open_refused', about: 'The front cannot open the question: no card, the write is not run.', openRefused: true,
     rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-33"}'), finish('tool_calls')] }, answer('The approval could not be asked.')] },
   { name: 'approval_wait_unavailable', about: 'The card is shown but its wait fails at the front: the write is not run, not declined.', waitUnavailable: true,

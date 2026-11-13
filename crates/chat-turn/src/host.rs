@@ -123,6 +123,8 @@ pub enum Ran {
     Refused,
     /// The grant could not be checked at the front: not run.
     Unavailable,
+    /// The call was stopped (the client left) after its grant was redeemed and before it ran: not run.
+    Aborted,
 }
 
 /// An instruction skill as the prepared frame and core's skills bridges name it (#272): its stored file, the

@@ -90,6 +90,8 @@ struct Script {
     approvals: Mutex<Vec<String>>,
     executions: Mutex<Vec<String>>,
     uuids: Mutex<u64>,
+    /// The policy reads past the recording in a redeem-refusal case (D17: exactly one).
+    extra_policy_reads: Mutex<u32>,
     leased: Mutex<bool>,
     /// The turn's lease: the recorder's gate counts the leases taken before the cut (a Vision role's description).
     lease: String,
@@ -189,6 +191,7 @@ impl Script {
             approvals: Mutex::new(Vec::new()),
             executions: Mutex::new(Vec::new()),
             uuids: Mutex::new(0),
+            extra_policy_reads: Mutex::new(0),
             leased: Mutex::new(false),
             lease: format!("qa-lease-{}", earlier + 1),
             loaded: Mutex::new(case_loaded),
@@ -505,6 +508,10 @@ impl Host for Script {
             .iter()
             .any(|s| s.get("op").as_str() == Some("policy"));
         if redeem_refused && !left {
+            // Exactly one read more than Node's.
+            let mut extra = self.extra_policy_reads.lock().unwrap();
+            *extra += 1;
+            assert_eq!(*extra, 1, "more than the one extra policy read");
             return "ask".into();
         }
         self.answer(
@@ -594,6 +601,16 @@ impl Host for Script {
         _binding: &JValue,
         _exchange_key: &str,
     ) -> Option<String> {
+        // `leaveInGrant`: the client goes away while the grant check is out; its answer still comes.
+        if self
+            .case
+            .get("input")
+            .get("approvalFront")
+            .get("leaveInGrant")
+            == &JValue::Bool(true)
+        {
+            self.leave();
+        }
         (self.answer(
             "chatWideApproved",
             &[
@@ -1153,7 +1170,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 89, "{ran:?}");
+    assert_eq!(ran.len(), 91, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
