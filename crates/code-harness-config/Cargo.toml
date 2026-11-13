@@ -1,0 +1,17 @@
+[package]
+name = "code-harness-config"
+version = "0.1.0"
+description = "The harness pin files of core code-harness-config.cjs: what each coding harness is given (gate, endpoint, model), what is refused, and the symlink-safe write"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+
+[dev-dependencies]
+tempfile = "3"
