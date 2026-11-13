@@ -1,0 +1,21 @@
+[package]
+name = "code-verify"
+version = "0.1.0"
+description = "noevia-core's code-verify.cjs and code-pipeline-verify.cjs in Rust: the server-measured test verification client for Code tasks and its pipeline adapter; nothing calls it yet (R7)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+code-acp = { path = "../code-acp" }
+js-json = { path = "../js-json" }
+# Non-blocking connect to the verifier's unix socket (a full backlog is EAGAIN, as in Node). Already
+# in the workspace (code-acp); pinned exactly.
+rustix = { version = "=1.1.5", features = ["net"] }
+
+[dev-dependencies]
+tempfile = "3"
