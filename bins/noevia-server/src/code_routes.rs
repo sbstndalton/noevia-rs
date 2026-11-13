@@ -18,8 +18,9 @@
 //! runs here too, through crates/code-pipeline's driver over code-harness's `pipeline_host`, with
 //! the role engine (crates/role-engine) on [`FrontRoles`] and the verifier (crates/code-verify,
 //! `CODE_VERIFY_ENDPOINT`). It is offered exactly when Node offers it: features.codeHarness and
-//! features.codePipeline on (read from the front's own settings, as features.cjs reads them) and
-//! Code mode in the sandbox (`CODE_HARNESS_ENDPOINT`). Its start needs the role engine's endpoint
+//! features.codePipeline on (read from the front's own settings, as features.cjs reads them, with
+//! codePipeline and codeMerge available exactly when features.cjs's `codeSandboxReason` says so:
+//! `CODE_HARNESS_ENDPOINT` set and not blank) and Code mode in the sandbox. Its start needs the role engine's endpoint
 //! from core's engine facts (`role`, an additive fact): a core without it answers the Planner start
 //! with Node's 409 "The Planner pipeline is not set up on this server.". Flags off, the front
 //! offers and runs exactly what it did before.
@@ -32,7 +33,11 @@
 //! - the inference budget check (core `modelManager.loadRefusal`) is core's, asked over its bridge:
 //!   when core cannot answer, the Planner's pin is refused as over budget ([`BUDGET_UNCHECKED`])
 //!   rather than pinned unchecked;
-//! - a Cowork session's task start from chat stays Node's, which refuses it while the front owns Code.
+//! - a Cowork session's task start from chat stays Node's, which refuses it while the front owns Code;
+//! - the role engine's endpoint and the engine key a Planner task uses are a snapshot taken from
+//!   core's engine facts at its start, for the life of that task; Node's `codeRoleEndpoint` and
+//!   `engineKey` re-read them at each use, so a Code role or key changed mid-task reaches Node's
+//!   next role call but not the front's.
 //!
 //! The lease: a task holds the inference admission authority's maintenance-only lease (the one
 //! Node's latch takes as `modelManager.enterInference()`, as Node's own Code tasks hold) for its run.
@@ -115,6 +120,15 @@ impl Settings {
             lang: get("LANG"),
             verify_endpoint: set("CODE_VERIFY_ENDPOINT"),
         }
+    }
+
+    /// features.cjs `codeSandboxReason(env) === null`: `CODE_HARNESS_ENDPOINT` not blank after JS's
+    /// `trim` (Unicode white space and U+FEFF, without U+0085).
+    pub fn sandbox_available(&self) -> bool {
+        self.endpoint.as_deref().is_some_and(|e| {
+            !e.trim_matches(|c: char| c == '\u{feff}' || (c.is_whitespace() && c != '\u{85}'))
+                .is_empty()
+        })
     }
 
     /// The sandbox wins when both are set (code-acp.cjs `createAcpTransport`).
@@ -425,7 +439,42 @@ pub fn feature(app: &App, feature: server_features::Feature) -> bool {
             .flatten()
         })
     };
-    server_features::evaluate(feature, env, stored.as_deref(), true).enabled
+    server_features::evaluate_with_context(
+        feature,
+        env,
+        stored.as_deref(),
+        availability(app, feature),
+        None,
+    )
+    .enabled
+}
+
+/// features.cjs's runtime availability for the flags Code mode reads: the Code-sandbox ones
+/// (codePipeline, codeMerge) exactly when `codeSandboxReason` is null, i.e. `CODE_HARNESS_ENDPOINT`
+/// is set and not blank (JS `trim`); every other flag Code mode reads (codeHarness, plannerReview,
+/// executorGuard, constrainedPlanDecoding) has no runtime availability and needs none.
+fn availability(app: &App, feature: server_features::Feature) -> server_features::Availability {
+    use server_features::{Availability, AvailabilityKind};
+    match server_features::spec(feature).availability {
+        AvailabilityKind::CodeSandbox if app.config.code.sandbox_available() => {
+            Availability::Available
+        }
+        AvailabilityKind::CodeSandbox => Availability::Unavailable,
+        _ => Availability::Unknown,
+    }
+}
+
+/// The flags the pipeline reads during a run (core index.cjs `merge`, `constrain`, the guard).
+fn pipeline_flag(app: &App, flag: Flag) -> bool {
+    use server_features::Feature;
+    feature(
+        app,
+        match flag {
+            Flag::Merge => Feature::CodeMerge,
+            Flag::Constrain => Feature::ConstrainedPlanDecoding,
+            Flag::Guard => Feature::ExecutorGuard,
+        },
+    )
 }
 
 /// core index.cjs's `pipeline: { enabled, create }` for the front.
@@ -476,15 +525,7 @@ impl Setup for FrontPipeline {
             client,
         });
         let app = self.app.clone();
-        let flag = move |f: Flag| {
-            use server_features::Feature;
-            let feature_of = match f {
-                Flag::Merge => Feature::CodeMerge,
-                Flag::Constrain => Feature::ConstrainedPlanDecoding,
-                Flag::Guard => Feature::ExecutorGuard,
-            };
-            app.upgrade().is_some_and(|a| feature(&a, feature_of))
-        };
+        let flag = move |f: Flag| app.upgrade().is_some_and(|a| pipeline_flag(&a, f));
         Some(driver::Deps::new(
             parts.jobs,
             parts.workspaces,
@@ -977,6 +1018,132 @@ mod tests {
                 command: "opencode".into(),
                 args: vec!["acp".into(), "--qa".into()],
             })
+        );
+    }
+
+    /// The front as it boots: `env` as the process environment, `settings` in the settings table.
+    fn front(env: &[(&str, &str)], settings: &[(&str, &str)]) -> (tempfile::TempDir, Arc<App>) {
+        let dir = tempfile::tempdir().unwrap();
+        let db =
+            server_store::rusqlite::Connection::open(server_store::db_path(dir.path())).unwrap();
+        db.execute_batch(include_str!(
+            "../../../crates/server-store/tests/fixtures/node-schema.sql"
+        ))
+        .unwrap();
+        for (k, v) in settings {
+            db.execute("INSERT INTO settings(key, value) VALUES(?1, ?2)", [k, v])
+                .unwrap();
+        }
+        drop(db);
+        let data = dir.path().to_string_lossy().into_owned();
+        let config = crate::config::Config::from_lookup(|k| match k {
+            "NOEVIA_LEGACY_UPSTREAM" => Some("http://127.0.0.1:9".into()),
+            "UI_DATA_DIR" => Some(data.clone()),
+            _ => env
+                .iter()
+                .find(|(n, _)| *n == k)
+                .map(|(_, v)| (*v).to_string()),
+        })
+        .unwrap();
+        (dir, App::new(config))
+    }
+
+    /// What the front offers and reads for one deployment: (codePipeline, FrontPipeline::enabled,
+    /// the Planner in the service's preparation list, the merge flag the pipeline reads).
+    fn offered(env: &[(&str, &str)], settings: &[(&str, &str)]) -> (bool, bool, bool, bool) {
+        use server_features::Feature;
+        let (dir, app) = front(env, settings);
+        let setup = FrontPipeline {
+            app: Arc::downgrade(&app),
+            rt: tokio::runtime::Handle::current(),
+            verify: Arc::new(code_verify::Adapter::new(None)),
+        };
+        let tenant = dir.path().join("qa-user");
+        std::fs::create_dir_all(&tenant).unwrap();
+        let facts = service(&app).facts(tenant.to_str().unwrap()).unwrap();
+        let list = facts.get("promptPreparation");
+        assert!(
+            matches!(list, JValue::Arr(l) if l.len() >= 3),
+            "the preparation list"
+        );
+        let planner = matches!(list, JValue::Arr(l) if l
+            .iter()
+            .any(|p| p.get("id").as_str() == Some(PLANNER_PREPARATION_ID)));
+        (
+            feature(&app, Feature::CodePipeline),
+            setup.enabled(),
+            planner,
+            pipeline_flag(&app, Flag::Merge),
+        )
+    }
+
+    const PLANNER_PREPARATION_ID: &str = code_harness::service::PLANNER_PREPARATION.0;
+    const SANDBOX: (&str, &str) = ("CODE_HARNESS_ENDPOINT", "code-sandbox:7000");
+    const ALL_ON: [(&str, &str); 3] = [
+        ("feature:codeHarness", "true"),
+        ("feature:codePipeline", "true"),
+        ("feature:codeMerge", "true"),
+    ];
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_planner_is_offered_with_its_flags_on_in_the_sandbox() {
+        assert_eq!(offered(&[SANDBOX], &ALL_ON), (true, true, true, true));
+        // The env value wins over the setting, as features.cjs reads it.
+        assert_eq!(
+            offered(
+                &[SANDBOX, ("NOEVIA_FEATURE_CODE_PIPELINE", "true")],
+                &[("feature:codeHarness", "true")]
+            ),
+            (true, true, true, false)
+        );
+        // The other flags the pipeline reads have no runtime availability.
+        let (_dir, app) = front(
+            &[],
+            &[
+                ("feature:executorGuard", "true"),
+                ("feature:constrainedPlanDecoding", "true"),
+                ("feature:codeHarness", "true"),
+            ],
+        );
+        assert!(pipeline_flag(&app, Flag::Guard));
+        assert!(pipeline_flag(&app, Flag::Constrain));
+        assert!(feature(&app, server_features::Feature::CodeHarness));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn no_planner_without_the_sandbox() {
+        assert_eq!(offered(&[], &ALL_ON), (false, false, false, false));
+        // codeSandboxReason trims: a blank endpoint is no sandbox.
+        assert_eq!(
+            offered(&[("CODE_HARNESS_ENDPOINT", " \u{feff}\t")], &ALL_ON),
+            (false, false, false, false)
+        );
+        // A command transport (spawn) is not the sandbox either.
+        assert_eq!(
+            offered(&[("CODE_HARNESS_COMMAND", "opencode")], &ALL_ON),
+            (false, false, false, false)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn no_planner_with_its_flags_off() {
+        assert_eq!(offered(&[SANDBOX], &[]), (false, false, false, false));
+        assert_eq!(
+            offered(
+                &[SANDBOX],
+                &[
+                    ("feature:codeHarness", "false"),
+                    ("feature:codePipeline", "true")
+                ]
+            ),
+            (true, false, false, false)
+        );
+        assert_eq!(
+            offered(
+                &[SANDBOX, ("NOEVIA_FEATURE_CODE_PIPELINE", "false")],
+                &ALL_ON
+            ),
+            (false, false, false, true)
         );
     }
 }

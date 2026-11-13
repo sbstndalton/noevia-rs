@@ -6,7 +6,8 @@
 //!   when the tenant's store opens; the start's inference lease (code-service.cjs `leased`) is
 //!   taken where Node's `jobs.run` takes it, just before `job.started`, and held until the
 //!   pipeline's thread ends (the service's watcher drops it); a lease the authority ends stops
-//!   the task as a cancel would (`code.lease_lost`).
+//!   the task as a cancel would (`code.lease_lost`). [`Phase`] is jobs.cjs's controller: a cancel
+//!   before `job.started` writes `job.cancelled` itself and the start is then refused (409).
 //! - [`PipeWorkspaces`]: code-workspace's pipeline reads (Node's default limits).
 //! - [`PipeHarness`]: the [`Executor`]'s claim (a resume reclaims), one turn with the brief
 //!   (`promptPreparation: 'planner'`), and the release, once per handle.
@@ -127,12 +128,28 @@ pub fn job_value(job: &Job) -> JValue {
     JValue::obj(v)
 }
 
-/// The tasks the pipeline runs in this process, by id: the signal a cancel aborts.
-pub type Live = Arc<Mutex<HashMap<String, Signal>>>;
+/// The tasks the pipeline runs in this process, by id: what a cancel reaches.
+pub type Live = Arc<Mutex<HashMap<String, Arc<StartState>>>>;
+
+/// Where a pipeline task is in jobs.cjs `run`: whether it has a controller a cancel aborts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Phase {
+    /// Created, its workspace being claimed: no controller yet, so jobs.cjs `cancel` writes
+    /// `job.cancelled` at once and the later `job.started` is refused (the work never runs).
+    #[default]
+    Queued,
+    /// `job.started` written: a cancel aborts the signal and the run records the rest.
+    Running,
+    /// Cancelled while queued.
+    Cancelled,
+}
 
 /// One start's state the job store holds: the task's signal, its lease and the gate it comes from.
 pub struct StartState {
     pub signal: Signal,
+    /// Held while `job.started` is written and while a queued task's cancel is, so the two never
+    /// cross (Node's single thread).
+    pub phase: Mutex<Phase>,
     /// The job, once created.
     pub task: Mutex<Option<String>>,
     pub gate: Option<Gate>,
@@ -229,12 +246,27 @@ impl driver::Jobs for PipeJobs {
         self.live
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(id.clone(), self.start.signal.clone());
+            .insert(id.clone(), self.start.clone());
         Ok(id)
     }
     fn append(&self, id: &str, kind: &str, data: JValue) -> Result<(), Fail> {
         if kind == "job.started" {
             self.enter(id)?;
+            let mut phase = self
+                .start
+                .phase
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if *phase == Phase::Cancelled {
+                // jobs.cjs `append` on the cancelled job: its 409, so the work never runs.
+                return Err(Fail {
+                    status: Some(409),
+                    ..Fail::new("Job already finished")
+                });
+            }
+            self.store.append(id, kind, data).map_err(refused)?;
+            *phase = Phase::Running;
+            return Ok(());
         }
         self.store
             .append(id, kind, data)

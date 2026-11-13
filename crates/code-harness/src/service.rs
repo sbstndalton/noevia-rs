@@ -10,7 +10,11 @@
 //! features.codePipeline) and Code mode runs in the sandbox; otherwise the list is exactly the
 //! three entries and `planner` is an unknown preparation. A Planner start runs crate
 //! code-pipeline's driver over [`crate::pipeline_host`]'s adapters, its cancel reaches the
-//! pipeline's signal, and its cards are this service's. When the host cannot build the pipeline
+//! pipeline's signal (or, while its workspace is still being claimed and the run has no
+//! controller yet, writes `job.cancelled` at once as jobs.cjs `cancel` does, and the run never
+//! starts), and its cards are this service's. The run's watcher is started before the pipeline,
+//! so a start that cannot have one is refused before anything begins; a host trait that panics
+//! inside the start fails the job it created (`Code pipeline could not start.`). When the host cannot build the pipeline
 //! for a start ([`Setup::create`] answers `None`, or the lifecycle authority was already claimed
 //! for the tenant's directory) the start is refused with Node's [`NOT_SET_UP`] (409).
 //!
@@ -18,7 +22,7 @@
 //! reviewed, so a deployment with that flag on keeps Code mode with Node.
 
 use crate::executor::{Approvals, Deps, Egress, Engine, Executor, Fail, Jobs, Lease, StartRequest};
-use crate::pipeline_host::{to_x, Live, PipeHarness, PipeJobs, PipeWorkspaces, StartState};
+use crate::pipeline_host::{to_x, Live, Phase, PipeHarness, PipeJobs, PipeWorkspaces, StartState};
 pub use crate::pipeline_host::{Parts, Setup, NOT_SET_UP, PLANNER_PREPARATION};
 use crate::session::Ended;
 use code_acp::Transport;
@@ -40,6 +44,8 @@ pub const APPROVAL_TIMEOUT: Duration = Duration::from_millis(5 * 60 * 1000);
 const EXPIRED_MEMORY_MS: f64 = 60_000.0;
 const RETAIN_MS: f64 = 14.0 * 86_400_000.0;
 const MAX_JOBS: usize = 50;
+/// code-pipeline.cjs's failure for a run that could not start.
+const COULD_NOT_START: &str = "Code pipeline could not start.";
 
 /// `GRANTABLE`: what a task may be granted at all (code-actions.cjs `ACTIONS`).
 pub const GRANTABLE: [&str; 7] = [
@@ -840,6 +846,7 @@ impl Service {
         task.context = resolved.context.clone();
         let start = Arc::new(StartState {
             signal: Signal::new(),
+            phase: Mutex::new(Phase::Queued),
             task: Mutex::new(None),
             gate: gate.map(|g| Arc::new(move || g.enter()) as crate::executor::Gate),
             lease: Mutex::new(None),
@@ -867,12 +874,13 @@ impl Service {
         .ok()
         .flatten()
         .ok_or_else(not_set_up)?;
-        let started = Pipeline::new(deps).start(task, start.signal.clone());
         let live = tenant.pipelines.clone();
+        let store = tenant.store.clone();
+        let state = start.clone();
         // The task stops being live, and its lease is given back, once its thread has ended (or
         // at once when there is none).
         let finish = move || {
-            let id = start
+            let id = state
                 .task
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -882,17 +890,54 @@ impl Service {
                     .unwrap_or_else(PoisonError::into_inner)
                     .remove(&id);
             }
-            start
+            state
                 .lease
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .take();
         };
-        let started = match started {
-            Ok(s) => s,
-            Err(e) => {
+        // The watcher is up before the pipeline begins: when it cannot be, nothing has started
+        // (no job, no claim) and the start is refused, so a run never goes on without the lease
+        // being held until it ends. It gets the run's thread, or nothing (no thread, a refused
+        // or panicked start), and then finishes.
+        let (hand, thread_of) = std::sync::mpsc::channel::<std::thread::JoinHandle<()>>();
+        let watcher = std::thread::Builder::new()
+            .name("code pipeline watcher".into())
+            .spawn(move || {
+                if let Ok(thread) = thread_of.recv() {
+                    let _ = thread.join();
+                }
                 finish();
-                return Err(to_x(e));
+            });
+        if watcher.is_err() {
+            return Err(Fail::new(None, COULD_NOT_START));
+        }
+        let started = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Pipeline::new(deps).start(task, start.signal.clone())
+        }));
+        let started = match started {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => return Err(to_x(e)),
+            // A host trait panicked inside the start (jobs.create, the claim): the job it created,
+            // still queued, fails as jobs.run's catch fails it; the watcher (its sender dropped)
+            // takes the task out of `live`.
+            Err(_) => {
+                let id = start
+                    .task
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone();
+                if let Some(id) = id {
+                    if matches!(store.get(&id), Ok(Some(job)) if job.status.as_str() == Some("queued"))
+                    {
+                        let _ = store.append(
+                            &id,
+                            "job.failed",
+                            JValue::obj([("error", s(COULD_NOT_START))]),
+                        );
+                    }
+                }
+                return Err(Fail::new(None, COULD_NOT_START));
             }
         };
         let out = JValue::obj([
@@ -900,27 +945,9 @@ impl Service {
             ("branch", started.branch.clone()),
             ("workspace", started.workspace.clone()),
         ]);
-        match started.thread {
-            Some(thread) => {
-                let finish = Arc::new(Mutex::new(Some(finish)));
-                let later = finish.clone();
-                let watcher = std::thread::Builder::new()
-                    .name(format!("code pipeline {}", started.task_id))
-                    .spawn(move || {
-                        let _ = thread.join();
-                        if let Some(f) = later.lock().unwrap_or_else(PoisonError::into_inner).take()
-                        {
-                            f();
-                        }
-                    });
-                if watcher.is_err() {
-                    // The run goes on detached; the lease is not held past here.
-                    if let Some(f) = finish.lock().unwrap_or_else(PoisonError::into_inner).take() {
-                        f();
-                    }
-                }
-            }
-            None => finish(),
+        if let Some(thread) = started.thread {
+            // The watcher is waiting on this: it cannot have gone away.
+            let _ = hand.send(thread);
         }
         Ok(out)
     }
@@ -1012,10 +1039,29 @@ impl Service {
             .unwrap_or_else(PoisonError::into_inner)
             .get(task_id)
             .cloned();
-        if let Some(signal) = pipeline {
+        if let Some(start) = pipeline {
+            let mut phase = start.phase.lock().unwrap_or_else(PoisonError::into_inner);
+            if *phase == Phase::Queued {
+                // No controller yet (the workspace is being claimed): jobs.cjs `cancel` writes
+                // `job.cancelled` at once, and the run's `job.started` is then refused.
+                self.registry.abort_task(task_id);
+                match tenant
+                    .store
+                    .append(task_id, "job.cancelled", JValue::Obj(Vec::new()))
+                {
+                    Err(e) if !(e.status == Some(409) && e.message == "Job already finished") => {
+                        return Err(refused(e));
+                    }
+                    _ => {}
+                }
+                *phase = Phase::Cancelled;
+                drop(phase);
+                return view_now();
+            }
+            drop(phase);
             before = Some(view_now());
             self.registry.abort_task(task_id);
-            signal.abort();
+            start.signal.abort();
             return before.unwrap_or_else(view_now);
         }
         tenant.executor.cancel_with(task_id, &mut || {

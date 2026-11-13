@@ -11,7 +11,9 @@
 //
 // Operations: { start: body }; { decide: [task, decision, approval] } (`<T1>` / `<A1>`, `<A2>` = the first task / the
 // cards in the order they appeared); { cancel: task }; { facts: true }; { waitCard: task } waits for a card not seen
-// before; { waitEnd: task } until the task ended.
+// before; { waitEnd: task } until the task ended; { startHeld: body } starts without waiting for the answer and waits
+// until the harness's claimRun (held in a `holdClaim` scenario) was entered; { releaseClaim: true } lets the claim
+// answer and records the start's answer.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -61,6 +63,8 @@ const SCENARIOS = {
   'not-set-up': { noCreate: true, ops: [{ facts: true }, { start: BODY }] },
   'paused': { inference: 'paused', ops: [{ start: BODY }] },
   'lease-refused': { inference: 'refuses', ops: [{ start: BODY }, { waitEnd: '<T1>' }] },
+  'cancel-during-claim': { holdClaim: true, ops: [{ startHeld: BODY }, { cancel: '<T1>' }, { facts: true }, { releaseClaim: true },
+    { waitEnd: '<T1>' }, { cancel: '<T1>' }, { facts: true }] },
 };
 
 async function run(sc) {
@@ -72,13 +76,17 @@ async function run(sc) {
     paused: () => sc.inference === 'paused',
     enter: () => { if (sc.inference === 'refuses') throw Object.assign(Error('QA gate held'), { status: 503 }); return () => {}; },
   } : null;
+  let hold = null;
   const standins = {
     workspaces: {
       projectSnapshot: () => structuredClone(STANDINS.snapshot), change: () => structuredClone(STANDINS.change),
       branchTip: () => HEAD, mergePreflight: () => ({ ok: true, baseBranch: 'main' }), mergeVerified: () => ({ ok: true, baseBranch: 'main' }),
     },
     harness: {
-      claimRun: async () => ({ workspace: { ...STANDINS.workspace }, grant: null, cleanupConfirmed: true }),
+      claimRun: async (req) => {
+        if (sc.holdClaim) await new Promise((release) => { hold = { taskId: req.taskId, release }; });
+        return { workspace: { ...STANDINS.workspace }, grant: null, cleanupConfirmed: true };
+      },
       runExecutor: async (ctx, handle, opts) => {
         ctx.checkpoint({ branch: handle.workspace.branch, task: String(opts.label).slice(0, 120), baseSha: handle.workspace.baseSha, headSha: HEAD });
         handle.released = { status: 'released', headSha: HEAD };
@@ -120,9 +128,20 @@ async function run(sc) {
   const sub = (v) => String(v).replace(/<T(\d)>/g, (_, n) => ids.tasks[n - 1] || 'none').replace(/<A(\d)>/g, (_, n) => ids.approvals[n - 1] || 'none');
   const ended = (t) => { const f = path.join(dir, 'jobs', `${t}.jsonl`); return fs.existsSync(f) && /"type":"job\.(completed|failed|cancelled|interrupted)"/.test(fs.readFileSync(f, 'utf8')); };
   const answers = [];
+  let pending = null;
   for (const op of sc.ops) {
     if (op.start) {
       const a = await route(202, () => service.start(workspace, project, op.start));
+      if (a.body.taskId && !ids.tasks.includes(a.body.taskId)) ids.tasks.push(a.body.taskId);
+      answers.push(a);
+    } else if (op.startHeld) {
+      pending = route(202, () => service.start(workspace, project, op.startHeld));
+      for (let i = 0; i < 1000 && !hold; i++) await new Promise((r) => setTimeout(r, 10));
+      if (hold && !ids.tasks.includes(hold.taskId)) ids.tasks.push(hold.taskId);
+      answers.push({ waited: hold ? 'claiming' : 'none' });
+    } else if (op.releaseClaim) {
+      if (hold) hold.release();
+      const a = await pending;
       if (a.body.taskId && !ids.tasks.includes(a.body.taskId)) ids.tasks.push(a.body.taskId);
       answers.push(a);
     } else if (op.decide) {
@@ -155,7 +174,7 @@ async function run(sc) {
   }
   fs.rmSync(dir, { recursive: true, force: true });
   return { enabled: sc.enabled !== false, sandboxKind: sc.sandboxKind || 'sandbox', noCreate: !!sc.noCreate, inference: sc.inference || null,
-    ops: sc.ops, answers, journals, logs };
+    holdClaim: !!sc.holdClaim, ops: sc.ops, answers, journals, logs };
 }
 
 (async () => {
