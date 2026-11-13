@@ -11,7 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
-code-actions = { path = "../code-actions" }
+code-actions = { path = "../code-actions", features = ["host"] }
 js-json = { path = "../js-json" }
 sha2 = "=0.10.9"
 stream-guard = { path = "../stream-guard" }

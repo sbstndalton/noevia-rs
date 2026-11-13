@@ -43,6 +43,7 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "host")]
 pub mod host;
 
 use std::collections::HashSet;
