@@ -472,7 +472,11 @@ impl Drop for Paced {
 /// or, without one, sends a keep-alive line every 50 ms until its reader goes away.
 async fn paced_engine(
     release: Option<Arc<tokio::sync::Notify>>,
-) -> (String, Arc<std::sync::atomic::AtomicBool>, Arc<std::sync::atomic::AtomicBool>) {
+) -> (
+    String,
+    Arc<std::sync::atomic::AtomicBool>,
+    Arc<std::sync::atomic::AtomicBool>,
+) {
     let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let started = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let st = started.clone();
@@ -537,7 +541,9 @@ async fn first_event(body: &mut Body) -> Value {
     serde_json::from_str(text.strip_prefix("data: ").unwrap().trim_end()).unwrap()
 }
 
-fn streamed_request(app: &Arc<noevia_diary::server::App>) -> impl std::future::Future<Output = Response<Body>> {
+fn streamed_request(
+    app: &Arc<noevia_diary::server::App>,
+) -> impl std::future::Future<Output = Response<Body>> {
     let req = Request::builder()
         .method("POST")
         .uri(format!("/internal/answer?tenant={UID}"))
@@ -573,7 +579,10 @@ async fn a_streamed_answer_is_relayed_while_the_model_is_still_answering() {
     let last = events.last().unwrap();
     assert_eq!(last["type"], json!("answered"), "{last}");
     assert_eq!(last["marker"], json!("ok"));
-    assert!(last["visible"].as_str().unwrap().starts_with("The synthetic diary keeps"));
+    assert!(last["visible"]
+        .as_str()
+        .unwrap()
+        .starts_with("The synthetic diary keeps"));
     assert_eq!(last["trace"]["status"], json!("ok"));
 }
 
@@ -594,7 +603,10 @@ async fn a_caller_that_leaves_ends_the_model_call() {
     // The upstream model call is closed promptly, not left to run to its own deadline.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while !dropped.load(std::sync::atomic::Ordering::SeqCst) {
-        assert!(std::time::Instant::now() < deadline, "the model call is still open");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the model call is still open"
+        );
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
 
@@ -612,13 +624,19 @@ async fn a_caller_that_leaves_ends_the_model_call() {
     let pending = tokio::spawn(noevia_diary::server::handle(app.clone(), req));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     while !started.load(std::sync::atomic::Ordering::SeqCst) {
-        assert!(std::time::Instant::now() < deadline, "the model was never called");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the model was never called"
+        );
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
     pending.abort();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     while !dropped.load(std::sync::atomic::Ordering::SeqCst) {
-        assert!(std::time::Instant::now() < deadline, "the plain model call is still open");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the plain model call is still open"
+        );
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
     assert_eq!(snapshot(dir.path()), before);

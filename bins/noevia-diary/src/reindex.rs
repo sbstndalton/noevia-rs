@@ -14,6 +14,12 @@
 //! without the `answer` start-up config (the R9 internal endpoints share it).
 //!
 //! Reply: `{"documents": [{"document", "embedded", "pending", "error"}]}`.
+//!
+//! With `"plan_only": true` and `"documents": [...]` (the index shadow, `DIARY_RUST_INDEX=shadow`)
+//! nothing is written and no lock is taken: each named document's plan (Python `prepare_reindex`:
+//! its chunk rows and the vectors of new and changed chunks) is returned for Python to compare
+//! with its own: `{"documents": [{"document", "rows": [[day, header, hash]], "embeddings":
+//! {hash: [..]}, "pending", "target", "error"}]}`.
 
 use std::sync::Arc;
 
@@ -22,7 +28,7 @@ use axum::http::{HeaderMap, Response};
 use diary_answer::embedder::HttpEmbedder;
 use diary_answer::model::Config as ClientConfig;
 use diary_answer::search::Shared;
-use diary_retrieval::index::{Options, Retriever};
+use diary_retrieval::index::{Embedder, Options, Retriever};
 use diary_retrieval::Publication;
 use serde_json::{json, Value};
 use subtle::ConstantTimeEq;
@@ -101,12 +107,6 @@ pub async fn internal(
     let Some(cfg) = app.answer.clone() else {
         return status(404, json!({}));
     };
-    if headers.get(WRITER_HEADER).map(|v| v.as_bytes()) != Some(b"1") {
-        return status(
-            409,
-            json!({"detail": "a re-index needs the tenant's writer lock"}),
-        );
-    }
     let Some(uid) = tenant_of(query) else {
         return status(400, json!({"detail": "missing or invalid tenant"}));
     };
@@ -124,6 +124,26 @@ pub async fn internal(
         return crate::server::decline();
     };
     let handle = tokio::runtime::Handle::current();
+    if request.get("plan_only") == Some(&json!(true)) {
+        let Some(documents) = request.get("documents").and_then(Value::as_array).map(|d| {
+            d.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        }) else {
+            return status(400, json!({"detail": "plan_only needs the documents"}));
+        };
+        let task =
+            tokio::task::spawn_blocking(move || plans(&app, &cfg, &uid, active, &documents, handle));
+        return task.await.unwrap_or_else(|_| status(500, json!({})));
+    }
+    // A plan writes nothing; a re-index needs the writer lock Python holds.
+    if headers.get(WRITER_HEADER).map(|v| v.as_bytes()) != Some(b"1") {
+        return status(
+            409,
+            json!({"detail": "a re-index needs the tenant's writer lock"}),
+        );
+    }
     let app2 = app.clone();
     let task = tokio::task::spawn_blocking(move || {
         let root = app2.data_root.join("users").join(&uid);
@@ -189,4 +209,93 @@ pub async fn internal(
             .unwrap_or_else(|| status(410, json!({"detail": "tenant deleted"})))
     });
     task.await.unwrap_or_else(|_| status(500, json!({})))
+}
+
+/// The index shadow (`plan_only`): for each named document, what this side's re-index would write
+/// (Python `prepare_reindex`: the parsed chunks and the vectors of the new and changed ones), read
+/// and embedded but never written. Python calls it under its own locks, before its own re-index
+/// of the same documents, and compares the plans. Declined where a re-index here would first have
+/// to adopt a legacy table (a write) or the tenant is not a ready managed one.
+fn plans(
+    app: &App,
+    cfg: &crate::answer::AnswerConfig,
+    uid: &str,
+    active: diary_retrieval::Target,
+    documents: &[String],
+    handle: tokio::runtime::Handle,
+) -> Response<Body> {
+    let root = app.data_root.join("users").join(uid);
+    // Dirty documents are the point here. Python holds its store lock around this call (after
+    // replaying the journal and draining the outbox), so a pending journal row declines.
+    let Ok(Some((store, _))) = managed::ready_for_write(&root, uid, true) else {
+        return crate::server::decline();
+    };
+    let index_path = root.join("managed-index.db");
+    if !index_path.is_file() {
+        return crate::server::decline();
+    }
+    let engine = ClientConfig {
+        base_url: app.llm_main.base_url.clone(),
+        api_key: app.llm_main.api_key.clone(),
+        timeout_s: cfg.timeout_s,
+        max_retries: cfg.max_retries,
+        ..ClientConfig::default()
+    };
+    let embedder = Arc::new(HttpEmbedder::fixed(engine, active, handle));
+    let Ok(mut retriever) = Retriever::open_existing(
+        &index_path,
+        Shared(embedder.clone()),
+        crate::answer::ReadOnly,
+        Options {
+            adopt_on_read: false,
+            ..Options::default()
+        },
+    ) else {
+        return crate::server::decline();
+    };
+    if !retriever.vec_available()
+        || diary_retrieval::slots::needs_legacy_adoption(
+            retriever.connection(),
+            Some(&embedder.active()),
+        )
+        .unwrap_or(true)
+    {
+        return crate::server::decline();
+    }
+    let mut out = Vec::new();
+    for document in documents {
+        let text = match store.get_text(document) {
+            Ok(t) => t,
+            Err(_) => {
+                out.push(json!({"document": document, "error": "read"}));
+                continue;
+            }
+        };
+        match retriever.prepare_reindex(document, text.as_deref()) {
+            Ok(plan) => out.push(plan_json(document, &plan)),
+            Err(e) => out.push(json!({"document": document, "error": e.to_string()})),
+        }
+    }
+    status(200, json!({"documents": out}))
+}
+
+fn plan_json(document: &str, plan: &diary_retrieval::index::ReindexPlan) -> Value {
+    let rows: Vec<Value> = plan
+        .rows
+        .iter()
+        .map(|r| json!([r.day, r.header, r.content_hash]))
+        .collect();
+    let embeddings: serde_json::Map<String, Value> = plan
+        .embeddings
+        .iter()
+        .map(|(h, v)| (h.clone(), json!(v)))
+        .collect();
+    json!({
+        "document": document,
+        "rows": rows,
+        "embeddings": embeddings,
+        "pending": plan.pending,
+        "target": plan.target.as_ref().map(|t| json!({"base_url": t.base_url, "model": t.model, "profile": t.profile})),
+        "error": Value::Null,
+    })
 }

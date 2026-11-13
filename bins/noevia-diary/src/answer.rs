@@ -133,7 +133,7 @@ impl Store for ContextStore<'_> {
 }
 
 /// The chunk index opened for reading only: any write it would make is refused.
-struct ReadOnly;
+pub(crate) struct ReadOnly;
 
 impl Publication for ReadOnly {
     fn run(
