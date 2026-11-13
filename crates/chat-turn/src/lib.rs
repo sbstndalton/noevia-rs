@@ -1,23 +1,24 @@
-//! The native chat turn, first pieces (head start for R8; see handoff/foundation/R8.md).
+//! The native chat turn (track R8): noevia-core's `chat.cjs` turn from the point core hands a prepared
+//! turn off (rust-chat-native.cjs, the `prepared` frame) to its saved end, replayed against recorded
+//! Node turns (`tests/record_turns.cjs`, `tests/native_turns.rs`). Nothing calls it yet: the front's
+//! executor, behind a per-account switch that is off by default, is the next step.
 //!
-//! Beside noevia-core's `chat.cjs` (2,497 lines), not called by anything yet. It holds:
-//! - [`event`]: the events a turn streams, as the JSON Node sends them;
-//! - [`sink`]: the order those events must keep (one terminal, `title` only after `done`);
-//! - [`guard`]: the stream guard for tool-call arguments, over the `stream-guard` crate;
-//! - [`tools`]: the dispatch trait the tool engines implement, and the 300-character result cut;
-//! - [`partial`]: the interrupted-turn record;
-//! - [`record`]: the turn record (chat-interrupted-turn.cjs `createTurnRecord`) and the partial
-//!   file's entry (chat-partial.cjs `bounded`), recorded from Node;
-//! - [`reduce`]: a tool result compacted for the model (`tool-result-reduce.cjs`);
-//! - [`relay`]: one model round turned into events, with the reasoning-only note and the
-//!   telemetry the client needs;
-//! - [`title`]: a chat's generated title, from the title request to the cleaned name and the per-chat
-//!   attempt limit.
-//! - [`helpers`]: the search-query cleaner, the announced-action check, the final-answer round's
-//!   helpers and the tool route notes.
+//! - [`prepared`]: the hand-off frame, read strictly;
+//! - [`native`]: the continuation: the model's lease, the runtime limit and the context fit, the rounds
+//!   (request with reasoning effort and thinking cap, stream, fallback, tool rounds), the close and the
+//!   title; [`host`] is what it asks of the process that runs it;
+//! - [`gate`]: one tool call through the per-call permission gate;
+//! - [`after`]: what a turn keeps when it ends (the interrupted reply, the partial);
+//! - [`round`], [`sse`], [`cap`], [`effort`]: a model round's stream, its lines, the thinking cap, the
+//!   request's reasoning effort;
+//! - [`record`]: the turn record and the partial file's entry; [`title`]: the generated title;
+//!   [`helpers`]: the search-query cleaner, the announced-action check, the final-answer helpers and the
+//!   tool route notes; [`reduce`]: a tool result compacted for the model;
+//! - [`sink`] and [`event`]: the stream's order rule, and typed events for tests; [`guard`]: the stream
+//!   guard for tool-call arguments; [`js`]: JavaScript string and object semantics.
 //!
-//! Not here: context and framing assembly, routing and decision calls, persistence through the
-//! store, approvals, the Diary stream, rounds with tool results fed back to the model.
+//! Every behaviour is proven by fixtures recorded from the Node code (each generator has a `--check`
+//! step in `.github/workflows/chat-turn.yml`); named differences are listed in each module's doc.
 
 pub mod after;
 pub mod cap;
@@ -29,23 +30,17 @@ pub mod helpers;
 pub mod host;
 pub mod js;
 pub mod native;
-pub mod partial;
 pub mod prepared;
 pub mod record;
 pub mod reduce;
-pub mod relay;
 pub mod round;
 pub mod sink;
 pub mod sse;
 pub mod title;
-pub mod tools;
 
 pub use event::{Event, Phase, TimeToFirstToken};
 pub use guard::{ArgGuard, Failure};
-pub use partial::{Disposition, Outcome, Partial, ToolStep};
 pub use record::{
     bounded, partial_file, TurnRecord, PARTIAL_CAP_UNITS, STOPPED_SENDER, TOOL_RESULT_LIMIT,
 };
-pub use relay::{relay, Relayed, Upstream};
 pub use sink::{OrderError, Turn};
-pub use tools::{cap_result, ToolCall, ToolDispatch, ToolOutcome};

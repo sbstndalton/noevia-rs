@@ -1,7 +1,7 @@
 [package]
 name = "chat-turn"
 version = "0.1.0"
-description = "The native chat turn's pieces (noevia-core's chat.cjs in Rust, head start): the event wire shapes and their order, the tool-argument stream guard, the tool dispatch trait, the interrupted-turn partial and a single-round generation relay. Nothing calls it yet."
+description = "The native chat turn (track R8): noevia-core's chat.cjs turn from the prepared hand-off to its saved end, with the per-call tool gate, replayed byte for byte on recorded Node turns. Nothing calls it yet."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
