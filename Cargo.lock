@@ -520,8 +520,26 @@ dependencies = [
 name = "code-actions"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "prompt-framing",
  "proptest",
+]
+
+[[package]]
+name = "code-harness"
+version = "0.1.0"
+dependencies = [
+ "code-acp",
+ "code-actions",
+ "code-harness-config",
+ "code-workspace",
+ "js-json",
+ "rustix",
+ "server-projects",
+ "sha2",
+ "stream-guard",
+ "tempfile",
+ "url",
 ]
 
 [[package]]
@@ -2210,6 +2228,8 @@ dependencies = [
  "brotli",
  "bytes",
  "chat-mirror-sched",
+ "code-acp",
+ "code-harness",
  "code-net-guard",
  "context-fit",
  "dav-parse",
