@@ -7,6 +7,7 @@
 use js_json::JValue;
 
 use crate::effort::Provider;
+use crate::host::Skill;
 
 pub const VERSION: f64 = 1.0;
 
@@ -17,6 +18,20 @@ pub struct Title {
     pub first_message: String,
     pub first_reply: bool,
     pub enabled: bool,
+}
+
+/// A project turn's instruction skills (#272, #546) as core settled them before the cut.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Skills {
+    /// The skills the prompt carries (pinned or picked automatically), in chat.cjs `loadedSkills` order.
+    pub loaded: Vec<Skill>,
+    /// The turn's snapshot's enabled skills, in the project's list order: what a tool call may still load.
+    pub enabled: Vec<Skill>,
+    /// The skill names already taken out of the history (chat.cjs `revokedInHistory`).
+    pub revoked_in_history: Vec<String>,
+    /// The reply warning's other parts (chat.cjs `replyWarning`): the image warning and the coverage warning.
+    pub image_warning: String,
+    pub coverage_warning: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -65,6 +80,9 @@ pub struct Prepared {
     pub compact_only: bool,
     /// #1793: the reply's sources and the injected files the close may add to them (absent: none).
     pub sources: crate::sources::Sources,
+    /// The project's instruction skills; `None` without a project (and from an older core, which hands off no
+    /// turn whose project has skills).
+    pub skills: Option<Skills>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +132,34 @@ fn names(v: &JValue, key: &str) -> Result<Vec<String>, Unreadable> {
                 .ok_or_else(|| Unreadable(format!("prepared.{key} holds a non-name")))
         })
         .collect()
+}
+
+fn skill_list(v: &JValue, key: &str) -> Result<Vec<Skill>, Unreadable> {
+    list(v, key)?
+        .iter()
+        .map(|k| match (k.get("file"), k.get("hash"), k.get("name")) {
+            (JValue::Str(file), JValue::Str(hash), JValue::Str(name)) => Ok(Skill {
+                file: file.clone(),
+                hash: hash.clone(),
+                name: name.clone(),
+            }),
+            _ => Err(Unreadable(format!("prepared.skills.{key} holds a bad skill"))),
+        })
+        .collect()
+}
+
+fn skills(v: &JValue) -> Result<Option<Skills>, Unreadable> {
+    match v {
+        JValue::Undefined | JValue::Null => Ok(None),
+        JValue::Obj(_) => Ok(Some(Skills {
+            loaded: skill_list(v, "loaded")?,
+            enabled: skill_list(v, "enabled")?,
+            revoked_in_history: names(v, "revokedInHistory")?,
+            image_warning: opt_text(v, "imageWarning").unwrap_or_default(),
+            coverage_warning: opt_text(v, "coverageWarning").unwrap_or_default(),
+        })),
+        _ => Err(Unreadable("prepared.skills is not an object".into())),
+    }
 }
 
 fn flag(v: &JValue, key: &str) -> bool {
@@ -209,6 +255,7 @@ impl Prepared {
                 v => crate::sources::Sources::read(v)
                     .ok_or_else(|| Unreadable("prepared.turn.sources is not readable".into()))?,
             },
+            skills: skills(frame.get("skills"))?,
         })
     }
 }

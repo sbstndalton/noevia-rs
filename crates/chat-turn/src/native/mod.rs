@@ -8,7 +8,10 @@
 //! and the empty stream's fallback ([`stream`]); after each round, Node's decisions in Node's order (the
 //! announced-action retry, the final-answer round's calls not run, the tool calls through
 //! [`crate::gate`], the decline pause, the final-answer round); the close (`telemetry` complete,
-//! `done`) and the title. What a turn keeps when it ends is [`crate::after`].
+//! `done`) and the title. What a turn keeps when it ends is [`crate::after`]. A project turn's
+//! instruction skills ([`crate::skills`]) are checked at each round's start, while a round streams
+//! (at most once a second), around each call and at the close; the first round scrubs the history.
+//! A revocation ends the reply with one `skill_revoked` error.
 //!
 //! Named differences from Node, each documented where it is decided:
 //! - waiting for the model's lease shows no queue position (the admission latch answers once granted);
@@ -37,6 +40,7 @@ use crate::host::Host;
 use crate::js;
 use crate::prepared::Prepared;
 use crate::round::{Exchange, Round, Slot};
+use crate::skills::Skills;
 use crate::sse::Utf8Stream;
 use crate::title::{self, AskFacts, AttemptCounter};
 use context::Fit;
@@ -132,6 +136,8 @@ pub(crate) struct Turn<'a, H: Host> {
     decoder: Utf8Stream,
     /// chat.cjs `exchangeKey`, drawn before the lease as there.
     exchange_key: String,
+    /// The turn's instruction skills (#272, #546).
+    skills: &'a Skills,
 }
 
 /// What index.cjs writes when a turn's handler throws after the stream began (a state file that cannot
@@ -145,6 +151,7 @@ pub async fn run<H: Host>(
     helpers: &Helpers<'_>,
     p: &Prepared,
 ) -> Ended {
+    let skills = Skills::new(p);
     let mut t = Turn {
         host,
         process,
@@ -154,6 +161,7 @@ pub async fn run<H: Host>(
         exchange: Exchange::new(p.model.clone(), p.started_at, true),
         decoder: Utf8Stream::new(),
         exchange_key: host.uuid(),
+        skills: &skills,
     };
     let ended = match t.prepare().await {
         // chat.cjs: a compaction-only turn ends after its meter, with no round and no title.
@@ -380,10 +388,30 @@ impl<H: Host> Turn<'_, H> {
             self.helpers.tool_result_cap,
         );
         gate.edit_tools = names(&p.edit_tools);
+        gate.skills = Some(self.skills);
         let mut round: i32 = 0;
         loop {
             if round >= if s.final_pass { 4 } else { 3 } || host.left() {
                 break;
+            }
+            // A loaded skill was disabled or changed: no further model round (#272).
+            if self.skills.revoked(host).await {
+                break;
+            }
+            // #546: a skill disabled while the turn was prepared is taken out of the earlier turns too.
+            if round == 0 {
+                match self.skills.scrub(host, &mut s.messages).await {
+                    Ok((changed, warning)) => {
+                        s.changed |= changed;
+                        if let Some(w) = warning {
+                            host.emit(&event("warning", vec![("text", js::s(w))]));
+                        }
+                    }
+                    Err(()) => {
+                        host.emit(&event("error", vec![("text", js::s(FAILED_TEXT))]));
+                        return Ended::Error;
+                    }
+                }
             }
             match self.budget(&mut s, &fit, round).await {
                 Ok(()) => {}
@@ -465,6 +493,21 @@ impl<H: Host> Turn<'_, H> {
                 .await
             {
                 StreamEnd::Done => {}
+                // Cut off by a revoked skill: what was shown stays, the calls streamed so far are not run.
+                StreamEnd::Revoked => {
+                    for (i, slot) in &current.tool_calls {
+                        host.emit(&event(
+                            "tool_result",
+                            vec![
+                                ("index", js::n(self.exchange.tool_offset + i)),
+                                ("name", js::s(slot.name.clone())),
+                                ("text", js::s(self.skills.not_run(&slot.name))),
+                            ],
+                        ));
+                    }
+                    s.last = current;
+                    break;
+                }
                 StreamEnd::EndTurn => return Ended::Error,
                 StreamEnd::Left => return Ended::Left,
                 StreamEnd::Failed(text) => {
@@ -527,7 +570,7 @@ impl<H: Host> Turn<'_, H> {
                 self.run_calls(&mut gate, &mut current, &mut s).await;
                 self.exchange.tool_offset += next_offset(&current.tool_calls);
             }
-            if p.decline_ends_reply && !gate.declined.is_empty() {
+            if p.decline_ends_reply && !gate.declined.is_empty() && !self.skills.is_revoked() {
                 s.paused = true;
                 self.declined(&gate.declined, s.applied.len());
                 s.last = current;
@@ -558,6 +601,17 @@ impl<H: Host> Turn<'_, H> {
         }
         if host.left() {
             return Ended::Left;
+        }
+        // Any check that saw a loaded skill revoked ends the reply with one error; nothing after it ran.
+        if self.skills.is_revoked() {
+            host.emit(&event(
+                "error",
+                vec![
+                    ("code", js::s("skill_revoked")),
+                    ("text", js::s(self.skills.text())),
+                ],
+            ));
+            return Ended::Error;
         }
         self.close(&s).await
     }
@@ -672,6 +726,9 @@ impl<H: Host> Turn<'_, H> {
             let outcome = gate.call(host, &call, self.exchange.tool_offset).await;
             host.emit(&outcome.event);
             s.messages.push(outcome.message);
+            if let Some(result) = &outcome.read {
+                self.skills.note_read(host, &call.args, result).await;
+            }
             if let Some(a) = outcome.applied {
                 s.applied.push(a);
             }

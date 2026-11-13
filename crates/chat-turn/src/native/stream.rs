@@ -35,6 +35,8 @@ pub(crate) enum StreamEnd {
     Left,
     /// It broke; this error text is the round's last event.
     Failed(String),
+    /// A loaded skill was revoked while it streamed (#272): the stream is cancelled.
+    Revoked,
 }
 
 impl<H: Host> Turn<'_, H> {
@@ -174,6 +176,12 @@ impl<H: Host> Turn<'_, H> {
         true
     }
 
+    /// chat.cjs's check before each chunk the round's stream yields: at most once a second, a loaded skill
+    /// revoked meanwhile cuts the stream.
+    async fn skill_cut(&self) -> bool {
+        self.skills.due(self.host.now_ms()) && self.skills.revoked(self.host).await
+    }
+
     /// Reads a round's stream, the thinking cap's cut and forced answer included.
     pub(crate) async fn read_stream(
         &mut self,
@@ -230,6 +238,9 @@ impl<H: Host> Turn<'_, H> {
                 },
             };
             if let Some(c) = chunk {
+                if self.skill_cut().await {
+                    return StreamEnd::Revoked;
+                }
                 if !self.feed(&mut lines, round, &c) {
                     return StreamEnd::EndTurn;
                 }
@@ -241,6 +252,9 @@ impl<H: Host> Turn<'_, H> {
             // is cancelled, the warning is sent, the reader gets the cut mark (closing an open line), and
             // only then is the answer asked for.
             if let Some(b) = before {
+                if self.skill_cut().await {
+                    return StreamEnd::Revoked;
+                }
                 if !self.feed(&mut lines, round, &b) {
                     return StreamEnd::EndTurn;
                 }
@@ -249,6 +263,9 @@ impl<H: Host> Turn<'_, H> {
             drop(current.take());
             self.host
                 .emit(&event("warning", vec![("text", js::s(cut_warning(cut)))]));
+            if self.skill_cut().await {
+                return StreamEnd::Revoked;
+            }
             if !self.feed(&mut lines, round, CUT_MARK) {
                 return StreamEnd::EndTurn;
             }

@@ -16,7 +16,8 @@
 // Project documents box as MCP discovery offers it (its server only answers the call). Everything is synthetic and
 // QA-named; the engine is a .invalid host and nothing touches the network.
 //
-// Deterministic by construction: the clock is frozen at FIXED_NOW (TZ=UTC), crypto.randomUUID is a
+// Deterministic by construction: the clock is frozen at FIXED_NOW (TZ=UTC; an engine frame { tick: ms } moves it
+// on before the next chunk, the skill check's second, #272), crypto.randomUUID is a
 // counter, and every *_IMPL switch is left at its default in code. The engine is configured as a llama.cpp
 // deployment's (MODEL_MANAGER_KIND=llamacpp, INFERENCE_BASE_URL = the engine), so the default provider is the
 // local engine; the model manager grants the inference gate's lease at once (X-Noevia-Lease on every request).
@@ -29,14 +30,17 @@
 //   bridge    the tool bridges the native executor calls (execute: every field it sends, and the text, the
 //             failure flag, the error it threw or that the client left meanwhile; target: the card's target;
 //             edit-target: a project file edit's resolution, as the bridge answers it: {path, account, digest}
-//             or {error})
+//             or {error}), and the skills bridges (#272, #546; rust-chat-native.cjs): skills-revoked (the loaded
+//             skills checked against the project as stored, and the ones gone), skills-read (a successful call's
+//             args and result, the candidates, the ones it loaded and the skill ledger file after core recorded
+//             them) and skills-scrub (the round-0 messages as the scrub reads them, what it changed and removed)
 //   stubs     after the hand-off's cut, every answer of the other stubs, in order: the tool policy, the chat-wide
 //             grant, the approval decision, the tombstones, the template tools gate and the engine's busy signal
 //   files     the workspace files after the turn (context state, partial), parsed, run-local ids out
 //   record    createTurnRecord() fed with the events: the transcript entry the client keeps
 //   handoff   (a core with rust-chat-native.cjs) the same turn asked for by the front's native executor:
 //             { prepared: the frame | null, refused: the logged reason | null, before: events before the frame,
-//               requests: engine requests made before it }
+//               requests: engine requests made before it, files: the workspace files at the cut }
 // The tool list a request offers is long and repeats: each distinct list is kept once under `tools` at the top,
 // and a request body's `tools` is { "$tools": <key> } (the first 16 hex of the list's JSON sha256).
 // The source files' sha256 are checked, so a changed Node file needs a fresh recording.
@@ -83,6 +87,9 @@ const SOURCES = {
   'server/search-query.cjs': null,
   'server/prompt-framing.cjs': null,
   'server/project-edit-target.cjs': null,
+  'server/instruction-skills.cjs': null,
+  'server/skill-history.cjs': null,
+  'server/skill-reads.cjs': null,
   'server/dav-parse.lock': null,
 };
 for (const rel of Object.keys(SOURCES)) {
@@ -106,9 +113,11 @@ for (const level of ['log', 'info', 'warn', 'error']) console[level] = (...args)
 // ── Determinism ─────────────────────────────────────────────────────────────────────────────
 const FIXED_NOW = Date.UTC(2026, 10, 13, 12, 0, 0);
 const RealDate = Date;
+// How far a case's { tick } frames moved the clock on (reset for every turn).
+let clockOffset = 0;
 class FrozenDate extends RealDate {
-  constructor(...args) { if (args.length) super(...args); else super(FIXED_NOW); }
-  static now() { return FIXED_NOW; }
+  constructor(...args) { if (args.length) super(...args); else super(FIXED_NOW + clockOffset); }
+  static now() { return FIXED_NOW + clockOffset; }
 }
 global.Date = FrozenDate;
 let uuidCounter = 0;
@@ -145,6 +154,23 @@ const editTargets = require(path.join(server, 'project-edit-target.cjs'));
 const realResolveEditTarget = editTargets.resolveEditTarget;
 let onEditTarget = null;
 editTargets.resolveEditTarget = (project, rawArgs, options) => (onEditTarget ? onEditTarget(project, rawArgs, options) : realResolveEditTarget(project, rawArgs, options));
+// The skills bridges' decisions (rust-chat-native.cjs skills/*), logged after the cut as the bridges answer them:
+// the revocation check (a case's `skillChanges[k]` is what the project looks like, fields over the stored ones, at
+// the k-th check after the cut) and the reads a successful call made (skill-reads.cjs, which the bridge uses too).
+const instructionSkills = require(path.join(server, 'instruction-skills.cjs'));
+const realRevoked = instructionSkills.revoked;
+let onRevoked = null;
+instructionSkills.revoked = (current, loaded) => (onRevoked ? onRevoked(current, loaded) : realRevoked(current, loaded));
+const skillReads = require(path.join(server, 'skill-reads.cjs'));
+const realMatchedReads = skillReads.matchedReads;
+let onReads = null;
+skillReads.matchedReads = (project, candidates, rawArgs, result) => {
+  const out = realMatchedReads(project, candidates, rawArgs, result);
+  onReads?.(candidates, rawArgs, result, out);
+  return out;
+};
+const { createSkillHistory } = require(path.join(server, 'skill-history.cjs'));
+const skillOf = (k) => ({ file: k.file, hash: k.hash, name: k.name });
 const { createChatHandler } = require(path.join(server, 'chat.cjs'));
 const { createToolboxes } = require(path.join(server, 'toolboxes.cjs'));
 const { createDriveTools } = require(path.join(server, 'gdrive-tools.cjs'));
@@ -184,7 +210,8 @@ function engine(rounds, log, res) {
     const signal = options.signal;
     const chunks = [];
     for (const frame of round.frames || []) {
-      if (frame && frame.leave) chunks.push({ leave: true });
+      if (frame && frame.tick !== undefined) chunks.push({ tick: frame.tick });
+      else if (frame && frame.leave) chunks.push({ leave: true });
       else if (frame && frame.wait) chunks.push({ wait: true });
       else if (frame && frame.stall) chunks.push({ stall: true });
       else if (frame && frame.done) chunks.push('data: [DONE]\n\n');
@@ -197,7 +224,7 @@ function engine(rounds, log, res) {
       }
       else chunks.push(typeof frame === 'string' ? frame : `data: ${JSON.stringify(frame)}\n\n`);
     }
-    log.chunks[next - 1] = chunks.map((c) => (c && c.leave ? 'leave' : c && c.stall ? 'stall' : c && c.wait ? 'wait'
+    log.chunks[next - 1] = chunks.map((c) => (c && c.tick !== undefined ? { tick: c.tick } : c && c.leave ? 'leave' : c && c.stall ? 'stall' : c && c.wait ? 'wait'
       : typeof c === 'string' ? { text: c } : { b64: Buffer.from(c).toString('base64') }));
     let i = 0;
     const aborted = () => new Promise((_, reject) => {
@@ -206,6 +233,8 @@ function engine(rounds, log, res) {
     });
     const stream = new ReadableStream({
       async pull(controller) {
+        // The clock moves on before the next chunk is read (the engine sent it a moment later).
+        while (i < chunks.length && chunks[i] && chunks[i].tick !== undefined) clockOffset += chunks[i++].tick;
         if (i >= chunks.length) { controller.close(); return; }
         const chunk = chunks[i++];
         if (chunk && chunk.leave) {
@@ -253,6 +282,7 @@ function listFiles(dir) {
 async function runTurn(c, { handoff = false } = {}) {
   uuidCounter = 0;
   mathSeed = 0x2026;
+  clockOffset = 0;
   logged = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-turn-'));
   // The project's image sources (chat.cjs projectImages): `images` maps an asset id to its bytes (base64), written to
@@ -282,6 +312,39 @@ async function runTurn(c, { handoff = false } = {}) {
       log.bridge.push({ op: 'edit-target', args: rawArgs, found: found.error ? { error: found.error }
         : { path: found.path, account: found.account || null, digest: editTargets.targetDigest(found.path, found.account || null) } });
       return found;
+    };
+    let revocations = 0;
+    onRevoked = (current, loaded) => {
+      if (!cut) return realRevoked(current, loaded);
+      const changed = c.skillChanges && c.skillChanges[revocations++];
+      const gone = realRevoked(current && changed ? { ...current, ...changed } : current, loaded);
+      log.bridge.push({ op: 'skills-revoked', loaded: [...loaded].map(([file, k]) => ({ file, hash: k.hash, name: k.name })), gone: gone.map((g) => ({ file: g.file, name: g.name })) });
+      return gone;
+    };
+    // The native executor asks the read bridge only with candidates (the enabled skills not loaded yet).
+    onReads = (candidates, rawArgs, result, out) => {
+      if (cut && candidates.length) log.bridge.push({ op: 'skills-read', candidates: candidates.map(skillOf), args: rawArgs, result: String(result ?? ''), loaded: out.map(skillOf) });
+    };
+    // One skill ledger for the turn (chat.cjs skillHistory): a version a read recorded is logged with the read, as
+    // the ledger file stands after it; the round-0 scrub (the one after the cut) as the scrub bridge answers it.
+    const ledger = createSkillHistory({ fs, path });
+    const skillHistory = {
+      ...ledger,
+      record: (...args) => {
+        const changed = ledger.record(...args);
+        const last = log.bridge[log.bridge.length - 1];
+        if (cut && last?.op === 'skills-read') last.ledger = JSON.parse(fs.readFileSync(path.join(dir, 'skill-history.json'), 'utf8'));
+        return changed;
+      },
+      scrub: (args) => {
+        const out = ledger.scrub(args);
+        if (!cut) return out;
+        const messages = args.messages.map((m) => (!m || m.role === 'user' || m.role === 'system' || typeof m.content !== 'string' ? null : { role: m.role, content: m.content }));
+        const changed = [];
+        if (out.removed.length) out.messages.forEach((m, i) => { if (m !== args.messages[i]) changed.push([i, m.content]); });
+        log.bridge.push({ op: 'skills-scrub', chatId: args.chatId ?? null, messages, changed, removed: out.removed });
+        return out;
+      },
     };
     // `policy`: tool name -> mode, or a list of modes for its calls after the cut (the last repeats; the
     // preparation sees the first). Otherwise writes ask and reads run.
@@ -320,13 +383,18 @@ async function runTurn(c, { handoff = false } = {}) {
       boxes: [driveTools.box], driveTools, offered: (id) => id !== 'gdrive',
       mcpBoxes: () => (c.docs ? [QA_DOCS_BOX] : []), mcpTools: () => (c.docs ? QA_DOCS_TOOLS : new Map()), executeMcp,
       prefill: { budgetFor: () => null, rateFor: () => 0 }, requestScope,
-      scope: requestScope, documentSources: { notice: () => '' }, workspace: () => ({ dir }),
+      scope: requestScope, documentSources: { notice: () => '' }, workspace: () => ({ dir }), getProject: (id) => stored(id),
       // `pageSave`: the coworker page tool (#2446), offered in a coworker's conversation (a `specialist-` project).
       ...(c.pageSave ? { specialistTools: require(path.join(server, 'specialist-page-save.cjs')).createPageSave({ store: { specialistPageSave: async () => ({ status: 500 }) } }) } : {}),
     });
 
     const res = new EventEmitter();
     const out = { http: null, refusal: null, events: [], keepAlives: 0, raw: [] };
+    // The project as stored: after the cut, a case's `storedAfterCut` fields over it (a change made while the turn ran).
+    function stored(id) {
+      if (!project || id !== project.id) return null;
+      return cut && c.storedAfterCut ? { ...project, ...c.storedAfterCut } : project;
+    }
     res.writableEnded = false;
     res.destroyed = false;
     res.writeHead = (status, headers) => { out.http = { status, headers }; };
@@ -389,7 +457,7 @@ async function runTurn(c, { handoff = false } = {}) {
         health: async () => ({ ok: true, body: { all_models_loaded: loadedNow ? [{ model_name: modelName, loaded: true, recipe_options: { ctx_size: ctxSize } }] : [] } }),
         ...(c.props ? { props: async () => ({ ok: false }) } : {}),
       },
-      requestScope, currentWorkspace: () => workspace, json, getProject: (id) => (project && id === project.id ? project : null),
+      requestScope, currentWorkspace: () => workspace, json, getProject: (id) => stored(id), skillHistory,
       // providers.cjs providerHeaders: JSON, and a bearer key when the row has one other than 'local' (this one has none).
       getProvider: () => ({ id: 'default', baseUrl: ENGINE, label: 'QA engine' }),
       providerHeaders: (p, extra) => ({ 'Content-Type': 'application/json', ...(extra || {}), ...(p.apiKey && p.apiKey !== 'local' ? { Authorization: `Bearer ${p.apiKey}` } : {}) }),
@@ -456,7 +524,9 @@ async function runTurn(c, { handoff = false } = {}) {
       return { prepared, refused, before: prepared ? out.events.length - 1 : null, requests: prepared ? log.requests.length : null,
         stores: prepared ? log.stores.length : null,
         // What core wrote on the wire for it, frame by frame as res.write got them (the front's frame splitter reads these).
-        raw: prepared ? out.raw : null };
+        raw: prepared ? out.raw : null,
+        // What the preparation wrote to the workspace (a pinned skill's ledger entry): the native turn starts from it.
+        files: prepared ? listFiles(dir) : null };
     }
     // The script is exact: every round it names is asked for, and no other.
     if (!process.env.RECORD_LOOSE && upstream.used() !== (c.rounds || []).length) throw new Error(`${c.name}: the turn made ${upstream.used()} engine requests, the script has ${(c.rounds || []).length}`);
@@ -469,6 +539,7 @@ async function runTurn(c, { handoff = false } = {}) {
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
         retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
+        skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
         rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
@@ -524,6 +595,17 @@ const SEES = { supported: true };
 const IMAGE_CTX = 8192;
 const IMAGE_EXCHANGES = 6;
 const IMAGE_FILL = 20;
+// Instruction skills (#272, #546): two synthetic reviewed and enabled skills, the first one off again, and its pin.
+const QA_SKILL_FILE = 'qa-skill/SKILL.md';
+const QA_SKILL_BODY = '---\nname: QA Skill\ndescription: A synthetic QA skill for the recordings.\n---\nQA skill step one: check the synthetic file before answering.\nQA skill step two: answer in one short sentence.\n';
+const QA_OTHER_BODY = '---\nname: QA Other\ndescription: A second synthetic QA skill.\n---\nQA other step: list the synthetic files first.\n';
+const QA_SKILL_HASH = instructionSkills.hash(QA_SKILL_BODY);
+const QA_SKILL_FILES = [{ name: QA_SKILL_FILE, content: QA_SKILL_BODY }, { name: 'qa-other/SKILL.md', content: QA_OTHER_BODY }];
+const QA_SKILL_STATE = (on) => Object.fromEntries(QA_SKILL_FILES.map((f) => [f.name, { enabled: f.name !== QA_SKILL_FILE || on, reviewedHash: instructionSkills.hash(f.content) }]));
+const QA_SKILLS = { files: QA_SKILL_FILES, instructionSkills: QA_SKILL_STATE(true) };
+const QA_SKILL_OFF = { instructionSkills: QA_SKILL_STATE(false) };
+const QA_PIN = `${instructionSkills.skillId({ id: 'qa-project' }, QA_SKILL_FILE)}@${QA_SKILL_HASH}`;
+const READ_SKILL = JSON.stringify({ name: QA_SKILL_FILE });
 const CASES = [
   { name: 'plain', about: 'A plain reply in two deltas, with usage and timings, ended by [DONE].',
     rounds: [{ frames: [chunk({ role: 'assistant', content: '' }), chunk({ content: 'Hello from ' }), chunk({ content: 'QA.' }), finish('stop'), usage(52, 5, 25), { done: true }] }] },
@@ -750,6 +832,25 @@ const CASES = [
   { name: 'image_description_failed', about: 'The Vision role cannot describe the image (its request fails): the status and warning say so, and the answering model, which can see, is handed the image.',
     ...QA_IMAGE, visionRole: 'qa-vision', vision: SEES,
     rounds: [{ status: 500, body: JSON.stringify({ error: { message: 'QA vision failure' } }) }, answer('Read the chart directly: one dot.')] },
+  { name: 'skills_plain', about: 'A project with instruction skills, none loaded and none changed: handed off; the round-0 scrub finds nothing.',
+    project: QA_SKILLS, rounds: [answer('A reply in a project with skills.')] },
+  { name: 'skills_read_noted', about: 'The model reads a skill through read_project_file: the read loads it (core records it in the skill ledger) and the next round checks it.',
+    project: QA_SKILLS, rounds: [{ frames: [toolCall('read_project_file', READ_SKILL), finish('tool_calls')] }, answer('Done, following the QA skill.')] },
+  { name: 'skills_revoked_between_rounds', about: 'A skill read in the first round is disabled before the second: no further round, the skill_revoked error.',
+    project: QA_SKILLS, skillChanges: [QA_SKILL_OFF], rounds: [{ frames: [toolCall('read_project_file', READ_SKILL), finish('tool_calls')] }] },
+  { name: 'skills_revoked_mid_stream', about: 'A pinned skill disabled while the answer streams: the chunk a second later cuts the stream, and the call streamed so far is not run.',
+    project: QA_SKILLS, body: { skill: QA_PIN }, skillChanges: [null, QA_SKILL_OFF],
+    rounds: [{ frames: [chunk({ content: 'Starting the QA steps. ' }), toolCall('drive_read_file', '{"fileId":"qa-skill-file"}'), { tick: 1500 }, chunk({ content: 'never shown' }), finish('tool_calls'), { done: true }] }] },
+  { name: 'skills_revoked_on_card', about: 'A pinned skill disabled while a write\'s card is open: approved, then refused (audited skill-revoked), and the reply ends on the error.',
+    project: QA_SKILLS, body: { skill: QA_PIN }, decision: 'approve', skillChanges: [null, null, QA_SKILL_OFF],
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-skill"}'), finish('tool_calls')] }] },
+  { name: 'skills_scrubbed_at_round_0', about: 'A skill an earlier reply used is disabled after the turn was prepared: the first round takes it out of the history, with the warning.',
+    project: QA_SKILLS, storedAfterCut: QA_SKILL_OFF,
+    body: { history: [{ role: 'user', content: 'QA earlier question' }, { role: 'assistant', content: `QA earlier answer.\nIt followed the skill with SHA-256 ${QA_SKILL_HASH}.` }] },
+    rounds: [answer('An answer without the skill.')] },
+  { name: 'skills_pinned', about: 'A skill pinned by the request (#571) and a read in the first round: every check finds it standing; the other skill is a candidate the read does not load.',
+    project: QA_SKILLS, body: { skill: QA_PIN },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-pin"}'), finish('tool_calls')] }, answer('Done with the pinned skill.')] },
   { name: 'page_save_stays_in_node', about: 'A coworker conversation offers the page save (#2446): the hand-off is refused (page-save) and Node runs the turn.',
     pageSave: true, project: { id: 'specialist-qa', name: 'QA Coworker' }, rounds: [answer('A coworker reply.')] },
 ];
