@@ -17,6 +17,7 @@ pub mod chat_activity;
 pub mod chat_edge;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
+pub mod chat_native;
 pub mod chat_turn;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_oauth_routes;

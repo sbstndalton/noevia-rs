@@ -2114,6 +2114,7 @@ dependencies = [
  "brotli",
  "bytes",
  "chat-mirror-sched",
+ "chat-turn",
  "code-net-guard",
  "context-fit",
  "dav-parse",

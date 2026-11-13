@@ -135,6 +135,11 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
         chat_edge::Verdict::Cowork => chat_edge::COWORK_PATH,
         chat_edge::Verdict::Refuse(status, text) => return reply::json_text(status, text, true),
     };
+    // Track R8: an account the native executor runs (chat_native.rs; NOEVIA_CHAT_EXECUTOR, off by default).
+    let native = target == TURN_PATH && crate::chat_native::wanted(app, &authn.user.id);
+    if native {
+        crate::chat_native::strip_client_header(&mut parts.headers);
+    }
     parts.headers.remove(header::TRANSFER_ENCODING);
     parts
         .headers
@@ -145,6 +150,19 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
         (USER_HEADER, user),
         (chat_edge::LEASE_HEADER, held.lease.clone()),
     ];
+    if native {
+        let user_id = authn.user.id.clone();
+        let res = crate::chat_native::serve(app, user_id, |handoff| async move {
+            let mut extra = extra.to_vec();
+            extra.push(crate::chat_native::handoff_header(handoff));
+            app.proxy
+                .relay(conn.peer, req, target, &extra, RELAY_LIMIT)
+                .await
+        })
+        .await;
+        drop(held);
+        return res.unwrap_or_else(unavailable);
+    }
     let res = app
         .proxy
         .relay(conn.peer, req, target, &extra, RELAY_LIMIT)
