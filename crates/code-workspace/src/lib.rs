@@ -30,7 +30,9 @@
 //!    `gpg.*program`) or `extensions.worktreeConfig`, when it has `.git/config.worktree` or
 //!    `.git/commondir`, or when a name in it is not UTF-8; noevia's commit runs with
 //!    `commit.gpgSign=false`. Node ran the harness's command in each case
-//!    (sbstndalton/noevia#2528).
+//!    (sbstndalton/noevia#2528). This also stops a harness that ran `git sparse-checkout`
+//!    (which turns on `extensions.worktreeConfig`): such a release ends `stuck` for a person to
+//!    look at, which fails safe. Like Node, the attributes walk stops 64 levels down.
 //! 6. `contains` answers false for a path that exists but cannot be named as UTF-8 (Node said
 //!    true for a link to such a directory, #2529); an empty branch is no branch, as in Node.
 //!
@@ -445,6 +447,17 @@ const MAX_CHOWN_DEPTH: usize = 512;
 /// `O_NOFOLLOW` (`fchownat` relative to each), so a directory swapped for a link while it runs
 /// leads nowhere (Node walked by path: sbstndalton/noevia#2529).
 pub fn chown_tree(target: &Path, ids: Ids) -> io::Result<()> {
+    chown_tree_with(target, ids, &|_| {})
+}
+
+/// [`chown_tree`], calling `between(name)` after each entry is handed over and before it is
+/// opened to descend: where a racing harness would swap it (tests use it to do exactly that).
+#[doc(hidden)]
+pub fn chown_tree_with(
+    target: &Path,
+    ids: Ids,
+    between: &dyn Fn(&std::ffi::CStr),
+) -> io::Result<()> {
     use rustix::fs::{chownat, open, openat, AtFlags, Dir, Gid, Mode, OFlags, Uid, CWD};
     use rustix::io::Errno;
     let (uid, gid) = (Some(Uid::from_raw(ids.uid)), Some(Gid::from_raw(ids.gid)));
@@ -473,6 +486,7 @@ pub fn chown_tree(target: &Path, ids: Ids) -> io::Result<()> {
             }
             let parent = dir.fd()?;
             chownat(parent, name, uid, gid, AtFlags::SYMLINK_NOFOLLOW)?;
+            between(name);
             match openat(parent, name, dflags, Mode::empty()) {
                 Ok(fd) => Some(Dir::read_from(&fd)?),
                 Err(Errno::NOTDIR | Errno::LOOP) => None,

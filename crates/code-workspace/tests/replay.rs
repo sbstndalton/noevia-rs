@@ -634,6 +634,38 @@ fn the_hand_over_never_follows_a_link() {
 }
 
 #[test]
+fn the_hand_over_never_follows_a_directory_swapped_for_a_link_mid_walk() {
+    let dir = tempfile::tempdir().unwrap();
+    let tree = dir.path().join("tree");
+    let outside = dir.path().join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret"), "x").unwrap();
+    fs::create_dir_all(tree.join("d")).unwrap();
+    fs::write(tree.join("d/secret"), "qa").unwrap();
+    let ctime = || fs::metadata(outside.join("secret")).unwrap().ctime_nsec();
+    let before = ctime();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let me = fs::metadata(dir.path()).unwrap();
+    // Right after `d` is handed over and before it is entered, the harness swaps it for a link.
+    let swap = |name: &std::ffi::CStr| {
+        if name.to_bytes() == b"d" {
+            fs::rename(tree.join("d"), tree.join("d.real")).unwrap();
+            std::os::unix::fs::symlink(&outside, tree.join("d")).unwrap();
+        }
+    };
+    code_workspace::chown_tree_with(
+        &tree,
+        Ids {
+            uid: me.uid(),
+            gid: me.gid(),
+        },
+        &swap,
+    )
+    .unwrap();
+    assert_eq!(before, ctime(), "the walk followed the swapped link");
+}
+
+#[test]
 fn the_runner_stops_git_at_its_buffer_cap_and_its_deadline() {
     use std::os::unix::fs::PermissionsExt;
     use std::time::{Duration, Instant};

@@ -104,15 +104,29 @@ fn read_capped(mut from: impl Read, cap: usize, over: &AtomicBool) -> Vec<u8> {
 
 /// Node's `spawnSync git <code>` name for a failed start.
 fn errno_name(e: &std::io::Error) -> String {
-    match e.raw_os_error() {
-        Some(2) => "ENOENT".into(),
-        Some(13) => "EACCES".into(),
-        Some(20) => "ENOTDIR".into(),
-        Some(7) => "E2BIG".into(),
-        Some(12) => "ENOMEM".into(),
-        Some(n) => format!("E{n}"),
-        None => "EUNKNOWN".into(),
-    }
+    let name = match e.raw_os_error() {
+        Some(1) => "EPERM",
+        Some(2) => "ENOENT",
+        Some(4) => "EINTR",
+        Some(5) => "EIO",
+        Some(7) => "E2BIG",
+        Some(8) => "ENOEXEC",
+        Some(11) => "EAGAIN",
+        Some(12) => "ENOMEM",
+        Some(13) => "EACCES",
+        Some(20) => "ENOTDIR",
+        Some(21) => "EISDIR",
+        Some(23) => "ENFILE",
+        Some(24) => "EMFILE",
+        Some(26) => "ETXTBSY",
+        Some(28) => "ENOSPC",
+        Some(30) => "EROFS",
+        Some(36) => "ENAMETOOLONG",
+        Some(40) => "ELOOP",
+        Some(n) => return format!("E{n}"),
+        None => "EUNKNOWN",
+    };
+    name.to_string()
 }
 
 impl Git {
@@ -205,8 +219,19 @@ impl Git {
                 }
             }
         };
-        // Whatever git left running in its group goes too, so the readers see their pipes close.
-        kill();
+        // git has been reaped. Something it started may still hold the pipes open; then the group
+        // still exists (so its id cannot have been reused) and goes too. Only then: signalling a
+        // group with no member left could reach an unrelated one that took the id.
+        let pending = |h: &Option<std::thread::JoinHandle<Vec<u8>>>| {
+            h.as_ref().is_some_and(|h| !h.is_finished())
+        };
+        let settle = Instant::now() + Duration::from_millis(500);
+        while (pending(&out) || pending(&err)) && Instant::now() < settle {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        if pending(&out) || pending(&err) {
+            kill();
+        }
         let join = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
             h.and_then(|h| h.join().ok()).unwrap_or_default()
         };
