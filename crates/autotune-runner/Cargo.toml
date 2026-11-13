@@ -11,15 +11,19 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+autotune-plan = { path = "../autotune-plan" }
 autotune-start = { path = "../autotune-start" }
+chat-template-caps = { path = "../chat-template-caps" }
 js-json = { path = "../js-json" }
 llamacpp-autoconfig = { path = "../llamacpp-autoconfig" }
 llamacpp-presets = { path = "../llamacpp-presets" }
+load-verdict = { path = "../load-verdict" }
+long-profile = { path = "../long-profile" }
 regex = "1"
 sha2 = "=0.10.9"
+tune-contention = { path = "../tune-contention" }
 # Notify only (no runtime): an abort a waiting dependency can be woken by.
 tokio = { version = "1", default-features = false, features = ["sync"] }
 
 [dev-dependencies]
-autotune-plan = { path = "../autotune-plan" }
 tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }

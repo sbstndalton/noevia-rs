@@ -321,28 +321,6 @@ impl Context for NoContext {
     fn cancel_probe(&self) {}
 }
 
-/// A decision crate's reply, or the module's refusal as Node's DavParseError.
-fn decided(code: u32, reply: &str, what: &str) -> Result<JValue, Fail> {
-    if code != 0 {
-        return Err(Fail::new(format!("{what} is unavailable")));
-    }
-    wtf16::parse(reply).map_err(|_| Fail::new(format!("{what} reply has an unexpected shape")))
-}
-
-/// dav-parse-wasm.cjs: text sent to a module is made well formed first (lone surrogates as U+FFFD).
-fn well_formed(v: &JValue) -> String {
-    let text = wtf16::stringify(v).unwrap_or_default();
-    text.chars()
-        .map(|c| {
-            if wtf16::lone_unit(c).is_some() {
-                '\u{fffd}'
-            } else {
-                c
-            }
-        })
-        .collect()
-}
-
 impl Deps for FrontDeps {
     type Release = FrontRelease;
     type Context = NoContext;
@@ -715,158 +693,47 @@ impl Deps for FrontDeps {
 
     async fn judge(&self, request: JValue) -> Result<JValue, Fail> {
         // load-advisor.cjs judge: Rust's rules (load-verdict). No decision service is asked from
-        // this front yet, so a rule tie stays the step's own cause (`advisor: unavailable`).
-        let cause = request
-            .get("cause")
-            .as_str()
-            .filter(|c| matches!(*c, "oom" | "load" | "timeout" | "time" | "recall"))
-            .unwrap_or("load");
-        let ev = request.get("evidence");
-        let int = |v: &JValue, lo: f64, hi: f64| match v.as_num() {
-            Some(n) if n.fract() == 0.0 && n >= lo && n <= hi => JValue::Num(n),
-            _ => JValue::Null,
-        };
-        let evidence = if ev.is_object() {
-            let text = ev.get("text").as_str().unwrap_or("");
-            let flat: String = text
-                .chars()
-                .map(|c| {
-                    if matches!(c, '\u{0}'..='\u{8}' | '\u{b}'..='\u{1f}' | '\u{7f}'..='\u{9f}') {
-                        ' '
-                    } else {
-                        c
-                    }
-                })
-                .collect();
-            JValue::obj([
-                ("status", int(ev.get("status"), 0.0, 999.0)),
-                ("exitCode", int(ev.get("exitCode"), -1024.0, 1024.0)),
-                ("text", JValue::from(wtf16::slice(&flat, 2048))),
-                (
-                    "crash",
-                    JValue::Bool(ev.get("crash") == &JValue::Bool(true)),
-                ),
-            ])
-        } else {
-            JValue::Null
-        };
-        let ask = JValue::obj([("cause", JValue::from(cause)), ("evidence", evidence)]);
-        let (code, reply) = load_verdict::verdict_json(&well_formed(&ask));
-        let Ok(v) = decided(code, &reply, "load verdict") else {
-            return Ok(JValue::Null);
-        };
-        let advisor = if v.get("ask").truthy() {
-            "unavailable"
-        } else {
-            "not_asked"
-        };
-        Ok(JValue::obj([
-            ("outcome", v.get("outcome").clone()),
-            ("reason", v.get("reason").clone()),
-            (
-                "classification",
-                JValue::obj([
-                    ("source", v.get("source").clone()),
-                    ("rule", v.get("rule").clone()),
-                    ("ruleId", v.get("ruleId").clone()),
-                    ("advisor", JValue::from(advisor)),
-                ]),
-            ),
-        ]))
+        // this front yet, so a rule tie keeps the rule's verdict (`advisor: unavailable`).
+        Ok(autotune_runner::decide::judge(&request))
     }
 
     fn plan(&self, request: &JValue) -> Result<JValue, Fail> {
-        let (code, reply) = autotune_plan::plan_json(&well_formed(request));
-        decided(code, &reply, "autotune plan")
+        autotune_runner::decide::plan(request)
     }
 
     fn contention(&self, request: &JValue) -> Result<JValue, Fail> {
-        let (code, reply) = tune_contention::decide_json(&well_formed(request));
-        decided(code, &reply, "tune contention")
+        autotune_runner::decide::contention(request)
     }
 
     fn template_caps(&self, template: &str) -> Result<JValue, Fail> {
-        let reply = chat_template_caps::reply_json(&chat_template_caps::analyze(template));
-        decided(0, &reply, "template caps")
+        autotune_runner::decide::template_caps(template)
     }
 
     fn serving_verdict(&self, status: f64, body_text: &str) -> Result<JValue, Fail> {
-        if !(status.fract() == 0.0 && (0.0..=f64::from(u32::MAX)).contains(&status)) {
-            return Err(Fail::new("provider error input has the wrong type"));
-        }
-        let v = chat_template_caps::serving_verdict(status as u32, body_text);
-        decided(0, &chat_template_caps::verdict_json(&v), "serving verdict")
+        autotune_runner::decide::serving_verdict(status, body_text)
     }
 
     fn scan(&self, request: JValue) -> Result<JValue, Fail> {
         let (code, reply) =
             autotune_plan::scan::run_json(&wtf16::stringify(&request).unwrap_or_default());
-        decided(code, &reply, "Auto-tune scan")
+        if code != 0 {
+            return Err(Fail::new("Auto-tune scan is unavailable."));
+        }
+        wtf16::parse(&reply).map_err(|_| Fail::new("Auto-tune scan is unavailable."))
     }
 
     fn long_pairs(&self, rows: &JValue) -> JValue {
-        let mut seen = std::collections::HashSet::new();
-        let mut input = Vec::new();
-        for row in autotune_runner::js::items(rows) {
-            let Some(id) = row.get("id").as_str().filter(|i| !i.is_empty()) else {
-                continue;
-            };
-            if seen.contains(id) || id.len() > 512 || input.len() >= 512 {
-                continue;
-            }
-            seen.insert(id.to_owned());
-            let model = self.file_of(row).filter(|m| m.len() <= 4096);
-            input.push(JValue::obj([
-                ("id", JValue::from(id)),
-                ("model", model.map_or(JValue::Null, JValue::from)),
-            ]));
-        }
-        let ask = JValue::obj([("op", JValue::from("pairs")), ("rows", JValue::Arr(input))]);
-        let (code, reply) = long_profile::run_json(&well_formed(&ask));
-        decided(code, &reply, "long profile")
-            .map(|r| r.get("pairs").clone())
-            .ok()
-            .filter(|p| matches!(p, JValue::Arr(_)))
-            .unwrap_or(JValue::Arr(Vec::new()))
+        autotune_runner::decide::long_pairs(rows, |row| self.file_of(row))
     }
 
     fn long_section(&self, text: &str, row: &JValue) -> JValue {
-        let model = self.file_of(row);
-        let args = row.get("status").get("args");
-        let mmproj = autotune_runner::js::items(args)
-            .iter()
-            .position(|a| matches!(a.as_str(), Some("--mmproj" | "-mm")))
-            .and_then(|i| autotune_runner::js::items(args).get(i + 1))
-            .and_then(JValue::as_str)
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-            .or_else(|| {
-                let id = row.get("id").as_str()?;
-                self.presets().ok()?.files(id).1
-            });
-        let ask = JValue::obj([
-            ("op", JValue::from("section")),
-            ("text", JValue::from(text)),
-            ("base", row.get("id").clone()),
-            ("model", model.map_or(JValue::Null, JValue::from)),
-            ("mmproj", mmproj.map_or(JValue::Null, JValue::from)),
-        ]);
-        let (code, reply) = long_profile::run_json(&well_formed(&ask));
-        match decided(code, &reply, "long profile") {
-            Ok(r) if r.get("ok") == &JValue::Bool(true) => JValue::obj([
-                ("ok", JValue::Bool(true)),
-                ("id", r.get("id").clone()),
-                ("text", r.get("text").clone()),
-            ]),
-            Ok(r) => JValue::obj([
-                ("ok", JValue::Bool(false)),
-                ("reason", r.get("reason").clone()),
-            ]),
-            Err(_) => JValue::obj([
-                ("ok", JValue::Bool(false)),
-                ("reason", JValue::from("unavailable")),
-            ]),
-        }
+        let mmproj =
+            autotune_runner::decide::arg_of(row.get("status").get("args"), &["--mmproj", "-mm"])
+                .or_else(|| {
+                    let id = row.get("id").as_str()?;
+                    self.presets().ok()?.files(id).1
+                });
+        autotune_runner::decide::long_section(text, row.get("id"), self.file_of(row), mmproj)
     }
 
     fn now(&self) -> f64 {
