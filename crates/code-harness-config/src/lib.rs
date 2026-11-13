@@ -15,19 +15,26 @@
 //! - [`write_harness_config`] / [`write_pinned`]: the symlink-safe write (no link in any directory
 //!   component, no link or directory at the target, a fresh `O_CREAT|O_EXCL` file mode `0o600`,
 //!   new directories mode `0o700`) and the hand-over to the harness user through an injectable
-//!   `lchown`.
+//!   [`Handover`] ([`Chown`] in production), all through directory descriptors.
 //! - [`cwd_pin_paths`]: the pinned paths that land in the working tree and must never be committed.
 //!
 //! Proved against fixtures recorded from the Node module (`tools/gen-fixtures.cjs`, replayed by
 //! `tests/fixtures.rs`). Inputs are Rust strings, so the lone UTF-16 surrogates a JS string can
 //! hold are not representable; every other input behaves as in Node, including JS `trim()`
-//! (which strips U+FEFF but not U+0085, unlike `str::trim`).
+//! (which strips U+FEFF but not U+0085, unlike `str::trim`). Token limits are `f64`: Node also
+//! accepts strings or `null` there (written as given into the JSON files, `0` in the YAML patch),
+//! which this port cannot express; its only caller passes numbers or nothing.
 //!
 //! Regenerating: `node tools/gen-fixtures.cjs <noevia-core>/server` rewrites
 //! `tests/fixtures/code-harness-config.v1.json` (deterministic; the sha256 of the Node source it
 //! exercised is in the fixture's `source` field). Synthetic inputs only.
 //!
-//! Named differences from Node: none. Two Node behaviours are kept on purpose and covered by the
+//! Named difference from Node, `fd-walk` (see the `write` module): the write walks directory
+//! descriptors, so a link swapped in after a component was checked is refused instead of
+//! followed, and the hand-over goes through descriptors, never a path. The JSON files cannot fail
+//! to serialise in practice; if one did, the result is a 500 refusal rather than an empty file.
+//!
+//! Two Node behaviours are kept on purpose and covered by the
 //! fixture: a missing working directory is refused with the same "needs a private home directory"
 //! message as a missing home, and a later file's refusal leaves the earlier files written (the
 //! `claude-code` harness writes its working-tree file before it finds the home missing).
@@ -41,7 +48,7 @@ pub use gates::{DSH_GATE, PI_GATE};
 use js_json::JValue;
 #[cfg(unix)]
 pub use write::{
-    lchown, write_harness_config, write_pinned, Owner, PinError, Record, WriteRequest,
+    write_harness_config, write_pinned, Chown, Handover, Owner, PinError, Record, WriteRequest,
 };
 
 /// Every action class asks; there is no "never ask" (`PERMISSION`).
@@ -92,7 +99,7 @@ pub const CONFLICT: u16 = 409;
 
 /// What a task asks to be pinned. `None` and `Some("")` behave alike for the strings (Node's
 /// `String(v || '')` and `apiKey || 'none'`); `None` tokens take the defaults.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub struct PinOptions<'a> {
     pub harness: Option<&'a str>,
     pub model: Option<&'a str>,
@@ -100,6 +107,21 @@ pub struct PinOptions<'a> {
     pub api_key: Option<&'a str>,
     pub context_tokens: Option<f64>,
     pub output_tokens: Option<f64>,
+}
+
+const REDACTED: &str = "<redacted>";
+
+impl std::fmt::Debug for PinOptions<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PinOptions")
+            .field("harness", &self.harness)
+            .field("model", &self.model)
+            .field("engine", &self.engine)
+            .field("api_key", &self.api_key.map(|_| REDACTED))
+            .field("context_tokens", &self.context_tokens)
+            .field("output_tokens", &self.output_tokens)
+            .finish()
+    }
 }
 
 /// A refusal: Node's `Error` with a `status`.
@@ -144,8 +166,8 @@ impl Base {
     }
 }
 
-/// One pinned file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One pinned file. Its `Debug` leaves out the content, which can carry the engine key.
+#[derive(Clone, PartialEq, Eq)]
 pub struct PinFile {
     pub base: Base,
     pub path: &'static str,
@@ -154,7 +176,7 @@ pub struct PinFile {
 
 /// Every file a harness needs pinned, and what the job event records about it. The permission is
 /// always [`PERMISSION`] ([`permission_json`]).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Pinned {
     pub harness: &'static str,
     pub files: Vec<PinFile>,
@@ -162,11 +184,42 @@ pub struct Pinned {
     pub endpoint: String,
 }
 
-/// The `opencode` harness's config: the file name and its JSON object.
-#[derive(Debug, Clone, PartialEq)]
+/// The `opencode` harness's config: the file name and its JSON object (its `Debug` leaves the
+/// object, which carries the engine key, out).
+#[derive(Clone, PartialEq)]
 pub struct OpencodeConfig {
     pub name: &'static str,
     pub json: JValue,
+}
+
+impl std::fmt::Debug for PinFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PinFile")
+            .field("base", &self.base)
+            .field("path", &self.path)
+            .field("content", &format_args!("<{} bytes>", self.content.len()))
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for Pinned {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pinned")
+            .field("harness", &self.harness)
+            .field("files", &self.files)
+            .field("model", &self.model)
+            .field("endpoint", &self.endpoint)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for OpencodeConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpencodeConfig")
+            .field("name", &self.name)
+            .field("json", &REDACTED)
+            .finish()
+    }
 }
 
 /// [`PERMISSION`] as a fresh JSON object.
@@ -451,11 +504,15 @@ pub fn dsh_patch(
     out
 }
 
-/// `JSON.stringify(value, null, 2) + '\n'`.
-fn json_file(v: &JValue) -> String {
-    let mut out = js_json::stringify_pretty(v).unwrap_or_default();
+/// `JSON.stringify(value, null, 2) + '\n'`. Every value here is an object, so this does not fail;
+/// if it ever did, the task is refused rather than given an empty file.
+fn json_file(v: &JValue) -> Result<String, Refusal> {
+    let mut out = js_json::stringify_pretty(v).ok_or_else(|| Refusal {
+        status: 500,
+        message: "The harness configuration could not be written as JSON.".to_owned(),
+    })?;
     out.push('\n');
-    out
+    Ok(out)
 }
 
 /// Every file a harness needs pinned (`pinFilesFor`). Harness ids are trimmed and exact
@@ -490,14 +547,14 @@ pub fn pin_files_for(o: &PinOptions<'_>) -> Result<Pinned, Refusal> {
                 .to_owned();
             Ok(Pinned {
                 harness: "opencode",
-                files: vec![file(Base::Cwd, config.name, json_file(&config.json))],
+                files: vec![file(Base::Cwd, config.name, json_file(&config.json)?)],
                 model,
                 endpoint,
             })
         }
         "claude-code" => {
             let (name, endpoint) = endpoint_for(o)?;
-            let settings = json_file(&claude_settings(&name, &endpoint, o.api_key));
+            let settings = json_file(&claude_settings(&name, &endpoint, o.api_key))?;
             Ok(Pinned {
                 harness: "claude-code",
                 files: vec![
@@ -560,7 +617,7 @@ pub fn pin_files_for(o: &PinOptions<'_>) -> Result<Pinned, Refusal> {
                     "privacy",
                     JValue::obj([("usageStatisticsEnabled", JValue::Bool(false))]),
                 ),
-            ]));
+            ]))?;
             Ok(Pinned {
                 harness: "qwen-code",
                 files: vec![
@@ -604,8 +661,8 @@ pub fn pin_files_for(o: &PinOptions<'_>) -> Result<Pinned, Refusal> {
             Ok(Pinned {
                 harness: "pi",
                 files: vec![
-                    file(Base::Home, ".pi/agent/models.json", json_file(&models)),
-                    file(Base::Home, ".pi/agent/settings.json", json_file(&settings)),
+                    file(Base::Home, ".pi/agent/models.json", json_file(&models)?),
+                    file(Base::Home, ".pi/agent/settings.json", json_file(&settings)?),
                     file(
                         Base::Home,
                         ".pi/agent/extensions/noevia-gate.js",

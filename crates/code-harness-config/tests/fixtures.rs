@@ -15,18 +15,71 @@
     clippy::panic
 )]
 
-use std::os::unix::fs::PermissionsExt;
+use std::ffi::OsStr;
+use std::os::fd::BorrowedFd;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 
 use code_harness_config::{
     claude_security_settings, config_for, cwd_pin_paths, dsh_patch, permission_json, pin_files_for,
-    write_harness_config, write_pinned, Owner, PinError, PinOptions, WriteRequest, DSH_DISABLED,
-    DSH_NO_ASK_TOOLS, EDIT_TOOLS, PERMISSION, PI_READ_TOOLS,
+    write_harness_config, write_pinned, Handover, Owner, PinError, PinOptions, WriteRequest,
+    DSH_DISABLED, DSH_NO_ASK_TOOLS, EDIT_TOOLS, PERMISSION, PI_READ_TOOLS,
 };
 use js_json::JValue;
 
+/// The sha256 of the core `server/code-harness-config.cjs` the fixture was recorded from (core
+/// a72ae943). A fixture regenerated from another source fails here until this is updated on purpose.
+const NODE_SOURCE_SHA256: &str = "70d0ac519134df6db07e2378abfb7df1793ddfe97c1ac709ede923eec3c3f753";
+
 fn fixture() -> JValue {
     js_json::parse(include_str!("fixtures/code-harness-config.v1.json")).unwrap()
+}
+
+#[test]
+fn fixture_is_from_the_pinned_node_source() {
+    let f = fixture();
+    assert_eq!(
+        f.get("source").get("file").as_str(),
+        Some("server/code-harness-config.cjs")
+    );
+    assert_eq!(
+        f.get("source").get("sha256").as_str(),
+        Some(NODE_SOURCE_SHA256)
+    );
+}
+
+/// Records each hand-over as Node's mocked `lchownSync` saw it (full path, uid, gid), changes
+/// nothing, and fails the `fail_at`-th call with EPERM.
+struct Recorder {
+    t: String,
+    calls: Vec<String>,
+    fail_at: Option<usize>,
+}
+
+impl Recorder {
+    fn record(&mut self, path: &Path, owner: Owner) -> std::io::Result<()> {
+        let p = strip(path.to_str().unwrap(), &self.t);
+        self.calls.push(format!("{p} {} {}", owner.uid, owner.gid));
+        if self.fail_at == Some(self.calls.len()) {
+            return Err(std::io::Error::from_raw_os_error(1));
+        }
+        Ok(())
+    }
+}
+
+impl Handover for Recorder {
+    fn directory(
+        &mut self,
+        _: BorrowedFd<'_>,
+        _: &OsStr,
+        path: &Path,
+        owner: Owner,
+    ) -> std::io::Result<()> {
+        self.record(path, owner)
+    }
+    fn file(&mut self, _: BorrowedFd<'_>, path: &Path, owner: Owner) -> std::io::Result<()> {
+        self.record(path, owner)
+    }
 }
 
 fn arr(v: &JValue) -> &[JValue] {
@@ -395,11 +448,13 @@ fn writes_match_node() {
     let cases = arr(f.get("writes"));
     assert!(cases.len() > 50);
     let mut checked = 0;
+    let mut skipped = Vec::new();
     for case in cases {
         let name = case.get("name").as_str().unwrap();
         let ops = arr(case.get("setup"));
         if !unprivileged && ops.iter().any(|o| o.get("op").as_str() == Some("chmod")) {
             // Root ignores the permission bits these cases rely on.
+            skipped.push(case.get("name").as_str().unwrap());
             continue;
         }
         let dir = tempfile::Builder::new()
@@ -410,14 +465,14 @@ fn writes_match_node() {
         let ts = t.to_str().unwrap().to_owned();
         setup(t, ops);
         let fail_at = case.get("failChownAt").as_num().map(|n| n as usize);
-        let mut chowns: Vec<String> = Vec::new();
-        let mut chown = |p: &Path, uid: u32, gid: u32| -> std::io::Result<()> {
-            chowns.push(format!("{} {uid} {gid}", strip(p.to_str().unwrap(), &ts)));
-            if fail_at == Some(chowns.len()) {
-                return Err(std::io::Error::from_raw_os_error(1));
-            }
-            Ok(())
+        let mut chown = Recorder {
+            t: ts.clone(),
+            calls: Vec::new(),
+            fail_at,
         };
+        // Cases rooted at `/` must be refused before touching it: what is there is unchanged.
+        let at_root =
+            ["/opencode.json", "/x"].map(|p| std::fs::symlink_metadata(p).ok().map(|m| m.ino()));
         let result: Result<Option<JValue>, PinError> = if let JValue::Obj(_) = case.get("pinned") {
             let p = case.get("pinned");
             let root = fill(p.get("root").as_str().unwrap(), &ts);
@@ -490,10 +545,22 @@ fn writes_match_node() {
                 )
             })
             .collect();
-        assert_eq!(chowns, want_chowns, "{name}");
+        assert_eq!(chown.calls, want_chowns, "{name}");
+        let after =
+            ["/opencode.json", "/x"].map(|p| std::fs::symlink_metadata(p).ok().map(|m| m.ino()));
+        assert_eq!(at_root, after, "{name}: something changed at /");
         restore(t, ops);
         assert_eq!(tree(t), tree_of(case.get("tree")), "{name}");
         checked += 1;
     }
-    assert!(checked > 50, "{checked}");
+    if !skipped.is_empty() {
+        eprintln!(
+            "note: running with privileges that ignore permission bits; skipped {} fixture case(s) that depend on them: {skipped:?}",
+            skipped.len()
+        );
+    }
+    assert!(
+        checked + skipped.len() == cases.len() && checked > 50,
+        "{checked}"
+    );
 }
