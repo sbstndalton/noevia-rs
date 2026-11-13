@@ -81,6 +81,16 @@ fn opt_text(v: &JValue, key: &str) -> Option<String> {
     v.get(key).as_str().map(str::to_string)
 }
 
+/// Text or absent (`null`/missing); anything else refuses the frame. A chat id Node would carry as a
+/// number makes its permission checks throw, which the native gate cannot reproduce.
+fn id_text(v: &JValue, key: &str) -> Result<Option<String>, Unreadable> {
+    match v.get(key) {
+        JValue::Undefined | JValue::Null => Ok(None),
+        JValue::Str(s) => Ok(Some(s.clone())),
+        _ => Err(Unreadable(format!("prepared.{key} is not text"))),
+    }
+}
+
 fn list(v: &JValue, key: &str) -> Result<Vec<JValue>, Unreadable> {
     match need(v, key)? {
         JValue::Arr(items) => Ok(items.clone()),
@@ -163,9 +173,9 @@ impl Prepared {
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),
             model_lease: flag(frame, "modelLease"),
-            chat_id: opt_text(chat, "id"),
-            context_id: opt_text(chat, "contextId"),
-            chat_key: opt_text(chat, "key"),
+            chat_id: id_text(chat, "id")?,
+            context_id: id_text(chat, "contextId")?,
+            chat_key: id_text(chat, "key")?,
             grant_scope: text(chat, "grantScope")?,
             grant_holder: need(chat, "grantHolder")?.clone(),
             recent_writes: names(chat, "recentWrites")?,

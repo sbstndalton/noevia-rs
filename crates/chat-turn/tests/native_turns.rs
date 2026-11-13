@@ -3,8 +3,7 @@
 //! the recording's script did, and everything after the cut must be Node's, byte for byte: the
 //! events, the engine requests (url, headers, body), the store calls and the workspace files.
 //!
-//! This step covers turns whose model calls no tool; the tool cases, the title and the
-//! interrupted-turn saves are the next steps. Each case not covered yet is named, with why.
+//! Every recorded prepared turn runs; a case not covered yet would be named in `NOT_YET`, with why.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -312,6 +311,12 @@ impl Host for Script {
         Ok(())
     }
 
+    fn release_lease(&self) {
+        if std::mem::take(&mut *self.leased.lock().unwrap()) {
+            self.store("lease.release", vec![("lease", js::s("qa-lease-1"))]);
+        }
+    }
+
     fn mark_tools_unsupported(&self, model: &str) {
         self.store(
             "templateToolsGate.markUnsupported",
@@ -575,9 +580,6 @@ fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
             .to_string()
     });
     // The lease goes back as the response ends or the client leaves, before the store is asked.
-    if *script.leased.lock().unwrap() {
-        script.store("lease.release", vec![("lease", js::s("qa-lease-1"))]);
-    }
     saving.finish(
         &script,
         chat.as_deref(),
