@@ -9,7 +9,9 @@
 //! - [`record`]: the turn record (chat-interrupted-turn.cjs `createTurnRecord`) and the partial
 //!   file's entry (chat-partial.cjs `bounded`), recorded from Node;
 //! - [`relay`]: one model round turned into events, with the reasoning-only note and the
-//!   telemetry the client needs.
+//!   telemetry the client needs;
+//! - [`title`]: a chat's generated title, from the title request to the cleaned name and the per-chat
+//!   attempt limit.
 //!
 //! Not here: context and framing assembly, routing and decision calls, persistence through the
 //! store, approvals, the Diary stream, rounds with tool results fed back to the model.
@@ -30,6 +32,7 @@ pub mod relay;
 pub mod round;
 pub mod sink;
 pub mod sse;
+pub mod title;
 pub mod tools;
 
 pub use event::{Event, Phase, TimeToFirstToken};

@@ -50,3 +50,6 @@ jobs:
       - name: The core's own handleChat reproduces the committed recording
         # Synthetic QA turns through server/chat.cjs with a scripted engine and stub stores; no network.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-turn/tests/record_turns.cjs --check crates/chat-turn/tests/fixtures/node-turns.v1.json
+      - name: The core's own chat-title.cjs reproduces the committed title recording
+        # Synthetic QA inputs through server/chat-title.cjs with a recording fake fetch; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-turn/tests/record_titles.cjs --check crates/chat-turn/tests/fixtures/node-titles.v1.json
