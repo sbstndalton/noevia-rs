@@ -255,6 +255,10 @@ async function runTurn(c, { handoff = false } = {}) {
   mathSeed = 0x2026;
   logged = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-turn-'));
+  // The project's image sources (chat.cjs projectImages): `images` maps an asset id to its bytes (base64), written to
+  // the workspace's asset directory, kept apart from `dir` so `files` lists only what the turn wrote.
+  const assets = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-assets-'));
+  for (const [id, b64] of Object.entries(c.images || {})) fs.writeFileSync(path.join(assets, id), Buffer.from(b64, 'base64'));
   try {
     const user = { id: 'qa-user', role: 'admin' };
     const project = c.project === null ? null : {
@@ -292,7 +296,7 @@ async function runTurn(c, { handoff = false } = {}) {
     };
     const workspace = {
       userId: user.id, dir, assertActive() {},
-      assetDir: () => path.join(dir, 'assets'),
+      assetDir: () => assets,
       transcripts: {
         appendIfLast: async (chatId, message, entry, options) => { store('transcripts.appendIfLast', { chatId, message, entry, options }); return c.appendOutcome || 'saved'; },
         deleteChat: async (chatId, options) => { store('transcripts.deleteChat', { chatId, options }); },
@@ -391,11 +395,13 @@ async function runTurn(c, { handoff = false } = {}) {
       providerHeaders: (p, extra) => ({ 'Content-Type': 'application/json', ...(extra || {}), ...(p.apiKey && p.apiKey !== 'local' ? { Authorization: `Bearer ${p.apiKey}` } : {}) }),
       saveChats: (projectId, chats) => store('saveChats', { projectId, chats }), endpointApproved: () => true,
       diaryHeaders: () => ({}), diaryExtras: require(path.join(server, 'diary-extras.cjs')),
-      autoRoles: () => (c.auto ? { fast: MODEL, smart: MODEL } : null), lastLoadedModel: () => (c.lastLoaded === undefined ? null : c.lastLoaded),
+      // `visionRole`: the Vision role's model (a description request before the answer, chat.cjs describeImages).
+      autoRoles: () => (c.auto || c.visionRole ? { ...(c.auto ? { fast: MODEL, smart: MODEL } : {}), ...(c.visionRole ? { vision: c.visionRole } : {}) } : null), lastLoadedModel: () => (c.lastLoaded === undefined ? null : c.lastLoaded),
       // systemOneRouter.classifyWithDetails with no decision backend (system-one-router.cjs fallback branch).
       classifyFastOrSmart: async () => ({ role: c.auto || 'fast', routingDecision: { offered: [], scores: {}, selectedRole: null, effectiveRole: c.auto || 'fast',
         backend: 'legacy', model: null, calibrated: false, latencyMs: null, status: 'fallback', fallbackReason: 'disabled', fallbackCause: null } }), servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
-      visionProbe: async () => ({ supported: false, reason: 'none' }), visionDescriptions: new Map(), skillsIndexFor: () => [],
+      // `vision`: what the probe says of the answering model's image input (chat.cjs visionProbe).
+      visionProbe: async () => c.vision || { supported: false, reason: 'none' }, visionDescriptions: new Map(), skillsIndexFor: () => [],
       chatSkillRouter: { select: async () => ({ loaded: [] }) }, chatToolRouter: { select: async (ids) => ({ ids, routed: false }) },
       ...toolbox, oauthServerIds: () => new Set(), accountReady: () => true,
       // The bridge call as the native executor makes it: every field of its request (rust-chat-native.cjs EXECUTE_PATH).
@@ -446,7 +452,9 @@ async function runTurn(c, { handoff = false } = {}) {
       const last = out.events[out.events.length - 1];
       const prepared = last?.type === 'prepared' ? last : null;
       const refused = logged.map((l) => /^\[chat\] native executor not used for this turn: (.+)$/.exec(l)?.[1]).find(Boolean) || null;
+      // `requests`, `stores`: how many engine requests and store calls came before the frame (a Vision role's description).
       return { prepared, refused, before: prepared ? out.events.length - 1 : null, requests: prepared ? log.requests.length : null,
+        stores: prepared ? log.stores.length : null,
         // What core wrote on the wire for it, frame by frame as res.write got them (the front's frame splitter reads these).
         raw: prepared ? out.raw : null };
     }
@@ -460,7 +468,7 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, docs: c.docs === true, pageSave: c.pageSave === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
+        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
@@ -469,6 +477,7 @@ async function runTurn(c, { handoff = false } = {}) {
     };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(assets, { recursive: true, force: true });
   }
 }
 
@@ -506,6 +515,15 @@ const QA_DOCS = { toolboxes: ['core', 'qa-docs'], files: QA_DOCS_FILES };
 // A storage account digest (project-edit-target.cjs storageAccount): synthetic.
 const QA_ACCOUNT = '5ca1ab1e'.repeat(8);
 const APPEND = '{"name":"qa-notes.txt","text":"QA appended line."}';
+// A project image source (#1512): a synthetic 1x1 PNG, attached to the turn's last user message.
+const QA_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4//8/AwAI/AL+p9akwQAAAABJRU5ErkJggg==';
+const QA_IMAGE = { project: { assets: [{ id: 'qa-asset-1', name: 'qa-chart.png', mime: 'image/png' }] }, images: { 'qa-asset-1': QA_PNG } };
+const SEES = { supported: true };
+// image_context_compacted: a small window and a long history; with the image's IMAGE_TOKENS two exchanges do not fit
+// beside a summary, so all older turns are summarised in one request and the image turn alone is kept.
+const IMAGE_CTX = 8192;
+const IMAGE_EXCHANGES = 6;
+const IMAGE_FILL = 20;
 const CASES = [
   { name: 'plain', about: 'A plain reply in two deltas, with usage and timings, ended by [DONE].',
     rounds: [{ frames: [chunk({ role: 'assistant', content: '' }), chunk({ content: 'Hello from ' }), chunk({ content: 'QA.' }), finish('stop'), usage(52, 5, 25), { done: true }] }] },
@@ -708,6 +726,21 @@ const CASES = [
   { name: 'edit_long_path', about: 'An approved append to a file whose name is longer than 500 UTF-16 units (an astral character at the cut): the audit keeps 500.',
     docs: true, project: { ...QA_DOCS, files: [{ name: `qa-${'n'.repeat(495)}😀-long.txt`, content: 'QA long.' }] }, decision: 'approve',
     rounds: [{ frames: [toolCall('project_append_file', JSON.stringify({ name: `qa-${'n'.repeat(495)}😀-long.txt`, text: 'QA line.' })), finish('tool_calls')] }, answer('Appended to the long file.')] },
+  { name: 'image_seen', about: 'A project image the answering model can see: it rides on the last user message as an image part.',
+    ...QA_IMAGE, vision: SEES, rounds: [answer('The QA chart shows one dot.')] },
+  { name: 'image_seen_tool_round', about: 'An attached image, then a tool round: every round sends the image part again.',
+    ...QA_IMAGE, vision: SEES,
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-img"}'), finish('tool_calls')] }, answer('The chart matches the file.')] },
+  { name: 'image_context_compacted', about: 'An attached image over the context budget: the older turns are summarised, the image is counted and kept (#1792).',
+    ...QA_IMAGE, vision: SEES, ctxSize: IMAGE_CTX, body: { history: longHistory(IMAGE_EXCHANGES, IMAGE_FILL) },
+    rounds: [summary('QA summary of the earlier turns before the chart.'), answer('Answer about the chart after compaction.')] },
+  { name: 'image_not_seen', about: 'The answering model cannot see images: Node clears them, says so and notes it for the model.',
+    ...QA_IMAGE, vision: { supported: false, reason: 'QA engine reports no image input.' }, rounds: [answer('I cannot see the chart.')] },
+  { name: 'image_missing', about: 'An image source whose stored file is gone: the warning, the note, nothing attached.',
+    project: QA_IMAGE.project, vision: SEES, rounds: [answer('The chart file is missing.')] },
+  { name: 'image_described', about: 'A Vision role describes the image before the cut (its own lease and request); the answer gets the description.',
+    ...QA_IMAGE, visionRole: 'qa-vision',
+    rounds: [summary('QA description: a white square with one dot.'), answer('The chart has one dot.')] },
   { name: 'page_save_stays_in_node', about: 'A coworker conversation offers the page save (#2446): the hand-off is refused (page-save) and Node runs the turn.',
     pageSave: true, project: { id: 'specialist-qa', name: 'QA Coworker' }, rounds: [answer('A coworker reply.')] },
 ];
