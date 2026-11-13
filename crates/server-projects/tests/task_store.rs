@@ -12,7 +12,7 @@
 )]
 
 use js_json::{wtf16, JValue};
-use server_projects::task_store::{NewJob, Options, Refusal, Store};
+use server_projects::task_store::{LifecycleAuthority, NewJob, Options, Refusal, Store};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -94,6 +94,8 @@ struct Run {
     next_id: Arc<Mutex<Option<String>>>,
     specs: JValue,
     stores: BTreeMap<String, Store>,
+    /// Each store's lifecycle authority, claimed on its first `authority` step.
+    authorities: BTreeMap<String, LifecycleAuthority>,
     expected: BTreeMap<String, Vec<u8>>,
 }
 
@@ -105,6 +107,7 @@ impl Run {
             next_id: Arc::new(Mutex::new(None)),
             specs: specs.clone(),
             stores: BTreeMap::new(),
+            authorities: BTreeMap::new(),
             expected: BTreeMap::new(),
         }
     }
@@ -141,6 +144,7 @@ impl Run {
             }
             "restart" => {
                 self.stores.clear();
+                self.authorities.clear();
                 None
             }
             "seed" => {
@@ -177,6 +181,20 @@ impl Run {
                 };
                 let kind = s.get("type").as_str().unwrap().to_string();
                 Some(answer(self.store(&store_name).append(&id, &kind, data)))
+            }
+            "authority" => {
+                let data = match s.get("data").as_str() {
+                    Some(t) => wtf16::parse(t).unwrap(),
+                    None => JValue::Undefined,
+                };
+                let kind = s.get("type").as_str().unwrap().to_string();
+                self.store(&store_name);
+                let store = &self.stores[&store_name];
+                let authority = self
+                    .authorities
+                    .entry(store_name.clone())
+                    .or_insert_with(|| store.claim_lifecycle_authority().unwrap());
+                Some(answer(store.append_authority(&id, &kind, data, authority)))
             }
             "get" => Some(answer(self.store(&store_name).get(&id).map(brief))),
             "cancel" => Some(answer(
@@ -295,6 +313,15 @@ fn fixture_records_its_sources() {
             "task-lifecycle.cjs",
             "f99c9f9387f647fd579fbcd3acc6c6a19531995313cd4cc6894b333633ec5da1",
         ),
+        (
+            "completeness-report.cjs",
+            "22c8520025fa388248fcf834093f872b7fbb2c1739afeda9f5949e26e52aa797",
+        ),
+        (
+            "completeness-policy-host.cjs",
+            "4583ced3357886425167f4c781c0e2aee3bb20308222d36b5ef99a176f9a8f7a",
+        ),
+        ("wasm/dav-parse.wasm", WASM_SHA256),
     ] {
         assert_eq!(f.get("sources").get(name).as_str(), Some(sha), "{name}");
     }
@@ -310,7 +337,7 @@ fn every_node_scenario_replays_byte_for_byte() {
     for (name, _) in all {
         match name.as_str() {
             // Differences, below.
-            "torn-differences" | "prune-differences" => continue,
+            "torn-differences" | "prune-differences" | "authority-differences" => continue,
             // Its last step is a second job.created, which only Node takes.
             "refusals" => {
                 let last = steps(&f, name).len() - 1;
@@ -322,7 +349,7 @@ fn every_node_scenario_replays_byte_for_byte() {
         }
         seen += 1;
     }
-    assert!(seen >= 10, "{seen} scenarios");
+    assert!(seen >= 15, "{seen} scenarios");
 }
 
 #[test]
@@ -403,6 +430,158 @@ fn differences_on_a_torn_tail() {
     let journal = fs::read_to_string(run.jobs().join(format!("{c}.jsonl"))).unwrap();
     assert!(journal.ends_with("not json\n"));
     assert_eq!(journal.lines().count(), 2);
+}
+
+/// The pinned server/wasm/dav-parse.wasm the authority scenarios were recorded with.
+const WASM_SHA256: &str = "2305d64d1a75a57b3c52eda673b384c819718aae540c570837b4aeb4ef5e5cb9";
+
+fn results(all: &[JValue]) -> Vec<String> {
+    all.iter()
+        .filter(|s| !matches!(s.get("result"), JValue::Undefined))
+        .map(|s| text(s.get("result")))
+        .collect()
+}
+
+/// The authority scenarios hold what they are meant to: a full pipeline that reached `merged`
+/// with two report hashes, and refusals of every kind (so a regenerated fixture that lost them
+/// fails here, not silently).
+#[test]
+fn authority_scenarios_cover_the_pipeline_and_its_refusals() {
+    let f = fixture();
+    let pipeline = steps(&f, "authority-pipeline");
+    let hashes = pipeline
+        .iter()
+        .filter(|s| {
+            !matches!(
+                s.get("result").get("ok").get("data").get("reportHash"),
+                JValue::Undefined
+            )
+        })
+        .count();
+    assert_eq!(hashes, 2);
+    let stages: Vec<&str> = pipeline
+        .iter()
+        .filter(|s| s.get("result").get("ok").get("type").as_str() == Some("task.stage"))
+        .map(|s| {
+            s.get("result")
+                .get("ok")
+                .get("data")
+                .get("to")
+                .as_str()
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(stages.last(), Some(&"merged"));
+    let all: Vec<String> = [
+        "authority-pipeline",
+        "authority-refusals",
+        "authority-limits",
+        "authority-inconsistent",
+    ]
+    .iter()
+    .flat_map(|n| results(&steps(&f, n)))
+    .collect();
+    for needle in [
+        r#""status":403,"message":"Task lifecycle events are server-only""#,
+        "Stale task stage: the task is planned",
+        "Stale task revision: the task is at revision 0",
+        "Stale task revision: expected 1",
+        "Illegal task-lifecycle transition: merged -> implementing",
+        "A task is merged only from reviewing, not implementing",
+        "Unknown task stage: \\\"planning\\\"",
+        "A task revision needs the full head commit SHA",
+        "A plan hash is a sha256 hex digest",
+        "expectedArtifacts is a short list of artifact names",
+        "The completeness report does not allow review (tests-run: fail; artifacts-present: fail",
+        "Task revision limit reached",
+        "Task stage limit reached",
+        "Job already finished",
+        "lifecycle journal is inconsistent; review required",
+        "Task lifecycle events belong to Code jobs",
+    ] {
+        assert!(
+            all.iter().any(|r| r.contains(needle)),
+            "no answer has {needle}"
+        );
+    }
+}
+
+/// Named differences 8 and 9 (task_store.rs): Node's answers show what it did, the Rust store's
+/// are its own.
+#[test]
+fn differences_on_authority() {
+    let f = fixture();
+    let all = steps(&f, "authority-differences");
+    let node = results(&all);
+    // Node: `"1" + 1`, so a string revision went on being written.
+    assert!(node[0].contains(r#""revision":"1""#), "{}", node[0]);
+    assert!(node[1].contains(r#""n":"11""#), "{}", node[1]);
+    assert!(node[5].contains("unverified: impl_refused"), "{}", node[5]);
+
+    let mut run = Run::new(f.get("stores"));
+    let mut got = Vec::new();
+    for s in &all {
+        if let Some(a) = run.step(s) {
+            got.push(text(&a));
+        }
+    }
+    let inconsistent = r#"{"error":{"status":409,"message":"This task’s lifecycle journal is inconsistent; review required"}}"#;
+    assert_eq!(got[0], inconsistent);
+    assert_eq!(got[1], inconsistent);
+    for i in 2..5 {
+        assert_eq!(got[i], node[i], "answer {i}");
+    }
+    assert_eq!(
+        got[5],
+        r#"{"error":{"status":409,"message":"The completeness report does not allow review (unverified: impl_refused)"}}"#
+    );
+}
+
+#[test]
+fn the_authority_is_claimed_once_and_only_for_its_store() {
+    let dir = tempfile::tempdir().unwrap();
+    let one = store(dir.path(), Options::default());
+    let other = store(dir.path(), Options::default());
+    let authority = one.claim_lifecycle_authority().unwrap();
+    let again = one.claim_lifecycle_authority().unwrap_err();
+    assert_eq!(again.status, None);
+    assert_eq!(
+        again.message,
+        "Task lifecycle authority was already claimed for this store"
+    );
+    let caps: Vec<String> = Vec::new();
+    let id = one
+        .create(NewJob {
+            kind: "code",
+            project_id: None,
+            parent_id: None,
+            capabilities: &caps,
+        })
+        .unwrap();
+    let data = || {
+        JValue::obj([
+            ("from", JValue::Str("planned".into())),
+            ("to", JValue::Str("implementing".into())),
+            ("revision", JValue::Num(0.0)),
+        ])
+    };
+    // Another store's authority is none here; its own claim is still open.
+    let refused = other
+        .append_authority(&id, "task.stage", data(), &authority)
+        .unwrap_err();
+    assert_eq!(refused.status, Some(403));
+    assert_eq!(refused.message, "Task lifecycle events are server-only");
+    let written = one
+        .append_authority(&id, "task.stage", data(), &authority)
+        .unwrap();
+    assert_eq!(
+        text(written.get("data")),
+        r#"{"from":"planned","to":"implementing","revision":0,"reason":null}"#
+    );
+    assert!(other.claim_lifecycle_authority().is_ok());
+    let job = one.get(&id).unwrap().unwrap();
+    let stages = &job.authoritative.unwrap().stages;
+    assert_eq!(stages.len(), 1);
 }
 
 #[test]

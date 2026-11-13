@@ -648,6 +648,19 @@ pub(crate) fn bound_review(kind: &str, data: &JValue) -> JValue {
 
 /// core task-lifecycle.cjs `foldInput`: only what the fold reads, then the shared Rust fold.
 fn lifecycle_state(rows: &[JValue], authoritative: bool) -> JValue {
+    match fold_lifecycle(rows, authoritative) {
+        Some(Ok(state)) => s(state.name()),
+        _ => JValue::Null,
+    }
+}
+
+/// core task-lifecycle.cjs `foldEvents(rows, INITIAL_STATE, { authoritative })` over a journal's
+/// rows: the state, or what the fold throws; `None` when the port refuses the input (the JS
+/// confirmation's `impl_refused`).
+pub(crate) fn fold_lifecycle(
+    rows: &[JValue],
+    authoritative: bool,
+) -> Option<task_lifecycle::Outcome> {
     let mut input = Vec::new();
     for row in rows {
         let Some(kind) = row.get("type").as_str() else {
@@ -672,22 +685,15 @@ fn lifecycle_state(rows: &[JValue], authoritative: bool) -> JValue {
         }
         input.push(obj(event));
     }
-    let Some(text) = wtf16::stringify(&JValue::Arr(input)) else {
-        return JValue::Null;
-    };
-    let Some(events) = lifecycle_json::parse_utf8(text.as_bytes(), LIFECYCLE_DEPTH) else {
-        return JValue::Null;
-    };
+    let text = wtf16::stringify(&JValue::Arr(input))?;
+    let events = lifecycle_json::parse_utf8(text.as_bytes(), LIFECYCLE_DEPTH)?;
     let from = lifecycle_json::Value::Str(
         task_lifecycle::INITIAL_STATE
             .name()
             .encode_utf16()
             .collect(),
     );
-    match task_lifecycle::fold(&events, &from, authoritative) {
-        Ok(Ok(state)) => s(state.name()),
-        _ => JValue::Null,
-    }
+    task_lifecycle::fold(&events, &from, authoritative).ok()
 }
 
 /// jobs.cjs `derive`: the fold over one whole journal.
