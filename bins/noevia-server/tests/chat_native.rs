@@ -256,6 +256,8 @@ const REGISTRY_CASES: &[(&str, &str)] = &[
     ("edit_approved", "approve_all"),
     // The client leaves when the card shows: the question is withdrawn (#679), a late answer finds nothing.
     ("approval_left", "leave"),
+    // #2446: approve_all on the coworker page save's once card approves that call only, no grant is stored.
+    ("page_save_approved", "approve_all"),
 ];
 
 /// Recorded cases also run with core's revoke bridge failing.
@@ -997,6 +999,8 @@ struct Front {
     jar: String,
     csrf: String,
     user: String,
+    /// The front's own approval registry (S9), to read what a card's answer left behind.
+    approvals: Arc<noevia_server::approval_registry::Registry>,
 }
 
 async fn front(core: SocketAddr) -> Front {
@@ -1020,6 +1024,7 @@ async fn front(core: SocketAddr) -> Front {
     env.insert("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into());
     env.insert("NOEVIA_CHAT_EXECUTOR", "native".into());
     let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    let approvals = Arc::clone(&app.approvals);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(serve(
@@ -1057,6 +1062,7 @@ async fn front(core: SocketAddr) -> Front {
         jar,
         csrf,
         user,
+        approvals,
     }
 }
 
@@ -1479,6 +1485,29 @@ async fn run_case(
             return Err(format!(
                 "{decision}: the cards answered {decided:?}, recorded {cards}"
             ));
+        }
+        // approve_all on a once card stores no grant. (This harness's chat is held by no list, so its holder is
+        // absent and no card's approve_all may grant it either, as in Node; the registry's own tests cover a held
+        // chat, and chat_native's unit test that `once` reaches the question.)
+        if decision == "approve_all" {
+            let card = arr(case.get("approvals"))[0].clone();
+            let chat = card.get("chatId").as_str().unwrap_or("").to_string();
+            let scope = card.get("scope").as_str().unwrap_or("").to_string();
+            let context = server_projects::chat_move::grant_context(&f.data, &f.user, &chat, START)
+                .map_err(|e| format!("grant context: {e:?}"))?;
+            let binding = serde_json::json!({"user": f.user, "canonicalChatId": chat, "scope": scope,
+                "context": context.json()});
+            let held = matches!(
+                f.approvals
+                    .check(&f.user, &chat, &scope, Some(&binding), None),
+                Ok(noevia_server::approval_registry::GrantUse::Ticket(Some(_)))
+            );
+            if held {
+                return Err(format!(
+                    "approve_all on card {}: a grant is held",
+                    js::stringify(&card)
+                ));
+            }
         }
         // An answered card's question is gone: a second answer finds nothing (404).
         for (id, _) in &decided {

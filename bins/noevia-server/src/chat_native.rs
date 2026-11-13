@@ -210,27 +210,7 @@ impl Approvals for Registry {
     }
 
     fn open(&self, user: &str, request: &JValue) -> bool {
-        use crate::approval_registry::{Kind, Question};
-        let text = |k: &str| request.get(k).as_str().map(str::to_string);
-        let Some(id) = text("id") else {
-            return false;
-        };
-        let binding = match request.get("binding") {
-            JValue::Null => None,
-            b => serde_json::from_str(&js::stringify(b)).ok(),
-        };
-        self.app
-            .approvals
-            .open(Question {
-                id,
-                user: user.to_string(),
-                kind: Kind::Write,
-                chat: text("chatId"),
-                scope: text("scope").filter(|s| !s.is_empty()),
-                binding,
-                once: request.get("once") == &JValue::Bool(true),
-            })
-            .is_ok()
+        question(user, request).is_some_and(|q| self.app.approvals.open(q).is_ok())
     }
 
     fn wait(
@@ -256,6 +236,26 @@ impl Approvals for Registry {
     fn cancel(&self, user: &str, id: &str) {
         self.app.approvals.cancel(user, id);
     }
+}
+
+/// The registry question for the gate's card request (`{id, userId, chatId, scope, binding, once}`).
+fn question(user: &str, request: &JValue) -> Option<crate::approval_registry::Question> {
+    use crate::approval_registry::{Kind, Question};
+    let text = |k: &str| request.get(k).as_str().map(str::to_string);
+    let binding = match request.get("binding") {
+        JValue::Obj(_) => serde_json::from_str(&js::stringify(request.get("binding"))).ok(),
+        _ => None,
+    };
+    Some(Question {
+        id: text("id")?,
+        user: user.to_string(),
+        kind: Kind::Write,
+        chat: text("chatId"),
+        scope: text("scope").filter(|s| !s.is_empty()),
+        binding,
+        // #2446: approve_all on a once card approves that call only.
+        once: request.get("once") == &JValue::Bool(true),
+    })
 }
 
 /// Tests only: a process-wide registry stand-in that [`approvals`] returns instead of the front's own.
@@ -1529,6 +1529,38 @@ mod tests {
         assert!(Switch::parse(Some("rust")).is_err());
         assert!(Switch::parse(Some("native:a b")).is_err());
         assert!(!Switch::Node.names("x"));
+    }
+
+    #[test]
+    fn a_card_request_becomes_the_registry_question_once_included() {
+        let request = |once: bool| {
+            js::obj([
+                ("id", js::s("ap-1")),
+                ("userId", js::s("qa-user")),
+                ("chatId", js::s("qa-chat-1")),
+                ("scope", js::s("project:qa")),
+                ("binding", js::obj([("user", js::s("qa-user"))])),
+                ("once", JValue::Bool(once)),
+            ])
+        };
+        let q = question("qa-user", &request(true)).unwrap();
+        assert!(q.once);
+        assert_eq!(
+            (q.id.as_str(), q.chat.as_deref(), q.scope.as_deref()),
+            ("ap-1", Some("qa-chat-1"), Some("project:qa"))
+        );
+        assert_eq!(q.binding, Some(serde_json::json!({"user": "qa-user"})));
+        assert!(!question("qa-user", &request(false)).unwrap().once);
+        let no_chat = js::obj([
+            ("id", js::s("ap-2")),
+            ("chatId", JValue::Null),
+            ("scope", js::s("")),
+            ("binding", JValue::Null),
+            ("once", JValue::Bool(false)),
+        ]);
+        let q = question("qa-user", &no_chat).unwrap();
+        assert_eq!((q.chat, q.scope, q.binding), (None, None, None));
+        assert!(question("qa-user", &js::obj([("once", JValue::Bool(true))])).is_none());
     }
 
     #[test]
