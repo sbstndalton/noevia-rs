@@ -25,11 +25,27 @@
 //!
 //! # Differences from Node
 //!
-//! None in behaviour. The inputs are typed where Node's are by construction (shas, branch and
-//! file names are strings, revisions and loop counts integers, a merge preflight is a closure),
-//! and `undefined` passed to [`plan_hash`] is `None` where Node's hash throws. Kept as Node has
-//! them: "within 1 seconds" in the timeout reasons, and an own `__proto__` key dropped from the
-//! plan hash's canonical form (Node's copy sets a prototype instead).
+//! None in behaviour on the inputs the pipeline gives them. The inputs are typed where Node's are
+//! by construction (shas, branch and file names are strings, revisions and loop counts integers,
+//! a merge preflight is a closure), and `undefined` passed to [`plan_hash`] is `None` where Node's
+//! hash throws. Narrower than Node's by those types:
+//!
+//! - deadlines and timeouts are whole milliseconds (`u64`: [`minutes`],
+//!   [`stage_deadline_message`], the Planner's and reviewer's timeout reasons); Node takes any
+//!   number;
+//! - [`blocked_result`] spreads only an object `extra` and ignores any other value; Node's
+//!   `...(error.result || {})` spreads a string's characters (or an array's items) into index keys.
+//!
+//! Kept as Node has them: "within 1 seconds" in the timeout reasons, and an own `__proto__` key
+//! dropped from the plan hash's canonical form (Node's copy sets a prototype instead).
+//!
+//! # Strings
+//!
+//! Every `String` this crate returns, alone or inside a [`JValue`], is in [`js_json`]'s WTF-16
+//! form: a lone surrogate from the input is held as its mapped private-use character. Serialise
+//! them with [`js_json::wtf16::stringify`] only (which writes `\udxxx` back as `JSON.stringify`
+//! does); any other serialiser, or writing the text out as UTF-8 directly, turns a lone surrogate
+//! into that character instead.
 #![forbid(unsafe_code)]
 
 pub mod audit;
