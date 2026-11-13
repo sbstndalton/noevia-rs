@@ -212,8 +212,18 @@ fn every_case_matches_python() -> TestResult {
     let cases = fx["cases"].as_array().ok_or("cases")?;
     assert!(cases.len() >= 200);
     let twins = &fx["degraded_twins"];
+    let row_level: Vec<&str> = fx["row_level_degraded"]
+        .as_array()
+        .ok_or("row_level_degraded")?
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
     for case in cases {
         let name = case["name"].as_str().unwrap_or("");
+        if row_level.contains(&name) {
+            row_level_degraded(case, prompt)?;
+            continue;
+        }
         let expected = match twins[name].as_str() {
             // D3: the degraded case must produce exactly what Python produced with the focus off.
             Some(twin) => &cases.iter().find(|c| c["name"] == twin).ok_or("twin")?["expected"],
@@ -222,5 +232,40 @@ fn every_case_matches_python() -> TestResult {
         run(case, expected, prompt)?;
     }
     assert!(twins.as_object().is_some_and(|t| t.len() == 6));
+    Ok(())
+}
+
+/// D3 at row level: the focus refuses a retrieved row after the search. The exchange still builds;
+/// the trace shows the focus unchecked and the search used the focused pool (top_k * 4).
+fn row_level_degraded(case: &Value, system_prompt: &str) -> TestResult {
+    let store = StubStore {
+        spec: case["store"].clone(),
+        raise_days: HashSet::new(),
+        calls: RefCell::new(Vec::new()),
+    };
+    let search = StubSearch {
+        spec: case["retriever"].clone(),
+        calls: RefCell::new(Vec::new()),
+    };
+    let asm = Assembler {
+        store: &store,
+        search: Some(&search),
+        cfg: &case["cfg"],
+        system_prompt: system_prompt.to_owned(),
+        local_reference: String::new(),
+    };
+    let day = NaiveDate::parse_from_str(case["day"].as_str().ok_or("day")?, "%Y-%m-%d")?;
+    let mut trace = RetrievalTrace::new();
+    let messages = asm.build(
+        day,
+        case["message"].as_str().ok_or("message")?,
+        &[],
+        None,
+        Some(&mut trace),
+    );
+    assert!(messages.is_ok_and(|m| m.len() == 3));
+    let t = trace.to_json();
+    assert_eq!(t["focus"]["checked"], json!(false));
+    assert_eq!(search.calls.borrow()[0][1], json!(32));
     Ok(())
 }

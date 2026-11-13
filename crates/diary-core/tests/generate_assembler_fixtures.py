@@ -299,6 +299,32 @@ def fixed_cases():
         {"name": "many_words_message", "message": f"Did {g} {s} mention " + "tide " * 9000 + "?", "rows": rows},
         {"name": "many_words_message_focus_off", "message": f"Did {g} {s} mention " + "tide " * 9000 + "?",
          "cfg": {"retrieval": {"entity_focus": "no"}}, "rows": rows},
+        {"name": "correction_labels", "message": f"What kite colour does {g} {s} fly?", "rows": [
+            {"id": 31, "day": "2031-03-10", "header": "10:00 — Correction", "score": 0.9,
+             "text": chunk("2031-03-10", "10:00 — Correction", f"I misheard earlier. {g} {s}'s kite colour is cobalt, not teal.")},
+            {"id": 32, "day": "2031-03-02", "header": "09:00 — Coffee", "score": 0.85,
+             "text": chunk("2031-03-02", "09:00 — Coffee", f"{g} {s} said the kite colour is teal.")},
+            {"id": 33, "day": "2031-03-03", "header": "08:00 — Park", "score": 0.8,
+             "text": chunk("2031-03-03", "08:00 — Park", f"{g} flies a teal kite on Sundays.")}]},
+        {"name": "zero_top_k_entity", "message": f"What kite colour does {g} {s} fly?", "cfg": {"retrieval": {"top_k": 0}}, "rows": rows},
+        {"name": "zero_top_k_plain", "message": "Anything about kites?", "cfg": {"retrieval": {"top_k": 0}}, "rows": rows},
+        {"name": "negative_budgets", "message": "Anything about kites?", "ignore_max": True,
+         "cfg": {"context": {"max_today_tokens": -10, "max_direct_past_tokens": -1}, "retrieval": {"max_context_tokens": -5}},
+         "rows": rows, "days": {"2031-03-20": "today text that is long enough to slice"}},
+        {"name": "year_zero_date", "message": "What happened on 0000-01-01, 2031-03-04 and 2031-03-07?", "rows": [],
+         "days": {"2031-03-04": "fourth", "2031-03-07": "seventh"}, "cfg": {"context": {"direct_past_days": 0}}},
+        {"name": "nonascii_digit_date", "message": "On \uff12\uff10\uff13\uff11-03-04 and 2031-03-0\u0663 and 2031-03-07?", "rows": [],
+         "days": {"2031-03-04": "fourth", "2031-03-07": "seventh"}, "cfg": {"context": {"direct_past_days": 0}}},
+        {"name": "empty_today_header", "message": "Today?", "rows": [], "today_header": ""},
+        {"name": "top_k_true", "message": "Anything about kites?", "cfg": {"retrieval": {"top_k": True}}, "rows": rows},
+        {"name": "score_gap_true", "message": "Anything about kites?", "cfg": {"retrieval": {"score_gap": True}}, "rows": rows},
+        {"name": "min_score_null", "message": "Anything about kites?", "cfg": {"retrieval": {"min_score": None}}, "rows": rows},
+        {"name": "today_tokens_null", "message": "Anything?", "cfg": {"context": {"max_today_tokens": None}}, "rows": rows},
+        {"name": "budget_text", "message": "Anything?", "cfg": {"retrieval": {"max_context_tokens": "lots"}}, "rows": rows},
+        # D3, row level: only a retrieved row is over the caps (asserted in Rust, not compared).
+        {"name": "row_over_cap", "message": f"What kite colour does {g} {s} fly?",
+         "rows": rows + [{"id": 40, "day": "2031-03-05", "header": "07:00", "score": 0.5,
+                          "text": chunk("2031-03-05", "07:00", f"{g} {s} pasted " + "z" * 300)}]},
         {"name": "relational_question", "message": f"Who is {g} {s}'s sister?", "rows": rows},
         {"name": "two_entities", "message": f"Did {g} {s} meet {o_g} {o_s}?", "rows": rows},
     ]
@@ -314,7 +340,7 @@ def fixed_cases():
             retriever = None
         for trace in (True, False):
             out.append({"name": f"{c['name']}{'' if trace else '_untraced'}", "day": "2031-03-20", "message": c["message"],
-                        "session_turns": c.get("turns", []), "today_header": None, "cfg": c.get("cfg", {}), "store": store,
+                        "session_turns": c.get("turns", []), "today_header": c.get("today_header"), "cfg": c.get("cfg", {}), "store": store,
                         "retriever": retriever, "trace": trace, "local_reference": c.get("local_reference")})
     return out
 
@@ -361,7 +387,8 @@ def main():
                                "long_word_message": "long_word_message_focus_off",
                                "long_word_message_untraced": "long_word_message_focus_off_untraced",
                                "many_words_message": "many_words_message_focus_off",
-                               "many_words_message_untraced": "many_words_message_focus_off_untraced"}}
+                               "many_words_message_untraced": "many_words_message_focus_off_untraced"},
+            "row_level_degraded": ["row_over_cap", "row_over_cap_untraced"]}
     OUT.write_text(json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     errors = sum(1 for c in cases if c["expected"]["error"])
     print(f"wrote {OUT} ({len(cases)} cases, {errors} raising)")

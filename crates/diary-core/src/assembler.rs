@@ -14,13 +14,19 @@
 //!   more than 8,192 words in a text, a 1 MiB message, 10,000 candidates) run as with
 //!   `retrieval.entity_focus` off for that exchange (no follow-up resolution, no focus, no
 //!   labels). Python's default path runs the focus on any input; its native leaf fails the
-//!   exchange instead. The fixtures pin the degraded output to Python's focus-off output.
+//!   exchange instead. The fixtures pin the degraded output to Python's focus-off output when the
+//!   message or the earlier turns are over the caps. When only a retrieved row is (the focus
+//!   refuses it after the search), the search has used the focused pool (`top_k * 4`), a resolved
+//!   follow-up stays resolved, and the candidates go unfocused in vector order; when a loaded row
+//!   is over the caps, it does not count as naming the follow-up's name exactly.
+//! - A negative `retrieval.top_k` is refused ([`ContextError::Config`]); Python would search
+//!   without a limit.
 //! - A configuration integer beyond i64 is an error; Python carries the big integer.
 //! - Non-ASCII digits in configuration strings are refused (Python's `int()`/`float()` accept them).
 //! - The time anchor comes from `diary-temporal-focus` (the native path of the Python service,
 //!   recorded equal to its default path) rather than `entity_focus.time_anchor`.
 
-use chrono::{Duration, NaiveDate};
+use chrono::{Datelike, Duration, NaiveDate};
 use diary_entity_focus::{
     self as ef, Analysis, Anchor, Entity, FocusResult, Kind, NumericValue, Reason, Row,
     TemporalPartition,
@@ -99,8 +105,11 @@ pub trait Store {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ContextError {
-    /// A configuration value Python's `int()`/`float()` refuses (key, exception).
+    /// A configuration value Python's `int()`/`float()` refuses (key, exception), or a negative
+    /// `retrieval.top_k`.
     Config(&'static str, ConvError),
+    /// Entity focus refused its input for a reason other than its size caps (an internal fault).
+    Focus(ef::Error),
     /// Today's log or the standing sections could not be read.
     Store,
 }
@@ -109,6 +118,16 @@ pub enum ContextError {
 pub struct Message {
     pub role: String,
     pub content: String,
+}
+
+/// D3: an entity-focus capacity refusal is "nothing found" (the exchange runs as with the focus
+/// off); any other refusal is a fault.
+fn capacity_is_none<T>(r: Result<T, ef::Error>) -> Result<Option<T>, ContextError> {
+    match r {
+        Ok(v) => Ok(Some(v)),
+        Err(ef::Error::Capacity) => Ok(None),
+        Err(e) => Err(ContextError::Focus(e)),
+    }
 }
 
 /// Python `Config.get(dotted)`: None when a part is missing (then the caller's default applies).
@@ -293,6 +312,9 @@ pub fn entry_label(res: Option<&FocusResult>, vector_rank: usize) -> String {
             s.shown, s.asked
         );
     }
+    if let Some((_, day)) = res.corrected_by.iter().find(|(r, _)| *r == vector_rank) {
+        return format!("; dated before the correction of {day}, which wins where they disagree");
+    }
     String::new()
 }
 
@@ -350,7 +372,7 @@ fn parse_iso(value: &str) -> Option<NaiveDate> {
     }
     NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .ok()
-        .filter(|d| d.format("%Y-%m-%d").to_string() == value)
+        .filter(|d| d.year() >= 1 && d.format("%Y-%m-%d").to_string() == value)
 }
 
 pub struct Assembler<'a> {
@@ -384,7 +406,7 @@ impl Assembler<'_> {
         let session = completed_exchanges(session_turns);
         // #173: "And what about <other name>?" becomes the earlier question asked about that name.
         // D3: a message beyond the entity-focus caps is left as is.
-        let resolved = follow_up::resolve(user_message, &session).ok().flatten();
+        let resolved = capacity_is_none(follow_up::resolve(user_message, &session))?.flatten();
         let question = resolved
             .as_ref()
             .map_or(user_message, |r| r.standalone.as_str());
@@ -402,7 +424,7 @@ impl Assembler<'_> {
         if pyconv::len(&today_text) > today_budget {
             today_text = format!(
                 "(earlier exchanges today truncated)\n…{}",
-                pyconv::slice(&today_text, Some(-today_budget), None)
+                pyconv::slice(&today_text, Some(today_budget.saturating_neg()), None)
             );
         }
         let header = today_header
@@ -476,7 +498,7 @@ impl Assembler<'_> {
         let mut exact_loaded = false;
         if let Some(res) = &resolved {
             for r in &got.kept {
-                if names_exactly(r, &res.asked_name).unwrap_or(false) {
+                if capacity_is_none(names_exactly(r, &res.asked_name))?.unwrap_or(false) {
                     exact_loaded = true;
                     break;
                 }
@@ -542,6 +564,13 @@ impl Assembler<'_> {
         };
         let cfg = self.cfg;
         let top_k = cfg_int(cfg, "retrieval.top_k", 8)?;
+        if top_k < 0 {
+            // Python would search without a limit and slice from the end; refused instead.
+            return Err(ContextError::Config(
+                "retrieval.top_k",
+                ConvError::ValueError,
+            ));
+        }
         let min_score = cfg_float(cfg, "retrieval.min_score", 0.30)?;
         let budget_tokens = cfg_float(cfg, "retrieval.max_context_tokens", 5200.0)?;
         let budget_chars = chars_of(budget_tokens, "retrieval.max_context_tokens")?;
@@ -564,7 +593,7 @@ impl Assembler<'_> {
                 inclusive: a.inclusive,
             });
             // D3: beyond the entity-focus caps the exchange runs as with the focus off.
-            ef::analyse(user_message, &earlier, anchor).ok()
+            capacity_is_none(ef::analyse(user_message, &earlier, anchor))?
         } else {
             None
         };
@@ -649,8 +678,12 @@ impl Assembler<'_> {
                     }
                     focus = Some(res);
                 }
-                // D3: rows beyond the caps; the candidates go unfocused, in vector order.
-                Err(_) => ranked.extend(1..=pyconv::slice_len(results.len(), candidate_k)),
+                // D3: rows beyond the caps. The search already ran with the focused pool; the
+                // candidates go unfocused, in vector order, and the trace shows the focus unchecked.
+                Err(ef::Error::Capacity) => {
+                    ranked.extend(1..=pyconv::slice_len(results.len(), candidate_k));
+                }
+                Err(e) => return Err(ContextError::Focus(e)),
             }
         } else {
             let n = pyconv::slice_len(results.len(), candidate_k);
