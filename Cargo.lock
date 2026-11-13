@@ -498,6 +498,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-workspace"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rustix",
+ "tempfile",
+]
+
+[[package]]
 name = "completeness-report"
 version = "0.1.0"
 dependencies = [

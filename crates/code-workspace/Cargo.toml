@@ -1,0 +1,18 @@
+[package]
+name = "code-workspace"
+version = "0.1.0"
+description = "noevia-core's code-workspace.cjs in Rust: one git worktree or shared clone per Code task, its ownership record, release with save-back, restart recovery and realpath containment; nothing calls it yet (R7)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+rustix = { version = "=1.1.5", features = ["fs"] }
+
+[dev-dependencies]
+tempfile = "3"
