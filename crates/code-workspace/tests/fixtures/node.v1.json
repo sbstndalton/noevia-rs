@@ -18611,6 +18611,230 @@
      "ok": "644"
     },
     "snapshot": "same"
+   },
+   {
+    "op": "claim",
+    "ws": "c",
+    "taskId": "00000000-0000-4000-8000-000000000005",
+    "repo": "repos/qa-repo",
+    "branch": "qa/partial",
+    "result": {
+     "ok": {
+      "taskId": "00000000-0000-4000-8000-000000000005",
+      "repo": "<BASE>/repos/qa-repo",
+      "branch": "qa/partial",
+      "path": "<BASE>/trees/00000000-0000-4000-8000-000000000005",
+      "home": "<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005",
+      "status": "held",
+      "mode": "clone",
+      "baseSha": "b160e757f21f1619064c06748af2671ac30b00f7",
+      "baseBranch": "main",
+      "owner": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "noevia": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "capabilities": [],
+      "domains": [],
+      "pinned": [],
+      "epoch": "qa-epoch-1",
+      "claimedAt": 1004
+     }
+    },
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/gitlink\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Refused to release the workspace: the clone’s .git is not a plain directory. It was left in place for inspection.\"}",
+      "00000000-0000-4000-8000-000000000005.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000005\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/partial\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000005\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1004}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000005.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt",
+      "trees/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000005/.git/",
+      "trees/00000000-0000-4000-8000-000000000005/a.txt"
+     ],
+     "outside": [
+      "outside/config"
+     ],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000005",
+    "args": [
+     "config",
+     "core.repositoryformatversion",
+     "1"
+    ],
+    "snapshot": "same"
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000005",
+    "args": [
+     "config",
+     "extensions.partialclone",
+     "origin"
+    ],
+    "snapshot": "same"
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000005",
+    "args": [
+     "config",
+     "remote.origin.url",
+     "<BASE>/repos/qa-repo"
+    ],
+    "snapshot": "same"
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000005",
+    "args": [
+     "config",
+     "remote.origin.promisor",
+     "true"
+    ],
+    "snapshot": "same"
+   },
+   {
+    "op": "rm",
+    "path": "trees/00000000-0000-4000-8000-000000000005/.git/objects/info/alternates",
+    "snapshot": "same"
+   },
+   {
+    "op": "write",
+    "path": "trees/00000000-0000-4000-8000-000000000005/a.txt",
+    "text": "changed by the harness\n",
+    "snapshot": "same"
+   },
+   {
+    "op": "release",
+    "ws": "c",
+    "taskId": "00000000-0000-4000-8000-000000000005",
+    "result": {
+     "ok": {
+      "taskId": "00000000-0000-4000-8000-000000000005",
+      "repo": "<BASE>/repos/qa-repo",
+      "branch": "qa/partial",
+      "path": "<BASE>/trees/00000000-0000-4000-8000-000000000005",
+      "home": "<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005",
+      "status": "released",
+      "mode": "clone",
+      "baseSha": "b160e757f21f1619064c06748af2671ac30b00f7",
+      "baseBranch": "main",
+      "owner": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "noevia": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "capabilities": [],
+      "domains": [],
+      "pinned": [],
+      "epoch": "qa-epoch-1",
+      "claimedAt": 1004,
+      "releasedAt": 1005,
+      "headSha": "e55dc45e12eda5d3e84c76383e4ba372375a9069",
+      "error": null
+     }
+    },
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/gitlink\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Refused to release the workspace: the clone’s .git is not a plain directory. It was left in place for inspection.\"}",
+      "00000000-0000-4000-8000-000000000005.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000005\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/partial\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000005\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005\",\"status\":\"released\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1004,\"releasedAt\":1005,\"headSha\":\"e55dc45e12eda5d3e84c76383e4ba372375a9069\",\"error\":null}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\nrefs/heads/qa/partial e55dc45e12eda5d3e84c76383e4ba372375a9069\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000005.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt"
+     ],
+     "outside": [
+      "outside/config"
+     ],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
    }
   ]
  }
