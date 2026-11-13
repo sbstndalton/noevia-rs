@@ -1,0 +1,681 @@
+//! One tool call of a native turn, from the model's request to the result the model and the client
+//! get: chat.cjs's tool loop (lines ~2250-2523) for the turns core hands off. Those carry no skills,
+//! no project-edit or coworker-page tools, no provenance policy and only the local default provider
+//! (rust-chat-native.cjs `refusal`), so the parts of the loop for those are not here.
+//!
+//! In Node's order: the tool-exchange checks and the per-turn result cache (tool-exchange.cjs, the
+//! `tool-exchange` crate), a write after a declined one, an oversized call, the account's policy, the
+//! card's target (Drive writes, through the core bridge), the chat's permission binding and grant,
+//! the approval card and its answer, the checks after the answer (policy, target, binding), the call
+//! through the core bridge, the audit, then the model's copy (reduced and framed) and the chip's
+//! `tool_result` with its flags.
+
+use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
+
+use js_json::JValue;
+
+use crate::host::{Host, Target, ToolRun};
+use crate::js;
+
+pub const CHECK_FAULT: &str = "ERROR: the tool call could not be checked; tool was not run.";
+pub const ERROR_FAULT: &str = "ERROR: the tool failed and its error could not be read.";
+const PERMISSION_UNVERIFIED: &str = "ERROR: the chat permission context could not be verified; the tool was not run. Nothing was changed. Ask again.";
+const TARGET_CHANGED: &str =
+    "ERROR: the write target changed after approval; the tool was not run. Ask again.";
+const BINDING_CHANGED: &str = "ERROR: the chat or permission target changed after approval; the tool was not run. Nothing was changed. Ask again.";
+const CANCELLED: &str = "ERROR: exchange cancelled; tool was not run.";
+const PERMISSION_CHANGED: &str = "ERROR: permission changed before dispatch; tool was not run.";
+
+/// One chat's recent writes: (fingerprint, when), oldest first.
+type Writes = Vec<(String, f64)>;
+
+/// recent-writes.cjs: the writes that succeeded per account and chat, for a card's repeat flag (#658).
+#[derive(Debug, Default)]
+pub struct RecentWrites {
+    chats: Mutex<Vec<(String, Writes)>>,
+}
+
+const RECENT_TTL_MS: f64 = 6.0 * 60.0 * 60.0 * 1000.0;
+const RECENT_PER_CHAT: usize = 20;
+const RECENT_MAX_CHATS: usize = 500;
+
+impl RecentWrites {
+    fn key(user: &str, chat: Option<&str>) -> Option<String> {
+        match chat {
+            Some(c) if !user.is_empty() && !c.is_empty() => Some(format!("{user}\u{0}{c}")),
+            _ => None,
+        }
+    }
+
+    pub fn record(&self, user: &str, chat: Option<&str>, fp: &str, now: f64) {
+        let Some(key) = Self::key(user, chat) else {
+            return;
+        };
+        let Ok(mut chats) = self.chats.lock() else {
+            return;
+        };
+        let mut list: Vec<(String, f64)> = chats
+            .iter()
+            .position(|(k, _)| *k == key)
+            .map(|at| chats.remove(at).1)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(_, at)| now - at <= RECENT_TTL_MS)
+            .collect();
+        list.push((fp.to_string(), now));
+        let excess = list.len().saturating_sub(RECENT_PER_CHAT);
+        list.drain(..excess);
+        chats.push((key, list));
+        let over = chats.len().saturating_sub(RECENT_MAX_CHATS);
+        chats.drain(..over);
+    }
+
+    /// recent-writes.cjs `has`: through `live()`, which drops the chat's expired writes (and the chat).
+    pub fn has(&self, user: &str, chat: Option<&str>, fp: &str, now: f64) -> bool {
+        let Some(key) = Self::key(user, chat) else {
+            return false;
+        };
+        let Ok(mut chats) = self.chats.lock() else {
+            return false;
+        };
+        let Some(at) = chats.iter().position(|(k, _)| *k == key) else {
+            return false;
+        };
+        let live: Writes = chats
+            .get(at)
+            .map(|(_, l)| {
+                l.iter()
+                    .filter(|(_, t)| now - t <= RECENT_TTL_MS)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        let found = live.iter().any(|(f, _)| f == fp);
+        if live.is_empty() {
+            chats.remove(at);
+        } else if let Some(entry) = chats.get_mut(at) {
+            entry.1 = live;
+        }
+        found
+    }
+}
+
+/// recent-writes.cjs `canonical`: JSON with object keys sorted.
+fn canonical(v: &JValue) -> String {
+    match v {
+        JValue::Arr(items) => format!(
+            "[{}]",
+            items.iter().map(canonical).collect::<Vec<_>>().join(",")
+        ),
+        JValue::Obj(items) => {
+            let mut keys: Vec<&(String, JValue)> = items.iter().collect();
+            // Object.keys(...).sort(): UTF-16 code unit order.
+            keys.sort_by_key(|k| js::to_units(&k.0));
+            format!(
+                "{{{}}}",
+                keys.iter()
+                    .map(|(k, v)| format!("{}:{}", js::stringify(&js::s(k.clone())), canonical(v)))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        }
+        JValue::Undefined => "null".into(),
+        other => js::stringify(other),
+    }
+}
+
+/// recent-writes.cjs `fingerprint(name, target, rawArgs)`.
+pub fn fingerprint(name: &str, target: Option<&str>, raw_args: &str) -> String {
+    let args = match js_json::wtf16::parse(if raw_args.is_empty() { "{}" } else { raw_args }) {
+        Ok(v) => canonical(&v),
+        Err(_) => raw_args.to_string(),
+    };
+    let target = target.filter(|t| !t.is_empty()).map_or(JValue::Null, js::s);
+    context_fit::fingerprint(&JValue::Arr(vec![js::s(name), target, js::s(args)]))
+}
+
+/// One call of a round, as the loop holds it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Call {
+    pub index: f64,
+    pub id: JValue,
+    pub name: String,
+    pub args: String,
+    pub too_large: bool,
+}
+
+/// What one call left behind for the turn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Outcome {
+    /// The `tool_result` event.
+    pub event: JValue,
+    /// The `role: tool` message for the next round.
+    pub message: JValue,
+    pub applied: Option<(String, Option<String>)>,
+    /// The call was a write and was about to run (#1456).
+    pub wrote: bool,
+    pub links: Vec<String>,
+}
+
+/// The turn's tool state shared across its rounds.
+pub struct Tools<'a> {
+    pub allowed: HashSet<String>,
+    /// The offered tool names in the order chat.cjs's `allowedToolNames` Set holds them.
+    pub allowed_order: Vec<String>,
+    pub writes: HashSet<String>,
+    pub public: HashSet<String>,
+    pub automatic_only_writes: HashSet<String>,
+    pub routes: Vec<(String, String)>,
+    pub chat_id: Option<String>,
+    pub chat_key: Option<String>,
+    pub grant_scope: String,
+    pub grant_holder: JValue,
+    pub recent: HashSet<String>,
+    pub project_id: Option<String>,
+    pub exchange_key: String,
+    pub decline_ends_reply: bool,
+    pub recent_writes: &'a RecentWrites,
+    pub reduce: &'a (dyn Fn(&str, usize) -> String + Sync),
+    pub source_links: &'a (dyn Fn(&str) -> Vec<String> + Sync),
+    pub tool_result_cap: usize,
+    cache: HashMap<Vec<u16>, (String, bool)>,
+    pub declined: Vec<String>,
+    not_approved: HashSet<String>,
+    not_run: HashSet<String>,
+}
+
+fn audit_denied<H: Host>(host: &H, name: &str, reason: &str) {
+    host.audit(
+        "tool.denied",
+        &js::obj([("tool", js::s(name)), ("reason", js::s(reason))]),
+    );
+}
+
+fn blocked_text(name: &str) -> String {
+    format!("ERROR: {name} is blocked in this account's settings, so it was not run. Do not retry it; tell the user they can change it in Settings → Connectors.")
+}
+
+/// `String(error).replace(/\.?$/, '.')`.
+fn sentence(text: &str) -> String {
+    format!("{}.", text.strip_suffix('.').unwrap_or(text))
+}
+
+/// The gate's answer before the call would run.
+enum Gate {
+    Result(String),
+    Run {
+        permission: String,
+        card_target: Option<String>,
+        kind: Option<String>,
+        /// For an asked call: the binding shown, whether a chat-wide grant was used, and whether it was asked.
+        binding: Option<(JValue, bool, bool)>,
+    },
+}
+
+impl<'a> Tools<'a> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        allowed: Vec<String>,
+        writes: HashSet<String>,
+        public: HashSet<String>,
+        automatic_only_writes: HashSet<String>,
+        routes: Vec<(String, String)>,
+        chat: (
+            Option<String>,
+            Option<String>,
+            String,
+            JValue,
+            HashSet<String>,
+        ),
+        project_id: Option<String>,
+        exchange_key: String,
+        decline_ends_reply: bool,
+        recent_writes: &'a RecentWrites,
+        reduce: &'a (dyn Fn(&str, usize) -> String + Sync),
+        source_links: &'a (dyn Fn(&str) -> Vec<String> + Sync),
+        tool_result_cap: usize,
+    ) -> Self {
+        let (chat_id, chat_key, grant_scope, grant_holder, recent) = chat;
+        Tools {
+            allowed: allowed.iter().cloned().collect(),
+            allowed_order: allowed,
+            writes,
+            public,
+            automatic_only_writes,
+            routes,
+            chat_id,
+            chat_key,
+            grant_scope,
+            grant_holder,
+            recent,
+            project_id,
+            exchange_key,
+            decline_ends_reply,
+            recent_writes,
+            reduce,
+            source_links,
+            tool_result_cap,
+            cache: HashMap::new(),
+            declined: Vec::new(),
+            not_approved: HashSet::new(),
+            not_run: HashSet::new(),
+        }
+    }
+
+    fn route(&self, name: &str) -> Option<&str> {
+        self.routes
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, s)| s.as_str())
+    }
+
+    fn is_write(&self, name: &str) -> bool {
+        self.writes.contains(name)
+    }
+
+    /// Runs one call through the exchange and the gate and gives what the turn keeps of it.
+    pub async fn call<H: Host>(&mut self, host: &H, call: &Call, offset: f64) -> Outcome {
+        let mut ran = false;
+        let mut failed = false;
+        let mut card_target = None;
+        let mut write_print = None;
+        let mut wrote = false;
+        let name_units = js::to_units(&call.name);
+        let args_units = (!call.args.is_empty()).then(|| js::to_units(&call.args));
+        let checked = tool_exchange::check(
+            host.left(),
+            self.allowed.contains(&call.name),
+            &name_units,
+            args_units.as_deref(),
+        );
+        let result = match checked {
+            Err(_) => CHECK_FAULT.to_string(),
+            Ok(tool_exchange::Check::Answer(a)) => js::from_units(&a),
+            Ok(tool_exchange::Check::Run(key)) => match self.cache.get(&key) {
+                Some((r, _)) => r.clone(),
+                None => {
+                    let write = self.is_write(&call.name);
+                    let r = match self
+                        .gate(host, call, offset, &mut card_target, &mut write_print)
+                        .await
+                    {
+                        Gate::Result(r) => r,
+                        Gate::Run {
+                            permission,
+                            card_target: shown,
+                            kind,
+                            binding,
+                        } => {
+                            match self
+                                .after_answer(
+                                    host,
+                                    call,
+                                    &permission,
+                                    shown.as_deref(),
+                                    kind,
+                                    binding,
+                                )
+                                .await
+                            {
+                                Some(refused) => refused,
+                                None => {
+                                    // markWriteAttempt: a write may change what earlier reads saw.
+                                    if write {
+                                        self.cache.retain(|_, (_, w)| *w);
+                                        wrote = true;
+                                    }
+                                    let run = ToolRun {
+                                        project_id: self.project_id.clone(),
+                                        name: call.name.clone(),
+                                        args: call.args.clone(),
+                                        allowed: self.allowed_order.clone(),
+                                        routes: self.routes.clone(),
+                                        chat_key: self.chat_key.clone(),
+                                        exchange_key: self.exchange_key.clone(),
+                                    };
+                                    match host.execute_tool(&run).await {
+                                        Ok((text, f)) => {
+                                            ran = true;
+                                            failed = f;
+                                            if write {
+                                                let mut details = vec![
+                                                    ("tool", js::s(call.name.clone())),
+                                                    ("args", js::s(js::slice(&call.args, 500))),
+                                                ];
+                                                if let Some(s) = self.route(&call.name) {
+                                                    details.push(("server", js::s(s)));
+                                                }
+                                                if f {
+                                                    details.push(("failed", JValue::Bool(true)));
+                                                }
+                                                host.audit("tool.write", &js::obj(details));
+                                            }
+                                            text
+                                        }
+                                        Err(message) => match tool_exchange::call_error(
+                                            &name_units,
+                                            &js::to_units(&message),
+                                        ) {
+                                            Ok(t) => js::from_units(&t),
+                                            Err(_) => ERROR_FAULT.to_string(),
+                                        },
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    self.cache.insert(key, (r.clone(), write));
+                    r
+                }
+            },
+        };
+        let for_model = (self.reduce)(&result, self.tool_result_cap);
+        let framed = prompt_framing::framing::frame_untrusted(
+            &js::to_units("tool result"),
+            &name_units,
+            &js::to_units(&for_model),
+        );
+        let is_error = result.starts_with("ERROR")
+            && !result.get(5..).is_some_and(|rest| {
+                rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+            });
+        let applied = ran && write_print.is_some() && !failed && !is_error;
+        let user = host.user_id();
+        if applied {
+            if let Some(fp) = &write_print {
+                self.recent_writes
+                    .record(&user, self.chat_id.as_deref(), fp, host.now_ms());
+            }
+        }
+        let mut event = vec![
+            ("type", js::s("tool_result")),
+            ("index", js::n(offset + call.index)),
+            ("name", js::s(call.name.clone())),
+            ("text", js::s(js::slice(&result, 300))),
+        ];
+        if applied {
+            event.push(("applied", JValue::Bool(true)));
+            if let Some(t) = &card_target {
+                event.push(("target", js::s(t.clone())));
+            }
+        }
+        if self.not_approved.contains(&result) {
+            event.push(("declined", JValue::Bool(true)));
+        }
+        if self.not_run.contains(&result) {
+            event.push(("notRun", JValue::Bool(true)));
+        }
+        if !applied && self.public.contains(&call.name) {
+            event.push(("public", JValue::Bool(true)));
+        }
+        let links = if !failed && !is_error {
+            (self.source_links)(&result)
+        } else {
+            Vec::new()
+        };
+        Outcome {
+            event: js::obj(event),
+            message: js::obj([
+                ("role", js::s("tool")),
+                ("tool_call_id", call.id.clone()),
+                ("content", js::s(js::from_units(&framed))),
+            ]),
+            applied: applied.then(|| (call.name.clone(), card_target.clone())),
+            wrote,
+            links,
+        }
+    }
+
+    /// The gate up to (and with) the approval card: a result when the call does not run.
+    async fn gate<H: Host>(
+        &mut self,
+        host: &H,
+        call: &Call,
+        offset: f64,
+        card_target: &mut Option<String>,
+        write_print: &mut Option<String>,
+    ) -> Gate {
+        let name = call.name.as_str();
+        let write = self.is_write(name);
+        if !self.declined.is_empty() && write {
+            audit_denied(host, name, "earlier-decline");
+            let r = format!("ERROR: {name} was not run because an earlier write in this reply was declined. Nothing was changed.");
+            self.not_run.insert(r.clone());
+            return Gate::Result(r);
+        }
+        if call.too_large {
+            audit_denied(host, name, "arguments-too-large");
+            return Gate::Result(format!(
+                "ERROR: {} was not run: its name, id or arguments were larger than about 8 million characters, which is not a real tool call. Nothing was changed.",
+                js::slice(name, 64)
+            ));
+        }
+        let permission = host.tool_policy(name, write);
+        if permission == "block" {
+            audit_denied(host, name, "blocked");
+            return Gate::Result(blocked_text(name));
+        }
+        let mut target_kind = None;
+        if write {
+            match host
+                .write_target(name, &call.args, self.chat_key.as_deref())
+                .await
+            {
+                Target::Refused(error) => {
+                    audit_denied(host, name, "write-target");
+                    return Gate::Result(format!(
+                        "ERROR: {} {name} was not run and nothing was changed.",
+                        sentence(&error)
+                    ));
+                }
+                Target::Found { target, kind } => {
+                    if !target.is_empty() {
+                        *card_target = Some(target);
+                        // `targetKind` is shown only when truthy, and compared as `kind || null`.
+                        target_kind = kind.filter(|k| !k.is_empty());
+                    }
+                }
+                Target::None => {}
+            }
+        }
+        *write_print = write.then(|| fingerprint(name, card_target.as_deref(), &call.args));
+        let mut shown = None;
+        if permission == "ask" {
+            let user = host.user_id();
+            let binding = match host
+                .permission_binding(
+                    self.chat_id.as_deref(),
+                    &self.grant_scope,
+                    &self.grant_holder,
+                )
+                .await
+            {
+                // chat.cjs permissionContext: null only for a turn with no chat id; with one it binds or throws.
+                Ok(JValue::Null) if self.chat_id.is_some() => {
+                    return Gate::Result(PERMISSION_UNVERIFIED.into())
+                }
+                Ok(b) => b,
+                Err(()) => return Gate::Result(PERMISSION_UNVERIFIED.into()),
+            };
+            let used_grant =
+                host.chat_wide_approved(self.chat_id.as_deref(), &self.grant_scope, &binding);
+            let asked = !used_grant || self.automatic_only_writes.contains(name);
+            if asked {
+                let id = format!("ap-{}", host.uuid());
+                let now = host.now_ms();
+                let repeat = write_print.as_ref().is_some_and(|fp| {
+                    self.recent_writes
+                        .has(&user, self.chat_id.as_deref(), fp, now)
+                        || self.recent.contains(fp)
+                });
+                let mut pending = vec![
+                    ("type", js::s("tool_pending")),
+                    ("id", js::s(id.clone())),
+                    ("index", js::n(offset + call.index)),
+                    ("name", js::s(name)),
+                    ("args", js::s(call.args.clone())),
+                ];
+                if let Some(t) = card_target.as_ref() {
+                    pending.push(("target", js::s(t.clone())));
+                }
+                if let Some(k) = &target_kind {
+                    pending.push(("targetKind", js::s(k.clone())));
+                }
+                if let Some(s) = self.route(name) {
+                    pending.push(("server", js::s(s)));
+                }
+                if repeat {
+                    pending.push(("repeatOf", JValue::Bool(true)));
+                }
+                host.emit(&js::obj(pending));
+                let request = js::obj([
+                    ("id", js::s(id)),
+                    ("userId", js::s(user)),
+                    ("chatId", self.chat_id.clone().map_or(JValue::Null, js::s)),
+                    ("scope", js::s(self.grant_scope.clone())),
+                    ("binding", binding.clone()),
+                    ("once", JValue::Bool(false)),
+                ]);
+                let decision = host.await_approval(&request).await;
+                if decision != "approve" {
+                    let r = match decision.as_str() {
+                        "aborted" => {
+                            let r = format!("ERROR: the reply was stopped before {name} was approved, so it was not run. Nothing was changed.");
+                            audit_denied(host, name, "aborted");
+                            self.not_run.insert(r.clone());
+                            return Gate::Result(r);
+                        }
+                        "timeout" => format!("ERROR: the user did not respond in time, so {name} was not run. Ask before trying again."),
+                        _ => format!("ERROR: the user declined to run {name}. Do not retry it; ask what they would prefer."),
+                    };
+                    audit_denied(host, name, &decision);
+                    self.not_approved.insert(r.clone());
+                    if decision == "deny" && self.decline_ends_reply {
+                        self.declined.push(name.to_string());
+                    }
+                    return Gate::Result(r);
+                }
+            }
+            shown = Some((binding, used_grant, asked));
+        }
+        Gate::Run {
+            permission,
+            card_target: card_target.clone(),
+            kind: target_kind,
+            binding: shown,
+        }
+    }
+
+    /// The checks after the card's answer, before the call: `Some(result)` when it does not run.
+    async fn after_answer<H: Host>(
+        &mut self,
+        host: &H,
+        call: &Call,
+        permission: &str,
+        shown: Option<&str>,
+        kind_was: Option<String>,
+        asked_binding: Option<(JValue, bool, bool)>,
+    ) -> Option<String> {
+        let name = call.name.as_str();
+        let write = self.is_write(name);
+        if host.left() {
+            return Some(CANCELLED.into());
+        }
+        if host.tool_policy(name, write) == "block" {
+            audit_denied(host, name, "blocked");
+            return Some(blocked_text(name));
+        }
+        if write {
+            let (target, kind) = match host
+                .write_target(name, &call.args, self.chat_key.as_deref())
+                .await
+            {
+                Target::Refused(_) => return self.revoked(host, TARGET_CHANGED),
+                Target::Found { target, kind } if !target.is_empty() => {
+                    (Some(target), kind.filter(|k| !k.is_empty()))
+                }
+                Target::Found { kind, .. } => (None, kind.filter(|k| !k.is_empty())),
+                Target::None => (None, None),
+            };
+            if target.as_deref() != shown || kind != kind_was {
+                return self.revoked(host, TARGET_CHANGED);
+            }
+        }
+        if permission == "ask" {
+            let (binding, used_grant, asked) = asked_binding.unwrap_or((JValue::Null, false, true));
+            let fresh = host
+                .permission_binding(
+                    self.chat_id.as_deref(),
+                    &self.grant_scope,
+                    &self.grant_holder,
+                )
+                .await;
+            // chat-grant-context.cjs `matches`: both bindings there, the same user, scope, chat and context.
+            let matches = |a: &JValue, b: &JValue| {
+                a.is_object() && b.is_object() && js::stringify(a) == js::stringify(b)
+            };
+            let ok = match &fresh {
+                Ok(now) => {
+                    (self.chat_id.is_none() || matches(&binding, now))
+                        && !(used_grant
+                            && !asked
+                            && !host.chat_wide_approved(
+                                self.chat_id.as_deref(),
+                                &self.grant_scope,
+                                now,
+                            ))
+                }
+                Err(()) => false,
+            };
+            if !ok {
+                return self.revoked(host, BINDING_CHANGED);
+            }
+        }
+        if host.left() {
+            return Some(CANCELLED.into());
+        }
+        // Read as chat.cjs reads it: once for `block`, and again for `ask` when the call was not asked about.
+        if host.tool_policy(name, write) == "block"
+            || (permission != "ask" && host.tool_policy(name, write) == "ask")
+        {
+            return Some(PERMISSION_CHANGED.into());
+        }
+        None
+    }
+
+    fn revoked<H: Host>(&self, host: &H, text: &str) -> Option<String> {
+        host.revoke_grant(self.chat_id.as_deref());
+        Some(text.to_string())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_fingerprint_sorts_keys_and_keeps_bad_json() {
+        let a = fingerprint("w", Some("t"), r#"{"b":1,"a":[{"d":2,"c":3}]}"#);
+        let b = fingerprint("w", Some("t"), r#"{"a":[{"c":3,"d":2}],"b":1}"#);
+        assert_eq!(a, b);
+        assert_ne!(fingerprint("w", None, "{"), fingerprint("w", None, "{}"));
+        assert_eq!(fingerprint("w", Some(""), "{}"), fingerprint("w", None, ""));
+    }
+
+    #[test]
+    fn recent_writes_expire_and_are_bounded_per_chat() {
+        let r = RecentWrites::default();
+        r.record("u", Some("c"), "fp", 0.0);
+        assert!(r.has("u", Some("c"), "fp", 1.0));
+        assert!(!r.has("u", Some("d"), "fp", 1.0));
+        assert!(!r.has("u", Some("c"), "fp", RECENT_TTL_MS + 1.0));
+        for i in 0..25 {
+            r.record("u", Some("c"), &format!("f{i}"), 2.0);
+        }
+        assert!(!r.has("u", Some("c"), "f0", 3.0));
+        assert!(r.has("u", Some("c"), "f24", 3.0));
+        assert!(!r.has("u", None, "f24", 3.0));
+    }
+}

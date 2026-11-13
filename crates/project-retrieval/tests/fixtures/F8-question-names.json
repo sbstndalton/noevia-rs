@@ -1,0 +1,280 @@
+{
+  "sources": {
+    "server/rag.cjs": "227d0b739858237554fe366269ef5926e76ac2275731f83f0fb19e3d31e6c024",
+    "server/quoted-name.cjs": "3e5aeb0c25b8d73f71ea7c7fb4f55a6db6cec9d1c6fa7fa03a7d6ea6cf044f86",
+    "server/embedding-profile.cjs": "fa349dd5909a912335bb81e81b1e670e1ed774cbca626da30853e24c3743b740"
+  },
+  "source": "server/rag.cjs questionNames :1271-1277 (inside filesContext)",
+  "cases": [
+    {
+      "name": "data.md",
+      "query": "what is in data.md?",
+      "named": true
+    },
+    {
+      "name": "data.md",
+      "query": "what is in mydata.md?",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "see data.md.bak",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "DATA.MD please",
+      "named": true
+    },
+    {
+      "name": "docs/data.md",
+      "query": "open data.md now",
+      "named": true
+    },
+    {
+      "name": "docs/data.md",
+      "query": "open docs/data.md now",
+      "named": true
+    },
+    {
+      "name": "notes-alpha.txt",
+      "query": "summarise notes-alpha.txt.",
+      "named": true
+    },
+    {
+      "name": "notes-alpha.txt",
+      "query": "notes-alpha.txt2 is other",
+      "named": false
+    },
+    {
+      "name": "a.b",
+      "query": "the file a.b, yes",
+      "named": true
+    },
+    {
+      "name": "a.b",
+      "query": "the file a.bc",
+      "named": false
+    },
+    {
+      "name": "x-y_z",
+      "query": "x-y_z-more",
+      "named": false
+    },
+    {
+      "name": "x-y_z",
+      "query": "pre_x-y_z",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "data.md",
+      "named": true
+    },
+    {
+      "name": "data.md",
+      "query": "data.md.",
+      "named": true
+    },
+    {
+      "name": "data.md",
+      "query": "data.md.x",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "data.md._",
+      "named": true
+    },
+    {
+      "name": "data.md",
+      "query": ".data.md",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "-data.md",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "_data.md",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "/data.md",
+      "named": true
+    },
+    {
+      "name": "data.md",
+      "query": "Ädata.md",
+      "named": true
+    },
+    {
+      "name": "data.md",
+      "query": "data.mdÄ",
+      "named": true
+    },
+    {
+      "name": "data.md",
+      "query": "data.md-",
+      "named": false
+    },
+    {
+      "name": "data.md",
+      "query": "(data.md)",
+      "named": true
+    },
+    {
+      "name": "Data.MD",
+      "query": "open data.md",
+      "named": true
+    },
+    {
+      "name": "ÄRGER.md",
+      "query": "zeig ärger.md",
+      "named": true
+    },
+    {
+      "name": "İstanbul.md",
+      "query": "istanbul.md",
+      "named": false
+    },
+    {
+      "name": "İstanbul.md",
+      "query": "i̇stanbul.md",
+      "named": true
+    },
+    {
+      "name": "ΣΟΦΙΑ.md",
+      "query": "σοφια.md",
+      "named": true
+    },
+    {
+      "name": "ΟΔΟΣ",
+      "query": "οδος",
+      "named": true
+    },
+    {
+      "name": "ΟΔΟΣ",
+      "query": "οδοσ",
+      "named": false
+    },
+    {
+      "name": "a+b(1).md",
+      "query": "see a+b(1).md now",
+      "named": true
+    },
+    {
+      "name": "[x]*.md",
+      "query": "file [x]*.md",
+      "named": true
+    },
+    {
+      "name": "$^.md",
+      "query": "what $^.md",
+      "named": true
+    },
+    {
+      "name": "a\\b.md",
+      "query": "a\\b.md",
+      "named": true
+    },
+    {
+      "name": "😀.md",
+      "query": "show 😀.md",
+      "named": true
+    },
+    {
+      "name": "😀.md",
+      "query": "show x😀.md",
+      "named": false
+    },
+    {
+      "name": "dir/",
+      "query": "anything",
+      "named": false
+    },
+    {
+      "name": "dir/",
+      "query": "",
+      "named": true
+    },
+    {
+      "name": "",
+      "query": "anything",
+      "named": false
+    },
+    {
+      "name": "",
+      "query": "",
+      "named": true
+    },
+    {
+      "name": "dir/sub/",
+      "query": "sub",
+      "named": false
+    },
+    {
+      "name": "notes.md",
+      "query": "notes.md.md",
+      "named": false
+    },
+    {
+      "name": "notes.md",
+      "query": "notes.md..",
+      "named": true
+    },
+    {
+      "name": "notes.md",
+      "query": "notes.md.Z",
+      "named": false
+    },
+    {
+      "name": "ﬁle.md",
+      "query": "file.md",
+      "named": false
+    },
+    {
+      "name": "file.md",
+      "query": "ﬁle.md",
+      "named": false
+    },
+    {
+      "name": "Kelvin.md",
+      "query": "kelvin.md",
+      "named": true
+    },
+    {
+      "name": "ǅ.md",
+      "query": "ǆ.md",
+      "named": true
+    },
+    {
+      "name": "a/b/c.md",
+      "query": "b/c.md",
+      "named": true
+    },
+    {
+      "name": "a/b/c.md",
+      "query": "a/b/c.md",
+      "named": true
+    },
+    {
+      "name": "a/b/c.md",
+      "query": "x/c.md",
+      "named": true
+    },
+    {
+      "name": "x",
+      "query": "x x x",
+      "named": true
+    },
+    {
+      "name": "x",
+      "query": "xx",
+      "named": false
+    }
+  ]
+}

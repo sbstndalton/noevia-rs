@@ -453,6 +453,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-turn"
+version = "0.1.0"
+dependencies = [
+ "context-fit",
+ "js-json",
+ "prompt-framing",
+ "provider-error",
+ "regex",
+ "serde_json",
+ "sha2",
+ "stream-guard",
+ "tool-exchange",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -486,11 +501,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-acp"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rustix",
+ "tempfile",
+]
+
+[[package]]
 name = "code-actions"
 version = "0.1.0"
 dependencies = [
  "prompt-framing",
  "proptest",
+]
+
+[[package]]
+name = "code-harness-config"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rustix",
+ "tempfile",
 ]
 
 [[package]]
@@ -520,6 +553,15 @@ dependencies = [
  "rustix",
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "code-workspace"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rustix",
  "tempfile",
 ]
 
@@ -795,6 +837,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-retrieval"
+version = "0.1.0"
+dependencies = [
+ "diary-corpus-parse",
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "sqlite-vec-loader",
+ "tempfile",
+]
+
+[[package]]
 name = "diary-score-gap"
 version = "0.1.0"
 
@@ -920,6 +974,13 @@ name = "docx-text-cli"
 version = "0.1.0"
 dependencies = [
  "docx-text",
+ "serde_json",
+]
+
+[[package]]
+name = "drive-tools"
+version = "0.1.0"
+dependencies = [
  "serde_json",
 ]
 
@@ -1839,6 +1900,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
+name = "mcp-client"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "mcp-frame"
 version = "0.1.0"
 dependencies = [
@@ -2496,6 +2564,20 @@ version = "0.1.0"
 dependencies = [
  "prompt-framing",
  "proptest",
+]
+
+[[package]]
+name = "project-retrieval"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "prompt-framing",
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "sqlite-vec-loader",
+ "tempfile",
+ "url",
 ]
 
 [[package]]
@@ -3930,6 +4012,15 @@ dependencies = [
  "proptest",
  "ssrf-policy",
  "url",
+]
+
+[[package]]
+name = "tool-rate-limit"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "policy-leaves",
+ "serde_json",
 ]
 
 [[package]]
