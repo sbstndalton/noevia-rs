@@ -471,6 +471,16 @@ test('engine: a request that throws mid-step reads as a crash once the server an
   assert.ok(['passed', 'failed'].includes(job.status));
 });
 
+test('engine: a request that loses the lease stops the run without a restore', async t => {
+  let n = 0;
+  const f = fixture(t, { engine: { request: p => {
+    if (p === '/v1/chat/completions' && ++n === 2) throw Object.assign(Error('QA maintenance lease lost.'), { status: 503, coverageLost: true });
+  } } });
+  await f.hold();
+  const { job } = await stage(f, f.contextHooks());
+  assert.equal(job.status, 'failed'); assert.match(job.error, /QA maintenance lease lost/); assert.equal(job.restored, undefined);
+});
+
 test('engine: models that never unload fail the run', async t => {
   const f = fixture(t, { calibration: { timeouts: { unload: 30, poll: 10 } } });
   f.state.status['qa-other'] = 'loaded';
