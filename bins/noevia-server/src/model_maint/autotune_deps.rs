@@ -237,7 +237,7 @@ impl FrontDeps {
     }
 
     /// The private calibrator's view of the same engine, store and hold.
-    pub(crate) fn engine(&self) -> FrontEngine {
+    pub fn engine(&self) -> FrontEngine {
         FrontEngine {
             maint: Arc::clone(&self.maint),
             current: Arc::clone(&self.current),
@@ -263,6 +263,20 @@ pub struct FrontEngine {
     maint: Arc<Maint>,
     current: Arc<Current>,
     facts: Arc<Mutex<(f64, Option<std::collections::HashSet<String>>)>>,
+}
+
+/// Ends when `hold` no longer excludes everyone (never without a hold): the lease's loss signal
+/// Node folds into every covered call's fetch signal (`dispatchSignal`).
+async fn hold_lost(hold: Option<&Arc<Hold>>) {
+    match hold {
+        Some(h) => loop {
+            if !h.excluded() {
+                return;
+            }
+            tokio::time::sleep(LOSS_POLL).await;
+        },
+        None => std::future::pending::<()>().await,
+    }
 }
 
 /// `assertCovered(step)` for the hold in `current`.
@@ -401,17 +415,7 @@ impl FrontEngine {
             Duration::from_millis(call.timeout_ms),
         );
         let hold = self.current.get();
-        let lost = async {
-            match &hold {
-                Some(h) => loop {
-                    if !h.excluded() {
-                        return;
-                    }
-                    tokio::time::sleep(LOSS_POLL).await;
-                },
-                None => std::future::pending::<()>().await,
-            }
-        };
+        let lost = hold_lost(hold.as_ref());
         let aborted = async {
             match abort {
                 Some(a) => a.wait().await,
@@ -431,12 +435,14 @@ impl FrontEngine {
     }
 }
 
-/// A streamed engine reply (the long-prompt test): its chunks until it ends or the step aborts.
+/// A streamed engine reply (the long-prompt test): its chunks until it ends, the step aborts or
+/// the hold it was sent under is lost (then a coverage error, as Node's covered stream throws).
 pub struct FrontBody {
     response: Option<reqwest::Response>,
     ok: bool,
     status: u16,
     abort: Abort,
+    hold: Option<Arc<Hold>>,
 }
 
 impl super::autotune_context::Body for FrontBody {
@@ -453,14 +459,23 @@ impl super::autotune_context::Body for FrontBody {
         let Some(response) = self.response.as_mut() else {
             return Ok(None);
         };
+        // A raised abort or a lost hold wins over chunks already buffered (fetch's reader rejects
+        // its next read once the signal fires).
+        if self.abort.aborted() {
+            return Err(fetch_failed(Some(&self.abort)));
+        }
+        if self.hold.as_ref().is_some_and(|h| !h.excluded()) {
+            return Err(coverage_error());
+        }
         tokio::select! {
             biased;
+            () = self.abort.wait() => Err(fetch_failed(Some(&self.abort))),
+            () = hold_lost(self.hold.as_ref()) => Err(coverage_error()),
             chunk = response.chunk() => match chunk {
                 Ok(Some(bytes)) => Ok(Some(bytes.to_vec())),
                 Ok(None) => Ok(None),
                 Err(_) => Err(fetch_failed(Some(&self.abort))),
             },
-            () = self.abort.wait() => Err(fetch_failed(Some(&self.abort))),
         }
     }
 }
@@ -486,13 +501,15 @@ impl super::autotune_context::Engine for FrontEngine {
             .router
             .as_ref()
             .ok_or_else(|| Fail::new("The model server is not configured."))?;
-        let token = self.current.get().and_then(|h| h.token());
+        let hold = self.current.get();
+        let token = hold.as_ref().and_then(|h| h.token());
         let body = to_v(&body);
         let sent = router.stream(path, &body, token.as_deref(), STREAM_LIMIT);
         let response = tokio::select! {
             biased;
-            r = sent => r.map_err(|_| fetch_failed(Some(&abort)))?,
             () = abort.wait() => return Err(fetch_failed(Some(&abort))),
+            () = hold_lost(hold.as_ref()) => return Err(coverage_error()),
+            r = sent => r.map_err(|_| fetch_failed(Some(&abort)))?,
         };
         let status = response.status().as_u16();
         Ok(FrontBody {
@@ -500,6 +517,7 @@ impl super::autotune_context::Engine for FrontEngine {
             status,
             response: Some(response),
             abort,
+            hold,
         })
     }
 
@@ -534,9 +552,12 @@ impl super::autotune_context::Engine for FrontEngine {
     }
 
     async fn identity_for(&self, model: &str) -> Result<JValue, Fail> {
-        Ok(super::calibration_facts::tune_identity(&self.maint, model)
-            .await
-            .unwrap_or(JValue::Null))
+        let token = self.current.get().and_then(|h| h.token());
+        Ok(
+            super::calibration_facts::tune_identity(&self.maint, model, token.as_deref())
+                .await
+                .unwrap_or(JValue::Null),
+        )
     }
 
     fn held(&self) -> bool {
@@ -665,7 +686,8 @@ impl Deps for FrontDeps {
     }
 
     async fn identity_for(&self, model: &str) -> Result<Option<JValue>, Fail> {
-        Ok(super::calibration_facts::tune_identity(&self.maint, model).await)
+        let token = self.current.get().and_then(|h| h.token());
+        Ok(super::calibration_facts::tune_identity(&self.maint, model, token.as_deref()).await)
     }
 
     async fn plan_facts(&self, model: &str) -> Result<JValue, Fail> {

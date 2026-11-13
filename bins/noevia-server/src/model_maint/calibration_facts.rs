@@ -279,13 +279,18 @@ impl Worker {
 
     /// llamacpp-manager.cjs `tuneIdentity(model)`: `None` where it rejects.
     pub async fn identity_for(&self, model: &str) -> Option<JValue> {
-        tune_identity(&self.maint, model).await
+        tune_identity(&self.maint, model, None).await
     }
 }
 
 /// llamacpp-manager.cjs `tuneIdentity(model)` over this front's maintenance: `None` where it
-/// rejects (calibration and the native auto-tune runner both use it).
-pub(super) async fn tune_identity(maint: &super::Maint, model: &str) -> Option<JValue> {
+/// rejects (calibration and the native auto-tune runner both use it). `hold` is the token its
+/// `/props` read carries (Node reads it through the covered request).
+pub(super) async fn tune_identity(
+    maint: &super::Maint,
+    model: &str,
+    hold: Option<&str>,
+) -> Option<JValue> {
     {
         let sizing = Arc::clone(&maint.sizing);
         let listing = sizing.listing().await;
@@ -317,7 +322,7 @@ pub(super) async fn tune_identity(maint: &super::Maint, model: &str) -> Option<J
             None => JValue::Null,
         };
         let build = match maint.router.as_ref() {
-            Some(r) => match r.get("/props", None, Duration::from_secs(8)).await {
+            Some(r) => match r.get("/props", hold, Duration::from_secs(8)).await {
                 Ok(reply) => reply
                     .body
                     .as_ref()

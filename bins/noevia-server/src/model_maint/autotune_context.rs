@@ -28,6 +28,8 @@ use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 const PAD: &str = "This is synthetic padding for a context allocation validation.\n";
+/// The longest string Node's engine builds (`String.prototype.repeat` throws past it).
+const MAX_STRING_UNITS: f64 = 536_870_888.0;
 const ANOTHER_CLIENT: &str = "Another client loaded a model during calibration. Stop Diary background jobs and other clients, then retry.";
 const NOT_RELOADED: &str = " Reload failed or timed out. Previous preset file restored; check router health before retrying.";
 /// The contextFactory's answer when a start found its stage stale.
@@ -413,14 +415,24 @@ impl<E: Engine, H: Hooks + 'static> Context for PrivateCalibrator<E, H> {
         let core = Arc::clone(&self.core);
         let model = model.to_string();
         async move {
-            let inner = tokio::spawn({
+            let entry = lock(&core.inner).job_object;
+            let mut inner = tokio::spawn({
                 let core = Arc::clone(&core);
                 async move { core.start_inner(&model, prompt_budget_seconds).await }
             });
             tokio::select! {
                 biased;
-                r = inner => r.unwrap_or_else(|_| Ok(stale())),
-                () = core.departed.wait() => Ok(stale()),
+                r = &mut inner => r.unwrap_or_else(|_| Ok(stale())),
+                () = core.departed.wait() => {
+                    // Node's `Promise.race` always sees a launch that happened before the abort
+                    // (its continuation is a microtask): answer with that job, so the runner awaits
+                    // its completion instead of leaving it to clean up after the hold is gone.
+                    if lock(&core.inner).job_object == entry {
+                        Ok(stale())
+                    } else {
+                        inner.await.unwrap_or_else(|_| Ok(stale()))
+                    }
+                }
             }
         }
     }
@@ -440,6 +452,8 @@ impl<E: Engine, H: Hooks + 'static> Context for PrivateCalibrator<E, H> {
     fn abort(&self) {
         let core = &self.core;
         {
+            // Under the lock a launch installs its job in: either the job is in (and is cancelled
+            // here) or the launch sees the abort and does not happen.
             let mut i = lock(&core.inner);
             if !matches!(i.job, JValue::Null) {
                 i.cancel_requested = true;
@@ -447,8 +461,8 @@ impl<E: Engine, H: Hooks + 'static> Context for PrivateCalibrator<E, H> {
                     a.abort();
                 }
             }
+            core.controller.abort();
         }
-        core.controller.abort();
         core.departed.abort();
     }
 
@@ -802,6 +816,10 @@ impl<E: Engine, H: Hooks + 'static> Core<E, H> {
         ]);
         {
             let mut i = self.inner();
+            // `abort()` raises the controller under this lock: launch only before it.
+            if self.controller.aborted() {
+                return Ok(None);
+            }
             i.cancel_requested = false;
             i.job = job;
             i.job_object = i.next_object;
@@ -1485,7 +1503,18 @@ impl<E: Engine, H: Hooks + 'static> Core<E, H> {
             self.engine.random_int(1000, 9999)
         );
         let per_line = self.tokens_per_pad_line(&model, abort).await;
-        let repeats = (target / per_line).floor().max(1.0);
+        // `Math.max(1, Math.floor(target / perLine))` (NaN stays NaN: `repeat` then counts 0), and
+        // `PAD.repeat(repeats)` throws a RangeError past the engine's string limit, a failed step.
+        let repeats = match (target / per_line).floor() {
+            r if r.is_nan() => 0.0,
+            r => r.max(1.0),
+        };
+        if repeats.is_infinite() {
+            return Err(Fail::new("Invalid count value: Infinity"));
+        }
+        if repeats * PAD.len() as f64 > MAX_STRING_UNITS {
+            return Err(Fail::new("Invalid string length"));
+        }
         let budget_s = js::number(&self.job_get(slot, "promptBudgetSeconds"));
         let want_detail = self.job_get(slot, "evidenceWanted") == JValue::Bool(true);
         let content = format!(
