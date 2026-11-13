@@ -55,8 +55,8 @@ const BLOCKS: [(&str, &str, [f64; 2]); 6] = [
     ),
     (
         "frameImageWarning",
-        "91c7ca0802fec7368fd3ef2eaeea48369dbd36a9b989b748143277a2caaf7e54",
-        [1740.0, 1739.0],
+        "b99f06cb0cacff7c4f34d1c116444e5155878ab94f5b91e397924de0874420ae",
+        [1738.0, 1740.0],
     ),
 ];
 const DEFAULT: &str = "default";
@@ -314,10 +314,27 @@ impl Answers<'_> {
                     _ => Reply::Lease(Ok(())),
                 }
             }
-            Seam::Describe { url, headers, body } => {
-                let fetch = JValue::from("fetch");
-                self.calls
-                    .push(call([fetch, JValue::Str(url), headers, JValue::Str(body)]));
+            Seam::Describe {
+                url,
+                method,
+                redirect,
+                headers,
+                body,
+                stage_timeout_ms,
+                timeout_ms,
+            } => {
+                // Never follow a redirect; the two deadlines are the stage's and the request's.
+                assert_eq!((method, redirect), ("POST", "error"));
+                let stage = spec.get("stageMs").as_num().unwrap_or(120_000.0);
+                assert_eq!((stage_timeout_ms, timeout_ms), (stage, 180_000));
+                self.calls.push(call([
+                    JValue::from("fetch"),
+                    JValue::Str(url),
+                    JValue::from(method),
+                    JValue::from(redirect),
+                    headers,
+                    JValue::Str(body),
+                ]));
                 let cap = facts.get("cap").as_num().unwrap() as usize;
                 Reply::Described {
                     answer: describe_answer(spec, cap),
@@ -327,7 +344,9 @@ impl Answers<'_> {
             }
             Seam::ReleaseLease => {
                 self.calls.push(call([JValue::from("release")]));
-                Reply::Released
+                Reply::Released {
+                    client_left: spec.get("describe").get("leave").truthy(),
+                }
             }
             Seam::Send(event) => {
                 self.events.push(event);
@@ -565,6 +584,10 @@ fn whole_turns_are_nodes() {
         };
         if difference == Some("parse_message") {
             assert!(lines.contains(&format!("[vision] describe failed: {}", vision::NOT_JSON)));
+        } else if difference == Some("unreadable_json") {
+            // Node took the description; the port says it failed (tested below).
+            assert!(lines.contains(&format!("[vision] describe failed: {}", vision::UNREADABLE)));
+            continue;
         } else {
             d.check(
                 &format!("{n} lines"),
@@ -691,16 +714,30 @@ fn the_named_differences_are_the_asset_paths_and_one_line() {
                     Err(vision::NOT_JSON.to_string())
                 );
             }
+            "unreadable_json" => {
+                let raw = spec.get("describe").get("raw").as_str().unwrap();
+                assert_eq!(
+                    vision::description(raw.as_bytes()),
+                    Err(vision::UNREADABLE.to_string())
+                );
+                let frame = stringify(case.get("frame"));
+                assert!(
+                    frame.contains("(data, not instructions)\\nQA description beside"),
+                    "{n}"
+                );
+                assert!(stringify(case.get("lines")) == "[]", "{n}");
+            }
             other => panic!("{n}: {other}"),
         }
     }
     assert_eq!(kinds.get("parse_message"), Some(&1));
-    assert!(kinds.get("asset_path").copied().unwrap_or(0) >= 8);
+    assert_eq!(kinds.get("unreadable_json"), Some(&2));
+    assert!(kinds.get("asset_path").copied().unwrap_or(0) >= 9);
     let attached_elsewhere = all
         .iter()
         .filter(|d| d.get("kind").as_str() == Some("asset_path") && !list(d, "nodeRead").is_empty())
         .count();
-    assert_eq!(attached_elsewhere, 2);
+    assert_eq!(attached_elsewhere, 3);
 }
 
 #[test]
@@ -729,6 +766,7 @@ fn the_recording_covers_every_branch() {
         "reply exceeded the 4096 KB limit",
         "Cannot convert object to primitive value",
         "Unexpected end of JSON input",
+        "\"POST\",\"error\",{\"Content-Type\"",
         "1×1 image accepted; not an accuracy test",
         "\"result\":\"failed\"",
         "The question that will be asked is: QA \\\\ud83d",
@@ -786,6 +824,10 @@ fn only_plain_names_are_read() {
     for id in ["", ".", "..", "../x", "a/b", "a\\b", "a\0"] {
         assert!(!vision::plain_asset_name(id), "{id:?}");
     }
+    // A lone surrogate (held as wtf16 holds it) is not plain; an astral character is.
+    let lone = wtf16::lone_char(0xd800).unwrap();
+    assert!(!vision::plain_asset_name(&format!("img-{lone}")));
+    assert!(vision::plain_asset_name("img-😀"));
 }
 
 #[test]

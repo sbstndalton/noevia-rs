@@ -19,7 +19,7 @@
 //          logged for every path under the turn's directory (`reads`: the path relative to it and whether it read).
 //          From the meta event to the `generating` status the seams are stubs that answer per case and log their
 //          calls in order (`calls`): autoRoles, getProvider, providerHeaders, modelManager.acquireLease (its lease
-//          logs release; its fetch is the plain one), fetch (the describe request: url, headers, body text, answered
+//          logs release; its fetch is the plain one), fetch (the describe request: url, method, redirect, headers, body text, answered
 //          per case: a description, a status, a body that is not JSON or too long, a throw, a hang until the stage
 //          deadline, the client leaving), visionProbe (its arguments) and modelManager.recordEvidence. The handler's
 //          visionDescriptions Map is shared by the turns of a cache group; its keys are recorded after each such turn.
@@ -78,7 +78,7 @@ cut('images', '    const projectImages = project ? (project.assets || []) : [];\
   '          console.warn(`[assets] ${asset.id} is listed on project ${project.id} but its bytes are missing`);\n        }\n      }\n    }\n');
 cut('pass', '    let visionWarning = missingImages.length ?', "          if (!sys) wire = [{ role: 'system', content: blind }, ...wire];\n        }\n      }\n    }\n");
 cut('replyWarning', "    send({ type: 'status', id: 'generating', text: 'Generating response…' });\n", "    if (replyWarning()) send({ type: 'warning', text: replyWarning() });\n");
-cut('frameImageWarning', 'revokedInHistory: [...revokedInHistory], imageWarning, coverageWarning', 'revokedInHistory: [...revokedInHistory], imageWarning, coverageWarning');
+cut('frameImageWarning', '          skills: project ? { loaded: [...loadedSkills]', "coverageWarning(partialReads) } : null,\n");
 
 // ── Deterministic inputs ────────────────────────────────────────────────────────────────────
 let seed = 0x2026_1113 ^ 0x2c;
@@ -146,7 +146,7 @@ function handlerFor(spec, turnDir, assetsDir) {
   const S = () => current.spec;
   const fetch = async (url, init) => {
     if (current.phase === 'vision') {
-      seam(['fetch', url, init.headers, init.body]);
+      seam(['fetch', url, init.method, init.redirect, init.headers, init.body]);
       return describeAnswer(S(), init);
     }
     current.requests.push(JSON.parse(init.body));
@@ -320,6 +320,8 @@ async function addTurn(name, input) {
   }
   await addTurn('id_missing', { project: P({ assets: [{ name: 'qa-no-id.png', mime: 'image/png' }] }), vision: SEES });
   await addTurn('id_throws', { project: P({ assets: [{ id: { toString: 1 }, name: 'qa-x.png', mime: 'image/png' }] }), vision: SEES });
+  // A lone surrogate in the id: Node's path is UTF-8 with U+FFFD in its place, so it opens that file.
+  await addTurn('id_lone', { project: P({ assets: [asset('img-qa-\ud800', 'qa-lone-id.png')] }), images: { 'img-qa-\ufffd': PNG }, vision: SEES });
   await addTurn('id_backslash', { project: P({ assets: [asset('img\\qa-1', 'qa-back.png')] }), vision: SEES });
   await addTurn('path_outside', { project: P({ assets: [asset('../qa-outside.png', 'qa-outside.png')] }), outside: PNG, vision: SEES });
   await addTurn('path_inside', { project: P({ assets: [asset('qa-sub/../img-qa-1', 'qa-inside.png')] }), ...IMG1, vision: SEES });
@@ -381,6 +383,15 @@ async function addTurn(name, input) {
     await addTurn(`described_${label}`, { ...ONE, ...VR, describe: d, ...(label === 'slow' ? { stageMs: 5000 } : {}) });
   }
   await addTurn('described_vision_number', { ...ONE, roles: { vision: 5 } });
+  // A Vision role model whose String() throws: the failed reply's line throws inside the try (caught, the lease given
+  // back), then the warning naming the model throws.
+  await addTurn('describe_vision_object_status', { ...ONE, roles: { vision: { toString: 1 } }, describe: { status: 500 }, vision: SEES });
+  await addTurn('described_vision_object', { ...ONE, roles: { vision: { toString: 1 } } });
+  // JSON that JSON.parse reads but the port's wtf16 cannot hold (a named difference): a number outside f64, deep nesting.
+  const REPLY = (text) => JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: text } }] }).slice(1);
+  await addTurn('described_huge_number', { ...ONE, ...VR, vision: SEES, describe: { unreadable: true, raw: `{"qa":1e400,${REPLY('QA description beside a huge number.')}` } });
+  await addTurn('described_deep_nesting', { ...ONE, ...VR, vision: SEES,
+    describe: { unreadable: true, raw: `{"qa":${'['.repeat(130)}${']'.repeat(130)},${REPLY('QA description beside deep nesting.')}` } });
   await addTurn('described_no_lease_hook', { ...ONE, ...VR, lease: false });
   await addTurn('described_headers', { ...ONE, ...VR, headers: { default: { 'X-QA-Extra': 'qa', 'Content-Type': 'text/qa' } } });
   await addTurn('described_long_question', { ...ONE, ...VR, message: `QA ${'q'.repeat(495)}😀 and the rest of a long question` });
@@ -392,7 +403,7 @@ async function addTurn(name, input) {
 
   // ── The description does not come ───────────────────────────────────────────────────────
   for (const [label, d] of [['empty', { text: '' }], ['blank', { text: ' \n\t ' }], ['length', { text: 'QA cut description', finish: 'length' }],
-    ['no_choices', { json: {} }], ['not_json', { raw: 'QA not json' }], ['empty_body', { raw: '' }], ['null_body', { json: null }], ['status_500', { status: 500 }], ['status_404', { status: 404 }],
+    ['no_choices', { json: {} }], ['not_json', { raw: 'QA not json' }], ['empty_body', { raw: '' }], ['whitespace_body', { raw: ' \n\t\r ' }], ['null_body', { json: null }], ['status_500', { status: 500 }], ['status_404', { status: 404 }],
     ['over_cap', { big: 'over' }], ['throws', { throws: 'QA connection refused' }], ['content_throws', { json: { choices: [{ message: { content: { toString: 1 } } }] } }]]) {
     await addTurn(`describe_${label}`, { ...ONE, ...VR, describe: d, vision: SEES });
     if (label === 'status_500' || label === 'throws') await addTurn(`describe_${label}_blind`, { ...ONE, ...VR, describe: d });
@@ -501,7 +512,8 @@ async function addTurn(name, input) {
 
   // ── Differences ─────────────────────────────────────────────────────────────────────────
   // The port reads an asset only by a plain file name; Node reads path.join(assetDir, id) for any text id.
-  const plain = (id) => typeof id === 'string' && id !== '' && id !== '.' && id !== '..' && !/[/\\\u0000]/.test(id);
+  const lone = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+  const plain = (id) => typeof id === 'string' && id !== '' && id !== '.' && id !== '..' && !/[/\\\u0000]/.test(id) && !lone.test(id);
   const differences = turns.filter((t) => {
     const assets = t.spec.project && Array.isArray(t.spec.project.assets) ? t.spec.project.assets : [];
     return assets.some((a) => a && typeof a === 'object' && typeof a.id === 'string' && !plain(a.id));
@@ -510,9 +522,13 @@ async function addTurn(name, input) {
     nodeRead: t.reads.filter(([p, ok]) => ok && !t.spec.project.assets.some((a) => a && plain(a.id) && p === `assets/${a.id}`)).map(([p]) => p),
     about: 'An asset id that is not a plain file name is a missing image here, without a read; Node reads path.join(assetDir, id).' }))
     // The describe-failed line of a body that is not JSON carries V8's JSON.parse message in Node.
-    .concat(turns.filter((t) => t.calls.some((c) => c[0] === 'fetch') && typeof t.spec.describe?.raw === 'string' && t.spec.describe.raw !== '')
+    .concat(turns.filter((t) => t.calls.some((c) => c[0] === 'fetch') && typeof t.spec.describe?.raw === 'string'
+        && t.spec.describe.raw.replace(/[ \t\n\r]/g, '') !== '' && (() => { try { JSON.parse(t.spec.describe.raw); return false; } catch { return true; } })())
       .map((t) => ({ kind: 'parse_message', name: t.name, nodeLines: t.lines,
-        about: "The [vision] describe-failed line of a reply that is not JSON says the port's NOT_JSON where Node writes V8's JSON.parse message." })));
+        about: "The [vision] describe-failed line of a reply that is not JSON says the port's NOT_JSON where Node writes V8's JSON.parse message." })))
+    // JSON that JSON.parse reads and the port's wtf16 cannot hold: Node takes the description, the port fails it.
+    .concat(turns.filter((t) => t.spec.describe?.unreadable === true).map((t) => ({ kind: 'unreadable_json', name: t.name,
+      about: 'A describe reply JSON.parse reads but wtf16 cannot hold is a failed description here (UNREADABLE); Node takes it.' })));
 
   // ── Output ──────────────────────────────────────────────────────────────────────────────
   const facts = { providers: PROVIDERS, external: Object.fromEntries(Object.entries(PROVIDERS).map(([k, row]) => [k, egress.isExternalProvider(row)])),

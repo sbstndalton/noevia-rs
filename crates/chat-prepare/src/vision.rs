@@ -23,10 +23,14 @@
 //! `differences` and tested:
 //! - An asset id that is not a plain file name ([`plain_asset_name`]) is a missing image and is
 //!   never read; Node reads `path.join(assetDir, id)`, which for `x/../img-1` or `../x` is another
-//!   file in or beyond the project's asset directory. Ids are `img-<hex>` (uploads.cjs), so only a
-//!   hand-edited record differs, and the port never reads outside the directory.
+//!   file in or beyond the project's asset directory (an id holding a lone surrogate opens the
+//!   name with U+FFFD in its place). Ids are `img-<hex>` (uploads.cjs), so only a hand-edited
+//!   record differs, and the port never reads outside the directory.
 //! - The `[vision] describe failed:` line of a body that is not JSON says [`NOT_JSON`] where Node
-//!   writes V8's `JSON.parse` message (the empty body's is V8's).
+//!   writes V8's `JSON.parse` message (an empty or whitespace body's is V8's).
+//! - A describe reply `JSON.parse` reads but `wtf16` cannot hold (a number outside `f64`, nesting
+//!   past 128, a character of U+10F800..U+10FFFF) is a failed description here ([`UNREADABLE`],
+//!   said on the reply as any failure); Node takes its description.
 //!
 //! Node behaviour kept: the notes go on every system message, the missing-images one included; a
 //! `mime` whose `String()` throws makes an image loaded and missing; `${...}` of an object with
@@ -37,7 +41,8 @@ use crate::roles::strict_eq;
 pub use crate::roles::Halt;
 use crate::sources::string_of;
 use crate::{js, names, Thrown};
-use js_json::{wtf16, JValue};
+use js_json::wtf16::{self, Refusal};
+use js_json::JValue;
 use sha2::{Digest, Sha256};
 
 /// `VISION_DESCRIBE_TIMEOUT_MS`: the describe request's own deadline.
@@ -56,6 +61,10 @@ pub const DESCRIPTIONS_MAX: usize = 64;
 pub const CODE_ROUTE_NOTE: &str = "For commands and code: before answering, check that it does exactly what was asked and nothing more (for example, when files are asked for, directories must not appear in the output). When asked why something can mislead or fail, name the concrete mechanism in one sentence.";
 /// The `[vision] describe failed:` message of a body that is not JSON (see the named difference).
 pub const NOT_JSON: &str = "the describe reply is not JSON";
+/// The `[vision] describe failed:` message of a JSON reply `wtf16` cannot hold (a named difference).
+pub const UNREADABLE: &str = "the describe reply is JSON the port cannot hold";
+/// V8's message for `String()` of an object with its own `toString`.
+const CONVERT: &str = "Cannot convert object to primitive value";
 const PROMPT: [&str; 3] = [
     "Describe these images in detail, so someone who cannot see them can answer questions about them.",
     "Transcribe any text exactly, including numbers, labels and headings. If text is unclear, say so rather than guessing.",
@@ -85,7 +94,11 @@ impl Images {
 
 /// Whether the port reads an asset id as a file of the asset directory (the named difference).
 pub fn plain_asset_name(id: &str) -> bool {
-    !id.is_empty() && id != "." && id != ".." && !id.contains(['/', '\\', '\0'])
+    !id.is_empty()
+        && id != "."
+        && id != ".."
+        && !id.contains(['/', '\\', '\0'])
+        && !id.chars().any(|c| wtf16::lone_unit(c).is_some())
 }
 
 /// `Buffer.toString('base64')`.
@@ -271,16 +284,27 @@ pub enum Seam {
     GetProvider(String),
     /// `providerHeaders(row)`: [`Reply::Headers`].
     ProviderHeaders(JValue),
-    /// `modelManager.acquireLease(visionModel, { signal: stageSignal })`: [`Reply::Lease`].
+    /// `modelManager.acquireLease(visionModel, { signal: stageSignal })`: [`Reply::Lease`]. The
+    /// stage deadline (`stage_timeout_ms` of [`Seam::Describe`]) starts before it. A granted
+    /// lease is the caller's to give back when the pass ends in `Err` before [`Seam::ReleaseLease`]
+    /// (only `String(baseUrl)` throwing after the grant; Node leaks the lease there).
     AcquireLease(JValue),
-    /// `fetch(url, { method: 'POST', headers, body, ... })` of the description (through the
-    /// lease's fetch when there is one; `body` is the JSON text): [`Reply::Described`].
+    /// `fetch(url, { method, headers, body, redirect, signal })` of the description, through the
+    /// lease's fetch when there is one (`body` is the JSON text): [`Reply::Described`]. The caller
+    /// must never follow a redirect (`redirect` is always `"error"`: a redirect is a
+    /// [`DescribeAnswer::Threw`]) and must abort at the stage deadline (`stage_timeout_ms` from
+    /// before the lease), at `timeout_ms` ([`DESCRIBE_TIMEOUT_MS`]) from the request, and when the
+    /// client leaves.
     Describe {
         url: String,
+        method: &'static str,
+        redirect: &'static str,
         headers: JValue,
         body: String,
+        stage_timeout_ms: f64,
+        timeout_ms: u64,
     },
-    /// `stageLease.release()`: [`Reply::Released`].
+    /// `await stageLease.release()`: [`Reply::Released`].
     ReleaseLease,
     /// `send(event)`: [`Reply::Sent`].
     Send(JValue),
@@ -329,13 +353,18 @@ pub enum Reply {
     },
     Headers(JValue),
     Lease(Result<(), LeaseRefusal>),
-    /// The answer, whether the client had left by then, and `Date.now()` (the description's start).
+    /// The answer, whether the client had left by then, and `Date.now()` when the body was read
+    /// (a description is kept [`DESCRIPTION_TTL_MS`] from then).
     Described {
         answer: DescribeAnswer,
         client_left: bool,
         now_ms: f64,
     },
-    Released,
+    /// Whether the client had left once the lease was given back (`chatSignal.signal.aborted`,
+    /// read after the release).
+    Released {
+        client_left: bool,
+    },
     Sent,
     Probe(JValue),
     Recorded,
@@ -475,13 +504,16 @@ impl<'a> Pass<'a> {
                 },
             ) => {
                 self.client_left = client_left;
-                self.answered(answer, now_ms)?;
+                self.answered(answer, now_ms);
                 if self.leased {
                     return Ok(self.ask(Stage::Release, Seam::ReleaseLease));
                 }
                 self.after_describe()
             }
-            (Stage::Release, Reply::Released) => self.after_describe(),
+            (Stage::Release, Reply::Released { client_left }) => {
+                self.client_left = client_left;
+                self.after_describe()
+            }
             (Stage::Failure, Reply::Sent) => self.after_failure(),
             (Stage::Probe, Reply::Probe(vision)) => self.probed(vision),
             (Stage::Evidence, Reply::Recorded) => self.finish_probe(),
@@ -634,6 +666,10 @@ impl<'a> Pass<'a> {
         ]);
         Ok(Seam::Describe {
             url,
+            method: "POST",
+            redirect: "error",
+            stage_timeout_ms: self.t.stage_timeout_ms,
+            timeout_ms: DESCRIBE_TIMEOUT_MS,
             headers: JValue::Obj(items),
             body: wtf16::stringify(&body).unwrap_or_default(),
         })
@@ -648,12 +684,13 @@ impl<'a> Pass<'a> {
     }
 
     /// What the describe answer came to: the description (kept in the cache) or a failure.
-    fn answered(&mut self, answer: DescribeAnswer, now_ms: f64) -> Result<(), Thrown> {
+    fn answered(&mut self, answer: DescribeAnswer, now_ms: f64) {
         match answer {
-            DescribeAnswer::Status(status) => {
-                let model = string_of(&self.vision_model)?;
-                self.fail(false, format!("{model} could not describe ({status})"));
-            }
+            // The line is written inside Node's `try`: a model whose `String()` throws is a failure.
+            DescribeAnswer::Status(status) => match string_of(&self.vision_model) {
+                Ok(model) => self.fail(false, format!("{model} could not describe ({status})")),
+                Err(Thrown) => self.fail(false, format!("describe failed: {CONVERT}")),
+            },
             DescribeAnswer::Body(bytes) => match description(&bytes) {
                 Ok(Some(text)) => {
                     self.cache.set(&self.key, &text, now_ms);
@@ -676,7 +713,6 @@ impl<'a> Pass<'a> {
                 self.fail(false, format!("describe failed: {message}"));
             }
         }
-        Ok(())
     }
 
     fn stage_seconds(&self) -> String {
@@ -823,12 +859,15 @@ pub fn description(bytes: &[u8]) -> Result<Option<String>, String> {
     if bytes.len() > REPLY_CAP {
         return Err(format!("reply exceeded the {} KB limit", REPLY_CAP / 1024));
     }
-    let Some(body) = js::parse_file(bytes) else {
-        return Err(if bytes.is_empty() {
-            "Unexpected end of JSON input".to_string()
-        } else {
-            NOT_JSON.to_string()
-        });
+    // `readCappedText` decodes as UTF-8 (U+FFFD for what is not), then `JSON.parse`.
+    let text = String::from_utf8_lossy(bytes);
+    let body = match wtf16::parse(&text) {
+        Ok(body) => body,
+        Err(_) if text.trim_matches([' ', '\t', '\n', '\r']).is_empty() => {
+            return Err("Unexpected end of JSON input".to_string())
+        }
+        Err(Refusal::Unsupported) => return Err(UNREADABLE.to_string()),
+        Err(Refusal::Invalid) => return Err(NOT_JSON.to_string()),
     };
     // `body?.choices?.[0]`: a list's first item, an object's "0" (a string's first character has
     // no `message` either).
@@ -838,7 +877,7 @@ pub fn description(bytes: &[u8]) -> Result<Option<String>, String> {
     };
     let content = first.get("message").get("content");
     let text = if content.truthy() {
-        string_of(content).map_err(|_| "Cannot convert object to primitive value".to_string())?
+        string_of(content).map_err(|_| CONVERT.to_string())?
     } else {
         String::new()
     };
