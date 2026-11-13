@@ -589,31 +589,81 @@ fn endpoints_are_host_and_port() {
 }
 
 #[test]
-fn a_spawned_agent_that_exits_ends_the_prompt_as_node_says_even_if_its_child_lingers() {
+fn a_spawned_agent_that_exits_ends_the_prompt_as_node_says_and_its_group_goes_too() {
     use std::os::unix::fs::PermissionsExt;
     let f = fixture();
     let node = f.get("scenarios").get("spawn-exit").get("transcript");
     let dir = tempfile::tempdir().unwrap();
+    let got_lines = dir.path().join("lines");
+    let got_env = dir.path().join("env");
+    let pids = dir.path().join("pids");
     let agent = dir.path().join("qa-agent");
-    // Answers the handshake, takes the prompt, leaves a child holding stdout, exits 3.
+    // Records what it is sent and its environment, answers the handshake, takes the prompt,
+    // leaves a child behind and exits 3.
     fs::write(
         &agent,
-        "#!/bin/sh\nread a\necho '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'\nread b\necho '{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-spawned\"}}'\nread c\nsleep 20 &\nexit 3\n",
+        format!(
+            "#!/bin/sh\nenv > '{env}'\nread a\necho \"$a\" >> '{lines}'\necho '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{}}}}'\nread b\necho \"$b\" >> '{lines}'\necho '{{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{{\"sessionId\":\"qa-spawned\"}}}}'\nread c\necho \"$c\" >> '{lines}'\nsleep 30 &\necho $! > '{pids}'\nexit 3\n",
+            env = got_env.display(),
+            lines = got_lines.display(),
+            pids = pids.display()
+        ),
     )
     .unwrap();
     fs::set_permissions(&agent, fs::Permissions::from_mode(0o755)).unwrap();
-    let options = Options::new(
+    let mut options = Options::new(
         Transport::Spawn {
             command: agent.to_str().unwrap().to_string(),
-            args: Vec::new(),
+            args: vec!["--acp".into()],
         },
-        dir.path().to_str().unwrap(),
+        "/qa/tree",
     );
+    options.cwd = dir.path().to_str().unwrap().to_string();
+    options.base_path = f.get("env").get("PATH").as_str().map(str::to_string);
+    options.base_lang = f.get("env").get("LANG").as_str().map(str::to_string);
+    options.grace = Duration::from_millis(300);
     let conn = connect(options, Arc::new(Quiet), Cancel::new()).unwrap();
     let t = Instant::now();
     let e = conn.prompt("QA").unwrap_err();
     assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
     assert_eq!(text(&error_json(&e)), text(node.get("prompt").get("error")));
+    // What the agent was sent is what Node sent.
+    let sent: Vec<JValue> = fs::read_to_string(&got_lines)
+        .unwrap()
+        .lines()
+        // A real child needs a real working directory; Node's fake one was /qa/tree.
+        .map(|l| JValue::Str(l.replace(dir.path().to_str().unwrap(), "/qa/tree")))
+        .collect();
+    assert_eq!(text(&JValue::Arr(sent)), text(node.get("lines")));
+    // Its environment is Node's (the shell adds PWD, SHLVL and _).
+    let env: BTreeMap<String, String> = fs::read_to_string(&got_env)
+        .unwrap()
+        .lines()
+        .filter_map(|l| {
+            l.split_once('=')
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+        })
+        .filter(|(k, _)| !["PWD", "SHLVL", "_", "OLDPWD"].contains(&k.as_str()))
+        .collect();
+    let JValue::Obj(want) = node.get("spawned").get("env") else {
+        panic!()
+    };
+    let want: BTreeMap<String, String> = want
+        .iter()
+        .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
+        .collect();
+    assert_eq!(env, want);
+    // And the child it left behind is stopped with its group, as Node's `-pid` signal does.
+    let sleeper: u32 = fs::read_to_string(&pids).unwrap().trim().parse().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let stat = fs::read_to_string(format!("/proc/{sleeper}/stat")).unwrap_or_default();
+        if stat.is_empty() || stat.contains(") Z ") {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the agent's child outlived it");
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 #[test]
@@ -645,15 +695,14 @@ fn a_cancel_is_not_held_up_by_an_agent_that_stops_reading() {
 
 #[test]
 fn an_agent_cannot_make_noevia_start_threads_without_limit() {
-    struct Holds(Mutex<Option<mpsc::Receiver<()>>>);
+    use std::sync::atomic::{AtomicBool, Ordering};
+    struct Holds(Arc<AtomicBool>);
     impl Handlers for Holds {
         fn request_permission(&self, _: &JValue) -> Result<JValue, Refusal> {
-            // Every permission waits until the test lets them all go.
-            let rx = self.0.lock().unwrap().take();
-            if let Some(rx) = rx {
-                let _ = rx.recv_timeout(Duration::from_secs(10));
-            } else {
-                std::thread::sleep(Duration::from_millis(500));
+            // Every permission waits until the sandbox has counted the refusals.
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while !self.0.load(Ordering::SeqCst) && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
             }
             Ok(JValue::Null)
         }
@@ -665,9 +714,13 @@ fn an_agent_cannot_make_noevia_start_threads_without_limit() {
         }
         fn session_update(&self, _: &JValue) {}
     }
-    let (_go, rx) = mpsc::channel();
-    let (seen_tx, seen_rx) = mpsc::channel::<String>();
+    let release = Arc::new(AtomicBool::new(false));
+    let (seen_tx, seen_rx) = mpsc::channel::<usize>();
+    let go = release.clone();
     let port = sandbox(move |mut r, mut w| {
+        r.get_ref()
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .unwrap();
         let mut l = String::new();
         r.read_line(&mut l).unwrap(); // the prompt
         for i in 0..1000 {
@@ -676,28 +729,25 @@ fn an_agent_cannot_make_noevia_start_threads_without_limit() {
         let mut refused = 0;
         while refused < 1000 - code_acp::MAX_IN_FLIGHT {
             l.clear();
-            if r.read_line(&mut l).unwrap() == 0 {
+            if r.read_line(&mut l).unwrap_or(0) == 0 {
                 break;
             }
             if l.contains("Too many requests at once.") {
                 refused += 1;
             }
         }
-        seen_tx.send(format!("{refused}")).unwrap();
+        seen_tx.send(refused).unwrap();
+        go.store(true, Ordering::SeqCst);
         writeln!(w, r#"{{"jsonrpc":"2.0","id":3,"result":{{}}}}"#).unwrap();
     });
     let conn = connect(
         Options::new(Transport::Socket(format!("127.0.0.1:{port}")), "/qa"),
-        Arc::new(Holds(Mutex::new(Some(rx)))),
+        Arc::new(Holds(release)),
         Cancel::new(),
     )
     .unwrap();
     let prompting = std::thread::spawn(move || conn.prompt("QA"));
-    let refused: usize = seen_rx
-        .recv_timeout(Duration::from_secs(30))
-        .unwrap()
-        .parse()
-        .unwrap();
+    let refused = seen_rx.recv_timeout(Duration::from_secs(30)).unwrap();
     assert_eq!(refused, 1000 - code_acp::MAX_IN_FLIGHT);
     prompting.join().unwrap().unwrap();
 }
