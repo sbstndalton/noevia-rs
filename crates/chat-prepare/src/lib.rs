@@ -1,8 +1,9 @@
 //! The native chat turn's preparation (track R8, phase 2): the system message and the replayed
 //! history of a turn, as noevia-core's `server/chat.cjs` `handleChat` builds them before routing
 //! (its `sysParts`, `msgs` and `wire`). Slice P1: a turn without a project; slice P2a: what a
-//! project turn adds that needs neither retrieval nor tools nor skills to be computed. Pure: the
-//! caller reads the account files, the project record and the clock and passes them in.
+//! project turn adds that needs neither retrieval nor tools to be computed; slice P3a: its
+//! instruction skills ([`skills`]). Pure: the caller reads the account files, the project record
+//! and the clock and passes them in.
 //!
 //! - [`account`]: `account-instructions.cjs` `read` and `systemPart` (style, advanced controls,
 //!   response language, the custom text).
@@ -62,8 +63,8 @@
 //! retrieval's skill check throws on it even earlier.
 //!
 //! Later slices: the retrieval itself and `partialSources` (P2b, which pass `filesBlock` and
-//! `partialReads` in here); the skill index, auto-loaded and pinned skill blocks and the history's
-//! skill scrub (they arrive through [`project::ProjectTurn::skills`]); the brain block
+//! `partialReads` in here); the history's skill scrub and the automatic skill selection itself
+//! (its picks go to [`skills::parts`]); the brain block
 //! ([`Turn::trailing`], after the frame block) and the tool gate's use of [`frame::gate_bias`];
 //! image assets; and what happens to the wire once the route is known (off-box zone and history
 //! filter, the hybrid route's read-file hint, vision, route notes).
@@ -161,7 +162,8 @@ impl SystemParts {
 /// - `project` is what chat.cjs resolves from `body.projectId` and a free chat's diary-extras
 ///   context project (`diaryExtras.chatProjectId`): `None` when that is null. A free chat with
 ///   attachments has a hidden shadow project (`cowork-chat-context-*`), so it is a project turn.
-///   [`ProjectTurn`] lists what a project turn must not hold yet (image assets, skills).
+///   [`ProjectTurn`] lists what a project turn must not hold yet (image assets); its skills come
+///   from [`skills::parts`] in [`ProjectTurn::skills`].
 /// - Chat framing: chat.cjs ~745-765 pushes the confirmed frame's block and the linked brain
 ///   block after everything else. The frame block is [`frame::frame_part`] of
 ///   [`frame::chat_frame`], passed in `trailing`; the brain block (`features.brainContext`, off by

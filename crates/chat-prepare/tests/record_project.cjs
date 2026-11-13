@@ -8,7 +8,7 @@
 //   ... node crates/chat-prepare/tests/record_project.cjs --check crates/chat-prepare/tests/fixtures/node-project.v1.json
 //     records again and fails unless the result is byte-identical to the committed file.
 //
-// The checkout needs server/node_modules (npm ci) and server/wasm/dav-parse.wasm (frameUntrusted is the Rust port in it).
+// The checkout needs server/wasm/dav-parse.wasm (frameUntrusted is the Rust port in it); nothing from node_modules.
 // Every expectation comes from noevia-core's own code; the inputs are synthetic and QA-named (a seeded PRNG plus hand-made
 // edges), passed through JSON first so Node reads exactly what is recorded:
 //   quote        quoted-name.cjs quoteName(name) and quotedNames(names)

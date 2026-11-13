@@ -102,6 +102,10 @@ impl Diffs {
 fn the_fixture_names_its_node_sources_and_the_crates_core_pin() {
     let f = fixture();
     assert_eq!(f.get("version").as_num(), Some(1.0));
+    let JValue::Obj(sources) = f.get("sources") else {
+        panic!("no sources");
+    };
+    // Every server module the recording loaded, and the files it read.
     for file in [
         "server/chat.cjs",
         "server/index.cjs",
@@ -109,20 +113,43 @@ fn the_fixture_names_its_node_sources_and_the_crates_core_pin() {
         "server/skill-index.cjs",
         "server/chat-skill-routing.cjs",
         "server/toolboxes-permitted.cjs",
+        "server/project-docs-default.cjs",
+        "server/source-text.cjs",
+        "server/chat-context.cjs",
+        "server/current-time-part.cjs",
+        "server/account-instructions.cjs",
+        "server/account-memory.cjs",
+        "server/source-readability.cjs",
+        "server/source-coverage.cjs",
+        "server/shared-context.cjs",
+        "server/quoted-name.cjs",
+        "server/diary-extras.cjs",
+        "server/reasoning-effort.cjs",
+        "server/prompt-framing.cjs",
+        "server/dav-parse-wasm.cjs",
+        "server/dav-parse.lock",
         "server/wasm/dav-parse.wasm",
     ] {
-        let sha = f.get("sources").get(file).as_str().unwrap();
+        let sha = f.get("sources").get(file).as_str().unwrap_or_default();
         assert!(sha.len() == 64, "{file}");
     }
-    // Every recording of the crate comes from the one core the CI checks out (oracle-core.ref).
-    let project = wtf16::parse(include_str!("fixtures/node-project.v1.json")).unwrap();
-    for file in ["server/chat.cjs", "server/instruction-skills.cjs"] {
-        assert_eq!(
-            f.get("sources").get(file),
-            project.get("sources").get(file),
-            "{file}"
-        );
+    // Every recording of the crate comes from the one core the CI checks out (oracle-core.ref):
+    // a file the other recordings read too has the same sha.
+    let mut shared = 0;
+    for other in [
+        include_str!("fixtures/node-prepare.v1.json"),
+        include_str!("fixtures/node-project.v1.json"),
+        include_str!("fixtures/node-frame.v1.json"),
+    ] {
+        let other = wtf16::parse(other).unwrap();
+        for (file, sha) in sources {
+            if let JValue::Str(theirs) = other.get("sources").get(file) {
+                shared += 1;
+                assert_eq!(sha.as_str(), Some(theirs.as_str()), "{file}");
+            }
+        }
     }
+    assert!(shared >= 15, "only {shared} shared source files");
 }
 
 #[test]
@@ -387,6 +414,11 @@ fn the_recording_covers_every_branch_and_names_no_difference() {
         "matches this message; follow it:",
         "The user invoked skill",
         "Cannot read properties of null (reading 'content')",
+        "Cannot read properties of null (reading 'file')",
+        "Cannot read properties of null (reading 'name')",
+        "Cannot read properties of undefined (reading 'name')",
+        "{\"name\":\"helper.md\",\"textRef\":",
+        "This skill is invalid: Use a closed frontmatter block of at most 2 KiB.",
         "(project.files || []).map is not a function",
     ] {
         assert!(FIXTURE.contains(needle), "the recording lacks {needle}");

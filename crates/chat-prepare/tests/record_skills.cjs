@@ -7,8 +7,8 @@
 //   ... node crates/chat-prepare/tests/record_skills.cjs --check crates/chat-prepare/tests/fixtures/node-skills.v1.json
 //     records again and fails unless the result is byte-identical to the committed file.
 //
-// The checkout needs server/node_modules (npm ci) and server/wasm/dav-parse.wasm (projectToolboxIds and frameUntrusted
-// are Rust ports in it). Every expectation comes from noevia-core's own code; the inputs are synthetic and QA-named, passed
+// The checkout needs server/wasm/dav-parse.wasm (projectToolboxIds and frameUntrusted are Rust ports in it); nothing from
+// node_modules. Every expectation comes from noevia-core's own code; the inputs are synthetic and QA-named, passed
 // through JSON first so Node reads exactly what is recorded:
 //   projects  instruction-skills.cjs list(project), manifests(project, known) and projectToolboxIds(project, ['core'])
 //   pins      resolvePinned(project, raw, known): the record and content, or the error's name, message, status and code
@@ -37,9 +37,15 @@ if (!checkout) {
 }
 const root = path.resolve(checkout);
 for (const k of ['log', 'info', 'warn', 'error', 'debug']) console[k] = (...a) => process.stderr.write(`${a.map(String).join(' ')}\n`);
-const SOURCE_FILES = ['server/chat.cjs', 'server/index.cjs', 'server/instruction-skills.cjs', 'server/skill-index.cjs', 'server/chat-skill-routing.cjs',
-  'server/toolboxes-permitted.cjs', 'server/project-docs-default.cjs', 'server/source-text.cjs', 'server/dav-parse-wasm.cjs', 'server/wasm/dav-parse.wasm'];
-const sources = Object.fromEntries(SOURCE_FILES.map((f) => [f, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex')]));
+// Read besides the modules: every server module the recording required is added at the end (require.cache).
+const READ_FILES = ['server/index.cjs', 'server/dav-parse.lock', 'server/wasm/dav-parse.wasm'];
+const sha = (f) => crypto.createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex');
+function sourcesRead() {
+  const server = `${path.join(root, 'server')}${path.sep}`;
+  const loaded = Object.keys(require.cache).filter((k) => k.startsWith(server)).map((k) => path.relative(root, k).split(path.sep).join('/'));
+  if (loaded.some((k) => k.includes('node_modules/'))) throw new Error('a module from node_modules was loaded: the header says nothing is');
+  return Object.fromEntries([...new Set([...READ_FILES, ...loaded])].sort().map((f) => [f, sha(f)]));
+}
 const req = (f) => require(path.join(root, 'server', f));
 // index.cjs is not loaded (it starts the server); its skillsIndexFor is pinned by its sha and checked here.
 const SKILLS_INDEX_FOR = "function skillsIndexFor(project) {\n  return require('./instruction-skills.cjs').enabled(project);\n}";
@@ -48,6 +54,15 @@ const skills = req('instruction-skills.cjs');
 const { formatSkillIndex } = req('skill-index.cjs');
 const { skillBlock, pinnedSkillBlock } = req('chat-skill-routing.cjs');
 const permitted = req('toolboxes-permitted.cjs');
+const sourceText = req('source-text.cjs');
+// A source whose text is in its own file (#1806): its content is source-text.cjs's accessor, over an empty workspace,
+// so the text reads as missing (''), and JSON.stringify writes the record as projects.json holds it (no content).
+const textWs = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-skills-text-'));
+process.on('exit', () => fs.rmSync(textWs, { recursive: true, force: true }));
+function attach(p) {
+  for (const file of (p && Array.isArray(p.files) ? p.files : [])) if (file && typeof file === 'object') sourceText.attachFile(file, textWs, p.id);
+  return p;
+}
 const { createChatHandler } = req('chat.cjs');
 
 const viaJson = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -123,6 +138,10 @@ const CHECKS = [
   ['qa-comments/SKILL.md', fm(['# QA comment', '', '   ', 'NAME:QA upper', 'Description:\t QA tabs  ', 'License: MIT', 'ALLOWED-TOOLS: Read Bash(git:*)', 'compatibility: QA any'])],
   ['qa-crlf/SKILL.md', fm(['name: QA crlf', 'description: QA windows'], 'QA body\r\nline', '\r\n')],
   ['qa-cr/SKILL.md', fm(['name: QA\rcr', 'description: QA'])],
+  ['qa-cr-last/SKILL.md', '---\nname: QA\ndescription: QA\r\r\n---\nbody'],
+  ['qa-cr-mid/SKILL.md', '---\nname: QA\r\r\ndescription: QA\n---\nbody'],
+  ['qa-cr-lone/SKILL.md', '---\nname: QA\ndescription: QA \r more\n---\nbody'],
+  ['qa-cr-end/SKILL.md', '---\nname: QA\ndescription: QA\r\n---'],
   ['qa-ls/SKILL.md', fm(['name: QA ls', 'description: QA'])],
   ['qa-key/SKILL.md', fm(['_name: QA', 'description: QA'])],
   ['qa-spaced', fm(['Description  : QA spaced key', 'name: QA'])],
@@ -139,7 +158,7 @@ const CHECKS = [
 ];
 const projects = [];
 function addProject(name, raw, known = ['core', 'project-docs', 'web-search', 'qa-box']) {
-  const p = viaJson(raw);
+  const p = attach(viaJson(raw));
   projects.push({ name, project: p, known, boxes: permitted.projectToolboxIds(p, ['core']), list: attempt(() => skills.list(p)), manifests: attempt(() => skills.manifests(p, known)) });
 }
 addProject('checks', project('qa-checks', CHECKS.map(([n, c], i) => [f(n, c), ['enabled', 'disabled', 'updated', 'review', undefined][i % 5]])));
@@ -190,6 +209,14 @@ for (const [name, extra] of boxProjects) {
     [f('qa-own/SKILL.md', a, { source: 'QA folder' }), 'enabled'], [f('qa-obj/SKILL.md', a, { source: { p: 1 } }), 'enabled'],
     [f('QA dup.md', b), 'enabled'], [f('QA dup.md', c), undefined]], { projectFolder: 'QA folder' }));
 }
+// Sources whose text is in its own file (missing here): judged by the saved skillHeader flag, the text reading as ''.
+const REF = skills.hash('QA missing text');
+const EXTERNAL = { id: 'qa-external', name: 'QA External', files: [{ name: 'helper.md', textRef: REF, skillHeader: true },
+  { name: 'qa-ext/SKILL.md', textRef: REF, skillHeader: false }, { name: 'qa-ext-no.md', textRef: REF, skillHeader: false },
+  { name: 'qa-ext-flag.md', textRef: REF, skillHeader: 'true' }, { name: 'qa-inline.md', textRef: REF, content: md('QA inline', 'QA plain text kept') },
+  { name: 'qa-badref.md', textRef: 'QA', skillHeader: true }, f('qa-ok/SKILL.md', md('QA ok', 'QA beside external sources'))],
+  instructionSkills: { 'qa-ok/SKILL.md': sel(md('QA ok', 'QA beside external sources')) } };
+addProject('external', EXTERNAL);
 for (let n = 0; n < 60; n += 1) {
   const entries = Array.from({ length: int(0, 8) }, (_, i) => {
     const file = rand() < 0.6 ? `qa-r${i}/SKILL.md` : `QA r${i} ${words(int(0, 2))}.md`;
@@ -221,7 +248,7 @@ const idOf = (p, file) => skills.skillId(p, file);
 const hashOf = (p, file) => skills.hash(p.files.find((x) => x.name === file).content);
 const pins = [];
 function addPin(name, rawProject, raw, known = KNOWN) {
-  const p = viaJson(rawProject), r = viaJson(raw);
+  const p = attach(viaJson(rawProject)), r = viaJson(raw);
   pins.push({ name, project: p, known, raw: r, result: attempt(() => { const x = skills.resolvePinned(p, r, known); return { record: x.record, content: x.content, manifest: x.manifest.id }; }) });
 }
 {
@@ -250,6 +277,7 @@ function addPin(name, rawProject, raw, known = KNOWN) {
   addPin('null_file', { ...P, files: [...P.files, null] }, `${id('qa-good/SKILL.md')}@${h('qa-good/SKILL.md')}`);
   addPin('files_not_list', { ...P, files: 'QA' }, `${id('qa-good/SKILL.md')}@${h('qa-good/SKILL.md')}`);
   addPin('id_throws', { ...P, id: { toString: 1 } }, `${id('qa-good/SKILL.md')}@${h('qa-good/SKILL.md')}`);
+  addPin('external', EXTERNAL, `${idOf(EXTERNAL, 'helper.md')}@${skills.hash('')}`);
 }
 
 // ── unmetRequirements, formatSkillIndex, skillBlock, pinnedSkillBlock ───────────────────────
@@ -271,6 +299,8 @@ addIndex('file_kinds', [entry(1, { file: '' }), entry(2, { file: 5 }), entry(3, 
 addIndex('cuts', [entry(1, { name: `${'n'.repeat(159)}${ASTRAL}`, description: `${'d'.repeat(499)}${ASTRAL}x`, version: `${'v'.repeat(79)}${ASTRAL}` }),
   entry(2, { name: 7, description: ['QA', 'b'], version: null }), entry(3, { name: LONE_HI, description: `${LONE_LO}${SORTY.join('')}`, file: `qa-${ASTRAL}/SKILL.md` })]);
 addIndex('throws', [entry(1, { name: { toString: 1 } })]);
+addIndex('null_entry', [entry(1), null]);
+addIndex('primitive_entries', [entry(1), 5, 'QA', true]);
 for (let n = 0; n < 30; n += 1) addIndex(`random_${n}`, Array.from({ length: int(0, 40) }, (_, i) => entry(i, { description: words(int(0, rand() < 0.2 ? 120 : 10)) })));
 const blocks = [];
 const addBlock = (name, list) => { const s = viaJson(list); blocks.push({ name, skills: s, out: attempt(() => skillBlock(s)) }); };
@@ -282,11 +312,13 @@ addBlock('crlf_and_cr', [sk(1, fm(['name: a'], 'QA body', '\r\n')), sk(2, '---\n
 addBlock('cut_12000', [sk(1, `${md('QA', 'QA', [], '')}${'c'.repeat(12000)}`), sk(2, `${'c'.repeat(12001)}`), sk(3, `${'c'.repeat(11999)}${ASTRAL}z`), sk(4, `${'c'.repeat(11999)}${LONE_HI}${LONE_LO}`)]);
 addBlock('kinds', [sk(1, 5, { name: ['QA'], file: 7 }), { file: 'qa-no-content.md', name: 'QA' }, sk(3, null, { name: undefined })]);
 addBlock('throws', [sk(1, { toString: 1 })]);
+addBlock('null_entry', [sk(1, 'QA'), null]);
 for (let n = 0; n < 20; n += 1) addBlock(`random_${n}`, Array.from({ length: int(0, 3) }, (_, i) => sk(i, rand() < 0.7 ? md(words(2), words(4), [], words(int(0, 40))) : words(int(0, 20)), { name: words(2) })));
 const pinnedBlocks = [];
 for (const [name, record, content] of [['plain', { name: 'QA', file: 'qa/SKILL.md', contentHash: 'a'.repeat(64) }, md('QA', 'QA')],
   ['long', { name: `QA ${ASTRAL}`, file: ['qa', 'x'], contentHash: 5 }, `${md('QA', 'QA', [], '')}${'p'.repeat(12000)}!`], ['kinds', { name: null }, 7],
-  ['throws', { name: 'QA', file: { toString: 1 }, contentHash: 'x' }, 'QA']]) {
+  ['throws', { name: 'QA', file: { toString: 1 }, contentHash: 'x' }, 'QA'], ['null_record', null, 'QA'],
+  ['null_record_long', null, 'p'.repeat(12001)], ['no_record', undefined, 'QA'], ['null_record_content_throws', null, { toString: 1 }]]) {
   const r = viaJson(record), c = viaJson(content);
   pinnedBlocks.push({ name, record: r, content: c, out: attempt(() => pinnedSkillBlock({ record: r, content: c })) });
 }
@@ -318,7 +350,7 @@ function handlerFor(spec, requests, seen) {
     reasoningEffort: req('reasoning-effort.cjs'), authService: { audit() {} }, crypto, path, fs, fetch,
     HISTORY_CAP: 1000, DEFAULT_PROVIDER_ID: 'default', createToolExchange: () => async () => 'unused',
     currentWorkspace: () => ({ userId: 'qa-user', dir, assetDir: () => '/qa-only' }),
-    getProject: (id) => (spec.project && id === spec.project.id ? structuredClone(spec.project) : null),
+    getProject: (id) => (spec.project && id === spec.project.id ? attach(structuredClone(spec.project)) : null),
     skillsIndexFor: (p) => skills.enabled(p), // index.cjs, checked above
     getProvider: () => ({ id: 'default', baseUrl: 'http://qa-default.invalid' }), providerHeaders: () => ({}),
     autoRoles: () => null, visionDescriptions: new Map(), visionProbe: async () => ({ supported: false, reason: 'qa' }),
@@ -389,6 +421,8 @@ async function addTurn(name, rawSpec) {
   await addTurn('pin_no_project', { project: null, skill: pinOf('qa-good/SKILL.md') });
   await addTurn('pin_compact', { project: P, skill: pinOf('qa-good/SKILL.md'), compact: true, message: '' });
   await addTurn('compact_index', { project: P, compact: true, message: '' });
+  await addTurn('external_index', { project: EXTERNAL, pick: [0] });
+  await addTurn('pin_external', { project: EXTERNAL, skill: `${idOf(EXTERNAL, 'helper.md')}@${skills.hash('')}` });
   await addTurn('thrown_null_file', { project: { ...P, files: [...P.files, null] } });
   await addTurn('thrown_files_string', { project: { ...P, files: 'QA' } });
   await addTurn('pin_thrown_null_file', { project: { ...P, files: [...P.files, null] }, skill: pinOf('qa-good/SKILL.md') });
@@ -414,7 +448,7 @@ async function addTurn(name, rawSpec) {
   // ── Output ──────────────────────────────────────────────────────────────────────────────
   const lines = (list) => list.map((x) => JSON.stringify(x)).join(',\n');
   const text = `{"version":1,"generator":"crates/chat-prepare/tests/record_skills.cjs",\n"node":${JSON.stringify(process.version)},\n`
-    + `"sources":${JSON.stringify(sources)},\n"projects":[\n${lines(projects)}\n],\n"pins":[\n${lines(pins)}\n],\n"unmet":[\n${lines(unmet)}\n],\n`
+    + `"sources":${JSON.stringify(sourcesRead())},\n"projects":[\n${lines(projects)}\n],\n"pins":[\n${lines(pins)}\n],\n"unmet":[\n${lines(unmet)}\n],\n`
     + `"index":[\n${lines(index)}\n],\n"blocks":[\n${lines(blocks)}\n],\n"pinnedBlocks":[\n${lines(pinnedBlocks)}\n],\n"turns":[\n${lines(turns)}\n],\n"differences":[]}\n`;
   const check = process.argv.indexOf('--check');
   const counts = `${projects.length} projects, ${pins.length} pins, ${unmet.length} unmet, ${index.length} index, ${blocks.length} blocks, ${pinnedBlocks.length} pinned blocks, `

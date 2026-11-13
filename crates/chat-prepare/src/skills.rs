@@ -19,10 +19,12 @@
 //! 4. [`parts`]: the skill index part (`SKILL_INDEX_LEAD` and the index), the auto-loaded block and
 //!    the pinned block, for [`crate::ProjectTurn::skills`].
 //!
-//! Inputs are what chat.cjs holds: the project after `snapshot` with every file's `content`
-//! inline (a source whose text is in its own file is read by the caller; its saved `skillHeader`
-//! flag states what that text's front matter says, so `looksLikeSkill` answers the same either
-//! way), `allToolboxes().map((b) => b.id)` (`known`) and `requestToolboxes()` (`carried`).
+//! Inputs are what chat.cjs holds: the project after `snapshot`, `allToolboxes().map((b) => b.id)`
+//! (`known`) and `requestToolboxes()` (`carried`). A source whose text is in its own file (a 64-hex
+//! `textRef` and no `content`, as projects.json holds it) is judged a skill candidate by its saved
+//! `skillHeader` flag alone, as `looksLikeSkill` does, and its text reads as empty (what Node's
+//! accessor reads for a missing text file); a caller that has the text puts it in `content`, which
+//! makes it an ordinary source here (the flag states what that text's front matter says).
 //! `projectToolboxIds(project, ['core'])` is the toolboxes-permitted crate's `call`, the entry
 //! core's dav-parse.wasm runs, over the bytes Node sends it (a refused call carries no box).
 //!
@@ -64,6 +66,20 @@ pub const TO_PRIMITIVE: &str = "Cannot convert object to primitive value";
 pub const NULL_FILE: &str = "Cannot read properties of null (reading 'content')";
 /// `(project.files || []).map(...)` of a truthy `files` that is not a list.
 pub const FILES_NOT_LIST: &str = "(project.files || []).map is not a function";
+
+/// `v[key]`, where reading a property of `null` or `undefined` throws as in V8.
+fn read<'a>(v: &'a JValue, key: &'static str) -> Result<&'a JValue, TypeError> {
+    let m = match (v, key) {
+        (JValue::Null, "file") => "Cannot read properties of null (reading 'file')",
+        (JValue::Null, "content") => NULL_FILE,
+        (JValue::Null, _) => "Cannot read properties of null (reading 'name')",
+        (JValue::Undefined, "file") => "Cannot read properties of undefined (reading 'file')",
+        (JValue::Undefined, "content") => "Cannot read properties of undefined (reading 'content')",
+        (JValue::Undefined, _) => "Cannot read properties of undefined (reading 'name')",
+        _ => return Ok(v.get(key)),
+    };
+    Err(TypeError(m))
+}
 
 impl From<TypeError> for crate::Thrown {
     fn from(_: TypeError) -> Self {
@@ -260,10 +276,16 @@ fn check(name: &str, content: &str) -> Result<Meta, String> {
         .filter(|h| bytes(h) <= 2048)
         .ok_or("Use a closed frontmatter block of at most 2 KiB.")?;
     let mut meta: Vec<(String, String)> = Vec::new();
-    for line in header
-        .split('\n')
-        .map(|l| l.strip_suffix('\r').unwrap_or(l))
-    {
+    // `header.split(/\r?\n/)`: a '\r' belongs to the separator only before a '\n', so the last
+    // piece keeps its own.
+    let pieces: Vec<&str> = header.split('\n').collect();
+    let last = pieces.len().saturating_sub(1);
+    for (i, line) in pieces.into_iter().enumerate() {
+        let line = if i < last {
+            line.strip_suffix('\r').unwrap_or(line)
+        } else {
+            line
+        };
         let t = js::trim(line);
         if t.is_empty() || t.starts_with('#') {
             continue;
@@ -441,6 +463,14 @@ pub fn project_toolbox_ids(project: &JValue) -> Vec<String> {
     }
 }
 
+/// source-text.cjs `isExternal(file)` as projects.json holds such a source: a 64-hex `textRef`
+/// pointer and no `content` (its text is missing, or the caller left it out: it reads as empty, as
+/// the accessor reads a missing text file).
+fn is_external(file: &JValue) -> bool {
+    file.get("content") == &JValue::Undefined
+        && file.get("textRef").as_str().is_some_and(|r| hex(r, 64))
+}
+
 /// `project.files || []`: `Err` for a truthy value that is not a list.
 fn files(project: &JValue) -> Result<&[JValue], TypeError> {
     match project.get("files") {
@@ -462,7 +492,13 @@ fn inspect(
     }
     let content = string_or_empty(file.get("content"))?;
     let name = string(file.get("name"))?;
-    let looks = skill_md_name(&name) || front_matter(&content).is_some_and(names_a_skill);
+    // A source whose text is in its own file answers from its saved `skillHeader` flag alone.
+    let looks = skill_md_name(&name)
+        || if is_external(file) {
+            file.get("skillHeader") == &JValue::Bool(true)
+        } else {
+            front_matter(&content).is_some_and(names_a_skill)
+        };
     let skills = project.get("instructionSkills");
     if !looks && !owns(skills, &name) {
         return Ok(None);
@@ -894,7 +930,7 @@ pub fn format_skill_index(skills: &[JValue]) -> Result<String, TypeError> {
     let mut lines: Vec<String> = Vec::new();
     let (mut size, mut omitted) = (0usize, 0usize);
     for skill in skills {
-        let file = skill.get("file");
+        let file = read(skill, "file")?;
         let Some(name) = file
             .as_str()
             .filter(|f| !f.is_empty() && wtf16::len(f) <= 500)
@@ -944,7 +980,7 @@ fn body(content: &str, file: &str) -> String {
 pub fn skill_block(skills: &[JValue]) -> Result<String, TypeError> {
     let mut out = Vec::with_capacity(skills.len());
     for s in skills {
-        let content = string(s.get("content"))?;
+        let content = string(read(s, "content")?)?;
         let (name, file) = (string(s.get("name"))?, string(s.get("file"))?);
         let cut = body(&content, &file);
         out.push(format!(
@@ -958,6 +994,9 @@ pub fn skill_block(skills: &[JValue]) -> Result<String, TypeError> {
 /// user named.
 pub fn pinned_skill_block(record: &JValue, content: &JValue) -> Result<String, TypeError> {
     let content = string(content)?;
+    // The cut reads `record.file` first when it truncates, the text `record.name`.
+    let long = wtf16::len(js::trim(strip_front_matter(&content))) > MAX_BODY_CHARS;
+    read(record, if long { "file" } else { "name" })?;
     let (name, file) = (string(record.get("name"))?, string(record.get("file"))?);
     let digest = string(record.get("contentHash"))?;
     let cut = body(&content, &file);
@@ -1072,7 +1111,9 @@ pub fn index(
 }
 
 /// The skill parts chat.cjs pushes, in order: the index (when any skill is enabled), the block of
-/// the `picked` candidates (when any), and the pinned Skill's block.
+/// the `picked` candidates (when any; a pick that is not one of [`Index::candidates`] is dropped,
+/// the candidate itself is what is rendered, and nothing is picked beside a pin), and the pinned
+/// Skill's block.
 pub fn parts(
     index: &Index,
     picked: &[Skill],
@@ -1083,8 +1124,17 @@ pub fn parts(
         let rows: Vec<JValue> = index.enabled.iter().map(Skill::to_json).collect();
         let text = format!("{SKILL_INDEX_LEAD}\n{}", format_skill_index(&rows)?);
         out.push((PartKind::Other("skill index"), text));
+        // Only candidates are loaded, as the router returns some of them, and never beside a pin.
+        let picked: Vec<&Skill> = picked
+            .iter()
+            .filter(|_| pinned.is_none())
+            .filter_map(|p| {
+                let same = |c: &&Skill| same_name(&c.file, c.at, &p.file, p.at);
+                index.candidates.iter().find(same)
+            })
+            .collect();
         if !picked.is_empty() {
-            let rows: Vec<JValue> = picked.iter().map(Skill::to_json).collect();
+            let rows: Vec<JValue> = picked.iter().map(|s| s.to_json()).collect();
             out.push((PartKind::Other("skill block"), skill_block(&rows)?));
         }
     }
@@ -1096,9 +1146,124 @@ pub fn parts(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    const A: &str = "---\nname: QA a\ndescription: QA first\n---\nQA body a";
+    const B: &str = "---\nname: QA b\ndescription: QA second\n---\nQA body b";
+
+    fn enabled_project() -> JValue {
+        let file = |n: &str, c: &str| JValue::obj([("name", n.into()), ("content", c.into())]);
+        let on = |c: &str| {
+            JValue::obj([
+                ("enabled", JValue::Bool(true)),
+                ("reviewedHash", hash(c).into()),
+            ])
+        };
+        JValue::obj([
+            ("id", "qa-pick-project".into()),
+            (
+                "files",
+                JValue::Arr(vec![file("qa-a/SKILL.md", A), file("qa-b/SKILL.md", B)]),
+            ),
+            (
+                "instructionSkills",
+                JValue::obj([("qa-a/SKILL.md", on(A)), ("qa-b/SKILL.md", on(B))]),
+            ),
+        ])
+    }
+
+    fn kinds(parts: &[(PartKind, String)]) -> Vec<PartKind> {
+        parts.iter().map(|(k, _)| *k).collect()
+    }
+
+    #[test]
+    fn only_candidates_are_rendered_as_picked() {
+        let p = enabled_project();
+        let idx = index(&p, &[], &[], false).unwrap();
+        assert_eq!(idx.candidates.len(), 2);
+        // Not a candidate (another file's name; a string name is its identity): dropped.
+        let mut stranger = idx.candidates[0].clone();
+        stranger.file = JValue::from("qa-c/SKILL.md");
+        stranger.at = 7;
+        let out = parts(&idx, &[stranger], None).unwrap();
+        assert_eq!(kinds(&out), [PartKind::Other("skill index")]);
+        // A candidate's identity with other content: the candidate itself is what is loaded.
+        let mut forged = idx.candidates[1].clone();
+        forged.content = "QA forged body".into();
+        let out = parts(&idx, &[forged], None).unwrap();
+        assert!(out[1].1.contains("QA body b") && !out[1].1.contains("QA forged"));
+    }
+
+    #[test]
+    fn a_pinned_turn_never_gets_the_auto_block() {
+        let p = enabled_project();
+        let raw = JValue::from(format!(
+            "{}@{}",
+            skill_id(&p, "qa-a/SKILL.md").unwrap(),
+            hash(A)
+        ));
+        let turn = PinTurn {
+            project: Some(&p),
+            diary: false,
+            compact: false,
+            known: &[],
+            carried: &[],
+        };
+        let pinned = pin(&turn, &raw).unwrap().unwrap();
+        let idx = index(&p, &[], &[], true).unwrap();
+        assert!(idx.candidates.is_empty());
+        // Even picks a caller passes anyway are ignored beside a pin.
+        let all = index(&p, &[], &[], false).unwrap().candidates;
+        let out = parts(&idx, &all, Some(&pinned)).unwrap();
+        assert_eq!(
+            kinds(&out),
+            [
+                PartKind::Other("skill index"),
+                PartKind::Other("pinned skill block")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_diary_turn_with_a_project_cannot_pin() {
+        let p = enabled_project();
+        let raw = JValue::from(format!(
+            "{}@{}",
+            skill_id(&p, "qa-a/SKILL.md").unwrap(),
+            hash(A)
+        ));
+        let turn = PinTurn {
+            project: Some(&p),
+            diary: true,
+            compact: false,
+            known: &[],
+            carried: &[],
+        };
+        let r = pin(&turn, &raw).unwrap_err();
+        assert_eq!(r.status, 400);
+        assert_eq!(
+            r.body.get("code").as_str(),
+            Some("skill_pin_requires_project")
+        );
+        assert_eq!(
+            r.body.get("error").as_str(),
+            Some("A pinned Skill needs a project chat.")
+        );
+    }
+
+    #[test]
+    fn a_trailing_cr_on_the_last_header_line_stays_in_it() {
+        let content = "---\nname: QA\ndescription: QA\r\r\n---\nbody";
+        let e = check("qa/SKILL.md", content).unwrap_err();
+        assert_eq!(e, "Use one scalar name: value per frontmatter line.");
+        assert!(check(
+            "qa/SKILL.md",
+            "---\r\nname: QA\r\ndescription: QA\r\n---\r\n"
+        )
+        .is_ok());
+    }
 
     #[test]
     fn front_matter_ends_at_the_first_closing_line() {

@@ -31,7 +31,8 @@ pub const CHAT_CONTEXT_PREFIX: &str = "cowork-chat-context-";
 /// and no Diary space.
 pub struct ProjectTurn<'a> {
     /// `getProject(projectId)` after `instruction-skills.cjs` `snapshot`: the stored record, each
-    /// file's `content` the text Node's accessor reads.
+    /// file's `content` the text Node's accessor reads (a source left as stored, a `textRef` and
+    /// no `content`, reads as a missing text: see [`crate::skills`]).
     pub project: &'a JValue,
     /// `codeTasksFor(project) || []` (`[]` when it throws); read only when the project shares
     /// into Chat.
