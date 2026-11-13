@@ -603,7 +603,7 @@ fn a_spawned_agent_that_exits_ends_the_prompt_as_node_says_and_its_group_goes_to
     fs::write(
         &agent,
         format!(
-            "#!/bin/sh\nenv > '{env}'\nread a\necho \"$a\" >> '{lines}'\necho '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{}}}}'\nread b\necho \"$b\" >> '{lines}'\necho '{{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{{\"sessionId\":\"qa-spawned\"}}}}'\nread c\necho \"$c\" >> '{lines}'\nsleep 30 &\necho $! > '{pids}'\nexit 3\n",
+            "#!/bin/sh\nenv > '{env}'\nread -r a\nprintf '%s\\n' \"$a\" >> '{lines}'\necho '{{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{{}}}}'\nread -r b\nprintf '%s\\n' \"$b\" >> '{lines}'\necho '{{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{{\"sessionId\":\"qa-spawned\"}}}}'\nread -r c\nprintf '%s\\n' \"$c\" >> '{lines}'\nsleep 30 &\necho $! > '{pids}'\nexit 3\n",
             env = got_env.display(),
             lines = got_lines.display(),
             pids = pids.display()
