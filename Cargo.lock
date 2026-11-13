@@ -568,7 +568,9 @@ name = "code-pipeline"
 version = "0.1.0"
 dependencies = [
  "js-json",
+ "prompt-framing",
  "review-verdict",
+ "role-context",
  "sha2",
 ]
 

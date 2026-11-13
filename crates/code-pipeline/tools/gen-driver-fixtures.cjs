@@ -234,8 +234,8 @@ async function runScenario(sc) {
       releaseRun: (handle) => stubAsync('harness.releaseRun', [handle.id]),
     },
     roleEngine: sc.noRoles ? null : roleEngine,
-    planner: createPlannerPlan({ engine: () => ({}), enabled: () => stubSync('flag.planConstrain', []), log }),
-    review: createPlannerReview({ log }),
+    planner: createPlannerPlan({ engine: () => ({}), enabled: () => stubSync('flag.planConstrain', []), log, ...(sc.planDeadlineMs ? { deadlineMs: sc.planDeadlineMs } : {}) }),
+    review: createPlannerReview({ log, ...(sc.reviewDeadlineMs ? { deadlineMs: sc.reviewDeadlineMs } : {}) }),
     verify: {
       available: () => stubSync('verify.available', []),
       run: (a) => stubAsync('verify.run', [without(a, DROP)], { signal: a.signal, emit: a.emit }),
@@ -259,7 +259,7 @@ async function runScenario(sc) {
   catch (e) { start = { throw: { ...thrownOf(e), ...(e.status !== undefined ? { status: e.status } : {}) } }; }
   await Promise.all(runs);
   const out = { name: sc.name, task: enc(task), options: enc({ noRoles: !!sc.noRoles, deadlines: sc.deadlines ?? null, maxLoops: sc.maxLoops ?? null,
-    auditWriteUp: sc.auditWriteUp ?? null, connect: !sc.noConnect }), start: enc(start), calls };
+    auditWriteUp: sc.auditWriteUp ?? null, connect: !sc.noConnect, planDeadlineMs: sc.planDeadlineMs ?? null, reviewDeadlineMs: sc.reviewDeadlineMs ?? null }), start: enc(start), calls };
   if (st.taskId) {
     out.journal = journal(st.taskId).map((e) => ({ type: e.type, at: e.at, data: e.data }));
     out.job = enc(store.get(st.taskId));
@@ -336,6 +336,19 @@ const SCENARIOS = [
   { name: 'plan stage deadline', deadlines: { plan: 30 }, script: { 'roles.pinModel': [{ wait: true, throw: { message: 'QA pin abandoned' } }] } },
   { name: 'implement stage deadline', deadlines: { implement: 30 }, script: { 'harness.runExecutor': [{ wait: true, set: { network: { allowed: 2 } }, throw: { message: 'aborted' } }] } },
   { name: 'verify stage deadline, verifier returns late', deadlines: { verify: 30 }, script: { 'verify.run': [(a) => ({ ...tests(a, true), wait: true })] } },
+  { name: 'plan deadline (own), session fails late', planDeadlineMs: 30, script: { 'session.call:planner': [{ wait: true, ret: { ok: false, code: 'error', reason: 'QA late' } }] } },
+  { name: 'plan deadline (own), session answers late', planDeadlineMs: 30, script: { 'session.call:planner': [{ wait: true, ...ok(PLAN) }] } },
+  { name: 'plan cancelled before invalid', script: { 'session.call:planner': [{ cancel: true, ret: { ok: false, code: 'invalid', reason: 'QA' } }] } },
+  { name: 'plan aborted code', script: { 'session.call:planner': [{ ret: { ok: false, code: 'aborted', reason: 'QA' } }] } },
+  { name: 'plan context refused', script: { 'session.call:planner': [{ ret: { ok: false, code: 'context_refused', reason: 'QA' } }] } },
+  { name: 'review deadline (own), good verdict late', reviewDeadlineMs: 30, script: { 'session.call:reviewer': [{ wait: true, ...ok(APPROVE) }] } },
+  { name: 'review cancelled, good verdict', script: { 'session.call:reviewer': [{ cancel: true, ...ok(APPROVE) }] } },
+  { name: 'review passes an unknown code through', script: { 'session.call:reviewer': [{ ret: { ok: false, code: 'model_mismatch', reason: 'QA other model' } }] } },
+  { name: 'review unreadable', script: { 'session.call:reviewer': [{ ret: { ok: true, text: 'QA not json' } }] } },
+  { name: 'lone surrogates in the verdict, findings and write-up', script: {
+    'session.call:reviewer': [ok({ ...CHANGES, summary: 'QA \uD800 summary', findings: [{ severity: 'major', file: 'src/qa\uDC00.js', message: 'QA \uDBFF message' }] }), ok({ ...APPROVE, summary: 'QA ok \uDFFF' })],
+    'session.call:auditor': [ok({ ...WRITE_UP, summary: 'QA audit \uD83D', gaps: ['QA gap \uDE00'] })] } },
+  { name: 'lone surrogate in the prompt', task: { prompt: 'Add the QA greeting \uD800 now.' } },
   { name: 'start: no prompt', task: { prompt: '   ' } },
   { name: 'start: no transport', noConnect: true },
   { name: 'start: claim fails', script: { 'harness.claimRun': [{ throw: { message: 'The QA repository is not a git repository.' } }] } },
