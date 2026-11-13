@@ -781,6 +781,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-retrieval"
+version = "0.1.0"
+dependencies = [
+ "diary-corpus-parse",
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "sqlite-vec-loader",
+ "tempfile",
+]
+
+[[package]]
 name = "diary-score-gap"
 version = "0.1.0"
 
