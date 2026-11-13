@@ -326,7 +326,7 @@ async fn every_node_route_reaches_node_and_every_rust_route_does_not() {
     // #2292 calibration cancellation and #2293 clear leave 14; cancellation and resume leave 12.
     // #2306 moves status GET (11); #2303 moves calibration start/read (10); evidence recheck leaves 9;
     // untuned discovery leaves 8; the inference machines registry leaves 7; the missing-file prune
-    // (R3 piece 1) leaves 6; the delete (R3 piece 2) leaves 5; chat port S5 moves the chat turn's POST (4).
+    // (R3 piece 1) leaves 6; the delete (R3 piece 2) leaves 5; chat ports S5 and S6 move the chat turn's POST and the framing suggestion; 3 real Node rows are left.
     assert!(node_routes >= 3, "{node_routes} node routes");
     // A rust route's other methods are Node's (Node answers POST /api/ready, HEAD on it, ...).
     for (m, p) in [
