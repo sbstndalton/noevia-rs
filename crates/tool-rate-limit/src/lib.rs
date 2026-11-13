@@ -12,8 +12,9 @@
 //!
 //! Named difference (tested in `tests/fixtures.rs`): `parseRetryAfter` hands a non-number to V8's
 //! `Date.parse`, which accepts many date spellings. Here an IMF-fixdate (`Wed, 21 Oct 2015 07:28:00
-//! GMT`, the form HTTP servers send) and an ISO 8601 UTC date-time (`2015-10-21T07:28:00Z`, optional
-//! `.sss`) are dates; any other spelling is no `Retry-After`, so the doubling back-off is used. Most of
+//! GMT`, the form HTTP servers send: any weekday name, letters in any case, `GMT` or `UTC`, a day past
+//! the month's end rolling over, `24:00:00`, a second of 60 to 99 read as 0, as V8 reads it) and an ISO 8601 UTC date-time
+//! (`2015-10-21T07:28:00Z`, optional `.sss`) are dates; any other spelling (an RFC 850 or asctime date, ...) is no `Retry-After`, so the doubling back-off is used. Most of
 //! V8's extra spellings that a server could send land in the past (`"1."`, `"-1"`, `"1.25.3"` are years),
 //! which core turns into 0 and `hit` ignores exactly as it ignores `None`.
 use policy_leaves::{is_js_space, js_trim};
@@ -128,15 +129,17 @@ fn boundary(t: &[u16], i: usize) -> bool {
 /// ASCII `lit` at `i`, ASCII letters folded (`/i` without `u` folds nothing else onto ASCII).
 fn lit(t: &[u16], i: usize, lit: &str) -> bool {
     lit.bytes().enumerate().all(|(k, b)| {
-        t.get(i + k).is_some_and(|&u| {
-            u < 0x80 && (u as u8).eq_ignore_ascii_case(&b)
-        })
+        t.get(i + k)
+            .is_some_and(|&u| u < 0x80 && (u as u8).eq_ignore_ascii_case(&b))
     })
 }
 
 /// `[\s:]*429\b` from `j`.
 fn tail_429(t: &[u16], mut j: usize) -> bool {
-    while t.get(j).is_some_and(|&u| is_js_space(u) || u == u16::from(b':')) {
+    while t
+        .get(j)
+        .is_some_and(|&u| is_js_space(u) || u == u16::from(b':'))
+    {
         j += 1;
     }
     lit(t, j, "429") && boundary(t, j + 3)
@@ -237,23 +240,17 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-fn days_in_month(y: i64, m: i64) -> i64 {
-    match m {
-        2 if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 => 29,
-        2 => 28,
-        4 | 6 | 9 | 11 => 30,
-        _ => 31,
-    }
-}
-
+/// UTC milliseconds of a date-time, rolling a day past the month's end into the next month as V8 does.
+/// `24:00:00` is the next midnight.
 fn utc_ms(y: i64, mo: i64, d: i64, h: i64, mi: i64, s: i64, ms: i64) -> Option<f64> {
+    let midnight = h == 24 && mi == 0 && s == 0 && ms == 0;
     let valid = (1..=12).contains(&mo)
-        && (1..=days_in_month(y, mo)).contains(&d)
-        && (0..=23).contains(&h)
+        && (1..=31).contains(&d)
+        && ((0..=23).contains(&h) || midnight)
         && (0..=59).contains(&mi)
         && (0..=59).contains(&s);
     valid.then(|| {
-        let days = days_from_civil(y, mo, d);
+        let days = days_from_civil(y, mo, 1) + d - 1;
         ((days * 86_400 + h * 3600 + mi * 60 + s) * 1000 + ms) as f64
     })
 }
@@ -266,30 +263,38 @@ fn fixed<const N: usize>(b: &[u8], at: usize) -> Option<i64> {
     std::str::from_utf8(part).ok()?.parse().ok()
 }
 
-/// `Wed, 21 Oct 2015 07:28:00 GMT`.
+fn word_is(b: &[u8], at: usize, words: &[&[u8]]) -> Option<usize> {
+    let part = b.get(at..at + 3)?;
+    words.iter().position(|w| w.eq_ignore_ascii_case(part))
+}
+
+/// `Wed, 21 Oct 2015 07:28:00 GMT` (any weekday name, letters in any case, `GMT` or `UTC`).
 fn imf_fixdate(b: &[u8]) -> Option<f64> {
     const DAYS: [&[u8]; 7] = [b"Mon", b"Tue", b"Wed", b"Thu", b"Fri", b"Sat", b"Sun"];
     const MONTHS: [&[u8]; 12] = [
         b"Jan", b"Feb", b"Mar", b"Apr", b"May", b"Jun", b"Jul", b"Aug", b"Sep", b"Oct", b"Nov",
         b"Dec",
     ];
-    if b.len() != 29 || !DAYS.contains(&b.get(0..3)?) || b.get(3..5)? != b", " {
+    if b.len() != 29 || word_is(b, 0, &DAYS).is_none() || b.get(3..5)? != b", " {
         return None;
     }
-    let d = fixed::<2>(b, 5)?;
-    let month = b.get(8..11)?;
-    let mo = MONTHS.iter().position(|m| *m == month)? as i64 + 1;
+    let mo = word_is(b, 8, &MONTHS)? as i64 + 1;
+    let zone = b.get(26..29)?;
     let shape = b.get(7) == Some(&b' ')
         && b.get(11) == Some(&b' ')
         && b.get(16) == Some(&b' ')
         && b.get(19) == Some(&b':')
         && b.get(22) == Some(&b':')
-        && b.get(25..)? == b" GMT";
+        && b.get(25) == Some(&b' ')
+        && (zone.eq_ignore_ascii_case(b"GMT") || zone.eq_ignore_ascii_case(b"UTC"));
     if !shape {
         return None;
     }
-    let y = fixed::<4>(b, 12)?;
-    utc_ms(y, mo, d, fixed::<2>(b, 17)?, fixed::<2>(b, 20)?, fixed::<2>(b, 23)?, 0)
+    let (d, y) = (fixed::<2>(b, 5)?, fixed::<4>(b, 12)?);
+    // V8's legacy parser reads a second of 60 to 99 as 0.
+    let s = fixed::<2>(b, 23)?;
+    let s = if s >= 60 { 0 } else { s };
+    utc_ms(y, mo, d, fixed::<2>(b, 17)?, fixed::<2>(b, 20)?, s, 0)
 }
 
 /// `2015-10-21T07:28:00Z` or `2015-10-21T07:28:00.123Z`.
@@ -334,14 +339,11 @@ pub fn parse_retry_after(value: Option<&str>, now: f64) -> Option<f64> {
     Some((at - now).max(0.0))
 }
 
-/// core `seconds(ms)`: `Math.max(1, Math.ceil(ms / 1000))`.
+/// core `seconds(ms)`: `Math.max(1, Math.ceil(ms / 1000))`, written as JS writes the number.
 fn seconds(ms: f64) -> String {
-    let s = (ms / 1000.0).ceil().max(1.0);
-    if s.is_finite() && s < 9e15 {
-        format!("{}", s as i64)
-    } else {
-        format!("{s}")
-    }
+    let s = (ms / 1000.0).ceil();
+    // `Math.max` propagates NaN; `f64::max` would not.
+    js_json::number_to_string(if s.is_nan() { s } else { s.max(1.0) })
 }
 
 /// `rateLimitedText(name, waitMs)`: the model's text for a 429 just received.

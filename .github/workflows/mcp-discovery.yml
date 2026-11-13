@@ -24,6 +24,19 @@ jobs:
           repository: sbstndalton/noevia-core
           ref: ${{ steps.core.outputs.sha }}
           path: core
+      - name: Read the tool oracles' core pin (track R5)
+        # The core whose tool-rate-limit.cjs the crate was recorded from.
+        id: core_r5
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < crates/tool-rate-limit/tests/fixtures/core-ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core_r5.outputs.sha }}
+          path: core-r5
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.23.3
@@ -40,6 +53,14 @@ jobs:
           set -euo pipefail
           node bins/noevia-server/tests/mcp-discovery-oracle.cjs "$PWD/core" "$RUNNER_TEMP/mcp-discovery-node.json"
           cmp "$RUNNER_TEMP/mcp-discovery-node.json" bins/noevia-server/tests/fixtures/mcp-discovery-node.v1.json
+      - name: Core's tool-rate-limit.cjs reproduces the committed fixture (track R5)
+        env:
+          NOEVIA_CORE_REF: ${{ steps.core_r5.outputs.sha }}
+        run: |
+          set -euo pipefail
+          node crates/tool-rate-limit/tests/gen-fixtures.cjs "$PWD/core-r5" "$RUNNER_TEMP/tool-rate-limit.json"
+          cmp "$RUNNER_TEMP/tool-rate-limit.json" crates/tool-rate-limit/tests/fixtures/tool-rate-limit.v1.json
+          cargo test --locked -p tool-rate-limit
       - name: The actor replays every scenario, the manifest, the token and the cancellation cases
         env:
           NOEVIA_MCP_DISCOVERY_FIXTURE: ${{ runner.temp }}/mcp-discovery-node.json

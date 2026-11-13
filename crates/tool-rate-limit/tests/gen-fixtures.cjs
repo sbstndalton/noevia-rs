@@ -48,6 +48,10 @@ const RETRY = [null, '', ' ', '0', '5', '1.5', ' 7 ', '007', '0.0005', '2.4995',
   ' 5 ', '﻿12', '99999999999999999999', '1.25.3',
   'Fri, 13 Nov 2026 04:30:10 GMT', 'Fri, 13 Nov 2026 04:29:00 GMT', 'Thu, 01 Jan 1970 00:00:00 GMT', 'Sat, 29 Feb 2028 00:00:00 GMT',
   ' Fri, 13 Nov 2026 04:31:00 GMT ', '2026-11-13T04:30:30Z', '2026-11-13T04:30:30.250Z', '2026-11-13T04:00:00Z',
+  'Sat, 13 Nov 2027 04:31:60 GMT', 'Wed, 31 Feb 2027 00:00:00 GMT', 'Fri, 13 nov 2026 04:31:00 gmt', 'Mon, 13 Nov 2026 04:31:00 GMT',
+  'Fri, 13 Nov 2026 24:00:00 GMT', 'Fri, 13 Nov 2026 23:60:00 GMT', 'Fri, 32 Nov 2026 00:00:00 GMT', 'Fri, 00 Nov 2026 00:00:00 GMT',
+  'Fri, 13 Nov 2026 04:31:00 UTC', 'Fri, 13 Nov 2026 24:00:01 GMT', '2027-02-31T00:00:00Z', '2026-11-13T04:31:60Z', '2026-11-13T24:00:00Z',
+  '2026-11-13T24:00:01Z', '2026-13-01T00:00:00Z', 'Fri, 13 Nov 2026 04:31:75 GMT', 'Fri, 13 Nov 2026 24:00:60 GMT', 'Fri, 13 Xyz 2026 00:00:00 GMT',
 ];
 const retryAfter = RETRY.map((value) => ({ value, ms: rl.parseRetryAfter(value, NOW) }));
 
@@ -78,8 +82,8 @@ for (let n = 0; n < 40; n++) {
 }
 
 // ── the model's texts ──
-const messages = [0, 1, 999, 1000, 1001, 14_999.5, 15_000, 299_999.5, 300_000].map((ms) => ({
-  name: 'tavily_search', ms, limited: rl.rateLimitedText('tavily_search', ms), cooling: rl.coolingDownText('tavily_search', ms),
+const messages = [0, 1, 999, 1000, 1001, 14_999.5, 15_000, 299_999.5, 300_000, -5, NaN, Infinity, 1e30, 1e24].map((ms) => ({
+  name: 'tavily_search', ms: Number.isFinite(ms) ? ms : String(ms), limited: rl.rateLimitedText('tavily_search', ms), cooling: rl.coolingDownText('tavily_search', ms),
 }));
 
 const source = fs.readFileSync(file);
