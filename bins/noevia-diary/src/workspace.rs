@@ -152,6 +152,8 @@ fn list_dir(
     )?;
     let mut rows = stmt.query([])?;
     let mut entries: Vec<Listed> = Vec::new();
+    // Name -> position in `entries`: Python's dict keeps the first position and the last value.
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     while let Some(row) = rows.next()? {
         let p: String = row.get(0)?;
         let version: Option<String> = row.get(1)?;
@@ -173,9 +175,12 @@ fn list_dir(
             lastmod: updated,
             name,
         };
-        match entries.iter_mut().find(|e| e.name == entry.name) {
-            Some(slot) => *slot = entry,
-            None => entries.push(entry),
+        match seen.get(&entry.name) {
+            Some(&at) => entries[at] = entry,
+            None => {
+                seen.insert(entry.name.clone(), entries.len());
+                entries.push(entry);
+            }
         }
     }
     if entries.iter().any(|e| e.name.chars().any(newer_case)) {
