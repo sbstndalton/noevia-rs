@@ -47,15 +47,13 @@ pub async fn serve(
         );
     }
     // Availability alone precedes method; wrong methods must never scan identities/router rows.
-    let Some((status, bytes)) = app
-        .config
-        .research
-        .node_call(
-            FACTS,
-            &serde_json::json!({"scan":false}),
-            Duration::from_secs(5),
-        )
-        .await
+    let Some((status, bytes)) = crate::autotune_runner::call(
+        app,
+        FACTS,
+        &serde_json::json!({"scan":false}),
+        Duration::from_secs(5),
+    )
+    .await
     else {
         return unavailable();
     };
@@ -76,15 +74,13 @@ pub async fn serve(
     if parts.method != Method::GET {
         return error(StatusCode::METHOD_NOT_ALLOWED, "Method not allowed");
     }
-    let Some((status, bytes)) = app
-        .config
-        .research
-        .node_call(
-            FACTS,
-            &serde_json::json!({"scan":true}),
-            Duration::from_secs(5),
-        )
-        .await
+    let Some((status, bytes)) = crate::autotune_runner::call(
+        app,
+        FACTS,
+        &serde_json::json!({"scan":true}),
+        Duration::from_secs(5),
+    )
+    .await
     else {
         return unavailable();
     };

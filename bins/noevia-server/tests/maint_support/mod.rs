@@ -153,6 +153,8 @@ pub enum Answer {
     After(Duration, u16, String),
     /// An event stream (the inference gate's lease queue): after a pause, these event blocks, then the end.
     Events(Duration, String),
+    /// An event stream that sends its head and these event blocks, then stalls (never ends).
+    Stall(String),
 }
 
 pub type Handler = Arc<dyn Fn(&Req) -> Answer + Send + Sync>;
@@ -235,6 +237,14 @@ pub async fn engine_on(
                 }
                 match answer {
                     Answer::Drop | Answer::After(..) => {}
+                    Answer::Stall(text) => {
+                        let reply = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{text}\r\n",
+                            text.len()
+                        );
+                        let _ = s.write_all(reply.as_bytes()).await;
+                        std::future::pending::<()>().await;
+                    }
                     Answer::Events(wait, text) => {
                         tokio::time::sleep(wait).await;
                         let reply = format!(
