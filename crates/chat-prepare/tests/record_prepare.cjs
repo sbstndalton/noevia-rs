@@ -218,6 +218,37 @@ for (let n = 0; n < 160; n += 1) {
   addTime(`random_${n}`, ms, pick(ZONES), rand() < 0.8);
 }
 
+// ── Local calendar dates near local midnight (the zone data, every day of 2025-2027) ─────────
+// systemPart's day and calendarFacts come from the date `now` has in the zone; the date is what the zone data decides.
+// Per zone: [ms, yyyymmdd] at 1 and 61 minutes either side of the local midnight that the zone's noon offset predicts,
+// so offset changes at or near midnight (Ramadan, negative DST, abolished DST) are straddled.
+const TZ_EDGE_ZONES = ['Africa/Casablanca', 'Europe/Dublin', 'America/Asuncion', 'Asia/Almaty', 'America/Nuuk'];
+const zoneDays = [];
+const ymd = (ms, zone) => {
+  const p = {};
+  for (const x of new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric', day: 'numeric', calendar: 'iso8601', numberingSystem: 'latn' }).formatToParts(new RealDate(ms))) p[x.type] = x.value;
+  return Number(p.year) * 10000 + Number(p.month) * 100 + Number(p.day);
+};
+const offsetMinutes = (ms, zone) => {
+  const name = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' }).formatToParts(new RealDate(ms)).find((x) => x.type === 'timeZoneName').value;
+  const m = /^GMT(?:([+-])(\d{2}):(\d{2}))?$/.exec(name);
+  return m && m[1] ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 0;
+};
+for (const zone of TZ_EDGE_ZONES) {
+  const cases = [];
+  for (let day = RealDate.UTC(2025, 0, 1); day <= RealDate.UTC(2027, 11, 31); day += 86400000) {
+    const midnight = day - offsetMinutes(day + 43200000, zone) * 60000;
+    for (const delta of [-61, -1, 1, 61]) { const ms = midnight + delta * 60000; cases.push([ms, ymd(ms, zone)]); }
+  }
+  zoneDays.push({ zone, cases });
+}
+for (const zone of TZ_EDGE_ZONES) {
+  for (const [y, mo, d] of [[2025, 3, 1], [2025, 6, 15], [2026, 2, 20], [2026, 10, 25], [2027, 1, 1]]) {
+    addTime(`edge_zone_${zone}_${y}-${mo}-${d}`, utc(y, mo, d, 12), zone);
+    addTime(`edge_zone_${zone}_${y}-${mo}-${d}_nameless`, utc(y, mo, d, 12), zone, false);
+  }
+}
+
 // ── normalizeReplayHistory on mapped histories ──────────────────────────────────────────────
 const TOOL_NAMES = ['qa_web_lookup', 'qa_wiki_page', 'qa_private_read', 'read_project_file', 'qa.tool-name_1', 'qa tool!', 'q'.repeat(80),
   'q'.repeat(81), '😀qa', '', 'qa_unknown'];
@@ -432,9 +463,9 @@ const fullMemory = jsonBytes({ memories: ['QA prefers tea', '  QA lives in Oslo 
     + `"sources":${JSON.stringify(sources)},\n"replayTools":${JSON.stringify({ public: [...PUBLIC], known: [...KNOWN] })},\n`
     + `"turnTools":${JSON.stringify(turnTools)},\n`
     + `"account":[\n${lines(account)}\n],\n"accountRaw":[\n${lines(accountRaw)}\n],\n"memory":[\n${lines(memory)}\n],\n`
-    + `"fixedNow":[\n${lines(fixedNow)}\n],\n"time":[\n${lines(time)}\n],\n"replay":[\n${lines(replay)}\n],\n"turns":[\n${lines(turns)}\n],\n"differences":[\n${lines(differences)}\n]}\n`;
+    + `"fixedNow":[\n${lines(fixedNow)}\n],\n"time":[\n${lines(time)}\n],\n"zoneDays":[\n${lines(zoneDays)}\n],\n"replay":[\n${lines(replay)}\n],\n"turns":[\n${lines(turns)}\n],\n"differences":[\n${lines(differences)}\n]}\n`;
   const check = process.argv.indexOf('--check');
-  const counts = `${account.length} account, ${accountRaw.length} accountRaw, ${memory.length} memory, ${fixedNow.length} fixedNow, ${time.length} time, ${replay.length} replay, ${turns.length} turns, ${differences.length} differences`;
+  const counts = `${account.length} account, ${accountRaw.length} accountRaw, ${memory.length} memory, ${fixedNow.length} fixedNow, ${time.length} time, ${zoneDays.reduce((n, z) => n + z.cases.length, 0)} zoneDays, ${replay.length} replay, ${turns.length} turns, ${differences.length} differences`;
   if (check > 0) {
     const committed = fs.readFileSync(process.argv[check + 1], 'utf8');
     if (committed !== text) { process.stderr.write('the recording differs from the committed fixture: record it again\n'); process.exit(1); }

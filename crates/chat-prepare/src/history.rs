@@ -36,11 +36,11 @@ pub struct Entry {
 #[derive(Clone, Copy)]
 pub struct ReplayOptions<'a> {
     /// `carryOrphanTool(name)`: a positively public tool (tools-mode.cjs `isPublicToolName`).
-    pub carry_orphan_tool: &'a dyn Fn(&str) -> bool,
+    pub carry_orphan_tool: &'a (dyn Fn(&str) -> bool + Sync),
     /// The request leaves this box (#1703).
     pub off_box: bool,
     /// `knownTool(name)`: a tool some server toolbox registers (#1704).
-    pub known_tool: &'a dyn Fn(&str) -> bool,
+    pub known_tool: &'a (dyn Fn(&str) -> bool + Sync),
 }
 
 fn str_of<'a>(h: &'a JValue, key: &str) -> Option<&'a str> {
@@ -256,7 +256,9 @@ pub fn normalize(
         let last_assistant = last.as_ref().is_some_and(|(r, _)| r == "assistant");
         let add = |out: &mut Vec<Turn>, text: &str| {
             if let Some(l) = out.last_mut() {
-                l.content = format!("{}\n\n{text}", l.content);
+                // In place: a run of merged entries (up to HISTORY_CAP) stays linear.
+                l.content.push_str("\n\n");
+                l.content.push_str(text);
             }
         };
         if tool && e.applied {

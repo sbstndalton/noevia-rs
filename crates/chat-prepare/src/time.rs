@@ -3,10 +3,20 @@
 //!
 //! The caller supplies the instant (`currentNow()`: [`fixed_now`] of `NOEVIA_CONTRACT_FIXED_NOW`,
 //! else the clock) and the zone (`serverTimeZone()`, the process's resolved IANA zone). Zones are
-//! looked up as `Intl.DateTimeFormat`'s `timeZone` is, case-insensitively, in chrono-tz's copy of the
-//! IANA database, or as a UTC offset; one it does not hold falls back to UTC as Node's `catch` does. Instants are
-//! stated for the Gregorian years 1583 to 9999 (before 1583 Node's formatter uses the Julian
-//! calendar, which this port does not; [`part`] answers `None` there).
+//! looked up as `Intl.DateTimeFormat`'s `timeZone` is: an IANA name, case-insensitively, or a UTC
+//! offset; one this port does not hold falls back to UTC as Node's `catch` does. Legacy ICU IDs
+//! outside the IANA database (`PST`, `AET`, `SystemV/AST4`) are among those: Node states the day
+//! in them, this port in UTC. Instants are stated for the Gregorian years 1583 to 9999 (before
+//! 1583 Node's formatter uses the Julian calendar, which this port does not; [`part`] answers
+//! `None` there).
+//!
+//! The zone data is chrono-tz's bundled IANA release (2025b); Node's is its ICU's (2026c when
+//! recorded). Where they differ the local date differs near midnight. The recording checks every
+//! day of 2025-2027 near local midnight in Africa/Casablanca, Europe/Dublin, America/Asuncion,
+//! Asia/Almaty and America/Nuuk: only Morocco differs, from 21 September 2026 on, where Node's data
+//! has Africa/Casablanca at +00 and chrono-tz's at +01, so between 23:00 and 24:00 UTC this port
+//! states the next day. A server in that zone reaches this. The test pins the pair of releases and
+//! fails when either moves.
 
 use chrono::{Datelike, TimeZone};
 use chrono_tz::{Tz, TZ_VARIANTS};
@@ -269,8 +279,9 @@ pub fn zone(name: &str) -> Option<Zone> {
         .map(|z| Zone::Named(*z))
 }
 
-/// The calendar date of `now_ms` in `zone`, if it is a Gregorian date this port states.
-fn local_date(now_ms: i64, zone: Zone) -> Option<(i64, i64, i64)> {
+/// The calendar date `(year, month, day)` of `now_ms` in `zone`, if it is a Gregorian date this
+/// port states (1583-9999).
+pub fn local_date(now_ms: i64, zone: Zone) -> Option<(i64, i64, i64)> {
     let (y, m, d) = match zone {
         Zone::Named(tz) => {
             let local = tz.timestamp_millis_opt(now_ms).single()?;

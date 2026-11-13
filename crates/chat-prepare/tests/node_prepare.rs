@@ -11,7 +11,7 @@
 
 use chat_prepare::history::{self, Entry, ReplayOptions};
 use chat_prepare::time::{self, FixedNow};
-use chat_prepare::{account, memory, Turn};
+use chat_prepare::{account, memory, PartKind, Turn};
 use js_json::{wtf16, JValue};
 use std::collections::HashSet;
 
@@ -282,20 +282,98 @@ fn whole_turns_without_a_project_are_nodes() {
             history: case.get("history"),
             history_cap: case.get("cap").as_num().unwrap() as usize,
             message: case.get("message").as_str(),
-            replay: ReplayOptions {
-                carry_orphan_tool: &carry,
-                off_box: false,
-                known_tool: &knows,
-            },
+            carry_orphan_tool: &carry,
+            known_tool: &knows,
+            trailing: &[],
         };
-        let got = chat_prepare::messages(&turn).expect("prepared");
+        let prepared = chat_prepare::prepare(&turn).expect("prepared");
         d.check(
             name(case),
             &stringify(case.get("messages")),
-            &stringify(&JValue::Arr(got)),
+            &stringify(&JValue::Arr(prepared.messages.clone())),
         );
+        // The trailing parts (P4's frame and brain blocks) go after everything else, in order.
+        let trailing = [
+            (PartKind::Other("qa frame"), "QA frame block".to_string()),
+            (PartKind::Other("qa empty"), String::new()),
+            (PartKind::Other("qa brain"), "QA brain block".to_string()),
+        ];
+        let more = chat_prepare::prepare(&Turn {
+            trailing: &trailing,
+            ..turn
+        })
+        .expect("prepared");
+        assert_eq!(
+            more.system,
+            format!("{}\n\nQA frame block\n\nQA brain block", prepared.system),
+            "{}",
+            name(case)
+        );
+        assert_eq!(more.parts.parts().len(), prepared.parts.parts().len() + 2);
+        assert_eq!(
+            prepared.parts.get(PartKind::Time),
+            Some(prepared.time_part.as_str())
+        );
+        assert!(prepared.system.contains(&prepared.time_part));
     }
     d.done("turns", 100);
+}
+
+/// The IANA release each side's zone data is: Node's ICU (recorded) and chrono-tz's bundled copy.
+/// They differ, and the zone-day differences below were derived for exactly this pair: when either
+/// side moves, this fails, and the recording and `ZONE_DATA_DIFFERENCES` must be redone.
+const NODE_TZDB: &str = "2026c";
+const PORT_TZDB: &str = "2025b";
+
+#[test]
+fn the_zone_data_releases_are_the_pair_the_differences_were_recorded_for() {
+    let f = fixture();
+    let node = f.get("tz").as_str().unwrap();
+    assert_eq!(
+        (node, chrono_tz::IANA_TZDB_VERSION),
+        (NODE_TZDB, PORT_TZDB),
+        "zone data moved (Node's ICU tzdb {node}, chrono-tz {}): re-record and redo ZONE_DATA_DIFFERENCES",
+        chrono_tz::IANA_TZDB_VERSION
+    );
+}
+
+/// Where chrono-tz's data (2025b) and Node's ICU data (2026c) give a different local date near
+/// midnight: (zone, cases, first ms, last ms) of the recorded edge cases that differ. Morocco: from
+/// 2026-09-20T23:59Z to the end of the recording, Node's data is at +00 where chrono-tz's is at +01.
+const ZONE_DATA_DIFFERENCES: &[(&str, usize, i64, i64)] =
+    &[("Africa/Casablanca", 432, 1_789_948_740_000, 1_830_211_140_000)];
+
+#[test]
+fn local_dates_near_midnight_are_nodes_except_the_named_zone_data_differences() {
+    let f = fixture();
+    let mut found = Vec::new();
+    let mut total = 0;
+    for z in items(&f, "zoneDays") {
+        let name = z.get("zone").as_str().unwrap();
+        let zone = time::zone(name).expect("an IANA zone");
+        let mut differ: Vec<i64> = Vec::new();
+        for c in items(z, "cases") {
+            let JValue::Arr(pair) = c else {
+                panic!("{c:?}")
+            };
+            let ms = pair[0].as_num().unwrap() as i64;
+            let want = pair[1].as_num().unwrap() as i64;
+            let (y, m, d) = time::local_date(ms, zone).unwrap();
+            total += 1;
+            if y * 10000 + m * 100 + d != want {
+                differ.push(ms);
+            }
+        }
+        if let (Some(first), Some(last)) = (differ.first(), differ.last()) {
+            found.push((name.to_string(), differ.len(), *first, *last));
+        }
+    }
+    assert!(total >= 20_000, "only {total} zone days recorded");
+    let expected: Vec<(String, usize, i64, i64)> = ZONE_DATA_DIFFERENCES
+        .iter()
+        .map(|(z, n, a, b)| ((*z).to_string(), *n, *a, *b))
+        .collect();
+    assert_eq!(found, expected, "the zone-data differences changed");
 }
 
 /// The named differences: input Node accepts that this port does not state as Node does. Node's
