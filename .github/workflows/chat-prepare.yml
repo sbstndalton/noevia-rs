@@ -71,3 +71,6 @@ jobs:
       - name: The core's own move to a tool-capable role and long-context profile reproduce the committed recording
         # Synthetic QA roles, catalogues, template, gate and prefill answers and whole turns through server/chat.cjs, tools-mode.cjs, long-profile.cjs (dav-parse.wasm) and toolboxes.cjs with stub stores; no network.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_reroute.cjs --check crates/chat-prepare/tests/fixtures/node-reroute.v1.json
+      - name: The core's own image parts and vision pass of a turn reproduce the committed recording
+        # Synthetic QA image bytes, projects, roles, describe answers, probe answers and whole turns through server/chat.cjs (the front's native executor asking for them), prompt-framing.cjs (dav-parse.wasm) and provider-egress.cjs with stub stores; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_vision.cjs --check crates/chat-prepare/tests/fixtures/node-vision.v1.json

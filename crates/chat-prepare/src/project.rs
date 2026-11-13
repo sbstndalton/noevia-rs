@@ -25,10 +25,10 @@ pub const CHAT_CONTEXT_PREFIX: &str = "cowork-chat-context-";
 
 /// What a project turn is prepared from, beyond [`crate::Turn`].
 ///
-/// Preconditions (the rest is a later slice): the project has no image assets (`project.assets`:
-/// the vision notes come after routing), no instruction skill reaches the turn except through
+/// Preconditions (the rest is a later slice): no instruction skill reaches the turn except through
 /// [`ProjectTurn::skills`] and the history holds no revoked skill text (the skill-history scrub),
-/// and no Diary space.
+/// and no Diary space. The project's image assets are [`crate::vision`]'s (no part here reads
+/// them).
 pub struct ProjectTurn<'a> {
     /// `getProject(projectId)` after `instruction-skills.cjs` `snapshot`: the stored record, each
     /// file's `content` the text Node's accessor reads (a source left as stored, a `textRef` and

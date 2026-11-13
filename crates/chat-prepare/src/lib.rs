@@ -73,6 +73,10 @@
 //!   request asks for images ([`retrieval::Stopped::Images`]) stays in Node until the images
 //!   multimodal retrieval finds are ported (a later slice). A source whose text is in its own file
 //!   is explicit: [`retrieval::load`] marks it as projects.cjs's loader does.
+//! - [`vision`] (slice P2c): a project's attached images and the vision pass after the stream
+//!   opened (the image notes and warning, the Vision role's description or the answering model's
+//!   probe, the image parts), recorded in `tests/fixtures/node-vision.v1.json` (`record_vision.cjs`);
+//!   named differences: an asset id that is not a plain file name is never read, one line's text.
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!
@@ -116,8 +120,8 @@
 //! `sourcesNotReady` and `partialReads` to [`ProjectTurn`]); the history's skill scrub and the automatic skill selection itself
 //! (its picks go to [`skills::parts`]); the brain block
 //! ([`Turn::trailing`], after the frame block) and the tool gate's use of [`frame::gate_bias`];
-//! image assets; and what happens to the wire once the route is known (off-box zone and history
-//! filter, the hybrid route's read-file hint, vision, route notes).
+//! and what happens to the wire once the route is known (off-box zone and history filter, the
+//! hybrid route's read-file hint, route notes; the vision pass is [`vision`]).
 
 pub mod account;
 pub mod effort;
@@ -142,6 +146,7 @@ pub mod system_one;
 pub mod time;
 pub mod toolboxes;
 pub mod tools_mode;
+pub mod vision;
 
 pub use history::{Entry, ReplayOptions};
 use js_json::JValue;
@@ -224,7 +229,7 @@ impl SystemParts {
 /// - `project` is what chat.cjs resolves from `body.projectId` and a free chat's diary-extras
 ///   context project (`diaryExtras.chatProjectId`): `None` when that is null. A free chat with
 ///   attachments has a hidden shadow project (`cowork-chat-context-*`), so it is a project turn.
-///   [`ProjectTurn`] lists what a project turn must not hold yet (image assets); its skills come
+///   [`ProjectTurn`] lists what a project turn must not hold yet; its skills come
 ///   from [`skills::parts`] in [`ProjectTurn::skills`].
 /// - Chat framing: chat.cjs ~745-765 pushes the confirmed frame's block and the linked brain
 ///   block after everything else. The frame block is [`frame::frame_part`] of
