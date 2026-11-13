@@ -146,16 +146,28 @@ impl Exchange<'_> {
                 let mut forward = |e: Event| f(e.to_json());
                 let msgs = &messages;
                 budget
-                    .run(true, None, |p| async move { main.chat_stream(msgs, &mut forward, 0.7, cap, Some(&p)).await })
+                    .run(true, None, |p| async move {
+                        main.chat_stream(msgs, &mut forward, 0.7, cap, Some(&p))
+                            .await
+                    })
                     .await
             }
             None => {
                 let msgs = &messages;
-                budget.run(false, None, |p| async move { main.chat(msgs, 0.7, cap, None, Some(&p)).await }).await
+                budget
+                    .run(false, None, |p| async move {
+                        main.chat(msgs, 0.7, cap, None, Some(&p)).await
+                    })
+                    .await
             }
         };
         let reply = match answered {
-            Err(why) => return Err(ExchangeError::Timeout { nothing_saved: true, why }),
+            Err(why) => {
+                return Err(ExchangeError::Timeout {
+                    nothing_saved: true,
+                    why,
+                })
+            }
             Ok(Err(e)) => return Err(ExchangeError::Model(e)),
             Ok(Ok(r)) => r,
         };
@@ -168,7 +180,12 @@ impl Exchange<'_> {
         if visible.is_empty() {
             return Err(ExchangeError::Model(LlmError::EmptyAnswer));
         }
-        Ok(Answered { messages, visible, marker, truncated })
+        Ok(Answered {
+            messages,
+            visible,
+            marker,
+            truncated,
+        })
     }
 
     /// One exchange. `session` holds the replayable turns of this conversation and is updated;
@@ -189,11 +206,17 @@ impl Exchange<'_> {
                 f(e);
             }
         };
-        send(json!({"type": "status", "text": "Reading diary entries and memory…"}), &mut emit);
+        send(
+            json!({"type": "status", "text": "Reading diary entries and memory…"}),
+            &mut emit,
+        );
         let messages = self.context(message, session, day, extra_context, trace.as_deref_mut())?;
         // Python starts the exchange deadline after the context is built.
         let budget = Budget::new(None, None);
-        send(json!({"type": "status", "text": "Generating companion response…"}), &mut emit);
+        send(
+            json!({"type": "status", "text": "Generating companion response…"}),
+            &mut emit,
+        );
         let answered = {
             let forward: Option<&mut (dyn FnMut(Value) + Send)> = match emit.as_mut() {
                 Some(f) => Some(&mut **f),

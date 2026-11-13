@@ -301,7 +301,12 @@ impl<E: Embedder, P: Publication> Retriever<E, P> {
 
     /// As [`Retriever::open`] for an index file that must already exist: never creates the file
     /// or its directory (a missing file is an error).
-    pub fn open_existing(path: &Path, embedder: E, publication: P, options: Options) -> Result<Self> {
+    pub fn open_existing(
+        path: &Path,
+        embedder: E,
+        publication: P,
+        options: Options,
+    ) -> Result<Self> {
         let registered = sqlite_vec_loader::register().is_ok();
         let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE)?;
         conn.busy_timeout(options.busy_timeout)?;

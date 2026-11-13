@@ -376,16 +376,27 @@ async fn a_refused_or_damaged_embedding_configuration_is_declined_without_any_ca
     let root = dir.path();
     build_tenant(root, true);
     let (engine, _embed, seen) = stub_engines().await;
-    let app = Arc::new(noevia_diary::server::App::new(noevia_diary::config::parse(&config(root, &engine, true)).unwrap()));
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(root, &engine, true)).unwrap(),
+    ));
     let tenant = format!("?tenant={UID}");
     // Python refused the seeded address in memory: the profile is "unavailable".
     let mut refused = request("answer", false);
     refused["embedding"]["active"]["profile"] = json!("unavailable");
-    assert_eq!(call(&app, &tenant, "ctl", false, &refused).await.0.as_u16(), 421);
+    assert_eq!(
+        call(&app, &tenant, "ctl", false, &refused).await.0.as_u16(),
+        421
+    );
     let mut damaged = request("answer", false);
     damaged["embedding"]["damaged"] = json!("The saved embedding configuration cannot be read.");
-    assert_eq!(call(&app, &tenant, "ctl", false, &damaged).await.0.as_u16(), 421);
-    assert!(seen.lock().unwrap().is_empty(), "nothing was sent to any engine");
+    assert_eq!(
+        call(&app, &tenant, "ctl", false, &damaged).await.0.as_u16(),
+        421
+    );
+    assert!(
+        seen.lock().unwrap().is_empty(),
+        "nothing was sent to any engine"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -396,8 +407,17 @@ async fn a_tenant_without_an_index_is_declined_and_no_file_appears() {
     let index = root.join("users").join(UID).join("managed-index.db");
     std::fs::remove_file(&index).unwrap();
     let (engine, _embed, _seen) = stub_engines().await;
-    let app = Arc::new(noevia_diary::server::App::new(noevia_diary::config::parse(&config(root, &engine, true)).unwrap()));
-    let (status, _, _) = call(&app, &format!("?tenant={UID}"), "ctl", false, &request("context", false)).await;
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(root, &engine, true)).unwrap(),
+    ));
+    let (status, _, _) = call(
+        &app,
+        &format!("?tenant={UID}"),
+        "ctl",
+        false,
+        &request("context", false),
+    )
+    .await;
     assert_eq!(status.as_u16(), 421);
     assert!(!index.exists());
 }

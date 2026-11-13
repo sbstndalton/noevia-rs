@@ -93,7 +93,10 @@ struct AnswerRequest {
 /// The active target of Python's live embedding configuration, or None (declined) when it is
 /// damaged, refused (its profile is "unavailable") or not a valid target.
 pub(crate) fn live_target(snapshot: &Value) -> Option<diary_retrieval::Target> {
-    if snapshot.get("damaged").is_some_and(|d| !d.is_null() && d != &json!("")) {
+    if snapshot
+        .get("damaged")
+        .is_some_and(|d| !d.is_null() && d != &json!(""))
+    {
         return None;
     }
     diary_retrieval::embedding::target::normalize_target(snapshot.get("active")?).ok()
@@ -341,7 +344,13 @@ fn serve(
         };
     }
     let messages = match handle.block_on(async {
-        exchange.context(&req.message, &req.turns, day, &req.extra_context, trace.as_mut())
+        exchange.context(
+            &req.message,
+            &req.turns,
+            day,
+            &req.extra_context,
+            trace.as_mut(),
+        )
     }) {
         Ok(m) => m,
         Err(_) => return crate::server::decline(),

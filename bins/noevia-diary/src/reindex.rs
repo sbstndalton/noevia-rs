@@ -35,7 +35,10 @@ use crate::write::Journal;
 struct Reserved<'j, 'h>(&'j Journal<'h>);
 
 impl Publication for Reserved<'_, '_> {
-    fn run(&self, write: &mut dyn FnMut() -> diary_retrieval::Result<()>) -> diary_retrieval::Result<()> {
+    fn run(
+        &self,
+        write: &mut dyn FnMut() -> diary_retrieval::Result<()>,
+    ) -> diary_retrieval::Result<()> {
         let mut inner: Option<diary_retrieval::Error> = None;
         let outcome = self.0.index_publication(|| match write() {
             Ok(()) => Ok(()),
@@ -47,8 +50,12 @@ impl Publication for Reserved<'_, '_> {
         match (outcome, inner) {
             (Ok(()), _) => Ok(()),
             (Err(_), Some(e)) => Err(e),
-            (Err(e), None) if e.is_settlement_refusal() => Err(diary_retrieval::Error::Busy("backup settlement uncertain".into())),
-            (Err(_), None) => Err(diary_retrieval::Error::Busy("index publication refused".into())),
+            (Err(e), None) if e.is_settlement_refusal() => Err(diary_retrieval::Error::Busy(
+                "backup settlement uncertain".into(),
+            )),
+            (Err(_), None) => Err(diary_retrieval::Error::Busy(
+                "index publication refused".into(),
+            )),
         }
     }
 }
@@ -63,7 +70,10 @@ fn status(code: u16, body: Value) -> Response<Body> {
 
 fn tenant_of(query: &[u8]) -> Option<String> {
     let q = std::str::from_utf8(query).ok()?;
-    let uid = q.split('&').find_map(|kv| kv.strip_prefix("tenant="))?.to_ascii_lowercase();
+    let uid = q
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("tenant="))?
+        .to_ascii_lowercase();
     let ok = uid.len() == 36
         && uid.bytes().enumerate().all(|(i, c)| match i {
             8 | 13 | 18 | 23 => c == b'-',
@@ -73,16 +83,29 @@ fn tenant_of(query: &[u8]) -> Option<String> {
 }
 
 /// `POST /internal/reindex`.
-pub async fn internal(app: Arc<App>, query: &[u8], headers: &HeaderMap, body: Body) -> Response<Body> {
-    let supplied = headers.get(CONTROL_HEADER).map(|v| v.as_bytes().to_vec()).unwrap_or_default();
-    if app.control_token.is_empty() || !bool::from(supplied.as_slice().ct_eq(app.control_token.as_bytes())) {
+pub async fn internal(
+    app: Arc<App>,
+    query: &[u8],
+    headers: &HeaderMap,
+    body: Body,
+) -> Response<Body> {
+    let supplied = headers
+        .get(CONTROL_HEADER)
+        .map(|v| v.as_bytes().to_vec())
+        .unwrap_or_default();
+    if app.control_token.is_empty()
+        || !bool::from(supplied.as_slice().ct_eq(app.control_token.as_bytes()))
+    {
         return status(403, json!({}));
     }
     let Some(cfg) = app.answer.clone() else {
         return status(404, json!({}));
     };
     if headers.get(WRITER_HEADER).map(|v| v.as_bytes()) != Some(b"1") {
-        return status(409, json!({"detail": "a re-index needs the tenant's writer lock"}));
+        return status(
+            409,
+            json!({"detail": "a re-index needs the tenant's writer lock"}),
+        );
     }
     let Some(uid) = tenant_of(query) else {
         return status(400, json!({"detail": "missing or invalid tenant"}));
@@ -94,7 +117,10 @@ pub async fn internal(app: Arc<App>, query: &[u8], headers: &HeaderMap, body: Bo
     let Ok(request) = serde_json::from_slice::<Value>(&bytes) else {
         return status(400, json!({"detail": "invalid reindex request"}));
     };
-    let Some(active) = crate::answer::live_target(&request["embedding"]) else {
+    let Some(active) = request
+        .get("embedding")
+        .and_then(crate::answer::live_target)
+    else {
         return crate::server::decline();
     };
     let handle = tokio::runtime::Handle::current();
@@ -102,7 +128,10 @@ pub async fn internal(app: Arc<App>, query: &[u8], headers: &HeaderMap, body: Bo
     let task = tokio::task::spawn_blocking(move || {
         let root = app2.data_root.join("users").join(&uid);
         if crate::backup::pending(&root) {
-            return status(503, json!({"detail": "Diary backup settlement is uncertain."}));
+            return status(
+                503,
+                json!({"detail": "Diary backup settlement is uncertain."}),
+            );
         }
         let engine = ClientConfig {
             base_url: app2.llm_main.base_url.clone(),

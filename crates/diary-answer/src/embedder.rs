@@ -45,12 +45,22 @@ impl HttpEmbedder {
         config: Arc<Mutex<EmbeddingConfig>>,
         handle: tokio::runtime::Handle,
     ) -> Self {
-        Self { engine, active: Active::Config(config), clients: Mutex::new(HashMap::new()), handle }
+        Self {
+            engine,
+            active: Active::Config(config),
+            clients: Mutex::new(HashMap::new()),
+            handle,
+        }
     }
 
     /// An embedder whose active target is `active` (Python's live configuration, sent per call).
     pub fn fixed(engine: Config, active: Target, handle: tokio::runtime::Handle) -> Self {
-        Self { engine, active: Active::Fixed(active), clients: Mutex::new(HashMap::new()), handle }
+        Self {
+            engine,
+            active: Active::Fixed(active),
+            clients: Mutex::new(HashMap::new()),
+            handle,
+        }
     }
 
     fn client(&self, target: &Target) -> Result<Arc<Client>, String> {

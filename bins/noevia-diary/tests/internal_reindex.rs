@@ -170,35 +170,58 @@ fn config(root: &Path, engine: &str, with_answer: bool) -> String {
     cfg.to_string()
 }
 
-
 async fn call(app: &Arc<noevia_diary::server::App>, writer: bool) -> (StatusCode, Value) {
-    let mut req = Request::builder().method("POST").uri(format!("/internal/reindex?tenant={UID}")).header("x-noevia-diary-control", "ctl");
+    let mut req = Request::builder()
+        .method("POST")
+        .uri(format!("/internal/reindex?tenant={UID}"))
+        .header("x-noevia-diary-control", "ctl");
     if writer {
         req = req.header("x-noevia-diary-writer", "1");
     }
     let body = json!({"embedding": {"active": {"base_url": null, "model": "qa-embed-a", "profile": "nomic-v1"},
                                     "next": null, "previous": null, "source": "environment", "version": 0}});
-    let resp = noevia_diary::server::handle(app.clone(), req.body(Body::from(body.to_string())).unwrap()).await;
+    let resp =
+        noevia_diary::server::handle(app.clone(), req.body(Body::from(body.to_string())).unwrap())
+            .await;
     let status = resp.status();
-    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 24).await.unwrap();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    let bytes = axum::body::to_bytes(resp.into_body(), 1 << 24)
+        .await
+        .unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 fn mark_dirty(root: &Path, document: &str) {
-    let c = rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db")).unwrap();
-    c.execute("INSERT OR IGNORE INTO dirty_documents (document) VALUES (?)", [document]).unwrap();
+    let c =
+        rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db")).unwrap();
+    c.execute(
+        "INSERT OR IGNORE INTO dirty_documents (document) VALUES (?)",
+        [document],
+    )
+    .unwrap();
 }
 
 fn dirty(root: &Path) -> Vec<String> {
-    let c = rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db")).unwrap();
+    let c =
+        rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db")).unwrap();
     let mut stmt = c.prepare("SELECT document FROM dirty_documents").unwrap();
-    let out: Vec<String> = stmt.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+    let out: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
     out
 }
 
 fn chunks(root: &Path, file: &str) -> i64 {
-    let c = rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db")).unwrap();
-    c.query_row("SELECT COUNT(*) FROM chunks WHERE file = ?", [file], |r| r.get(0)).unwrap()
+    let c =
+        rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db")).unwrap();
+    c.query_row("SELECT COUNT(*) FROM chunks WHERE file = ?", [file], |r| {
+        r.get(0)
+    })
+    .unwrap()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -208,19 +231,34 @@ async fn dirty_documents_are_reindexed_under_the_writer_role() {
     build_tenant(root, true);
     mark_dirty(root, ENTRY_PATH);
     let (engine, _embed, seen) = stub_engines().await;
-    let off = Arc::new(noevia_diary::server::App::new(noevia_diary::config::parse(&config(root, &engine, false)).unwrap()));
+    let off = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(root, &engine, false)).unwrap(),
+    ));
     assert_eq!(call(&off, true).await.0, StatusCode::NOT_FOUND);
-    let app = Arc::new(noevia_diary::server::App::new(noevia_diary::config::parse(&config(root, &engine, true)).unwrap()));
-    assert_eq!(call(&app, false).await.0, StatusCode::CONFLICT, "only under Python's writer lock");
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(root, &engine, true)).unwrap(),
+    ));
+    assert_eq!(
+        call(&app, false).await.0,
+        StatusCode::CONFLICT,
+        "only under Python's writer lock"
+    );
     assert_eq!(dirty(root), vec![ENTRY_PATH.to_owned()]);
     assert_eq!(chunks(root, ENTRY_PATH), 0);
 
     let (status, v) = call(&app, true).await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    assert_eq!(v, json!({"documents": [{"document": ENTRY_PATH, "embedded": 1, "pending": false, "error": null}]}));
+    assert_eq!(
+        v,
+        json!({"documents": [{"document": ENTRY_PATH, "embedded": 1, "pending": false, "error": null}]})
+    );
     assert!(dirty(root).is_empty(), "the mark is cleared");
     assert_eq!(chunks(root, ENTRY_PATH), 1);
-    assert!(seen.lock().unwrap().iter().any(|r| r["path"] == json!("/v1/embeddings")));
+    assert!(seen
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r["path"] == json!("/v1/embeddings")));
     // A second call has nothing to do.
     assert_eq!(call(&app, true).await.1, json!({"documents": []}));
 }
@@ -231,11 +269,19 @@ async fn an_undrained_outbox_leaves_the_index_alone() {
     let root = dir.path();
     build_tenant(root, true);
     mark_dirty(root, ENTRY_PATH);
-    let primary = rusqlite::Connection::open(root.join("users").join(UID).join("managed-diary.db")).unwrap();
-    primary.execute("INSERT INTO workspace_index_outbox (path) VALUES ('AI Memory/notes.md')", []).unwrap();
+    let primary =
+        rusqlite::Connection::open(root.join("users").join(UID).join("managed-diary.db")).unwrap();
+    primary
+        .execute(
+            "INSERT INTO workspace_index_outbox (path) VALUES ('AI Memory/notes.md')",
+            [],
+        )
+        .unwrap();
     drop(primary);
     let (engine, _embed, _seen) = stub_engines().await;
-    let app = Arc::new(noevia_diary::server::App::new(noevia_diary::config::parse(&config(root, &engine, true)).unwrap()));
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&config(root, &engine, true)).unwrap(),
+    ));
     let (status, v) = call(&app, true).await;
     assert_eq!(status, StatusCode::OK, "{v}");
     assert_eq!(v["documents"][0]["pending"], json!(true));

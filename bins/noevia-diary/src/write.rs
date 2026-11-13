@@ -772,7 +772,10 @@ impl<'h> Journal<'h> {
     /// An index effect of another connection under this tenant's primary reservation (the
     /// retrieval index's writes: Python's `index_publication`), refused when the index outbox
     /// holds paths (Python drains it first; that stays with Python).
-    pub fn index_publication<T>(&self, effect: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+    pub fn index_publication<T>(
+        &self,
+        effect: impl FnOnce() -> Result<T, Error>,
+    ) -> Result<T, Error> {
         self.primary_reservation(|r| {
             if !r.outbox()?.is_empty() {
                 return Err(Error::other("index outbox not drained"));
