@@ -58,6 +58,10 @@ pub trait Jobs: Send + Sync {
 /// the network report, and the report's acknowledgement.
 pub trait Egress: Send + Sync {
     fn endpoint(&self) -> Option<String>;
+    /// Whether the proxy is answering (`available()`; a controller without one always is).
+    fn available(&self) -> bool {
+        true
+    }
     /// `{ token, … }`.
     fn grant(&self, task_id: &str, domains: &[String]) -> Result<JValue, Fail>;
     /// `{ confirmed, report }`.
@@ -102,7 +106,8 @@ pub struct Deps {
     pub egress: Option<Arc<dyn Egress>>,
     pub approvals: Arc<dyn Approvals>,
     pub engine: Box<dyn Fn() -> Engine + Send + Sync>,
-    pub transport: Transport,
+    /// `None`: neither CODE_HARNESS_ENDPOINT nor CODE_HARNESS_COMMAND; a task cannot connect.
+    pub transport: Option<Transport>,
     pub log: Box<dyn Fn(JValue) + Send + Sync>,
     pub now: Box<dyn Fn() -> f64 + Send + Sync>,
     /// code-service.cjs `inference.enter()`: the maintenance gate's lease, held for the whole run.
@@ -118,8 +123,11 @@ pub struct Deps {
     pub base_lang: Option<String>,
 }
 
+/// A per-start maintenance gate (the host learns it with the task's engine).
+pub type Gate = Arc<dyn Fn() -> Result<Lease, Fail> + Send + Sync>;
+
 /// `start(...)`'s argument.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct StartRequest {
     pub project_id: Option<String>,
     pub repo_path: String,
@@ -132,6 +140,24 @@ pub struct StartRequest {
     pub prompt_preparation: String,
     pub context: String,
     pub tenant_id: Option<String>,
+    /// This task's engine, when the host resolved it for this start (else [`Deps::engine`]).
+    pub engine: Option<Engine>,
+    /// This task's lease, when the host's gate is per start (else [`Deps::inference`]).
+    pub inference: Option<Gate>,
+}
+
+impl std::fmt::Debug for StartRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StartRequest")
+            .field("project_id", &self.project_id)
+            .field("repo_path", &self.repo_path)
+            .field("capabilities", &self.capabilities)
+            .field("domains", &self.domains)
+            .field("harness", &self.harness)
+            .field("model", &self.model)
+            .field("engine", &self.engine)
+            .finish_non_exhaustive()
+    }
 }
 
 /// One Code task executor per workspace.
@@ -289,13 +315,20 @@ impl Executor {
     /// finished one is left as it is. Under the live lock, so a run either sees the cancel
     /// before it ends or has already ended.
     pub fn cancel(&self, task_id: &str) -> Result<(), Fail> {
+        self.cancel_with(task_id, &mut || {})
+    }
+
+    /// [`Executor::cancel`], with `before` called, under the same lock, just before a live run is
+    /// stopped (and not at all when there is none).
+    pub fn cancel_with(&self, task_id: &str, before: &mut dyn FnMut()) -> Result<(), Fail> {
         let live = self.live.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(t) = live.get(task_id) {
+            before();
             t.cancel();
             return Ok(());
         }
         match self.deps.jobs.status(task_id).as_deref() {
-            None | Some("completed" | "failed" | "cancelled") => Ok(()),
+            None | Some("completed" | "failed" | "cancelled" | "interrupted") => Ok(()),
             Some(_) => self
                 .deps
                 .jobs
@@ -499,7 +532,11 @@ impl Executor {
         ]);
         // code-service's lease, then jobs.run up to its first await: both before start answers,
         // as in Node, so a cancel right after start finds the run live.
-        let lease = match self.deps.inference.as_ref().map(|enter| enter()) {
+        let entered = match &req.inference {
+            Some(gate) => Some(gate()),
+            None => self.deps.inference.as_ref().map(|enter| enter()),
+        };
+        let lease = match entered {
             Some(Err(e)) => {
                 let refusal = if e.status == Some(503) {
                     Fail::new(Some(503), INFERENCE_PAUSED)
@@ -674,7 +711,7 @@ impl Executor {
         let mut meta_seen = JValue::Null;
         let mut opened: Option<Arc<Session>> = None;
         let outcome = (|| -> Result<JValue, Fail> {
-            let endpoint = (self.deps.engine)();
+            let endpoint = req.engine.clone().unwrap_or_else(|| (self.deps.engine)());
             let chosen = req
                 .model
                 .clone()
@@ -781,7 +818,9 @@ impl Executor {
                 }),
                 _ => None,
             };
-            let mut options = code_acp::Options::new(self.deps.transport.clone(), &path);
+            let mut options = code_acp::Options::new(Transport::Socket(String::new()), &path);
+            // code-acp refuses a missing transport in Node's words ("No coding harness ...").
+            options.transport = self.deps.transport.clone();
             options.home = home.clone();
             options.permission = Some(JValue::obj([
                 ("edit", s("ask")),

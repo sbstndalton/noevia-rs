@@ -188,9 +188,14 @@ fn sandbox(
                 std::thread::sleep(Duration::from_millis(20));
                 on_cancel();
             } else if step.get("expectClose").as_bool() == Some(true) {
-                let mut rest = String::new();
-                let n = reader.read_line(&mut rest).unwrap_or(0);
-                assert_eq!(n, 0, "more after the expected close: {rest}");
+                // Whatever noevia still sends before it closes is recorded, as Node's sandbox does.
+                loop {
+                    let mut l = String::new();
+                    if reader.read_line(&mut l).unwrap_or(0) == 0 {
+                        break;
+                    }
+                    lines.push(l.strip_suffix('\n').unwrap_or(&l).to_string());
+                }
             }
         }
         lines
@@ -321,7 +326,7 @@ fn every_node_task_run_replays() {
             egress: egress.clone().map(|e| e as Arc<dyn Egress>),
             approvals: approvals.clone(),
             engine: Box::new(move || engine.clone()),
-            transport: Transport::Socket(format!("127.0.0.1:{port}")),
+            transport: Some(Transport::Socket(format!("127.0.0.1:{port}"))),
             log: Box::new(move |e| sink.lock().unwrap().push(e)),
             now: Box::new(|| 5000.0),
             inference: None,
@@ -347,6 +352,8 @@ fn every_node_task_run_replays() {
                 prompt_preparation: "direct".into(),
                 context: String::new(),
                 tenant_id: Some("qa-tenant".into()),
+                engine: None,
+                inference: None,
             });
         let started = match started {
             Ok(v) => v,
@@ -551,7 +558,7 @@ fn the_inference_lease_is_taken_before_the_run_and_held_until_it_ends() {
                 model: Some("qa-model".into()),
                 context_tokens: Some(8192.0),
             }),
-            transport: Transport::Socket(format!("127.0.0.1:{port}")),
+            transport: Some(Transport::Socket(format!("127.0.0.1:{port}"))),
             log: Box::new(|_| {}),
             now: Box::new(|| 5000.0),
             inference: Some(Box::new(move || {

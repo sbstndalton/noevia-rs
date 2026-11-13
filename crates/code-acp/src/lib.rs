@@ -187,7 +187,7 @@ impl Cancel {
 }
 
 /// How the agent is reached.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Transport {
     /// The sandbox's supervisor at `host:port` (CODE_HARNESS_ENDPOINT).
     Socket(String),

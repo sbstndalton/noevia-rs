@@ -11,6 +11,84 @@
   "PATH": "/usr/local/bin:/usr/bin:/bin",
   "LANG": "C.UTF-8"
  },
+ "engineHosts": [
+  [
+   "http://qa-engine.invalid:8080/v1",
+   "qa-engine.invalid"
+  ],
+  [
+   "http://[::1]:8080/v1",
+   "[::1]"
+  ],
+  [
+   "http://[FE80::1]/",
+   "[fe80::1]"
+  ],
+  [
+   "http://llama\\@evil.invalid/",
+   "llama"
+  ],
+  [
+   "http:llama:8080/v1",
+   "llama"
+  ],
+  [
+   "http:\\\\llama:8080\\v1",
+   "llama"
+  ],
+  [
+   "http://0x7f.1:8080/",
+   "127.0.0.1"
+  ],
+  [
+   "http://LLAMA%41:8080/",
+   "llamaa"
+  ],
+  [
+   "HTTP://Qa-Engine.Invalid./v1",
+   "qa-engine.invalid."
+  ],
+  [
+   " http://qa-engine.invalid ",
+   "qa-engine.invalid"
+  ],
+  [
+   "qa-engine.invalid:8080",
+   ""
+  ],
+  [
+   "file:///srv/x",
+   ""
+  ],
+  [
+   "http://user:pw@qa-engine.invalid:8080/",
+   "qa-engine.invalid"
+  ],
+  [
+   "http://xn--nxasmq6b.invalid/",
+   "xn--nxasmq6b.invalid"
+  ],
+  [
+   "http://bücher.invalid/",
+   "xn--bcher-kva.invalid"
+  ],
+  [
+   "http://1.2.3.4.5/",
+   ""
+  ],
+  [
+   "http://256.1.1.1/",
+   ""
+  ],
+  [
+   "",
+   ""
+  ],
+  [
+   "not a url",
+   ""
+  ]
+ ],
  "scenarios": {
   "completes": {
    "capabilities": [
@@ -23,6 +101,9 @@
     "approve"
    ],
    "egress": null,
+   "engine": null,
+   "prompt": null,
+   "grantNull": false,
    "script": [
     {
      "expect": true
@@ -405,6 +486,9 @@
    "domains": [],
    "answers": [],
    "egress": null,
+   "engine": null,
+   "prompt": null,
+   "grantNull": false,
    "script": [
     {
      "expect": true
@@ -564,6 +648,9 @@
    "domains": [],
    "answers": [],
    "egress": null,
+   "engine": null,
+   "prompt": null,
+   "grantNull": false,
    "script": [
     {
      "expect": true
@@ -733,6 +820,9 @@
      "requests": 2
     }
    },
+   "engine": null,
+   "prompt": null,
+   "grantNull": false,
    "script": [
     {
      "expect": true
@@ -1043,6 +1133,877 @@
     "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"Write NEW.md for the QA test.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}"
    ]
   },
+  "network-agent-error-cleanup-unconfirmed": {
+   "capabilities": [
+    "read_repository",
+    "network"
+   ],
+   "domains": [
+    "registry.example.invalid"
+   ],
+   "answers": [],
+   "egress": "fails",
+   "engine": null,
+   "prompt": null,
+   "grantNull": false,
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":-32000,\"message\":\"QA agent failure\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "started": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "workspace": "<TREE>"
+   },
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 1,
+     "type": "job.created",
+     "at": 5000,
+     "data": {
+      "kind": "code",
+      "projectId": "qa-project",
+      "parentId": null,
+      "capabilities": [
+       "read_repository",
+       "network"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 2,
+     "type": "job.started",
+     "at": 5000,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 3,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 4,
+     "type": "step.started",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "title": "Pin the harness configuration"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 5,
+     "type": "step.completed",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "file": "opencode.json",
+      "files": [
+       "./opencode.json"
+      ],
+      "permission": {
+       "edit": "ask",
+       "bash": "ask",
+       "webfetch": "ask"
+      },
+      "model": "local/qa-model",
+      "endpoint": "http://qa-engine.invalid:8080/v1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 6,
+     "type": "progress",
+     "at": 5000,
+     "data": {
+      "stage": "running"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 7,
+     "type": "tool.uncertain",
+     "at": 5000,
+     "data": {
+      "tool": "network",
+      "reason": "Native egress cleanup could not be confirmed."
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 8,
+     "type": "artifact.created",
+     "at": 5000,
+     "data": {
+      "name": "network.cleanup",
+      "kind": "native-network-report",
+      "network": {
+       "available": false,
+       "state": "uncertain",
+       "partial": true,
+       "final": false,
+       "cleanupConfirmed": false
+      }
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 9,
+     "type": "job.failed",
+     "at": 5000,
+     "data": {
+      "error": "QA agent failure",
+      "result": null
+     }
+    }
+   ],
+   "record": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "repo": "<BASE>/qa-repo",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "path": "<TREE>",
+    "home": "<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb",
+    "status": "released",
+    "mode": "worktree",
+    "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+    "baseBranch": "main",
+    "owner": null,
+    "noevia": {
+     "uid": "<uid>",
+     "gid": "<gid>"
+    },
+    "capabilities": [
+     "read_repository",
+     "network"
+    ],
+    "domains": [
+     "registry.example.invalid"
+    ],
+    "pinned": [
+     "opencode.json"
+    ],
+    "epoch": "qa-epoch",
+    "claimedAt": 5000,
+    "releasedAt": 5000,
+    "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+    "error": null
+   },
+   "egressCalls": [
+    {
+     "grant": {
+      "taskId": "00000000-0000-4000-8000-0000000000bb",
+      "domains": [
+       "registry.example.invalid"
+      ]
+     }
+    },
+    {
+     "revoke": "qa-grant"
+    }
+   ],
+   "asked": [],
+   "logs": [],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<TREE>\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb\",\"LANG\":\"C.UTF-8\",\"HTTP_PROXY\":\"http://task:qa-token@egress:3128\",\"HTTPS_PROXY\":\"http://task:qa-token@egress:3128\",\"http_proxy\":\"http://task:qa-token@egress:3128\",\"https_proxy\":\"http://task:qa-token@egress:3128\",\"NO_PROXY\":\"qa-engine.invalid\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<TREE>\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"Write NEW.md for the QA test.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}"
+   ]
+  },
+  "cancelled": {
+   "capabilities": [
+    "read_repository"
+   ],
+   "domains": [],
+   "answers": [],
+   "egress": null,
+   "engine": null,
+   "prompt": null,
+   "grantNull": false,
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "cancel": true
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "started": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "workspace": "<TREE>"
+   },
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 1,
+     "type": "job.created",
+     "at": 5000,
+     "data": {
+      "kind": "code",
+      "projectId": "qa-project",
+      "parentId": null,
+      "capabilities": [
+       "read_repository"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 2,
+     "type": "job.started",
+     "at": 5000,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 3,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 4,
+     "type": "step.started",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "title": "Pin the harness configuration"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 5,
+     "type": "step.completed",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "file": "opencode.json",
+      "files": [
+       "./opencode.json"
+      ],
+      "permission": {
+       "edit": "ask",
+       "bash": "ask",
+       "webfetch": "ask"
+      },
+      "model": "local/qa-model",
+      "endpoint": "http://qa-engine.invalid:8080/v1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 6,
+     "type": "progress",
+     "at": 5000,
+     "data": {
+      "stage": "running"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 7,
+     "type": "job.cancelled",
+     "at": 5000,
+     "data": {}
+    }
+   ],
+   "record": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "repo": "<BASE>/qa-repo",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "path": "<TREE>",
+    "home": "<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb",
+    "status": "released",
+    "mode": "worktree",
+    "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+    "baseBranch": "main",
+    "owner": null,
+    "noevia": {
+     "uid": "<uid>",
+     "gid": "<gid>"
+    },
+    "capabilities": [
+     "read_repository"
+    ],
+    "domains": [],
+    "pinned": [
+     "opencode.json"
+    ],
+    "epoch": "qa-epoch",
+    "claimedAt": 5000,
+    "releasedAt": 5000,
+    "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+    "error": null
+   },
+   "egressCalls": [],
+   "asked": [],
+   "logs": [],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<TREE>\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<TREE>\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"Write NEW.md for the QA test.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}",
+    "{\"jsonrpc\":\"2.0\",\"method\":\"session/cancel\",\"params\":{\"sessionId\":\"qa-session\"}}"
+   ]
+  },
+  "engine-falsy-values": {
+   "capabilities": [
+    "read_repository",
+    "network"
+   ],
+   "domains": [
+    "registry.example.invalid"
+   ],
+   "answers": [],
+   "egress": {
+    "confirmed": true,
+    "report": {
+     "available": true,
+     "state": "closed",
+     "final": false,
+     "partial": false,
+     "requests": 0
+    }
+   },
+   "engine": {
+    "baseUrl": "http://[FE80::1]:8080/v1",
+    "model": "",
+    "apiKey": "qa-engine-key",
+    "contextTokens": 0
+   },
+   "prompt": null,
+   "grantNull": false,
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "started": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "workspace": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-0000000000bb"
+   },
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 1,
+     "type": "job.created",
+     "at": 5000,
+     "data": {
+      "kind": "code",
+      "projectId": "qa-project",
+      "parentId": null,
+      "capabilities": [
+       "read_repository",
+       "network"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 2,
+     "type": "job.started",
+     "at": 5000,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 3,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 4,
+     "type": "step.started",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "title": "Pin the harness configuration"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 5,
+     "type": "step.completed",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "failed": true,
+      "error": "A coding task needs a model; none is loaded or chosen."
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 6,
+     "type": "artifact.created",
+     "at": 5000,
+     "data": {
+      "name": "network.cleanup",
+      "kind": "native-network-report",
+      "network": {
+       "available": true,
+       "state": "closed",
+       "final": false,
+       "partial": false,
+       "requests": 0,
+       "cleanupConfirmed": true
+      }
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 7,
+     "type": "job.failed",
+     "at": 5000,
+     "data": {
+      "error": "A coding task needs a model; none is loaded or chosen.",
+      "result": null
+     }
+    }
+   ],
+   "record": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "repo": "<BASE>/qa-repo",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "path": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-0000000000bb",
+    "home": "<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb",
+    "status": "released",
+    "mode": "worktree",
+    "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+    "baseBranch": "main",
+    "owner": null,
+    "noevia": {
+     "uid": "<uid>",
+     "gid": "<gid>"
+    },
+    "capabilities": [
+     "read_repository",
+     "network"
+    ],
+    "domains": [
+     "registry.example.invalid"
+    ],
+    "pinned": [
+     "opencode.json"
+    ],
+    "epoch": "qa-epoch",
+    "claimedAt": 5000,
+    "releasedAt": 5000,
+    "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+    "error": null
+   },
+   "egressCalls": [
+    {
+     "grant": {
+      "taskId": "00000000-0000-4000-8000-0000000000bb",
+      "domains": [
+       "registry.example.invalid"
+      ]
+     }
+    },
+    {
+     "revoke": "qa-grant"
+    }
+   ],
+   "asked": [],
+   "logs": [],
+   "sandboxLines": []
+  },
+  "grant-null": {
+   "capabilities": [
+    "read_repository",
+    "network"
+   ],
+   "domains": [
+    "registry.example.invalid"
+   ],
+   "answers": [],
+   "egress": {
+    "confirmed": true,
+    "report": {
+     "available": true,
+     "state": "closed",
+     "final": true,
+     "partial": false
+    }
+   },
+   "engine": null,
+   "prompt": null,
+   "grantNull": true,
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"qa-agent\",\"version\":\"0.1\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "started": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "workspace": "<TREE>"
+   },
+   "journal": [
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 1,
+     "type": "job.created",
+     "at": 5000,
+     "data": {
+      "kind": "code",
+      "projectId": "qa-project",
+      "parentId": null,
+      "capabilities": [
+       "read_repository",
+       "network"
+      ]
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 2,
+     "type": "job.started",
+     "at": 5000,
+     "data": {}
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 3,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 4,
+     "type": "step.started",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "title": "Pin the harness configuration"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 5,
+     "type": "step.completed",
+     "at": 5000,
+     "data": {
+      "id": "harness.config",
+      "file": "opencode.json",
+      "files": [
+       "./opencode.json"
+      ],
+      "permission": {
+       "edit": "ask",
+       "bash": "ask",
+       "webfetch": "ask"
+      },
+      "model": "local/qa-model",
+      "endpoint": "http://qa-engine.invalid:8080/v1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 6,
+     "type": "progress",
+     "at": 5000,
+     "data": {
+      "stage": "running"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 7,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "identityHash": "08ec852791a16aad3debb0efcf4c1922fed42a06226ba8e0b75dafb615edd82d",
+      "identity": {
+       "backend": "acp",
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "model": "qa-model",
+       "provider": null,
+       "protocolVersion": 1,
+       "capabilities": [
+        "network",
+        "read_repository"
+       ],
+       "promptPreparation": "direct",
+       "sandbox": "sandbox"
+      },
+      "meta": {
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "protocolVersion": 1,
+       "usage": null,
+       "context": null,
+       "commands": 0,
+       "failedCommands": 0,
+       "exitCodes": [],
+       "messageChunks": 0,
+       "limitations": [
+        "The harness did not report token usage.",
+        "No command exit codes were reported."
+       ]
+      },
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 8,
+     "type": "checkpoint.created",
+     "at": 5000,
+     "data": {
+      "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+      "task": "Write NEW.md for the QA test.",
+      "identityHash": "08ec852791a16aad3debb0efcf4c1922fed42a06226ba8e0b75dafb615edd82d",
+      "identity": {
+       "backend": "acp",
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "model": "qa-model",
+       "provider": null,
+       "protocolVersion": 1,
+       "capabilities": [
+        "network",
+        "read_repository"
+       ],
+       "promptPreparation": "direct",
+       "sandbox": "sandbox"
+      },
+      "meta": {
+       "harness": "qa-agent",
+       "harnessVersion": "0.1",
+       "protocolVersion": 1,
+       "usage": null,
+       "context": null,
+       "commands": 0,
+       "failedCommands": 0,
+       "exitCodes": [],
+       "messageChunks": 0,
+       "limitations": [
+        "The harness did not report token usage.",
+        "No command exit codes were reported."
+       ]
+      },
+      "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+      "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1"
+     }
+    },
+    {
+     "job": "00000000-0000-4000-8000-0000000000bb",
+     "seq": 9,
+     "type": "job.completed",
+     "at": 5000,
+     "data": {
+      "result": {
+       "stopReason": "end_turn",
+       "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+       "identityHash": "08ec852791a16aad3debb0efcf4c1922fed42a06226ba8e0b75dafb615edd82d",
+       "meta": {
+        "harness": "qa-agent",
+        "harnessVersion": "0.1",
+        "protocolVersion": 1,
+        "usage": null,
+        "context": null,
+        "commands": 0,
+        "failedCommands": 0,
+        "exitCodes": [],
+        "messageChunks": 0,
+        "limitations": [
+         "The harness did not report token usage.",
+         "No command exit codes were reported."
+        ]
+       },
+       "tools": 0,
+       "approvals": 0,
+       "allowed": 0,
+       "refused": 0,
+       "denied": 0,
+       "workspace": "<TREE>"
+      }
+     }
+    }
+   ],
+   "record": {
+    "taskId": "00000000-0000-4000-8000-0000000000bb",
+    "repo": "<BASE>/qa-repo",
+    "branch": "noevia/task-00000000-0000-4000-8000-0000000000bb",
+    "path": "<TREE>",
+    "home": "<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb",
+    "status": "released",
+    "mode": "worktree",
+    "baseSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+    "baseBranch": "main",
+    "owner": null,
+    "noevia": {
+     "uid": "<uid>",
+     "gid": "<gid>"
+    },
+    "capabilities": [
+     "read_repository",
+     "network"
+    ],
+    "domains": [
+     "registry.example.invalid"
+    ],
+    "pinned": [
+     "opencode.json"
+    ],
+    "epoch": "qa-epoch",
+    "claimedAt": 5000,
+    "releasedAt": 5000,
+    "headSha": "f0505304b2a32e3f95f60a9b0db10997573ab0a1",
+    "error": null
+   },
+   "egressCalls": [
+    {
+     "grant": {
+      "taskId": "00000000-0000-4000-8000-0000000000bb",
+      "domains": [
+       "registry.example.invalid"
+      ]
+     }
+    }
+   ],
+   "asked": [],
+   "logs": [],
+   "sandboxLines": [
+    "{\"noevia\":\"start\",\"cwd\":\"<TREE>\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-0000000000bb\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"<TREE>\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session\",\"prompt\":[{\"type\":\"text\",\"text\":\"Write NEW.md for the QA test.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}"
+   ]
+  },
+  "blank-prompt-bom": {
+   "capabilities": [],
+   "domains": [],
+   "answers": [],
+   "egress": null,
+   "engine": null,
+   "prompt": "﻿  ",
+   "grantNull": false,
+   "script": [],
+   "started": {
+    "error": "A task needs a prompt"
+   },
+   "journal": null,
+   "record": null,
+   "egressCalls": [],
+   "asked": [],
+   "logs": [],
+   "sandboxLines": []
+  },
   "network-cleanup-unconfirmed": {
    "capabilities": [
     "read_repository",
@@ -1053,6 +2014,9 @@
    ],
    "answers": [],
    "egress": "fails",
+   "engine": null,
+   "prompt": null,
+   "grantNull": false,
    "script": [
     {
      "expect": true

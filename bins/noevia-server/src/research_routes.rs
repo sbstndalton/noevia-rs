@@ -163,6 +163,13 @@ pub struct Research {
     state: Mutex<State>,
 }
 
+impl Research {
+    /// The front's inference admission client (a Code task's lease, code_routes.rs).
+    pub(crate) fn admission(&self) -> Arc<Admission> {
+        Arc::clone(&self.admission)
+    }
+}
+
 impl std::fmt::Debug for Research {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Research").finish_non_exhaustive()

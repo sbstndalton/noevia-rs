@@ -111,6 +111,8 @@ http-body = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "client", "server"] }
 code-net-guard = { path = "../../crates/code-net-guard" }
+code-acp = { path = "../../crates/code-acp" }
+code-harness = { path = "../../crates/code-harness" }
 server-auth = { path = "../../crates/server-auth" }
 server-account = { path = "../../crates/server-account" }
 url = "2.5"
