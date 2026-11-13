@@ -63,10 +63,20 @@ const LEASE_PATH: &str = "/internal/inference-admission/lease/";
 const QUIET: Duration = Duration::from_millis(300);
 
 /// Recorded prepared cases this test does not run, and why. Every other recorded prepared case runs.
-const SKIPPED: &[(&str, &str)] = &[(
-    "engine_unreachable",
-    "`throws` carries Node's own transport error text (connect ECONNREFUSED qa-engine.invalid); a refused local socket gives the front's HTTP client's wording, which the event quotes",
-)];
+const SKIPPED: &[(&str, &str)] = &[
+    (
+        "engine_unreachable",
+        "`throws` carries Node's own transport error text (connect ECONNREFUSED qa-engine.invalid); a refused local socket gives the front's HTTP client's wording, which the event quotes",
+    ),
+    (
+        "edit_allowed_by_policy",
+        "a write tool's stored policy is only ever ask or block (tool-policy.cjs mode, policy_leaves::mode): the recorder's stub allows a write to exercise chat.cjs's allow branch, which the crate replay covers",
+    ),
+    (
+        "edit_allow_then_ask",
+        "the same: a write is never allowed by the account's policy, so its change to ask cannot happen; the crate replay covers the branch",
+    ),
+];
 
 type UpBody = http_body_util::combinators::BoxBody<Bytes, std::io::Error>;
 
@@ -345,7 +355,9 @@ impl Drop for Quiet {
 
 /// Review B1: a client that leaves while core prepares and writes nothing ends core's turn at once (its
 /// stream is dropped, as the relay of a Node turn drops it), not at core's next line.
-async fn a_client_leaving_while_core_is_quiet_ends_cores_stream(case: &JValue) -> Result<(), String> {
+async fn a_client_leaving_while_core_is_quiet_ends_cores_stream(
+    case: &JValue,
+) -> Result<(), String> {
     let dropped = Arc::new(AtomicBool::new(false));
     let script: Shared = Arc::new(Mutex::new(Script {
         case: case.clone(),
@@ -371,7 +383,9 @@ async fn a_client_leaving_while_core_is_quiet_ends_cores_stream(case: &JValue) -
         .header("content-type", "application/json")
         .header("cookie", &f.jar)
         .header("x-csrf-token", &f.csrf)
-        .body(Full::new(Bytes::from(js::stringify(case.get("input").get("body")))))
+        .body(Full::new(Bytes::from(js::stringify(
+            case.get("input").get("body"),
+        ))))
         .unwrap();
     let res = send.send_request(req).await.unwrap();
     let mut body = res.into_body();
@@ -544,7 +558,9 @@ async fn core_service(
                 .header("content-type", "application/x-ndjson")
                 .body(
                     Quiet {
-                        first: Some(Bytes::from_static(b"{\"type\":\"meta\",\"model\":\"qa-model\"}\n")),
+                        first: Some(Bytes::from_static(
+                            b"{\"type\":\"meta\",\"model\":\"qa-model\"}\n",
+                        )),
                         dropped,
                     }
                     .boxed(),

@@ -516,7 +516,15 @@ impl Host for Script {
         decision.as_str().unwrap().to_string()
     }
 
-    fn revoke_grant(&self, _chat_id: Option<&str>) {}
+    fn revoke_grant(&self, chat_id: Option<&str>) {
+        self.store(
+            "revokeChatGrant",
+            vec![
+                ("userId", js::s("qa-user")),
+                ("chatId", chat_id.map_or(JValue::Null, js::s)),
+            ],
+        );
+    }
 
     fn audit(&self, event: &str, details: &JValue) {
         self.store(
@@ -879,7 +887,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 62, "{ran:?}");
+    assert_eq!(ran.len(), 67, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
@@ -926,6 +934,73 @@ fn a_blocked_tool_is_not_offered_and_its_call_is_refused() {
         Some(r#"ERROR: tool "drive_get_metadata" is not enabled for this project"#)
     );
     assert!(!js::stringify(c.get("stubs")).contains(r#""op":"policy""#));
+}
+
+/// Named difference (gate.rs): an edit whose file the bridge gives no answer for, at the check after the
+/// card or the one before the run, is refused with the lookup sentence and audited `edit-target`; the
+/// chat's grant is not revoked and nothing runs. Node has no bridge, so this is the executor's own.
+#[test]
+fn an_edit_the_bridge_cannot_resolve_after_the_card_is_refused_without_revoking() {
+    let f = fixture();
+    let JValue::Arr(cases) = f.get("cases") else {
+        panic!()
+    };
+    let base = cases
+        .iter()
+        .find(|c| c.get("name").as_str() == Some("edit_approved"))
+        .unwrap();
+    for at in [1usize, 2] {
+        let mut case = base.clone();
+        let JValue::Arr(mut bridge) = case.get("bridge").clone() else {
+            panic!()
+        };
+        let edits: Vec<usize> = bridge
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.get("op").as_str() == Some("edit-target"))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            edits.len(),
+            3,
+            "edit_approved resolves its file three times"
+        );
+        js::set(
+            &mut bridge[edits[at]],
+            "found",
+            js::obj(Vec::<(String, JValue)>::new()),
+        );
+        js::set(&mut case, "bridge", JValue::Arr(bridge));
+        let (script, _) = replay(&f, &case);
+        let events = script.events.lock().unwrap().clone();
+        let result = events
+            .iter()
+            .map(|e| wtf16::parse(e).unwrap())
+            .find(|e| e.get("type").as_str() == Some("tool_result"))
+            .unwrap_or_else(|| panic!("{at}: no tool_result in {events:?}"));
+        assert_eq!(
+            result.get("text").as_str(),
+            Some("ERROR: The file this would change could not be looked up. project_append_file was not run and nothing was changed."),
+            "{at}"
+        );
+        let stores: Vec<String> = script
+            .stores
+            .lock()
+            .unwrap()
+            .iter()
+            .map(js::stringify)
+            .collect();
+        assert!(
+            !stores.iter().any(|s| s.contains("revokeChatGrant")),
+            "{at}: {stores:?}"
+        );
+        assert!(
+            stores.iter().any(|s| s.contains(r#""event":"tool.denied""#)
+                && s.contains(r#""reason":"edit-target""#)),
+            "{at}: {stores:?}"
+        );
+        assert!(script.executions.lock().unwrap().is_empty(), "{at}");
+    }
 }
 
 /// The front spawns the turn on its runtime: `native::run` must be `Send` for a `Send + Sync` host.

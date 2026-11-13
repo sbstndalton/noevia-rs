@@ -271,8 +271,10 @@ async function runTurn(c, { handoff = false } = {}) {
     onTombstones = (ids) => stub('tombstones', { answer: [...ids].sort() });
     let editResolutions = 0;
     onEditTarget = (proj, rawArgs, options) => {
-      const changed = c.editChanges && c.editChanges[editResolutions++];
-      const found = realResolveEditTarget(proj && changed ? { ...proj, ...changed } : proj, rawArgs, options);
+      const k = editResolutions++;
+      const changed = c.editChanges && c.editChanges[k];
+      const account = c.editAccounts && c.editAccounts[k] !== undefined ? { ...options, storageAccount: c.editAccounts[k] } : options;
+      const found = realResolveEditTarget(proj && changed ? { ...proj, ...changed } : proj, rawArgs, account);
       log.bridge.push({ op: 'edit-target', args: rawArgs, found: found.error ? { error: found.error }
         : { path: found.path, account: found.account || null, digest: editTargets.targetDigest(found.path, found.account || null) } });
       return found;
@@ -409,6 +411,8 @@ async function runTurn(c, { handoff = false } = {}) {
       },
       grantContext: async (raw) => grantFixture.context(raw, { holder: { kind: 'absent' } }),
       chatWideApproved: (userId, chatId, scope) => stub('chatWideApproved', { chatId, scope, answer: c.chatWide === true }),
+      // A grant ended by the per-call gate (a write target or project file that changed before the run).
+      revokeChatGrant: (userId, chatId) => store('revokeChatGrant', { userId, chatId }),
       // `leaveOnCard`: the client goes away while the card is open; the gate answers 'aborted' as its abortSignal fires.
       awaitApproval: async (request) => {
         const { abortSignal: _signal, ...asked } = request;
@@ -423,6 +427,7 @@ async function runTurn(c, { handoff = false } = {}) {
         return found;
       },
       // #687: `storageAccount`, the storage account the user has connected (a plain-named file's edit moves it there).
+      // `editAccounts[k]`: the account the k-th edit resolution sees instead (the user reconnected storage meanwhile).
       editStorageAccount: () => c.storageAccount || null,
       recordUsage: (_ws, model, reported) => store('recordUsage', { model, reported }),
       recordToolUse: (_ws, name) => store('recordToolUse', { name }),
@@ -455,7 +460,7 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, docs: c.docs === true, pageSave: c.pageSave === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null,
+        retrieval: c.retrieval || null, docs: c.docs === true, pageSave: c.pageSave === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
@@ -688,6 +693,21 @@ const CASES = [
   { name: 'edit_chat_wide_grant', about: 'An append under "Allow for this chat" with storage connected: no card; the move into the project folder is pinned with its account.',
     docs: true, project: { ...QA_DOCS, reservedFolder: 'QA Folder' }, storageAccount: QA_ACCOUNT, chatWide: true,
     rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('Appended under the chat grant.')] },
+  { name: 'edit_allowed_by_policy', about: 'An append the account allows without asking: no card, resolved before the call and before the run, run pinned.',
+    docs: true, project: QA_DOCS, policy: { project_append_file: 'allow' },
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('Appended without asking.')] },
+  { name: 'edit_allow_then_ask', about: 'The append is allowed when the call starts and asks by the final check: not run (the permission changed).',
+    docs: true, project: QA_DOCS, policy: { project_append_file: ['allow', 'allow', 'ask'] },
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('The permission changed.')] },
+  { name: 'edit_blocked', about: 'The account blocks the append: refused before any file is looked up.',
+    docs: true, project: QA_DOCS, policy: { project_append_file: 'block' },
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('It is blocked.')] },
+  { name: 'edit_account_changed_on_card', about: 'The same file under another storage account while the card is open: refused, it now means the same path (the account differs).',
+    docs: true, project: { ...QA_DOCS, reservedFolder: 'QA Folder' }, storageAccount: QA_ACCOUNT, decision: 'approve', editAccounts: [undefined, 'b0a710ad'.repeat(8)],
+    rounds: [{ frames: [toolCall('project_append_file', APPEND), finish('tool_calls')] }, answer('The account changed.')] },
+  { name: 'edit_long_path', about: 'An approved append to a file whose name is longer than 500 UTF-16 units (an astral character at the cut): the audit keeps 500.',
+    docs: true, project: { ...QA_DOCS, files: [{ name: `qa-${'n'.repeat(495)}😀-long.txt`, content: 'QA long.' }] }, decision: 'approve',
+    rounds: [{ frames: [toolCall('project_append_file', JSON.stringify({ name: `qa-${'n'.repeat(495)}😀-long.txt`, text: 'QA line.' })), finish('tool_calls')] }, answer('Appended to the long file.')] },
   { name: 'page_save_stays_in_node', about: 'A coworker conversation offers the page save (#2446): the hand-off is refused (page-save) and Node runs the turn.',
     pageSave: true, project: { id: 'specialist-qa', name: 'QA Coworker' }, rounds: [answer('A coworker reply.')] },
 ];

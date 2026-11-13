@@ -15,10 +15,12 @@
 //! is built only of values fixed before the card (the card's target, kind, edit file and account), so
 //! it cannot differ here and is not rebuilt.
 //!
-//! Named difference: a project file edit whose file the bridge could not resolve at all
-//! ([`EditTarget::Failed`]; in Node reading the project would have thrown inside the call, giving the
-//! exchange's call error) is refused before its card as a target that could not be looked up (audit
-//! `edit-target`), and treated as a changed file after the card.
+//! Named difference: a project file edit whose file the bridge gave no answer for at all
+//! ([`EditTarget::Failed`]: core unreachable, a timeout, a refusal of the call; Node has no bridge and
+//! `resolveEditTarget` never throws there, so this case is the executor's own) is refused with the
+//! lookup sentence (`The file this would change could not be looked up`) and audited `edit-target`,
+//! before the card and after it alike; it never revokes the chat's grant (a transport fault is not
+//! a changed file). Only extra refusals: never a run Node would refuse.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -222,6 +224,15 @@ fn audit_denied<H: Host>(host: &H, name: &str, reason: &str) {
         "tool.denied",
         &js::obj([("tool", js::s(name)), ("reason", js::s(reason))]),
     );
+}
+
+/// An edit whose file the bridge gave no answer for (see the module doc): refused, audited, no revocation.
+fn lookup_failed<H: Host>(host: &H, name: &str) -> String {
+    audit_denied(host, name, "edit-target");
+    format!(
+        "ERROR: {} {name} was not run and nothing was changed.",
+        sentence(LOOKUP_FAILED)
+    )
 }
 
 fn blocked_text(name: &str) -> String {
@@ -664,6 +675,9 @@ impl<'a> Tools<'a> {
         // An edit whose name now lands on another file (or none): the approval was for the file shown.
         if let Some(pin) = edit {
             let again = self.edit_target(host, call).await;
+            if again == EditTarget::Failed {
+                return Some(lookup_failed(host, name));
+            }
             if !pin.same(&again) {
                 audit_denied(host, name, "edit-target-changed");
                 let now = match &again {
@@ -726,7 +740,11 @@ impl<'a> Tools<'a> {
         }
         // The file may change during the final store read too.
         if let Some(pin) = edit {
-            if !pin.same(&self.edit_target(host, call).await) {
+            let now = self.edit_target(host, call).await;
+            if now == EditTarget::Failed {
+                return Some(lookup_failed(host, name));
+            }
+            if !pin.same(&now) {
                 return self.revoked(host, EDIT_TARGET_MOVED);
             }
         }
