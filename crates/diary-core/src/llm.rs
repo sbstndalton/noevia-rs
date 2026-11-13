@@ -255,6 +255,20 @@ pub enum LlmError {
     Transport(&'static str),
 }
 
+impl std::fmt::Display for LlmError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Llm(m) | Self::ModelNotServed { message: m, .. } => {
+                write!(f, "{}: {m}", self.python_class())
+            }
+            Self::Status(s) => write!(f, "HTTPStatusError: {s}"),
+            _ => f.write_str(self.python_class()),
+        }
+    }
+}
+
+impl std::error::Error for LlmError {}
+
 impl LlmError {
     /// The Python exception class name.
     pub fn python_class(&self) -> &'static str {
@@ -1213,7 +1227,10 @@ pub fn parse_embed(data: &Value, sent: usize) -> Result<Vec<Vec<f64>>, LlmError>
         Some(_) => return Err(LlmError::Protocol("TypeError")),
     };
     if items.len() != sent {
-        return Err(LlmError::Llm(format!("embedding count mismatch: sent {sent}, got {}", items.len())));
+        return Err(LlmError::Llm(format!(
+            "embedding count mismatch: sent {sent}, got {}",
+            items.len()
+        )));
     }
     let mut keyed = Vec::with_capacity(items.len());
     for item in items {
@@ -1226,7 +1243,11 @@ pub fn parse_embed(data: &Value, sent: usize) -> Result<Vec<Vec<f64>>, LlmError>
         let Value::Array(values) = index(item, "embedding")? else {
             return Err(LlmError::Protocol("TypeError"));
         };
-        let vector = values.iter().map(Value::as_f64).collect::<Option<Vec<f64>>>().ok_or(LlmError::Protocol("TypeError"))?;
+        let vector = values
+            .iter()
+            .map(Value::as_f64)
+            .collect::<Option<Vec<f64>>>()
+            .ok_or(LlmError::Protocol("TypeError"))?;
         keyed.push((order, vector));
     }
     keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));

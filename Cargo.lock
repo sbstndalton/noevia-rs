@@ -692,6 +692,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
 
 [[package]]
+name = "diary-answer"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "diary-core",
+ "http-body",
+ "reqwest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "diary-backup-format"
 version = "0.1.0"
 dependencies = [

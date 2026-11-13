@@ -82,8 +82,9 @@ fn transport_class(e: &reqwest::Error) -> &'static str {
 
 fn tokio_sleep() -> Sleep {
     Arc::new(|s: f64| {
-        Box::pin(tokio::time::sleep(Duration::try_from_secs_f64(s.max(0.0)).unwrap_or(Duration::ZERO)))
-            as Pin<Box<dyn Future<Output = ()> + Send>>
+        Box::pin(tokio::time::sleep(
+            Duration::try_from_secs_f64(s.max(0.0)).unwrap_or(Duration::ZERO),
+        )) as Pin<Box<dyn Future<Output = ()> + Send>>
     })
 }
 
@@ -96,7 +97,7 @@ async fn read_stream(
     progress: Option<&Progress>,
 ) -> Result<Completion, LlmError> {
     let status = resp.status().as_u16();
-    if status >= 400 {
+    if !(200..300).contains(&status) {
         return Err(LlmError::Status(status));
     }
     let content_type = resp
@@ -107,7 +108,7 @@ async fn read_stream(
         .to_owned();
     let mut state = StreamState::new(model, max_tokens, emit.is_some());
     let mut events = Vec::new();
-    let mut flush = |events: &mut Vec<Event>, emit: &mut Option<&mut (dyn FnMut(Event) + Send)>| {
+    let flush = |events: &mut Vec<Event>, emit: &mut Option<&mut (dyn FnMut(Event) + Send)>| {
         if let Some(f) = emit.as_mut() {
             for e in events.drain(..) {
                 f(e);
@@ -117,7 +118,10 @@ async fn read_stream(
         }
     };
     if !content_type.contains("text/event-stream") {
-        let body = resp.bytes().await.map_err(|e| LlmError::Transport(transport_class(&e)))?;
+        let body = resp
+            .bytes()
+            .await
+            .map_err(|e| LlmError::Transport(transport_class(&e)))?;
         let mut alive = || {
             if let Some(p) = progress {
                 p.alive();
@@ -131,7 +135,10 @@ async fn read_stream(
     let mut utf8 = llm::Utf8Decoder::default();
     let mut lines = llm::LineDecoder::default();
     loop {
-        let chunk = resp.chunk().await.map_err(|e| LlmError::Transport(transport_class(&e)))?;
+        let chunk = resp
+            .chunk()
+            .await
+            .map_err(|e| LlmError::Transport(transport_class(&e)))?;
         let batch = match &chunk {
             Some(bytes) => lines.decode(&utf8.decode(bytes)),
             None => {
@@ -159,7 +166,8 @@ async fn read_stream(
 
 impl Client {
     pub fn new(cfg: Config) -> Result<Self, LlmError> {
-        let timeout = Duration::try_from_secs_f64(cfg.timeout_s.max(0.0)).unwrap_or(Duration::from_secs(300));
+        let timeout =
+            Duration::try_from_secs_f64(cfg.timeout_s.max(0.0)).unwrap_or(Duration::from_secs(300));
         let build = |redirects: bool| {
             reqwest::Client::builder()
                 .connect_timeout(timeout)
@@ -182,7 +190,10 @@ impl Client {
             embed: build(false)?,
             embed_base: if separate { embed_base } else { base.clone() },
             embed_auth: !separate,
-            cfg: Config { base_url: base, ..cfg },
+            cfg: Config {
+                base_url: base,
+                ..cfg
+            },
             sleep: tokio_sleep(),
         })
     }
@@ -206,7 +217,14 @@ impl Client {
         Ok(&self.cfg.chat_model)
     }
 
-    fn post(&self, client: &reqwest::Client, base: &str, auth: bool, path: &str, body: &Value) -> reqwest::RequestBuilder {
+    fn post(
+        &self,
+        client: &reqwest::Client,
+        base: &str,
+        auth: bool,
+        path: &str,
+        body: &Value,
+    ) -> reqwest::RequestBuilder {
         let mut req = client
             .post(format!("{base}{path}"))
             .header(reqwest::header::CONTENT_TYPE, "application/json")
@@ -219,10 +237,16 @@ impl Client {
     }
 
     async fn send(&self, body: &Value) -> Result<reqwest::Response, LlmError> {
-        self.post(&self.chat, &self.cfg.base_url, true, "/chat/completions", body)
-            .send()
-            .await
-            .map_err(|e| LlmError::Transport(transport_class(&e)))
+        self.post(
+            &self.chat,
+            &self.cfg.base_url,
+            true,
+            "/chat/completions",
+            body,
+        )
+        .send()
+        .await
+        .map_err(|e| LlmError::Transport(transport_class(&e)))
     }
 
     async fn wait(&self, attempt: i64) {
@@ -240,7 +264,15 @@ impl Client {
         progress: Option<&Progress>,
     ) -> Result<ChatReply, LlmError> {
         let model = self.model()?.to_owned();
-        let payload = llm::chat_payload(&model, messages, temperature, true, max_tokens, self.cfg.reasoning_tokens, None);
+        let payload = llm::chat_payload(
+            &model,
+            messages,
+            temperature,
+            true,
+            max_tokens,
+            self.cfg.reasoning_tokens,
+            None,
+        );
         let resp = self.send(&payload).await?;
         let mut sink: Option<&mut (dyn FnMut(Event) + Send)> = Some(&mut *emit);
         let c = read_stream(resp, &model, max_tokens, &mut sink, progress).await?;
@@ -266,7 +298,15 @@ impl Client {
         let model = self.model()?.to_owned();
         let tries = self.cfg.max_retries;
         if progress.is_some() {
-            let payload = llm::chat_payload(&model, messages, temperature, true, max_tokens, self.cfg.reasoning_tokens, stop);
+            let payload = llm::chat_payload(
+                &model,
+                messages,
+                temperature,
+                true,
+                max_tokens,
+                self.cfg.reasoning_tokens,
+                stop,
+            );
             let mut last = String::from("None");
             for attempt in 0..tries.max(0) {
                 let outcome = match self.send(&payload).await {
@@ -285,29 +325,45 @@ impl Client {
                         return Err(LlmError::Llm(format!("chat failed: HTTP {status}")))
                     }
                     Err(LlmError::Status(status)) => last = format!("HTTPStatusError {status}"),
-                    Err(LlmError::Transport(class @ ("ConnectError" | "ConnectTimeout"))) => last = class.to_owned(),
+                    Err(LlmError::Transport(class @ ("ConnectError" | "ConnectTimeout"))) => {
+                        last = class.to_owned()
+                    }
                     Err(e @ LlmError::Llm(_)) => return Err(e),
-                    Err(e) => return Err(LlmError::Llm(format!("chat failed: {}", e.python_class()))),
+                    Err(e) => {
+                        return Err(LlmError::Llm(format!("chat failed: {}", e.python_class())))
+                    }
                 }
                 if attempt == tries - 1 {
                     break;
                 }
                 self.wait(attempt).await;
             }
-            return Err(LlmError::Llm(format!("chat failed after {tries} attempts: {last}")));
+            return Err(LlmError::Llm(format!(
+                "chat failed after {tries} attempts: {last}"
+            )));
         }
-        let payload = llm::chat_payload(&model, messages, temperature, false, max_tokens, self.cfg.reasoning_tokens, stop);
+        let payload = llm::chat_payload(
+            &model,
+            messages,
+            temperature,
+            false,
+            max_tokens,
+            self.cfg.reasoning_tokens,
+            stop,
+        );
         let mut last = String::from("None");
         for attempt in 0..tries.max(0) {
             let outcome = async {
                 let resp = self.send(&payload).await?;
                 let status = resp.status().as_u16();
-                if status >= 400 {
+                if !(200..300).contains(&status) {
                     return Err(LlmError::Status(status));
                 }
-                let body = resp.bytes().await.map_err(|e| LlmError::Transport(transport_class(&e)))?;
-                let data: Value = serde_json::from_slice(&body).map_err(|_| LlmError::Protocol("JSONDecodeError"))?;
-                llm::parse_chat(&data, max_tokens)
+                let body = resp
+                    .bytes()
+                    .await
+                    .map_err(|e| LlmError::Transport(transport_class(&e)))?;
+                llm::parse_chat(&llm::parse_json_bytes(&body)?, max_tokens)
             }
             .await;
             match outcome {
@@ -319,12 +375,18 @@ impl Client {
             }
             self.wait(attempt).await;
         }
-        Err(LlmError::Llm(format!("chat failed after {tries} attempts: {last}")))
+        Err(LlmError::Llm(format!(
+            "chat failed after {tries} attempts: {last}"
+        )))
     }
 
     /// Python `embed`: one vector per text, from the embeddings server (no redirects followed,
     /// a too-long input reported, never retried).
-    pub async fn embed(&self, texts: &[String], model: Option<&str>) -> Result<Vec<Vec<f64>>, EmbedError> {
+    pub async fn embed(
+        &self,
+        texts: &[String],
+        model: Option<&str>,
+    ) -> Result<Vec<Vec<f64>>, EmbedError> {
         if texts.is_empty() {
             return Ok(Vec::new());
         }
@@ -335,7 +397,13 @@ impl Client {
         for attempt in 0..tries.max(0) {
             let outcome = async {
                 let resp = self
-                    .post(&self.embed, &self.embed_base, self.embed_auth, "/embeddings", &body)
+                    .post(
+                        &self.embed,
+                        &self.embed_base,
+                        self.embed_auth,
+                        "/embeddings",
+                        &body,
+                    )
                     .send()
                     .await
                     .map_err(|e| EmbedError::Retry(transport_class(&e).to_owned()))?;
@@ -343,16 +411,21 @@ impl Client {
                 if (300..400).contains(&status) {
                     return Err(EmbedError::Redirected(status));
                 }
-                let bytes = resp.bytes().await.map_err(|e| EmbedError::Retry(transport_class(&e).to_owned()))?;
-                if status >= 400 {
+                let bytes = resp
+                    .bytes()
+                    .await
+                    .map_err(|e| EmbedError::Retry(transport_class(&e).to_owned()))?;
+                if !(200..300).contains(&status) {
                     let text = String::from_utf8_lossy(&bytes);
                     if let Some(t) = llm::too_large(status, &text) {
                         return Err(EmbedError::TooLarge(t));
                     }
                     return Err(EmbedError::Retry(format!("HTTPStatusError {status}")));
                 }
-                let data: Value = serde_json::from_slice(&bytes).map_err(|_| EmbedError::Retry("JSONDecodeError".into()))?;
-                llm::parse_embed(&data, texts.len()).map_err(|e| EmbedError::Retry(e.python_class().to_owned()))
+                let data = llm::parse_json_bytes(&bytes)
+                    .map_err(|e| EmbedError::Retry(e.python_class().to_owned()))?;
+                llm::parse_embed(&data, texts.len())
+                    .map_err(|e| EmbedError::Retry(e.python_class().to_owned()))
             }
             .await;
             match outcome {
@@ -365,7 +438,9 @@ impl Client {
             }
             self.wait(attempt).await;
         }
-        Err(EmbedError::Failed(format!("embeddings failed after {tries} attempts: {last}")))
+        Err(EmbedError::Failed(format!(
+            "embeddings failed after {tries} attempts: {last}"
+        )))
     }
 }
 

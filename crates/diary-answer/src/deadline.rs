@@ -60,7 +60,9 @@ impl Budget {
     pub fn new(total_s: Option<f64>, first_token_s: Option<f64>) -> Self {
         let now = Instant::now();
         Self {
-            end: now.checked_add(seconds(total_s.unwrap_or(EXCHANGE_DEADLINE_S))).unwrap_or(now),
+            end: now
+                .checked_add(seconds(total_s.unwrap_or(EXCHANGE_DEADLINE_S)))
+                .unwrap_or(now),
             first_token: seconds(first_token_s.unwrap_or(FIRST_TOKEN_DEADLINE_S)),
         }
     }
@@ -71,7 +73,12 @@ impl Budget {
 
     /// Runs `call(progress)` within the budget (Python `ExchangeBudget.run`). With `first_token`
     /// the call must show progress within the first-token deadline. `cap_s` limits this one call.
-    pub async fn run<T, F, Fut>(&self, first_token: bool, cap_s: Option<f64>, call: F) -> Result<T, Timeout>
+    pub async fn run<T, F, Fut>(
+        &self,
+        first_token: bool,
+        cap_s: Option<f64>,
+        call: F,
+    ) -> Result<T, Timeout>
     where
         F: FnOnce(Progress) -> Fut,
         Fut: Future<Output = T>,
@@ -106,7 +113,9 @@ impl Budget {
             }
         }
         let left = total.saturating_sub(began.elapsed());
-        let done = tokio::time::timeout(left, fut).await.map_err(|_| Timeout::NotFinished);
+        let done = tokio::time::timeout(left, fut)
+            .await
+            .map_err(|_| Timeout::NotFinished);
         drop(progress);
         done
     }
