@@ -53,7 +53,10 @@ impl driver::Workspaces for Ws {
         Ok(self.0.get("head").clone())
     }
     fn merge_preflight(&self, _: &str, _: &str) -> Result<JValue, driver::Fail> {
-        Ok(JValue::obj([("ok", JValue::Bool(true)), ("baseBranch", s("main"))]))
+        Ok(JValue::obj([
+            ("ok", JValue::Bool(true)),
+            ("baseBranch", s("main")),
+        ]))
     }
     fn merge_verified(&self, _: &str, _: &str) -> Result<JValue, driver::Fail> {
         self.merge_preflight("", "")
@@ -89,7 +92,10 @@ impl driver::Harness for Harness {
         let head = self.standins.get("head").clone();
         job.checkpoint(JValue::obj([
             ("branch", w.get("branch").clone()),
-            ("task", s(&wtf16::slice(opts.get("label").as_str().unwrap(), 120))),
+            (
+                "task",
+                s(&wtf16::slice(opts.get("label").as_str().unwrap(), 120)),
+            ),
             ("baseSha", w.get("baseSha").clone()),
             ("headSha", head.clone()),
         ]))?;
@@ -288,8 +294,14 @@ fn the_fixture_was_recorded_from_these_sources() {
     let fixture = wtf16::parse(&std::fs::read_to_string(FIXTURE).unwrap()).unwrap();
     let sources = fixture.get("sources");
     let pinned = [
-        ("code-service.cjs", code_harness::pipeline_host::CODE_SERVICE_SHA256),
-        ("code-pipeline.cjs", code_harness::pipeline_host::CODE_PIPELINE_SHA256),
+        (
+            "code-service.cjs",
+            code_harness::pipeline_host::CODE_SERVICE_SHA256,
+        ),
+        (
+            "code-pipeline.cjs",
+            code_harness::pipeline_host::CODE_PIPELINE_SHA256,
+        ),
         ("jobs.cjs", code_pipeline::driver::JOBS_SHA256),
     ];
     for (file, sha) in pinned {
@@ -408,8 +420,17 @@ fn the_planner_preparation_answers_as_core_recorded_it() {
                 let deadline = Instant::now() + Duration::from_secs(10);
                 let mut card = JValue::Null;
                 while Instant::now() < deadline {
-                    let c = service.facts(&dir).unwrap().get("approvals").get(&t).clone();
-                    if c.is_object() && !cards.iter().any(|k| Some(k.as_str()) == c.get("id").as_str()) {
+                    let c = service
+                        .facts(&dir)
+                        .unwrap()
+                        .get("approvals")
+                        .get(&t)
+                        .clone();
+                    if c.is_object()
+                        && !cards
+                            .iter()
+                            .any(|k| Some(k.as_str()) == c.get("id").as_str())
+                    {
                         card = c;
                         break;
                     }
@@ -420,7 +441,11 @@ fn the_planner_preparation_answers_as_core_recorded_it() {
                 }
                 JValue::obj([(
                     "waited",
-                    if card.is_object() { card.get("action").clone() } else { s("none") },
+                    if card.is_object() {
+                        card.get("action").clone()
+                    } else {
+                        s("none")
+                    },
                 )])
             } else if op.get("waitEnd").as_str().is_some() {
                 let t = sub(op.get("waitEnd"), &tasks, &cards);
@@ -429,7 +454,10 @@ fn the_planner_preparation_answers_as_core_recorded_it() {
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 std::thread::sleep(Duration::from_millis(50));
-                JValue::obj([("waited", s(if ended(&dir, &t) { "ended" } else { "running" }))])
+                JValue::obj([(
+                    "waited",
+                    s(if ended(&dir, &t) { "ended" } else { "running" }),
+                )])
             } else {
                 panic!("{name}: unknown op {}", text(op))
             };
@@ -439,12 +467,21 @@ fn the_planner_preparation_answers_as_core_recorded_it() {
             panic!("{name}: no answers")
         };
         for (i, (got, want)) in answers.iter().zip(want).enumerate() {
-            assert_eq!(text(got), text(want), "{name}: answer {i} to {}", text(&ops[i]));
+            assert_eq!(
+                text(got),
+                text(want),
+                "{name}: answer {i} to {}",
+                text(&ops[i])
+            );
         }
         assert_eq!(answers.len(), want.len(), "{name}");
         for t in &tasks {
             let got = journal(&dir, t).map_or(JValue::Null, JValue::Arr);
-            assert_eq!(text(&got), text(sc.get("journals").get(t)), "{name}: journal of {t}");
+            assert_eq!(
+                text(&got),
+                text(sc.get("journals").get(t)),
+                "{name}: journal of {t}"
+            );
         }
         let got = JValue::Arr(logs.lock().unwrap().clone());
         assert_eq!(text(&got), text(sc.get("logs")), "{name}: logs");

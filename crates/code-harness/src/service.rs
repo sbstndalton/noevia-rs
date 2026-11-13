@@ -18,18 +18,16 @@
 //! reviewed, so a deployment with that flag on keeps Code mode with Node.
 
 use crate::executor::{Approvals, Deps, Egress, Engine, Executor, Fail, Jobs, Lease, StartRequest};
+use crate::pipeline_host::{to_x, Live, PipeHarness, PipeJobs, PipeWorkspaces, StartState};
 pub use crate::pipeline_host::{Parts, Setup, NOT_SET_UP, PLANNER_PREPARATION};
-use crate::pipeline_host::{
-    to_x, Live, PipeHarness, PipeJobs, PipeWorkspaces, StartState,
-};
 use crate::session::Ended;
-use code_pipeline::driver::{self, Pipeline, Signal};
-use server_projects::task_store::LifecycleAuthority;
 use code_acp::Transport;
+use code_pipeline::driver::{self, Pipeline, Signal};
 use code_workspace::git::js_trim;
 use code_workspace::{Ids, Options as WsOptions, Workspaces};
 use js_json::{js_len, to_js_string, wtf16, JValue};
 use server_projects::task_journals::{code_view, Job};
+use server_projects::task_store::LifecycleAuthority;
 use server_projects::task_store::{NewJob, Options as StoreOptions, Refusal, Store};
 use std::collections::HashMap;
 use std::path::Path;
@@ -272,11 +270,9 @@ struct Asker(Arc<Registry>);
 impl Approvals for Asker {
     fn ask(&self, request: &JValue, ended: &Arc<Ended>) -> String {
         let ended2 = ended.clone();
-        self.wait(
-            request,
-            &|abort| ended.on_end(abort),
-            &move || ended2.is_ended(),
-        )
+        self.wait(request, &|abort| ended.on_end(abort), &move || {
+            ended2.is_ended()
+        })
     }
 }
 
@@ -287,8 +283,7 @@ impl driver::Approvals for Asker {
         let answer = self.wait(
             request,
             &|abort| {
-                *hook.lock().unwrap_or_else(PoisonError::into_inner) =
-                    signal.on_abort(Box::new(move || abort()));
+                *hook.lock().unwrap_or_else(PoisonError::into_inner) = signal.on_abort(abort);
             },
             &|| signal.is_aborted(),
         );
@@ -789,25 +784,25 @@ impl Service {
             )?
         } else {
             tenant.executor.start(StartRequest {
-            project_id: Some(project.id.to_string()),
-            repo_path: repo.path.clone(),
-            prompt,
-            capabilities: capabilities.clone(),
-            domains: domains.clone(),
-            harness: harness.clone(),
-            model,
-            sandbox_kind: if self.options.sandboxed {
-                "sandbox".into()
-            } else {
-                "spawn".into()
-            },
-            prompt_preparation: prep_id.to_string(),
-            context: resolved.context,
-            tenant_id: user_id.map(str::to_string),
-            engine: resolved.engine,
-            inference: resolved
-                .inference
-                .map(|g| Arc::new(move || g.enter()) as crate::executor::Gate),
+                project_id: Some(project.id.to_string()),
+                repo_path: repo.path.clone(),
+                prompt,
+                capabilities: capabilities.clone(),
+                domains: domains.clone(),
+                harness: harness.clone(),
+                model,
+                sandbox_kind: if self.options.sandboxed {
+                    "sandbox".into()
+                } else {
+                    "spawn".into()
+                },
+                prompt_preparation: prep_id.to_string(),
+                context: resolved.context,
+                tenant_id: user_id.map(str::to_string),
+                engine: resolved.engine,
+                inference: resolved
+                    .inference
+                    .map(|g| Arc::new(move || g.enter()) as crate::executor::Gate),
             })?
         };
         let mut out = match started {
@@ -877,13 +872,21 @@ impl Service {
         // The task stops being live, and its lease is given back, once its thread has ended (or
         // at once when there is none).
         let finish = move || {
-            let id = start.task.lock().unwrap_or_else(PoisonError::into_inner).clone();
+            let id = start
+                .task
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
             if let Some(id) = id {
                 live.lock()
                     .unwrap_or_else(PoisonError::into_inner)
                     .remove(&id);
             }
-            start.lease.lock().unwrap_or_else(PoisonError::into_inner).take();
+            start
+                .lease
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take();
         };
         let started = match started {
             Ok(s) => s,
@@ -905,7 +908,8 @@ impl Service {
                     .name(format!("code pipeline {}", started.task_id))
                     .spawn(move || {
                         let _ = thread.join();
-                        if let Some(f) = later.lock().unwrap_or_else(PoisonError::into_inner).take() {
+                        if let Some(f) = later.lock().unwrap_or_else(PoisonError::into_inner).take()
+                        {
                             f();
                         }
                     });

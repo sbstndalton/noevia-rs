@@ -900,6 +900,41 @@ mod tests {
     }
 
     #[test]
+    fn the_role_fact_is_the_role_engines_endpoint_or_nothing() {
+        let facts =
+            |role: &str| wtf16::parse(&format!(r#"{{"engine":null,"role":{role}}}"#)).unwrap();
+        for missing in ["null", "7", r#""qa""#, "[]"] {
+            assert!(role_endpoint(&facts(missing)).is_none(), "{missing}");
+        }
+        assert!(role_endpoint(&wtf16::parse(r#"{"engine":null}"#).unwrap()).is_none());
+        let e = role_endpoint(&facts(
+            r#"{"baseUrl":"http://qa-provider.invalid:8080/v1","apiKey":"qa-key","model":"qa-model","external":false,"jsonSchema":true}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            e.base_url.as_deref(),
+            Some("http://qa-provider.invalid:8080/v1")
+        );
+        assert_eq!(
+            (e.api_key.as_deref(), e.model.as_deref()),
+            (Some("qa-key"), Some("qa-model"))
+        );
+        assert!(!e.external && e.machine.is_none());
+        assert!(role_engine::supports_json_schema(&e.provider));
+        let bare = role_endpoint(&facts(
+            r#"{"baseUrl":"","apiKey":null,"external":"yes","jsonSchema":1}"#,
+        ))
+        .unwrap();
+        assert_eq!(
+            (bare.base_url, bare.api_key, bare.model),
+            (None, None, None)
+        );
+        assert!(!bare.external && !role_engine::supports_json_schema(&bare.provider));
+        let external = role_endpoint(&facts(r#"{"external":true}"#)).unwrap();
+        assert!(external.external);
+    }
+
+    #[test]
     fn the_settings_are_read_as_core_reads_them() {
         let env = |pairs: &[(&str, &str)]| {
             let owned: Vec<(String, String)> = pairs
@@ -922,8 +957,11 @@ mod tests {
             ("CODE_HARNESS_ENDPOINT", "code-sandbox:7000"),
             ("CODE_HARNESS_COMMAND", "opencode"),
             ("CODE_HARNESS_ARGS", " acp  --qa "),
+            ("CODE_VERIFY_ENDPOINT", "unix:/qa/verify.sock"),
         ]));
         assert!(on.executor);
+        assert_eq!(on.verify_endpoint.as_deref(), Some("unix:/qa/verify.sock"));
+        assert!(off.verify_endpoint.is_none());
         assert_eq!(
             on.transport(),
             Some(code_acp::Transport::Socket("code-sandbox:7000".into())),

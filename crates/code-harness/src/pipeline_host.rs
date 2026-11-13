@@ -205,7 +205,10 @@ impl PipeJobs {
 impl driver::Jobs for PipeJobs {
     fn create(&self, req: &JValue) -> Result<String, Fail> {
         let capabilities: Vec<String> = match req.get("capabilities") {
-            JValue::Arr(a) => a.iter().filter_map(|c| c.as_str().map(str::to_string)).collect(),
+            JValue::Arr(a) => a
+                .iter()
+                .filter_map(|c| c.as_str().map(str::to_string))
+                .collect(),
             _ => Vec::new(),
         };
         let id = self
@@ -218,7 +221,11 @@ impl driver::Jobs for PipeJobs {
             })
             .map_err(refused)?;
         // Live from its creation, so a cancel never misses it.
-        *self.start.task.lock().unwrap_or_else(PoisonError::into_inner) = Some(id.clone());
+        *self
+            .start
+            .task
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(id.clone());
         self.live
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -229,7 +236,10 @@ impl driver::Jobs for PipeJobs {
         if kind == "job.started" {
             self.enter(id)?;
         }
-        self.store.append(id, kind, data).map(|_| ()).map_err(refused)
+        self.store
+            .append(id, kind, data)
+            .map(|_| ())
+            .map_err(refused)
     }
     fn append_authority(&self, id: &str, kind: &str, data: JValue) -> Result<(), Fail> {
         self.store
@@ -257,7 +267,9 @@ pub struct PipeWorkspaces(pub Arc<code_workspace::Workspaces>);
 
 impl driver::Workspaces for PipeWorkspaces {
     fn project_snapshot(&self, task_id: &str) -> Result<JValue, Fail> {
-        self.0.project_snapshot(task_id, 400, 8 * 1024).map_err(ws_fail)
+        self.0
+            .project_snapshot(task_id, 400, 8 * 1024)
+            .map_err(ws_fail)
     }
     fn change(&self, task_id: &str) -> Result<JValue, Fail> {
         self.0.change(task_id, 200).map_err(ws_fail)
@@ -275,7 +287,10 @@ impl driver::Workspaces for PipeWorkspaces {
 
 fn strings(v: &JValue) -> Vec<String> {
     match v {
-        JValue::Arr(a) => a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect(),
+        JValue::Arr(a) => a
+            .iter()
+            .filter_map(|x| x.as_str().map(str::to_string))
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -310,10 +325,17 @@ impl PipeHarness {
 impl driver::Harness for PipeHarness {
     fn claim_run(&self, req: &JValue) -> Result<driver::RunHandle, Fail> {
         let task_id = req.get("taskId").as_str().unwrap_or("");
-        let (capabilities, domains) = (strings(req.get("capabilities")), strings(req.get("domains")));
+        let (capabilities, domains) = (
+            strings(req.get("capabilities")),
+            strings(req.get("domains")),
+        );
         let resume = req.get("resume") == &JValue::Bool(true);
         let claim = ClaimRequest {
-            repo_path: if resume { None } else { Some(req.get("repoPath").as_str().unwrap_or("")) },
+            repo_path: if resume {
+                None
+            } else {
+                Some(req.get("repoPath").as_str().unwrap_or(""))
+            },
             harness: req.get("harness").as_str().unwrap_or("opencode"),
             capabilities: &capabilities,
             domains: &domains,
@@ -360,10 +382,14 @@ impl driver::Harness for PipeHarness {
         let cancel = Cancel::new();
         let c = cancel.clone();
         let guarded = opts.get("guarded") == &JValue::Bool(true);
-        linked(job.signal(), move || c.cancel(), || {
-            self.executor
-                .run_turn(&run, &req, &text("label"), guarded, &cancel)
-        })
+        linked(
+            job.signal(),
+            move || c.cancel(),
+            || {
+                self.executor
+                    .run_turn(&run, &req, &text("label"), guarded, &cancel)
+            },
+        )
         .map(|_| ())
         .map_err(from_x)
     }
@@ -410,13 +436,18 @@ impl driver::Verify for PipeVerify {
         // Node's emit throws into the verifier; the first failure is kept and thrown after.
         let mut thrown: Option<Fail> = None;
         let c = cancel.clone();
-        let outcome = linked(signal, move || c.cancel(), || {
-            self.adapter.run(&request, &mut |e: &code_verify::Event<'_>| {
-                if thrown.is_none() {
-                    thrown = emit(e.kind(), e.data()).err();
-                }
-            })
-        });
+        let outcome = linked(
+            signal,
+            move || c.cancel(),
+            || {
+                self.adapter
+                    .run(&request, &mut |e: &code_verify::Event<'_>| {
+                        if thrown.is_none() {
+                            thrown = emit(e.kind(), e.data()).err();
+                        }
+                    })
+            },
+        );
         match thrown {
             Some(f) => Err(f),
             None => Ok(outcome.to_json()),
@@ -528,7 +559,9 @@ impl<D: role_engine::Deps + 'static> driver::Roles for EngineRoles<D> {
                     blocking: self.blocking.clone(),
                 }),
             },
-            Err(f) => Pin::Refused { reason: s(&f.reason) },
+            Err(f) => Pin::Refused {
+                reason: s(&f.reason),
+            },
         })
     }
 }
