@@ -197,6 +197,11 @@ impl Run {
                 Some(answer(store.append_authority(&id, &kind, data, authority)))
             }
             "get" => Some(answer(self.store(&store_name).get(&id).map(brief))),
+            "steps" => Some(answer(
+                self.store(&store_name)
+                    .get(&id)
+                    .map(|j| j.map_or(JValue::Null, |j| JValue::Arr(j.steps))),
+            )),
             "cancel" => Some(answer(
                 self.store(&store_name).cancel(&id, &|_| false).map(brief),
             )),
@@ -320,6 +325,10 @@ fn fixture_records_its_sources() {
         (
             "completeness-policy-host.cjs",
             "4583ced3357886425167f4c781c0e2aee3bb20308222d36b5ef99a176f9a8f7a",
+        ),
+        (
+            "dav-parse-wasm.cjs",
+            "29e749a2f00eeead883f06e76cde96e1a2d6083bd1687ef5d70edd82a287f2ca",
         ),
         ("wasm/dav-parse.wasm", WASM_SHA256),
     ] {
@@ -477,6 +486,7 @@ fn authority_scenarios_cover_the_pipeline_and_its_refusals() {
         "authority-refusals",
         "authority-limits",
         "authority-inconsistent",
+        "authority-unhashable",
     ]
     .iter()
     .flat_map(|n| results(&steps(&f, n)))
@@ -498,6 +508,7 @@ fn authority_scenarios_cover_the_pipeline_and_its_refusals() {
         "Job already finished",
         "lifecycle journal is inconsistent; review required",
         "Task lifecycle events belong to Code jobs",
+        "The completeness report cannot be hashed: it is nested too deeply",
     ] {
         assert!(
             all.iter().any(|r| r.contains(needle)),
@@ -507,7 +518,8 @@ fn authority_scenarios_cover_the_pipeline_and_its_refusals() {
 }
 
 /// Named differences 8 and 9 (task_store.rs): Node's answers show what it did, the Rust store's
-/// are its own.
+/// are its own. Every other answer is Node's, and after every step the directory holds Node's
+/// bytes except for what the two refused writes left out (job A keeps its seeded journal).
 #[test]
 fn differences_on_authority() {
     let f = fixture();
@@ -517,38 +529,79 @@ fn differences_on_authority() {
     assert!(node[0].contains(r#""revision":"1""#), "{}", node[0]);
     assert!(node[1].contains(r#""n":"11""#), "{}", node[1]);
     assert!(node[5].contains("unverified: impl_refused"), "{}", node[5]);
+    // An object step id never matches its completion (`===`): the step stays running, so the
+    // report's plan-steps-closed fails and the port refuses it.
+    assert_eq!(
+        node[15],
+        r#"{"error":{"status":409,"message":"The completeness report does not allow review (plan-steps-closed: fail; unverified: impl_refused)"}}"#
+    );
+    assert!(node[16].contains(r#""id":{"qa":2},"title":"QA object step","status":"running""#));
 
     let mut run = Run::new(f.get("stores"));
     let mut got = Vec::new();
-    for s in &all {
+    for (i, s) in all.iter().enumerate() {
         if let Some(a) = run.step(s) {
             got.push(text(&a));
         }
+        // The two writes only Node made (answers 0 and 1) are not expected here.
+        if !(s.get("op").as_str() == Some("authority") && got.len() <= 2) {
+            run.expect_files(s.get("files"));
+        }
+        assert_eq!(
+            show(&run.actual_files()),
+            show(&run.expected),
+            "step {i}: files"
+        );
     }
+    assert_eq!(got.len(), node.len());
     let inconsistent = r#"{"error":{"status":409,"message":"This task’s lifecycle journal is inconsistent; review required"}}"#;
-    assert_eq!(got[0], inconsistent);
-    assert_eq!(got[1], inconsistent);
-    for i in 2..5 {
-        assert_eq!(got[i], node[i], "answer {i}");
+    let unverified = r#"{"error":{"status":409,"message":"The completeness report does not allow review (unverified: impl_refused)"}}"#;
+    for (i, (g, n)) in got.iter().zip(&node).enumerate() {
+        match i {
+            0 | 1 => assert_eq!(g, inconsistent, "answer {i}"),
+            5 | 15 => assert_eq!(g, unverified, "answer {i}"),
+            _ => assert_eq!(g, n, "answer {i}"),
+        }
     }
-    assert_eq!(
-        got[5],
-        r#"{"error":{"status":409,"message":"The completeness report does not allow review (unverified: impl_refused)"}}"#
-    );
+    let seeded = steps(&f, "authority-differences")[1].get("text").clone();
+    let a = fs::read_to_string(
+        run.jobs()
+            .join("00000000-0000-4000-8000-000000000001.jsonl"),
+    )
+    .unwrap();
+    assert_eq!(Some(a.as_str()), seeded.as_str());
 }
 
+/// Named difference 10: one claim per canonical jobs directory in the process, whichever store
+/// asks and however its path is spelled; an authority is still none on another store.
 #[test]
-fn the_authority_is_claimed_once_and_only_for_its_store() {
+fn the_authority_is_claimed_once_per_jobs_directory() {
     let dir = tempfile::tempdir().unwrap();
+    let elsewhere = tempfile::tempdir().unwrap();
     let one = store(dir.path(), Options::default());
     let other = store(dir.path(), Options::default());
     let authority = one.claim_lifecycle_authority().unwrap();
-    let again = one.claim_lifecycle_authority().unwrap_err();
-    assert_eq!(again.status, None);
-    assert_eq!(
-        again.message,
-        "Task lifecycle authority was already claimed for this store"
-    );
+    let refused = |s: &Store| {
+        let e = s.claim_lifecycle_authority().unwrap_err();
+        assert_eq!(e.status, None);
+        assert_eq!(
+            e.message,
+            "Task lifecycle authority was already claimed for this jobs directory in this process"
+        );
+    };
+    refused(&one);
+    refused(&other);
+    // Another spelling of the same directory, before and after jobs/ exists, and a link to it.
+    let sub = dir.path().join("qa-sub");
+    fs::create_dir(&sub).unwrap();
+    refused(&store(&sub.join(".."), Options::default()));
+    refused(&store(
+        &dir.path().join("qa-missing").join(".."),
+        Options::default(),
+    ));
+    let link = elsewhere.path().join("qa-link");
+    std::os::unix::fs::symlink(dir.path(), &link).unwrap();
+    refused(&store(&link, Options::default()));
     let caps: Vec<String> = Vec::new();
     let id = one
         .create(NewJob {
@@ -558,6 +611,10 @@ fn the_authority_is_claimed_once_and_only_for_its_store() {
             capabilities: &caps,
         })
         .unwrap();
+    refused(&store(&link, Options::default()));
+    // A directory of its own takes its own claim, and that authority is none on `one`.
+    let third = store(elsewhere.path(), Options::default());
+    let foreign = third.claim_lifecycle_authority().unwrap();
     let data = || {
         JValue::obj([
             ("from", JValue::Str("planned".into())),
@@ -565,12 +622,16 @@ fn the_authority_is_claimed_once_and_only_for_its_store() {
             ("revision", JValue::Num(0.0)),
         ])
     };
-    // Another store's authority is none here; its own claim is still open.
-    let refused = other
+    let e = one
+        .append_authority(&id, "task.stage", data(), &foreign)
+        .unwrap_err();
+    assert_eq!(e.status, Some(403));
+    assert_eq!(e.message, "Task lifecycle events are server-only");
+    // Nor is `one`'s authority one on a second store over its own directory.
+    let e = other
         .append_authority(&id, "task.stage", data(), &authority)
         .unwrap_err();
-    assert_eq!(refused.status, Some(403));
-    assert_eq!(refused.message, "Task lifecycle events are server-only");
+    assert_eq!(e.status, Some(403));
     let written = one
         .append_authority(&id, "task.stage", data(), &authority)
         .unwrap();
@@ -578,10 +639,8 @@ fn the_authority_is_claimed_once_and_only_for_its_store() {
         text(written.get("data")),
         r#"{"from":"planned","to":"implementing","revision":0,"reason":null}"#
     );
-    assert!(other.claim_lifecycle_authority().is_ok());
     let job = one.get(&id).unwrap().unwrap();
-    let stages = &job.authoritative.unwrap().stages;
-    assert_eq!(stages.len(), 1);
+    assert_eq!(job.authoritative.unwrap().stages.len(), 1);
 }
 
 #[test]

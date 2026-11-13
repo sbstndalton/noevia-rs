@@ -44,18 +44,26 @@
 //!    inconsistent for [`Store::append_authority`] (409, "…inconsistent; review required").
 //!    jobs.cjs went on with JS `+` on it (`"1" + 1` is `"11"`) and wrote such values onward.
 //! 9. When the completeness report port refuses the job a move into `reviewing` is judged on (a
-//!    shape this store never writes: a step id that is an object, an artifact that is not an
-//!    object), the move is refused with 409 "The completeness report does not allow review
-//!    (unverified: impl_refused)", without the list of checks jobs.cjs put before that entry.
+//!    shape it does not model, which this store can write as Node does: a step still open whose id
+//!    is an object or array, or an artifact, checkpoint or uncertainty nested past the report's
+//!    parse depth of 65 levels, which the reader still takes up to 128),
+//!    the move is refused with 409 "The completeness report does not allow review (unverified:
+//!    impl_refused)", without the list of checks jobs.cjs put before that entry. Neither store
+//!    lets such a move through: Node's report is unverified too.
+//! 10. The lifecycle authority is claimed once per canonical jobs directory in the process
+//!     (refused, status-less, "Task lifecycle authority was already claimed for this jobs
+//!     directory in this process"), whichever [`Store`] over that directory asks, through any
+//!     spelling or symbolic link of its path. jobs.cjs claims once per process ("…already
+//!     claimed in this process"): one process here may host several workspaces, one claim each.
 //!
 //! **Lifecycle authority** (#701). `task.stage` and `task.revision` are written only through
 //! [`Store::append_authority`] with the [`LifecycleAuthority`] this store issued; [`Store::append`]
-//! refuses them (403) as jobs.cjs does without its token. jobs.cjs hands its token out once per
-//! process; this store hands its authority out once per [`Store`] (a host keeps one per
-//! directory) and it is no authority on another store. With it, the event is checked and its data
-//! rebuilt as jobs.cjs `boundAuthorityEvent` does, in the same order with the same statuses and
-//! messages; a move into `reviewing` records the hash of the completeness report built from the
-//! journal's current revision window (completeness-report crate), never from caller data.
+//! refuses them (403) as jobs.cjs does without its token. The authority is handed out once per
+//! jobs directory in the process (difference 10) and is no authority on another store. With it,
+//! the event is checked and its data rebuilt as jobs.cjs `boundAuthorityEvent` does, in the same
+//! order with the same statuses and messages; a move into `reviewing` records the hash of the
+//! completeness report built from the journal's current revision window (completeness-report
+//! crate), never from caller data.
 //!
 //! Recover and cancel ask the host's `live`/`abort` without the store's lock.
 
@@ -180,8 +188,8 @@ type Clock = Box<dyn Fn() -> f64 + Send + Sync>;
 
 /// The lifecycle capability (jobs.cjs `LIFECYCLE_AUTHORITY`): what [`Store::append_authority`]
 /// needs to write `task.stage` / `task.revision`. It has no public constructor, is neither `Clone`
-/// nor serialisable, and [`Store::claim_lifecycle_authority`] hands out one per [`Store`], to the
-/// pipeline that claims it first; it is valid only on the store that issued it.
+/// nor serialisable, and [`Store::claim_lifecycle_authority`] hands out one per jobs directory in
+/// the process, to the pipeline that claims it first; it is valid only on the store that issued it.
 #[derive(Debug)]
 pub struct LifecycleAuthority {
     store: u64,
@@ -199,7 +207,38 @@ pub struct Store {
     new_id: Ids,
     lock: Mutex<()>,
     serial: u64,
-    authority_claimed: std::sync::atomic::AtomicBool,
+}
+
+/// The jobs directories whose lifecycle authority this process has handed out, by canonical path
+/// (difference 10). Never released, as jobs.cjs's flag is never reset.
+static CLAIMED: Mutex<std::collections::BTreeSet<PathBuf>> =
+    Mutex::new(std::collections::BTreeSet::new());
+
+/// `dir` made absolute with every existing part resolved (symbolic links, `.` and `..`), and the
+/// parts that do not exist yet (no link among them) normalised lexically. `None` when the path
+/// cannot be made absolute.
+fn canonical_dir(dir: &Path) -> Option<PathBuf> {
+    let absolute = std::path::absolute(dir).ok()?;
+    let mut rest = Vec::new();
+    let mut base = absolute.as_path();
+    let resolved = loop {
+        if let Ok(found) = fs::canonicalize(base) {
+            break found;
+        }
+        rest.push(base.file_name().map(std::ffi::OsStr::to_owned));
+        base = base.parent()?;
+    };
+    let mut out = resolved;
+    for part in rest.into_iter().rev() {
+        match part {
+            Some(name) => out.push(name),
+            // A trailing `..` (file_name is None): one level up.
+            None => {
+                out.pop();
+            }
+        }
+    }
+    Some(out)
 }
 
 /// The milliseconds since the epoch, as `Date.now()`.
@@ -229,7 +268,6 @@ impl Store {
             new_id,
             lock: Mutex::new(()),
             serial: STORES.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-            authority_claimed: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -298,18 +336,23 @@ impl Store {
         self.append_unlocked(id, kind, data, false)
     }
 
-    /// jobs.cjs `claimLifecycleAuthority`, once per store: the second claim is refused, as Node
-    /// refuses a second claim in its process. (A host keeps one store per directory; the store is
-    /// the unit here so that two stores in one process, tests included, each have their own.)
+    /// jobs.cjs `claimLifecycleAuthority`, once per jobs directory in this process (difference
+    /// 10): a second claim for the same canonical directory is refused whichever [`Store`] asks,
+    /// as Node refuses a second claim in its process. A directory whose path cannot be resolved
+    /// is refused too.
     pub fn claim_lifecycle_authority(&self) -> Result<LifecycleAuthority, Refusal> {
-        if self
-            .authority_claimed
-            .swap(true, std::sync::atomic::Ordering::SeqCst)
-        {
-            return Err(Refusal::new(
+        let refused = || {
+            Refusal::new(
                 None,
-                "Task lifecycle authority was already claimed for this store",
-            ));
+                "Task lifecycle authority was already claimed for this jobs directory in this process",
+            )
+        };
+        let key = canonical_dir(&self.root).ok_or_else(refused)?;
+        let mut claimed = CLAIMED
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !claimed.insert(key) {
+            return Err(refused());
         }
         Ok(LifecycleAuthority { store: self.serial })
     }

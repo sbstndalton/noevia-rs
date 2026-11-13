@@ -16,7 +16,7 @@ const crypto = require('node:crypto');
 
 const serverDir = path.resolve(process.argv[2] || '');
 const SOURCES = ['jobs.cjs', 'code-plan.cjs', 'code-review-verdict.cjs', 'task-lifecycle.cjs', 'completeness-report.cjs',
-  'completeness-policy-host.cjs', 'wasm/dav-parse.wasm'];
+  'completeness-policy-host.cjs', 'dav-parse-wasm.cjs', 'wasm/dav-parse.wasm'];
 
 // jobs.cjs calls crypto.randomUUID() for every created job; the script names the next one.
 let nextUuid = null;
@@ -455,6 +455,44 @@ SCENARIOS['authority-inconsistent'] = [
   { op: 'seed', name: `${E}.jsonl`, text: line(created(E, 10, 'code')) + line(row(E, 2, 'task.stage', 11, { from: 'planned', to: 'implementing', revision: 0, reason: null })) + line(row(E, 3, 'job.failed', 12, { error: 'x' })) },
   stage('code', E, 'blocked', 'implementing', 0),
 ];
+// step.completed finds its step with `===`: scalar ids match, an object or array id never does (the
+// step stays running), in a plain journal (first match) and an authoritative one (latest running).
+const stepPairs = (store, job, ids) => ids.flatMap((sid, i) => [
+  { op: 'append', store, id: job, type: 'step.started', data: sid === undefined ? { title: `QA ${i}` } : { id: sid, title: `QA ${i}` } },
+  { op: 'append', store, id: job, type: 'step.completed', data: sid === undefined ? {} : { id: sid } },
+]);
+const STEP_IDS = [{ qa: 1 }, [1], [], {}, 'qa', 7, 0, null, true, false, undefined, '7'];
+SCENARIOS['step-ids'] = [
+  { op: 'clock', t: 65000 },
+  { op: 'create', store: 'any', uuid: A, kind: 'code' },
+  ...stepPairs('any', A, STEP_IDS),
+  { op: 'append', store: 'any', id: A, type: 'step.started', data: { id: 7, title: 'QA again' } },
+  { op: 'append', store: 'any', id: A, type: 'step.completed', data: { id: 7, failed: true } },
+  { op: 'steps', store: 'any', id: A },
+  { op: 'create', store: 'any', uuid: B, kind: 'code' },
+  stage('any', B, 'planned', 'implementing', 0),
+  ...stepPairs('any', B, STEP_IDS),
+  { op: 'append', store: 'any', id: B, type: 'step.started', data: { id: 'qa', title: 'QA again' } },
+  { op: 'append', store: 'any', id: B, type: 'step.completed', data: { id: 'qa', failed: true } },
+  { op: 'steps', store: 'any', id: B },
+  { op: 'steps', store: 'any', id: C },
+];
+// A report that passes every check but is too deep to hash (the checkpoint is copied into its
+// evidence three levels deeper than it sits in the job), then the same with a shallow one.
+const nest = (depth) => { let v = 1; for (let i = 0; i < depth; i++) v = [v]; return v; };
+SCENARIOS['authority-unhashable'] = [
+  { op: 'clock', t: 67000 },
+  { op: 'create', store: 'code', uuid: A, kind: 'code' },
+  { op: 'append', store: 'code', id: A, type: 'plan.proposed', data: { subQuestions: ['QA step'] } },
+  stage('code', A, 'planned', 'implementing', 0),
+  { op: 'append', store: 'code', id: A, type: 'step.started', data: { id: 'tests', title: 'Run the QA tests' } },
+  { op: 'append', store: 'code', id: A, type: 'step.completed', data: { id: 'tests' } },
+  { op: 'append', store: 'code', id: A, type: 'artifact.created', data: { name: 'test-report', kind: 'test-report', passed: true } },
+  { op: 'append', store: 'code', id: A, type: 'checkpoint.created', data: { sha: SHA1, qa: nest(62) } },
+  stage('code', A, 'implementing', 'reviewing', 0, { expectedArtifacts: ['test-report'] }),
+  { op: 'append', store: 'code', id: A, type: 'checkpoint.created', data: { sha: SHA1, qa: nest(58) } },
+  stage('code', A, 'implementing', 'reviewing', 0, { expectedArtifacts: ['test-report'] }),
+];
 // Node's own behaviour where the Rust store differs on purpose (task_store.rs, "Fixed on purpose" 8 and 9).
 SCENARIOS['authority-differences'] = [
   { op: 'clock', t: 70000 },
@@ -465,6 +503,19 @@ SCENARIOS['authority-differences'] = [
   stage('code', B, 'planned', 'implementing', 0),
   { op: 'append', store: 'code', id: B, type: 'step.started', data: { id: { qa: 1 }, title: 'QA step' } },
   stage('code', B, 'implementing', 'reviewing', 0, { expectedArtifacts: [] }),
+  // An object step id started and completed: `===` never matches it, so it stays running and the
+  // report is unverified in both (everything else in the window would pass).
+  { op: 'create', store: 'code', uuid: C, kind: 'code' },
+  { op: 'append', store: 'code', id: C, type: 'plan.proposed', data: { subQuestions: ['QA step'] } },
+  stage('code', C, 'planned', 'implementing', 0),
+  { op: 'append', store: 'code', id: C, type: 'step.started', data: { id: 'tests', title: 'Run the QA tests' } },
+  { op: 'append', store: 'code', id: C, type: 'step.completed', data: { id: 'tests' } },
+  { op: 'append', store: 'code', id: C, type: 'step.started', data: { id: { qa: 2 }, title: 'QA object step' } },
+  { op: 'append', store: 'code', id: C, type: 'step.completed', data: { id: { qa: 2 } } },
+  { op: 'append', store: 'code', id: C, type: 'artifact.created', data: { name: 'test-report', kind: 'test-report', passed: true } },
+  { op: 'append', store: 'code', id: C, type: 'checkpoint.created', data: { sha: SHA1, branch: 'noevia/qa' } },
+  stage('code', C, 'implementing', 'reviewing', 0, { expectedArtifacts: ['test-report'] }),
+  { op: 'steps', store: 'code', id: C },
 ];
 
 // The jobs/ directory as {name: bytes}; null when there is none.
@@ -520,6 +571,8 @@ function runScenario(steps) {
       case 'append': result = outcome(() => (s.data === undefined ? store(s.store).append(s.id, s.type) : store(s.store).append(s.id, s.type, s.data))); break;
       case 'authority': result = outcome(() => store(s.store).append(s.id, s.type, s.data, AUTHORITY)); break;
       case 'get': result = outcome(() => brief(store(s.store).get(s.id))); break;
+      // The derived steps, for step ids matched with `===` (an object or array id never matches).
+      case 'steps': result = outcome(() => store(s.store).get(s.id)?.steps ?? null); break;
       case 'cancel': result = outcome(() => brief(store(s.store).cancel(s.id))); break;
       case 'recover': result = outcome(() => store(s.store).recover()); break;
       case 'prune': result = outcome(() => (store(s.store).prune(), null)); break;
