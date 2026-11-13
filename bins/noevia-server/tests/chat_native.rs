@@ -455,12 +455,20 @@ fn tool_bridge(sc: &mut Script, op: &str, sent: &JValue) -> Option<JValue> {
         ));
         return None;
     }
+    // The fields of a recorded call that are core's answer, not what the front sends.
+    let answers: &[&str] = match op {
+        "skills-revoked" => &["gone"],
+        "skills-read" => &["loaded", "ledger"],
+        "skills-scrub" => &["changed", "removed"],
+        _ => &[],
+    };
     if let JValue::Obj(fields) = &next {
         for (k, v) in fields {
             if matches!(
                 k.as_str(),
                 "op" | "text" | "failed" | "threw" | "left" | "found"
-            ) {
+            ) || answers.contains(&k.as_str())
+            {
                 continue;
             }
             let mut got = sent.get(k).clone();
@@ -625,6 +633,33 @@ async fn core_service(
             } else {
                 js::obj(Vec::<(String, JValue)>::new())
             })
+        }
+        "/internal/chat/skills/revoked" => {
+            let Some(next) = tool_bridge(&mut sc, "skills-revoked", &sent) else {
+                return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
+            };
+            ok(js::obj([("gone", next.get("gone").clone())]))
+        }
+        "/internal/chat/skills/read" => {
+            let Some(next) = tool_bridge(&mut sc, "skills-read", &sent) else {
+                return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
+            };
+            // Core records the read in the account's skill ledger, as Node's turn did.
+            if next.get("ledger").is_object() {
+                if let Ok(dir) = server_projects::store::user_dir(&sc.data, &sc.user) {
+                    let _ = std::fs::write(dir.join("skill-history.json"), js::stringify(next.get("ledger")));
+                }
+            }
+            ok(js::obj([("loaded", next.get("loaded").clone())]))
+        }
+        "/internal/chat/skills/scrub" => {
+            let Some(next) = tool_bridge(&mut sc, "skills-scrub", &sent) else {
+                return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
+            };
+            ok(js::obj([
+                ("changed", next.get("changed").clone()),
+                ("removed", next.get("removed").clone()),
+            ]))
         }
         "/internal/chat/tools/edit-target" => {
             let Some(next) = tool_bridge(&mut sc, "edit-target", &sent) else {
