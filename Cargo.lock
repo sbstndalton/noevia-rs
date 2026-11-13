@@ -711,6 +711,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "diary-core"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "diary-corpus-parse"
 version = "0.1.0"
 dependencies = [
