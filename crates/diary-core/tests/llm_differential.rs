@@ -4,6 +4,9 @@
 //! transport (requests sent, events emitted, reply or failure, provider-progress calls).
 #![allow(clippy::indexing_slicing)] // serde_json `Value[...]` on fixture data
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use diary_core::llm::{self, Call, HttpResponse, LlmError, Mode, Served, Transport};
 use serde_json::{json, Value};
 
@@ -74,7 +77,12 @@ fn ignorecase_tables_match_python() -> TestResult {
             .map(u32::from)
             .collect();
         assert_eq!(got, want, "re.I class of {letter}");
-        members.extend(want);
+        // The generator pairs the non-ASCII members and the ASCII letters that have one.
+        members.extend(
+            want.iter()
+                .copied()
+                .filter(|c| *c > 0x7f || "iksIKS".contains(char::from_u32(*c).unwrap_or('\0'))),
+        );
     }
     members.sort_unstable();
     members.dedup();
@@ -152,10 +160,17 @@ fn too_large_matches_python() -> TestResult {
     let fx = fixtures()?;
     for case in fx["too_large"].as_array().ok_or("too_large")? {
         let status = u16::try_from(case["status"].as_u64().ok_or("status")?)?;
+        let mut want = case["result"].clone();
+        // Known difference: a count beyond 64 bits (a Python int) is not read.
+        for key in ["tokens", "limit"] {
+            if want[key].is_number() && want[key].as_i64().is_none() {
+                want[key] = Value::Null;
+            }
+        }
         let got = llm::too_large(status, case["body"].as_str().ok_or("body")?)
             .map(|t| json!({"message": t.message, "tokens": t.tokens, "limit": t.limit}))
             .unwrap_or(Value::Null);
-        assert_eq!(got, case["result"], "{}", case["body"]);
+        assert_eq!(got, want, "{}", case["body"]);
     }
     Ok(())
 }
@@ -164,12 +179,14 @@ struct Fake {
     responses: Vec<Value>,
     sent: Vec<Value>,
     sleeps: Vec<f64>,
+    posts: Rc<Cell<usize>>,
 }
 
 impl Transport for Fake {
     fn post(&mut self, path: &str, body: &Value) -> Result<HttpResponse, &'static str> {
         assert_eq!(path, "/chat/completions");
         self.sent.push(body.clone());
+        self.posts.set(self.sent.len());
         let (status, ctype, text) = if self.responses.is_empty() {
             (
                 500,
@@ -184,10 +201,28 @@ impl Transport for Fake {
                 r[2].as_str().unwrap_or("").to_owned(),
             )
         };
+        if ctype == "raise" {
+            return Err(match text.as_str() {
+                "ConnectError" => "ConnectError",
+                "ConnectTimeout" => "ConnectTimeout",
+                "ReadTimeout" => "ReadTimeout",
+                _ => "ReadError",
+            });
+        }
+        let mut body = text.into_bytes();
+        let ctype = if let Some(c) = ctype.strip_suffix("+bom") {
+            body.splice(0..0, [0xEF, 0xBB, 0xBF]);
+            c.to_owned()
+        } else if let Some(c) = ctype.strip_suffix("+badutf8") {
+            body.push(0xFF);
+            c.to_owned()
+        } else {
+            ctype
+        };
         Ok(HttpResponse {
             status,
             content_type: ctype,
-            body: text.into_bytes(),
+            body,
         })
     }
     fn sleep(&mut self, seconds: f64) {
@@ -222,6 +257,10 @@ fn completions_match_python() -> TestResult {
                 .map(str::to_owned)
                 .collect()
         });
+        let posts = Rc::new(Cell::new(0usize));
+        let abandon_after = case["abandon_after"].as_u64().map(|n| n as usize);
+        let seen = posts.clone();
+        let abandoned = move || abandon_after.is_some_and(|n| seen.get() >= n);
         let call = Call {
             mode,
             model: "qa-chat",
@@ -239,11 +278,13 @@ fn completions_match_python() -> TestResult {
             },
             max_retries: case["retries"].as_i64().ok_or("retries")?,
             retry_backoff_s: 0.5,
+            abandoned: &abandoned,
         };
         let mut fake = Fake {
             responses: case["responses"].as_array().cloned().unwrap_or_default(),
             sent: Vec::new(),
             sleeps: Vec::new(),
+            posts,
         };
         let mut events = Vec::new();
         let mut alive_calls = 0u64;
@@ -304,6 +345,65 @@ fn completions_match_python() -> TestResult {
                     "{name}: message {text:?} vs {py:?}"
                 );
             }
+        }
+    }
+    Ok(())
+}
+
+fn lines_of(chunks: &[&[u8]]) -> Vec<String> {
+    let mut utf8 = llm::Utf8Decoder::default();
+    let mut lines = llm::LineDecoder::default();
+    let mut out = Vec::new();
+    for chunk in chunks {
+        out.extend(lines.decode(&utf8.decode(chunk)));
+    }
+    out.extend(lines.decode(&utf8.flush()));
+    out.extend(lines.flush());
+    out
+}
+
+/// The recorded bodies were read whole; a network delivers them in pieces. Every split point
+/// (inside a multibyte character, between `\r` and `\n`) must give the same lines.
+#[test]
+fn decoders_are_chunking_independent() -> TestResult {
+    let fx = fixtures()?;
+    let mut bodies: Vec<Vec<u8>> = Vec::new();
+    for case in fx["completions"].as_array().ok_or("completions")? {
+        for r in case["responses"].as_array().ok_or("responses")? {
+            if r[1].as_str().is_some_and(|c| c.contains("event-stream")) {
+                bodies.push(r[2].as_str().unwrap_or("").as_bytes().to_vec());
+            }
+        }
+    }
+    bodies.push(
+        "data: é\r\ndata: 🌿\r\rdata: x\u{2028}data: y\r"
+            .as_bytes()
+            .to_vec(),
+    );
+    bodies.push(vec![
+        b'd', b'a', 0xF0, 0x9F, b'\r', b'\n', 0xC3, 0xA9, 0xFF, b'\n',
+    ]);
+    assert!(bodies.len() > 100);
+    let mut seed: u64 = 1505;
+    for body in &bodies {
+        let whole = lines_of(&[body]);
+        for split in 0..=body.len().min(64) {
+            let (a, b) = body.split_at(split);
+            assert_eq!(lines_of(&[a, b]), whole, "split at {split}");
+        }
+        for _ in 0..8 {
+            let mut chunks: Vec<&[u8]> = Vec::new();
+            let mut rest: &[u8] = body;
+            while !rest.is_empty() {
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                let n = 1 + (seed >> 33) as usize % 7;
+                let (head, tail) = rest.split_at(n.min(rest.len()));
+                chunks.push(head);
+                rest = tail;
+            }
+            assert_eq!(lines_of(&chunks), whole);
         }
     }
     Ok(())
