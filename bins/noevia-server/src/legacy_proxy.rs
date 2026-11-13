@@ -215,7 +215,23 @@ impl LegacyProxy {
         self.native.is_some()
     }
     pub async fn forward(&self, peer: SocketAddr, req: Request<Body>) -> Response<Body> {
+        self.forward_with(peer, req, &[]).await
+    }
+
+    /// [`Self::forward`] with `extra` headers of the front's own (chat port S8: the admission lease),
+    /// set after the client's headers were sanitized, so that nothing the client sends (a
+    /// `Connection` header naming one of them, or a copy under the same name) can remove or replace
+    /// them.
+    pub async fn forward_with(
+        &self,
+        peer: SocketAddr,
+        mut req: Request<Body>,
+        extra: &[(&'static str, HeaderValue)],
+    ) -> Response<Body> {
         if let Some(native) = &self.native {
+            for (name, value) in extra {
+                req.headers_mut().insert(*name, value.clone());
+            }
             let address = client_address(self.trust_proxy, peer.ip(), req.headers())
                 .parse()
                 .unwrap_or(peer.ip());
@@ -269,6 +285,9 @@ impl LegacyProxy {
         parts.headers.remove(CLIENT_ADDRESS_HEADER);
         if let Ok(v) = HeaderValue::from_str(&client) {
             parts.headers.insert(CLIENT_ADDRESS_HEADER, v);
+        }
+        for (name, value) in extra {
+            parts.headers.insert(*name, value.clone());
         }
         let over = Arc::new(AtomicBool::new(false));
         let body = CappedBody {
