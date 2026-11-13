@@ -418,6 +418,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-prepare"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "js-json",
+ "prompt-framing",
+ "regex",
+]
+
+[[package]]
 name = "chat-template-caps"
 version = "0.1.0"
 dependencies = [

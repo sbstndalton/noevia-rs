@@ -29,7 +29,10 @@ const ADVANCED: [(&str, [(&str, &str); 2]); 4] = [
     (
         "length",
         [
-            ("short", "Prefer brief answers, a few sentences where possible."),
+            (
+                "short",
+                "Prefer brief answers, a few sentences where possible.",
+            ),
             ("long", "Prefer complete, longer answers."),
         ],
     ),
@@ -172,7 +175,10 @@ fn record(data: &JValue) -> Result<JValue, Thrown> {
         ("text", JValue::from(text)),
         ("style", style),
         ("advanced", advanced),
-        ("language", JValue::from(clean_language(data.get("language")))),
+        (
+            "language",
+            JValue::from(clean_language(data.get("language"))),
+        ),
         ("updatedAt", updated),
     ]))
 }

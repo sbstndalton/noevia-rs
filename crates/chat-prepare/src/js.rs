@@ -79,7 +79,10 @@ pub fn frame_untrusted(kind: &str, label: &str, text: &str) -> String {
 
 /// `{ role, content }`, the shape every message of the wire has here.
 pub fn message(role: &str, content: String) -> JValue {
-    JValue::obj([("role", JValue::from(role)), ("content", JValue::Str(content))])
+    JValue::obj([
+        ("role", JValue::from(role)),
+        ("content", JValue::Str(content)),
+    ])
 }
 
 /// `JSON.parse(fs.readFileSync(file, 'utf8'))` of a file's bytes: invalid UTF-8 decodes to U+FFFD as

@@ -51,7 +51,8 @@ fn str_of<'a>(h: &'a JValue, key: &str) -> Option<&'a str> {
 pub fn is_failed_turn(h: &JValue) -> bool {
     matches!(h, JValue::Obj(_))
         && str_of(h, "role") == Some("assistant")
-        && str_of(h, "failure").is_some_and(|f| !js::slice(js::trim(f), STORED_FAILURE_MAX).is_empty())
+        && str_of(h, "failure")
+            .is_some_and(|f| !js::slice(js::trim(f), STORED_FAILURE_MAX).is_empty())
 }
 
 fn applied_entry(h: &JValue) -> bool {
@@ -198,7 +199,9 @@ fn known_name<'a>(e: &'a Entry, opts: &ReplayOptions<'_>) -> &'a str {
 }
 
 fn carries(e: &Entry, opts: &ReplayOptions<'_>) -> bool {
-    e.name.as_deref().is_some_and(|n| (opts.carry_orphan_tool)(n))
+    e.name
+        .as_deref()
+        .is_some_and(|n| (opts.carry_orphan_tool)(n))
 }
 
 fn applied_note(e: &Entry, opts: &ReplayOptions<'_>) -> String {

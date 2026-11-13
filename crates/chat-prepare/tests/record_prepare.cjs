@@ -194,10 +194,10 @@ function addTime(name, ms, zone, zoneName = true) {
   time.push({ name, ms, zone, zoneName, part: currentTime.systemPart(new RealDate(ms), zone, { zoneName }) });
 }
 const ZONES = ['UTC', 'Europe/Oslo', 'America/New_York', 'Asia/Kolkata', 'Australia/Lord_Howe', 'Pacific/Kiritimati', 'Pacific/Pago_Pago',
-  'America/St_Johns', 'Asia/Kathmandu', 'Etc/GMT+12', 'Etc/GMT-14', 'Pacific/Chatham', 'America/Sao_Paulo', 'Africa/Casablanca', 'Asia/Tehran'];
+  'America/St_Johns', 'Asia/Kathmandu', 'Etc/GMT+12', 'Etc/GMT-14', 'Pacific/Chatham', 'America/Sao_Paulo', 'Asia/Tehran'];
 const ODD_ZONES = ['europe/oslo', 'EUROPE/OSLO', 'US/Eastern', 'Asia/Calcutta', 'GMT', 'Etc/UTC', 'UCT', 'Zulu', 'EST', 'EST5EDT', 'Etc/GMT0',
   'Mars/QA_Base', '', ' UTC', 'utc', '+05:30', '-0800', 'Z', 'Local', 'America/Argentina/ComodRivadavia', 'Antarctica/Troll', 'America/Ciudad_Juarez',
-  'Europe/Kyiv', 'Europe/Kiev', 'Pacific/Kanton', 'Asia/Rangoon', 'CET', 'PST8PDT', 'PST', 'AET', 'SystemV/AST4'];
+  'Europe/Kyiv', 'Europe/Kiev', 'Pacific/Kanton', 'Asia/Rangoon', 'CET', 'PST8PDT'];
 const utc = (y, mo, d, h = 12, mi = 0) => RealDate.UTC(y, mo - 1, d, h, mi);
 const EDGES = [
   ['dec31_2020_week53', utc(2020, 12, 31)], ['jan1_2021', utc(2021, 1, 1)], ['jan3_2021', utc(2021, 1, 3)], ['jan4_2021', utc(2021, 1, 4)],
@@ -310,6 +310,17 @@ for (const [name, ms] of [['time_julian_1582', RealDate.UTC(1582, 9, 4, 12)], ['
     node: escaped(currentTime.systemPart(new RealDate(ms), 'UTC')) });
 }
 
+for (const zone of ['PST', 'AET', 'SystemV/AST4']) {
+  const ms = utc(2026, 12, 31, 23, 30);
+  differences.push({ kind: 'zone_id', name: `zone_id_${zone}`, about: 'A legacy ICU zone ID that is not in the IANA database: Node states the day in it, the port falls back to UTC.', ms, zone,
+    node: escaped(currentTime.systemPart(new RealDate(ms), zone)) });
+}
+{
+  const ms = utc(2026, 11, 13, 23, 30);
+  differences.push({ kind: 'zone_data', name: 'zone_data_casablanca', about: "Node's ICU time-zone data and chrono-tz's IANA data disagree on Morocco's offset here.", ms, zone: 'Africa/Casablanca',
+    node: escaped(currentTime.systemPart(new RealDate(ms), 'Africa/Casablanca')) });
+}
+
 // ── Whole turns through handleChat ──────────────────────────────────────────────────────────
 const BOXES = [
   { id: 'web-search', tools: [{ function: { name: 'qa_web_lookup' } }] },
@@ -417,7 +428,7 @@ const fullMemory = jsonBytes({ memories: ['QA prefers tea', '  QA lives in Oslo 
 
   // ── Output ──────────────────────────────────────────────────────────────────────────────
   const lines = (list) => list.map((x) => JSON.stringify(x)).join(',\n');
-  const text = `{"version":1,"generator":"crates/chat-prepare/tests/record_prepare.cjs",\n"node":${JSON.stringify(process.version)},\n`
+  const text = `{"version":1,"generator":"crates/chat-prepare/tests/record_prepare.cjs",\n"node":${JSON.stringify(process.version)},"icu":${JSON.stringify(process.versions.icu)},"tz":${JSON.stringify(process.versions.tz)},\n`
     + `"sources":${JSON.stringify(sources)},\n"replayTools":${JSON.stringify({ public: [...PUBLIC], known: [...KNOWN] })},\n`
     + `"turnTools":${JSON.stringify(turnTools)},\n`
     + `"account":[\n${lines(account)}\n],\n"accountRaw":[\n${lines(accountRaw)}\n],\n"memory":[\n${lines(memory)}\n],\n`

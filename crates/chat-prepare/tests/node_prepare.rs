@@ -194,7 +194,7 @@ fn fixed_now_reads_the_knob_as_node_does() {
             FixedNow::Unset => None,
         };
         let warnings: Vec<JValue> = match (value, read.warning()) {
-            (Some(v), Some(w)) if warned.insert(v) => vec![JValue::Str(w)],
+            (Some(v), Some(w)) if warned.insert(v.clone()) => vec![JValue::Str(w)],
             _ => Vec::new(),
         };
         let what = format!("{raw:?}");
@@ -319,6 +319,17 @@ fn the_named_differences_behave_as_documented() {
                 let record = memory::read(file.as_deref());
                 assert_eq!(record, memory::empty(), "{}", name(case));
                 assert_eq!(memory::part(&record, &JValue::Undefined), None);
+            }
+            "zone_id" => {
+                let ms = case.get("ms").as_num().unwrap() as i64;
+                let zone = case.get("zone").as_str().unwrap();
+                let part = time::part(ms, zone, true).unwrap();
+                assert!(part.contains(" (UTC).\n"), "{}", name(case));
+            }
+            "zone_data" => {
+                let ms = case.get("ms").as_num().unwrap() as i64;
+                let zone = case.get("zone").as_str().unwrap();
+                assert!(time::part(ms, zone, true).is_some(), "{}", name(case));
             }
             "time" => {
                 let ms = case.get("ms").as_num().unwrap() as i64;

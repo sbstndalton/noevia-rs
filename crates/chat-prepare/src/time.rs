@@ -4,7 +4,7 @@
 //! The caller supplies the instant (`currentNow()`: [`fixed_now`] of `NOEVIA_CONTRACT_FIXED_NOW`,
 //! else the clock) and the zone (`serverTimeZone()`, the process's resolved IANA zone). Zones are
 //! looked up as `Intl.DateTimeFormat`'s `timeZone` is, case-insensitively, in chrono-tz's copy of the
-//! IANA database; one it does not hold falls back to UTC as Node's `catch` does. Instants are
+//! IANA database, or as a UTC offset; one it does not hold falls back to UTC as Node's `catch` does. Instants are
 //! stated for the Gregorian years 1583 to 9999 (before 1583 Node's formatter uses the Julian
 //! calendar, which this port does not; [`part`] answers `None` there).
 
@@ -74,8 +74,9 @@ fn digits(s: &[u8]) -> Option<i64> {
     if s.is_empty() || !s.iter().all(u8::is_ascii_digit) {
         return None;
     }
-    s.iter()
-        .try_fold(0i64, |n, d| n.checked_mul(10)?.checked_add(i64::from(d - b'0')))
+    s.iter().try_fold(0i64, |n, d| {
+        n.checked_mul(10)?.checked_add(i64::from(d - b'0'))
+    })
 }
 
 /// `fixedNow(env)` of the knob's raw value (`None`: not set). The value must match
@@ -102,7 +103,11 @@ pub fn fixed_now(raw: Option<&str>) -> FixedNow {
         field(11, 13),
         field(14, 16),
         field(17, 19),
-        if b.len() == 24 { field(20, 23) } else { Some(0) },
+        if b.len() == 24 {
+            field(20, 23)
+        } else {
+            Some(0)
+        },
     );
     let (Some(y), Some(mo), Some(d), Some(h), Some(mi), Some(s), Some(ms)) = parts else {
         return ignored();
@@ -228,22 +233,59 @@ pub fn facts_line(f: &CalendarFacts) -> String {
     format!("Calendar facts, computed by the server (use them as given, do not recount): {week} (weeks run Monday to Sunday; ISO week 1 of {} began Monday {}); day {} of {} in {}, {} days left; the year ends on 31 December.", f.iso_year, f.iso_week1_starts, f.day_of_year, f.days_in_year, f.year, f.days_left_in_year)
 }
 
-/// The zone `Intl.DateTimeFormat` would accept for `name`, matched case-insensitively.
-pub fn zone(name: &str) -> Option<Tz> {
+/// A zone `Intl.DateTimeFormat` accepts: an IANA name (matched case-insensitively) or a UTC
+/// offset (`±HH`, `±HHMM`, `±HH:MM`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Zone {
+    Named(Tz),
+    /// Minutes east of UTC.
+    Offset(i64),
+}
+
+fn offset(name: &str) -> Option<i64> {
+    let b = name.as_bytes();
+    let sign = match b.first() {
+        Some(b'+') => 1,
+        Some(b'-') => -1,
+        _ => return None,
+    };
+    let (h, m) = match b.len() {
+        3 => (b.get(1..3), Some(&b"00"[..])),
+        5 => (b.get(1..3), b.get(3..5)),
+        6 if b.get(3) == Some(&b':') => (b.get(1..3), b.get(4..6)),
+        _ => return None,
+    };
+    let (h, m) = (digits(h?)?, digits(m?)?);
+    (h <= 23 && m <= 59).then_some(sign * (h * 60 + m))
+}
+
+pub fn zone(name: &str) -> Option<Zone> {
+    if let Some(minutes) = offset(name) {
+        return Some(Zone::Offset(minutes));
+    }
     TZ_VARIANTS
         .iter()
         .find(|z| z.name().eq_ignore_ascii_case(name))
-        .copied()
+        .map(|z| Zone::Named(*z))
 }
 
-/// The calendar date of `now_ms` in `tz`, if it is a Gregorian date this port states.
-fn local_date(now_ms: i64, tz: Tz) -> Option<(i64, i64, i64)> {
-    let local = tz.timestamp_millis_opt(now_ms).single()?;
-    let (y, m, d) = (
-        i64::from(local.year()),
-        i64::from(local.month()),
-        i64::from(local.day()),
-    );
+/// The calendar date of `now_ms` in `zone`, if it is a Gregorian date this port states.
+fn local_date(now_ms: i64, zone: Zone) -> Option<(i64, i64, i64)> {
+    let (y, m, d) = match zone {
+        Zone::Named(tz) => {
+            let local = tz.timestamp_millis_opt(now_ms).single()?;
+            (
+                i64::from(local.year()),
+                i64::from(local.month()),
+                i64::from(local.day()),
+            )
+        }
+        Zone::Offset(minutes) => date_of(
+            now_ms
+                .checked_add(minutes.checked_mul(60_000)?)?
+                .div_euclid(DAY_MS),
+        ),
+    };
     (1583..=9999).contains(&y).then_some((y, m, d))
 }
 
@@ -252,8 +294,8 @@ fn local_date(now_ms: i64, tz: Tz) -> Option<(i64, i64, i64)> {
 /// off this box) leaves the zone's name out.
 pub fn part(now_ms: i64, time_zone: &str, zone_name: bool) -> Option<String> {
     let (tz, shown) = match zone(time_zone) {
-        Some(tz) => (tz, time_zone),
-        None => (Tz::UTC, "UTC"),
+        Some(z) => (z, time_zone),
+        None => (Zone::Named(Tz::UTC), "UTC"),
     };
     let (y, m, d) = local_date(now_ms, tz)?;
     let weekday = usize::try_from(iso_weekday(day_number(y, m, d)) - 1)
@@ -262,7 +304,7 @@ pub fn part(now_ms: i64, time_zone: &str, zone_name: bool) -> Option<String> {
         .copied()
         .unwrap_or("");
     // Intl.DateTimeFormat('en-GB', { dateStyle: 'full' })
-    let day = format!("{weekday} {d} {} {y}", month_name(m));
+    let day = format!("{weekday}, {d} {} {y}", month_name(m));
     let first = if zone_name {
         format!("Today is {day} ({shown}).")
     } else {

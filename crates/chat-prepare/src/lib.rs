@@ -16,6 +16,16 @@
 //! character). Everything is replayed byte for byte on Node's own output
 //! (`tests/fixtures/node-prepare.v1.json`, written by `tests/record_prepare.cjs`).
 //!
+//! Named differences (recorded in the fixture's `differences`, each checked as documented here):
+//! - An account file `wtf16::parse` refuses but `JSON.parse` reads (a number outside the f64
+//!   range, a character of U+10F800..U+10FFFF, nesting past 128) reads as the empty record.
+//! - The time part states only Gregorian years 1583-9999 ([`PrepareError::TimeOutOfRange`]
+//!   otherwise); Node writes Julian days before 1583, and its `calendarFacts` puts years 0-99 in
+//!   1900-1999 (`Date.UTC`), a Node bug only reachable through the contract-corpus pin.
+//! - Zones: legacy ICU IDs outside the IANA database (`PST`, `AET`, `SystemV/AST4`) fall back to
+//!   UTC here; and chrono-tz's IANA data can disagree with Node's ICU data (Africa/Casablanca).
+//!   `serverTimeZone()` resolves a real IANA zone, so neither is reached on a deployment.
+//!
 //! What a turn with a project adds (project name, goal, instructions and memories, shared code
 //! context, knowledge-file excerpts, skills, framing and brain blocks, the stored-only and
 //! not-ready source notes) and what happens to the wire once the route is known (off-box zone
@@ -78,12 +88,8 @@ pub struct Prepared {
 /// The system parts in chat.cjs's order (account part, time part, account memory), the system
 /// message and the wire of a turn without a project.
 pub fn prepare(turn: &Turn<'_>) -> Result<Prepared, PrepareError> {
-    let history = history::replay_history(
-        turn.history,
-        turn.history_cap,
-        turn.message,
-        &turn.replay,
-    );
+    let history =
+        history::replay_history(turn.history, turn.history_cap, turn.message, &turn.replay);
     let mut parts = Vec::new();
     if let Some(p) = account::part(turn.instructions).map_err(|_| PrepareError::Thrown)? {
         parts.push(p);
