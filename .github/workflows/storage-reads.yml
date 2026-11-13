@@ -5,8 +5,20 @@ on:
   pull_request:
 permissions:
   contents: read
+# A newer push to a pull request cancels its superseded run. Push runs (main only) are keyed by
+# commit, so none is ever cancelled or replaced.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  # tools/ci/changed_areas.py: on a pull request that only changes leaf crates nobody depends on
+  # or names (and docs), the jobs below are skipped (a skipped job satisfies a required check);
+  # anything else runs them all.
+  changes:
+    uses: ./.github/workflows/changed-areas.yml
   storage-reads-native:
+    needs: changes
+    if: needs.changes.outputs.full != 'false'
     name: Required native storage metadata contracts (#1368)
     runs-on: ubuntu-latest
     timeout-minutes: 45
