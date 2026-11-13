@@ -22,15 +22,20 @@
 //!   [`engine::Body`] always exists, so that failure cannot arise.
 //! - D3 the router listing's 8 s timeout and `redirect: 'error'` belong to the transport: the GET
 //!   carries [`engine::Request::timeout_ms`] = 8000 and every transport must refuse redirects.
+//! - D4 `sseDeltas` buffers without bound: a body that never sends a newline, or one that streams
+//!   endless reasoning deltas, grows memory for ever. Here an unterminated line longer than
+//!   [`MAX_SSE_LINE_BYTES`] (4 MiB) or more than [`MAX_SSE_ATTEMPT_BYTES`] (64 MiB) read in one
+//!   attempt stops the stream as a transport fault (`error`, logged `code: "transport"`), and lines
+//!   are cut with a cursor instead of copying the rest of the buffer per line.
 
 #![forbid(unsafe_code)]
 
 pub mod engine;
 
 pub use engine::{
-    block_on, AdmissionError, Answer, Body, BudgetRefusal, CallRequest, Cancel, Deps, Endpoint,
-    Failure, MachineReady, Outcome, PinRequest, Request, Response, RoleEngine, Session,
-    TransportError, Work,
+    sse_deltas, AdmissionError, Answer, Blocking, Body, BudgetRefusal, CallRequest, Cancel, Deps,
+    Endpoint, Failure, MachineReady, Outcome, PinRequest, Request, Response, RoleEngine, Session,
+    SseEnd, TransportError, Work,
 };
 
 use js_json::{wtf16, JValue};
@@ -493,6 +498,11 @@ pub struct Meter {
     pub timings: Vec<(String, JValue)>,
 }
 
+/// D4: the longest unterminated SSE line held (bytes of decoded text).
+pub const MAX_SSE_LINE_BYTES: usize = 4 * 1024 * 1024;
+/// D4: the most body bytes one attempt reads.
+pub const MAX_SSE_ATTEMPT_BYTES: u64 = 64 * 1024 * 1024;
+
 /// One step of the SSE stream.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SseItem {
@@ -502,22 +512,33 @@ pub enum SseItem {
     Done,
     /// An event with a truthy `error` (Node throws `engine_error`).
     EngineError,
+    /// D4: past [`MAX_SSE_LINE_BYTES`] or [`MAX_SSE_ATTEMPT_BYTES`].
+    Overflow,
 }
 
 /// `sseDeltas`'s decoding: `TextDecoder` (streaming, replacement characters, a leading BOM
 /// dropped), lines on `\n`, one trailing `\r` cut, `data:` events, read lazily one line at a time
-/// so a stopped consumer leaves the rest of the buffer unread, as the generator does.
+/// so a stopped consumer leaves the rest of the buffer unread, as the generator does. `pos` is the
+/// start of the first unread line and `scanned` the end of the text known to hold no newline, so
+/// neither cutting lines nor a long line arriving in small chunks is quadratic.
 #[derive(Debug, Default)]
 pub struct SseDecoder {
     pending: Vec<u8>,
     text: String,
+    pos: usize,
+    scanned: usize,
     bom_seen: bool,
+    over: bool,
 }
 
 impl SseDecoder {
     /// One body chunk.
     pub fn push(&mut self, chunk: &[u8], m: &mut Meter) {
         m.bytes = m.bytes.saturating_add(chunk.len() as u64);
+        if self.over || m.bytes > MAX_SSE_ATTEMPT_BYTES {
+            self.over = true;
+            return;
+        }
         self.pending.extend_from_slice(chunk);
         let mut out = String::new();
         let mut rest: &[u8] = &self.pending;
@@ -551,17 +572,33 @@ impl SseDecoder {
                 out = s.to_owned();
             }
         }
+        if self.pos > 0 {
+            self.text.drain(..self.pos);
+            self.scanned = self.scanned.saturating_sub(self.pos);
+            self.pos = 0;
+        }
         self.text.push_str(&out);
     }
 
     /// The next item from the lines decoded so far (`None`: more bytes are needed).
     pub fn next(&mut self, m: &mut Meter, now: &dyn Fn() -> f64) -> Option<SseItem> {
-        while let Some(nl) = self.text.find('\n') {
-            let mut line: String = self.text.drain(..=nl).collect();
-            line.pop();
-            if line.ends_with('\r') {
-                line.pop();
-            }
+        if self.over {
+            return Some(SseItem::Overflow);
+        }
+        loop {
+            let from = self.scanned.max(self.pos);
+            let Some(nl) = self.text.get(from..).and_then(|t| t.find('\n')) else {
+                self.scanned = self.text.len();
+                if self.text.len().saturating_sub(self.pos) > MAX_SSE_LINE_BYTES {
+                    self.over = true;
+                    return Some(SseItem::Overflow);
+                }
+                return None;
+            };
+            let (start, end) = (self.pos, from + nl);
+            self.pos = end + 1;
+            let line = self.text.get(start..end).unwrap_or_default();
+            let line = line.strip_suffix('\r').unwrap_or(line);
             let Some(data) = line.strip_prefix("data:").map(js_trim) else {
                 continue;
             };
@@ -592,7 +629,6 @@ impl SseDecoder {
                 return Some(SseItem::Delta(c.to_owned()));
             }
         }
-        None
     }
 }
 
