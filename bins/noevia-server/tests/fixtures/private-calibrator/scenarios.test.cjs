@@ -335,6 +335,43 @@ test('context: models.ini changed outside the run is not restored', async t => {
   assert.equal(job.restored, false);
 });
 
+test('context: a restore whose baseline invalidation throws is reported as not restored', async t => {
+  let ctx;
+  const f = fixture(t, { calibration: { invalidateBaseline: async () => { throw Error('QA baseline store unavailable'); } },
+    engine: { stream: (b, signal) => hangingStream(signal, () => setImmediate(() => ctx.compareAndAbort(ctx.cancellationFacts().token))) } });
+  await f.hold();
+  ctx = f.factory(f.contextHooks());
+  await ctx.start('qa-model', { confirmPause: true, promptBudgetSeconds: 120 });
+  await ctx.completion();
+  const job = ctx.status('qa-model').body.job;
+  assert.equal(job.status, 'cancelled'); assert.equal(job.restored, false); assert.match(job.error, /was not restored/);
+});
+
+test('context: a restore the presets store refuses (read-only models.ini directory) is not restored', async t => {
+  let ctx;
+  const dir = () => path.dirname(f.ini);
+  const f = fixture(t, { engine: { stream: (b, signal) => hangingStream(signal, () => setImmediate(() => {
+    fs.chmodSync(dir(), 0o555);
+    ctx.compareAndAbort(ctx.cancellationFacts().token);
+  })) } });
+  await f.hold();
+  ctx = f.factory(f.contextHooks());
+  try {
+    await ctx.start('qa-model', { confirmPause: true, promptBudgetSeconds: 120 });
+    await ctx.completion();
+  } finally { fs.chmodSync(dir(), 0o755); }
+  const job = ctx.status('qa-model').body.job;
+  assert.equal(job.status, 'cancelled'); assert.equal(job.restored, false);
+});
+
+test('context: a refused test-profile write stops the run with nothing to restore', async t => {
+  const f = fixture(t);
+  await f.hold();
+  const hooks = f.contextHooks({ applyUnlocked: async () => ({ ok: false, status: 409, body: { error: 'QA refused the test profile.' } }) });
+  const { job } = await stage(f, hooks);
+  assert.equal(job.status, 'failed'); assert.match(job.error, /QA refused the test profile/); assert.equal(job.restored, undefined);
+});
+
 test('context: no size passes the long prompt and the run fails', async t => {
   const f = fixture(t, { engine: { stream: () => new Response(sse({ choices: [{ delta: { content: 'forgot' } }], timings: { prompt_n: 10, prompt_ms: 100 } }) + 'data: [DONE]\n\n') } });
   await f.hold();
