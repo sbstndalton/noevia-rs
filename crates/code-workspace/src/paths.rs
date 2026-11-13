@@ -53,6 +53,29 @@ pub fn relative(from: &str, to: &str) -> String {
     out.join("/")
 }
 
+/// What [`realpath_named`] found.
+pub enum Real {
+    Named(String),
+    /// Nothing there (or a loop, or a component that is not a directory).
+    Missing,
+    /// It resolves, but to a path that is not UTF-8.
+    Unnamed,
+}
+
+/// `fs.realpathSync(p)`, telling a path that is missing from one that cannot be named.
+pub fn realpath_named(p: &str) -> Real {
+    if p.is_empty() {
+        return Real::Missing;
+    }
+    match std::fs::canonicalize(Path::new(p)) {
+        Ok(r) => r
+            .into_os_string()
+            .into_string()
+            .map_or(Real::Unnamed, Real::Named),
+        Err(_) => Real::Missing,
+    }
+}
+
 /// `fs.realpathSync(p)`, or `None` when it throws (missing, a loop, not UTF-8).
 pub fn realpath(p: &str) -> Option<String> {
     if p.is_empty() {

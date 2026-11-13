@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 js-json = { path = "../js-json" }
-rustix = { version = "=1.1.5", features = ["fs"] }
+rustix = { version = "=1.1.5", features = ["fs", "process"] }
 
 [dev-dependencies]
 tempfile = "3"

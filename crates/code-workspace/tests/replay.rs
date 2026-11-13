@@ -291,6 +291,10 @@ impl Run {
                 }
                 return None;
             }
+            "rm" => {
+                let _ = fs::remove_file(self.at(&str_of("path")));
+                return None;
+            }
             "symlink" => {
                 std::os::unix::fs::symlink(self.sub(&str_of("target")), self.at(&str_of("path")))
                     .unwrap();
@@ -504,15 +508,217 @@ fn differences_from_node() {
         "{}",
         got[3]
     );
+    // Node's release ran the signing program (stuck only afterwards); the port refuses first.
+    assert!(node[5].contains(r#""status":"stuck""#), "{}", node[5]);
+    assert!(got[5].contains("Refused to release the workspace: its .git/config sets commit.gpgsign, gpg.program, which would make git run a command."), "{}", got[5]);
+    // Node released the clone with a worktree config; the port does not touch it.
+    assert!(node[7].contains(r#""status":"released""#), "{}", node[7]);
+    assert!(got[7].contains("Refused to release the workspace: its .git/config.worktree would be read as configuration."), "{}", got[7]);
+    assert!(!run.base.join("pwned").exists(), "a planted command ran");
 }
 
 #[test]
-fn a_planted_fsmonitor_never_runs() {
-    // The hostile-clone scenario above already checks `pwned` after every step; this pins it.
+fn no_planted_command_ever_runs_as_noevia() {
+    // Replayed through the port: after every step noevia takes in the hostile scenarios, nothing
+    // planted has run.
     let f = fixture();
-    for s in steps(&f, "hostile-clone") {
-        if let JValue::Obj(_) = s.get("snapshot") {
-            assert_eq!(s.get("snapshot").get("pwned"), &JValue::Bool(false));
+    for name in ["hostile-clone", "differences"] {
+        let mut run = Run::new();
+        for (i, s) in steps(&f, name).iter().enumerate() {
+            let harness = matches!(s.get("op").as_str(), Some("git" | "write" | "rm"));
+            run.step(s);
+            if harness {
+                // The harness's own git may run what it planted, as the harness; not noevia.
+                let _ = fs::remove_file(run.base.join("pwned"));
+            } else {
+                assert!(!run.base.join("pwned").exists(), "{name} step {i}");
+            }
         }
     }
+}
+
+/// A `git` that logs its working directory and arguments, then runs the real one.
+fn logging_git(dir: &Path) -> (Git, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let log = dir.join("git.log");
+    let script = dir.join("qa-git");
+    let real = Command::new("sh")
+        .args(["-c", "command -v git"])
+        .output()
+        .unwrap()
+        .stdout;
+    let real = String::from_utf8(real).unwrap();
+    fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho \"$(pwd) | $*\" >> '{}'\nexec '{}' \"$@\"\n",
+            log.display(),
+            real.trim()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    let git = Git {
+        program: script.to_str().unwrap().to_string(),
+        extra_env: vec![
+            ("GIT_AUTHOR_DATE".into(), DATE.into()),
+            ("GIT_COMMITTER_DATE".into(), DATE.into()),
+        ],
+        ..Git::default()
+    };
+    (git, log)
+}
+
+#[test]
+fn every_git_call_on_a_held_tree_switches_off_what_the_tree_could_run() {
+    let mut run = Run::new();
+    let f = fixture();
+    let setup = steps(&f, "clone");
+    run.step(&setup[0]);
+    let (git, log) = logging_git(&run.base);
+    let clock = run.clock.clone();
+    let ws = Workspaces::with(
+        Options {
+            dir: run.at("tenant").to_str().unwrap().to_string(),
+            tree_root: Some(run.at("trees").to_str().unwrap().to_string()),
+            owner: Some(run.me),
+            noevia: Some(run.me),
+            mode: None,
+            epoch: "qa".into(),
+        },
+        Box::new(move || clock.fetch_add(1, Ordering::SeqCst) as f64),
+        git,
+        Box::new(chown_tree),
+    );
+    let id = "00000000-0000-4000-8000-000000000001";
+    let repo = run.at("repos/qa-repo").to_str().unwrap().to_string();
+    ws.claim(Claim {
+        task_id: id,
+        repo_path: &repo,
+        ..Claim::default()
+    })
+    .unwrap();
+    let tree = run.at(&format!("trees/{id}"));
+    fs::write(tree.join("a.txt"), "edited\n").unwrap();
+    let released = ws.release(id, false).unwrap();
+    assert_eq!(released.get("status").as_str(), Some("released"));
+    let tree = tree.to_str().unwrap().to_string();
+    let lines = fs::read_to_string(&log).unwrap();
+    let mut seen = 0;
+    for line in lines.lines() {
+        // A commit message's later lines carry no " | ".
+        let Some((cwd, cmd)) = line.split_once(" | ") else {
+            continue;
+        };
+        // Every call made in the tree, and every one that reads from it (the fetch), once the
+        // claim has made it: all with the tree's own commands switched off.
+        let on_tree = cwd == tree || cmd.contains(&tree);
+        let making = cmd.starts_with("clone ")
+            || cmd.starts_with("checkout ")
+            || cmd.starts_with("config --file");
+        if on_tree && !making {
+            seen += 1;
+            assert!(
+                cmd.starts_with(
+                    "-c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null "
+                ),
+                "{line}"
+            );
+        }
+        if cmd.contains(" commit ") {
+            assert!(cmd.contains("-c commit.gpgSign=false"), "{line}");
+        }
+    }
+    assert!(seen >= 5, "{lines}");
+}
+
+#[test]
+fn a_link_to_a_place_that_cannot_be_named_is_not_inside() {
+    use std::os::unix::ffi::OsStrExt;
+    let mut run = Run::new();
+    let f = fixture();
+    for s in steps(&f, "worktree").iter().take(5) {
+        run.step(s);
+    }
+    let id = "00000000-0000-4000-8000-000000000001";
+    let outside = run.base.join(std::ffi::OsStr::from_bytes(b"outside-\xff"));
+    fs::create_dir_all(&outside).unwrap();
+    let tree = run.at(&format!("tenant/code-workspaces/{id}"));
+    std::os::unix::fs::symlink(&outside, tree.join("evil")).unwrap();
+    let ws = &run.stores["w"];
+    assert_eq!(ws.contains(id, "evil").unwrap(), Some(false));
+    assert_eq!(ws.contains(id, "evil/new.txt").unwrap(), Some(false));
+    assert_eq!(ws.contains(id, "a.txt").unwrap(), Some(true));
+}
+
+#[test]
+fn the_hand_over_never_follows_a_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let tree = dir.path().join("tree");
+    fs::create_dir_all(tree.join("sub")).unwrap();
+    let outside = dir.path().join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret"), "x").unwrap();
+    std::os::unix::fs::symlink(&outside, tree.join("sub/link")).unwrap();
+    std::os::unix::fs::symlink(outside.join("secret"), tree.join("file-link")).unwrap();
+    let ctimes = || {
+        (
+            fs::metadata(&outside).unwrap().ctime_nsec(),
+            fs::metadata(outside.join("secret")).unwrap().ctime_nsec(),
+        )
+    };
+    let before = ctimes();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let me = fs::metadata(dir.path()).unwrap();
+    chown_tree(
+        &tree,
+        Ids {
+            uid: me.uid(),
+            gid: me.gid(),
+        },
+    )
+    .unwrap();
+    assert_eq!(before, ctimes(), "a link was followed");
+}
+
+#[test]
+fn the_runner_stops_git_at_its_buffer_cap_and_its_deadline() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{Duration, Instant};
+    let dir = tempfile::tempdir().unwrap();
+    // A "git" that writes far past the cap, and one that leaves a child holding the pipes.
+    let chatty = dir.path().join("chatty");
+    fs::write(&chatty, "#!/bin/sh\nyes qa-output\n").unwrap();
+    let stuck = dir.path().join("stuck");
+    fs::write(&stuck, "#!/bin/sh\nsleep 30 &\nsleep 30\n").unwrap();
+    for p in [&chatty, &stuck] {
+        fs::set_permissions(p, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let capped = code_workspace::git::RunOptions {
+        max_buffer: Some(1024),
+        ..Default::default()
+    };
+    let git = Git {
+        program: chatty.to_str().unwrap().to_string(),
+        ..Git::default()
+    };
+    let t = Instant::now();
+    let e = git.run(&[], None, &capped).unwrap_err();
+    assert!(e.too_large && e.message.ends_with("ENOBUFS"), "{e:?}");
+    assert!(t.elapsed() < Duration::from_secs(10));
+    let git = Git {
+        program: stuck.to_str().unwrap().to_string(),
+        timeout: Duration::from_millis(300),
+        ..Git::default()
+    };
+    let t = Instant::now();
+    let e = git.run(&[], None, &Default::default()).unwrap_err();
+    assert!(e.message.ends_with("ETIMEDOUT"), "{e:?}");
+    assert!(t.elapsed() < Duration::from_secs(10), "{:?}", t.elapsed());
+    let git = Git {
+        program: dir.path().join("missing").to_str().unwrap().to_string(),
+        ..Git::default()
+    };
+    let e = git.run(&[], None, &Default::default()).unwrap_err();
+    assert!(e.message.ends_with(" ENOENT"), "{e:?}");
 }

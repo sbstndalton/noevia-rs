@@ -22,10 +22,17 @@
 //!    status (a 500 for the route); Node's error kept execFileSync's exit code as its `status`
 //!    (128), which a route then answered with.
 //! 3. A record file that is not a JSON object reads as absent.
-//! 4. The pinned files are removed through directory file descriptors opened with `O_NOFOLLOW`
-//!    (`openat`/`unlinkat`), so a link the harness swaps in after a check is never followed;
-//!    Node checked each directory by path and then unlinked by path (sbstndalton/noevia#2527 is
-//!    the same race in the pin write).
+//! 4. The pinned files are removed, and trees handed over, through directory file descriptors
+//!    opened with `O_NOFOLLOW` (`openat`/`unlinkat`/`fchownat`), so a link the harness swaps in
+//!    after a check is never followed; Node checked by path and then acted by path
+//!    (sbstndalton/noevia#2527, #2529).
+//! 5. A released clone is also refused when its config turns on commit signing (`commit.gpgsign`,
+//!    `gpg.*program`) or `extensions.worktreeConfig`, when it has `.git/config.worktree` or
+//!    `.git/commondir`, or when a name in it is not UTF-8; noevia's commit runs with
+//!    `commit.gpgSign=false`. Node ran the harness's command in each case
+//!    (sbstndalton/noevia#2528).
+//! 6. `contains` answers false for a path that exists but cannot be named as UTF-8 (Node said
+//!    true for a link to such a directory, #2529); an empty branch is no branch, as in Node.
 //!
 //! OS error texts (an `lchown` that failed, an unremovable tree) are Rust's, not libuv's.
 
@@ -134,7 +141,8 @@ pub struct Options {
     pub tree_root: Option<String>,
     /// Who the harness runs as: each new tree is handed to them.
     pub owner: Option<Ids>,
-    /// Who this process runs as (Node's `process.getuid()`), to take a clone back on release.
+    /// Who this process runs as (Node's `process.getuid()`), to take a clone back on release;
+    /// `None` is this process's own ids.
     pub noevia: Option<Ids>,
     /// `None`: a clone when there is an owner, else a worktree.
     pub mode: Option<Mode>,
@@ -158,6 +166,13 @@ pub struct Claim<'a> {
 
 type Clock = Box<dyn Fn() -> f64 + Send + Sync>;
 type Chown = Box<dyn Fn(&Path, Ids) -> io::Result<()> + Send + Sync>;
+
+fn cwd_or_root() -> String {
+    std::env::current_dir()
+        .ok()
+        .and_then(|p| p.into_os_string().into_string().ok())
+        .unwrap_or_else(|| "/".into())
+}
 
 /// One tenant's task workspaces.
 pub struct Workspaces {
@@ -338,6 +353,11 @@ fn hostile_key(k: &str) -> bool {
         )
         || k.strip_prefix("credential.")
             .is_some_and(|rest| rest == "helper" || rest.ends_with(".helper"))
+        // Signing runs a program of the config's choosing on noevia's own commit.
+        || matches!(k, "commit.gpgsign" | "tag.gpgsign" | "gpg.program")
+        || k.strip_prefix("gpg.").is_some_and(|rest| rest.ends_with(".program"))
+        // Makes git read `.git/config.worktree` as well, which this check does not.
+        || k == "extensions.worktreeconfig"
         || k.starts_with("alias.")
         || k.starts_with("include.")
         || k.starts_with("includeif.")
@@ -424,19 +444,53 @@ pub fn remove_all(target: &str) -> io::Result<()> {
     }
 }
 
-/// code-workspace.cjs `defaultChown`: every entry under `target`, links themselves not followed.
+/// How deep [`chown_tree`] goes before it refuses the tree.
+const MAX_CHOWN_DEPTH: usize = 512;
+
+/// code-workspace.cjs `defaultChown`: `target` and every entry under it handed to `ids`, links
+/// themselves not followed. The walk goes through directory file descriptors opened with
+/// `O_NOFOLLOW` (`fchownat` relative to each), so a directory swapped for a link while it runs
+/// leads nowhere (Node walked by path: sbstndalton/noevia#2529).
 pub fn chown_tree(target: &Path, ids: Ids) -> io::Result<()> {
-    let mut stack = vec![target.to_path_buf()];
-    while let Some(entry) = stack.pop() {
-        #[cfg(unix)]
-        std::os::unix::fs::lchown(&entry, Some(ids.uid), Some(ids.gid))?;
-        let Ok(meta) = fs::symlink_metadata(&entry) else {
-            continue;
-        };
-        if meta.is_dir() {
-            for child in fs::read_dir(&entry)? {
-                stack.push(child?.path());
+    use rustix::fs::{chownat, open, openat, AtFlags, Dir, Gid, Mode, OFlags, Uid, CWD};
+    use rustix::io::Errno;
+    let (uid, gid) = (Some(Uid::from_raw(ids.uid)), Some(Gid::from_raw(ids.gid)));
+    chownat(CWD, target, uid, gid, AtFlags::SYMLINK_NOFOLLOW)?;
+    let dflags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let root = match open(target, dflags, Mode::empty()) {
+        Ok(fd) => fd,
+        Err(Errno::NOTDIR | Errno::LOOP) => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    let mut stack = vec![Dir::read_from(&root)?];
+    drop(root);
+    loop {
+        let child = {
+            let Some(dir) = stack.last_mut() else {
+                break;
+            };
+            let Some(entry) = dir.next() else {
+                stack.pop();
+                continue;
+            };
+            let entry = entry?;
+            let name = entry.file_name();
+            if matches!(name.to_bytes(), b"." | b"..") {
+                continue;
             }
+            let parent = dir.fd()?;
+            chownat(parent, name, uid, gid, AtFlags::SYMLINK_NOFOLLOW)?;
+            match openat(parent, name, dflags, Mode::empty()) {
+                Ok(fd) => Some(Dir::read_from(&fd)?),
+                Err(Errno::NOTDIR | Errno::LOOP) => None,
+                Err(e) => return Err(e.into()),
+            }
+        };
+        if let Some(child) = child {
+            if stack.len() >= MAX_CHOWN_DEPTH {
+                return Err(io::Error::other("the tree is nested too deep to hand over"));
+            }
+            stack.push(child);
         }
     }
     Ok(())
@@ -467,20 +521,26 @@ impl Workspaces {
         let dir = if options.dir.starts_with('/') {
             options.dir.clone()
         } else {
-            let cwd = std::env::current_dir()
-                .ok()
-                .and_then(|p| p.into_os_string().into_string().ok())
-                .unwrap_or_else(|| "/".into());
-            resolve(&cwd, &options.dir)
+            resolve(&cwd_or_root(), &options.dir)
         };
         let root = join(&dir, "code-workspaces");
-        let trees = options.tree_root.clone().unwrap_or_else(|| root.clone());
+        let trees = match &options.tree_root {
+            Some(t) if t.starts_with('/') => t.clone(),
+            Some(t) => resolve(&cwd_or_root(), t),
+            None => root.clone(),
+        };
         Workspaces {
             trust_file: join(&root, "trusted-repositories.gitconfig"),
             root,
             trees,
             owner: options.owner,
-            noevia: options.noevia,
+            // Node's `process.getuid()/getgid()`: who to hand a clone back to on release.
+            noevia: options.noevia.or_else(|| {
+                Some(Ids {
+                    uid: rustix::process::getuid().as_raw(),
+                    gid: rustix::process::getgid().as_raw(),
+                })
+            }),
             mode: options.mode.unwrap_or(if options.owner.is_some() {
                 Mode::Clone
             } else {
@@ -578,7 +638,9 @@ impl Workspaces {
 
     fn trust(&self, paths: &[&str]) -> io::Result<()> {
         mkdirs(&self.root, 0o700)?;
-        let current = fs::read_to_string(&self.trust_file).unwrap_or_default();
+        let current = fs::read(&self.trust_file)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
         let lines: Vec<String> = paths
             .iter()
             .filter(|p| !p.is_empty())
@@ -622,7 +684,8 @@ impl Workspaces {
             };
             Error::new(Some(400), git_reason(&as_git))
         })?;
-        let name = match claim.branch {
+        // `branch ? String(branch) : …`: an empty one is no branch.
+        let name = match claim.branch.filter(|b| !b.is_empty()) {
             Some(b) => b.to_string(),
             None => format!("{BRANCH_PREFIX}{id}"),
         };
@@ -814,7 +877,9 @@ impl Workspaces {
             .map(|l| (*l).to_string())
             .chain(pins.iter().map(|p| format!("/{p}")))
             .collect();
-        let current = fs::read_to_string(&file).unwrap_or_default();
+        let current = fs::read(&file)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
         let have: Vec<&str> = current.split('\n').collect();
         let missing: Vec<&str> = lines
             .iter()
@@ -939,7 +1004,7 @@ impl Workspaces {
         let root_path = record.get("path").as_str().unwrap_or("");
         let base = resolve("/", root_path);
         let target = resolve(&base, candidate);
-        let Some(resolved_root) = realpath(root_path) else {
+        let paths::Real::Named(resolved_root) = paths::realpath_named(root_path) else {
             return Ok(Some(false));
         };
         // A link whose target is missing would be judged by its parent, not where a write lands.
@@ -951,8 +1016,11 @@ impl Workspaces {
         let mut probe = target.clone();
         let mut unresolved = 0;
         let probe = loop {
-            if let Some(real) = realpath(&probe) {
-                break real;
+            match paths::realpath_named(&probe) {
+                paths::Real::Named(real) => break real,
+                // It exists but cannot be named as a string: not judged, so not inside.
+                paths::Real::Unnamed => return Ok(Some(false)),
+                paths::Real::Missing => {}
             }
             let parent = dirname(&probe);
             unresolved += 1;
@@ -1004,6 +1072,21 @@ impl Workspaces {
         if !meta.is_dir() {
             return Some("the clone\u{2019}s .git is not a plain directory".into());
         }
+        // Other configuration git would read from this directory: refused, not read.
+        for (file, why) in [
+            (
+                "config.worktree",
+                "its .git/config.worktree would be read as configuration",
+            ),
+            (
+                "commondir",
+                "its .git/commondir points git at another directory",
+            ),
+        ] {
+            if fs::symlink_metadata(join(&git_dir, file)).is_ok() {
+                return Some(why.to_string());
+            }
+        }
         let config = join(&git_dir, "config");
         let listing = match self.run(
             &args(&["config", "--file", &config, "--name-only", "--list"]),
@@ -1049,7 +1132,9 @@ impl Workspaces {
             }
         }
         let mut attr_files = vec![join(&git_dir, "info/attributes")];
-        walk_attributes(tree, 0, &mut attr_files);
+        if let Err(why) = walk_attributes(tree, 0, &mut attr_files) {
+            return Some(why);
+        }
         for file in attr_files {
             let Ok(bytes) = fs::read(&file) else {
                 continue;
@@ -1115,6 +1200,8 @@ impl Workspaces {
                     );
                     self.run(
                         &hostile(&[
+                            "-c",
+                            "commit.gpgSign=false",
                             "-c",
                             &name,
                             "-c",
@@ -1232,22 +1319,35 @@ impl Workspaces {
 }
 
 /// Every `.gitattributes` under `dir`, at most 64 levels down, `.git` skipped, links not followed.
-fn walk_attributes(dir: &str, depth: usize, out: &mut Vec<String>) {
+/// A name that is not UTF-8 cannot be judged (nor named to git here), so it refuses the tree.
+fn walk_attributes(dir: &str, depth: usize, out: &mut Vec<String>) -> Result<(), String> {
     if depth > 64 {
-        return;
+        return Ok(());
     }
-    let Ok(entries) = sorted_entries(dir) else {
-        return;
+    let Ok(entries) = fs::read_dir(dir) else {
+        return Ok(());
     };
-    for (name, kind) in entries {
+    let mut named = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(name) = entry.file_name().into_string() else {
+            return Err("a name in the clone is not valid UTF-8".into());
+        };
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        named.push((name, kind));
+    }
+    named.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    for (name, kind) in named {
         if name == ".git" {
             continue;
         }
         let full = join(dir, &name);
         if kind.is_dir() {
-            walk_attributes(&full, depth + 1, out);
+            walk_attributes(&full, depth + 1, out)?;
         } else if name == ".gitattributes" {
             out.push(full);
         }
     }
+    Ok(())
 }

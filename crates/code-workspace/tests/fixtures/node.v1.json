@@ -1105,6 +1105,155 @@
     "snapshot": "same"
    },
    {
+    "op": "claim",
+    "ws": "w",
+    "taskId": "00000000-0000-4000-8000-000000000004",
+    "repo": "repos/qa-repo",
+    "branch": "",
+    "result": {
+     "ok": {
+      "taskId": "00000000-0000-4000-8000-000000000004",
+      "repo": "<BASE>/repos/qa-repo",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000004",
+      "path": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000004",
+      "home": "<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000004",
+      "status": "held",
+      "mode": "worktree",
+      "baseSha": "823bb027579e04bd0f510002aef917aa5cdef8cb",
+      "baseBranch": "main",
+      "owner": null,
+      "noevia": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "capabilities": [],
+      "domains": [],
+      "pinned": [],
+      "epoch": "qa-epoch-1",
+      "claimedAt": 2003
+     }
+    },
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000001.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000001\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"noevia/task-00000000-0000-4000-8000-000000000001\",\"path\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"home\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001\",\"status\":\"released\",\"mode\":\"worktree\",\"baseSha\":\"823bb027579e04bd0f510002aef917aa5cdef8cb\",\"baseBranch\":\"main\",\"owner\":null,\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[\"read\",\"edit\"],\"domains\":[\"example.invalid\"],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000,\"releasedAt\":2000,\"headSha\":\"79fa7c7c15cd8c17b9422d339c2f2e2f3ee4f797\",\"error\":null}",
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"feature/x\",\"path\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"released\",\"mode\":\"worktree\",\"baseSha\":\"823bb027579e04bd0f510002aef917aa5cdef8cb\",\"baseBranch\":\"main\",\"owner\":null,\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001,\"releasedAt\":2001,\"headSha\":null,\"error\":null}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"feature/x\",\"path\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"worktree\",\"baseSha\":\"823bb027579e04bd0f510002aef917aa5cdef8cb\",\"baseBranch\":\"main\",\"owner\":null,\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":2002}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"noevia/task-00000000-0000-4000-8000-000000000004\",\"path\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"held\",\"mode\":\"worktree\",\"baseSha\":\"823bb027579e04bd0f510002aef917aa5cdef8cb\",\"baseBranch\":\"main\",\"owner\":null,\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":2003}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n\tdirectory = <BASE>/not-a-repo\n\tdirectory = <BASE>/not-a-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/feature/x 823bb027579e04bd0f510002aef917aa5cdef8cb\nrefs/heads/main 823bb027579e04bd0f510002aef917aa5cdef8cb\nrefs/heads/noevia/task-00000000-0000-4000-8000-000000000001 79fa7c7c15cd8c17b9422d339c2f2e2f3ee4f797\nrefs/heads/noevia/task-00000000-0000-4000-8000-000000000004 823bb027579e04bd0f510002aef917aa5cdef8cb\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD 823bb027579e04bd0f510002aef917aa5cdef8cb\nbranch refs/heads/main\n\nworktree <BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000003\nHEAD 823bb027579e04bd0f510002aef917aa5cdef8cb\nbranch refs/heads/feature/x\n\nworktree <BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000004\nHEAD 823bb027579e04bd0f510002aef917aa5cdef8cb\nbranch refs/heads/noevia/task-00000000-0000-4000-8000-000000000004\n\n",
+       "exclude": "\n# noevia: harness state, not the task's work\n.cache/\n.config/\n.local/\n.opencode/\n.claude/\n.codex/\n.qwen/\n.pi/\n.dsh/\nopencode.json\nopencode.jsonc\n.aider*\nnode_modules/.cache/\n"
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000001.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003/.git/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003/README.md",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003/a.txt",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004/.git/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004/README.md",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004/a.txt",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [],
+     "outside": [
+      "outside/secret.txt"
+     ],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
+   },
+   {
+    "op": "release",
+    "ws": "w",
+    "taskId": "00000000-0000-4000-8000-000000000004",
+    "result": {
+     "ok": {
+      "taskId": "00000000-0000-4000-8000-000000000004",
+      "repo": "<BASE>/repos/qa-repo",
+      "branch": "noevia/task-00000000-0000-4000-8000-000000000004",
+      "path": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000004",
+      "home": "<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000004",
+      "status": "released",
+      "mode": "worktree",
+      "baseSha": "823bb027579e04bd0f510002aef917aa5cdef8cb",
+      "baseBranch": "main",
+      "owner": null,
+      "noevia": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "capabilities": [],
+      "domains": [],
+      "pinned": [],
+      "epoch": "qa-epoch-1",
+      "claimedAt": 2003,
+      "releasedAt": 2004,
+      "headSha": "823bb027579e04bd0f510002aef917aa5cdef8cb",
+      "error": null
+     }
+    },
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000001.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000001\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"noevia/task-00000000-0000-4000-8000-000000000001\",\"path\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000001\",\"home\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001\",\"status\":\"released\",\"mode\":\"worktree\",\"baseSha\":\"823bb027579e04bd0f510002aef917aa5cdef8cb\",\"baseBranch\":\"main\",\"owner\":null,\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[\"read\",\"edit\"],\"domains\":[\"example.invalid\"],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000,\"releasedAt\":2000,\"headSha\":\"79fa7c7c15cd8c17b9422d339c2f2e2f3ee4f797\",\"error\":null}",
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"feature/x\",\"path\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"released\",\"mode\":\"worktree\",\"baseSha\":\"823bb027579e04bd0f510002aef917aa5cdef8cb\",\"baseBranch\":\"main\",\"owner\":null,\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001,\"releasedAt\":2001,\"headSha\":null,\"error\":null}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"feature/x\",\"path\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"worktree\",\"baseSha\":\"823bb027579e04bd0f510002aef917aa5cdef8cb\",\"baseBranch\":\"main\",\"owner\":null,\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":2002}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"noevia/task-00000000-0000-4000-8000-000000000004\",\"path\":\"<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"released\",\"mode\":\"worktree\",\"baseSha\":\"823bb027579e04bd0f510002aef917aa5cdef8cb\",\"baseBranch\":\"main\",\"owner\":null,\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":2003,\"releasedAt\":2004,\"headSha\":\"823bb027579e04bd0f510002aef917aa5cdef8cb\",\"error\":null}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n\tdirectory = <BASE>/not-a-repo\n\tdirectory = <BASE>/not-a-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/feature/x 823bb027579e04bd0f510002aef917aa5cdef8cb\nrefs/heads/main 823bb027579e04bd0f510002aef917aa5cdef8cb\nrefs/heads/noevia/task-00000000-0000-4000-8000-000000000001 79fa7c7c15cd8c17b9422d339c2f2e2f3ee4f797\nrefs/heads/noevia/task-00000000-0000-4000-8000-000000000004 823bb027579e04bd0f510002aef917aa5cdef8cb\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD 823bb027579e04bd0f510002aef917aa5cdef8cb\nbranch refs/heads/main\n\nworktree <BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000003\nHEAD 823bb027579e04bd0f510002aef917aa5cdef8cb\nbranch refs/heads/feature/x\n\n",
+       "exclude": "\n# noevia: harness state, not the task's work\n.cache/\n.config/\n.local/\n.opencode/\n.claude/\n.codex/\n.qwen/\n.pi/\n.dsh/\nopencode.json\nopencode.jsonc\n.aider*\nnode_modules/.cache/\n"
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000001.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003/.git/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003/README.md",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003/a.txt",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [],
+     "outside": [
+      "outside/secret.txt"
+     ],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
+   },
+   {
     "op": "get",
     "ws": "w",
     "taskId": "00000000-0000-4000-8000-000000000003",
@@ -1161,6 +1310,30 @@
     "ws": "w",
     "result": {
      "ok": [
+      {
+       "taskId": "00000000-0000-4000-8000-000000000004",
+       "repo": "<BASE>/repos/qa-repo",
+       "branch": "noevia/task-00000000-0000-4000-8000-000000000004",
+       "path": "<BASE>/tenant/code-workspaces/00000000-0000-4000-8000-000000000004",
+       "home": "<BASE>/tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000004",
+       "status": "released",
+       "mode": "worktree",
+       "baseSha": "823bb027579e04bd0f510002aef917aa5cdef8cb",
+       "baseBranch": "main",
+       "owner": null,
+       "noevia": {
+        "uid": "<uid>",
+        "gid": "<gid>"
+       },
+       "capabilities": [],
+       "domains": [],
+       "pinned": [],
+       "epoch": "qa-epoch-1",
+       "claimedAt": 2003,
+       "releasedAt": 2004,
+       "headSha": "823bb027579e04bd0f510002aef917aa5cdef8cb",
+       "error": null
+      },
       {
        "taskId": "00000000-0000-4000-8000-000000000003",
        "repo": "<BASE>/repos/qa-repo",
@@ -7228,6 +7401,692 @@
      "ok": []
     },
     "snapshot": "same"
+   },
+   {
+    "op": "claim",
+    "ws": "c",
+    "taskId": "00000000-0000-4000-8000-000000000004",
+    "repo": "repos/qa-repo",
+    "branch": "qa/sign",
+    "result": {
+     "ok": {
+      "taskId": "00000000-0000-4000-8000-000000000004",
+      "repo": "<BASE>/repos/qa-repo",
+      "branch": "qa/sign",
+      "path": "<BASE>/trees/00000000-0000-4000-8000-000000000004",
+      "home": "<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004",
+      "status": "held",
+      "mode": "clone",
+      "baseSha": "b160e757f21f1619064c06748af2671ac30b00f7",
+      "baseBranch": "main",
+      "owner": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "noevia": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "capabilities": [],
+      "domains": [],
+      "pinned": [],
+      "epoch": "qa-epoch-1",
+      "claimedAt": 1002
+     }
+    },
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/sign\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt"
+     ],
+     "outside": [],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
+   },
+   {
+    "op": "write",
+    "path": "qa-sign.sh",
+    "text": "#!/bin/sh\ntouch <BASE>/pwned\nexit 1\n",
+    "mode": 493,
+    "snapshot": "same"
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000004",
+    "args": [
+     "config",
+     "commit.gpgsign",
+     "true"
+    ],
+    "snapshot": "same"
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000004",
+    "args": [
+     "config",
+     "gpg.program",
+     "<BASE>/qa-sign.sh"
+    ],
+    "snapshot": "same"
+   },
+   {
+    "op": "write",
+    "path": "trees/00000000-0000-4000-8000-000000000004/a.txt",
+    "text": "changed\n",
+    "snapshot": "same"
+   },
+   {
+    "op": "release",
+    "ws": "c",
+    "taskId": "00000000-0000-4000-8000-000000000004",
+    "result": {
+     "ok": {
+      "taskId": "00000000-0000-4000-8000-000000000004",
+      "repo": "<BASE>/repos/qa-repo",
+      "branch": "qa/sign",
+      "path": "<BASE>/trees/00000000-0000-4000-8000-000000000004",
+      "home": "<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004",
+      "status": "stuck",
+      "mode": "clone",
+      "baseSha": "b160e757f21f1619064c06748af2671ac30b00f7",
+      "baseBranch": "main",
+      "owner": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "noevia": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "capabilities": [],
+      "domains": [],
+      "pinned": [],
+      "epoch": "qa-epoch-1",
+      "claimedAt": 1002,
+      "releasedAt": 1003,
+      "headSha": null,
+      "error": "Could not save the task’s uncommitted changes: Command failed: git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c user.name=noevia -c user.email=noevia@localhost commit --quiet --no-verify -m noevia: work in progress from task 00000000-0000-4000-8000-000000000004\n\nCommitted by noevia when the task ended, because the harness left it uncommitted.\nerror: gpg failed to sign the data:\n(no gpg output)\nfatal: failed to write commit object\n"
+     }
+    },
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/sign\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Could not save the task’s uncommitted changes: Command failed: git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c user.name=noevia -c user.email=noevia@localhost commit --quiet --no-verify -m noevia: work in progress from task 00000000-0000-4000-8000-000000000004\\n\\nCommitted by noevia when the task ended, because the harness left it uncommitted.\\nerror: gpg failed to sign the data:\\n(no gpg output)\\nfatal: failed to write commit object\\n\"}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt"
+     ],
+     "outside": [],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": true
+    }
+   },
+   {
+    "op": "rm",
+    "path": "pwned",
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/sign\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Could not save the task’s uncommitted changes: Command failed: git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c user.name=noevia -c user.email=noevia@localhost commit --quiet --no-verify -m noevia: work in progress from task 00000000-0000-4000-8000-000000000004\\n\\nCommitted by noevia when the task ended, because the harness left it uncommitted.\\nerror: gpg failed to sign the data:\\n(no gpg output)\\nfatal: failed to write commit object\\n\"}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt"
+     ],
+     "outside": [],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
+   },
+   {
+    "op": "claim",
+    "ws": "c",
+    "taskId": "00000000-0000-4000-8000-000000000005",
+    "repo": "repos/qa-repo",
+    "branch": "qa/wtconfig",
+    "result": {
+     "ok": {
+      "taskId": "00000000-0000-4000-8000-000000000005",
+      "repo": "<BASE>/repos/qa-repo",
+      "branch": "qa/wtconfig",
+      "path": "<BASE>/trees/00000000-0000-4000-8000-000000000005",
+      "home": "<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005",
+      "status": "held",
+      "mode": "clone",
+      "baseSha": "b160e757f21f1619064c06748af2671ac30b00f7",
+      "baseBranch": "main",
+      "owner": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "noevia": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "capabilities": [],
+      "domains": [],
+      "pinned": [],
+      "epoch": "qa-epoch-1",
+      "claimedAt": 1004
+     }
+    },
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/sign\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Could not save the task’s uncommitted changes: Command failed: git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c user.name=noevia -c user.email=noevia@localhost commit --quiet --no-verify -m noevia: work in progress from task 00000000-0000-4000-8000-000000000004\\n\\nCommitted by noevia when the task ended, because the harness left it uncommitted.\\nerror: gpg failed to sign the data:\\n(no gpg output)\\nfatal: failed to write commit object\\n\"}",
+      "00000000-0000-4000-8000-000000000005.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000005\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/wtconfig\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000005\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1004}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000005.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt",
+      "trees/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000005/.git/",
+      "trees/00000000-0000-4000-8000-000000000005/a.txt"
+     ],
+     "outside": [],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000005",
+    "args": [
+     "config",
+     "core.repositoryformatversion",
+     "1"
+    ],
+    "snapshot": "same"
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000005",
+    "args": [
+     "config",
+     "extensions.worktreeConfig",
+     "true"
+    ],
+    "snapshot": "same"
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000005",
+    "args": [
+     "config",
+     "--worktree",
+     "filter.qa.clean",
+     "sh -c \"touch <BASE>/pwned; cat\""
+    ],
+    "snapshot": "same"
+   },
+   {
+    "op": "write",
+    "path": "trees/00000000-0000-4000-8000-000000000005/.gitattributes",
+    "text": "* filter=qa\n",
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/sign\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Could not save the task’s uncommitted changes: Command failed: git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c user.name=noevia -c user.email=noevia@localhost commit --quiet --no-verify -m noevia: work in progress from task 00000000-0000-4000-8000-000000000004\\n\\nCommitted by noevia when the task ended, because the harness left it uncommitted.\\nerror: gpg failed to sign the data:\\n(no gpg output)\\nfatal: failed to write commit object\\n\"}",
+      "00000000-0000-4000-8000-000000000005.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000005\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/wtconfig\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000005\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1004}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000005.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt",
+      "trees/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000005/.git/",
+      "trees/00000000-0000-4000-8000-000000000005/.gitattributes",
+      "trees/00000000-0000-4000-8000-000000000005/a.txt"
+     ],
+     "outside": [],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
+   },
+   {
+    "op": "git",
+    "cwd": "trees/00000000-0000-4000-8000-000000000005",
+    "args": [
+     "add",
+     ".gitattributes"
+    ],
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/sign\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Could not save the task’s uncommitted changes: Command failed: git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c user.name=noevia -c user.email=noevia@localhost commit --quiet --no-verify -m noevia: work in progress from task 00000000-0000-4000-8000-000000000004\\n\\nCommitted by noevia when the task ended, because the harness left it uncommitted.\\nerror: gpg failed to sign the data:\\n(no gpg output)\\nfatal: failed to write commit object\\n\"}",
+      "00000000-0000-4000-8000-000000000005.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000005\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/wtconfig\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000005\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1004}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000005.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt",
+      "trees/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000005/.git/",
+      "trees/00000000-0000-4000-8000-000000000005/.gitattributes",
+      "trees/00000000-0000-4000-8000-000000000005/a.txt"
+     ],
+     "outside": [],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": true
+    }
+   },
+   {
+    "op": "rm",
+    "path": "trees/00000000-0000-4000-8000-000000000005/.gitattributes",
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/sign\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Could not save the task’s uncommitted changes: Command failed: git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c user.name=noevia -c user.email=noevia@localhost commit --quiet --no-verify -m noevia: work in progress from task 00000000-0000-4000-8000-000000000004\\n\\nCommitted by noevia when the task ended, because the harness left it uncommitted.\\nerror: gpg failed to sign the data:\\n(no gpg output)\\nfatal: failed to write commit object\\n\"}",
+      "00000000-0000-4000-8000-000000000005.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000005\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/wtconfig\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000005\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1004}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000005.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt",
+      "trees/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000005/.git/",
+      "trees/00000000-0000-4000-8000-000000000005/a.txt"
+     ],
+     "outside": [],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": true
+    }
+   },
+   {
+    "op": "write",
+    "path": "trees/00000000-0000-4000-8000-000000000005/a.txt",
+    "text": "changed\n",
+    "snapshot": "same"
+   },
+   {
+    "op": "rm",
+    "path": "pwned",
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/sign\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Could not save the task’s uncommitted changes: Command failed: git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c user.name=noevia -c user.email=noevia@localhost commit --quiet --no-verify -m noevia: work in progress from task 00000000-0000-4000-8000-000000000004\\n\\nCommitted by noevia when the task ended, because the harness left it uncommitted.\\nerror: gpg failed to sign the data:\\n(no gpg output)\\nfatal: failed to write commit object\\n\"}",
+      "00000000-0000-4000-8000-000000000005.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000005\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/wtconfig\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000005\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1004}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000005.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt",
+      "trees/00000000-0000-4000-8000-000000000005/",
+      "trees/00000000-0000-4000-8000-000000000005/.git/",
+      "trees/00000000-0000-4000-8000-000000000005/a.txt"
+     ],
+     "outside": [],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
+   },
+   {
+    "op": "release",
+    "ws": "c",
+    "taskId": "00000000-0000-4000-8000-000000000005",
+    "result": {
+     "ok": {
+      "taskId": "00000000-0000-4000-8000-000000000005",
+      "repo": "<BASE>/repos/qa-repo",
+      "branch": "qa/wtconfig",
+      "path": "<BASE>/trees/00000000-0000-4000-8000-000000000005",
+      "home": "<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005",
+      "status": "released",
+      "mode": "clone",
+      "baseSha": "b160e757f21f1619064c06748af2671ac30b00f7",
+      "baseBranch": "main",
+      "owner": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "noevia": {
+       "uid": "<uid>",
+       "gid": "<gid>"
+      },
+      "capabilities": [],
+      "domains": [],
+      "pinned": [],
+      "epoch": "qa-epoch-1",
+      "claimedAt": 1004,
+      "releasedAt": 1005,
+      "headSha": "3e824a7e2d5b3a2633c9a8fe8341c806ef1b1d28",
+      "error": null
+     }
+    },
+    "snapshot": {
+     "records": {
+      "00000000-0000-4000-8000-000000000002.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000002\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000002\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000002\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1000}",
+      "00000000-0000-4000-8000-000000000003.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000003\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/x\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000003\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000003\",\"status\":\"held\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1001}",
+      "00000000-0000-4000-8000-000000000004.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000004\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/sign\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000004\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000004\",\"status\":\"stuck\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1002,\"releasedAt\":1003,\"headSha\":null,\"error\":\"Could not save the task’s uncommitted changes: Command failed: git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c user.name=noevia -c user.email=noevia@localhost commit --quiet --no-verify -m noevia: work in progress from task 00000000-0000-4000-8000-000000000004\\n\\nCommitted by noevia when the task ended, because the harness left it uncommitted.\\nerror: gpg failed to sign the data:\\n(no gpg output)\\nfatal: failed to write commit object\\n\"}",
+      "00000000-0000-4000-8000-000000000005.json": "{\"taskId\":\"00000000-0000-4000-8000-000000000005\",\"repo\":\"<BASE>/repos/qa-repo\",\"branch\":\"qa/wtconfig\",\"path\":\"<BASE>/trees/00000000-0000-4000-8000-000000000005\",\"home\":\"<BASE>/trees/.harness-home/00000000-0000-4000-8000-000000000005\",\"status\":\"released\",\"mode\":\"clone\",\"baseSha\":\"b160e757f21f1619064c06748af2671ac30b00f7\",\"baseBranch\":\"main\",\"owner\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"noevia\":{\"uid\":\"<uid>\",\"gid\":\"<gid>\"},\"capabilities\":[],\"domains\":[],\"pinned\":[],\"epoch\":\"qa-epoch-1\",\"claimedAt\":1004,\"releasedAt\":1005,\"headSha\":\"3e824a7e2d5b3a2633c9a8fe8341c806ef1b1d28\",\"error\":null}",
+      "stray.json": "{}",
+      "trusted-repositories.gitconfig": "[safe]\n\tdirectory = <BASE>/repos/qa-repo\n\tdirectory = <BASE>/repos/qa-repo/.git\n"
+     },
+     "git": {
+      "qa-repo": {
+       "refs": "refs/heads/main b160e757f21f1619064c06748af2671ac30b00f7\nrefs/heads/qa/wtconfig 3e824a7e2d5b3a2633c9a8fe8341c806ef1b1d28\n",
+       "worktrees": "worktree <BASE>/repos/qa-repo\nHEAD b160e757f21f1619064c06748af2671ac30b00f7\nbranch refs/heads/main\n\n",
+       "exclude": null
+      }
+     },
+     "tenant": [
+      "tenant/code-workspaces/",
+      "tenant/code-workspaces/.harness-home/",
+      "tenant/code-workspaces/.harness-home/00000000-0000-4000-8000-000000000001/",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000002.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000003.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000004.json",
+      "tenant/code-workspaces/00000000-0000-4000-8000-000000000005.json",
+      "tenant/code-workspaces/stray.json",
+      "tenant/code-workspaces/trusted-repositories.gitconfig"
+     ],
+     "trees": [
+      "trees/.harness-home/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000002/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000003/",
+      "trees/.harness-home/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000002/",
+      "trees/00000000-0000-4000-8000-000000000002/.git/",
+      "trees/00000000-0000-4000-8000-000000000002/a.txt",
+      "trees/00000000-0000-4000-8000-000000000003/",
+      "trees/00000000-0000-4000-8000-000000000003/.git/",
+      "trees/00000000-0000-4000-8000-000000000003/a.txt",
+      "trees/00000000-0000-4000-8000-000000000004/",
+      "trees/00000000-0000-4000-8000-000000000004/.git/",
+      "trees/00000000-0000-4000-8000-000000000004/a.txt"
+     ],
+     "outside": [],
+     "modes": {
+      "root": "700",
+      "homes": "755"
+     },
+     "pwned": false
+    }
    }
   ]
  }
