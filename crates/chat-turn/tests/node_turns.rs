@@ -11,7 +11,7 @@
 
 mod common;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use chat_turn::sink::{check_stream, OrderError};
 use common::{case, cases, client_left, fixture, js_len, request_body};
@@ -71,15 +71,20 @@ fn the_fixture_names_its_node_sources_and_the_matrix() {
     ] {
         assert!(names.iter().any(|n| n == name), "{name} is recorded");
     }
-    // Every request's tool reference resolves.
+    // Every request's tool reference resolves to a recorded list.
     for c in cases() {
         for r in c["requests"].as_array().unwrap() {
             let body = request_body(&f, r);
-            assert!(
-                body["tools"].is_null() || body["tools"].is_array(),
-                "{}",
-                c["name"]
-            );
+            if r["body"]["tools"].is_null() {
+                assert!(body["tools"].is_null(), "{}", c["name"]);
+            } else {
+                assert!(r["body"]["tools"]["$tools"].is_string(), "{}", c["name"]);
+                assert!(
+                    !body["tools"].as_array().unwrap().is_empty(),
+                    "{}",
+                    c["name"]
+                );
+            }
         }
     }
 }
@@ -140,28 +145,43 @@ fn refusals_answer_before_the_stream_and_ask_nothing() {
 }
 
 #[test]
-fn an_error_is_followed_by_the_closing_events_only_after_a_failed_round() {
-    // The cases whose stream goes on after an `error`: a round that failed before its stream (HTTP
-    // status, unreachable engine), a stream ended by the idle limit, and an empty final-answer round.
-    let mut after: BTreeMap<String, Vec<String>> = BTreeMap::new();
+fn what_follows_an_error_depends_on_where_it_came_from() {
+    // A round that failed before or while its stream was read breaks the round loop: only the
+    // reply's closing events follow. A failed non-streaming retry of an empty stream does not break
+    // it, and the final-answer round streams after the error. A mid-stream error frame ends the
+    // stream at once, as do a failed preparation and a refused tool round.
+    const BREAKS: [&str; 3] = ["engine_http_500", "engine_stalls", "engine_unreachable"];
+    const FALLBACK: &str = "fallback_fails_then_final_pass";
+    let mut seen = BTreeSet::new();
     for c in cases().iter().filter(|c| streamed(c)) {
+        let name = c["name"].as_str().unwrap();
         let k = kinds(c);
-        if let Some(at) = k.iter().position(|t| t == "error") {
-            if at + 1 < k.len() {
-                after.insert(c["name"].as_str().unwrap().into(), k[at + 1..].to_vec());
-            }
+        let Some(at) = k.iter().position(|t| t == "error") else {
+            continue;
+        };
+        let rest = &k[at + 1..];
+        if rest.is_empty() {
+            continue;
+        }
+        seen.insert(name.to_string());
+        if BREAKS.contains(&name) {
+            assert_eq!(rest, ["telemetry", "done"], "{name}");
+        } else if name == FALLBACK {
+            assert_eq!(&rest[rest.len() - 2..], ["telemetry", "done"], "{name}");
+            assert!(
+                rest.iter().any(|t| t == "delta"),
+                "{name}: the final pass answers"
+            );
+            assert!(!rest.iter().any(|t| t == "tool_pending"), "{name}");
+        } else {
+            panic!("{name}: events after an error with no known source: {rest:?}");
         }
     }
-    let names: Vec<&str> = after.keys().map(String::as_str).collect();
-    assert_eq!(
-        names,
-        ["engine_http_500", "engine_stalls", "engine_unreachable"]
-    );
-    for (name, rest) in &after {
-        assert_eq!(rest, &["telemetry", "done"], "{name}");
-    }
-    // A mid-stream error frame ends the stream at once.
+    let mut expected: BTreeSet<String> = BREAKS.iter().map(|n| n.to_string()).collect();
+    expected.insert(FALLBACK.to_string());
+    assert_eq!(seen, expected);
     assert_eq!(kinds(&case("engine_stream_error")).last().unwrap(), "error");
+    assert_eq!(kinds(&case("context_too_full")).last().unwrap(), "error");
 }
 
 #[test]
@@ -189,7 +209,7 @@ fn every_tool_chip_gets_its_result_unless_the_client_left() {
 fn done_names_the_model_meta_named() {
     for c in cases().iter().filter(|c| streamed(c)) {
         let events = c["events"].as_array().unwrap();
-        let model = &events[0]["model"];
+        let model = &events.iter().find(|e| e["type"] == "meta").unwrap()["model"];
         for e in events
             .iter()
             .filter(|e| e["type"] == "done" || e["type"] == "telemetry")

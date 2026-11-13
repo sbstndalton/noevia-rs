@@ -16,10 +16,13 @@
 // QA-named; the engine is a .invalid host and nothing touches the network.
 //
 // Deterministic by construction: the clock is frozen at FIXED_NOW (TZ=UTC), crypto.randomUUID is a
-// counter, and every *_IMPL switch is left at its default in code. What a case records:
+// counter, and every *_IMPL switch is left at its default in code. The engine is configured as a llama.cpp
+// deployment's (MODEL_MANAGER_KIND=llamacpp, INFERENCE_BASE_URL = the engine), so the default provider is the
+// local engine; the model manager grants the inference gate's lease at once (X-Noevia-Lease on every request).
+// What a case records:
 //   http      the status and headers of the reply, or the JSON refusal sent instead of a stream
-//   events    every SSE `data:` object in order (keep-alive comments are counted, never expected)
-//   requests  every engine request: url, the parsed body, and whether it was the chat endpoint
+//   events    every SSE `data:` object in order (a keep-alive comment fails the recording: no case runs 5 s)
+//   requests  every engine request: url, headers, the parsed body, and whether it was the chat endpoint
 //   stores    the calls into the stores (saveChats, chatTitles.save, transcripts.appendIfLast, ...)
 //   files     the workspace files after the turn (context state, partial), parsed, run-local ids out
 //   record    createTurnRecord() fed with the events: the transcript entry the client keeps
@@ -30,6 +33,11 @@
 process.env.TZ = 'UTC';
 const checkout = process.env.NOEVIA_CORE_CHECKOUT;
 for (const key of Object.keys(process.env)) if (/_IMPL$/.test(key) || /^(CONTEXT_LOG|MODEL_MANAGER_KIND|INFERENCE_BASE_URL|NOEVIA_)/.test(key)) delete process.env[key];
+// A llama.cpp deployment: the default provider is the local engine (reasoning-effort.cjs localEngine).
+process.env.MODEL_MANAGER_KIND = 'llamacpp';
+process.env.INFERENCE_BASE_URL = 'http://qa-engine.invalid';
+// The supervisor's per-start id (chat-partial.cjs START_ID), fixed: it is in every grant binding.
+process.env.NOEVIA_START_ID = '0123456789abcdef0123456789abcdef';
 
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -95,6 +103,11 @@ const fixedCrypto = Object.assign(Object.create(crypto), { randomUUID: nextUuid 
 let mathSeed = 0x2026;
 Math.random = () => { mathSeed = (mathSeed * 1103515245 + 12345) % 2147483648; return mathSeed / 2147483648; };
 
+// The one Drive call a write makes before it runs is the metadata read that names the card's target
+// (gdrive-tools.cjs describeTarget). gdrive-tools takes driveFiles when it loads, so it is replaced first.
+require(path.join(server, 'gdrive-files.cjs')).driveFiles = () => ({
+  metadata: async ({ fileId }) => ({ id: fileId, name: `QA file ${fileId}` }),
+});
 const { createChatHandler } = require(path.join(server, 'chat.cjs'));
 const { createToolboxes } = require(path.join(server, 'toolboxes.cjs'));
 const { createDriveTools } = require(path.join(server, 'gdrive-tools.cjs'));
@@ -111,7 +124,8 @@ const MODEL = 'qa-model';
 //   { frames: [...] }   a 200 event stream; each frame is an object (sent as `data: <json>\n\n`), a raw string
 //                       (sent as it is), or a marker: { leave: true } the client goes away here (the turn's
 //                       `close`), { stall: true } no more bytes until the request is aborted, { done: true }
-//                       `data: [DONE]`, { split: <object> } one frame cut in two chunks mid-line.
+//                       `data: [DONE]`, { split: <object> } one frame cut in two chunks mid-line, { splitBytes: <object> }
+//                       one frame cut inside the UTF-8 bytes of its first astral character.
 //   { status, body }    a non-200 reply with this body text
 //   { json }            a 200 non-streaming JSON reply (the empty-stream fallback, a summary, a title)
 //   { throws }          the request fails before any reply
@@ -120,7 +134,7 @@ function engine(rounds, log, res) {
   let next = 0;
   const fetch = async (url, options = {}) => {
     const body = typeof options.body === 'string' ? JSON.parse(options.body) : null;
-    log.requests.push({ url: String(url), chat: String(url) === CHAT_URL, stream: body?.stream === true, body });
+    log.requests.push({ url: String(url), chat: String(url) === CHAT_URL, stream: body?.stream === true, headers: options.headers || {}, body });
     const round = rounds[next++];
     if (!round) { log.overrun = true; throw new Error(`the script has no engine round ${next}`); }
     if (round.throws) throw new Error(round.throws);
@@ -133,6 +147,12 @@ function engine(rounds, log, res) {
       else if (frame && frame.stall) chunks.push({ stall: true });
       else if (frame && frame.done) chunks.push('data: [DONE]\n\n');
       else if (frame && frame.split) { const line = `data: ${JSON.stringify(frame.split)}\n\n`; const at = Math.floor(line.length / 2); chunks.push(line.slice(0, at), line.slice(at)); }
+      else if (frame && frame.splitBytes) {
+        // Cut inside the first 4-byte UTF-8 sequence (an astral character), so the decoder must carry its bytes over.
+        const bytes = enc.encode(`data: ${JSON.stringify(frame.splitBytes)}\n\n`);
+        const at = bytes.findIndex((b) => b >= 0xf0) + 2;
+        chunks.push(bytes.subarray(0, at), bytes.subarray(at));
+      }
       else chunks.push(typeof frame === 'string' ? frame : `data: ${JSON.stringify(frame)}\n\n`);
     }
     let i = 0;
@@ -152,7 +172,7 @@ function engine(rounds, log, res) {
           return;
         }
         if (chunk && chunk.stall) { await settle(); await aborted(); return; }
-        controller.enqueue(enc.encode(chunk));
+        controller.enqueue(typeof chunk === 'string' ? enc.encode(chunk) : chunk);
       },
     });
     return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
@@ -203,6 +223,7 @@ async function runTurn(c) {
     };
     const scope = { workspace: { userId: user.id }, authn: { user } };
     const requestScope = { getStore: () => scope, run: (_s, fn) => fn() };
+    // A connected Drive (its metadata read is the stub installed above, before gdrive-tools.cjs loaded).
     const accounts = { forUser: () => ({ drive: { state: () => ({ state: 'connected' }) } }) };
     const definitions = createDriveTools({ accounts });
     const driveTools = { ...definitions, execute: async (_user, tool) => {
@@ -226,10 +247,17 @@ async function runTurn(c) {
       out.events.push(JSON.parse(line.slice(6)));
       return true;
     };
-    res.end = () => { if (res.writableEnded) return; res.writableEnded = true; res.emit('finish'); res.emit('close'); };
+    // As http.ServerResponse: finish and close come after end() returns; a destroyed response emits neither again.
+    res.end = () => {
+      if (res.writableEnded) return;
+      res.writableEnded = true;
+      if (res.destroyed) return;
+      process.nextTick(() => { res.emit('finish'); res.emit('close'); });
+    };
     const json = (r, status, payload) => { out.refusal = { status, payload }; r.end(); };
 
     const ctxSize = c.ctxSize || 32768;
+    let leases = 0;
     const upstream = engine(c.rounds || [], log, res);
     const handler = createChatHandler({
       fs, path, crypto: fixedCrypto, fetch: upstream.fetch,
@@ -241,21 +269,42 @@ async function runTurn(c) {
       toolPolicy: { mode: (_user, _tool, write) => (write ? 'ask' : 'allow') },
       modelManager: {
         enabled: true,
+        // The inference gate grants at once (llamacpp-manager.cjs acquireLease, inference-gate-client.cjs makeLease).
+        acquireLease: async (model, options = {}) => {
+          options.signal?.throwIfAborted();
+          const lease = `qa-lease-${++leases}`;
+          let released = false;
+          store('modelManager.acquireLease', { model, lease });
+          const withLease = (headers) => ({ ...(headers || {}), 'X-Noevia-Lease': lease });
+          return {
+            model, headers: () => ({ 'X-Noevia-Lease': lease }),
+            // Gives the lease back once (inference-gate-client.cjs); Node calls it on both finish and close.
+            release: async () => { if (released) return; released = true; store('lease.release', { lease }); },
+            fetch: (baseFetch) => (url, init = {}) => baseFetch(url, { ...init, headers: withLease(init.headers) }),
+          };
+        },
+        inferenceBusy: () => false,
         load: async (model) => { store('modelManager.load', { model }); return { ok: true }; },
         health: async () => ({ ok: true, body: { all_models_loaded: [{ model_name: MODEL, loaded: true, recipe_options: { ctx_size: ctxSize } }] } }),
       },
       requestScope, currentWorkspace: () => workspace, json, getProject: (id) => (project && id === project.id ? project : null),
-      getProvider: () => ({ id: 'default', baseUrl: ENGINE, label: 'QA engine' }), providerHeaders: () => ({}),
+      // providers.cjs providerHeaders: JSON, and a bearer key when the row has one other than 'local' (this one has none).
+      getProvider: () => ({ id: 'default', baseUrl: ENGINE, label: 'QA engine' }),
+      providerHeaders: (p, extra) => ({ 'Content-Type': 'application/json', ...(extra || {}), ...(p.apiKey && p.apiKey !== 'local' ? { Authorization: `Bearer ${p.apiKey}` } : {}) }),
       saveChats: (projectId, chats) => store('saveChats', { projectId, chats }), endpointApproved: () => true,
       diaryHeaders: () => ({}), diaryExtras: require(path.join(server, 'diary-extras.cjs')),
       autoRoles: () => (c.auto ? { fast: MODEL, smart: MODEL } : null), lastLoadedModel: () => (c.lastLoaded === undefined ? null : c.lastLoaded),
-      classifyFastOrSmart: async () => c.auto || 'fast', servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
+      // systemOneRouter.classifyWithDetails with no decision backend (system-one-router.cjs fallback branch).
+      classifyFastOrSmart: async () => ({ role: c.auto || 'fast', routingDecision: { offered: [], scores: {}, selectedRole: null, effectiveRole: c.auto || 'fast',
+        backend: 'legacy', model: null, calibrated: false, latencyMs: null, status: 'fallback', fallbackReason: 'disabled', fallbackCause: null } }), servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
       visionProbe: async () => ({ supported: false, reason: 'none' }), visionDescriptions: new Map(), skillsIndexFor: () => [],
       chatSkillRouter: { select: async () => ({ loaded: [] }) }, chatToolRouter: { select: async (ids) => ({ ids, routed: false }) },
       ...toolbox, oauthServerIds: () => new Set(), accountReady: () => true,
       grantContext: async (raw) => grantFixture.context(raw, { holder: { kind: 'absent' } }),
       chatWideApproved: () => false,
-      awaitApproval: async (request) => { log.approvals.push({ id: request.id, userId: request.userId, chatId: request.chatId, scope: request.scope, once: request.once }); return c.decision || 'approve'; },
+      awaitApproval: async (request) => { const { abortSignal: _signal, ...asked } = request; log.approvals.push(asked); return c.decision || 'approve'; },
+      // index.cjs: Drive writes are described before their card and again before dispatch (gdrive-tools describeTarget).
+      writeTargetFor: (name, rawArgs, { user: who }) => (driveTools.names.has(name) ? driveTools.describeTarget(who, name, rawArgs) : null),
       recordUsage: (_ws, model, reported) => store('recordUsage', { model, reported }),
       recordToolUse: (_ws, name) => store('recordToolUse', { name }),
       chatTitles: c.titles ? { save: (listId, chatId, title, first) => store('chatTitles.save', { listId, chatId, title, first }), autoNamed: (listId, chatId, first) => { store('chatTitles.autoNamed', { listId, chatId, first }); return c.titles.autoNamed !== false; } } : null,
@@ -263,6 +312,8 @@ async function runTurn(c) {
     });
     const body = { message: 'QA hello', projectId: project ? project.id : undefined, chatId: 'qa-chat-1', history: [], ...(c.body || {}) };
     await handler.handleChat({}, res, body, { user });
+    await new Promise((resolve) => setImmediate(resolve)); // the response's finish/close and what they release
+    if (out.keepAlives) throw new Error(`${c.name}: a keep-alive was written; the turn ran into the 5 s heartbeat`);
     // The script is exact: every round it names is asked for, and no other.
     if (upstream.used() !== (c.rounds || []).length) throw new Error(`${c.name}: the turn made ${upstream.used()} engine requests, the script has ${(c.rounds || []).length}`);
     const record = createTurnRecord({ now: () => FIXED_NOW });
@@ -271,7 +322,7 @@ async function runTurn(c) {
       name: c.name,
       about: c.about,
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null, rounds: c.rounds || [] },
-      http: out.http, refusal: out.refusal, events: out.events, keepAlives: out.keepAlives,
+      http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores,
       files: listFiles(dir),
       record: { assistantEntry: record.assistantEntry(), partialEntry: record.partialEntry() },
@@ -299,6 +350,8 @@ const CASES = [
     rounds: [{ frames: [chunk({ role: 'assistant', content: '' }), chunk({ content: 'Hello from ' }), chunk({ content: 'QA.' }), finish('stop'), usage(52, 5, 25), { done: true }] }] },
   { name: 'plain_split_frames', about: 'Frames cut mid-line across chunks, a keep-alive comment and a non-JSON line are reassembled or skipped.',
     rounds: [{ frames: [': ping\n\n', { split: chunk({ content: 'Split ' }) }, 'data: not-json\n\n', { split: chunk({ content: 'frame.' }) }, finish('stop'), { done: true }] }] },
+  { name: 'astral_split_bytes', about: 'An answer with astral characters, one of them cut between two chunks inside its UTF-8 bytes.',
+    rounds: [{ frames: [{ splitBytes: chunk({ content: 'QA \u{1F600} smile and \u{1D11E} clef' }) }, finish('stop'), { done: true }] }] },
   { name: 'no_project', about: 'A free chat: no project, the loaded model answers.', project: null, lastLoaded: MODEL,
     body: { projectId: undefined, spaceId: 'free' }, rounds: [answer('Free chat reply.')] },
   { name: 'reasoning', about: 'reasoning_content and reasoning deltas before the answer.',
@@ -343,6 +396,8 @@ const CASES = [
     rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-4"}'), finish('tool_calls')] }] },
   { name: 'tool_approval_timeout', about: 'A write asks and the card times out.', decision: 'timeout',
     rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-5"}'), finish('tool_calls')] }, answer('I did not trash it.')] },
+  { name: 'tool_write_target_refused', about: 'A Drive write whose file id is not one: refused before any card, nothing asked.',
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"not a drive id!"}'), finish('tool_calls')] }, answer('That id was not valid.')] },
   { name: 'tool_unknown', about: 'A call of a tool the turn never offered.',
     rounds: [{ frames: [toolCall('qa_not_offered', '{}'), finish('tool_calls')] }, answer('That tool does not exist.')] },
   { name: 'final_pass', about: 'Three rounds spent on tool calls: one more round with no tools asks for the answer.',
@@ -359,6 +414,12 @@ const CASES = [
       { frames: [finish('stop')] },
       { frames: [chunk({ reasoning_content: 'Still only thinking.' }), finish('stop')] },
       { frames: [finish('stop')] }] },
+  { name: 'fallback_fails_then_final_pass', about: 'A tool round, then an empty stream whose non-streaming retry fails: the error is not the end, a final-answer round follows.',
+    rounds: [
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-a"}', 'qa-r1'), finish('tool_calls')] },
+      { frames: [{ done: true }] },
+      { status: 500, body: JSON.stringify({ error: { message: 'QA fallback failure' } }) },
+      answer('Answer from the final pass.')] },
   { name: 'auto_fast', about: 'Automatic routing picks Fast: the route in meta, thinking off, effort low.', auto: 'fast',
     project: { routing: 'auto', model: undefined }, rounds: [answer('Fast reply.')] },
   { name: 'context_compacted', about: 'History over the context budget: older turns are summarised before the reply.', ctxSize: 4096,
