@@ -1000,8 +1000,11 @@ async fn the_planner_plans_runs_verifies_reviews_and_is_accepted_or_cancelled() 
             );
             let authority = store.claim_lifecycle_authority().unwrap();
             let expected = js_json::JValue::Arr(code_pipeline::EXPECTED_ARTIFACTS.iter().map(|a| js_json::JValue::Str((*a).to_owned())).collect());
+            let at = &ours_rows[mine]["data"];
             let request = js_json::JValue::obj([
+                ("from", js_json::JValue::Str(at["from"].as_str().unwrap().to_owned())),
                 ("to", js_json::JValue::Str("reviewing".into())),
+                ("revision", js_json::JValue::Num(at["revision"].as_f64().unwrap())),
                 ("reason", js_json::JValue::Str("Tests passed".into())),
                 ("expectedArtifacts", expected),
             ]);
