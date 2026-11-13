@@ -15,18 +15,21 @@
 //!    did not get ready, [`NotReady`] (the not-ready line and [`meta_not_ready`]).
 //! 3. [`loads_project`]: whether `getProject(projectId)` is asked (the caller reads the record and
 //!    answers 404 for a `body.projectId` it does not hold).
+//!    The record the caller read goes through [`load`] (below) before anything reads it.
 //! 4. [`multimodal`] (#1726/#1736) and [`request`]: what retrieval is asked: the project's id, the
 //!    files it may read ([`readable`]: `instruction-skills.cjs` `sources`, the files that are
 //!    neither skill candidates nor unreadable), the question (`body.message` as it is; chat.cjs
 //!    derives no search query from the history here), the account, and the options (`attached`
 //!    for a shadow project, `images` when multimodal retrieval is on). No request when the project
-//!    has no files.
+//!    has no files. The request holds copies of the files it names, so what [`retrieved`] reads
+//!    is the snapshot the request was built from.
 //! 5. [`retrieved`]: what chat.cjs keeps of the [`Answer`]: the block, and from the report
 //!    (`onSources(placed, injected)`) the placed and injected entries, the files read, the reply's
 //!    sources ([`build_sources`], `chat-sources.cjs`) and the partial reads ([`partial_sources`],
 //!    `source-coverage.cjs`, #1513). rag.cjs calls the report inside a `try`, so a report that
-//!    throws keeps what was set before the throw. A retrieval that throws (rag.cjs never does)
-//!    fails the turn: [`RetrievalThrew`].
+//!    throws keeps what was set before the throw. It stops ([`Stopped`]) for a retrieval that
+//!    threw (rag.cjs never does; the turn fails, [`Stopped::Threw`]) and for a request that asked
+//!    for images ([`Stopped::Images`]: the turn stays in Node, see the named difference).
 //! 6. [`sources_event`], [`injected_not_text`], [`frame_sources`] (`rust-chat-native.cjs`
 //!    `injectedSources`, #1793) and [`coverage_warning`].
 //!
@@ -35,19 +38,30 @@
 //! system message are [`crate::sources`]'s.
 //!
 //! Inputs are what chat.cjs holds: the request body (a `diary-extras` turn's after chat.cjs set its
-//! `projectId` to [`DIARY_EXTRAS_PROJECT`]), and the project after `instruction-skills.cjs`
-//! `snapshot`, each source whose text is in its own file (#1806) given its text in `content` when
-//! the caller has it (a 64-hex `textRef`, a safe-integer `chars` that is its text's length as
-//! source-text.cjs writes it, and no `content` reads as a missing text whose length is `chars`).
-//! Strings are JS strings as `js_json::wtf16` holds them; lengths and cuts count UTF-16 units.
+//! `projectId` to [`DIARY_EXTRAS_PROJECT`]) and the project record as stored (projects.json, after
+//! `instruction-skills.cjs` `snapshot`). Strings are JS strings as `js_json::wtf16` holds them;
+//! lengths and cuts count UTF-16 units.
+//!
+//! The caller contract for a source whose text is in its own file (#1806): the caller passes the
+//! stored record unchanged (no text inlined) and a lookup of the texts it could read, keyed by
+//! `String(textRef)`. [`load`] then does what projects.cjs's `source-text.cjs` `attachFile` does:
+//! a file object whose `String(textRef)` is 64 lowercase hex and that has no own `content` is
+//! external ([`Source::external`]); its `content` is the text, or `""` when the lookup has none (a
+//! missing text, as the accessor reads it). A file that holds a `content` of its own, even `""`, is
+//! never external. An external source's length is its `chars` when that is a safe integer, else
+//! its text's (`textLength`); the instruction-skill candidates are judged on the stored record
+//! (an external source by its saved `skillHeader` flag, [`crate::skills`]).
 //!
 //! Replayed byte for byte on `tests/fixtures/node-retrieval.v1.json` (written by
 //! `tests/record_retrieval.cjs`, whole turns through `createChatHandler` with the two seams
-//! stubbed). Named differences: none (the fixture's `differences` is empty).
+//! stubbed). One named difference, recorded in the fixture's `differences` and tested: a turn
+//! whose request asks for images (multimodal retrieval on) is [`Stopped::Images`] and stays in
+//! Node, also when retrieval finds none, until `onImages`, the asset plan and the retrieved images
+//! (#1726) are ported; Node runs it (the executor refuses `retrieved-images` only when some were
+//! found).
 //!
-//! Later slices: the images multimodal retrieval finds (`onImages`, the asset plan and the
-//! retrieved images; the executor refuses a turn with any, `retrieved-images`), and the
-//! attribution after the reply (chat-turn's `sources`).
+//! Later slices: the images multimodal retrieval finds, and the attribution after the reply
+//! (chat-turn's `sources`).
 
 use crate::sources::{string_of, NotReady, Partial};
 use crate::{js, skills, sources, Thrown};
@@ -201,13 +215,105 @@ pub fn multimodal(project: Option<&JValue>, body: &JValue, enabled: bool) -> Res
     Ok(enabled)
 }
 
+/// A project file as chat.cjs reads it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Source {
+    /// The file, its `content` what Node reads (an external source's: its text, or `""`).
+    pub file: JValue,
+    /// `source-text.cjs` `isExternal`: its text is in its own file (set by [`load`] only).
+    pub external: bool,
+}
+
+impl Source {
+    /// A file that is never external (a value no loader attached a text to).
+    pub fn plain(file: JValue) -> Source {
+        Source {
+            file,
+            external: false,
+        }
+    }
+}
+
+/// A project record as `getProject` gives it (see the module doc's caller contract).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Loaded {
+    /// The record as stored.
+    pub stored: JValue,
+    /// The record with each external source's `content` set: what [`crate::ProjectTurn::project`]
+    /// and every reader of `file.content` take.
+    pub project: JValue,
+    /// Per position of `project.files`: the source is external.
+    pub external: Vec<bool>,
+}
+
+impl Loaded {
+    /// `project.files[at]` with its flag.
+    pub fn source(&self, at: usize) -> Option<Source> {
+        let file = items(self.project.get("files")).get(at)?.clone();
+        let external = self.external.get(at).copied().unwrap_or(false);
+        Some(Source { file, external })
+    }
+}
+
+/// `REF.test(String(f.textRef))`: the text file's name; `Err` where `String()` throws.
+fn text_ref(f: &JValue) -> Result<Option<String>, Thrown> {
+    let r = string_of(f.get("textRef"))?;
+    let hex = r.len() == 64 && r.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    Ok(hex.then_some(r))
+}
+
+/// projects.cjs's `attachAll` of one record (`source-text.cjs` `attachFile` of each of its files):
+/// `texts(String(textRef))` is the text of a source the caller could read. `Err` where `attachFile`
+/// throws (a `textRef` whose `String()` throws: Node cannot load the record).
+pub fn load(stored: &JValue, texts: &dyn Fn(&str) -> Option<String>) -> Result<Loaded, Thrown> {
+    let mut project = stored.clone();
+    let mut external = Vec::new();
+    if let JValue::Obj(fields) = &mut project {
+        for (key, value) in fields.iter_mut() {
+            let (true, JValue::Arr(files)) = (key == "files", value) else {
+                continue;
+            };
+            for f in files.iter_mut() {
+                let reference = match f {
+                    JValue::Obj(_) => text_ref(f)?,
+                    _ => None,
+                };
+                let JValue::Obj(fields) = f else {
+                    external.push(false);
+                    continue;
+                };
+                let own = fields.iter().any(|(k, _)| k == "content");
+                match reference {
+                    Some(r) if !own => {
+                        let text = texts(&r).unwrap_or_default();
+                        fields.push(("content".to_string(), JValue::Str(text)));
+                        external.push(true);
+                    }
+                    _ => external.push(false),
+                }
+            }
+        }
+    }
+    Ok(Loaded {
+        stored: stored.clone(),
+        project,
+        external,
+    })
+}
+
 /// `instruction-skills.cjs` `sources(project)`: the positions in `project.files` of the files that
 /// are neither instruction-skill candidates nor unreadable, in order.
-pub fn readable(project: &JValue) -> Result<Vec<usize>, Thrown> {
-    let candidates: Vec<usize> = skills::list(project)?.iter().map(|s| s.at).collect();
+pub fn readable(loaded: &Loaded) -> Result<Vec<usize>, Thrown> {
+    let files = items(loaded.project.get("files"));
+    let mut candidate = vec![false; files.len()];
+    for skill in skills::list(&loaded.stored)? {
+        if let Some(c) = candidate.get_mut(skill.at) {
+            *c = true;
+        }
+    }
     let mut out = Vec::new();
-    for (at, file) in items(project.get("files")).iter().enumerate() {
-        if !candidates.contains(&at) && !sources::is_unreadable(file)? {
+    for (at, (file, skill)) in files.iter().zip(candidate).enumerate() {
+        if !skill && !sources::is_unreadable(file)? {
             out.push(at);
         }
     }
@@ -221,31 +327,41 @@ pub struct Request<'a> {
     pub project_id: &'a JValue,
     /// [`readable`]: positions in `project.files`.
     pub readable: Vec<usize>,
+    /// Those files, copied from the record the request was built from.
+    pub files: Vec<Source>,
     /// `body.message`.
     pub query: &'a str,
     /// `currentWorkspace().userId`.
     pub user: &'a str,
     /// `options.attached`: the project is a free chat's attachments ([`crate::project::is_chat_attachments`]).
     pub attached: bool,
-    /// `options.images` (with an `onImages` hook): [`multimodal`].
+    /// `options.images` (with an `onImages` hook): [`multimodal`]. A request with images keeps the
+    /// turn in Node ([`Stopped::Images`]): a caller checks this before it asks retrieval.
     pub images: bool,
 }
 
 /// The retrieval request of a project turn, or `None` when its `files` is not a non-empty list.
 /// `multimodal` is [`multimodal`]'s answer.
 pub fn request<'a>(
-    project: &'a JValue,
+    loaded: &'a Loaded,
     message: &'a str,
     user: &'a str,
     multimodal: bool,
 ) -> Result<Option<Request<'a>>, Thrown> {
+    let project = &loaded.project;
     let attached = crate::project::is_chat_attachments(project)?;
     if !crate::project::retrieval_ran(project) {
         return Ok(None);
     }
+    let readable = readable(loaded)?;
+    let files = readable
+        .iter()
+        .filter_map(|at| loaded.source(*at))
+        .collect();
     Ok(Some(Request {
         project_id: project.get("id"),
-        readable: readable(project)?,
+        readable,
+        files,
         query: message,
         user,
         attached,
@@ -266,9 +382,15 @@ pub enum Answer {
     },
 }
 
-/// A retrieval that threw: handleChat rejects and the turn fails before its system message.
+/// Why [`retrieved`] gives no state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RetrievalThrew;
+pub enum Stopped {
+    /// Retrieval threw: handleChat rejects and the turn fails before its system message.
+    Threw,
+    /// The request asked for images (multimodal retrieval): what retrieval finds of them is a later
+    /// slice, so the turn stays in Node (the named difference in the module doc).
+    Images,
+}
 
 /// What chat.cjs keeps of the retrieval.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -282,30 +404,23 @@ pub struct Retrieved {
     /// `placedEntries`, `injectedEntries`, `readableFiles` (#1793).
     pub placed: Vec<JValue>,
     pub injected: Vec<JValue>,
-    pub readable: Vec<JValue>,
+    pub readable: Vec<Source>,
 }
 
 /// chat.cjs's state after the retrieval `request` (none: nothing was asked) answered.
-pub fn retrieved(
-    project: &JValue,
-    request: Option<&Request<'_>>,
-    answer: Answer,
-) -> Result<Retrieved, RetrievalThrew> {
+pub fn retrieved(request: Option<&Request<'_>>, answer: Answer) -> Result<Retrieved, Stopped> {
     let Some(request) = request else {
         return Ok(Retrieved::default());
     };
+    if request.images {
+        return Err(Stopped::Images);
+    }
     let (block, reported) = match answer {
-        Answer::Threw => return Err(RetrievalThrew),
+        Answer::Threw => return Err(Stopped::Threw),
         Answer::Answered { block, reported } => (block, reported),
     };
-    let files = items(project.get("files"));
-    let readable: Vec<JValue> = request
-        .readable
-        .iter()
-        .filter_map(|at| files.get(*at).cloned())
-        .collect();
     let mut out = match reported {
-        Some((placed, injected)) => report(readable, &placed, &injected),
+        Some((placed, injected)) => report(request.files.clone(), &placed, &injected),
         None => Retrieved::default(),
     };
     out.files_block = block;
@@ -314,7 +429,7 @@ pub fn retrieved(
 
 /// The `onSources` hook: each assignment in order; a throw (rag.cjs catches it) keeps the earlier
 /// ones.
-fn report(readable: Vec<JValue>, placed: &JValue, injected: &JValue) -> Retrieved {
+fn report(readable: Vec<Source>, placed: &JValue, injected: &JValue) -> Retrieved {
     let mut out = Retrieved {
         placed: items(placed).to_vec(),
         injected: items(injected).to_vec(),
@@ -395,9 +510,9 @@ fn page_of(body: &JValue) -> Result<Option<u32>, Thrown> {
 }
 
 /// `buildSources`' `byName`: the readable files with a text name, the last of a name winning.
-fn by_name(files: &[JValue]) -> Result<HashMap<&str, &JValue>, Thrown> {
+fn by_name(files: &[Source]) -> Result<HashMap<&str, &JValue>, Thrown> {
     let mut out = HashMap::new();
-    for f in files {
+    for f in files.iter().map(|s| &s.file) {
         if sources::is_unreadable(f)? || !f.truthy() {
             continue;
         }
@@ -450,31 +565,33 @@ fn shape(f: &JValue, name: &str, e: &JValue) -> Result<JValue, Thrown> {
 
 /// `chat-sources.cjs` `buildSources(entries, files)`: the source items of the entries whose file
 /// is one of the readable `files`, in order, at most [`MAX_SOURCES`].
-pub fn build_sources(entries: &[JValue], files: &[JValue]) -> Result<Vec<JValue>, Thrown> {
+pub fn build_sources(entries: &[JValue], files: &[Source]) -> Result<Vec<JValue>, Thrown> {
     let names = by_name(files)?;
     let mut out = Vec::new();
     for e in entries {
         if out.len() >= MAX_SOURCES {
             break;
         }
-        if !e.truthy() {
-            continue;
-        }
-        let Some((name, f)) = e.get("file").as_str().and_then(|n| names.get_key_value(n)) else {
-            continue;
-        };
-        out.push(shape(f, name, e)?);
+        out.extend(item_of(&names, e)?);
     }
     Ok(out)
 }
 
+/// The item `buildSources` makes of one entry, if its file is readable.
+fn item_of(names: &HashMap<&str, &JValue>, e: &JValue) -> Result<Option<JValue>, Thrown> {
+    if !e.truthy() {
+        return Ok(None);
+    }
+    match e.get("file").as_str().and_then(|n| names.get_key_value(n)) {
+        Some((name, f)) => shape(f, name, e).map(Some),
+        None => Ok(None),
+    }
+}
+
 /// `source-text.cjs` `textLength(f)`: a source's text length without reading a text in its file.
-fn text_length(f: &JValue) -> Result<i64, Thrown> {
-    let external = f.get("content") == &JValue::Undefined
-        && f.get("textRef").as_str().is_some_and(|r| {
-            r.len() == 64 && r.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-        });
-    if let (true, JValue::Num(chars)) = (external, f.get("chars")) {
+fn text_length(source: &Source) -> Result<i64, Thrown> {
+    let f = &source.file;
+    if let (true, JValue::Num(chars)) = (source.external, f.get("chars")) {
         if chars.fract() == 0.0 && chars.abs() <= MAX_SAFE {
             // A safe integer: exact in i64.
             return Ok(*chars as i64);
@@ -486,10 +603,11 @@ fn text_length(f: &JValue) -> Result<i64, Thrown> {
 
 /// `source-coverage.cjs` `partialSources(files, placed)`: the files longer than [`WHOLE_MAX`] of
 /// which `placed` holds less than the whole text.
-pub fn partial_sources(files: &[JValue], placed: &[JValue]) -> Result<Vec<Partial>, Thrown> {
+pub fn partial_sources(files: &[Source], placed: &[JValue]) -> Result<Vec<Partial>, Thrown> {
     let mut out = Vec::new();
-    for f in files {
-        let length = text_length(f)?;
+    for source in files {
+        let f = &source.file;
+        let length = text_length(source)?;
         if length <= WHOLE_MAX {
             continue;
         }
@@ -543,7 +661,7 @@ pub fn injected_not_text(injected: &[JValue]) -> bool {
 pub fn injected_sources(
     injected: &[JValue],
     placed: &[JValue],
-    readable: &[JValue],
+    readable: &[Source],
     reply: &[JValue],
 ) -> Result<JValue, Thrown> {
     // `new Set(placed.map((e) => e && e.file))`.
@@ -551,6 +669,9 @@ pub fn injected_sources(
         .iter()
         .map(|e| if e.truthy() { e.get("file") } else { e })
         .collect();
+    // Node builds the name map for every entry (`buildSources([e], readable)`); built once here, at
+    // the first entry that needs it, so it throws where Node's first such call would.
+    let mut names = None;
     let mut out = Vec::new();
     for e in injected {
         if !e.truthy()
@@ -560,10 +681,14 @@ pub fn injected_sources(
             continue;
         }
         let text = js::slice(&string_or_empty(e.get("body"))?, ATTRIBUTE_MAX);
-        let item = build_sources(std::slice::from_ref(e), readable)?
-            .into_iter()
-            .next()
-            .unwrap_or(JValue::Null);
+        if names.is_none() {
+            names = Some(by_name(readable)?);
+        }
+        let item = match &names {
+            Some(n) => item_of(n, e)?,
+            None => None,
+        };
+        let item = item.unwrap_or(JValue::Null);
         out.push(JValue::obj([
             ("file", e.get("file").clone()),
             ("text", JValue::Str(text)),
@@ -625,8 +750,46 @@ mod tests {
     }
 
     #[test]
+    fn a_request_for_images_stays_in_node() {
+        let stored =
+            js_json::wtf16::parse(r#"{"id":"qa-p","files":[{"name":"QA a.txt","content":"QA"}]}"#)
+                .unwrap();
+        let loaded = load(&stored, &|_| None).unwrap();
+        let answer = || Answer::Answered {
+            block: Some("QA".into()),
+            reported: None,
+        };
+        let asked = request(&loaded, "QA", "qa-user", true).unwrap().unwrap();
+        assert_eq!(retrieved(Some(&asked), answer()), Err(Stopped::Images));
+        assert_eq!(retrieved(Some(&asked), Answer::Threw), Err(Stopped::Images));
+        let plain = request(&loaded, "QA", "qa-user", false).unwrap().unwrap();
+        assert!(retrieved(Some(&plain), answer()).is_ok());
+    }
+
+    #[test]
+    fn only_a_file_without_its_own_content_is_external() {
+        let hex = "a".repeat(64);
+        let stored = js_json::wtf16::parse(&format!(
+            r#"{{"files":[{{"textRef":"{hex}","chars":9}},{{"textRef":"{hex}","content":"","chars":9}},{{"textRef":["{hex}"]}},{{"textRef":"{}"}},"QA"]}}"#,
+            hex.to_uppercase()
+        ))
+        .unwrap();
+        let loaded = load(&stored, &|_| None).unwrap();
+        assert_eq!(loaded.external, [true, false, true, false, false]);
+        let first = loaded.source(0).unwrap();
+        assert_eq!(first.file.get("content").as_str(), Some(""));
+        assert_eq!(text_length(&first).unwrap(), 9);
+        assert_eq!(text_length(&loaded.source(1).unwrap()).unwrap(), 0);
+        let throws = js_json::wtf16::parse(r#"{"files":[{"textRef":{"toString":1}}]}"#).unwrap();
+        assert_eq!(load(&throws, &|_| None), Err(Thrown));
+    }
+
+    #[test]
     fn a_report_that_throws_keeps_what_was_set_before() {
-        let files = vec![JValue::obj([("name", JValue::from("QA a.txt"))])];
+        let files = vec![Source::plain(JValue::obj([(
+            "name",
+            JValue::from("QA a.txt"),
+        )]))];
         let bad = JValue::obj([("toString", JValue::Num(1.0))]);
         let placed = JValue::Arr(vec![JValue::obj([
             ("file", JValue::from("QA a.txt")),

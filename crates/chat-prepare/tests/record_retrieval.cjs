@@ -86,6 +86,20 @@ cut('injectedRefusal', "          injected: injectedEntries.some((e) => e && e.k
 cut('frameSources', '          sources: native.injectedSources({ injected: injectedEntries', 'reply: replySources }),\n');
 cut('coverageWarning', '            revokedInHistory: [...revokedInHistory], imageWarning, coverageWarning: ', "coverageWarning(partialReads) } : null,\n");
 
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-retrieval-'));
+process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }));
+function writeTexts(dir, projectId, texts) {
+  const out = {};
+  for (const text of texts || []) {
+    const ref = sourceText.refOf(text);
+    const at = sourceText.projectDir(dir, projectId);
+    fs.mkdirSync(at, { recursive: true });
+    fs.writeFileSync(path.join(at, `${ref}.txt`), text, 'utf8');
+    out[ref] = text;
+  }
+  return out;
+}
+
 // ── Deterministic inputs ────────────────────────────────────────────────────────────────────
 let seed = 0x2026_1113;
 function rand() { // mulberry32
@@ -189,9 +203,14 @@ for (let n = 0; n < 220; n += 1) {
 
 // ── partialSources ──────────────────────────────────────────────────────────────────────────
 const partialCases = [];
-function addPartial(name, rawFiles, rawPlaced) {
-  const files = viaJson(rawFiles), placed = viaJson(rawPlaced);
-  partialCases.push({ name, files, placed, partial: attempt(() => coverage.partialSources(files, placed)) });
+// The files get source-text.cjs's accessors as getProject's do (attachFile), with the given texts written where they
+// live, so a source whose text is in its own file is measured as in a turn.
+function addPartial(name, rawFiles, rawPlaced, rawTexts = []) {
+  const stored = viaJson(rawFiles), files = viaJson(rawFiles), placed = viaJson(rawPlaced);
+  const dir = fs.mkdtempSync(path.join(tmp, 'qa-partial-'));
+  const texts = writeTexts(dir, 'qa-partial', rawTexts);
+  if (Array.isArray(files)) for (const f of files) sourceText.attachFile(f, dir, 'qa-partial');
+  partialCases.push({ name, files: stored, texts, placed, partial: attempt(() => coverage.partialSources(files, placed)) });
 }
 addPartial('nothing', [], []);
 addPartial('files_not_list', { 0: plain('QA big.txt', { content: BIG }) }, []);
@@ -213,6 +232,29 @@ addPartial('body_throws', [plain('QA big.txt', { content: BIG })], [{ file: 'QA 
 addPartial('body_throws_unmatched', [plain('QA big.txt', { content: BIG })], [{ file: 'QA other.txt', body: { toString: 1 } }]);
 addPartial('name_throws', [{ name: { toString: 1 }, content: BIG }], []);
 addPartial('content_throws', [{ name: 'QA', content: { toString: 1 } }], []);
+// Sources whose text is in its own file (#1806): present and missing texts, an own content that is "", chars of every
+// kind (textLength takes a safe integer only), an uppercase pointer (not one) and a one-item list of a pointer (String()).
+const PART_TEXT = `QA part text. ${'t'.repeat(5000)}`;
+const PART_REF = sourceText.refOf(PART_TEXT);
+const MISSING_REF = 'd'.repeat(64);
+const ext = (name, extra) => ({ name, textRef: PART_REF, chars: PART_TEXT.length, ...extra });
+addPartial('external_present', [ext('QA ext.txt')], [{ file: 'QA ext.txt', body: 'x'.repeat(300) }], [PART_TEXT]);
+addPartial('external_present_whole', [ext('QA ext.txt')], [{ file: 'QA ext.txt', body: PART_TEXT }], [PART_TEXT]);
+addPartial('external_missing', [ext('QA gone.txt', { textRef: MISSING_REF, chars: 7000 })], [{ file: 'QA gone.txt', body: 'x'.repeat(10) }]);
+addPartial('external_stale_chars', [ext('QA stale.txt', { chars: 100 }), ext('QA stale big.txt', { chars: 90000 })], [], [PART_TEXT]);
+addPartial('own_content_empty', [ext('QA inline.txt', { content: '', chars: 9000 })], [], [PART_TEXT]);
+addPartial('own_content_text', [ext('QA inline.txt', { content: 'i'.repeat(3000), chars: 9000 })], [], [PART_TEXT]);
+for (const chars of [-5, 0, 2400, 2401, 5000.5, 9007199254740992, 1e21, '5000', null, true, [5000], {}]) {
+  addPartial(`chars_${JSON.stringify(chars)}_present`, [ext('QA c.txt', { chars })], [{ file: 'QA c.txt', body: 'x'.repeat(50) }], [PART_TEXT]);
+  addPartial(`chars_${JSON.stringify(chars)}_missing`, [ext('QA c.txt', { textRef: MISSING_REF, chars })], []);
+}
+addPartial('no_chars', [{ name: 'QA n.txt', textRef: PART_REF }], [], [PART_TEXT]);
+addPartial('uppercase_ref', [ext('QA upper.txt', { textRef: PART_REF.toUpperCase(), chars: 9000 })], [], [PART_TEXT]);
+addPartial('ref_too_short', [ext('QA short.txt', { textRef: PART_REF.slice(1), chars: 9000 })], [], [PART_TEXT]);
+addPartial('ref_list', [ext('QA list.txt', { textRef: [PART_REF], chars: 6000 })], [{ file: 'QA list.txt', body: 'x'.repeat(20) }], [PART_TEXT]);
+addPartial('ref_list_no_chars', [ext('QA list.txt', { textRef: [PART_REF], chars: undefined })], [], [PART_TEXT]);
+addPartial('ref_list_two', [ext('QA list2.txt', { textRef: [PART_REF, PART_REF], chars: 6000 })], [], [PART_TEXT]);
+addPartial('ref_number', [ext('QA num.txt', { textRef: 5, chars: 6000 })], [], [PART_TEXT]);
 for (let n = 0; n < 170; n += 1) {
   const files = Array.from({ length: int(0, 8) }, (_, i) => fileOf(i, NAMES, true));
   const names = files.map((f) => f && f.name).filter((x) => x !== undefined);
@@ -311,8 +353,6 @@ const turnTools = {
   public: TOOL_NAMES.filter((n) => toolsMode.isPublicToolName(n, BOXES)),
   known: TOOL_NAMES.filter((n) => toolsMode.PRIVATE_CORE_TOOLS.has(n) || BOXES.some((b) => b.tools.some((t) => t.function.name === n))),
 };
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-retrieval-'));
-process.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }));
 const PROVIDER = 'http://qa-default.invalid';
 const DIARY_BASE = 'http://qa-diary.invalid';
 // The files retrieval was given, as indices into the stored record's files: the given ones are copies (with accessors),
@@ -382,17 +422,6 @@ function handlerFor(dir, spec, log) {
     multimodalEnabled: () => spec.multimodal, chatFramingEnabled: () => false,
     nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills']), supervising: () => false },
   });
-}
-function writeTexts(dir, projectId, texts) {
-  const out = {};
-  for (const text of texts || []) {
-    const ref = sourceText.refOf(text);
-    const at = sourceText.projectDir(dir, projectId);
-    fs.mkdirSync(at, { recursive: true });
-    fs.writeFileSync(path.join(at, `${ref}.txt`), text, 'utf8');
-    out[ref] = text;
-  }
-  return out;
 }
 const turns = [];
 async function addTurn(name, rawSpec) {
@@ -497,6 +526,16 @@ const EXT_TEXT = `QA external text. ${'e'.repeat(5000)}`;
     { name: 'QA ext skill.md', textRef: 'f'.repeat(64), chars: 10, skillHeader: true }] }),
   answer: { block: 'QA ext block', placed: [{ file: 'QA ext big.txt', body: 'x'.repeat(300), kind: 'excerpt' }],
     injected: [{ file: 'QA ext big.txt', body: 'x'.repeat(300), kind: 'excerpt' }, { file: 'QA ext short.txt', body: 'QA short external', kind: 'file' }] } });
+  await addTurn('external_textref_kinds', { texts: [EXT_TEXT], project: P({ files: [
+    { name: 'QA list ref.txt', textRef: [ref(EXT_TEXT)], chars: EXT_TEXT.length },
+    { name: 'QA upper ref.txt', textRef: ref(EXT_TEXT).toUpperCase(), chars: 9000 },
+    { name: 'QA inline empty.txt', textRef: ref(EXT_TEXT), content: '', chars: 9000 },
+    { name: 'QA negative.txt', textRef: ref(EXT_TEXT), chars: -5 },
+    { name: 'QA fraction.txt', textRef: ref(EXT_TEXT), chars: 100.5 },
+    { name: 'QA unsafe missing.txt', textRef: 'c'.repeat(64), chars: 9007199254740992 },
+    { name: 'QA list skill.md', textRef: ['f'.repeat(64)], chars: 10, skillHeader: true }] }),
+  answer: { block: 'QA ext block', placed: [{ file: 'QA list ref.txt', body: 'x'.repeat(400), kind: 'excerpt' }],
+    injected: [{ file: 'QA list ref.txt', body: 'x'.repeat(400), kind: 'excerpt' }, { file: 'QA negative.txt', body: 'QA', kind: 'file' }] } });
   // A free chat's attachments (#1441): the shadow project, asked as `attached`; its block rides on the user's message.
   await addTurn('chat_attachments', { free: true, body: { spaceId: 'free', chatId: 'qa-chat-1' }, project: { id: SHADOW, name: 'QA hidden', files: [plain('QA attached.txt')] },
     answer: { block: 'QA attached excerpt', placed: [{ file: 'QA attached.txt', body: 'QA text', kind: 'file' }], injected: [{ file: 'QA attached.txt', body: 'QA text', kind: 'file' }] },
@@ -564,7 +603,7 @@ const EXT_TEXT = `QA external text. ${'e'.repeat(5000)}`;
     };
     const free = shadow && rand() < 0.5;
     await addTurn(`random_${n}`, {
-      project, answer, multimodal: rand() < 0.3,
+      project, answer, multimodal: rand() < 0.1,
       notReady: rand() < 0.2 ? Array.from({ length: int(1, 3) }, () => ({ name: pick(pool), reason: pick(['failed', 'timeout']) })) : [],
       message: textOf(int(1, 8)) || 'QA',
       history: Array.from({ length: int(0, 4) }, (_, i) => (i % 2 ? A(textOf(int(1, 4)) || 'QA') : U(textOf(int(1, 4)) || 'QA'))),
@@ -573,6 +612,13 @@ const EXT_TEXT = `QA external text. ${'e'.repeat(5000)}`;
   }
   delete process.env.NOEVIA_CONTRACT_FIXED_NOW;
 
+  // ── Differences ─────────────────────────────────────────────────────────────────────────
+  // The port keeps a turn whose request asks for images in Node (what retrieval finds of them is a later slice);
+  // Node runs it, handing it to the executor when it found none.
+  const differences = turns.filter((t) => t.calls.some((c) => c.seam === 'filesContext' && c.options.images === true))
+    .map((t) => ({ kind: 'retrieved_images', name: t.name, nodeFrame: !!t.frame,
+      about: 'Multimodal retrieval was asked for images: the port stops (Stopped::Images) and the turn stays in Node.' }));
+
   // ── Output ──────────────────────────────────────────────────────────────────────────────
   const lines = (list) => list.map((x) => JSON.stringify(x)).join(',\n');
   const text = `{"version":1,"generator":"crates/chat-prepare/tests/record_retrieval.cjs",\n"node":${JSON.stringify(process.version)},\n`
@@ -580,11 +626,11 @@ const EXT_TEXT = `QA external text. ${'e'.repeat(5000)}`;
     + `"build":[\n${lines(buildCases)}\n],\n"partial":[\n${lines(partialCases)}\n],\n"warning":[\n${lines(warningCases)}\n],\n`
     + `"injected":[\n${lines(injectedCases)}\n],\n"readable":[\n${lines(readableCases)}\n],\n`
     + `"diaryProject":[\n${lines(diaryProjectCases)}\n],\n"chatProject":[\n${lines(chatProjectCases)}\n],\n`
-    + `"turns":[\n${lines(turns)}\n],\n"differences":[]}\n`;
+    + `"turns":[\n${lines(turns)}\n],\n"differences":[\n${lines(differences)}\n]}\n`;
   const check = process.argv.indexOf('--check');
   const counts = `${buildCases.length} build, ${partialCases.length} partial, ${warningCases.length} warning, ${injectedCases.length} injected, `
     + `${readableCases.length} readable, ${diaryProjectCases.length} diaryProject, ${chatProjectCases.length} chatProject, `
-    + `${turns.length} turns (${turns.filter((t) => t.throws).length} throw, ${turns.filter((t) => t.frame).length} frames)`;
+    + `${turns.length} turns (${turns.filter((t) => t.throws).length} throw, ${turns.filter((t) => t.frame).length} frames), ${differences.length} differences`;
   if (check > 0) {
     const committed = fs.readFileSync(process.argv[check + 1], 'utf8');
     if (committed !== text) { process.stderr.write('the recording differs from the committed fixture: record it again\n'); process.exit(1); }

@@ -463,12 +463,13 @@ pub fn project_toolbox_ids(project: &JValue) -> Vec<String> {
     }
 }
 
-/// source-text.cjs `isExternal(file)` as projects.json holds such a source: a 64-hex `textRef`
-/// pointer and no `content` (its text is missing, or the caller left it out: it reads as empty, as
-/// the accessor reads a missing text file).
+/// source-text.cjs `isExternal(file)` as projects.json holds such a source: a `textRef` whose
+/// `String()` is 64 lowercase hex (`REF.test(String(f.textRef))`, so a one-item list of it too) and
+/// no `content` (its text is missing, or the caller left it out: it reads as empty, as the accessor
+/// reads a missing text file).
 fn is_external(file: &JValue) -> bool {
     file.get("content") == &JValue::Undefined
-        && file.get("textRef").as_str().is_some_and(|r| hex(r, 64))
+        && js_json::to_js_string(file.get("textRef")).is_ok_and(|r| hex(&r, 64))
 }
 
 /// `project.files || []`: `Err` for a truthy value that is not a list.

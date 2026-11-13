@@ -59,8 +59,10 @@
 //!   partial reads (`source-coverage.cjs` `partialSources`, `coverageWarning`) and the prepared
 //!   frame's `sources` (`rust-chat-native.cjs` `injectedSources`). Recorded in
 //!   `tests/fixtures/node-retrieval.v1.json`, written by `tests/record_retrieval.cjs` (whole turns
-//!   through `createChatHandler` with the seams stubbed); no named differences. The images
-//!   multimodal retrieval finds are a later slice.
+//!   through `createChatHandler` with the seams stubbed). One named difference: a turn whose
+//!   request asks for images ([`retrieval::Stopped::Images`]) stays in Node until the images
+//!   multimodal retrieval finds are ported (a later slice). A source whose text is in its own file
+//!   is explicit: [`retrieval::load`] marks it as projects.cjs's loader does.
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!

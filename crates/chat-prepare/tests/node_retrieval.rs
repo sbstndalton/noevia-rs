@@ -9,7 +9,7 @@
     clippy::indexing_slicing
 )]
 
-use chat_prepare::retrieval::{self, items, Answer, Retrieved, Settled};
+use chat_prepare::retrieval::{self, items, Answer, Loaded, Retrieved, Settled, Source, Stopped};
 use chat_prepare::sources::{self, NotReady, Partial};
 use chat_prepare::time::{self, FixedNow};
 use chat_prepare::{account, memory, PrepareError, ProjectTurn, Thrown, Turn};
@@ -225,8 +225,9 @@ fn source_items_are_nodes() {
     let f = fixture();
     let mut d = Diffs::default();
     for case in list(&f, "build") {
-        let got = retrieval::build_sources(items(case.get("entries")), items(case.get("files")))
-            .map(JValue::Arr);
+        // Plain files (no source-text.cjs accessors in Node either).
+        let files = plain(case.get("files"));
+        let got = retrieval::build_sources(items(case.get("entries")), &files).map(JValue::Arr);
         d.check(name(case), &stringify(case.get("sources")), &attempted(got));
     }
     d.done("build", 200);
@@ -237,10 +238,14 @@ fn partial_reads_are_nodes() {
     let f = fixture();
     let mut d = Diffs::default();
     for case in list(&f, "partial") {
-        // partialSources(files, placed): [] unless both are lists.
+        // partialSources(files, placed): [] unless both are lists. The files went through attachFile.
+        let loaded = load(case.get("files"), case.get("texts"));
+        let files: Vec<Source> = (0..items(case.get("files")).len())
+            .filter_map(|at| loaded.source(at))
+            .collect();
         let got = match (case.get("files"), case.get("placed")) {
-            (JValue::Arr(files), JValue::Arr(placed)) => {
-                retrieval::partial_sources(files, placed).map(|p| partial_json(&p))
+            (JValue::Arr(_), JValue::Arr(placed)) => {
+                retrieval::partial_sources(&files, placed).map(|p| partial_json(&p))
             }
             _ => Ok(JValue::Arr(Vec::new())),
         };
@@ -273,7 +278,7 @@ fn frame_sources_are_nodes() {
         let got = retrieval::injected_sources(
             items(i.get("injected")),
             items(i.get("placed")),
-            items(i.get("readable")),
+            &plain(i.get("readable")),
             items(i.get("reply")),
         );
         d.check(name(case), &stringify(case.get("sources")), &attempted(got));
@@ -291,7 +296,8 @@ fn readable_sets_diary_projects_and_chat_projects_are_nodes() {
         } else {
             stringify(case.get("readable"))
         };
-        let got = match retrieval::readable(case.get("project")) {
+        let loaded = retrieval::load(case.get("project"), &|_| None).unwrap();
+        let got = match retrieval::readable(&loaded) {
             Ok(at) => stringify(&JValue::Arr(
                 at.iter().map(|i| JValue::Num(*i as f64)).collect(),
             )),
@@ -318,35 +324,19 @@ fn readable_sets_diary_projects_and_chat_projects_are_nodes() {
     d.done("readable, diaryProject, chatProject", 160);
 }
 
-/// The stored record as the caller hands it over: each source whose text is in its own file gets
-/// that text in `content` when the store holds it (a missing text stays out).
-fn with_texts(project: &JValue, texts: &JValue) -> JValue {
-    let JValue::Obj(fields) = project else {
-        return project.clone();
+fn plain(files: &JValue) -> Vec<Source> {
+    items(files).iter().cloned().map(Source::plain).collect()
+}
+
+/// `files` (a list, or the record holding it) as getProject gives it: through [`retrieval::load`]
+/// with the case's texts (keyed by `String(textRef)`, as the recorder wrote them).
+fn load(v: &JValue, texts: &JValue) -> Loaded {
+    let record = match v {
+        JValue::Arr(_) => JValue::obj([("files", v.clone())]),
+        _ => v.clone(),
     };
-    let resolve = |f: &JValue| match f {
-        JValue::Obj(items) if f.get("content") == &JValue::Undefined => {
-            match f.get("textRef").as_str().map(|r| texts.get(r)) {
-                Some(JValue::Str(text)) => {
-                    let mut items = items.clone();
-                    items.push(("content".into(), JValue::Str(text.clone())));
-                    JValue::Obj(items)
-                }
-                _ => f.clone(),
-            }
-        }
-        _ => f.clone(),
-    };
-    let fields = fields
-        .iter()
-        .map(|(k, v)| match (k.as_str(), v) {
-            ("files", JValue::Arr(files)) => {
-                (k.clone(), JValue::Arr(files.iter().map(resolve).collect()))
-            }
-            _ => (k.clone(), v.clone()),
-        })
-        .collect();
-    JValue::Obj(fields)
+    let lookup = |r: &str| texts.get(r).as_str().map(str::to_string);
+    retrieval::load(&record, &lookup).unwrap()
 }
 
 /// The body as chat.cjs holds it once a Diary extras turn is pointed at the extras project.
@@ -412,11 +402,21 @@ fn whole_turns_are_nodes() {
     assert!(matches!(now, FixedNow::Pinned { .. }));
     let mut d = Diffs::default();
     let (mut frames, mut thrown, mut refused) = (0, 0, 0);
+    let mut images_kept: HashSet<&str> = list(&f, "differences")
+        .iter()
+        .map(|d| d.get("name").as_str().unwrap())
+        .collect();
+    let kept = images_kept.len();
     for case in list(&f, "turns") {
         let n = name(case);
         let body = effective_body(case.get("body"));
-        let stored = with_texts(case.get("project"), case.get("texts"));
-        let stored_id = stored.get("id").as_str().unwrap_or_default().to_string();
+        let stored = load(case.get("project"), case.get("texts"));
+        let stored_id = stored
+            .project
+            .get("id")
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         let compact = body.get("compactOnly").truthy();
         let message = body.get("message").as_str().unwrap();
         let mut calls = Vec::new();
@@ -450,9 +450,10 @@ fn whole_turns_are_nodes() {
                 Settled::Done(list) => not_ready = list,
             }
         }
-        let loaded =
+        let reads =
             retrieval::loads_project(&pid, &body) && pid.as_str() == Some(stored_id.as_str());
-        let project = loaded.then_some(&stored);
+        let loaded = reads.then_some(&stored);
+        let project = loaded.map(|l| &l.project);
 
         // 4: the request.
         let images = retrieval::multimodal(
@@ -460,8 +461,8 @@ fn whole_turns_are_nodes() {
             &body,
             case.get("multimodal") == &JValue::Bool(true),
         );
-        let request = match (project, images) {
-            (Some(p), Ok(images)) => retrieval::request(p, message, "qa-user", images),
+        let request = match (loaded, images) {
+            (Some(l), Ok(images)) => retrieval::request(l, message, "qa-user", images),
             (_, Err(e)) => Err(e),
             (None, Ok(_)) => Ok(None),
         };
@@ -521,11 +522,19 @@ fn whole_turns_are_nodes() {
 
         // 5: the answer.
         let answer = answer_of(case, request.as_ref().map_or(0, |r| r.readable.len()));
-        let got = match retrieval::retrieved(&stored, request.as_ref(), answer) {
+        let got = match retrieval::retrieved(request.as_ref(), answer) {
             Ok(r) => r,
-            Err(retrieval::RetrievalThrew) => {
+            Err(Stopped::Threw) => {
                 thrown += 1;
                 assert_eq!(case.get("throws").as_str(), Some("Error"), "{n}");
+                continue;
+            }
+            Err(Stopped::Images) => {
+                // The named difference: the turn stays in Node.
+                assert!(
+                    images_kept.remove(n),
+                    "{n}: stopped for images, not a recorded difference"
+                );
                 continue;
             }
         };
@@ -626,15 +635,39 @@ fn whole_turns_are_nodes() {
             &stringify(&warning),
         );
     }
-    assert!(frames >= 140, "only {frames} frames");
+    assert!(
+        images_kept.is_empty(),
+        "differences not reproduced: {images_kept:?}"
+    );
+    assert!(kept >= 6, "only {kept} turns asked for images");
+    assert!(frames >= 130, "only {frames} frames");
     assert!(thrown >= 3, "only {thrown} throwing turns");
     assert!(refused >= 4, "only {refused} refused turns");
     d.done("turns", 500);
 }
 
 #[test]
-fn there_are_no_named_differences() {
-    assert!(list(&fixture(), "differences").is_empty());
+fn the_named_difference_is_the_images_request() {
+    let f = fixture();
+    let differences = list(&f, "differences");
+    assert!(!differences.is_empty());
+    for d in differences {
+        assert_eq!(
+            d.get("kind").as_str(),
+            Some("retrieved_images"),
+            "{}",
+            name(d)
+        );
+        // Node handed such turns to the executor when retrieval found no images (the stub finds none).
+        let turn = list(&f, "turns")
+            .iter()
+            .find(|t| t.get("name") == d.get("name"))
+            .unwrap();
+        assert_eq!(
+            d.get("nodeFrame").as_bool(),
+            Some(turn.get("frame").is_object())
+        );
+    }
 }
 
 /// The recording reaches the branches that matter, so a narrower recording cannot pass silently.
@@ -671,6 +704,16 @@ fn the_recording_covers_every_branch() {
     ] {
         assert!(turns.contains(needle), "turns lack {needle}");
     }
+    let partial = all("partial");
+    for needle in [
+        "{\"name\":\"QA gone.txt\",\"length\":7000,\"read\":10}",
+        "{\"name\":\"QA list.txt\",\"length\":6000,\"read\":20}",
+        "{\"name\":\"QA stale big.txt\",\"length\":90000,\"read\":0}",
+        "{\"name\":\"QA c.txt\",\"length\":5014,\"read\":50}",
+    ] {
+        assert!(partial.contains(needle), "partial lacks {needle}");
+    }
+    assert!(turns.contains("\\\"QA list ref.txt\\\" is 5,018 characters long"));
     for needle in [
         "\"page\":100000",
         "\"score\":0.123}",
