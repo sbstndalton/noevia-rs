@@ -172,31 +172,61 @@ pub fn same_address(a: Option<&str>, b: Option<&str>) -> bool {
     n(a) == n(b)
 }
 
-/// `embeddingOff(target)` (`rag.cjs:289-294`) with the service in native-owner mode.
-/// - `snapshot`: [`current_snapshot`] of the worker's status file, if any;
+/// What Node last observed of the embedding service (`embedding-service.cjs` `last`): the worker's
+/// `service` body and its `serviceAt`. Node keeps it for the life of its process, so a snapshot that
+/// stops coming makes the observation stale rather than unknown.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Observation {
+    pub at: f64,
+    pub service: Value,
+}
+
+/// `observeNative()`: the observation after reading `snapshot` (a [`current_snapshot`]) at `now_ms`.
+/// A snapshot counts when its service is truthy and its `serviceAt` is a finite time not in the
+/// future, later than 6 s after Node's last own change of the service (never, here: Node's own
+/// changes are not visible to this process) and not older than the last observation.
+pub fn observe(
+    last: Option<Observation>,
+    snapshot: Option<&Value>,
+    now_ms: f64,
+) -> Option<Observation> {
+    let Some(s) = snapshot else { return last };
+    let service = s.get("service");
+    let Some(at) = s.get("serviceAt").and_then(Value::as_f64) else {
+        return last;
+    };
+    if !js_truthy(service)
+        || at > now_ms
+        || at <= 6000.0
+        || last.as_ref().is_some_and(|l| at < l.at)
+    {
+        return last;
+    }
+    Some(Observation {
+        at,
+        service: service.cloned().unwrap_or(Value::Null),
+    })
+}
+
+/// `embeddingOff(target)` (`rag.cjs:289-294`) with the service in native-owner mode, over the
+/// [`observe`]d state.
 /// - `service_url`: `EMBEDDING_SERVICE_URL`;
 /// - `target_base`: the active target's `baseUrl` (`None` or empty: the inference engine).
 ///
-/// True when the model manager runs the embedding service, it is not known to be enabled (off, or
-/// its observation is stale), and the target embeds on that service or on the shared engine.
+/// True when the model manager runs the embedding service (it was observed), it is not known to be
+/// enabled (off, or the observation is stale), and the target embeds on that service or on the
+/// shared engine.
 pub fn embedding_off(
-    snapshot: Option<&Value>,
+    last: Option<&Observation>,
     now_ms: f64,
     service_url: Option<&str>,
     target_base: Option<&str>,
 ) -> bool {
-    // observeNative: an observation needs a truthy service and a finite time not in the future,
-    // and more than 6 s after the (never set, here) last mutation of this process.
-    let Some(s) = snapshot else { return false };
-    let service = s.get("service");
-    let Some(at) = s.get("serviceAt").and_then(Value::as_f64) else {
-        return false;
-    };
-    if !js_truthy(service) || at > now_ms || at <= 6000.0 {
-        return false;
-    }
+    let Some(last) = last else { return false };
+    let service = Some(&last.service);
     // enabled(): null while the observation is stale, else `enabled === true`.
-    let stale = js_truthy(service.and_then(|v| v.get("stale"))) || now_ms - at > SERVICE_STALE_MS;
+    let stale =
+        js_truthy(service.and_then(|v| v.get("stale"))) || now_ms - last.at > SERVICE_STALE_MS;
     let enabled = !stale && service.and_then(|v| v.get("enabled")) == Some(&Value::Bool(true));
     if enabled {
         return false;

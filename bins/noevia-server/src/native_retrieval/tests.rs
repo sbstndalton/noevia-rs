@@ -119,10 +119,10 @@ struct World {
 }
 
 /// A data directory holding S1's index for project `qa-proj-1` and a saved embedding configuration
-/// whose active target is S1's.
-fn world() -> World {
+/// whose active target is S1's, answering the S1 search `note`.
+fn world_for(note: &str) -> World {
     let f = fixture();
-    let q = search_of(&f, "S1-map-slot", "mixed files");
+    let q = search_of(&f, "S1-map-slot", note);
     let dir = tempfile::tempdir().unwrap();
     rebuild(
         &dir.path()
@@ -149,7 +149,6 @@ fn world() -> World {
             .as_array()
             .unwrap()
             .iter()
-            .take(RESEARCH_HITS)
             .map(|h| {
                 (
                     h["file"].as_str().unwrap().to_owned(),
@@ -162,6 +161,14 @@ fn world() -> World {
     }
 }
 
+fn world() -> World {
+    world_for("mixed files")
+}
+
+fn never() -> bool {
+    false
+}
+
 fn inputs<'a>(w: &'a World, env: &'a HashMap<String, String>) -> Inputs<'a> {
     Inputs {
         data_dir: w.dir.path(),
@@ -170,16 +177,29 @@ fn inputs<'a>(w: &'a World, env: &'a HashMap<String, String>) -> Inputs<'a> {
         question: "alpha bravo",
         start: START,
         now_ms: NOW,
-        maintenance_held: false,
+        maintenance_held: &never,
         rerank_env: Some(env),
+        versions: Versions::new(),
+        limit: RESEARCH_HITS,
     }
 }
 
 async fn run(w: &World, inputs: Inputs<'_>, calls: &AtomicUsize) -> Outcome {
+    run_seen(w, inputs, calls, &Mutex::new(None)).await
+}
+
+async fn run_seen(
+    w: &World,
+    inputs: Inputs<'_>,
+    calls: &AtomicUsize,
+    observed: &Mutex<Option<Observation>>,
+) -> Outcome {
     let query = w.query.clone();
+    let question = inputs.question.to_owned();
     retrieve_with(
         None,
         Some("http://127.0.0.1:9"),
+        observed,
         inputs,
         |target, framed| {
             calls.fetch_add(1, Ordering::SeqCst);
@@ -189,7 +209,7 @@ async fn run(w: &World, inputs: Inputs<'_>, calls: &AtomicUsize) -> Outcome {
             // The query framing Node sent (embeddinggemma-2, kind query).
             assert_eq!(
                 String::from_utf16_lossy(&framed),
-                "task: search result | query: alpha bravo"
+                format!("task: search result | query: {question}")
             );
             async move { Ok(query) }
         },
@@ -205,13 +225,35 @@ fn pairs(o: Outcome) -> Vec<(String, String)> {
 }
 
 #[tokio::test]
-async fn answers_nodes_first_five_hits() {
+async fn answers_nodes_hits_cut_to_the_limit() {
+    let w = world_for("ties between the two duplicate files");
+    assert_eq!(w.want.len(), TOP_K, "the recorded search has a full pool");
+    let env = HashMap::new();
+    let calls = AtomicUsize::new(0);
+    let mut i = inputs(&w, &env);
+    i.question = "echo echo echo";
+    assert_eq!(pairs(run(&w, i, &calls).await), w.want[..RESEARCH_HITS]);
+    let mut i = inputs(&w, &env);
+    i.question = "echo echo echo";
+    i.limit = TOP_K;
+    assert_eq!(pairs(run(&w, i, &calls).await), w.want);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn wanted_versions_filter_as_in_node() {
     let w = world();
     let env = HashMap::new();
     let calls = AtomicUsize::new(0);
-    let got = pairs(run(&w, inputs(&w, &env), &calls).await);
-    assert_eq!(got, w.want);
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    let mut i = inputs(&w, &env);
+    i.versions = [(
+        "qa-long-a.md".to_owned(),
+        Some("qa-other-version".to_owned()),
+    )]
+    .into();
+    let got = pairs(run(&w, i, &calls).await);
+    assert!(!w.want.is_empty() && w.want.iter().all(|h| h.0 == "qa-long-a.md"));
+    assert!(got.is_empty(), "every hit was of the file being re-indexed");
 }
 
 #[tokio::test]
@@ -287,16 +329,38 @@ async fn no_hits_where_node_has_none_and_nothing_is_embedded() {
         .join("rag")
         .join("qa-proj-missing.db")
         .exists());
-    // A project id that is a path, an account id that is not one.
+    // A project id that is a path, an account id that is not one: real indexes sit where they would
+    // lead, and are not read.
+    let real = w
+        .dir
+        .path()
+        .join("users")
+        .join(USER)
+        .join("rag")
+        .join("qa-proj-1.db");
+    std::fs::copy(
+        &real,
+        w.dir.path().join("users").join(USER).join("qa-proj-1.db"),
+    )
+    .unwrap();
     let mut i = inputs(&w, &env);
     i.project = "../qa-proj-1";
     assert_eq!(run(&w, i, &calls).await, Outcome::Hits(Vec::new()));
+    let odd = w
+        .dir
+        .path()
+        .join("users")
+        .join("qa-not-an-account")
+        .join("rag");
+    std::fs::create_dir_all(&odd).unwrap();
+    std::fs::copy(&real, odd.join("qa-proj-1.db")).unwrap();
     let mut i = inputs(&w, &env);
     i.user = "qa-not-an-account";
     assert_eq!(run(&w, i, &calls).await, Outcome::Hits(Vec::new()));
     // The maintenance lease is held: Node's gate refuses the query embedding.
+    let held = || true;
     let mut i = inputs(&w, &env);
-    i.maintenance_held = true;
+    i.maintenance_held = &held;
     assert_eq!(run(&w, i, &calls).await, Outcome::Hits(Vec::new()));
     // The embedding service the target is on is turned off (the worker's current snapshot says so).
     std::fs::write(
@@ -327,9 +391,11 @@ async fn no_hits_where_node_has_none_and_nothing_is_embedded() {
 async fn an_embedding_failure_or_a_wrong_width_is_no_hits() {
     let w = world();
     let env = HashMap::new();
+    let seen = Mutex::new(None);
     let failed = retrieve_with(
         None,
         Some("http://127.0.0.1:9"),
+        &seen,
         inputs(&w, &env),
         |_, _| async { Err("embeddings 500".to_owned()) },
     )
@@ -339,6 +405,7 @@ async fn an_embedding_failure_or_a_wrong_width_is_no_hits() {
     let wrong = retrieve_with(
         None,
         Some("http://127.0.0.1:9"),
+        &seen,
         inputs(&w, &env),
         |_, _| async move { Ok(wide) },
     )
@@ -353,6 +420,8 @@ fn modes_and_the_shadow_line() {
     assert_eq!(Mode::parse(Some("off")), Ok(Mode::Off));
     assert_eq!(Mode::parse(Some("shadow")), Ok(Mode::Shadow));
     assert_eq!(Mode::parse(Some("on")), Ok(Mode::On));
+    assert_eq!(Mode::parse(Some(" Shadow ")), Ok(Mode::Shadow));
+    assert_eq!(Mode::parse(Some("OFF")), Ok(Mode::Off));
     assert!(Mode::parse(Some("1")).is_err());
     let a = ("a".to_owned(), "x".to_owned());
     let b = ("b".to_owned(), "y".to_owned());
@@ -369,4 +438,79 @@ fn modes_and_the_shadow_line() {
         "differs (node 1 hits, native 2 hits, first difference at 1)"
     );
     assert_eq!(compare(&[], &[]), "match (0 hits)");
+}
+
+fn status(w: &World, service: Value, service_at: f64, at: f64) {
+    std::fs::write(
+        w.dir.path().join("embedding-worker-status.json"),
+        json!({"protocol": "rust-embedding-worker-v1", "start": START, "at": at,
+               "service": service, "serviceAt": service_at})
+        .to_string(),
+    )
+    .unwrap();
+}
+
+/// Node keeps its last observation of the service: when the worker's snapshot stops coming, the
+/// observation goes stale after 15 s and the service counts as off (no hits), until a new one.
+#[tokio::test]
+async fn the_last_observation_is_kept_and_goes_stale() {
+    let w = world();
+    let env = HashMap::new();
+    let calls = AtomicUsize::new(0);
+    let observed = Mutex::new(None);
+    status(
+        &w,
+        json!({"managed": true, "enabled": true}),
+        NOW - 1000.0,
+        NOW - 500.0,
+    );
+    assert_eq!(
+        pairs(run_seen(&w, inputs(&w, &env), &calls, &observed).await),
+        w.want
+    );
+    std::fs::remove_file(w.dir.path().join("embedding-worker-status.json")).unwrap();
+    let mut i = inputs(&w, &env);
+    i.now_ms = NOW + 13_000.0;
+    assert_eq!(
+        pairs(run_seen(&w, i, &calls, &observed).await),
+        w.want,
+        "14 s old: still enabled"
+    );
+    let mut i = inputs(&w, &env);
+    i.now_ms = NOW + 15_000.0;
+    assert_eq!(
+        run_seen(&w, i, &calls, &observed).await,
+        Outcome::Hits(Vec::new()),
+        "stale: off"
+    );
+    status(
+        &w,
+        json!({"managed": true, "enabled": true}),
+        NOW + 15_500.0,
+        NOW + 15_500.0,
+    );
+    let mut i = inputs(&w, &env);
+    i.now_ms = NOW + 16_000.0;
+    assert_eq!(pairs(run_seen(&w, i, &calls, &observed).await), w.want);
+    assert_eq!(calls.load(Ordering::SeqCst), 3);
+}
+
+/// A maintenance lease taken while the query was being embedded: Node's gate would have refused a
+/// request started now, so the hits are dropped.
+#[tokio::test]
+async fn a_lease_taken_during_the_embed_drops_the_hits() {
+    let w = world();
+    let env = HashMap::new();
+    let asked = AtomicUsize::new(0);
+    let held = || asked.fetch_add(1, Ordering::SeqCst) > 0;
+    let mut i = inputs(&w, &env);
+    i.maintenance_held = &held;
+    let calls = AtomicUsize::new(0);
+    assert_eq!(run(&w, i, &calls).await, Outcome::Hits(Vec::new()));
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "the first check let the embed run"
+    );
+    assert_eq!(asked.load(Ordering::SeqCst), 2);
 }

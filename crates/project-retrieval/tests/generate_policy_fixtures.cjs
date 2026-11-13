@@ -116,12 +116,36 @@ for (const [name, snapshot] of snapshots) {
     }
   }
 }
+// Sequences: one service across several snapshots and clock steps, as in a running process. Node keeps its last
+// good observation: a snapshot that stops coming leaves it to go stale, an older one is ignored.
+const at = (dt, extra) => ({ service: svc(extra), serviceAt: NOW + dt });
+const sequences = [
+  ['the snapshot stops coming: the last observation goes stale', [[0, at(-1000, { enabled: true })], [5000, null], [14000, null], [16000, null], [40000, at(39000, { enabled: true })]]],
+  ['an older observation is ignored, an equal one replaces', [[0, at(-1000, { enabled: true })], [1000, at(-2000, { enabled: false })], [2000, at(-1000, { enabled: false })], [3000, at(2500, { enabled: true })]]],
+  ['a snapshot without service keeps the last', [[0, at(-1000, { enabled: false })], [1000, { lastPass: {} }], [2000, { service: null, serviceAt: NOW + 1500 }]]],
+  ['serviceAt near the epoch never counts', [[0, { service: svc({ enabled: false }), serviceAt: 6000 }], [1, { service: svc({ enabled: false }), serviceAt: 6001 }]]],
+  ['never observed', [[0, null], [100000, null]]],
+];
+const sequenceCases = [];
+for (const [name, steps] of sequences) {
+  for (const target of [targets[1], targets[0], targets[5]]) {
+    let clock = NOW, current = null;
+    embeddingService.install(embeddingService.createEmbeddingService({ nativeOwner: { snapshot: () => current }, env: { EMBEDDING_SERVICE_URL: 'http://qa-embed:8080' }, now: () => clock, log: () => {} }));
+    const answers = [];
+    for (const [dt, snapshot] of steps) {
+      clock = NOW + dt; current = snapshot;
+      answers.push({ now: clock, snapshot, off: rag.embeddingOff(target) });
+    }
+    sequenceCases.push({ name, env: { EMBEDDING_SERVICE_URL: 'http://qa-embed:8080' }, target, steps: answers });
+  }
+}
 embeddingService.install(null);
 cases.push({ name: 'no service installed', snapshot: null, env: {}, target: targets[1], off: rag.embeddingOff(targets[1]), installed: false });
 write('policy-embedding-off.json', {
   source: 'server/rag.cjs embeddingOff :289-294; server/embedding-service.cjs createEmbeddingService observeNative/status/enabled/isAt/managed (native owner), sameAddress :6-9, STALE_MS',
   now: NOW,
   cases,
+  sequences: sequenceCases,
 });
 // ── snapshot() ────────────────────────────────────────────────────────────────────────────────────
 const os = require('os');

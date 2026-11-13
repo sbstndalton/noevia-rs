@@ -9224,5 +9224,749 @@
    "off": false,
    "installed": false
   }
+ ],
+ "sequences": [
+  {
+   "name": "the snapshot stops coming: the last observation goes stale",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-embed:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000005000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000014000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000016000,
+     "snapshot": null,
+     "off": true
+    },
+    {
+     "now": 1800000040000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1800000039000
+     },
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "the snapshot stops coming: the last observation goes stale",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000005000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000014000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000016000,
+     "snapshot": null,
+     "off": true
+    },
+    {
+     "now": 1800000040000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1800000039000
+     },
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "the snapshot stops coming: the last observation goes stale",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-other:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000005000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000014000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000016000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000040000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1800000039000
+     },
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "an older observation is ignored, an equal one replaces",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-embed:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000001000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 1799999998000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000002000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": true
+    },
+    {
+     "now": 1800000003000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1800000002500
+     },
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "an older observation is ignored, an equal one replaces",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000001000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 1799999998000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000002000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": true
+    },
+    {
+     "now": 1800000003000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1800000002500
+     },
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "an older observation is ignored, an equal one replaces",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-other:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000001000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 1799999998000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000002000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000003000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": true
+      },
+      "serviceAt": 1800000002500
+     },
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "a snapshot without service keeps the last",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-embed:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": true
+    },
+    {
+     "now": 1800000001000,
+     "snapshot": {
+      "lastPass": {}
+     },
+     "off": true
+    },
+    {
+     "now": 1800000002000,
+     "snapshot": {
+      "service": null,
+      "serviceAt": 1800000001500
+     },
+     "off": true
+    }
+   ]
+  },
+  {
+   "name": "a snapshot without service keeps the last",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": true
+    },
+    {
+     "now": 1800000001000,
+     "snapshot": {
+      "lastPass": {}
+     },
+     "off": true
+    },
+    {
+     "now": 1800000002000,
+     "snapshot": {
+      "service": null,
+      "serviceAt": 1800000001500
+     },
+     "off": true
+    }
+   ]
+  },
+  {
+   "name": "a snapshot without service keeps the last",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-other:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 1799999999000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000001000,
+     "snapshot": {
+      "lastPass": {}
+     },
+     "off": false
+    },
+    {
+     "now": 1800000002000,
+     "snapshot": {
+      "service": null,
+      "serviceAt": 1800000001500
+     },
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "serviceAt near the epoch never counts",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-embed:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 6000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000000001,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 6001
+     },
+     "off": true
+    }
+   ]
+  },
+  {
+   "name": "serviceAt near the epoch never counts",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 6000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000000001,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 6001
+     },
+     "off": true
+    }
+   ]
+  },
+  {
+   "name": "serviceAt near the epoch never counts",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-other:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 6000
+     },
+     "off": false
+    },
+    {
+     "now": 1800000000001,
+     "snapshot": {
+      "service": {
+       "managed": true,
+       "models": [
+        {
+         "model": "qa-embed"
+        }
+       ],
+       "enabled": false
+      },
+      "serviceAt": 6001
+     },
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "never observed",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-embed:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000100000,
+     "snapshot": null,
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "never observed",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000100000,
+     "snapshot": null,
+     "off": false
+    }
+   ]
+  },
+  {
+   "name": "never observed",
+   "env": {
+    "EMBEDDING_SERVICE_URL": "http://qa-embed:8080"
+   },
+   "target": {
+    "model": "qa-embed",
+    "profile": "embeddinggemma-2",
+    "baseUrl": "http://qa-other:8080"
+   },
+   "steps": [
+    {
+     "now": 1800000000000,
+     "snapshot": null,
+     "off": false
+    },
+    {
+     "now": 1800000100000,
+     "snapshot": null,
+     "off": false
+    }
+   ]
+  }
  ]
 }

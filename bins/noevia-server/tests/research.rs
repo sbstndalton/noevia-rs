@@ -1290,11 +1290,21 @@ fn seed_index(path: &std::path::Path) -> Vec<f64> {
 }
 
 /// Track R4 `NOEVIA_RUST_RETRIEVAL`: on, a job's project search is this process's (the embedding
-/// service gets the query, Node's bridge is never asked); shadow, both run and Node's answer is
-/// used; off (the default), only the bridge.
+/// service gets the query, Node's bridge is never asked) unless it defers (the reranker is on);
+/// shadow, both run and Node's answer is used; off (the default), only the bridge.
 #[tokio::test]
 async fn native_retrieval_answers_a_job_when_on_and_runs_beside_the_bridge_in_shadow() {
-    for mode in ["on", "shadow", "off"] {
+    let rerank = [
+        ("NOEVIA_FEATURE_RAG_RERANK", "1".to_owned()),
+        ("RERANK_BASE_URL", "http://qa-rerank:8080".to_owned()),
+    ];
+    for (mode, extra) in [
+        ("on", &[][..]),
+        ("shadow", &[][..]),
+        ("off", &[][..]),
+        ("on", &rerank[..]),
+    ] {
+        let deferred = !extra.is_empty();
         let vector: Arc<Mutex<Vec<f64>>> = Arc::default();
         let answer = Arc::clone(&vector);
         let embed = Stub::start(Arc::new(move |_m, p, _b| {
@@ -1313,7 +1323,7 @@ async fn native_retrieval_answers_a_job_when_on_and_runs_beside_the_bridge_in_sh
             Some("true"),
             lease_node(),
             engine_saying("The tower is 50 metres tall [S1]."),
-            &[("NOEVIA_RUST_RETRIEVAL", mode.to_owned())],
+            &[&[("NOEVIA_RUST_RETRIEVAL", mode.to_owned())][..], extra].concat(),
         )
         .await;
         *vector.lock().unwrap() = seed_index(&f.user_dir().join("rag").join("p1.db"));
@@ -1340,20 +1350,27 @@ async fn native_retrieval_answers_a_job_when_on_and_runs_beside_the_bridge_in_sh
             .as_str()
             .unwrap()
             .contains("qa-long-a.md");
-        assert_eq!(cited, mode == "on", "{mode}: {done}");
-        let (bridge, native) = (
-            f.node.count("POST /internal/research/retrieve"),
-            embed.count("POST /v1/embeddings"),
-        );
-        match mode {
-            "on" => assert!(
+        assert_eq!(cited, mode == "on" && !deferred, "{mode}: {done}");
+        let bridge = f.node.count("POST /internal/research/retrieve");
+        if mode == "shadow" {
+            // The native search runs beside the bridge, detached: it may finish after the job.
+            let (e, b) = (&embed, bridge);
+            assert!(
+                settle(|| e.count("POST /v1/embeddings") == b).await,
+                "shadow: bridge {bridge}"
+            );
+        }
+        let native = embed.count("POST /v1/embeddings");
+        match (mode, deferred) {
+            ("on", false) => assert!(
                 bridge == 0 && native > 0,
                 "{mode}: bridge {bridge}, native {native}"
             ),
-            "shadow" => assert!(
+            ("shadow", _) => assert!(
                 bridge > 0 && native == bridge,
                 "{mode}: bridge {bridge}, native {native}"
             ),
+            // Off, and on with the reranker on (the native search defers): the bridge alone.
             _ => assert!(
                 bridge > 0 && native == 0,
                 "{mode}: bridge {bridge}, native {native}"

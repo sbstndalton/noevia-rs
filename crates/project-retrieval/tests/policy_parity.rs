@@ -4,7 +4,7 @@
 //! (`generate_policy_fixtures.cjs`): `rerank-target.cjs`, `rag.cjs` `embeddingOff` and
 //! `rust-embedding-background.cjs` `snapshot()`.
 
-use project_retrieval::policy::{current_snapshot, embedding_off, rerank_target, Backend};
+use project_retrieval::policy::{current_snapshot, embedding_off, observe, rerank_target, Backend};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -54,8 +54,9 @@ fn embedding_off_matches_node() {
     let mut off = 0;
     for case in cases {
         let snapshot = Some(&case["snapshot"]).filter(|s| !s.is_null());
+        let last = observe(None, snapshot, now);
         let got = embedding_off(
-            snapshot,
+            last.as_ref(),
             now,
             case["env"]["EMBEDDING_SERVICE_URL"].as_str(),
             case["target"]["baseUrl"].as_str(),
@@ -65,6 +66,35 @@ fn embedding_off_matches_node() {
         off += usize::from(want);
     }
     assert!(off > 50 && off < 400, "the cases cover both answers");
+}
+
+/// One service across snapshots and clock steps: Node's last observation is kept, goes stale when
+/// the snapshot stops coming, and an older snapshot does not replace it.
+#[test]
+fn embedding_off_sequences_match_node() {
+    let f = fixture("policy-embedding-off.json");
+    let sequences = f["sequences"].as_array().unwrap();
+    assert_eq!(sequences.len(), 15);
+    for seq in sequences {
+        let mut last = None;
+        for (i, step) in seq["steps"].as_array().unwrap().iter().enumerate() {
+            let now = step["now"].as_f64().unwrap();
+            last = observe(last, Some(&step["snapshot"]).filter(|s| !s.is_null()), now);
+            let got = embedding_off(
+                last.as_ref(),
+                now,
+                seq["env"]["EMBEDDING_SERVICE_URL"].as_str(),
+                seq["target"]["baseUrl"].as_str(),
+            );
+            assert_eq!(
+                got,
+                step["off"].as_bool().unwrap(),
+                "{} step {i} {}",
+                seq["name"],
+                seq["target"]
+            );
+        }
+    }
 }
 
 #[test]
