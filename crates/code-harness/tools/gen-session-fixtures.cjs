@@ -92,6 +92,10 @@ const SCENARIOS = {
       { call: 'readTextFile', params: { path: 'link-out/hostname' } },
       { fs: { write: 'lines.txt', text: 'one\ntwo\nthree\nfour\n' } },
       { call: 'readTextFile', params: { path: 'lines.txt', line: 2, limit: 2 } },
+      // Number() and slice(): negative, fractional, text, binary, Infinity, and limits likewise.
+      ...[[-1, null], [1.5, null], ['abc', null], ['0b11', null], ['1e999', null], ['  2 ', null], [true, null], [[3], null],
+        [1, '2'], [1, '0'], [1, -1], [2, 'x'], [1, 2.5], [3, -2], [null, '1e999'], [1, false]]
+        .map(([line, limit]) => ({ call: 'readTextFile', params: { path: 'lines.txt', ...(line !== null ? { line } : {}), ...(limit !== null ? { limit } : {}) } })),
     ],
   },
   'updates-and-output': {
@@ -135,6 +139,28 @@ const SCENARIOS = {
       { update: { sessionUpdate: 'plan', entries: [{ content: 'é'.repeat(150) }, { content: 'lone \ud800 entry' }, { content: null }, { content: 7 }] } },
     ],
   },
+  // A cancel ends the session: what is asked after it is refused as aborted, unasked.
+  'cancelled': {
+    capabilities: ['read_repository', 'edit_file', 'execute_command'],
+    answers: ['approve', 'approve'],
+    script: [
+      exec('npm test'),
+      { cancel: true },
+      exec('npm run lint'),
+      { update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'still talking' } } },
+    ],
+  },
+  // What only the final flush sends: a buffered batch, a held-back stage, a lone high surrogate.
+  'flush': {
+    capabilities: ['read_repository'],
+    script: [
+      { clock: 1000 },
+      { update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'partial' } } },
+      { clock: 1200 },
+      { update: { sessionUpdate: 'agent_thought_chunk' } },
+      { update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ' and \ud83d' } } },
+    ],
+  },
   'guard-blocks': {
     guarded: true,
     capabilities: ['read_repository', 'edit_file', 'execute_command'],
@@ -174,7 +200,7 @@ async function run(name, sc) {
   fs.mkdirSync(dir);
   const realJobs = createJobs({ dir });
   const calls = [];
-  let recording = false;
+  let recording = false, logging = false, promptEnd = null;
   // Every ctx call the work makes, recorded while the prompt runs.
   const jobs = { ...realJobs, run: (id, work) => realJobs.run(id, (ctx) => {
     const wrap = (fn, f) => (...args) => { if (recording) calls.push({ fn, args: JSON.parse(JSON.stringify(args)) }); return f(...args); };
@@ -186,7 +212,7 @@ async function run(name, sc) {
   const answers = [...(sc.answers || [])];
   let clock = 0;
   const harness = createCodeHarness({
-    jobs, workspaces, now: () => clock, log: (e) => { if (recording) logs.push(e); },
+    jobs, workspaces, now: () => clock, log: (e) => { if (logging) logs.push(e); },
     engine: () => ({ baseUrl: 'http://qa-engine.invalid/v1', model: 'qa-model', apiKey: null, contextTokens: 8192 }),
     askApproval: async (request, { signal } = {}) => { asked.push(JSON.parse(JSON.stringify(request))); if (signal?.aborted) return 'aborted'; return answers.shift() ?? 'deny'; },
     guard: { enabled: () => sc.guarded === true },
@@ -197,10 +223,11 @@ async function run(name, sc) {
     repoPath: repo(base), prompt: 'QA task', capabilities: sc.capabilities || [], domains: sc.domains || [], harness: 'opencode', sandboxKind: 'spawn',
     connect: async ({ handlers, cwd }) => ({ agent: { name: 'qa-agent', version: '1' }, prompt: async () => {
       tree = cwd;
-      recording = true;
+      recording = true; logging = true;
       for (const step of sc.script) {
         if (step.clock !== undefined) { clock = step.clock; results.push(null); continue; }
         if (step.update !== undefined) { handlers.sessionUpdate(T(step.update, cwd)); results.push(null); continue; }
+        if (step.cancel) { harness.cancel('00000000-0000-4000-8000-0000000000aa'); results.push(null); continue; }
         if (step.fs) {
           const f = step.fs;
           if (f.write) fs.writeFileSync(path.join(cwd, f.write), f.text);
@@ -215,14 +242,20 @@ async function run(name, sc) {
           results.push({ error: { code: e.code ?? null, message: String(e.message), data: e.data === undefined ? null : JSON.parse(JSON.stringify(e.data)) } });
         }
       }
-      recording = false;
+      logging = false;
+      promptEnd = calls.length;
       return { stopReason: 'end_turn' };
     } }),
   });
   for (let i = 0; i < 400 && !['completed', 'failed', 'cancelled'].includes(realJobs.get(started.taskId)?.status); i++) await new Promise((r) => setTimeout(r, 5));
   const job = realJobs.get(started.taskId);
+  // What the session's final flushOutput sent once the prompt returned (before runExecutor's own events).
+  const after = promptEnd === null ? [] : calls.slice(promptEnd);
+  const flushCalls = [];
+  for (const c of after) { if (c.fn !== 'event' || !['assistant.output', 'progress'].includes(c.args[0])) break; flushCalls.push(c); }
+  calls.length = promptEnd ?? calls.length;
   const out = { capabilities: sc.capabilities || [], domains: sc.domains || [], guarded: sc.guarded === true, answers: sc.answers || [], script: sc.script,
-    results: norm(results, tree, dir), calls: norm(calls, tree, dir), asked: norm(asked, tree, dir), logs: norm(logs, tree, dir),
+    results: norm(results, tree, dir), calls: norm(calls, tree, dir), flushCalls: norm(flushCalls, tree, dir), asked: norm(asked, tree, dir), logs: norm(logs, tree, dir),
     job: norm({ status: job.status, error: job.error, result: job.result }, tree, dir) };
   fs.rmSync(base, { recursive: true, force: true });
   return out;

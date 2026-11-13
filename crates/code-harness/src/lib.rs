@@ -19,20 +19,21 @@
 //!
 //! - **D1, numbers that are not numbers.** Node's readers (`readUsage`, `readContext`,
 //!   `readExitCode`, `readAgent`'s `protocolVersion`) run every value through `Number()`, so
-//!   `null`, `false`, `''`, a whitespace-only string and `[]` read as 0, `true` as 1, `[7]` and
-//!   `['7']` as 7 (a harness's `exit_code: null` is recorded as success, a `null` token count as
-//!   zero), and an object with its own `toString` key throws a TypeError out of the reader. That
-//!   contradicts the module's own rule ("anything unreadable treated as absent", "rather than
-//!   defaulting it to zero"). The port reads numbers as they are and strings by `Number()` (hex,
-//!   `Infinity` and all); every other value, and a blank string, is absent, exactly as if the key
-//!   were missing.
+//!   `null`, `''`, a whitespace-only string and `[]` read as 0, `[7]` and `['7']` as 7 (a
+//!   harness's `exit_code: null` is recorded as success, a `null` token count as zero), and an
+//!   object with its own `toString` key throws a TypeError out of the reader. That contradicts the
+//!   module's own rule ("anything unreadable treated as absent", "rather than defaulting it to
+//!   zero"; sbstndalton/noevia#2541). The port reads numbers and booleans as Node does and strings
+//!   by `Number()` (hex, `Infinity` and all); every other value, and a blank string, is absent,
+//!   exactly as if the key were missing.
 //! - **D2, a primitive conversion that throws.** Where the guard converts an agent's value to a
 //!   primitive, Node's `String(toolCall.kind)` (an unknown kind) and a write's
 //!   `params.line < 1` / `params.limit < 1` (which the write schema does not constrain) throw a
 //!   TypeError for a JSON object with its own `toString` key, or an array holding one, so the
-//!   malformed call crashes the guard method instead of being refused. The port converts the value
-//!   as if that key were absent (`"[object Object]"`, NaN), so it is refused or passed like any
-//!   other value of that shape.
+//!   malformed call crashes the guard method instead of being refused. The port refuses a write
+//!   whose `line` or `limit` would throw, as one below 1 (never letting through what Node's throw
+//!   stopped), and reads an unknown kind as if that key were absent (`"[object Object]"`), which
+//!   is refused like any other unknown kind.
 //! - **D3, names on `Object.prototype`.** Node looks kinds and methods up on plain objects, so
 //!   `toolCallSchema('constructor')` (`toString`, `__proto__`, ...) gets a function or
 //!   `Object.prototype` as its `rawInput` schema, and `checkFsCall('constructor', ...)` validates

@@ -46,6 +46,8 @@ const EXIT_CODES_MAX: usize = 50;
 fn number(v: &JValue) -> f64 {
     match v {
         JValue::Num(n) => *n,
+        // As Node: `true` is 1 (an exit code of `true` reads as a failure), `false` 0.
+        JValue::Bool(b) => f64::from(u8::from(*b)),
         JValue::Str(s) if !js::trim(s).is_empty() => js::string_to_number(s),
         _ => f64::NAN,
     }

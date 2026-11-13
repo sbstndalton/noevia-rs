@@ -121,7 +121,7 @@ const NUMERIC = [5, 0, 7.5, -1, -0, 1e21, 2 ** 53 + 1, Number.MAX_VALUE, Number.
   '0x' + 'f'.repeat(20), '1'.repeat(400), '0b' + '1'.repeat(70), '00012', '1e400', '-1e400'];
 const COERCED = [null, true, false, '', '   ', '\t\n', [], [7], ['7'], [[8]], [1, 2], [null], {}, { valueOf: 3 }, { toString: 'x' },
   [{ toString: 1 }]];
-const isCoerced = (v) => !(typeof v === 'number' || (typeof v === 'string' && v.trim() !== '') || v === undefined);
+const isCoerced = (v) => !(typeof v === 'number' || typeof v === 'boolean' || (typeof v === 'string' && v.trim() !== '') || v === undefined);
 /** `make(v)` with v from both lists; a coerced value is the D1 difference, defined by `make(undefined)`. */
 function numericGrid(fn, make, values = [...NUMERIC, ...COERCED]) {
   for (const v of values) {
@@ -427,7 +427,10 @@ for (const [method, params] of [
   ['fs/unknown', { path: 'a' }], ['', { path: 'a' }], ['FS/READ_TEXT_FILE', { path: 'a' }],
 ]) {
   // D2 again: `params[key] < 1` converts the value to a primitive and throws for an own toString.
-  if (hasToString(params)) schemaCase('checkFsCall', [method, params], { diff: 'D2', portArgs: [method, dropToString(params)] });
+  // For line/limit the port refuses where Node threw (the write never happened either way): its
+  // answer is Node's for a value below 1 there.
+  const refused = (p) => { const out = { ...p }; for (const k of ['line', 'limit']) if (hasToString(p[k])) out[k] = 0; return dropToString(out); };
+  if (hasToString(params)) schemaCase('checkFsCall', [method, params], { diff: 'D2', portArgs: [method, refused(params)] });
   else schemaCase('checkFsCall', [method, params]);
 }
 for (const maxBytes of [16, 0, 5, 3, 4, Infinity, NaN, -1, 2.5, 1e21, undefined]) {
@@ -558,7 +561,7 @@ guardCase('everything failing', { options: { limit: 2 }, throwsAt: [
   { cb: 'onBlocked', at: 0, thrown: { error: 'd' } }, { cb: 'event', at: 3, thrown: { error: 'e' } }], steps: [P(BAD), WR({}), ST, RD({}), ST, BE] });
 guardCase('D2: a kind whose String() throws', { options: { limit: 2 }, diff: 'D2',
   steps: [P({ kind: { toString: 1 } }), ST, WR({ path: 'a', content: 'x', limit: { toString: 1 } }), ST, P({ kind: [{ toString: 1 }] }), ST, BE],
-  portSteps: [P({ kind: {} }), ST, WR({ path: 'a', content: 'x', limit: {} }), ST, P({ kind: [{}] }), ST, BE] });
+  portSteps: [P({ kind: {} }), ST, WR({ path: 'a', content: 'x', limit: 0 }), ST, P({ kind: [{}] }), ST, BE] });
 
 // ── The deployment flag ─────────────────────────────────────────────────────────────────────
 const flag = [];

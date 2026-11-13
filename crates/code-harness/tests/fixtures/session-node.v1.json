@@ -817,6 +817,7 @@
      ]
     }
    ],
+   "flushCalls": [],
    "asked": [
     {
      "taskId": "00000000-0000-4000-8000-0000000000aa",
@@ -1383,6 +1384,7 @@
      ]
     }
    ],
+   "flushCalls": [],
    "asked": [
     {
      "taskId": "00000000-0000-4000-8000-0000000000aa",
@@ -1620,6 +1622,127 @@
       "line": 2,
       "limit": 2
      }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": -1
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": 1.5
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": "abc"
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": "0b11"
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": "1e999"
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": "  2 "
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": true
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": [
+       3
+      ]
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": 1,
+      "limit": "2"
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": 1,
+      "limit": "0"
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": 1,
+      "limit": -1
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": 2,
+      "limit": "x"
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": 1,
+      "limit": 2.5
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": 3,
+      "limit": -2
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "limit": "1e999"
+     }
+    },
+    {
+     "call": "readTextFile",
+     "params": {
+      "path": "lines.txt",
+      "line": 1,
+      "limit": false
+     }
     }
    ],
    "results": [
@@ -1713,6 +1836,86 @@
      "ok": {
       "content": "two\nthree"
      }
+    },
+    {
+     "ok": {
+      "content": "one\ntwo\nthree\nfour\n"
+     }
+    },
+    {
+     "ok": {
+      "content": "one\ntwo\nthree\nfour\n"
+     }
+    },
+    {
+     "ok": {
+      "content": "one\ntwo\nthree\nfour\n"
+     }
+    },
+    {
+     "ok": {
+      "content": "three\nfour\n"
+     }
+    },
+    {
+     "ok": {
+      "content": ""
+     }
+    },
+    {
+     "ok": {
+      "content": "two\nthree\nfour\n"
+     }
+    },
+    {
+     "ok": {
+      "content": "one\ntwo\nthree\nfour\n"
+     }
+    },
+    {
+     "ok": {
+      "content": "three\nfour\n"
+     }
+    },
+    {
+     "ok": {
+      "content": "one\ntwo"
+     }
+    },
+    {
+     "ok": {
+      "content": ""
+     }
+    },
+    {
+     "ok": {
+      "content": "one\ntwo\nthree\nfour"
+     }
+    },
+    {
+     "ok": {
+      "content": ""
+     }
+    },
+    {
+     "ok": {
+      "content": "one\ntwo"
+     }
+    },
+    {
+     "ok": {
+      "content": ""
+     }
+    },
+    {
+     "ok": {
+      "content": "one\ntwo\nthree\nfour\n"
+     }
+    },
+    {
+     "ok": {
+      "content": "one\ntwo\nthree\nfour\n"
+     }
     }
    ],
    "calls": [
@@ -1761,6 +1964,7 @@
      ]
     }
    ],
+   "flushCalls": [],
    "asked": [],
    "logs": [
     {
@@ -2509,6 +2713,7 @@
      ]
     }
    ],
+   "flushCalls": [],
    "asked": [],
    "logs": [],
    "job": {
@@ -3052,6 +3257,7 @@
      ]
     }
    ],
+   "flushCalls": [],
    "asked": [
     {
      "taskId": "00000000-0000-4000-8000-0000000000aa",
@@ -3216,6 +3422,359 @@
      "approvals": 7,
      "allowed": 5,
      "refused": 2,
+     "denied": 0,
+     "workspace": "<TREE>"
+    }
+   }
+  },
+  "cancelled": {
+   "capabilities": [
+    "read_repository",
+    "edit_file",
+    "execute_command"
+   ],
+   "domains": [],
+   "guarded": false,
+   "answers": [
+    "approve",
+    "approve"
+   ],
+   "script": [
+    {
+     "call": "requestPermission",
+     "params": {
+      "toolCall": {
+       "kind": "execute",
+       "title": "npm test",
+       "rawInput": {
+        "command": "npm test"
+       }
+      },
+      "options": [
+       {
+        "optionId": "y",
+        "kind": "allow_once",
+        "name": "Allow"
+       },
+       {
+        "optionId": "a",
+        "kind": "allow_always",
+        "name": "Always"
+       },
+       {
+        "optionId": "n",
+        "kind": "reject_once",
+        "name": "Reject"
+       }
+      ]
+     }
+    },
+    {
+     "cancel": true
+    },
+    {
+     "call": "requestPermission",
+     "params": {
+      "toolCall": {
+       "kind": "execute",
+       "title": "npm run lint",
+       "rawInput": {
+        "command": "npm run lint"
+       }
+      },
+      "options": [
+       {
+        "optionId": "y",
+        "kind": "allow_once",
+        "name": "Allow"
+       },
+       {
+        "optionId": "a",
+        "kind": "allow_always",
+        "name": "Always"
+       },
+       {
+        "optionId": "n",
+        "kind": "reject_once",
+        "name": "Reject"
+       }
+      ]
+     }
+    },
+    {
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "still talking"
+      }
+     }
+    }
+   ],
+   "results": [
+    {
+     "ok": {
+      "outcome": "selected",
+      "optionId": "y"
+     }
+    },
+    null,
+    {
+     "ok": {
+      "outcome": "selected",
+      "optionId": "n",
+      "_meta": {
+       "noevia": {
+        "reason": "The task was stopped before this action was approved, so it was not run."
+       }
+      }
+     }
+    },
+    null
+   ],
+   "calls": [
+    {
+     "fn": "event",
+     "args": [
+      "approval.requested",
+      {
+       "taskId": "00000000-0000-4000-8000-0000000000aa",
+       "action": "execute_command",
+       "title": "npm test",
+       "kind": "execute",
+       "command": "npm test",
+       "paths": [],
+       "reason": "",
+       "arguments": {
+        "command": "npm test"
+       },
+       "diff": null
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.decided",
+      {
+       "decision": "approve",
+       "action": "execute_command"
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.requested",
+      {
+       "taskId": "00000000-0000-4000-8000-0000000000aa",
+       "action": "execute_command",
+       "title": "npm run lint",
+       "kind": "execute",
+       "command": "npm run lint",
+       "paths": [],
+       "reason": "",
+       "arguments": {
+        "command": "npm run lint"
+       },
+       "diff": null
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "approval.decided",
+      {
+       "decision": "aborted",
+       "action": "execute_command"
+      }
+     ]
+    },
+    {
+     "fn": "event",
+     "args": [
+      "progress",
+      {
+       "stage": "writing"
+      }
+     ]
+    }
+   ],
+   "flushCalls": [
+    {
+     "fn": "event",
+     "args": [
+      "assistant.output",
+      {
+       "text": "still talking",
+       "truncated": false
+      }
+     ]
+    }
+   ],
+   "asked": [
+    {
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "action": "execute_command",
+     "title": "npm test",
+     "kind": "execute",
+     "command": "npm test",
+     "paths": [],
+     "reason": "",
+     "arguments": {
+      "command": "npm test"
+     },
+     "diff": null
+    }
+   ],
+   "logs": [
+    {
+     "at": 0,
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "execute_command",
+     "decision": "approve"
+    },
+    {
+     "at": 0,
+     "taskId": "00000000-0000-4000-8000-0000000000aa",
+     "harness": "opencode",
+     "model": "qa-model",
+     "event": "code.decided",
+     "action": "execute_command",
+     "decision": "aborted"
+    }
+   ],
+   "job": {
+    "status": "cancelled",
+    "error": null,
+    "result": {
+     "stopReason": "end_turn",
+     "branch": "noevia/task-00000000-0000-4000-8000-0000000000aa",
+     "identityHash": "e480d8550f5d27aa7b81654e9e8940b0a3bbde4217c4b9af456d9a663b2bb250",
+     "meta": {
+      "harness": "qa-agent",
+      "harnessVersion": "1",
+      "protocolVersion": null,
+      "usage": null,
+      "context": null,
+      "commands": 0,
+      "failedCommands": 0,
+      "exitCodes": [],
+      "messageChunks": 1,
+      "limitations": [
+       "The harness did not report token usage.",
+       "No command exit codes were reported."
+      ]
+     },
+     "tools": 0,
+     "approvals": 2,
+     "allowed": 1,
+     "refused": 1,
+     "denied": 0,
+     "workspace": "<TREE>"
+    }
+   }
+  },
+  "flush": {
+   "capabilities": [
+    "read_repository"
+   ],
+   "domains": [],
+   "guarded": false,
+   "answers": [],
+   "script": [
+    {
+     "clock": 1000
+    },
+    {
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "partial"
+      }
+     }
+    },
+    {
+     "clock": 1200
+    },
+    {
+     "update": {
+      "sessionUpdate": "agent_thought_chunk"
+     }
+    },
+    {
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": " and \ud83d"
+      }
+     }
+    }
+   ],
+   "results": [
+    null,
+    null,
+    null,
+    null,
+    null
+   ],
+   "calls": [
+    {
+     "fn": "event",
+     "args": [
+      "progress",
+      {
+       "stage": "writing"
+      }
+     ]
+    }
+   ],
+   "flushCalls": [
+    {
+     "fn": "event",
+     "args": [
+      "assistant.output",
+      {
+       "text": "partial and �",
+       "truncated": false
+      }
+     ]
+    }
+   ],
+   "asked": [],
+   "logs": [],
+   "job": {
+    "status": "completed",
+    "error": null,
+    "result": {
+     "stopReason": "end_turn",
+     "branch": "noevia/task-00000000-0000-4000-8000-0000000000aa",
+     "identityHash": "0cac6a3cac996f2837f580c7df14787dbc940b74adcfaec10918925da1b2ec17",
+     "meta": {
+      "harness": "qa-agent",
+      "harnessVersion": "1",
+      "protocolVersion": null,
+      "usage": null,
+      "context": null,
+      "commands": 0,
+      "failedCommands": 0,
+      "exitCodes": [],
+      "messageChunks": 2,
+      "limitations": [
+       "The harness did not report token usage.",
+       "No command exit codes were reported."
+      ]
+     },
+     "tools": 0,
+     "approvals": 0,
+     "allowed": 0,
+     "refused": 0,
      "denied": 0,
      "workspace": "<TREE>"
     }
@@ -3800,6 +4359,7 @@
      ]
     }
    ],
+   "flushCalls": [],
    "asked": [],
    "logs": [
     {

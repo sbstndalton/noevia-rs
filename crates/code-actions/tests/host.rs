@@ -204,6 +204,16 @@ fn every_recorded_row_matches_node() {
         );
         assert!(sha.bytes().all(|b| b.is_ascii_hexdigit()), "{key}");
     }
+    // The sources the fixture was recorded from (core a72ae94): a fixture regenerated from other
+    // ones fails here until these are updated on purpose.
+    assert_eq!(
+        str_of(source.get("code-actions.cjs")),
+        "a8a4b12d142ac3bd20caf39cabc8eb836ecfe19d6fc690f38e7ba056fa32b4a5"
+    );
+    assert_eq!(
+        str_of(source.get("DAV_PARSE_WASM_SHA256")),
+        "2305d64d1a75a57b3c52eda673b384c819718aae540c570837b4aeb4ef5e5cb9"
+    );
     let JValue::Arr(rows) = f.get("cases") else {
         panic!("cases")
     };

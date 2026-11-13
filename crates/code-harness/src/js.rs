@@ -229,6 +229,11 @@ pub(crate) fn is_integer(n: f64) -> bool {
 /// comparison (ToPrimitive with hint number, then ToNumber), with D2's reading of an own
 /// `toString`.
 pub(crate) fn less_than_one(v: &JValue) -> bool {
+    // Node's conversion throws here (an own `toString` that is no function), so the call never
+    // went ahead there: here it is refused, as a value below 1 is, never let through.
+    if conversion_throws(v) {
+        return true;
+    }
     let n = match v {
         JValue::Num(n) => *n,
         JValue::Bool(b) => f64::from(u8::from(*b)),
@@ -243,6 +248,19 @@ pub(crate) fn less_than_one(v: &JValue) -> bool {
 /// `s.slice(0, n)` over UTF-16 units.
 pub(crate) fn slice(s: &str, n: usize) -> String {
     wtf16::slice(s, n)
+}
+
+/// Whether JS's ToPrimitive of this JSON value throws: an object with its own `toString` key (no
+/// function, so neither it nor `Object.prototype.valueOf` gives a primitive), or an array holding
+/// one at any depth (`Array.prototype.join` converts each element).
+pub(crate) fn conversion_throws(v: &JValue) -> bool {
+    match v {
+        JValue::Obj(items) => items.iter().any(|(k, _)| k == "toString"),
+        JValue::Arr(items) => items
+            .iter()
+            .any(|x| !x.is_nullish() && conversion_throws(x)),
+        _ => false,
+    }
 }
 
 #[cfg(test)]

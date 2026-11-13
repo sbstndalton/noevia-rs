@@ -204,6 +204,10 @@ fn every_node_session_replays() {
             } else if !matches!(step.get("update"), JValue::Undefined) {
                 let _ = session.session_update(&sub(step.get("update"), &tree));
                 JValue::Null
+            } else if step.get("cancel").as_bool() == Some(true) {
+                // The task's cancel: its signal aborts, which ends the session.
+                session.end();
+                JValue::Null
             } else if let JValue::Obj(_) = step.get("fs") {
                 let fs_step = step.get("fs");
                 if let Some(rel) = fs_step.get("write").as_str() {
@@ -247,6 +251,15 @@ fn every_node_session_replays() {
             text(&norm(&calls, &tree, &dir_s)),
             text(sc.get("calls")),
             "{name}: journal calls"
+        );
+        // What only the final flush sends.
+        let before = host.calls.lock().unwrap().len();
+        let _ = session.flush_output();
+        let flushed = JValue::Arr(host.calls.lock().unwrap()[before..].to_vec());
+        assert_eq!(
+            text(&norm(&flushed, &tree, &dir_s)),
+            text(sc.get("flushCalls")),
+            "{name}: the final flush"
         );
         let asked = JValue::Arr(host.asked.lock().unwrap().clone());
         assert_eq!(

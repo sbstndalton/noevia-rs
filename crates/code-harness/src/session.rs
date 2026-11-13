@@ -10,6 +10,10 @@
 //! Node runs these handlers concurrently, and a permission waiting for an answer must not hold up
 //! the agent's session updates.
 //!
+//! A [`Host`]'s `event`, `log`, `contains`, `root` and `now` may be called with the session's lock
+//! held and must not call back into the session; its `ask_approval` is called without it; the
+//! `Ended` hooks it registers and its `halt` only signal (the halt runs on a thread of its own).
+//!
 //! Strings are in the [`js_json::wtf16`] form; output batching and every cut count UTF-16 units
 //! and UTF-8 bytes exactly as Node does (a surrogate pair split across two message chunks is
 //! joined, a lone surrogate written as U+FFFD).
@@ -178,10 +182,19 @@ impl GuardHooks for Hooks {
         Ok(())
     }
     fn on_blocked(&mut self) -> Result<(), Thrown> {
-        // Pending approvals are refused now; the agent is stopped next, so the refusal that
-        // reached the limit is still delivered to it first.
+        // Pending approvals are refused now; the agent is stopped next (Node: on the next tick), so
+        // the refusal that reached the limit is still delivered to it first. The halt runs on its
+        // own thread: this hook runs under the session's lock, and stopping the agent may wait for
+        // a thread that is waiting for that lock.
         self.ended.end();
-        self.host.halt();
+        let host = self.host.clone();
+        if std::thread::Builder::new()
+            .name("code-harness halt".into())
+            .spawn(move || host.halt())
+            .is_err()
+        {
+            self.host.halt();
+        }
         Ok(())
     }
 }
@@ -251,8 +264,13 @@ fn nullish_or(v: &JValue, fallback: JValue) -> JValue {
     }
 }
 
-fn key_of(id: &JValue) -> String {
-    wtf16::stringify(id).unwrap_or_default()
+/// A JS `Map` key: a primitive by value (`1` and `"1"` apart); an object or array is never equal
+/// to another one, so it is no key at all.
+fn key_of(id: &JValue) -> Option<String> {
+    match id {
+        JValue::Obj(_) | JValue::Arr(_) => None,
+        other => wtf16::stringify(other),
+    }
 }
 
 /// UTF-8 bytes of one character as Node writes it (a lone surrogate is U+FFFD, 3 bytes).
@@ -319,26 +337,9 @@ fn js_number(v: &JValue) -> f64 {
         JValue::Num(n) => *n,
         JValue::Null => 0.0,
         JValue::Bool(b) => f64::from(u8::from(*b)),
-        JValue::Str(_) | JValue::Arr(_) => {
-            let t = js_json::to_js_string(v).unwrap_or_default();
-            let t = t.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
-            if t.is_empty() {
-                0.0
-            } else if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
-                u64::from_str_radix(hex, 16).map_or(f64::NAN, |n| n as f64)
-            } else if t
-                .chars()
-                .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
-            {
-                t.parse::<f64>().unwrap_or(f64::NAN)
-            } else if t == "Infinity" || t == "+Infinity" {
-                f64::INFINITY
-            } else if t == "-Infinity" {
-                f64::NEG_INFINITY
-            } else {
-                f64::NAN
-            }
-        }
+        JValue::Str(t) => crate::js::string_to_number(t),
+        // `Number([x])` is `Number(String([x]))`.
+        JValue::Arr(_) => crate::js::string_to_number(&crate::js::to_string_plain(v)),
         JValue::Undefined | JValue::Obj(_) => f64::NAN,
     }
 }
@@ -475,11 +476,12 @@ impl Session {
         };
         let mut st = self.lock();
         let announced = if stated.truthy() && stated.get("toolCallId").truthy() {
-            let key = key_of(stated.get("toolCallId"));
-            st.calls
-                .iter()
-                .find(|(k, _)| *k == key)
-                .map(|(_, v)| v.clone())
+            key_of(stated.get("toolCallId")).and_then(|key| {
+                st.calls
+                    .iter()
+                    .find(|(k, _)| *k == key)
+                    .map(|(_, v)| v.clone())
+            })
         } else {
             None
         };
@@ -581,6 +583,14 @@ impl Session {
             }
         }
         drop(st);
+        if tool_call == JValue::Null {
+            // Node reads `toolCall.title` here and throws.
+            return Err(Refusal {
+                code: None,
+                message: "Cannot read properties of null (reading 'title')".into(),
+                data: None,
+            });
+        }
         let request = JValue::obj([
             ("taskId", s(&self.task.task_id)),
             ("action", action.clone()),
@@ -644,7 +654,9 @@ impl Session {
         let Some(root) = self.host.root().filter(|r| !r.is_empty()) else {
             return Err(refuse());
         };
-        let target = target.as_str().unwrap_or("");
+        // A lone surrogate in a name is U+FFFD on disk, as Node's UTF-8 encoding writes it.
+        let target = files::utf8_of(target.as_str().unwrap_or(""));
+        let target = target.as_str();
         Ok(if target.starts_with('/') {
             normalize(target)
         } else {
@@ -746,8 +758,9 @@ impl Session {
                 let classified = actions::classify(update);
                 let name = or(update.get("title"), or(update.get("kind"), s("tool")));
                 if update.get("toolCallId").truthy() {
-                    st.names
-                        .insert(key_of(update.get("toolCallId")), name.clone());
+                    if let Some(key) = key_of(update.get("toolCallId")) {
+                        st.names.insert(key, name.clone());
+                    }
                 }
                 drop(st);
                 self.event(
@@ -768,18 +781,17 @@ impl Session {
                 let done = matches!(status, Some("completed" | "failed"));
                 let id = update.get("toolCallId");
                 if done {
-                    let key = key_of(id);
-                    st.calls.retain(|(k, _)| *k != key);
+                    if let Some(key) = key_of(id) {
+                        st.calls.retain(|(k, _)| *k != key);
+                    }
                 } else {
                     known(&mut st, update);
                 }
                 if done {
                     let exit = meta::read_exit_code(update);
                     if exit != JValue::Null && st.exits.len() < MAX_EXITS {
-                        let name = st
-                            .names
-                            .get(&key_of(id))
-                            .cloned()
+                        let name = key_of(id)
+                            .and_then(|k| st.names.get(&k).cloned())
                             .filter(JValue::truthy)
                             .unwrap_or(JValue::Null);
                         st.exits.push(JValue::obj([
@@ -966,11 +978,13 @@ impl Session {
         let mut st = self.lock();
         self.append_output(&mut st, "", true)?;
         self.emit_output(&mut st)?;
-        if let Some(stage) = st.pending_stage.take() {
+        if let Some(stage) = st.pending_stage.clone() {
             if st.last_stage.as_deref() != Some(stage.as_str()) {
+                // Cleared only once it went out, as in Node: a failed append leaves it held back.
                 self.event("progress", JValue::obj([("stage", s(&stage))]))?;
             }
         }
+        st.pending_stage = None;
         Ok(())
     }
 
@@ -1034,7 +1048,9 @@ fn known(st: &mut State, update: &JValue) {
     if !id.truthy() {
         return;
     }
-    let key = key_of(id);
+    let Some(key) = key_of(id) else {
+        return;
+    };
     let fields: Vec<(String, JValue)> = match update {
         JValue::Obj(items) => items
             .iter()
