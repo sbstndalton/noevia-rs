@@ -1,7 +1,10 @@
 //! The native calibration job (core `llamacpp-calibration.cjs` `stepOnce`, `run`,
 //! `compareAndLaunch`, `compareAndAbort`): the engine-facing step, the run under a maintenance
-//! hold, its cancellation controller and its evidence record. UNWIRED: the public routes still
-//! reach Node's worker through the private bridges until the routes switch as one unit.
+//! hold, its cancellation controller and its evidence record. Wired (#2303, capability
+//! `rust-calibration-worker-v2`): `calibration_routes.rs` and `calibration_cancel_routes.rs` call
+//! this worker through `Config::calibration`, and Core builds no public calibrator (core
+//! rust-calibration-routes.cjs refuses the route, `RUST_CALIBRATION_OWNED`). Node's
+//! llamacpp-calibration.cjs still runs inside Node's auto-tune as its private context stage.
 //!
 //! The job is the same object Node keeps in `native-calibration-<hash>.json` (see
 //! [`super::calibration`]), with the same keys in the same order, so either owner reads the other's
