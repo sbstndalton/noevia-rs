@@ -162,6 +162,42 @@ test('probe: another client loading a model while the probe loads is fatal (no f
   await assert.rejects(f.factory(f.fillHooks()).probe('qa-model', f.probeOpts()), /Another client loaded a model/);
 });
 
+test('probe: a load that never finishes in time fails that size as a timeout', async t => {
+  // Short deadline: without the recorder's clock the calibrator's time is real.
+  const f = fixture(t, { calibration: { timeouts: { load: 50, poll: 500 } }, engine: { load: (m, s) => { s.status[m] = 'loading'; return { ok: true, body: {} }; } } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'timeout');
+});
+
+test('probe: an engine that takes far fewer prompt tokens than asked fails on recall', async t => {
+  const f = fixture(t, { engine: { stream: b => new Response(sse({ choices: [{ delta: { content: markerOf(b.messages[0].content) } }], timings: { prompt_n: 10, prompt_ms: 100 } }) + 'data: [DONE]\n\n') } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'recall');
+});
+
+test('probe: a long prompt that cannot be sent fails with the error as evidence', async t => {
+  const f = fixture(t, { engine: { stream: () => { throw Error('qa stream socket closed'); } } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'oom'); assert.match(r.evidence?.text, /could not be sent/);
+});
+
+test('probe: a stream body that breaks mid-read is a crash once the server answers', async t => {
+  const f = fixture(t, { engine: { stream: () => new Response(new ReadableStream({ start(c) { c.error(Error('qa body reset')); } })) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'oom'); assert.equal(r.evidence?.crash, true);
+});
+
+test('probe: a tokenizer that fails falls back to the padding estimate', async t => {
+  const f = fixture(t, { engine: { request: p => (p === '/tokenize' ? { ok: false, status: 500, body: {} } : undefined) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts({ evidence: false }));
+  assert.equal(typeof r.passed, 'boolean');
+});
+
 // ── 2. probe cancels ───────────────────────────────────────────────────────────────────────────
 test('probe: cancelProbe while the long prompt streams stops it as cancelled', async t => {
   let ctx;
