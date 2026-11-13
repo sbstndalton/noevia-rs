@@ -6,6 +6,7 @@
 //! - [`guard`]: the stream guard for tool-call arguments, over the `stream-guard` crate;
 //! - [`tools`]: the dispatch trait the tool engines implement, and the 300-character result cut;
 //! - [`partial`]: the interrupted-turn record;
+//! - [`reduce`]: a tool result compacted for the model (`tool-result-reduce.cjs`);
 //! - [`relay`]: one model round turned into events, with the reasoning-only note and the
 //!   telemetry the client needs.
 //!
@@ -22,6 +23,7 @@ pub mod js;
 pub mod native;
 pub mod partial;
 pub mod prepared;
+pub mod reduce;
 pub mod relay;
 pub mod round;
 pub mod sink;
