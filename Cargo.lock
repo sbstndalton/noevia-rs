@@ -440,6 +440,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-prepare"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "js-json",
+ "prompt-framing",
+ "regex",
+]
+
+[[package]]
 name = "chat-template-caps"
 version = "0.1.0"
 dependencies = [
@@ -509,8 +520,26 @@ dependencies = [
 name = "code-actions"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "prompt-framing",
  "proptest",
+]
+
+[[package]]
+name = "code-harness"
+version = "0.1.0"
+dependencies = [
+ "code-acp",
+ "code-actions",
+ "code-harness-config",
+ "code-workspace",
+ "js-json",
+ "rustix",
+ "server-projects",
+ "sha2",
+ "stream-guard",
+ "tempfile",
+ "url",
 ]
 
 [[package]]
@@ -539,6 +568,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "code-verify"
+version = "0.1.0"
+dependencies = [
+ "code-acp",
+ "js-json",
+ "rustix",
+ "tempfile",
 ]
 
 [[package]]
@@ -2190,6 +2229,8 @@ dependencies = [
  "bytes",
  "chat-mirror-sched",
  "chat-turn",
+ "code-acp",
+ "code-harness",
  "code-net-guard",
  "context-fit",
  "dav-parse",
