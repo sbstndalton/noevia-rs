@@ -1,0 +1,94 @@
+{
+  "sources": {
+    "server/rag.cjs": "227d0b739858237554fe366269ef5926e76ac2275731f83f0fb19e3d31e6c024",
+    "server/quoted-name.cjs": "3e5aeb0c25b8d73f71ea7c7fb4f55a6db6cec9d1c6fa7fa03a7d6ea6cf044f86",
+    "server/embedding-profile.cjs": "fa349dd5909a912335bb81e81b1e670e1ed774cbca626da30853e24c3743b740"
+  },
+  "source": "server/quoted-name.cjs quoteName",
+  "cases": [
+    {
+      "name": "plain.md",
+      "quoted": "\"plain.md\""
+    },
+    {
+      "name": "quote \"x\".md",
+      "quoted": "\"quote \\\"x\\\".md\""
+    },
+    {
+      "name": "back\\slash",
+      "quoted": "\"back\\\\slash\""
+    },
+    {
+      "name": "tab\there",
+      "quoted": "\"tab\\there\""
+    },
+    {
+      "name": "nl\nname",
+      "quoted": "\"nl\\nname\""
+    },
+    {
+      "name": "cr\rname",
+      "quoted": "\"cr\\rname\""
+    },
+    {
+      "name": "\b\f",
+      "quoted": "\"\\b\\f\""
+    },
+    {
+      "name": "\u0000\u0001\u001f",
+      "quoted": "\"\\u0000\\u0001\\u001f\""
+    },
+    {
+      "name": "",
+      "quoted": "\"\""
+    },
+    {
+      "name": "nel",
+      "quoted": "\"\\u0085nel\""
+    },
+    {
+      "name": "‎‏",
+      "quoted": "\"\\u200e\\u200f\""
+    },
+    {
+      "name": "  ",
+      "quoted": "\"\\u2028\\u2029\""
+    },
+    {
+      "name": "‪‫‬‭‮",
+      "quoted": "\"\\u202a\\u202b\\u202c\\u202d\\u202e\""
+    },
+    {
+      "name": "⁦⁧⁨⁩",
+      "quoted": "\"\\u2066\\u2067\\u2068\\u2069\""
+    },
+    {
+      "name": "⁥⁪",
+      "quoted": "\"⁥⁪\""
+    },
+    {
+      "name": "é漢😀",
+      "quoted": "\"é漢😀\""
+    },
+    {
+      "name": " nbsp",
+      "quoted": "\" nbsp\""
+    },
+    {
+      "name": "﻿bom",
+      "quoted": "\"﻿bom\""
+    },
+    {
+      "name": "",
+      "quoted": "\"\""
+    },
+    {
+      "name": "</script>",
+      "quoted": "\"</script>\""
+    },
+    {
+      "name": "it's",
+      "quoted": "\"it's\""
+    }
+  ]
+}

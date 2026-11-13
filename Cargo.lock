@@ -475,11 +475,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-acp"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rustix",
+ "tempfile",
+]
+
+[[package]]
 name = "code-actions"
 version = "0.1.0"
 dependencies = [
  "prompt-framing",
  "proptest",
+]
+
+[[package]]
+name = "code-harness-config"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rustix",
+ "tempfile",
 ]
 
 [[package]]
@@ -509,6 +527,15 @@ dependencies = [
  "rustix",
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "code-workspace"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rustix",
  "tempfile",
 ]
 
@@ -781,6 +808,18 @@ dependencies = [
  "serde_json",
  "tempfile",
  "yaml-rust2",
+]
+
+[[package]]
+name = "diary-retrieval"
+version = "0.1.0"
+dependencies = [
+ "diary-corpus-parse",
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "sqlite-vec-loader",
+ "tempfile",
 ]
 
 [[package]]
@@ -2485,6 +2524,20 @@ version = "0.1.0"
 dependencies = [
  "prompt-framing",
  "proptest",
+]
+
+[[package]]
+name = "project-retrieval"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "prompt-framing",
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "sqlite-vec-loader",
+ "tempfile",
+ "url",
 ]
 
 [[package]]
