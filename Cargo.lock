@@ -450,6 +450,7 @@ dependencies = [
  "prompt-framing",
  "regex",
  "sha2",
+ "tool-gate",
  "toolboxes-permitted",
  "url",
 ]

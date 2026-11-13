@@ -40,6 +40,18 @@
 //!   `tests/fixtures/node-roles.v1.json`, written by `tests/record_roles.cjs`, which runs those
 //!   modules and chat.cjs's own lines; no named differences. Routing modes, Inference machines, the
 //!   egress and ChatGPT checks, the tool-capable move and the long-context profile are later slices.
+//! - [`offer`] (slice P6a): the tools a turn offers the model and the per-tool facts the native
+//!   executor's frame carries (`tools`, `routes`, `writes`, `public`, `automaticOnlyWrites`,
+//!   `editTools`, `routeNote`, `templateGate`): the turn's boxes and Automatic's additions
+//!   ([`tools_mode`], `tools-mode.cjs`), the provider and ungranted-cloud strips, the routing
+//!   merge, the account's blocks and `resolveTools` with its count cap and token budget
+//!   ([`toolboxes`], `toolboxes.cjs`), and the route notes ([`route_notes`],
+//!   `tool-route-notes.cjs`). The MCP discovery, connections, policy, prefill measurement, tool
+//!   router and tool gate are the caller's answers. Recorded in `tests/fixtures/node-tools.v1.json`,
+//!   written by `tests/record_tools.cjs`; one named difference: a tool whose name is truthy but not
+//!   text is refused ([`toolboxes::NameNotText`], the turn stays in Node) where Node offers it. The hybrid route's
+//!   private-tools move, Inference machines, the tool-capable move (`toolCapableRoute`), the
+//!   prompt edits of the ungranted cloud route and the executor's refusal inputs are later slices.
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!
@@ -93,9 +105,11 @@ pub mod history;
 pub mod js;
 pub mod memory;
 pub mod names;
+pub mod offer;
 pub mod project;
 pub mod roles;
 pub mod route;
+pub mod route_notes;
 pub mod router;
 pub mod sampling;
 pub mod shared;
@@ -103,6 +117,8 @@ pub mod skills;
 pub mod sources;
 pub mod system_one;
 pub mod time;
+pub mod toolboxes;
+pub mod tools_mode;
 
 pub use history::{Entry, ReplayOptions};
 use js_json::JValue;

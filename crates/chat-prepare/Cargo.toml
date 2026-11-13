@@ -1,7 +1,7 @@
 [package]
 name = "chat-prepare"
 version = "0.1.0"
-description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, the chat frame block, a turn's reasoning effort, Fast thinking-off and sampling presets, and which model answers it as which role (manual pick or Automatic: the roles check, classification and refusals), replayed byte for byte on recorded Node output. Nothing calls it yet."
+description = "The native chat turn's preparation (track R8, phase 2): noevia-core's chat.cjs system message and replayed history for a turn without a project and the project parts that need no retrieval, tools or skills, the chat frame block, a turn's reasoning effort, Fast thinking-off and sampling presets, which model answers it as which role (manual pick or Automatic: the roles check, classification and refusals), and the tools it offers with the per-tool facts the native executor's frame carries, replayed byte for byte on recorded Node output. Nothing calls it yet."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -23,7 +23,11 @@ chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 chrono-tz = "=0.10.4"
 # instruction-skills.cjs hash (sha256 of a skill's text). MIT OR Apache-2.0; already in Cargo.lock.
 sha2 = "=0.10.9"
-# projectToolboxIds: the port core's dav-parse.wasm runs (workspace crate, depends on prompt-framing only).
+# tool-gate.cjs prefetchableSearch, which tools-mode.cjs wantsWeb asks: the port core's dav-parse.wasm runs
+# (workspace crate; prompt-framing, ssrf-policy, url).
+tool-gate = { path = "../tool-gate" }
+# projectToolboxIds and selectedToolboxIds: the port core's dav-parse.wasm runs (workspace crate, depends on
+# prompt-framing only).
 toolboxes-permitted = { path = "../toolboxes-permitted" }
 # reasoning-effort.cjs localEngine's `new URL(value).href` (the WHATWG URL Standard). MIT OR Apache-2.0; already in
 # Cargo.lock (prompt-framing uses it).

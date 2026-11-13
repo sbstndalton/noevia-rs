@@ -62,3 +62,6 @@ jobs:
       - name: The core's own routing of a turn's answering model and role reproduces the committed recording
         # Synthetic QA roles, catalogues, classifier and decision answers and turns through auto-router.cjs, system-one-router.cjs, auto-roles-check.cjs, chat-model-kind.cjs and chat.cjs's own lines; no network.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_roles.cjs --check crates/chat-prepare/tests/fixtures/node-roles.v1.json
+      - name: The core's own tools of a turn reproduce the committed recording
+        # Synthetic QA toolboxes, MCP boxes, projects, policies, router and gate answers and turns through toolboxes.cjs, tools-mode.cjs, tool-route-notes.cjs and chat.cjs's own lines; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_tools.cjs --check crates/chat-prepare/tests/fixtures/node-tools.v1.json
