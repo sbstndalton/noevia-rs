@@ -755,7 +755,11 @@ async fn a_direct_task_runs_cancels_and_stays_in_its_tenant() {
         let (status, state) = r.call(OWNER, "GET", &r.code(""), None).await;
         assert_eq!(status, 200);
         let mut node = answers[6]["body"].clone();
-        assert_eq!(node["approvals"], json!({}), "the bridge's facts name no card yet");
+        assert_eq!(
+            node["approvals"],
+            json!({}),
+            "the bridge's facts name no card yet"
+        );
         node.as_object_mut().unwrap().remove("approvals");
         node["tasks"] = json!([]);
         assert_eq!(state, node, "the facts as Node's GET answered them");
@@ -939,29 +943,46 @@ async fn the_planner_plans_runs_verifies_reviews_and_is_accepted_or_cancelled() 
             (head.as_str(), "1111111111111111111111111111111111111111"),
         ];
         // Measured, not recorded: the verifier's clock (`durationMs`), and so the completeness
-        // report's hash over the test report. The report is built from the journal up to the
-        // `reviewing` stage, which carries its hash: those rows must be Node's (the measured clock
-        // normalized), and the card must carry the hash of exactly that report.
+        // report's hash over the test report. The report (completeness-report.cjs over the job's
+        // steps, artifacts, plan and checkpoint) is built from the journal up to the `reviewing`
+        // stage, which carries its hash: its inputs must be Node's (the clock normalized), and the
+        // card must carry the hash of exactly that report. Two differences are the recording's
+        // stand-ins, not the port's: the stand-in harness writes no `harness.config` step and one
+        // checkpoint where code-harness.cjs writes its start and identity checkpoints (so the last
+        // checkpoint is compared, not every one), and the stand-in verifier no `measuredBy`
+        // (code-verify.cjs adds 'verifier').
         let ours_rows = r.journal(&task);
         let gate = |rows: &[Value]| rows.iter().position(|j| j["type"] == "task.stage" && j["data"]["to"] == "reviewing").unwrap();
-        let (mine, theirs) = (gate(&ours_rows), gate(journal));
-        let clock = |rows: &[Value]| -> Vec<Value> {
+        let (mine, theirs) = (gate(&ours_rows), gate(journal.as_slice()));
+        let inputs = |rows: &[Value]| -> Vec<Value> {
             rows.iter()
+                .filter(|j| {
+                    let t = j["type"].as_str().unwrap_or("");
+                    (t.starts_with("step.") && j["data"]["id"] != "harness.config")
+                        || matches!(t, "artifact.created" | "task.stage" | "task.revision")
+                })
                 .map(|j| {
-                    let mut j = j.clone();
-                    if j["data"]["kind"] == "test-report" {
-                        assert!(j["data"]["durationMs"].is_u64(), "{j}");
-                        j["data"]["durationMs"] = json!(7);
+                    let mut d = j["data"].clone();
+                    if d["kind"] == "test-report" {
+                        assert!(d["durationMs"].is_u64(), "{d}");
+                        d["durationMs"] = json!(7);
+                        d.as_object_mut().unwrap().remove("measuredBy");
                     }
-                    if let Some(d) = j["data"].as_object_mut() {
-                        d.remove("reportHash");
-                    }
-                    j
+                    d.as_object_mut().unwrap().remove("reportHash");
+                    json!([j["type"], d])
                 })
                 .collect()
         };
         let window: Vec<Value> = ours_rows[..=mine].iter().map(|j| norm(j, &pairs)).collect();
-        assert_eq!(clock(&window), clock(&journal[..=theirs]), "the journal the report is built from, as Node's");
+        assert_eq!(inputs(&window), inputs(&journal[..=theirs]), "what the report is built from, as Node's");
+        // The checkpoint the report reads is the job's last: its task, branch and commits as Node's.
+        let last_checkpoint = |rows: &[Value]| {
+            let c = &rows.iter().rev().find(|j| j["type"] == "checkpoint.created").unwrap()["data"];
+            json!([c["task"], c["branch"], c["baseSha"], c["headSha"]])
+        };
+        assert_eq!(last_checkpoint(&window), last_checkpoint(&journal[..=theirs]), "the checkpoint, as Node's");
+        let measured = ours_rows.iter().find(|j| j["data"]["kind"] == "test-report").unwrap();
+        assert_eq!(measured["data"]["measuredBy"], "verifier", "code-verify.cjs's mark");
         let hash = ours_rows[mine]["data"]["reportHash"].clone();
         assert!(hash.as_str().is_some_and(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())), "{hash}");
         let mut ours = norm(&card, &pairs);
