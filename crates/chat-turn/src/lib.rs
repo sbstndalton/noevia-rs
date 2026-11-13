@@ -12,11 +12,16 @@
 //! Not here: context and framing assembly, routing and decision calls, persistence through the
 //! store, approvals, the Diary stream, rounds with tool results fed back to the model.
 
+pub mod cap;
+pub mod effort;
 pub mod event;
 pub mod guard;
+pub mod js;
 pub mod partial;
 pub mod relay;
+pub mod round;
 pub mod sink;
+pub mod sse;
 pub mod tools;
 
 pub use event::{Event, Phase, TimeToFirstToken};

@@ -430,6 +430,10 @@ dependencies = [
 name = "chat-turn"
 version = "0.1.0"
 dependencies = [
+ "context-fit",
+ "js-json",
+ "provider-error",
+ "regex",
  "serde_json",
  "stream-guard",
 ]
