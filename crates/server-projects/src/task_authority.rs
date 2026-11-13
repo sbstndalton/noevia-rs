@@ -67,6 +67,18 @@ fn count_of(rows: &[JValue], kind: &str) -> usize {
         .count()
 }
 
+/// The fold's answer as jobs.cjs reads it: a lifecycle error is an inconsistent journal, the port
+/// refusing the fold is one that could not be verified. (The fold's input is rebuilt here with its
+/// event data two levels deep, far inside the port's depth cap, so no journal reaches that
+/// refusal today; it stays refused, not read as either state, should the port's limits change.)
+fn lifecycle_state(folded: Option<task_lifecycle::Outcome>) -> Result<State, Refusal> {
+    match folded {
+        Some(Ok(state)) => Ok(state),
+        Some(Err(_)) => Err(conflict(INCONSISTENT)),
+        None => Err(conflict(UNVERIFIED)),
+    }
+}
+
 /// `boundAuthorityEvent(id, type, data, current, known)`: the data to write, or the refusal.
 /// `known` is the job folded from `current` (non-empty, a Code job, not finished).
 pub(crate) fn bound(
@@ -76,11 +88,7 @@ pub(crate) fn bound(
     current: &[JValue],
     known: &Job,
 ) -> Result<JValue, Refusal> {
-    let state = match journals::fold_lifecycle(current, true) {
-        Some(Ok(state)) => state,
-        Some(Err(_)) => return Err(conflict(INCONSISTENT)),
-        None => return Err(conflict(UNVERIFIED)),
-    };
+    let state = lifecycle_state(journals::fold_lifecycle(current, true))?;
     // `known.revision?.n ?? 0`. A recorded `n` that is not a number is a journal this store did
     // not write: it reads as inconsistent (named difference 8 in task_store).
     let revision = match known.authoritative.as_ref().map(|a| a.revision.get("n")) {
@@ -307,4 +315,130 @@ fn report_hash(
             }
         })
     })
+}
+
+/// The refusals the Node fixture does not hold. "…could not be verified" is jobs.cjs's answer to
+/// a lifecycle port fault (`impl_*` codes), which no journal raises in Node today and which the
+/// fold here cannot reach either (see [`lifecycle_state`]): no recording exists. "cannot be
+/// hashed: it is too large" needs a row of over 4 Mi characters, kept out of the fixture for its
+/// size. ("…nested too deeply" is recorded, scenario authority-unhashable, and checked here too.)
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+
+    const ID: &str = "00000000-0000-4000-8000-000000000001";
+    const SHA: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+
+    fn rows(events: &[(&str, String)]) -> Vec<JValue> {
+        events
+            .iter()
+            .enumerate()
+            .map(|(i, (kind, data))| {
+                wtf16::parse(&format!(
+                    r#"{{"job":"{ID}","seq":{},"type":"{kind}","at":{},"data":{data}}}"#,
+                    i + 1,
+                    1000 + i
+                ))
+                .unwrap()
+            })
+            .collect()
+    }
+
+    fn nested(depth: usize, inner: &str) -> String {
+        format!("{}{inner}{}", "[".repeat(depth), "]".repeat(depth))
+    }
+
+    /// A journal whose report passes every check, with `extra` added to its checkpoint.
+    fn ready(extra: &str) -> Vec<JValue> {
+        rows(&[
+            ("job.created", r#"{"kind":"code","capabilities":[]}"#.into()),
+            ("job.started", "{}".into()),
+            ("plan.proposed", r#"{"subQuestions":["QA step"]}"#.into()),
+            (
+                "task.stage",
+                r#"{"from":"planned","to":"implementing","revision":0,"reason":null}"#.into(),
+            ),
+            (
+                "step.started",
+                r#"{"id":"tests","title":"QA tests"}"#.into(),
+            ),
+            ("step.completed", r#"{"id":"tests"}"#.into()),
+            (
+                "artifact.created",
+                r#"{"name":"test-report","kind":"test-report","passed":true}"#.into(),
+            ),
+            (
+                "checkpoint.created",
+                format!(r#"{{"sha":"{SHA}","branch":"noevia/qa"{extra}}}"#),
+            ),
+        ])
+    }
+
+    fn review(current: &[JValue]) -> Result<JValue, Refusal> {
+        let raw = wtf16::parse(
+            r#"{"from":"implementing","to":"reviewing","revision":0,"expectedArtifacts":["test-report"]}"#,
+        )
+        .unwrap();
+        bound(ID, "task.stage", &raw, current, &journals::derive(current))
+    }
+
+    #[test]
+    fn a_ready_journal_records_its_report_hash() {
+        let data = review(&ready("")).unwrap();
+        assert!(data
+            .get("reportHash")
+            .as_str()
+            .is_some_and(|h| hex_of(h, &[64])));
+    }
+
+    #[test]
+    fn a_lifecycle_the_port_refuses_is_unverified() {
+        let e = lifecycle_state(None).unwrap_err();
+        assert_eq!(e.status, Some(409));
+        assert_eq!(e.message, UNVERIFIED);
+        assert_eq!(
+            lifecycle_state(Some(Err(Throw::MergeFromReviewing)))
+                .unwrap_err()
+                .message,
+            INCONSISTENT
+        );
+        // A stage row whose `to` is nested far past the fold's parse depth is still folded (the
+        // deep value is not a state): inconsistent, as jobs.cjs's own fold answers.
+        let current = rows(&[
+            ("job.created", r#"{"kind":"code","capabilities":[]}"#.into()),
+            (
+                "task.stage",
+                format!(
+                    r#"{{"from":"planned","to":{},"revision":0}}"#,
+                    nested(100, "1")
+                ),
+            ),
+        ]);
+        let e = review(&current).unwrap_err();
+        assert_eq!((e.status, e.message.as_str()), (Some(409), INCONSISTENT));
+    }
+
+    #[test]
+    fn a_report_too_deep_to_hash_is_refused() {
+        // The checkpoint is copied into the report's evidence three levels deeper than it sits in
+        // the job: within the report's parse depth, past its hash depth.
+        let e = review(&ready(&format!(r#","qa":{}"#, nested(62, "1")))).unwrap_err();
+        assert_eq!(e.status, Some(409));
+        assert_eq!(
+            e.message,
+            "The completeness report cannot be hashed: it is nested too deeply"
+        );
+    }
+
+    #[test]
+    fn a_report_too_large_to_hash_is_refused() {
+        let big = "q".repeat(completeness_report::MAX_HASH_CHARS as usize + 1);
+        let e = review(&ready(&format!(r#","qa":"{big}""#))).unwrap_err();
+        assert_eq!(e.status, Some(409));
+        assert_eq!(
+            e.message,
+            "The completeness report cannot be hashed: it is too large"
+        );
+    }
 }

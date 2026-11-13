@@ -7,6 +7,7 @@
   "task-lifecycle.cjs": "f99c9f9387f647fd579fbcd3acc6c6a19531995313cd4cc6894b333633ec5da1",
   "completeness-report.cjs": "22c8520025fa388248fcf834093f872b7fbb2c1739afeda9f5949e26e52aa797",
   "completeness-policy-host.cjs": "4583ced3357886425167f4c781c0e2aee3bb20308222d36b5ef99a176f9a8f7a",
+  "dav-parse-wasm.cjs": "29e749a2f00eeead883f06e76cde96e1a2d6083bd1687ef5d70edd82a287f2ca",
   "wasm/dav-parse.wasm": "2305d64d1a75a57b3c52eda673b384c819718aae540c570837b4aeb4ef5e5cb9"
  },
  "stores": {
@@ -10720,6 +10721,2151 @@
     }
    }
   ],
+  "step-ids": [
+   {
+    "op": "clock",
+    "t": 65000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":65000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":{\"qa\":1},\"title\":\"QA 0\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": {
+        "qa": 1
+       },
+       "title": "QA 0"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":{\"qa\":1},\"title\":\"QA 0\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":{\"qa\":1}}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": {
+        "qa": 1
+       }
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":{\"qa\":1}}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":[1],\"title\":\"QA 1\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": [
+        1
+       ],
+       "title": "QA 1"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":4,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":[1],\"title\":\"QA 1\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":[1]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": [
+        1
+       ]
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":5,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":[1]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":[],\"title\":\"QA 2\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": [],
+       "title": "QA 2"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":6,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":[],\"title\":\"QA 2\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":[]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": []
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":7,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":{},\"title\":\"QA 3\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": {},
+       "title": "QA 3"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":8,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":{},\"title\":\"QA 3\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":{}}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": {}
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":9,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":{}}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":\"qa\",\"title\":\"QA 4\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": "qa",
+       "title": "QA 4"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":10,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":\"qa\",\"title\":\"QA 4\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":\"qa\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": "qa"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":11,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":\"qa\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":7,\"title\":\"QA 5\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 12,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": 7,
+       "title": "QA 5"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":12,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":7,\"title\":\"QA 5\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":7}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 13,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": 7
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":13,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":7}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":0,\"title\":\"QA 6\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 14,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": 0,
+       "title": "QA 6"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":14,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":0,\"title\":\"QA 6\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":0}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 15,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": 0
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":15,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":0}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":null,\"title\":\"QA 7\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 16,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": null,
+       "title": "QA 7"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":16,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":null,\"title\":\"QA 7\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":null}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 17,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": null
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":17,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":null}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":true,\"title\":\"QA 8\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 18,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": true,
+       "title": "QA 8"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":18,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":true,\"title\":\"QA 8\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":true}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 19,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":19,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":false,\"title\":\"QA 9\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 20,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": false,
+       "title": "QA 9"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":20,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":false,\"title\":\"QA 9\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":false}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 21,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":21,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"title\":\"QA 10\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 22,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "title": "QA 10"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":22,\"type\":\"step.started\",\"at\":65000,\"data\":{\"title\":\"QA 10\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 23,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":23,\"type\":\"step.completed\",\"at\":65000,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":\"7\",\"title\":\"QA 11\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 24,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": "7",
+       "title": "QA 11"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":24,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":\"7\",\"title\":\"QA 11\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":\"7\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 25,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": "7"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":25,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":\"7\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":7,\"title\":\"QA again\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 26,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": 7,
+       "title": "QA again"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":26,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":7,\"title\":\"QA again\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":7,\"failed\":true}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 27,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": 7,
+       "failed": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":27,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":7,\"failed\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "steps",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "result": {
+     "ok": [
+      {
+       "id": {
+        "qa": 1
+       },
+       "title": "QA 0",
+       "status": "running"
+      },
+      {
+       "id": [
+        1
+       ],
+       "title": "QA 1",
+       "status": "running"
+      },
+      {
+       "id": [],
+       "title": "QA 2",
+       "status": "running"
+      },
+      {
+       "id": {},
+       "title": "QA 3",
+       "status": "running"
+      },
+      {
+       "id": "qa",
+       "title": "QA 4",
+       "status": "completed"
+      },
+      {
+       "id": 7,
+       "title": "QA 5",
+       "status": "failed"
+      },
+      {
+       "id": 0,
+       "title": "QA 6",
+       "status": "completed"
+      },
+      {
+       "id": null,
+       "title": "QA 7",
+       "status": "completed"
+      },
+      {
+       "id": true,
+       "title": "QA 8",
+       "status": "completed"
+      },
+      {
+       "id": false,
+       "title": "QA 9",
+       "status": "completed"
+      },
+      {
+       "title": "QA 10",
+       "status": "completed"
+      },
+      {
+       "id": "7",
+       "title": "QA 11",
+       "status": "completed"
+      },
+      {
+       "id": 7,
+       "title": "QA again",
+       "status": "running"
+      }
+     ]
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "any",
+    "uuid": "00000000-0000-4000-8000-000000000002",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000002"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":1,\"type\":\"job.created\",\"at\":65000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "authority",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "task.stage",
+    "data": "{\"from\":\"planned\",\"to\":\"implementing\",\"revision\":0}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 2,
+      "type": "task.stage",
+      "at": 65000,
+      "data": {
+       "from": "planned",
+       "to": "implementing",
+       "revision": 0,
+       "reason": null
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":2,\"type\":\"task.stage\",\"at\":65000,\"data\":{\"from\":\"planned\",\"to\":\"implementing\",\"revision\":0,\"reason\":null}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":{\"qa\":1},\"title\":\"QA 0\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 3,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": {
+        "qa": 1
+       },
+       "title": "QA 0"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":3,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":{\"qa\":1},\"title\":\"QA 0\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":{\"qa\":1}}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 4,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": {
+        "qa": 1
+       }
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":4,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":{\"qa\":1}}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":[1],\"title\":\"QA 1\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 5,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": [
+        1
+       ],
+       "title": "QA 1"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":5,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":[1],\"title\":\"QA 1\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":[1]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 6,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": [
+        1
+       ]
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":6,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":[1]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":[],\"title\":\"QA 2\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 7,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": [],
+       "title": "QA 2"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":7,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":[],\"title\":\"QA 2\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":[]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 8,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": []
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":8,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":{},\"title\":\"QA 3\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 9,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": {},
+       "title": "QA 3"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":9,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":{},\"title\":\"QA 3\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":{}}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 10,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": {}
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":10,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":{}}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":\"qa\",\"title\":\"QA 4\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 11,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": "qa",
+       "title": "QA 4"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":11,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":\"qa\",\"title\":\"QA 4\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":\"qa\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 12,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": "qa"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":12,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":\"qa\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":7,\"title\":\"QA 5\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 13,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": 7,
+       "title": "QA 5"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":13,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":7,\"title\":\"QA 5\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":7}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 14,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": 7
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":14,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":7}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":0,\"title\":\"QA 6\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 15,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": 0,
+       "title": "QA 6"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":15,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":0,\"title\":\"QA 6\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":0}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 16,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": 0
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":16,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":0}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":null,\"title\":\"QA 7\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 17,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": null,
+       "title": "QA 7"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":17,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":null,\"title\":\"QA 7\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":null}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 18,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": null
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":18,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":null}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":true,\"title\":\"QA 8\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 19,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": true,
+       "title": "QA 8"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":19,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":true,\"title\":\"QA 8\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":true}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 20,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":20,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":false,\"title\":\"QA 9\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 21,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": false,
+       "title": "QA 9"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":21,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":false,\"title\":\"QA 9\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":false}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 22,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":22,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"title\":\"QA 10\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 23,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "title": "QA 10"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":23,\"type\":\"step.started\",\"at\":65000,\"data\":{\"title\":\"QA 10\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 24,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {}
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":24,\"type\":\"step.completed\",\"at\":65000,\"data\":{}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":\"7\",\"title\":\"QA 11\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 25,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": "7",
+       "title": "QA 11"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":25,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":\"7\",\"title\":\"QA 11\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":\"7\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 26,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": "7"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":26,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":\"7\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.started",
+    "data": "{\"id\":\"qa\",\"title\":\"QA again\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 27,
+      "type": "step.started",
+      "at": 65000,
+      "data": {
+       "id": "qa",
+       "title": "QA again"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":27,\"type\":\"step.started\",\"at\":65000,\"data\":{\"id\":\"qa\",\"title\":\"QA again\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "type": "step.completed",
+    "data": "{\"id\":\"qa\",\"failed\":true}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000002",
+      "seq": 28,
+      "type": "step.completed",
+      "at": 65000,
+      "data": {
+       "id": "qa",
+       "failed": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000002.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000002\",\"seq\":28,\"type\":\"step.completed\",\"at\":65000,\"data\":{\"id\":\"qa\",\"failed\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "steps",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000002",
+    "result": {
+     "ok": [
+      {
+       "id": {
+        "qa": 1
+       },
+       "title": "QA 0",
+       "status": "running"
+      },
+      {
+       "id": [
+        1
+       ],
+       "title": "QA 1",
+       "status": "running"
+      },
+      {
+       "id": [],
+       "title": "QA 2",
+       "status": "running"
+      },
+      {
+       "id": {},
+       "title": "QA 3",
+       "status": "running"
+      },
+      {
+       "id": "qa",
+       "title": "QA 4",
+       "status": "completed"
+      },
+      {
+       "id": 7,
+       "title": "QA 5",
+       "status": "completed"
+      },
+      {
+       "id": 0,
+       "title": "QA 6",
+       "status": "completed"
+      },
+      {
+       "id": null,
+       "title": "QA 7",
+       "status": "completed"
+      },
+      {
+       "id": true,
+       "title": "QA 8",
+       "status": "completed"
+      },
+      {
+       "id": false,
+       "title": "QA 9",
+       "status": "completed"
+      },
+      {
+       "title": "QA 10",
+       "status": "completed"
+      },
+      {
+       "id": "7",
+       "title": "QA 11",
+       "status": "completed"
+      },
+      {
+       "id": "qa",
+       "title": "QA again",
+       "status": "failed"
+      }
+     ]
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "steps",
+    "store": "any",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "result": {
+     "ok": null
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   }
+  ],
+  "authority-unhashable": [
+   {
+    "op": "clock",
+    "t": 67000,
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000001",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000001"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":1,\"type\":\"job.created\",\"at\":67000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "plan.proposed",
+    "data": "{\"subQuestions\":[\"QA step\"]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "plan.proposed",
+      "at": 67000,
+      "data": {
+       "question": null,
+       "subQuestions": [
+        "QA step"
+       ],
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":2,\"type\":\"plan.proposed\",\"at\":67000,\"data\":{\"question\":null,\"subQuestions\":[\"QA step\"],\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "authority",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "task.stage",
+    "data": "{\"from\":\"planned\",\"to\":\"implementing\",\"revision\":0}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "task.stage",
+      "at": 67000,
+      "data": {
+       "from": "planned",
+       "to": "implementing",
+       "revision": 0,
+       "reason": null
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":3,\"type\":\"task.stage\",\"at\":67000,\"data\":{\"from\":\"planned\",\"to\":\"implementing\",\"revision\":0,\"reason\":null}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.started",
+    "data": "{\"id\":\"tests\",\"title\":\"Run the QA tests\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "step.started",
+      "at": 67000,
+      "data": {
+       "id": "tests",
+       "title": "Run the QA tests"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":4,\"type\":\"step.started\",\"at\":67000,\"data\":{\"id\":\"tests\",\"title\":\"Run the QA tests\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "step.completed",
+    "data": "{\"id\":\"tests\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "step.completed",
+      "at": 67000,
+      "data": {
+       "id": "tests"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":5,\"type\":\"step.completed\",\"at\":67000,\"data\":{\"id\":\"tests\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "artifact.created",
+    "data": "{\"name\":\"test-report\",\"kind\":\"test-report\",\"passed\":true}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "artifact.created",
+      "at": 67000,
+      "data": {
+       "name": "test-report",
+       "kind": "test-report",
+       "passed": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":6,\"type\":\"artifact.created\",\"at\":67000,\"data\":{\"name\":\"test-report\",\"kind\":\"test-report\",\"passed\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "checkpoint.created",
+    "data": "{\"sha\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"qa\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "checkpoint.created",
+      "at": 67000,
+      "data": {
+       "sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+       "qa": [
+        [
+         [
+          [
+           [
+            [
+             [
+              [
+               [
+                [
+                 [
+                  [
+                   [
+                    [
+                     [
+                      [
+                       [
+                        [
+                         [
+                          [
+                           [
+                            [
+                             [
+                              [
+                               [
+                                [
+                                 [
+                                  [
+                                   [
+                                    [
+                                     [
+                                      [
+                                       [
+                                        [
+                                         [
+                                          [
+                                           [
+                                            [
+                                             [
+                                              [
+                                               [
+                                                [
+                                                 [
+                                                  [
+                                                   [
+                                                    [
+                                                     [
+                                                      [
+                                                       [
+                                                        [
+                                                         [
+                                                          [
+                                                           [
+                                                            [
+                                                             [
+                                                              [
+                                                               [
+                                                                [
+                                                                 [
+                                                                  [
+                                                                   [
+                                                                    [
+                                                                     1
+                                                                    ]
+                                                                   ]
+                                                                  ]
+                                                                 ]
+                                                                ]
+                                                               ]
+                                                              ]
+                                                             ]
+                                                            ]
+                                                           ]
+                                                          ]
+                                                         ]
+                                                        ]
+                                                       ]
+                                                      ]
+                                                     ]
+                                                    ]
+                                                   ]
+                                                  ]
+                                                 ]
+                                                ]
+                                               ]
+                                              ]
+                                             ]
+                                            ]
+                                           ]
+                                          ]
+                                         ]
+                                        ]
+                                       ]
+                                      ]
+                                     ]
+                                    ]
+                                   ]
+                                  ]
+                                 ]
+                                ]
+                               ]
+                              ]
+                             ]
+                            ]
+                           ]
+                          ]
+                         ]
+                        ]
+                       ]
+                      ]
+                     ]
+                    ]
+                   ]
+                  ]
+                 ]
+                ]
+               ]
+              ]
+             ]
+            ]
+           ]
+          ]
+         ]
+        ]
+       ]
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":7,\"type\":\"checkpoint.created\",\"at\":67000,\"data\":{\"sha\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"qa\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "authority",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "task.stage",
+    "data": "{\"from\":\"implementing\",\"to\":\"reviewing\",\"revision\":0,\"expectedArtifacts\":[\"test-report\"]}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "The completeness report cannot be hashed: it is nested too deeply"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "checkpoint.created",
+    "data": "{\"sha\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"qa\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "checkpoint.created",
+      "at": 67000,
+      "data": {
+       "sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+       "qa": [
+        [
+         [
+          [
+           [
+            [
+             [
+              [
+               [
+                [
+                 [
+                  [
+                   [
+                    [
+                     [
+                      [
+                       [
+                        [
+                         [
+                          [
+                           [
+                            [
+                             [
+                              [
+                               [
+                                [
+                                 [
+                                  [
+                                   [
+                                    [
+                                     [
+                                      [
+                                       [
+                                        [
+                                         [
+                                          [
+                                           [
+                                            [
+                                             [
+                                              [
+                                               [
+                                                [
+                                                 [
+                                                  [
+                                                   [
+                                                    [
+                                                     [
+                                                      [
+                                                       [
+                                                        [
+                                                         [
+                                                          [
+                                                           [
+                                                            [
+                                                             [
+                                                              [
+                                                               [
+                                                                [
+                                                                 1
+                                                                ]
+                                                               ]
+                                                              ]
+                                                             ]
+                                                            ]
+                                                           ]
+                                                          ]
+                                                         ]
+                                                        ]
+                                                       ]
+                                                      ]
+                                                     ]
+                                                    ]
+                                                   ]
+                                                  ]
+                                                 ]
+                                                ]
+                                               ]
+                                              ]
+                                             ]
+                                            ]
+                                           ]
+                                          ]
+                                         ]
+                                        ]
+                                       ]
+                                      ]
+                                     ]
+                                    ]
+                                   ]
+                                  ]
+                                 ]
+                                ]
+                               ]
+                              ]
+                             ]
+                            ]
+                           ]
+                          ]
+                         ]
+                        ]
+                       ]
+                      ]
+                     ]
+                    ]
+                   ]
+                  ]
+                 ]
+                ]
+               ]
+              ]
+             ]
+            ]
+           ]
+          ]
+         ]
+        ]
+       ]
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":8,\"type\":\"checkpoint.created\",\"at\":67000,\"data\":{\"sha\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"qa\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "authority",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000001",
+    "type": "task.stage",
+    "data": "{\"from\":\"implementing\",\"to\":\"reviewing\",\"revision\":0,\"expectedArtifacts\":[\"test-report\"]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "task.stage",
+      "at": 67000,
+      "data": {
+       "from": "implementing",
+       "to": "reviewing",
+       "revision": 0,
+       "reason": null,
+       "reportHash": "0d7996f7c61e3c69a3306df051610ff465caa450e7b43f7546b23cea8dcf38b9"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000001.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000001\",\"seq\":9,\"type\":\"task.stage\",\"at\":67000,\"data\":{\"from\":\"implementing\",\"to\":\"reviewing\",\"revision\":0,\"reason\":null,\"reportHash\":\"0d7996f7c61e3c69a3306df051610ff465caa450e7b43f7546b23cea8dcf38b9\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   }
+  ],
   "authority-differences": [
    {
     "op": "clock",
@@ -10885,6 +13031,289 @@
       "status": 409,
       "message": "The completeness report does not allow review (tests-run: unknown; plan-steps-closed: fail; checkpoint-head-recorded: unknown; unverified: impl_refused)"
      }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "create",
+    "store": "code",
+    "uuid": "00000000-0000-4000-8000-000000000003",
+    "kind": "code",
+    "result": {
+     "ok": "00000000-0000-4000-8000-000000000003"
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "whole": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":1,\"type\":\"job.created\",\"at\":70000,\"data\":{\"kind\":\"code\",\"projectId\":null,\"parentId\":null,\"capabilities\":[]}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "plan.proposed",
+    "data": "{\"subQuestions\":[\"QA step\"]}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 2,
+      "type": "plan.proposed",
+      "at": 70000,
+      "data": {
+       "question": null,
+       "subQuestions": [
+        "QA step"
+       ],
+       "truncated": false
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":2,\"type\":\"plan.proposed\",\"at\":70000,\"data\":{\"question\":null,\"subQuestions\":[\"QA step\"],\"truncated\":false}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "authority",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "task.stage",
+    "data": "{\"from\":\"planned\",\"to\":\"implementing\",\"revision\":0}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 3,
+      "type": "task.stage",
+      "at": 70000,
+      "data": {
+       "from": "planned",
+       "to": "implementing",
+       "revision": 0,
+       "reason": null
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":3,\"type\":\"task.stage\",\"at\":70000,\"data\":{\"from\":\"planned\",\"to\":\"implementing\",\"revision\":0,\"reason\":null}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "step.started",
+    "data": "{\"id\":\"tests\",\"title\":\"Run the QA tests\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 4,
+      "type": "step.started",
+      "at": 70000,
+      "data": {
+       "id": "tests",
+       "title": "Run the QA tests"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":4,\"type\":\"step.started\",\"at\":70000,\"data\":{\"id\":\"tests\",\"title\":\"Run the QA tests\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "step.completed",
+    "data": "{\"id\":\"tests\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 5,
+      "type": "step.completed",
+      "at": 70000,
+      "data": {
+       "id": "tests"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":5,\"type\":\"step.completed\",\"at\":70000,\"data\":{\"id\":\"tests\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "step.started",
+    "data": "{\"id\":{\"qa\":2},\"title\":\"QA object step\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 6,
+      "type": "step.started",
+      "at": 70000,
+      "data": {
+       "id": {
+        "qa": 2
+       },
+       "title": "QA object step"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":6,\"type\":\"step.started\",\"at\":70000,\"data\":{\"id\":{\"qa\":2},\"title\":\"QA object step\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "step.completed",
+    "data": "{\"id\":{\"qa\":2}}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 7,
+      "type": "step.completed",
+      "at": 70000,
+      "data": {
+       "id": {
+        "qa": 2
+       }
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":7,\"type\":\"step.completed\",\"at\":70000,\"data\":{\"id\":{\"qa\":2}}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "artifact.created",
+    "data": "{\"name\":\"test-report\",\"kind\":\"test-report\",\"passed\":true}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 8,
+      "type": "artifact.created",
+      "at": 70000,
+      "data": {
+       "name": "test-report",
+       "kind": "test-report",
+       "passed": true
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":8,\"type\":\"artifact.created\",\"at\":70000,\"data\":{\"name\":\"test-report\",\"kind\":\"test-report\",\"passed\":true}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "append",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "checkpoint.created",
+    "data": "{\"sha\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"branch\":\"noevia/qa\"}",
+    "result": {
+     "ok": {
+      "job": "00000000-0000-4000-8000-000000000003",
+      "seq": 9,
+      "type": "checkpoint.created",
+      "at": 70000,
+      "data": {
+       "sha": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+       "branch": "noevia/qa"
+      }
+     }
+    },
+    "files": {
+     "written": {
+      "00000000-0000-4000-8000-000000000003.jsonl": {
+       "appended": "{\"job\":\"00000000-0000-4000-8000-000000000003\",\"seq\":9,\"type\":\"checkpoint.created\",\"at\":70000,\"data\":{\"sha\":\"a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1\",\"branch\":\"noevia/qa\"}}\n"
+      }
+     },
+     "removed": []
+    }
+   },
+   {
+    "op": "authority",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "type": "task.stage",
+    "data": "{\"from\":\"implementing\",\"to\":\"reviewing\",\"revision\":0,\"expectedArtifacts\":[\"test-report\"]}",
+    "result": {
+     "error": {
+      "status": 409,
+      "message": "The completeness report does not allow review (plan-steps-closed: fail; unverified: impl_refused)"
+     }
+    },
+    "files": {
+     "written": {},
+     "removed": []
+    }
+   },
+   {
+    "op": "steps",
+    "store": "code",
+    "id": "00000000-0000-4000-8000-000000000003",
+    "result": {
+     "ok": [
+      {
+       "id": "tests",
+       "title": "Run the QA tests",
+       "status": "completed"
+      },
+      {
+       "id": {
+        "qa": 2
+       },
+       "title": "QA object step",
+       "status": "running"
+      }
+     ]
     },
     "files": {
      "written": {},

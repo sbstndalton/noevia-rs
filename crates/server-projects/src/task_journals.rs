@@ -696,6 +696,18 @@ pub(crate) fn fold_lifecycle(
     task_lifecycle::fold(&events, &from, authoritative).ok()
 }
 
+/// `a === b` on plain data: scalars by value (`NaN !== NaN`, `0 === -0`), an object or array is
+/// never `===` to another decoded value (each JSON row decodes to fresh objects).
+fn strict_eq(a: &JValue, b: &JValue) -> bool {
+    match (a, b) {
+        (JValue::Undefined, JValue::Undefined) | (JValue::Null, JValue::Null) => true,
+        (JValue::Bool(x), JValue::Bool(y)) => x == y,
+        (JValue::Num(x), JValue::Num(y)) => x == y,
+        (JValue::Str(x), JValue::Str(y)) => x == y,
+        _ => false,
+    }
+}
+
 /// jobs.cjs `derive`: the fold over one whole journal.
 pub fn derive(rows: &[JValue]) -> Job {
     let authoritative = rows
@@ -755,7 +767,7 @@ pub fn derive(rows: &[JValue]) -> Job {
             "step.completed" => {
                 let id = d.get("id");
                 let running = |x: &&mut JValue| {
-                    x.get("id") == id && x.get("status").as_str() == Some("running")
+                    strict_eq(x.get("id"), id) && x.get("status").as_str() == Some("running")
                 };
                 let found = if authoritative {
                     job.steps.iter_mut().rev().find(running).is_some()
@@ -770,7 +782,7 @@ pub fn derive(rows: &[JValue]) -> Job {
                 let step = if found {
                     job.steps.iter_mut().rev().find(running)
                 } else {
-                    job.steps.iter_mut().find(|x| x.get("id") == id)
+                    job.steps.iter_mut().find(|x| strict_eq(x.get("id"), id))
                 };
                 if let Some(JValue::Obj(items)) = step {
                     wtf16::set(items, "status", s(done));
