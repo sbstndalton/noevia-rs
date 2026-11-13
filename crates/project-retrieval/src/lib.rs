@@ -8,10 +8,13 @@
 //! - [`search`]: the vector half of `searchProject` over an existing index (slot, cosine SQL,
 //!   score floor, version filter), read-only, checked against searches recorded from Node over
 //!   indexes Node wrote (`tests/generate_search_fixtures.cjs`).
+//! - [`policy`]: whether the reranker is on and whether embedding is off, the two decisions a
+//!   search makes before it embeds the query (`tests/generate_policy_fixtures.cjs`).
 //!
 //! Not here: embedding the query, the rerank client, image retrieval and any switch.
 
 pub mod context;
 pub mod hits;
 pub mod names;
+pub mod policy;
 pub mod search;

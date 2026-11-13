@@ -2481,6 +2481,7 @@ dependencies = [
  "sha2",
  "sqlite-vec-loader",
  "tempfile",
+ "url",
 ]
 
 [[package]]

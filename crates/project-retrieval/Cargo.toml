@@ -15,6 +15,7 @@ prompt-framing = { path = "../prompt-framing" }
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde_json = "1"
 sha2 = "0.10"
+url = "2"
 
 [dev-dependencies]
 sqlite-vec-loader = { path = "../sqlite-vec-loader" }
