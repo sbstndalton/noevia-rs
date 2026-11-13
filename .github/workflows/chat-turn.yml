@@ -33,6 +33,9 @@ jobs:
         # Synthetic QA event sequences through chat-interrupted-turn.cjs createTurnRecord and chat-partial.cjs; no
         # network. Before the wasm build: these two modules do not load dav-parse, so a build failure cannot hide it.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-turn/tests/record_entries.cjs --check crates/chat-turn/tests/fixtures/node-turn-record.v1.json
+      - name: The core's own reduceToolResult reproduces the committed recording
+        # Synthetic QA tool results through server/tool-result-reduce.cjs; needs no wasm.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-turn/tests/record_reduce.cjs --check crates/chat-turn/tests/fixtures/node-reduce.v1.json
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
         with:
           targets: wasm32-unknown-unknown

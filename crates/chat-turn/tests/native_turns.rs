@@ -536,13 +536,7 @@ fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
         clean_search_args: &|_, a| a.to_string(),
         announces_tool_action: &|_| false,
         announced_note: "",
-        reduce_tool_result: &|text, cap| {
-            assert!(
-                js::len(text) <= cap,
-                "a recorded result over the cap needs the reducer port"
-            );
-            text.to_string()
-        },
+        reduce_tool_result: &|text, cap| chat_turn::reduce::reduce_tool_result(text, cap).text,
         source_links: &source_links,
         fallback_text: &fallback_text,
         final_answer_note: FINAL_ANSWER_NOTE,
@@ -713,7 +707,7 @@ fn the_native_turn_can_be_spawned() {
         clean_search_args: &|_, a| a.to_string(),
         announces_tool_action: &|_| false,
         announced_note: "",
-        reduce_tool_result: &|t, _| t.to_string(),
+        reduce_tool_result: &|text, cap| chat_turn::reduce::reduce_tool_result(text, cap).text,
         source_links: &source_links,
         fallback_text: &fallback_text,
         final_answer_note: FINAL_ANSWER_NOTE,

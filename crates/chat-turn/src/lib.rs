@@ -8,6 +8,7 @@
 //! - [`partial`]: the interrupted-turn record;
 //! - [`record`]: the turn record (chat-interrupted-turn.cjs `createTurnRecord`) and the partial
 //!   file's entry (chat-partial.cjs `bounded`), recorded from Node;
+//! - [`reduce`]: a tool result compacted for the model (`tool-result-reduce.cjs`);
 //! - [`relay`]: one model round turned into events, with the reasoning-only note and the
 //!   telemetry the client needs;
 //! - [`title`]: a chat's generated title, from the title request to the cleaned name and the per-chat
@@ -28,6 +29,7 @@ pub mod native;
 pub mod partial;
 pub mod prepared;
 pub mod record;
+pub mod reduce;
 pub mod relay;
 pub mod round;
 pub mod sink;
