@@ -51,7 +51,8 @@ const RETRY = [null, '', ' ', '0', '5', '1.5', ' 7 ', '007', '0.0005', '2.4995',
   'Sat, 13 Nov 2027 04:31:60 GMT', 'Wed, 31 Feb 2027 00:00:00 GMT', 'Fri, 13 nov 2026 04:31:00 gmt', 'Mon, 13 Nov 2026 04:31:00 GMT',
   'Fri, 13 Nov 2026 24:00:00 GMT', 'Fri, 13 Nov 2026 23:60:00 GMT', 'Fri, 32 Nov 2026 00:00:00 GMT', 'Fri, 00 Nov 2026 00:00:00 GMT',
   'Fri, 13 Nov 2026 04:31:00 UTC', 'Fri, 13 Nov 2026 24:00:01 GMT', '2027-02-31T00:00:00Z', '2026-11-13T04:31:60Z', '2026-11-13T24:00:00Z',
-  '2026-11-13T24:00:01Z', '2026-13-01T00:00:00Z', 'Fri, 13 Nov 2026 04:31:75 GMT', 'Fri, 13 Nov 2026 24:00:60 GMT', 'Fri, 13 Xyz 2026 00:00:00 GMT',
+  '2026-11-13T24:00:01Z', '2026-13-01T00:00:00Z', 'Fri, 13 Nov 2026 04:31:75 GMT', 'Fri, 13 Nov 2026 24:00:60 GMT',
+  'Sat, 13 Nov 0049 04:31:00 GMT', 'Sat, 13 Nov 0050 04:31:00 GMT', 'Sat, 13 Nov 0000 04:31:00 GMT', 'Xyz, 13 Nov 2027 04:31:00 GMT', '1x3, 13 Nov 2027 04:31:00 GMT', 'Fri, 13 Xyz 2026 00:00:00 GMT',
 ];
 const retryAfter = RETRY.map((value) => ({ value, ms: rl.parseRetryAfter(value, NOW) }));
 

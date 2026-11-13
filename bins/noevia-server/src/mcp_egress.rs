@@ -693,8 +693,24 @@ struct Head {
     retry_after: Option<String>,
 }
 
-/// Sends `request` (the caller has checked the address) and reads the head. A redirect is refused.
-async fn head(request: reqwest::RequestBuilder) -> Result<(Head, reqwest::Response), RpcFailure> {
+impl Egress {
+    /// Sends `request` only if `url` passes [`Egress::url_allowed`] (so no caller can forget the
+    /// check), and reads the head. A redirect is refused.
+    async fn head(
+        &self,
+        request: reqwest::RequestBuilder,
+        url: &str,
+    ) -> Result<(Head, reqwest::Response), RpcFailure> {
+        if !self.url_allowed(url).await {
+            return Err(RpcFailure::Refused);
+        }
+        head_of(request).await
+    }
+}
+
+async fn head_of(
+    request: reqwest::RequestBuilder,
+) -> Result<(Head, reqwest::Response), RpcFailure> {
     let response = request.send().await.map_err(|_| RpcFailure::Refused)?;
     let status = response.status().as_u16();
     // undici's `redirect: 'error'` throws on a redirect answer.
@@ -754,12 +770,6 @@ async fn exchange(
     deadline: Duration,
 ) -> Result<Option<JValue>, RpcFailure> {
     let until = tokio::time::Instant::now() + deadline;
-    if !matches!(
-        tokio::time::timeout_at(until, egress.url_allowed(url)).await,
-        Ok(true)
-    ) {
-        return Err(RpcFailure::Refused);
-    }
     let mut pairs = vec![("jsonrpc", JValue::Str("2.0".into()))];
     if let Some(id) = id {
         pairs.push(("id", JValue::Num(id as f64)));
@@ -780,7 +790,8 @@ async fn exchange(
         request = request.header("mcp-session-id", s);
     }
     let request = request.body(js_json::stringify(&JValue::obj(pairs)).unwrap_or_default());
-    let (head, mut response) = match tokio::time::timeout_at(until, head(request)).await {
+    let (head, mut response) = match tokio::time::timeout_at(until, egress.head(request, url)).await
+    {
         Err(_) => return Err(RpcFailure::TimedOut),
         Ok(answer) => answer?,
     };
@@ -849,9 +860,6 @@ async fn close_call(
     session: Option<String>,
 ) {
     let Some(id) = session else { return };
-    if !egress.url_allowed(url).await {
-        return;
-    }
     let mut request = egress
         .client
         .delete(url)
@@ -860,7 +868,7 @@ async fn close_call(
     for (k, v) in headers.iter().filter(|(k, _)| !reserved(k)) {
         request = request.header(k.as_str(), v.as_str());
     }
-    let _ = head(request).await;
+    let _ = egress.head(request, url).await;
 }
 
 /// Why one tool call ended without a result.
