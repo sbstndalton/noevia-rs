@@ -407,10 +407,7 @@ impl<H: Host> Turn<'_, H> {
                             host.emit(&event("warning", vec![("text", js::s(w))]));
                         }
                     }
-                    None => {
-                        host.emit(&event("error", vec![("text", js::s(FAILED_TEXT))]));
-                        return Ended::Error;
-                    }
+                    None => return self.failed_end(),
                 }
             }
             match self.budget(&mut s, &fit, round).await {
@@ -493,6 +490,8 @@ impl<H: Host> Turn<'_, H> {
                 .await
             {
                 StreamEnd::Done => {}
+                // A skills bridge without an answer: the turn ends there (skills.rs).
+                StreamEnd::Revoked if self.skills.failed() => return self.failed_end(),
                 // Cut off by a revoked skill: what was shown stays, the calls streamed so far are not run.
                 StreamEnd::Revoked => {
                     for (i, slot) in &current.tool_calls {
@@ -569,6 +568,9 @@ impl<H: Host> Turn<'_, H> {
             if calls > 0 {
                 self.run_calls(&mut gate, &mut current, &mut s).await;
                 self.exchange.tool_offset += next_offset(&current.tool_calls);
+                if self.skills.failed() && !host.left() {
+                    return self.failed_end();
+                }
             }
             if p.decline_ends_reply && !gate.declined.is_empty() && !self.skills.is_revoked() {
                 s.paused = true;
@@ -602,6 +604,9 @@ impl<H: Host> Turn<'_, H> {
         if host.left() {
             return Ended::Left;
         }
+        if self.skills.failed() {
+            return self.failed_end();
+        }
         // Any check that saw a loaded skill revoked ends the reply with one error; nothing after it ran.
         if self.skills.is_revoked() {
             host.emit(&event(
@@ -614,6 +619,13 @@ impl<H: Host> Turn<'_, H> {
             return Ended::Error;
         }
         self.close(&s).await
+    }
+
+    /// The turn ends with index.cjs's failure text (a skills bridge gave no answer, skills.rs).
+    fn failed_end(&self) -> Ended {
+        self.host
+            .emit(&event("error", vec![("text", js::s(FAILED_TEXT))]));
+        Ended::Error
     }
 
     /// #666: the person declined a write; the reply ends with a fixed note (the client words it).
@@ -728,6 +740,10 @@ impl<H: Host> Turn<'_, H> {
             s.messages.push(outcome.message);
             if let Some(result) = &outcome.read {
                 self.skills.note_read(host, &call.args, result).await;
+            }
+            // A skills bridge without an answer: no later call is asked (skills.rs).
+            if self.skills.failed() {
+                break;
             }
             if let Some(a) = outcome.applied {
                 s.applied.push(a);

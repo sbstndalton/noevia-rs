@@ -511,7 +511,8 @@ async function runTurn(c, { handoff = false } = {}) {
       // The engine's /props answer through the tools gate (chat-template-caps.cjs): unknown, so tools are allowed;
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
       templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
-      ...(handoff ? { nativeHandoff: { requested: () => true, supervising: () => false } } : {}),
+      // The front names the capabilities its executor runs (rust-chat-native.cjs CAPS_HEADER; chat-turn HANDOFF_CAPS).
+      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills']), supervising: () => false } } : {}),
     });
     const body = { message: 'QA hello', projectId: project ? project.id : undefined, chatId: 'qa-chat-1', history: [], ...(c.body || {}) };
     await handler.handleChat({}, res, body, { user });

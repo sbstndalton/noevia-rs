@@ -5,12 +5,20 @@
 //! revocation once found (it stays for the rest of the turn), when it last checked, and the names already taken
 //! out of the history.
 //!
-//! Named differences, each the executor's own (Node asks no bridge, so it has no such failure):
-//! - a revocation check the bridge gives no answer to counts as every loaded skill revoked (fail closed);
-//! - a read the bridge gives no answer to counts as reading every candidate: they are tracked (so a later
-//!   change revokes them, the stricter direction) but not recorded in the ledger;
-//! - a round-0 scrub the bridge gives no answer to ends the turn with index.cjs's failure text, as a handler
-//!   that throws there does, rather than sending a history that may still carry a revoked skill.
+//! Named differences, each the executor's own (Node asks no bridge, so no recording can show them; the
+//! replay tests drive them with a host that gives no answer). A skills bridge that gives no answer fails
+//! closed, as a handler that throws there ends a Node turn: the turn ends with index.cjs's failure text
+//! ([`crate::native::FAILED_TEXT`], not `skill_revoked`: nothing was revoked) before its next round and
+//! before any further tool:
+//! - a revocation check: at a round's start or while it streams the turn ends there (the stream is cut);
+//!   in the gate the call is refused with the exchange's unchecked-call text, unaudited, and no later call
+//!   of the round is asked;
+//! - a read: a skill it may have loaded would have no ledger record (so a later turn could not scrub it),
+//!   so no later call of the round is asked and no round follows;
+//! - a round-0 scrub: rather than send a history that may still carry a revoked skill.
+//!
+//! Known cost (no change): while an enabled skill is not loaded, every successful tool call sends its whole
+//! result to core's read bridge, as chat.cjs reads every result in process.
 
 use std::sync::Mutex;
 
@@ -37,6 +45,8 @@ pub struct Skills {
 struct State {
     loaded: Vec<Skill>,
     revoked: Option<Vec<(String, String)>>,
+    /// A skills bridge gave no answer: the turn ends with the failure text.
+    failed: bool,
     checked_at: f64,
     in_history: Vec<String>,
 }
@@ -87,17 +97,27 @@ impl Skills {
 
     /// A loaded skill was found revoked earlier in the turn.
     pub fn is_revoked(&self) -> bool {
-        self.with(|s| s.revoked.is_some()).unwrap_or(true)
+        self.with(|s| s.revoked.is_some()).unwrap_or(false)
+    }
+
+    /// A skills bridge gave no answer: the turn ends with the failure text (see the module doc).
+    pub fn failed(&self) -> bool {
+        self.with(|s| s.failed).unwrap_or(true)
+    }
+
+    fn fail(&self) {
+        self.with(|s| s.failed = true);
     }
 
     /// chat.cjs `revokedSkills()`: the revocation found so far, else, with skills loaded, a check against the
-    /// project as stored now (the check's time is kept for the mid-stream check).
+    /// project as stored now (the check's time is kept for the mid-stream check). Also true once a skills
+    /// bridge failed ([`Skills::failed`]): nothing more runs.
     pub async fn revoked<H: Host>(&self, host: &H) -> bool {
         let Some(project) = self.project_id.as_deref() else {
-            return self.is_revoked();
+            return self.is_revoked() || self.failed();
         };
         let loaded = self.with(|s| {
-            if s.revoked.is_some() {
+            if s.revoked.is_some() || s.failed {
                 return None;
             }
             if s.loaded.is_empty() {
@@ -111,18 +131,10 @@ impl Skills {
             Some(Some(_)) => return false,
             _ => return true,
         };
-        let gone = host
-            .skills_revoked(project, &loaded)
-            .await
-            .unwrap_or_else(|| {
-                loaded
-                    .iter()
-                    .map(|k| {
-                        let name = if k.name.is_empty() { &k.file } else { &k.name };
-                        (k.file.clone(), name.clone())
-                    })
-                    .collect()
-            });
+        let Some(gone) = host.skills_revoked(project, &loaded).await else {
+            self.fail();
+            return true;
+        };
         if gone.is_empty() {
             return false;
         }
@@ -190,10 +202,13 @@ impl Skills {
         if candidates.is_empty() {
             return;
         }
-        let read = host
+        let Some(read) = host
             .skills_read(project, self.chat_id.as_deref(), &candidates, args, result)
             .await
-            .unwrap_or(candidates);
+        else {
+            self.fail();
+            return;
+        };
         self.with(|s| {
             for k in read {
                 if !s.loaded.iter().any(|l| l.file == k.file) {

@@ -491,9 +491,13 @@ impl<'a> Tools<'a> {
     }
 
     /// chat.cjs `revokedSkills()` in the gate: `Some(result)` refusing the call when a loaded skill was revoked.
+    /// A skills bridge that gave no answer refuses it unchecked (skills.rs).
     async fn skill_refusal<H: Host>(&self, host: &H, name: &str) -> Option<String> {
         let skills = self.skills?;
         if skills.revoked(host).await {
+            if skills.failed() {
+                return Some(CHECK_FAULT.to_string());
+            }
             return Some(skills.refuse(host, name));
         }
         None
@@ -786,7 +790,12 @@ impl<'a> Tools<'a> {
         }
         if let Some(skills) = self.skills {
             if skills.revoked(host).await {
-                return Some(PERMISSION_CHANGED.into());
+                let text = if skills.failed() {
+                    CHECK_FAULT
+                } else {
+                    PERMISSION_CHANGED
+                };
+                return Some(text.into());
             }
         }
         None

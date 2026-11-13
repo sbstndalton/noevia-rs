@@ -98,8 +98,10 @@ struct Script {
     observed: Mutex<Vec<(JValue, bool)>>,
     /// How far the engine's `{ tick }` frames moved the clock on.
     clock: Mutex<f64>,
-    /// The skills bridges give no answer (core unreachable): the named difference's test.
-    skills_down: bool,
+    /// The skills bridges that give no answer (core unreachable): the named differences' tests.
+    down: Vec<&'static str>,
+    /// With `skills-revoked` down: how many revocation checks are still answered first.
+    revoked_answers: Mutex<usize>,
 }
 
 /// The per-start id the recording's grant contexts carry (record_turns.cjs NOEVIA_START_ID).
@@ -192,7 +194,8 @@ impl Script {
             loaded: Mutex::new(case_loaded),
             observed: Mutex::new(Vec::new()),
             clock: Mutex::new(0.0),
-            skills_down: false,
+            down: Vec::new(),
+            revoked_answers: Mutex::new(0),
         }
     }
 
@@ -677,8 +680,12 @@ impl Host for Script {
         project_id: &str,
         loaded: &[Skill],
     ) -> Option<Vec<(String, String)>> {
-        if self.skills_down {
-            return None;
+        if self.down.contains(&"skills-revoked") {
+            let mut left = self.revoked_answers.lock().unwrap();
+            if *left == 0 {
+                return None;
+            }
+            *left -= 1;
         }
         let next = self.bridged("skills-revoked");
         assert_eq!(
@@ -713,7 +720,7 @@ impl Host for Script {
         args: &str,
         result: &str,
     ) -> Option<Vec<Skill>> {
-        if self.skills_down {
+        if self.down.contains(&"skills-read") {
             return None;
         }
         let next = self.bridged("skills-read");
@@ -749,7 +756,7 @@ impl Host for Script {
         chat_id: Option<&str>,
         messages: &[JValue],
     ) -> Option<Scrub> {
-        if self.skills_down {
+        if self.down.contains(&"skills-scrub") {
             return None;
         }
         let next = self.bridged("skills-scrub");
@@ -859,14 +866,14 @@ fn headers_json(h: &[(String, String)]) -> String {
 }
 
 fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
-    replay_with(f, case, false)
+    replay_with(f, case, &[])
 }
 
-fn replay_with(f: &JValue, case: &JValue, skills_down: bool) -> (Script, Ended) {
+fn replay_with(f: &JValue, case: &JValue, down: &[&'static str]) -> (Script, Ended) {
     let prepared =
         Prepared::read(case.get("handoff").get("prepared")).unwrap_or_else(|e| panic!("{e:?}"));
     let mut script = Script::new(case.clone());
-    script.skills_down = skills_down;
+    script.down = down.to_vec();
     let process = Process::default();
     let helpers = Helpers {
         clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
@@ -1213,11 +1220,11 @@ fn an_edit_the_bridge_cannot_resolve_after_the_card_is_refused_without_revoking(
     }
 }
 
-/// Named difference (skills.rs): a skills bridge that gives no answer fails closed. The revocation check counts
-/// every loaded skill revoked (a pinned turn ends before its first request, on the skill_revoked error); the
-/// round-0 scrub ends the turn with the failure text, before any request.
+/// Named differences (skills.rs): a skills bridge that gives no answer fails closed, ending the turn with the
+/// failure text (not skill_revoked: nothing was revoked) before any further round or tool. Node asks no bridge,
+/// so no recording shows these.
 #[test]
-fn a_skills_bridge_without_an_answer_fails_closed() {
+fn a_skills_bridge_without_an_answer_ends_the_turn_with_the_failure_text() {
     let f = fixture();
     let JValue::Arr(cases) = f.get("cases") else {
         panic!()
@@ -1228,21 +1235,97 @@ fn a_skills_bridge_without_an_answer_fails_closed() {
             .find(|c| c.get("name").as_str() == Some(name))
             .unwrap()
     };
-    let last =
-        |script: &Script| wtf16::parse(script.events.lock().unwrap().last().unwrap()).unwrap();
-    let (pinned, ended) = replay_with(&f, case("skills_pinned"), true);
+    let events = |script: &Script| -> Vec<JValue> {
+        script
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|e| wtf16::parse(e).unwrap())
+            .collect()
+    };
+    let failed = format!(r#"{{"type":"error","text":"{}"}}"#, native::FAILED_TEXT);
+    let last = |script: &Script| js::stringify(events(script).last().unwrap());
+    // The revocation check at the pinned turn's first round: nothing is asked of the engine.
+    let (pinned, ended) = replay_with(&f, case("skills_pinned"), &["skills-revoked"]);
     assert_eq!(ended, Ended::Error);
-    assert_eq!(
-        js::stringify(&last(&pinned)),
-        r#"{"type":"error","code":"skill_revoked","text":"Skill \"QA Skill\" was disabled or changed during this reply, so no further steps were run."}"#
-    );
+    assert_eq!(last(&pinned), failed);
     assert!(pinned.requests.lock().unwrap().is_empty());
-    let (plain, ended) = replay_with(&f, case("skills_plain"), true);
+    assert!(!events(&pinned)
+        .iter()
+        .any(|e| e.get("code").as_str() == Some("skill_revoked")));
+    // The read after the first round's call: its result is shown, then the turn ends; no second round, and
+    // the ledger has no record core did not write.
+    let (read, ended) = replay_with(&f, case("skills_read_noted"), &["skills-read"]);
     assert_eq!(ended, Ended::Error);
+    assert_eq!(last(&read), failed);
     assert_eq!(
-        js::stringify(&last(&plain)),
-        format!(r#"{{"type":"error","text":"{}"}}"#, native::FAILED_TEXT)
+        read.requests.lock().unwrap().len(),
+        1,
+        "no round after the read"
     );
+    let types: Vec<String> = events(&read)
+        .iter()
+        .map(|e| e.get("type").as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        types[types.len() - 2..],
+        ["tool_result".to_string(), "error".to_string()]
+    );
+    assert!(!read
+        .files
+        .lock()
+        .unwrap()
+        .contains_key("skill-history.json"));
+    // The revocation check in the gate (the pinned turn's first call): refused unchecked, unaudited, not run.
+    let gated = Script::new(case("skills_pinned").clone());
+    *gated.revoked_answers.lock().unwrap() = 1;
+    let mut gated = gated;
+    gated.down = vec!["skills-revoked"];
+    let prepared = Prepared::read(case("skills_pinned").get("handoff").get("prepared")).unwrap();
+    let helpers = Helpers {
+        clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
+        announces_tool_action: &chat_turn::helpers::announces_tool_action,
+        announced_note: chat_turn::helpers::ANNOUNCED_NOTE,
+        reduce_tool_result: &|text, cap| chat_turn::reduce::reduce_tool_result(text, cap).text,
+        source_links: &chat_turn::helpers::source_links,
+        fallback_text: &|s| chat_turn::helpers::fallback_text(s),
+        final_answer_note: chat_turn::helpers::FINAL_ANSWER_NOTE,
+        tool_result_cap: 8000,
+    };
+    let ended = block_on(native::run(
+        &gated,
+        &Process::default(),
+        &helpers,
+        &prepared,
+    ));
+    assert_eq!(ended, Ended::Error);
+    let got = events(&gated);
+    let result = got
+        .iter()
+        .find(|e| e.get("type").as_str() == Some("tool_result"))
+        .unwrap();
+    assert_eq!(
+        result.get("text").as_str(),
+        Some(chat_turn::gate::CHECK_FAULT)
+    );
+    assert_eq!(js::stringify(got.last().unwrap()), failed);
+    assert_eq!(
+        gated.requests.lock().unwrap().len(),
+        1,
+        "no round after the call"
+    );
+    assert!(gated.executions.lock().unwrap().is_empty());
+    assert!(!gated
+        .stores
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|s| s.get("op").as_str() == Some("audit")));
+    // The round-0 scrub: before any request.
+    let (plain, ended) = replay_with(&f, case("skills_plain"), &["skills-scrub"]);
+    assert_eq!(ended, Ended::Error);
+    assert_eq!(last(&plain), failed);
     assert!(plain.requests.lock().unwrap().is_empty());
 }
 
