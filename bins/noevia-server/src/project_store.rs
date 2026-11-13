@@ -668,6 +668,29 @@ pub fn router_with_app(
         }),
     );
     router = router.merge(roles_route);
+    // Rust port track R4: Node's project search through the native one (native_retrieval.rs).
+    let retrieval_store = store.clone();
+    let retrieval_app = app.clone();
+    router = router.route(
+        "/v1/retrieval/search",
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let store = retrieval_store.clone();
+            let app = retrieval_app.clone();
+            async move {
+                if !authorised(&store, &headers) {
+                    return error(StatusCode::UNAUTHORIZED, "unauthorized");
+                }
+                let Some(app) = app else {
+                    return reply(StatusCode::OK, &json!({ "defer": "unavailable" }));
+                };
+                let (status, body) = crate::native_retrieval::store_answer(app, &raw).await;
+                reply(
+                    StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    &body,
+                )
+            }
+        }),
+    );
     // Port contract 2026-11-04 RS-1: the preset reload baseline's authority.
     router = router.merge(preset_baseline_routes(
         store.clone(),

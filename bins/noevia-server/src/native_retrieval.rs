@@ -310,6 +310,79 @@ where
     Outcome::Hits(hits.into_iter().take(inputs.limit).collect())
 }
 
+/// `POST /v1/retrieval/search` on the store listener (`--features rust-retrieval-v1`): Node's own
+/// `rag.cjs` `searchProject` asking through core `rust-retrieval.cjs`. Body `{user, projectId, query,
+/// versions}` (`versions`: Node's wanted versions of the project's files, a string or `null` each);
+/// answer `{hits: [{file, body, score}]}` (at most [`TOP_K`]) or `{defer: reason}`, on which Node
+/// searches itself. Node has resolved the project; an index without an account (the shared
+/// `RAG_DIR`) is Node's. The caller has checked the per-start secret.
+pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, serde_json::Value) {
+    use serde_json::{json, Value};
+    let bad = |why: &str| (400, json!({ "error": why }));
+    let Ok(body) = serde_json::from_slice::<Value>(raw) else {
+        return bad("invalid JSON");
+    };
+    let (Some(project), Some(query)) = (
+        body.get("projectId").and_then(Value::as_str),
+        body.get("query").and_then(Value::as_str),
+    ) else {
+        return bad("projectId and query required");
+    };
+    let mut versions = Versions::new();
+    match body.get("versions") {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(m)) => {
+            for (file, want) in m {
+                match want {
+                    Value::String(v) => versions.insert(file.clone(), Some(v.clone())),
+                    Value::Null => versions.insert(file.clone(), None),
+                    _ => return bad("versions must be strings or null"),
+                };
+            }
+        }
+        Some(_) => return bad("versions must be an object"),
+    }
+    let defer = |why: &str| (200, json!({ "defer": why }));
+    let retrieval = &app.config.retrieval;
+    if retrieval.mode == Mode::Off {
+        return defer("off");
+    }
+    let Some(user) = body.get("user").and_then(Value::as_str) else {
+        return defer("shared index");
+    };
+    let Some(data_dir) = app.config.data_dir.clone() else {
+        return defer("no data directory");
+    };
+    let a = std::sync::Arc::clone(&app);
+    let rerank_env =
+        tokio::task::spawn_blocking(move || crate::reranker_routes::effective_env(&a).ok())
+            .await
+            .ok()
+            .flatten();
+    let held = || app.config.maint.authority.held();
+    let outcome = retrieval
+        .retrieve(Inputs {
+            data_dir: &data_dir,
+            user,
+            project,
+            question: query,
+            start: app.config.start_id.as_deref().unwrap_or_default(),
+            now_ms: crate::identity::now_ms() as f64,
+            maintenance_held: &held,
+            rerank_env: rerank_env.as_ref(),
+            versions,
+            limit: TOP_K,
+        })
+        .await;
+    match outcome {
+        Outcome::Hits(hits) => (
+            200,
+            json!({ "hits": hits.into_iter().map(|h| json!({ "file": h.file, "body": h.body, "score": h.score })).collect::<Vec<_>>() }),
+        ),
+        Outcome::Defer(why) => defer(why),
+    }
+}
+
 /// The shadow log line: whether the two answers agree, by counts and the first differing position.
 pub fn compare(node: &[(String, String)], native: &[(String, String)]) -> String {
     match node.iter().zip(native).position(|(a, b)| a != b) {

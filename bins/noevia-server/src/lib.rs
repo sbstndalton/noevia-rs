@@ -467,6 +467,8 @@ pub const FEATURES: &[&str] = &[
     "legacy-root-claim",
     "project-store",
     "rust-research",
+    // Rust port track R4: POST /v1/retrieval/search on the store listener (native_retrieval.rs).
+    "rust-retrieval-v1",
     "rust-task-reads",
     "rust-tool-approvals",
     "noevia-research-jobs-store/1",
