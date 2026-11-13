@@ -313,7 +313,7 @@ fn every_recorded_turn_routes_as_node() {
             Err(h) => panic!("{name}: {h:?}"),
             Ok(d) if d.aborted => {
                 aborted_turns += 1;
-                assert!(abort_at.is_some(), "{name}");
+                assert!(abort_at.is_some() && d.target.is_none(), "{name}");
                 assert!(
                     turn.get("meta").is_nullish() && turn.get("refused").is_nullish(),
                     "{name}: aborted"

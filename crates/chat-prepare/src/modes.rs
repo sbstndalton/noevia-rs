@@ -130,7 +130,7 @@ pub enum Reply {
     Value(Result<JValue, Thrown>),
     /// `crypto.randomUUID()`'s id.
     Id(String),
-    /// A seam whose answer is not read (`OpenStream`, `Send`, `Log`, `SetChatFlags`).
+    /// A seam whose answer is not read (`OpenStream`, `Send`, `Log`, `Line`, `SetChatFlags`).
     Done,
 }
 
