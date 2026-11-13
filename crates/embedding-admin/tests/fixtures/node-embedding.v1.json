@@ -1,0 +1,2293 @@
+{
+ "version": 1,
+ "generator": "crates/embedding-admin/tests/generate_fixtures.cjs (noevia-core server/routes/embedding.cjs)",
+ "sources": {
+  "server/routes/embedding.cjs": "ae34b6be30f2b8880a5c6c0c141ed9d1e709e87ef92202bb3cc0e79465db9854",
+  "server/embedding-served.cjs": "9ab1c0d06c60d53beef408a887c5ca4f090451e91457ae50f89ff7c029054f3b"
+ },
+ "reads": [
+  {
+   "raw": "null",
+   "status": 400,
+   "error": "A JSON object is required",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "[]",
+   "status": 400,
+   "error": "A JSON object is required",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "\"switch\"",
+   "status": 400,
+   "error": "A JSON object is required",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "3",
+   "status": 400,
+   "error": "A JSON object is required",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "true",
+   "status": 400,
+   "error": "A JSON object is required",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"\"}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":false}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":0}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":7}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"SWITCH\"}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\" switch\"}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":[\"switch\"]}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "switchToNext"
+   ],
+   "switch_force": [
+    false
+   ],
+   "diary": [
+    {
+     "action": "switch"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":[\"switch\",\"finish\"]}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":{\"a\":1}}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":null}",
+   "status": 400,
+   "error": "action must be one of set-next, clear-next, switch, rollback, finish, service-switch, service-off",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"switch\"}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "switchToNext"
+   ],
+   "switch_force": [
+    false
+   ],
+   "diary": [
+    {
+     "action": "switch"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"switch\",\"force\":true}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "switchToNext"
+   ],
+   "switch_force": [
+    true
+   ],
+   "diary": [
+    {
+     "action": "switch",
+     "force": true
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"switch\",\"force\":\"true\"}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "switchToNext"
+   ],
+   "switch_force": [
+    false
+   ],
+   "diary": [
+    {
+     "action": "switch"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"switch\",\"force\":1}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "switchToNext"
+   ],
+   "switch_force": [
+    false
+   ],
+   "diary": [
+    {
+     "action": "switch"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"clear-next\"}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "clearNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "clear-next"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"rollback\"}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "rollback"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "rollback"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"finish\"}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "finish"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "finish"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":\"projects\"}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "finish"
+   ],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":\"diary\"}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "finish"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":\"all\"}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "finish"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "finish"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":\"\"}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "finish"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "finish"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":0}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "finish"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "finish"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":false}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "finish"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "finish"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":null}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [
+    "finish"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "finish"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":\"Projects\"}",
+   "status": 400,
+   "error": "scope must be all, projects or diary",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":\"none\"}",
+   "status": 400,
+   "error": "scope must be all, projects or diary",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":[\"diary\"]}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "finish"
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":1}",
+   "status": 400,
+   "error": "scope must be all, projects or diary",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"finish\",\"scope\":{}}",
+   "status": 400,
+   "error": "scope must be all, projects or diary",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"service-off\",\"scope\":\"nonsense\"}",
+   "status": 409,
+   "error": "The embedding service is not managed by noevia on this server (see docs/deployment.md, #1668).",
+   "code": "notManaged",
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"service-switch\",\"scope\":7,\"model\":\"m\"}",
+   "status": 409,
+   "error": "The embedding service is not managed by noevia on this server (see docs/deployment.md, #1668).",
+   "code": "notManaged",
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\"}",
+   "status": 400,
+   "error": "set-next needs a target { baseUrl, model, profile }",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":null}",
+   "status": 400,
+   "error": "set-next needs a target { baseUrl, model, profile }",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":\"x\"}",
+   "status": 400,
+   "error": "set-next needs a target { baseUrl, model, profile }",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":5}",
+   "status": 400,
+   "error": "set-next needs a target { baseUrl, model, profile }",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":true}",
+   "status": 400,
+   "error": "set-next needs a target { baseUrl, model, profile }",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":false}",
+   "status": 400,
+   "error": "set-next needs a target { baseUrl, model, profile }",
+   "code": null,
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{}}",
+   "status": 409,
+   "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+   "code": "diaryEndpointRequired",
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":[]}",
+   "status": 409,
+   "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+   "code": "diaryEndpointRequired",
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\"}}",
+   "status": 409,
+   "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+   "code": "diaryEndpointRequired",
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"\"}}",
+   "status": 409,
+   "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+   "code": "diaryEndpointRequired",
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\" qa-embed \",\"baseUrl\":\"  http://10.0.0.5:8080  \"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": " qa-embed ",
+      "base_url": "  http://10.0.0.5:8080  "
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\",\"diaryBaseUrl\":\"http://10.0.0.6:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080",
+    "http://10.0.0.6:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080",
+    "http://10.0.0.6:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.6:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\",\"diaryBaseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080",
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\",\"diaryBaseUrl\":\" http://10.0.0.5:8080 \"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080",
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": " http://10.0.0.5:8080 "
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\",\"diaryBaseUrl\":\"\"}}",
+   "status": 409,
+   "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+   "code": "diaryEndpointRequired",
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\",\"diaryBaseUrl\":\"   \"}}",
+   "status": 409,
+   "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+   "code": "diaryEndpointRequired",
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\",\"diaryBaseUrl\":null}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"\",\"diaryBaseUrl\":\"http://10.0.0.6:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.6:8080"
+   ],
+   "served_probes": [
+    null,
+    "http://10.0.0.6:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.6:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":null,\"diaryBaseUrl\":\"http://10.0.0.6:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.6:8080"
+   ],
+   "served_probes": [
+    null,
+    "http://10.0.0.6:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.6:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"scope\":\"projects\",\"target\":{\"model\":\"qa-embed\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [
+    null
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"scope\":\"projects\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"scope\":\"diary\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"scope\":\"diary\",\"target\":{\"model\":\"qa-embed\"}}",
+   "status": 409,
+   "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+   "code": "diaryEndpointRequired",
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"scope\":\"diary\",\"target\":{\"model\":\"qa-embed\",\"diaryBaseUrl\":\"http://10.0.0.6:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.6:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.6:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.6:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"scope\":\"projects\",\"target\":{\"model\":\"qa-embed\",\"diaryBaseUrl\":\"\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [],
+   "served_probes": [
+    null
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":12,\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "12",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": 12,
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":1.5,\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "1.5",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": 1.5,
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":1.0,\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "1",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": 1,
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":-0,\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 409,
+   "error": "The embeddings server does not serve .",
+   "code": "modelNotServed",
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "",
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":1e21,\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "1e+21",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": 1e+21,
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":12345678901234567890,\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "12345678901234567000",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": 12345678901234567000,
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":0.1,\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "0.1",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": 0.1,
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":false,\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 409,
+   "error": "The embeddings server does not serve .",
+   "code": "modelNotServed",
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "",
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":true,\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "true",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": true,
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":[\"a\",\"b\"],\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "a,b",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": [
+       "a",
+       "b"
+      ],
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":{\"x\":1},\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "[object Object]",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": {
+       "x": 1
+      },
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":5}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "5"
+   ],
+   "served_probes": [
+    "5"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": 5
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":0}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "0"
+   ],
+   "served_probes": [
+    "0"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": 0
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":-0}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "0"
+   ],
+   "served_probes": [
+    "0"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": 0
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":false}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "false"
+   ],
+   "served_probes": [
+    "false"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": false
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":true}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "true"
+   ],
+   "served_probes": [
+    "true"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": true
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":{\"a\":1}}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "[object Object]"
+   ],
+   "served_probes": [
+    "[object Object]"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": {
+       "a": 1
+      }
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":[\"http://10.0.0.5:8080\"]}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": [
+       "http://10.0.0.5:8080"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":[]}}",
+   "status": 409,
+   "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+   "code": "diaryEndpointRequired",
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\",\"diaryBaseUrl\":0}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080",
+    "0"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080",
+    "0"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": 0
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\",\"diaryBaseUrl\":false}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080",
+    "false"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080",
+    "false"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": false
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":[\"qa-embed\"]}",
+   "status": 409,
+   "error": "Name the Diary's embeddings server so noevia can check it serves this model.",
+   "code": "diaryEndpointRequired",
+   "check_address": [],
+   "served_probes": [],
+   "served_model": null,
+   "projects": [],
+   "switch_force": [],
+   "diary": []
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa\\u00e9mbed\",\"baseUrl\":\"\\u00a0http://10.0.0.5:8080\\u2003\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qaémbed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qaémbed",
+      "base_url": " http://10.0.0.5:8080 "
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"\\ufeffhttp://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "﻿http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\\u0085\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\\u180e\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080᠎"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080᠎"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "http://10.0.0.5:8080᠎"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"\\u200bhttp://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "​http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "​http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": [
+    {
+     "action": "set-next",
+     "target": {
+      "model": "qa-embed",
+      "base_url": "​http://10.0.0.5:8080"
+     }
+    }
+   ]
+  },
+  {
+   "raw": "{\"action\":\"set-next\",\"force\":true,\"scope\":\"projects\",\"target\":{\"model\":\"qa-embed\",\"baseUrl\":\"http://10.0.0.5:8080\"}}",
+   "status": 200,
+   "error": null,
+   "code": null,
+   "check_address": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_probes": [
+    "http://10.0.0.5:8080"
+   ],
+   "served_model": "qa-embed",
+   "projects": [
+    "setNext"
+   ],
+   "switch_force": [],
+   "diary": []
+  }
+ ],
+ "aggregates": [
+  {
+   "scope": "all",
+   "projects_half": "ok",
+   "diary_half": "ok",
+   "status": 200,
+   "projects": {
+    "ok": true
+   },
+   "diary": {
+    "ok": true
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": {
+    "error": "p",
+    "status": 409
+   },
+   "diary_half": "ok",
+   "status": 207,
+   "projects": {
+    "error": "p",
+    "status": 409
+   },
+   "diary": {
+    "ok": true
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": "ok",
+   "diary_half": {
+    "status": 500,
+    "body": {
+     "error": "d"
+    }
+   },
+   "status": 207,
+   "projects": {
+    "ok": true
+   },
+   "diary": {
+    "error": "d",
+    "status": 500
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": {
+    "error": "p",
+    "status": 409
+   },
+   "diary_half": {
+    "status": 503,
+    "body": {
+     "error": "d"
+    }
+   },
+   "status": 409,
+   "projects": {
+    "error": "p",
+    "status": 409
+   },
+   "diary": {
+    "error": "d",
+    "status": 503
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": {
+    "error": "p",
+    "status": 404
+   },
+   "diary_half": {
+    "status": 503,
+    "body": {
+     "detail": "d"
+    }
+   },
+   "status": 404,
+   "projects": {
+    "error": "p",
+    "status": 404
+   },
+   "diary": {
+    "error": "d",
+    "status": 503
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": {
+    "error": "p",
+    "status": 302
+   },
+   "diary_half": {
+    "status": 503,
+    "body": {}
+   },
+   "status": 502,
+   "projects": {
+    "error": "p",
+    "status": 302
+   },
+   "diary": {
+    "error": "The Diary answered HTTP 503.",
+    "status": 503
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": {
+    "error": "p",
+    "status": 600
+   },
+   "diary_half": "throw",
+   "status": 502,
+   "projects": {
+    "error": "p",
+    "status": 600
+   },
+   "diary": {
+    "error": "The Diary could not be reached (synthetic Diary unreachable)."
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": {
+    "error": "p",
+    "status": 399
+   },
+   "diary_half": "ok",
+   "status": 207,
+   "projects": {
+    "error": "p",
+    "status": 399
+   },
+   "diary": {
+    "ok": true
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": {
+    "error": "p"
+   },
+   "diary_half": "throw",
+   "status": 500,
+   "projects": {
+    "error": "p",
+    "status": 500
+   },
+   "diary": {
+    "error": "The Diary could not be reached (synthetic Diary unreachable)."
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": "ok",
+   "diary_half": "throw",
+   "status": 207,
+   "projects": {
+    "ok": true
+   },
+   "diary": {
+    "error": "The Diary could not be reached (synthetic Diary unreachable)."
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": {
+    "error": "p",
+    "status": 418
+   },
+   "diary_half": {
+    "status": 400,
+    "body": {
+     "error": "d",
+     "code": "x"
+    }
+   },
+   "status": 418,
+   "projects": {
+    "error": "p",
+    "status": 418
+   },
+   "diary": {
+    "error": "d",
+    "status": 400,
+    "code": "x"
+   }
+  },
+  {
+   "scope": "all",
+   "projects_half": {
+    "error": "p",
+    "status": 599
+   },
+   "diary_half": {
+    "status": 404,
+    "body": {
+     "error": ""
+    }
+   },
+   "status": 599,
+   "projects": {
+    "error": "p",
+    "status": 599
+   },
+   "diary": {
+    "error": "The Diary answered HTTP 404.",
+    "status": 404
+   }
+  },
+  {
+   "scope": "projects",
+   "projects_half": "ok",
+   "diary_half": "ok",
+   "status": 200,
+   "projects": {
+    "ok": true
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": {
+    "error": "p",
+    "status": 409
+   },
+   "diary_half": "ok",
+   "status": 409,
+   "projects": {
+    "error": "p",
+    "status": 409
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": "ok",
+   "diary_half": {
+    "status": 500,
+    "body": {
+     "error": "d"
+    }
+   },
+   "status": 200,
+   "projects": {
+    "ok": true
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": {
+    "error": "p",
+    "status": 409
+   },
+   "diary_half": {
+    "status": 503,
+    "body": {
+     "error": "d"
+    }
+   },
+   "status": 409,
+   "projects": {
+    "error": "p",
+    "status": 409
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": {
+    "error": "p",
+    "status": 404
+   },
+   "diary_half": {
+    "status": 503,
+    "body": {
+     "detail": "d"
+    }
+   },
+   "status": 404,
+   "projects": {
+    "error": "p",
+    "status": 404
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": {
+    "error": "p",
+    "status": 302
+   },
+   "diary_half": {
+    "status": 503,
+    "body": {}
+   },
+   "status": 502,
+   "projects": {
+    "error": "p",
+    "status": 302
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": {
+    "error": "p",
+    "status": 600
+   },
+   "diary_half": "throw",
+   "status": 502,
+   "projects": {
+    "error": "p",
+    "status": 600
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": {
+    "error": "p",
+    "status": 399
+   },
+   "diary_half": "ok",
+   "status": 502,
+   "projects": {
+    "error": "p",
+    "status": 399
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": {
+    "error": "p"
+   },
+   "diary_half": "throw",
+   "status": 500,
+   "projects": {
+    "error": "p",
+    "status": 500
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": "ok",
+   "diary_half": "throw",
+   "status": 200,
+   "projects": {
+    "ok": true
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": {
+    "error": "p",
+    "status": 418
+   },
+   "diary_half": {
+    "status": 400,
+    "body": {
+     "error": "d",
+     "code": "x"
+    }
+   },
+   "status": 418,
+   "projects": {
+    "error": "p",
+    "status": 418
+   },
+   "diary": null
+  },
+  {
+   "scope": "projects",
+   "projects_half": {
+    "error": "p",
+    "status": 599
+   },
+   "diary_half": {
+    "status": 404,
+    "body": {
+     "error": ""
+    }
+   },
+   "status": 599,
+   "projects": {
+    "error": "p",
+    "status": 599
+   },
+   "diary": null
+  },
+  {
+   "scope": "diary",
+   "projects_half": "ok",
+   "diary_half": "ok",
+   "status": 200,
+   "projects": null,
+   "diary": {
+    "ok": true
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": {
+    "error": "p",
+    "status": 409
+   },
+   "diary_half": "ok",
+   "status": 200,
+   "projects": null,
+   "diary": {
+    "ok": true
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": "ok",
+   "diary_half": {
+    "status": 500,
+    "body": {
+     "error": "d"
+    }
+   },
+   "status": 500,
+   "projects": null,
+   "diary": {
+    "error": "d",
+    "status": 500
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": {
+    "error": "p",
+    "status": 409
+   },
+   "diary_half": {
+    "status": 503,
+    "body": {
+     "error": "d"
+    }
+   },
+   "status": 503,
+   "projects": null,
+   "diary": {
+    "error": "d",
+    "status": 503
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": {
+    "error": "p",
+    "status": 404
+   },
+   "diary_half": {
+    "status": 503,
+    "body": {
+     "detail": "d"
+    }
+   },
+   "status": 503,
+   "projects": null,
+   "diary": {
+    "error": "d",
+    "status": 503
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": {
+    "error": "p",
+    "status": 302
+   },
+   "diary_half": {
+    "status": 503,
+    "body": {}
+   },
+   "status": 503,
+   "projects": null,
+   "diary": {
+    "error": "The Diary answered HTTP 503.",
+    "status": 503
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": {
+    "error": "p",
+    "status": 600
+   },
+   "diary_half": "throw",
+   "status": 502,
+   "projects": null,
+   "diary": {
+    "error": "The Diary could not be reached (synthetic Diary unreachable)."
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": {
+    "error": "p",
+    "status": 399
+   },
+   "diary_half": "ok",
+   "status": 200,
+   "projects": null,
+   "diary": {
+    "ok": true
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": {
+    "error": "p"
+   },
+   "diary_half": "throw",
+   "status": 502,
+   "projects": null,
+   "diary": {
+    "error": "The Diary could not be reached (synthetic Diary unreachable)."
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": "ok",
+   "diary_half": "throw",
+   "status": 502,
+   "projects": null,
+   "diary": {
+    "error": "The Diary could not be reached (synthetic Diary unreachable)."
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": {
+    "error": "p",
+    "status": 418
+   },
+   "diary_half": {
+    "status": 400,
+    "body": {
+     "error": "d",
+     "code": "x"
+    }
+   },
+   "status": 400,
+   "projects": null,
+   "diary": {
+    "error": "d",
+    "status": 400,
+    "code": "x"
+   }
+  },
+  {
+   "scope": "diary",
+   "projects_half": {
+    "error": "p",
+    "status": 599
+   },
+   "diary_half": {
+    "status": 404,
+    "body": {
+     "error": ""
+    }
+   },
+   "status": 404,
+   "projects": null,
+   "diary": {
+    "error": "The Diary answered HTTP 404.",
+    "status": 404
+   }
+  }
+ ]
+}
