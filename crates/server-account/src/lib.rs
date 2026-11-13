@@ -36,6 +36,7 @@ pub fn device_route(path: &str) -> bool {
 mod files;
 mod framing_preferences;
 mod open;
+pub mod operator;
 mod passkeys;
 mod sharing;
 mod users;

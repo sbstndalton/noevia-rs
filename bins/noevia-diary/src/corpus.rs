@@ -423,6 +423,26 @@ pub fn canonical_day_header(d: NaiveDate) -> String {
 
 /// get_day_text(day, max_chars=12000, include_markers=True).
 pub fn day_text(store: &Managed, l: &Layout, day: NaiveDate, max_chars: usize) -> String {
+    day_text_with(
+        store,
+        l,
+        day,
+        i64::try_from(max_chars).unwrap_or(i64::MAX),
+        true,
+    )
+}
+
+/// get_day_text(day, max_chars, include_markers): `include_markers` keeps the hidden xid markers
+/// (the /api/day form); without them it is the model-context form. Python's
+/// `if max_chars and len(text) > max_chars`: 0 is no cap, and a negative cap (never sent by the
+/// service) drops that many leading characters, as `text[-max_chars:]` does.
+pub(crate) fn day_text_with(
+    store: &Managed,
+    l: &Layout,
+    day: NaiveDate,
+    max_chars: i64,
+    include_markers: bool,
+) -> String {
     let Ok(text) = store.get_text(&document_path(l, day)) else {
         return String::new();
     };
@@ -447,21 +467,38 @@ pub fn day_text(store: &Managed, l: &Layout, day: NaiveDate, max_chars: usize) -
                     parts.push(format!("**Assistant:** {}", ex.claude));
                     parts.push(String::new());
                 }
-                if let Some(xid) = ex.xid.as_deref().filter(|x| !x.is_empty()) {
-                    parts.push(format!("<!-- xid:{xid} -->"));
-                    parts.push(String::new());
+                if include_markers {
+                    if let Some(xid) = ex.xid.as_deref().filter(|x| !x.is_empty()) {
+                        parts.push(format!("<!-- xid:{xid} -->"));
+                        parts.push(String::new());
+                    }
                 }
             }
         }
         let joined = parts.join("\n");
         let text = py::strip(&joined);
-        if max_chars > 0 && text.chars().count() > max_chars {
-            return format!(
-                "(earlier exchanges today truncated)\n…{}",
-                py::tail_chars(text, max_chars)
-            );
-        }
-        return text.to_string();
+        let len = text.chars().count();
+        let cut = match max_chars {
+            0 => None,
+            n if n > 0 => usize::try_from(n)
+                .ok()
+                .filter(|n| len > *n)
+                .map(|n| py::tail_chars(text, n)),
+            // text[-max_chars:] with max_chars < 0: len > max_chars always holds.
+            n => {
+                let skip = usize::try_from(n.unsigned_abs()).unwrap_or(usize::MAX);
+                Some(
+                    text.char_indices()
+                        .nth(skip)
+                        .and_then(|(at, _)| text.get(at..))
+                        .unwrap_or(""),
+                )
+            }
+        };
+        return match cut {
+            Some(tail) => format!("(earlier exchanges today truncated)\n…{tail}"),
+            None => text.to_string(),
+        };
     }
     String::new()
 }

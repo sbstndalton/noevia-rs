@@ -70,10 +70,13 @@ fn answer(status: StatusCode, body: &JValue) -> Response<Body> {
     )
 }
 
-enum Facts {
+pub(crate) enum Facts {
     Off,
     Member,
     Admin(JValue),
+    /// Code mode is on, the caller an administrator, and the front runs Code tasks itself
+    /// (code_routes.rs, `NOEVIA_CODE_EXECUTOR=rust`): Node opened no store; the facts are the front's.
+    Front,
 }
 
 async fn facts(app: &App, user: &str, surface: Surface, admin: bool) -> Option<Facts> {
@@ -89,6 +92,14 @@ async fn facts(app: &App, user: &str, surface: Surface, admin: bool) -> Option<F
     let parsed = wtf16::parse(&String::from_utf8_lossy(&bytes)).ok()?;
     match parsed.get("enabled") {
         JValue::Bool(false) => Some(Facts::Off),
+        JValue::Bool(true)
+            if admin
+                && matches!(surface, Surface::Code)
+                && app.config.code.executor
+                && parsed.get("owner").as_str() == Some("front") =>
+        {
+            Some(Facts::Front)
+        }
         JValue::Bool(true) if admin => parsed
             .get("facts")
             .is_object()
@@ -96,6 +107,15 @@ async fn facts(app: &App, user: &str, surface: Surface, admin: bool) -> Option<F
         JValue::Bool(true) => Some(Facts::Member),
         _ => None,
     }
+}
+
+/// The Code flag and role, as the reads ask them (code_routes.rs).
+pub(crate) async fn code_flag(app: &App, user: &str, admin: bool) -> Option<Facts> {
+    facts(app, user, Surface::Code, admin).await
+}
+
+pub(crate) fn unreachable() -> Response<Body> {
+    reply::error(StatusCode::SERVICE_UNAVAILABLE, NODE_UNREACHABLE, true)
 }
 
 fn card_of(facts: &JValue, job: &journals::Job) -> JValue {
@@ -150,6 +170,10 @@ pub async fn serve(
             return reply::error(StatusCode::FORBIDDEN, "Administrator required", true)
         }
         Facts::Admin(facts) => facts,
+        Facts::Front => match crate::code_routes::facts(app, &data_dir, &user).await {
+            Some(facts) => facts,
+            None => return reply::error(StatusCode::SERVICE_UNAVAILABLE, NODE_UNREACHABLE, true),
+        },
     };
     if method != Method::GET {
         return reply::error(StatusCode::METHOD_NOT_ALLOWED, "method not allowed", true);
@@ -180,6 +204,24 @@ pub async fn serve(
     })
     .await;
     work.unwrap_or_else(|_| Rejection::Unavailable.into_response())
+}
+
+/// The project's record, `None` when the user has no such project (code_routes.rs).
+pub(crate) fn project_record(
+    data_dir: &std::path::Path,
+    user: &str,
+    switch: server_store::RustProjects,
+    id: &str,
+) -> Result<Option<JValue>, ()> {
+    let ctx = server_projects::Ctx {
+        data_dir,
+        user_id: user,
+        switch,
+        now_ms: crate::identity::now_ms(),
+    };
+    server_projects::originals::project(ctx, id)
+        .map(|(_, project)| project)
+        .map_err(|_| ())
 }
 
 fn project_exists(

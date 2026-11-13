@@ -195,6 +195,27 @@ mod tests {
     }
 
     #[test]
+    fn a_prepared_line_of_exactly_the_cap_is_read() {
+        let mut line = PREPARED.to_vec();
+        line.extend_from_slice(b",\"pad\":\"");
+        let body = PREPARED_CAP - line.len() - 2;
+        line.extend(std::iter::repeat_n(b'x', body));
+        line.extend_from_slice(b"\"}");
+        assert_eq!(line.len(), PREPARED_CAP);
+        line.push(b'\n');
+        let mut f = Frames::new();
+        let mut pieces = Vec::new();
+        for chunk in line.chunks(64 * 1024) {
+            pieces.extend(f.feed(chunk));
+        }
+        assert!(
+            matches!(pieces.as_slice(), [Piece::Prepared(_)]),
+            "{:?}",
+            pieces.len()
+        );
+    }
+
+    #[test]
     fn a_long_event_line_is_not_held_and_a_too_long_prepared_line_is_refused() {
         let mut f = Frames::new();
         let mut line = b"{\"type\":\"delta\",\"text\":\"".to_vec();

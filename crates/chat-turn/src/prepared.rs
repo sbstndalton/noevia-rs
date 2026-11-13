@@ -39,6 +39,9 @@ pub struct Prepared {
     pub writes: Vec<String>,
     pub public: Vec<String>,
     pub automatic_only_writes: Vec<String>,
+    /// The offered project file edit tools (chat.cjs `projectEditTool`; absent from an older core: none,
+    /// as an older core never hands off a turn that offers one).
+    pub edit_tools: Vec<String>,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -58,6 +61,8 @@ pub struct Prepared {
     pub decline_ends_reply: bool,
     pub record: bool,
     pub stream_idle_ms: f64,
+    /// The turn only compacts the chat's context (the Compact action): the fit is forced, then `done`.
+    pub compact_only: bool,
     /// #1793: the reply's sources and the injected files the close may add to them (absent: none).
     pub sources: crate::sources::Sources,
 }
@@ -171,6 +176,10 @@ impl Prepared {
             writes: names(frame, "writes")?,
             public: names(frame, "public")?,
             automatic_only_writes: names(frame, "automaticOnlyWrites")?,
+            edit_tools: match frame.get("editTools") {
+                JValue::Undefined => Vec::new(),
+                _ => names(frame, "editTools")?,
+            },
             route_note: opt_text(frame, "routeNote").unwrap_or_default(),
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),
@@ -194,6 +203,7 @@ impl Prepared {
             decline_ends_reply: flag(turn, "declineEndsReply"),
             record: flag(turn, "record"),
             stream_idle_ms: need(turn, "streamIdleMs")?.as_num().unwrap_or(0.0),
+            compact_only: flag(turn, "compactOnly"),
             sources: match turn.get("sources") {
                 JValue::Undefined | JValue::Null => crate::sources::Sources::default(),
                 v => crate::sources::Sources::read(v)

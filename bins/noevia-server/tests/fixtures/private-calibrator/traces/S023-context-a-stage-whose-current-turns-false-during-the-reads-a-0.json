@@ -1,0 +1,20 @@
+{"version":1,"test":"context: a stage whose current() turns false during the reads answers stale","instance":0,"kind":"context","callbacks":["contextCurrent","applyUnlocked","foreignHeld","foreignWait","onWrite","onUpdate"],"sourceSha256":{"calibration":"304ae61c049f93a335abb5d853f2e63c0177efe5d7ab3f3a58cbfa9c8054d802","manager":"ef56979ca707447a9e89cf35f83afcf5524437b2310f1a35780b68cec08b96c1","runner":"f53b8fd7826bd78390b84d8c077411c4629fe2a070caeb540dfe7cbc0f27d5f1","test":"b1cfc759b2cd6cf932ac350e15ab491ac61f6329f0980758c7cd82466bc0c749"},"replayable":true,"why":[],"config":{"memoryFloorGib":2,"timeouts":{}},"strings":["version = 1\n[qa-model]\nmodel = /models/qa-model.gguf\nctx-size = 8192\nparallel = 1\n[qa-other]\nmodel = /models/qa-other.gguf\nctx-size = 8192\nparallel = 1\n[embed]\nmodel = /models/embed.gguf\nctx-size = 8192\nparallel = 1\n"],"events":[
+{"dep":"presets.snapshot","result":{"text":{"$s":0},"revision":"66b0876a3097dbf0093cf031024ab9bd081710718f9c4acc627684b4a4732fc4"}},
+{"dep":"driver","method":"start","args":["qa-model",{"confirmPause":true,"promptBudgetSeconds":120}],"result":{"ok":false,"body":{"error":"The context worker state changed or is unavailable."}}},
+{"dep":"hook","name":"contextCurrent","result":true},
+{"dep":"held","result":true},
+{"dep":"presets.snapshot","result":{"text":{"$s":0},"revision":"66b0876a3097dbf0093cf031024ab9bd081710718f9c4acc627684b4a4732fc4"}},
+{"dep":"rawModels","result":{"ok":true,"body":{"data":[{"id":"qa-model","status":{"value":"unloaded","args":[]},"meta":{"n_ctx_train":16384}},{"id":"qa-other","status":{"value":"unloaded","args":[]},"meta":{"n_ctx_train":16384}},{"id":"embed","status":{"value":"unloaded","args":["--embedding"]},"meta":{"n_ctx_train":16384}}]}}},
+{"dep":"hook","name":"contextCurrent","result":true},
+{"dep":"held","result":true},
+{"dep":"presets.snapshot","result":{"text":{"$s":0},"revision":"66b0876a3097dbf0093cf031024ab9bd081710718f9c4acc627684b4a4732fc4"}},
+{"dep":"rawModels","result":{"ok":true,"body":{"data":[{"id":"qa-model","status":{"value":"unloaded","args":[]},"meta":{"n_ctx_train":16384}},{"id":"qa-other","status":{"value":"unloaded","args":[]},"meta":{"n_ctx_train":16384}},{"id":"embed","status":{"value":"unloaded","args":["--embedding"]},"meta":{"n_ctx_train":16384}}]}}},
+{"dep":"presets.get","model":"qa-model","result":{"model":"qa-model","revision":"66b0876a3097dbf0093cf031024ab9bd081710718f9c4acc627684b4a4732fc4","exists":true,"options":{"ctx-size":"8192","parallel":"1"},"defaults":{},"fields":["ctx-size","parallel","n-gpu-layers","cache-type-k","cache-type-v","flash-attn","batch-size","ubatch-size","cache-ram","image-max-tokens","spec-type","spec-draft-n-max","spec-draft-p-min","temp","top-p","top-k","min-p","repeat-penalty"]}},
+{"dep":"presets.snapshot","result":{"text":{"$s":0},"revision":"66b0876a3097dbf0093cf031024ab9bd081710718f9c4acc627684b4a4732fc4"}},
+{"dep":"conservativeFor","model":"qa-model","result":null},
+{"dep":"identityFor","model":"qa-model","result":{"arch":null,"quant":null,"artifact":"qa-artifact","build":null,"profile":"66b0876a3097dbf0093cf031024ab9bd081710718f9c4acc627684b4a4732fc4","hardware":null}},
+{"dep":"presets.snapshot","result":{"text":{"$s":0},"revision":"66b0876a3097dbf0093cf031024ab9bd081710718f9c4acc627684b4a4732fc4"}},
+{"dep":"hook","name":"contextCurrent","result":false},
+{"dep":"driver","method":"completion","args":[],"result":null},
+{"dep":"driver","method":"status","args":["qa-model"],"result":{"body":{"job":null}}}
+]}

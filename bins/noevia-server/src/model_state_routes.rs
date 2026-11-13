@@ -64,11 +64,15 @@ async fn node_facts(
     body: &serde_json::Value,
     deadline: Duration,
 ) -> Option<JValue> {
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(FACTS_PATH, body, deadline)
-        .await?;
+    node_facts_via(&app.config.research, body, deadline).await
+}
+
+async fn node_facts_via(
+    research: &crate::research_routes::Research,
+    body: &serde_json::Value,
+    deadline: Duration,
+) -> Option<JValue> {
+    let (status, bytes) = research.node_call(FACTS_PATH, body, deadline).await?;
     if status != 200 {
         return None;
     }
@@ -79,7 +83,12 @@ async fn node_facts(
 
 /// Shared with the sizing reads: never re-read a row that admission may not enforce.
 pub(crate) async fn sizing_budget(app: &crate::App) -> Option<f64> {
-    node_facts(app, &json!({ "want": "budget" }), BUDGET_DEADLINE)
+    sizing_budget_via(&app.config.research).await
+}
+
+/// [`sizing_budget`] with only the bridge to Core (the native auto-tune runner's facts).
+pub(crate) async fn sizing_budget_via(research: &crate::research_routes::Research) -> Option<f64> {
+    node_facts_via(research, &json!({ "want": "budget" }), BUDGET_DEADLINE)
         .await?
         .get("budget")
         .get("budgetGib")
@@ -412,8 +421,15 @@ pub(crate) async fn installed_cached(app: &crate::App) -> Result<Vec<JValue>, ()
 /// The model names a live sidecar (embedding or reranker) depends on, from Core's facts (`sidecarModelNames`).
 /// `None` when Core did not answer: the caller fails closed.
 pub(crate) async fn sidecar_names(app: &crate::App) -> Option<HashSet<String>> {
-    let facts = node_facts(
-        app,
+    sidecar_names_via(&app.config.research).await
+}
+
+/// [`sidecar_names`] with only the bridge to Core (the native auto-tune runner's facts).
+pub(crate) async fn sidecar_names_via(
+    research: &crate::research_routes::Research,
+) -> Option<HashSet<String>> {
+    let facts = node_facts_via(
+        research,
         &json!({ "want": "installed", "ids": [], "scan": false }),
         INSTALLED_DEADLINE,
     )

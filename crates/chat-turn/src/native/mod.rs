@@ -156,6 +156,11 @@ pub async fn run<H: Host>(
         exchange_key: host.uuid(),
     };
     let ended = match t.prepare().await {
+        // chat.cjs: a compaction-only turn ends after its meter, with no round and no title.
+        Ok(_) if p.compact_only => {
+            host.emit(&event("done", vec![("model", js::s(p.model.clone()))]));
+            Ended::Done
+        }
         Ok(fit) => t.rounds(fit).await,
         Err(ended) => ended,
     };
@@ -374,6 +379,7 @@ impl<H: Host> Turn<'_, H> {
             self.helpers.source_links,
             self.helpers.tool_result_cap,
         );
+        gate.edit_tools = names(&p.edit_tools);
         let mut round: i32 = 0;
         loop {
             if round >= if s.final_pass { 4 } else { 3 } || host.left() {
