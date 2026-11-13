@@ -1,0 +1,491 @@
+{
+  "coreRef": "6c23568d",
+  "cases": [
+    {
+      "id": "removes-missing-and-reloads",
+      "answer": {
+        "status": 200,
+        "body": {
+          "removed": [
+            "qa-gone-a",
+            "qa-gone-b"
+          ],
+          "kept": [
+            "qa-scan-only"
+          ],
+          "reloaded": true
+        }
+      },
+      "loader": [
+        "GET models",
+        "GET sections",
+        "DELETE sections/qa-gone-a?baseRevision=r6",
+        "GET sections",
+        "DELETE sections/qa-gone-b?baseRevision=r5",
+        "GET sections"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-gone-a",
+        "qa-gone-b"
+      ],
+      "forgotten": [],
+      "sectionsAfter": [
+        "qa-scan-only",
+        "qa-kept-1",
+        "qa-kept-2",
+        "qa-kept-3"
+      ],
+      "scenario": {
+        "id": "removes-missing-and-reloads",
+        "models": [
+          {
+            "name": "qa-gone-a",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-gone-b",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-scan-only",
+            "file": false,
+            "hasFile": true
+          },
+          {
+            "name": "qa-kept-1",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-kept-2",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-kept-3",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "nothing-missing",
+      "answer": {
+        "status": 200,
+        "body": {
+          "removed": [],
+          "kept": [],
+          "reloaded": false
+        }
+      },
+      "loader": [
+        "GET models"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "forgotten": [],
+      "sectionsAfter": [
+        "qa-kept-1",
+        "qa-kept-2"
+      ],
+      "scenario": {
+        "id": "nothing-missing",
+        "models": [
+          {
+            "name": "qa-kept-1",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-kept-2",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "empty-scan",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "The model folder looks unavailable, so nothing was removed.",
+          "code": "scanUntrusted"
+        }
+      },
+      "loader": [
+        "GET models"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "forgotten": [],
+      "sectionsAfter": [
+        "qa-a",
+        "qa-b"
+      ],
+      "scenario": {
+        "id": "empty-scan",
+        "models": [
+          {
+            "name": "qa-a",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-b",
+            "file": false,
+            "hasFile": false
+          }
+        ],
+        "scan": []
+      }
+    },
+    {
+      "id": "more-than-half",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "The model folder looks unavailable, so nothing was removed.",
+          "code": "scanUntrusted"
+        }
+      },
+      "loader": [
+        "GET models"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "forgotten": [],
+      "sectionsAfter": [
+        "qa-a",
+        "qa-b",
+        "qa-c",
+        "qa-d",
+        "qa-e"
+      ],
+      "scenario": {
+        "id": "more-than-half",
+        "models": [
+          {
+            "name": "qa-a",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-b",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-c",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-d",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-e",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "exactly-half",
+      "answer": {
+        "status": 200,
+        "body": {
+          "removed": [
+            "qa-a"
+          ],
+          "kept": [],
+          "reloaded": true
+        }
+      },
+      "loader": [
+        "GET models",
+        "GET sections",
+        "DELETE sections/qa-a?baseRevision=r2"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-a"
+      ],
+      "forgotten": [],
+      "sectionsAfter": [
+        "qa-b"
+      ],
+      "scenario": {
+        "id": "exactly-half",
+        "models": [
+          {
+            "name": "qa-a",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-b",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "system-and-served-elsewhere-skipped",
+      "answer": {
+        "status": 200,
+        "body": {
+          "removed": [
+            "qa-gone"
+          ],
+          "kept": [],
+          "reloaded": true
+        }
+      },
+      "loader": [
+        "GET models",
+        "GET sections",
+        "DELETE sections/qa-gone?baseRevision=r10"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-gone"
+      ],
+      "forgotten": [],
+      "sectionsAfter": [
+        "laya_multilingual_f16",
+        "qa-away",
+        "qa-cached",
+        "qa-k1",
+        "qa-k2",
+        "qa-k3",
+        "qa-k4",
+        "qa-k5",
+        "qa-k6"
+      ],
+      "scenario": {
+        "id": "system-and-served-elsewhere-skipped",
+        "models": [
+          {
+            "name": "laya_multilingual_f16",
+            "file": false,
+            "hasFile": false,
+            "system": true
+          },
+          {
+            "name": "qa-away",
+            "file": false,
+            "hasFile": false,
+            "servedElsewhere": true
+          },
+          {
+            "name": "qa-cached",
+            "file": false,
+            "hasFile": false,
+            "source": "cache"
+          },
+          {
+            "name": "qa-gone",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-k1",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-k2",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-k3",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-k4",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-k5",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-k6",
+            "file": true,
+            "hasFile": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "delete-refused-is-kept",
+      "answer": {
+        "status": 200,
+        "body": {
+          "removed": [],
+          "kept": [
+            "qa-gone"
+          ],
+          "reloaded": false
+        }
+      },
+      "loader": [
+        "GET models",
+        "GET sections",
+        "DELETE sections/qa-gone?baseRevision=r3"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "forgotten": [],
+      "sectionsAfter": [
+        "qa-gone",
+        "qa-k1",
+        "qa-k2"
+      ],
+      "scenario": {
+        "id": "delete-refused-is-kept",
+        "models": [
+          {
+            "name": "qa-gone",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-k1",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-k2",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "refuseDelete": true
+      }
+    },
+    {
+      "id": "hold-refused",
+      "answer": {
+        "status": 409,
+        "body": {
+          "error": "Models are busy, so nothing was changed. Try again shortly.",
+          "code": "maintenance_held",
+          "retryable": true
+        }
+      },
+      "loader": [
+        "GET models"
+      ],
+      "reloads": 0,
+      "rolesCleared": [],
+      "forgotten": [],
+      "sectionsAfter": [
+        "qa-gone",
+        "qa-k1",
+        "qa-k2"
+      ],
+      "scenario": {
+        "id": "hold-refused",
+        "models": [
+          {
+            "name": "qa-gone",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-k1",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-k2",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "holdRefused": true
+      }
+    },
+    {
+      "id": "reload-fails",
+      "answer": {
+        "status": 200,
+        "body": {
+          "removed": [
+            "qa-gone"
+          ],
+          "kept": [],
+          "reloaded": false
+        }
+      },
+      "loader": [
+        "GET models",
+        "GET sections",
+        "DELETE sections/qa-gone?baseRevision=r3"
+      ],
+      "reloads": 1,
+      "rolesCleared": [
+        "qa-gone"
+      ],
+      "forgotten": [],
+      "sectionsAfter": [
+        "qa-k1",
+        "qa-k2"
+      ],
+      "scenario": {
+        "id": "reload-fails",
+        "models": [
+          {
+            "name": "qa-gone",
+            "file": false,
+            "hasFile": false
+          },
+          {
+            "name": "qa-k1",
+            "file": true,
+            "hasFile": true
+          },
+          {
+            "name": "qa-k2",
+            "file": true,
+            "hasFile": true
+          }
+        ],
+        "reloadOk": false
+      }
+    },
+    {
+      "id": "disabled",
+      "answer": {
+        "status": 404,
+        "body": {
+          "error": "model management is disabled"
+        }
+      },
+      "loader": [],
+      "reloads": 0,
+      "rolesCleared": [],
+      "forgotten": [],
+      "sectionsAfter": [],
+      "scenario": {
+        "id": "disabled",
+        "models": [],
+        "disabled": true
+      }
+    }
+  ]
+}

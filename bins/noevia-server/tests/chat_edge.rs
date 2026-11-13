@@ -117,12 +117,11 @@ fn reply(status: u16, text: &str, extra: &[(&str, &str)]) -> Response<UpBody> {
 }
 
 /// A lease the gate let a call in with (core inference-admission-lease.cjs 201).
-fn grant(core: &Arc<Core>) -> Response<UpBody> {
+fn grant(core: &Arc<Core>, ticket: &str) -> Response<UpBody> {
     let lease = {
         let mut issued = core.issued.lock().unwrap();
-        let lease = format!("{:032x}", issued.len() + 1);
-        issued.push(lease.clone());
-        lease
+        issued.push(ticket.to_owned());
+        ticket.to_owned()
     };
     reply(201, &format!(r#"{{"lease":"{lease}","ttlMs":30000}}"#), &[])
 }
@@ -150,14 +149,21 @@ async fn core_service(
         .await
         .map(|c| c.to_bytes())
         .unwrap_or_default();
-    if let Some(id) = path.strip_prefix(&format!("{ADMISSION}/")) {
+    let ticket = path
+        .strip_prefix(&format!("{ADMISSION}/"))
+        .and_then(|r| r.split('/').next())
+        .unwrap_or("")
+        .to_owned();
+    // Row H: the front issues the ticket and takes Core's gate with a PUT naming it.
+    let is_ask = method == "PUT" && !ticket.is_empty() && !path.ends_with("/renew");
+    if let (false, Some(id)) = (is_ask, path.strip_prefix(&format!("{ADMISSION}/"))) {
         // A renewal, or the front giving its lease back.
         if method == "DELETE" {
             core.closed.lock().unwrap().push(id.to_owned());
         }
         return Ok(reply(if method == "DELETE" { 204 } else { 200 }, "{}", &[]));
     }
-    if path == ADMISSION {
+    if is_ask {
         assert_eq!(
             headers.get("x-noevia-store-token").map(String::as_str),
             Some(STORE_TOKEN)
@@ -169,7 +175,7 @@ async fn core_service(
             .lock()
             .unwrap()
             .hits
-            .push(format!("{method} {path} {route}"));
+            .push(format!("POST {ADMISSION} {route}"));
     } else {
         let mut seen = core.seen.lock().unwrap();
         seen.hits.push(format!("{method} {target}"));
@@ -177,7 +183,7 @@ async fn core_service(
         seen.body = body.to_vec();
     }
     let lease = headers.get(LEASE).cloned();
-    if path == ADMISSION {
+    if is_ask {
         let mode = *core.gate.lock().unwrap();
         let let_in = match mode {
             GateMode::Open => true,
@@ -189,7 +195,7 @@ async fn core_service(
             }
         };
         return Ok(if let_in {
-            grant(&core)
+            grant(&core, &ticket)
         } else {
             reply(503, GATE_REFUSAL, &[])
         });
@@ -296,7 +302,13 @@ impl Front {
     /// Every issued lease has been given back (with a refusal, or once its call's answer ended).
     async fn holds_closed(&self) {
         for _ in 0..200 {
-            if self.core.closed.lock().unwrap().len() == self.core.issued.lock().unwrap().len() {
+            // A refused ask's ticket is also given back (row H); only the granted ones are counted here.
+            let all_closed = {
+                let closed = self.core.closed.lock().unwrap();
+                let issued = self.core.issued.lock().unwrap();
+                issued.iter().all(|l| closed.contains(l))
+            };
+            if all_closed {
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
@@ -318,6 +330,10 @@ impl Front {
 }
 
 async fn front(env_extra: &[(&'static str, &str)]) -> Front {
+    // A Node start is registered with this process's admission authority before any lease is issued.
+    engine_admission::authority::global()
+        .node_session("chat-edge-test", 1)
+        .unwrap();
     let core = core().await;
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();

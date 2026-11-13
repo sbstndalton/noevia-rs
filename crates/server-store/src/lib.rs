@@ -136,6 +136,8 @@ pub const OWNED_JSON_FILES: &[&str] = &[
     "specialists.json",
     "spaces.json",
     "index.json",
+    // Slice 4b: the drafts a coworker's `space_page_save` has made pages of (same draft, same page).
+    "page-saves.json",
 ];
 
 /// Rust's ownership of sign-in and the account (M3): the tables and files Rust writes. It was the

@@ -1,0 +1,7 @@
+{"after": null, "history": [
+  {"id": "qa-u1", "role": "user", "content": "QA save a page"},
+  {"id": "qa-a1", "role": "assistant", "content": "QA saved it.", "toolCalls": [
+    {"name": "space_page_save", "args": "{\"title\":\"QA page\",\"content\":\"QA body\"}", "status": "done", "applied": true, "once": true,
+     "result": "{\"pageId\":\"33333333-3333-4333-8333-333333333333\",\"spaceId\":\"22222222-2222-4222-8222-222222222222\",\"title\":\"QA page\",\"link\":\"/spaces/22222222-2222-4222-8222-222222222222/33333333-3333-4333-8333-333333333333\"}"}
+  ]}
+]}

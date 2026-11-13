@@ -95,6 +95,10 @@ struct Seen {
     body_len: usize,
     /// Chat port S8: each admission ask's body and whether it carried the per-start secret.
     asks: Vec<(String, bool)>,
+    /// The id of the last lease granted: the ticket the front issued (row H), not a fixed one.
+    ticket: String,
+    /// Granted tickets not yet given back (a refused ask's ticket is given back too, and is not live).
+    granted: Vec<String>,
     /// Leases granted and not yet given back.
     live: i64,
     /// "METHOD path" of each renewal or release, in order.
@@ -206,6 +210,19 @@ async fn core_service(
         .map(|c| c.to_bytes())
         .unwrap_or_default();
     let admission = path == ADMISSION || path.starts_with(&format!("{ADMISSION}/"));
+    // Row H: the front issues the ticket and names it in the path. The log keeps the old fixed id so the
+    // assertions read the same; `ticket` is what Node echoes.
+    let ticket = path
+        .strip_prefix(&format!("{ADMISSION}/"))
+        .and_then(|r| r.split('/').next())
+        .unwrap_or("")
+        .to_owned();
+    let is_ask = method == "PUT" && !ticket.is_empty() && !path.ends_with("/renew");
+    let logged = if ticket.is_empty() {
+        path.clone()
+    } else {
+        path.replace(&ticket, LEASE)
+    };
     if !admission {
         let mut seen = core.seen.lock().unwrap();
         seen.hits.push(format!("{method} {path}"));
@@ -223,11 +240,12 @@ async fn core_service(
     };
     if admission {
         let token = headers.get("x-noevia-store-token") == Some(&vec![STORE_TOKEN.to_owned()]);
-        if path != ADMISSION {
+        if !is_ask {
             {
                 let mut seen = core.seen.lock().unwrap();
-                seen.releases.push(format!("{method} {path}"));
-                if method == "DELETE" && path == format!("{ADMISSION}/{LEASE}") {
+                seen.releases.push(format!("{method} {logged}"));
+                if method == "DELETE" && seen.granted.contains(&ticket) {
+                    seen.granted.retain(|t| *t != ticket);
                     seen.live -= 1;
                 }
             }
@@ -247,7 +265,7 @@ async fn core_service(
         }
         {
             let mut seen = core.seen.lock().unwrap();
-            seen.hits.push(format!("{method} {path}"));
+            seen.hits.push(format!("POST {ADMISSION}"));
             seen.asks
                 .push((String::from_utf8_lossy(&body).into_owned(), token));
         }
@@ -283,9 +301,14 @@ async fn core_service(
         let gate = *core.gate.lock().unwrap();
         return Ok(match gate {
             Gate::Open => {
-                core.seen.lock().unwrap().live += 1;
+                {
+                    let mut seen = core.seen.lock().unwrap();
+                    seen.live += 1;
+                    seen.ticket = ticket.clone();
+                    seen.granted.push(ticket.clone());
+                }
                 let ttl = *core.ttl_ms.lock().unwrap();
-                json(201, format!(r#"{{"lease":"{LEASE}","ttlMs":{ttl}}}"#))
+                json(201, format!(r#"{{"lease":"{ticket}","ttlMs":{ttl}}}"#))
             }
             Gate::Held => json(
                 503,
@@ -476,6 +499,10 @@ struct Front {
 }
 
 async fn front() -> Front {
+    // A Node start is registered with this process's admission authority before any lease is issued.
+    engine_admission::authority::global()
+        .node_session("chat-turn-test", 1)
+        .unwrap();
     let core = core().await;
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
@@ -643,7 +670,10 @@ async fn a_turn_reaches_cores_relay_with_the_secret_the_user_and_the_clients_own
     assert_eq!(h["host"], serde_json::json!(["front.test"]));
     assert_eq!(echo["bodyLen"], TURN.len());
     // Chat port S8: the turn carries the front's admission lease, whatever the client sent.
-    assert_eq!(h["x-noevia-admission-lease"], serde_json::json!([LEASE]));
+    assert_eq!(
+        h["x-noevia-admission-lease"],
+        serde_json::json!([f.core.seen.lock().unwrap().ticket.clone()])
+    );
     {
         let seen = f.core.seen.lock().unwrap();
         assert_eq!(

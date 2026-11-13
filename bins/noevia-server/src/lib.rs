@@ -29,6 +29,7 @@ pub mod code_net;
 pub mod config;
 pub mod connector_routes;
 pub mod decision_settings_routes;
+pub mod delete_model;
 pub mod diary_backup;
 pub mod diary_routes;
 pub mod embedding_background;
@@ -42,6 +43,7 @@ pub mod identity;
 pub mod idle_unload_read;
 pub mod inference_machines;
 pub mod legacy_proxy;
+pub mod load_model;
 pub mod machine_service;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
@@ -94,6 +96,7 @@ pub mod provider_reseal;
 pub mod provider_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod provider_test_routes;
+pub mod prune_missing;
 pub mod public_pages;
 pub mod reasoning_settings_routes;
 pub mod reply;
@@ -308,6 +311,10 @@ use std::sync::Arc;
 /// the same lock file, so the web supervisor and the release assembly pair this capability with that
 /// Core in both directions.
 ///
+/// `noevia-inference-admission-authority/1` (engine_admission::authority `AUTHORITY_MARKER`, port contract
+/// row H): this build issues every inference admission lease and answers `POST
+/// /v1/inference-admission/session` on the project-store listener; Core's latch
+/// (`noevia-inference-admission-latch/1`) takes its holds only for leases issued here.
 /// `rust-calibration-worker-v2`: this build runs the calibration job itself (sbstndalton/noevia#2303,
 /// src/model_maint/calibration_worker.rs): its launch under the maintenance hold, the run, its
 /// cancellation and evidence, `native-calibration-<hash>.json` and the boot recovery of a job a
@@ -505,6 +512,8 @@ pub const FEATURES: &[&str] = &[
     "rust-model-sizing",
     "rust-model-maintenance",
     "rust-preset-baseline",
+    // Port contract row H (engine_admission::authority AUTHORITY_MARKER; the release assembly reads this literal).
+    "noevia-inference-admission-authority/1",
     // Port contract row J: the maintenance lease authority (model_maint/lease.rs AUTHORITY_MARKER; the
     // release assembly reads this exact literal and pairs it with core's lease client).
     "noevia-maintenance-lease-authority/2",
