@@ -985,6 +985,31 @@ async fn the_planner_plans_runs_verifies_reviews_and_is_accepted_or_cancelled() 
         assert_eq!(measured["data"]["measuredBy"], "verifier", "code-verify.cjs's mark");
         let hash = ours_rows[mine]["data"]["reportHash"].clone();
         assert!(hash.as_str().is_some_and(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())), "{hash}");
+        // The hash is the report of exactly the journal compared above: the front's own lines up
+        // to the gate, replayed into a fresh store (whose report hash replays Node's in
+        // server-projects' task_store fixtures), must hash the same at the same stage request.
+        let replayed = {
+            let text = std::fs::read_to_string(r.data.join("users").join(OWNER).join("jobs").join(format!("{task}.jsonl"))).unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::create_dir_all(dir.path().join("jobs")).unwrap();
+            let lines: String = text.split_inclusive('\n').take(mine).collect();
+            std::fs::write(dir.path().join("jobs").join(format!("{task}.jsonl")), lines).unwrap();
+            let store = server_projects::task_store::Store::new(
+                dir.path(),
+                server_projects::task_store::Options { kinds: Some(vec!["code".into()]), ..Default::default() },
+            );
+            let authority = store.claim_lifecycle_authority().unwrap();
+            let expected = js_json::JValue::Arr(code_pipeline::EXPECTED_ARTIFACTS.iter().map(|a| js_json::JValue::Str((*a).to_owned())).collect());
+            let request = js_json::JValue::obj([
+                ("to", js_json::JValue::Str("reviewing".into())),
+                ("reason", js_json::JValue::Str("Tests passed".into())),
+                ("expectedArtifacts", expected),
+            ]);
+            let row = store.append_authority(&task, "task.stage", request, &authority).unwrap();
+            let row: Value = serde_json::from_str(&js_json::wtf16::stringify(&row).unwrap()).unwrap();
+            row["data"]["reportHash"].clone()
+        };
+        assert_eq!(replayed, hash, "the gate's hash is the report of the window compared with Node's");
         let mut ours = norm(&card, &pairs);
         assert_eq!(ours["evidence"]["completeness"], json!({"reportHash": hash}), "the card carries the gate's report hash");
         let node_review = journal.iter().find(|j| j["type"] == "approval.requested" && j["data"]["action"] == "review_change").unwrap();
@@ -1060,6 +1085,10 @@ async fn a_reviewed_direct_task_that_is_denied_is_not_accepted() {
         let base = card["arguments"]["baseSha"].as_str().unwrap().to_string();
         let shas = [(head.as_str(), node_head), (base.as_str(), node_base)];
         let mut review = norm(&card["review"], &shas);
+        // The summary is the role's answer: ours the stand-in reviewer's (pipeline recording),
+        // Node's the review-gate recording's own stand-in.
+        let stub = fixture(PIPELINE)["standins"]["answers"]["reviewer"]["summary"].clone();
+        assert_eq!(review["summary"], stub, "the reviewer's own summary");
         review["summary"] = node_card["review"]["summary"].clone();
         assert_eq!(review, node_card["review"], "the reviewer's verdict on the card as Node's (its summary is the role answer's)");
 
