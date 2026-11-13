@@ -43,6 +43,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod host;
+
 use std::collections::HashSet;
 
 use prompt_framing::js::{is_js_space, trim, units};

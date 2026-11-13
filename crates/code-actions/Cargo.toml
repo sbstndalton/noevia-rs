@@ -11,6 +11,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+js-json = { path = "../js-json" }
 prompt-framing = { path = "../prompt-framing" }
 
 [dev-dependencies]
