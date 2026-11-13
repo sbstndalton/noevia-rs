@@ -161,6 +161,8 @@ struct Script {
     executions: Vec<String>,
     /// The ids of the model leases asked for (PUT with a `model`).
     model_leases: Vec<String>,
+    /// Set: the turn answers one line and then nothing; the flag is raised when the front drops it.
+    quiet: Option<Arc<AtomicBool>>,
     /// Engine streams held open by a `stall` or `leave`.
     held: Vec<http_body_util::channel::Sender<Bytes, std::io::Error>>,
     leaving: Arc<Leaving>,
@@ -186,6 +188,7 @@ impl Default for Script {
             asked: Vec::new(),
             executions: Vec::new(),
             model_leases: Vec::new(),
+            quiet: None,
             held: Vec::new(),
             leaving: Arc::default(),
         }
@@ -311,6 +314,82 @@ fn handoff(sc: &Script) -> Response<UpBody> {
         .header("cache-control", "no-store")
         .body(b.boxed())
         .unwrap()
+}
+
+/// A turn answer that sends one line and then waits forever; dropping it raises `dropped`.
+struct Quiet {
+    first: Option<Bytes>,
+    dropped: Arc<AtomicBool>,
+}
+
+impl http_body::Body for Quiet {
+    type Data = Bytes;
+    type Error = std::io::Error;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Bytes>, Self::Error>>> {
+        match self.first.take() {
+            Some(b) => std::task::Poll::Ready(Some(Ok(http_body::Frame::data(b)))),
+            None => std::task::Poll::Pending,
+        }
+    }
+}
+
+impl Drop for Quiet {
+    fn drop(&mut self) {
+        self.dropped.store(true, Ordering::SeqCst);
+    }
+}
+
+/// Review B1: a client that leaves while core prepares and writes nothing ends core's turn at once (its
+/// stream is dropped, as the relay of a Node turn drops it), not at core's next line.
+async fn a_client_leaving_while_core_is_quiet_ends_cores_stream(case: &JValue) -> Result<(), String> {
+    let dropped = Arc::new(AtomicBool::new(false));
+    let script: Shared = Arc::new(Mutex::new(Script {
+        case: case.clone(),
+        quiet: Some(Arc::clone(&dropped)),
+        ..Script::default()
+    }));
+    let s = Arc::clone(&script);
+    let core = listen(move |r| core_service(Arc::clone(&s), r)).await;
+    let f = front(core).await;
+    let stream = TcpStream::connect(f.addr).await.unwrap();
+    let (mut send, conn) =
+        hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream))
+            .await
+            .unwrap();
+    let conn = tokio::spawn(async move {
+        let _ = conn.await;
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/chat")
+        .header("host", "front.test")
+        .header("origin", ORIGIN)
+        .header("content-type", "application/json")
+        .header("cookie", &f.jar)
+        .header("x-csrf-token", &f.csrf)
+        .body(Full::new(Bytes::from(js::stringify(case.get("input").get("body")))))
+        .unwrap();
+    let res = send.send_request(req).await.unwrap();
+    let mut body = res.into_body();
+    let first = tokio::time::timeout(Duration::from_secs(10), body.frame()).await;
+    if !matches!(first, Ok(Some(Ok(_)))) {
+        return Err(format!("quiet core: no first frame ({first:?})"));
+    }
+    drop(body);
+    drop(send);
+    conn.abort();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while !dropped.load(Ordering::SeqCst) {
+        if tokio::time::Instant::now() >= deadline {
+            return Err("quiet core: the front kept core's stream after the client left".into());
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    Ok(())
 }
 
 fn health(sc: &Script) -> JValue {
@@ -458,6 +537,20 @@ async fn core_service(
     }
     let ok = |v: JValue| Ok(json(200, &v));
     match path.as_str() {
+        "/internal/chat/turn" if sc.quiet.is_some() => {
+            let dropped = sc.quiet.clone().unwrap();
+            Ok(Response::builder()
+                .status(200)
+                .header("content-type", "application/x-ndjson")
+                .body(
+                    Quiet {
+                        first: Some(Bytes::from_static(b"{\"type\":\"meta\",\"model\":\"qa-model\"}\n")),
+                        dropped,
+                    }
+                    .boxed(),
+                )
+                .unwrap())
+        }
         "/internal/chat/turn" => {
             sc.handoff_header = headers.get("x-noevia-chat-handoff").cloned();
             if headers.get("x-noevia-chat-wire").map(String::as_str) != Some("ndjson/1") {
@@ -484,6 +577,11 @@ async fn core_service(
             ok(js::obj([("allowed", JValue::Bool(allowed))]))
         }
         "/internal/chat/native/busy" => {
+            // At the title the turn holds the route's admission lease and the model's: two counts.
+            if sent.get("own").as_num() != Some(2.0) {
+                sc.errors
+                    .push(format!("busy: own {}", js::stringify(sent.get("own"))));
+            }
             let busy = sc
                 .stub("inferenceBusy")
                 .is_some_and(|s| s.get("answer") == &JValue::Bool(true));
@@ -965,6 +1063,11 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
             }
         }
     }
+    if only.is_none() {
+        if let Err(e) = a_client_leaving_while_core_is_quiet_ends_cores_stream(&cases[0]).await {
+            failures.push(e);
+        }
+    }
     eprintln!("ran and matched ({}): {ran:?}", ran.len());
     assert!(
         failures.is_empty(),
@@ -1169,6 +1272,14 @@ async fn run_case(
         .iter()
         .map(|e| e.as_str().unwrap().to_string())
         .collect();
+    // The client left while a tool ran: core is asked to abort it (its answer is still taken).
+    let aborted = sc
+        .calls
+        .iter()
+        .any(|c| c == "POST /internal/chat/tools/abort");
+    if aborted != input.get("leaveInTool").as_str().is_some() {
+        return Err(format!("tool abort asked: {aborted}"));
+    }
     if sc.executions != want {
         return Err(format!(
             "tools run: front {:?} node {want:?}",

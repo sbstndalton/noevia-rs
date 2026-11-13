@@ -33,6 +33,7 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -56,7 +57,15 @@ use crate::App;
 /// The header core reads to hand the turn off (rust-chat-native.cjs HANDOFF_HEADER).
 pub const HANDOFF_HEADER: &str = "x-noevia-chat-handoff";
 /// The longest line before the hand-off the turn record reads (an event line past it still passes on).
-const OBSERVE_CAP: usize = crate::chat_wire::HOLDBACK;
+const OBSERVE_CAP: usize = 1024 * 1024;
+/// What the turn record reads of core's lines before the hand-off at most: the preparation sends a handful
+/// of events (meta, sources, telemetry, status, warning, tools_scope, route_pending). Past this (a turn core
+/// runs itself), nothing more is read; every byte still passes on.
+const OBSERVE_TOTAL: usize = 4 * 1024 * 1024;
+const OBSERVE_EVENTS: usize = 256;
+/// How many of core's bytes may wait in the body before reading core waits for the client (backpressure, as
+/// the relay of a Node turn has it through its socket).
+const FORWARD_QUEUE: usize = 1024 * 1024;
 const BRIDGE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Tool runs can take long (a browser task, a large Drive read); core's own call has no deadline either.
 const TOOL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
@@ -153,11 +162,28 @@ pub(crate) fn approvals(_app: &Arc<App>) -> Option<Arc<dyn Approvals>> {
 
 /// Whether this turn goes native: the switch names the account and this front can run it.
 pub(crate) fn wanted(app: &Arc<App>, user: &str) -> bool {
-    app.config.chat_executor.names(user) && approvals(app).is_some()
+    if !app.config.chat_executor.names(user) {
+        return false;
+    }
+    if approvals(app).is_none() {
+        static SAID: std::sync::Once = std::sync::Once::new();
+        SAID.call_once(|| {
+            eprintln!("chat native: NOEVIA_CHAT_EXECUTOR names accounts, but this front has no approval registry; every turn is relayed");
+        });
+        return false;
+    }
+    true
+}
+
+/// The bytes queued in a [`Wire`] and not yet taken by chat_wire.rs.
+#[derive(Default)]
+struct Queued {
+    bytes: AtomicUsize,
+    drained: tokio::sync::Notify,
 }
 
 /// The NDJSON body chat_wire.rs reads: core's bytes, then the native turn's lines, ended when the sender goes.
-struct Wire(mpsc::UnboundedReceiver<Bytes>);
+struct Wire(mpsc::UnboundedReceiver<Bytes>, Arc<Queued>);
 
 impl http_body::Body for Wire {
     type Data = Bytes;
@@ -167,7 +193,40 @@ impl http_body::Body for Wire {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Frame<Bytes>, Self::Error>>> {
-        self.0.poll_recv(cx).map(|b| b.map(|b| Ok(Frame::data(b))))
+        let polled = self.0.poll_recv(cx);
+        if let Poll::Ready(Some(b)) = &polled {
+            self.1.bytes.fetch_sub(b.len(), Ordering::SeqCst);
+            self.1.drained.notify_waiters();
+        }
+        polled.map(|b| b.map(|b| Ok(Frame::data(b))))
+    }
+}
+
+/// Queues `b` for the client: false when the client has gone.
+fn push(tx: &mpsc::UnboundedSender<Bytes>, queued: &Queued, b: Bytes) -> bool {
+    let n = b.len();
+    queued.bytes.fetch_add(n, Ordering::SeqCst);
+    if tx.send(b).is_err() {
+        queued.bytes.fetch_sub(n, Ordering::SeqCst);
+        return false;
+    }
+    true
+}
+
+/// Waits while more than [`FORWARD_QUEUE`] bytes wait for the client; false when the client has gone.
+async fn room(tx: &mpsc::UnboundedSender<Bytes>, queued: &Queued) -> bool {
+    loop {
+        let drained = queued.drained.notified();
+        if tx.is_closed() {
+            return false;
+        }
+        if queued.bytes.load(Ordering::SeqCst) <= FORWARD_QUEUE {
+            return true;
+        }
+        tokio::select! {
+            () = drained => {}
+            () = tx.closed() => return false,
+        }
     }
 }
 
@@ -178,7 +237,8 @@ where
     F: FnOnce(HeaderValue) -> Fut,
     Fut: std::future::Future<Output = Option<Response<Body>>>,
 {
-    let token = HeaderValue::from_str(app.config.research.front_token()?).ok()?;
+    let mut token = HeaderValue::from_str(app.config.research.front_token()?).ok()?;
+    token.set_sensitive(true);
     let approvals = approvals(app)?;
     let res = relay(token).await?;
     // A JSON refusal, or a core that is not this front's pair (chat_turn.rs answers those).
@@ -189,8 +249,16 @@ where
     // The body is no longer core's own: its length (if core named one) is not this body's.
     parts.headers.remove(header::CONTENT_LENGTH);
     let (tx, rx) = mpsc::unbounded_channel();
-    tokio::spawn(drive(Arc::clone(app), user, core, tx, approvals));
-    Some(Response::from_parts(parts, Body::new(Wire(rx))))
+    let queued = Arc::new(Queued::default());
+    tokio::spawn(drive(
+        Arc::clone(app),
+        user,
+        core,
+        tx,
+        Arc::clone(&queued),
+        approvals,
+    ));
+    Some(Response::from_parts(parts, Body::new(Wire(rx, queued))))
 }
 
 /// Strips a client's copy of the hand-off header (only the front may ask for one).
@@ -208,6 +276,7 @@ async fn drive(
     user: String,
     core: Body,
     tx: mpsc::UnboundedSender<Bytes>,
+    queued: Arc<Queued>,
     approvals: Arc<dyn Approvals>,
 ) {
     use http_body_util::BodyExt;
@@ -215,7 +284,13 @@ async fn drive(
     let mut core = core;
     let mut lines = Lines::default();
     let prepared = loop {
-        let Some(frame) = core.frame().await else {
+        // The client gone (or the gate's lease lost: chat_admission.rs drops the body) while core is
+        // quiet: dropping core's stream here ends its turn, as the relay of a Node turn does (#679).
+        let next = tokio::select! {
+            f = core.frame() => f,
+            () = tx.closed() => return,
+        };
+        let Some(frame) = next else {
             break None;
         };
         let Ok(frame) = frame else { break None };
@@ -227,7 +302,7 @@ async fn drive(
             match piece {
                 Piece::Forward(bytes) => {
                     lines.feed(&bytes);
-                    if tx.send(Bytes::from(bytes)).is_err() {
+                    if !push(&tx, &queued, Bytes::from(bytes)) || !room(&tx, &queued).await {
                         // The client left: closing core's stream ends its turn, which keeps it (#679).
                         return;
                     }
@@ -244,7 +319,7 @@ async fn drive(
         // Core ran the turn itself (or its stream broke): what it held back goes on, chat_wire.rs judges it.
         let rest = frames.rest();
         if !rest.is_empty() {
-            let _ = tx.send(Bytes::from(rest));
+            let _ = push(&tx, &queued, Bytes::from(rest));
         }
         return;
     }
@@ -280,11 +355,13 @@ async fn drive(
         user_dir,
         data_dir,
         tx,
+        queued,
         saving: Mutex::new(Saving::new(TurnRecord::new(crate::identity::now_ms))),
-        lease: tokio::sync::Mutex::new(None),
+        partial_ended: Mutex::new(false),
+        lease: Mutex::new(None),
         lease_token: Mutex::new(None),
         approvals,
-        client: reqwest::Client::new(),
+        client: engine_client(),
     });
     for v in &forwarded {
         host.observe(v, false);
@@ -307,6 +384,8 @@ async fn drive(
     let helpers = helpers();
     let ended = native::run(&*host, process, &helpers, &p).await;
     ticks.abort();
+    // A partial write in progress finishes before the turn's end is saved (review F1).
+    let _ = ticks.await;
     watcher.abort();
     let left = matches!(ended, native::Ended::Left) || host.left();
     let keep = Arc::clone(&host);
@@ -345,7 +424,8 @@ async fn ticks(host: Arc<FrontHost>, chat: Option<String>) {
             if let Some(start) = host.app.config.start_id.clone() {
                 js::set(&mut file, "running", js::obj([("start", js::s(start))]));
             }
-            host.write_partial(&chat_turn::after::safe_chat_id(&c), &file);
+            let (h, safe) = (Arc::clone(&host), chat_turn::after::safe_chat_id(&c));
+            let _ = tokio::task::spawn_blocking(move || h.tick_partial(&safe, &file)).await;
         }
     }
 }
@@ -356,11 +436,23 @@ async fn ticks(host: Arc<FrontHost>, chat: Option<String>) {
 struct Lines {
     held: Vec<u8>,
     skipping: bool,
+    read: usize,
+    full: bool,
     events: Vec<JValue>,
 }
 
 impl Lines {
     fn feed(&mut self, bytes: &[u8]) {
+        if self.full {
+            return;
+        }
+        self.read += bytes.len();
+        if self.read > OBSERVE_TOTAL || self.events.len() >= OBSERVE_EVENTS {
+            // Core is running the turn itself: its lines are not the hand-off's.
+            self.full = true;
+            self.held = Vec::new();
+            return;
+        }
         let mut rest = bytes;
         while !rest.is_empty() {
             let end = rest.iter().position(|b| *b == b'\n');
@@ -392,6 +484,19 @@ impl Lines {
     }
 }
 
+/// One client for every native turn's engine calls; like Node's fetch it takes no proxy from the environment.
+fn engine_client() -> reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new())
+        })
+        .clone()
+}
+
 fn process() -> &'static Process {
     static PROCESS: std::sync::OnceLock<Process> = std::sync::OnceLock::new();
     PROCESS.get_or_init(Process::default)
@@ -418,8 +523,11 @@ pub(crate) struct FrontHost {
     user_dir: PathBuf,
     data_dir: PathBuf,
     tx: mpsc::UnboundedSender<Bytes>,
+    queued: Arc<Queued>,
     saving: Mutex<Saving>,
-    lease: tokio::sync::Mutex<Option<engine_admission::Lease>>,
+    /// Set by the turn's end under its lock: a partial tick that comes later writes nothing (review F1).
+    partial_ended: Mutex<bool>,
+    lease: Mutex<Option<engine_admission::Lease>>,
     /// The turn's `x-noevia-lease` value, as [`Host::lease`] returned it (the load bridge carries it).
     lease_token: Mutex<Option<String>>,
     approvals: Arc<dyn Approvals>,
@@ -446,6 +554,16 @@ impl FrontHost {
         ))
     }
 
+    /// The 4 s partial save: nothing once the turn's end has kept or cleared the partial.
+    fn tick_partial(&self, safe: &str, file: &JValue) {
+        let Ok(ended) = self.partial_ended.lock() else {
+            return;
+        };
+        if !*ended {
+            self.write_partial(safe, file);
+        }
+    }
+
     fn write_partial(&self, safe: &str, file: &JValue) {
         let path = server_projects::partial::file_for(&self.user_dir, safe);
         if let Some(dir) = path.parent() {
@@ -456,8 +574,22 @@ impl FrontHost {
         }
     }
 
-    /// A JSON call on core's loopback bridges, its body written as JS writes it.
+    /// A JSON call on core's loopback bridges, its body written as JS writes it. The client gone, the call
+    /// is dropped (core's bridge sees its caller go: a load stops, as chat.cjs's does with the turn's signal).
     async fn core(&self, path: &str, body: &JValue, timeout: Duration) -> Option<(u16, JValue)> {
+        tokio::select! {
+            r = self.core_full(path, body, timeout) => r,
+            () = closed(&self.tx) => None,
+        }
+    }
+
+    /// [`Self::core`] that runs to its answer whatever the client does.
+    async fn core_full(
+        &self,
+        path: &str,
+        body: &JValue,
+        timeout: Duration,
+    ) -> Option<(u16, JValue)> {
         let (status, bytes) = self
             .app
             .config
@@ -491,9 +623,11 @@ impl Host for FrontHost {
         let left = self.left();
         self.observe(event, left);
         if !left {
-            let _ = self
-                .tx
-                .send(Bytes::from(format!("{}\n", js::stringify(event))));
+            let _ = push(
+                &self.tx,
+                &self.queued,
+                Bytes::from(format!("{}\n", js::stringify(event))),
+            );
         }
     }
 
@@ -511,10 +645,20 @@ impl Host for FrontHost {
     async fn lease(&self, model: &str) -> Result<Option<Vec<(String, String)>>, GateRefusal> {
         let admission = self.app.config.research.admission();
         let cancel = model_stream::Cancel::new();
-        match admission
-            .enter(engine_admission::Ask::Engine { model }, &cancel)
-            .await
-        {
+        let entered = tokio::select! {
+            r = admission.enter(engine_admission::Ask::Engine { model }, &cancel) => r,
+            () = closed(&self.tx) => {
+                // The client left while the turn waited for the model: it takes nothing (Node's turn
+                // signal ends its wait the same way).
+                cancel.cancel();
+                return Err(GateRefusal {
+                    text: "This operation was aborted".into(),
+                    code: None,
+                    retryable: Some(false),
+                });
+            }
+        };
+        match entered {
             Ok(lease) => {
                 let headers = lease.headers().to_vec();
                 let token = headers
@@ -524,7 +668,13 @@ impl Host for FrontHost {
                 if let Ok(mut t) = self.lease_token.lock() {
                     *t = token;
                 }
-                *self.lease.lock().await = Some(lease);
+                if let Ok(mut slot) = self.lease.lock() {
+                    *slot = Some(lease);
+                }
+                // The client may have left between the grant and here: the watcher found no lease then.
+                if self.left() {
+                    self.release_lease();
+                }
                 Ok(Some(headers))
             }
             Err(r) => Err(GateRefusal {
@@ -536,7 +686,7 @@ impl Host for FrontHost {
     }
 
     fn release_lease(&self) {
-        let lease = self.lease.try_lock().ok().and_then(|mut l| l.take());
+        let lease = self.lease.lock().ok().and_then(|mut l| l.take());
         if let Some(l) = lease {
             tokio::spawn(l.release());
         }
@@ -654,7 +804,11 @@ impl Host for FrontHost {
             return (String::from_utf8_lossy(&out).into_owned(), false);
         };
         while out.len() <= cap {
-            match response.chunk().await {
+            let next = tokio::select! {
+                c = response.chunk() => c,
+                () = closed(&self.tx) => break,
+            };
+            match next {
                 Ok(Some(b)) => out.extend_from_slice(&b),
                 _ => break,
             }
@@ -687,10 +841,13 @@ impl Host for FrontHost {
     }
 
     async fn engine_busy(&self) -> bool {
+        // chat.cjs asks inferenceBusy(1): its turn is one count in core's gate. A native turn holds the
+        // route's admission lease (S8) and, while it lasts, the model's lease: each is one count there.
+        let own = 1 + usize::from(self.lease.lock().is_ok_and(|l| l.is_some()));
         let r = self
             .core(
                 "/internal/chat/native/busy",
-                &js::obj([("user", js::s(self.user.clone()))]),
+                &js::obj([("user", js::s(self.user.clone())), ("own", js::count(own))]),
                 BRIDGE_TIMEOUT,
             )
             .await;
@@ -879,10 +1036,24 @@ impl Host for FrontHost {
             ("chatKey", run.chat_key.clone().map_or(JValue::Null, js::s)),
             ("exchangeKey", js::s(run.exchange_key.clone())),
         ]);
-        match self
-            .core("/internal/chat/tools/execute", &body, TOOL_TIMEOUT)
-            .await
-        {
+        // Node's tool gets the turn's abort signal when the client leaves and the turn still takes its
+        // answer: the front asks core to abort the run, and waits for it.
+        let call = self.core_full("/internal/chat/tools/execute", &body, TOOL_TIMEOUT);
+        tokio::pin!(call);
+        let answer = tokio::select! {
+            r = &mut call => r,
+            () = closed(&self.tx) => {
+                self.core_later(
+                    "/internal/chat/tools/abort",
+                    js::obj([
+                        ("user", js::s(self.user.clone())),
+                        ("exchangeKey", js::s(run.exchange_key.clone())),
+                    ]),
+                );
+                call.await
+            }
+        };
+        match answer {
             Some((200, v)) => Ok((
                 v.get("text").as_str().unwrap_or("").to_string(),
                 v.get("failed") == &JValue::Bool(true),
@@ -917,10 +1088,14 @@ impl Keep for FrontHost {
     }
 
     fn keep_partial(&self, chat: &str, file: &JValue) {
+        let mut ended = self.partial_ended.lock().unwrap_or_else(|e| e.into_inner());
+        *ended = true;
         self.write_partial(chat, file);
     }
 
     fn end_partial(&self, chat: &str) {
+        let mut ended = self.partial_ended.lock().unwrap_or_else(|e| e.into_inner());
+        *ended = true;
         let path = server_projects::partial::file_for(&self.user_dir, chat);
         if std::fs::remove_file(&path).is_err() && path.exists() {
             eprintln!("chat native: could not remove a finished reply's partial");
