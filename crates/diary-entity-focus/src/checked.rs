@@ -99,6 +99,20 @@ pub fn near_word(a: &str, b: &str) -> Result<bool, Error> {
     }
     crate::lexical::near_word(a, b)
 }
+/// Python `entity_focus._keys(words)`: comparison keys of name words (titles dropped, hyphenated words
+/// split). Used by the Diary follow-up resolver to check that a name phrase is exactly one entity. The
+/// words come from a whitespace split of text that already passed the query cap, so only the aggregate
+/// byte total is checked here.
+pub fn name_keys(words: &[String]) -> Result<Vec<String>, Error> {
+    let mut total = 0usize;
+    for word in words {
+        total = total.saturating_add(word.len());
+        if total > MAX_QUERY_BYTES {
+            return Err(Error::Capacity);
+        }
+    }
+    Ok(crate::lexical::keys(words))
+}
 pub fn parse_margin(value: &NumericValue) -> Result<f64, Error> {
     numeric(value)?;
     Ok(crate::policy::parse_margin(value))

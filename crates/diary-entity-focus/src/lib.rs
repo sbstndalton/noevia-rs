@@ -10,8 +10,8 @@ mod unicode15;
 pub use policy::{analyse, focus_candidates};
 mod checked;
 pub use checked::{
-    asked_entities, carried_entities, classify, identified_people, near_word, parse_margin,
-    refers_back, relational,
+    asked_entities, carried_entities, classify, identified_people, name_keys, near_word,
+    parse_margin, refers_back, relational,
 };
 
 pub const PYTHON_SOURCE_SHA256: &str = generated_rules::SOURCE_SHA256;
