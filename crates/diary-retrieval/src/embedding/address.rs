@@ -230,7 +230,12 @@ const V6_PRIVATE_EXCEPTIONS: [(u128, u32); 6] = [
 const V6_LINK_LOCAL: (u128, u32) = (v6([0xfe80, 0, 0, 0, 0, 0, 0, 0]), 10);
 const V6_MULTICAST: (u128, u32) = (v6([0xff00, 0, 0, 0, 0, 0, 0, 0]), 8);
 /// `_V6_RESERVED` of the module.
-const V6_RESERVED: [(u128, u32); 4] = [
+///
+/// Beyond Python's list, `2002::/16` (6to4) and `64:ff9b:1::/48` (local-use NAT64) are refused:
+/// both embed an IPv4 address that may be public (known difference 10).
+const V6_RESERVED: [(u128, u32); 6] = [
+    (v6([0x2002, 0, 0, 0, 0, 0, 0, 0]), 16),
+    (v6([0x64, 0xff9b, 1, 0, 0, 0, 0, 0]), 48),
     (v6([0x64, 0xff9b, 0, 0, 0, 0, 0, 0]), 96),
     (v6([0x2001, 0, 0, 0, 0, 0, 0, 0]), 32),
     (v6([0x2001, 0xdb8, 0, 0, 0, 0, 0, 0]), 32),
@@ -610,6 +615,15 @@ mod tests {
         assert_eq!(non_local_reason("224.0.0.1"), Some("a public address"));
         assert_eq!(non_local_reason("ff02::1"), Some("a public address"));
         assert_eq!(non_local_reason("250.0.0.1"), Some("a reserved address"));
+        // 6to4 and local-use NAT64 carry an IPv4 address: refused here, accepted by Python
+        assert_eq!(
+            non_local_reason("2002:808:808::1"),
+            Some("a reserved address")
+        );
+        assert_eq!(
+            non_local_reason("64:ff9b:1::808:808"),
+            Some("a reserved address")
+        );
         assert_eq!(non_local_reason("1.2.3"), Some("not an address"));
         assert_eq!(non_local_reason("01.2.3.4"), Some("not an address"));
     }

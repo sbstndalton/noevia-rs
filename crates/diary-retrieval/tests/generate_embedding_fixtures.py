@@ -725,6 +725,9 @@ def addr_str_forms(n):
     return out
 
 
+KNOWN_DIFF_NETS = [ipaddress.ip_network("2002::/16"), ipaddress.ip_network("64:ff9b:1::/48")]
+
+
 def address_samples():
     rng = random.Random(4242)
     s = []
@@ -750,6 +753,8 @@ def address_samples():
         s += [f"::ffff:{v}", f"::FFFF:{v}", f"::ffff:{hi:x}:{lo:x}", f"0:0:0:0:0:ffff:{v}", f"::fffe:{v}",
               f"::ffff:0:{v}", f"64:ff9b::{v}", f"::{v}", f"::{hi:x}:{lo:x}", f"2002:{hi:x}:{lo:x}::1",
               f"{v}%eth0", f"::ffff:{v}%eth0"]
+    s += ["2002:808:808::1", "2002:a00:1::1", "2002:7f00:1::", "2002:c0a8:1::5", "64:ff9b:1::808:808",
+          "64:ff9b:1::a00:1", "64:ff9b:1:ffff::1", "2002:808:808:1:2:3:4:5", "2002::", "2002:ffff:ffff::"]
     s += ["::1", "::2", "::", "::0.0.0.1", "::0.0.0.2", "::1%lo", "::1%", "::1%%", "fe80::1%eth0", "fe80::1%", "fe80::1%%x",
           "fe80::1%25eth0", "fe80::1%a%b", "%eth0", "%", "1.2.3.4%", "ff02::1%eth0", "2001:db8::1%zone",
           "8.8.8.8%eth0", "2606:4700::1111%eth0", "fd00::1%\u00e9", "fe80::1%\u0001"]
@@ -791,7 +796,20 @@ def address_samples():
 
 def address_section():
     samples = address_samples()
-    non_local = [{"address": a, "reason": emb.non_local_reason(a)} for a in samples]
+    non_local = []
+    for a in samples:
+        entry = {"address": a, "reason": emb.non_local_reason(a)}
+        # Python takes 6to4 and local-use NAT64 as local although they carry an IPv4 address; the Rust
+        # port refuses them (known difference 10), so the test asserts that instead of Python's answer
+        try:
+            ip = ipaddress.ip_address(a.split("%", 1)[0])
+        except ValueError:
+            ip = None
+        if (ip is not None and ip.version == 6 and ip.ipv4_mapped is None
+                and any(ip in net for net in KNOWN_DIFF_NETS)):
+            assert entry["reason"] is None, a
+            entry["known_difference"] = "reserved"
+        non_local.append(entry)
 
     def parsed(text):
         try:

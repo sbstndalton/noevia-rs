@@ -6,6 +6,7 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::{json, Value};
 
@@ -370,7 +371,8 @@ impl EmbeddingConfig {
     }
 
     /// `_persist`: `{version: 1, active, next, previous}` as `json.dump(indent=2)` writes it,
-    /// through `<name>.<pid>.tmp` (mode 0600) and a rename.
+    /// through a new `<name>.<pid>.<n>.tmp` (`create_new`, mode 0600: never an existing file or a
+    /// symlink; known difference 12) and a rename. A failed write or rename removes the temp file.
     fn persist(&self, state: &State) -> std::io::Result<()> {
         let Some(path) = &self.state_file else {
             return Ok(());
@@ -381,18 +383,14 @@ impl EmbeddingConfig {
         let name = path
             .file_name()
             .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-        let tmp = path.with_file_name(format!("{name}.{}.tmp", std::process::id()));
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&tmp)?;
-        file.write_all(state_json(state).as_bytes())?;
+        let (mut file, tmp) = create_temp(path, &name)?;
+        let written = file.write_all(state_json(state).as_bytes());
         drop(file);
-        std::fs::rename(&tmp, path)
+        let result = written.and_then(|()| std::fs::rename(&tmp, path));
+        if result.is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
+        result
     }
 
     fn change(&mut self, state: State) -> Result<Snapshot, ChangeError> {
@@ -517,6 +515,30 @@ impl EmbeddingConfig {
         state.previous = None;
         self.change(state)
     }
+}
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// A new, private temp file beside `path`. A name that already exists is skipped.
+fn create_temp(path: &Path, name: &str) -> std::io::Result<(std::fs::File, PathBuf)> {
+    let mut last = None;
+    for _ in 0..8 {
+        let n = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let tmp = path.with_file_name(format!("{name}.{}.{n}.tmp", std::process::id()));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&tmp) {
+            Ok(file) => return Ok((file, tmp)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| std::io::Error::from(std::io::ErrorKind::AlreadyExists)))
 }
 
 /// `json.dump({"version": 1, "active": ..., "next": ..., "previous": ...}, indent=2)`.

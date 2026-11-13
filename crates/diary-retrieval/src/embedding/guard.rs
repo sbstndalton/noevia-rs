@@ -12,9 +12,10 @@
 //!    [`GuardOutcome`]: what to refuse (for good or transiently), what to check again, and the log
 //!    lines.
 //! 2. [`GuardOutcome::apply`] makes the refusals on the configuration (under the caller's lock).
-//! 3. For every [`Pending`], the caller schedules [`recheck_seeded`] after [`RECHECK_S`]; a step
-//!    answering [`RecheckNext::Again`] is scheduled once more for the SAME [`Pending`], anything
-//!    else ends it. (Python re-schedules the last held-back address instead, whichever one ran:
+//! 3. For every [`Pending`], the caller schedules a re-check after [`RECHECK_S`], in two halves so
+//!    no lock is held across the DNS call: [`recheck_check`] with the configuration unlocked,
+//!    then [`apply_recheck`] with it locked (it reads `source` again). A step answering
+//!    [`RecheckNext::Again`] is scheduled once more for the SAME [`Pending`], anything else ends it. (Python re-schedules the last held-back address instead, whichever one ran:
 //!    known difference 8 in the module docs.)
 
 use super::address::AddressCheck;
@@ -219,13 +220,26 @@ pub struct RecheckStep {
     pub logs: Vec<LogLine>,
 }
 
-/// One scheduled re-check of a held-back address (`again` in Python). It applies its result to
-/// `config`: a name that now resolves to this network is released, a permanent refusal is made.
-/// An `Err` from `check` is ignored and tried again at the next round.
-pub fn recheck_seeded(
-    config: &mut EmbeddingConfig,
+/// The lock-free half of a scheduled re-check: the (DNS) check itself. Call it with no lock on
+/// the configuration held. Python skips the check once an administrator has chosen; a caller that
+/// wants the same reads [`EmbeddingConfig::source`] under the lock first and checks only while it
+/// is [`Source::Environment`].
+pub fn recheck_check(
     pending: &Pending,
     check: &mut dyn FnMut(&str) -> Result<AddressCheck, CheckFailure>,
+) -> Result<AddressCheck, CheckFailure> {
+    check(&pending.url)
+}
+
+/// The locked half of a scheduled re-check (`again` in Python): applies `result` to `config`, which
+/// the caller holds under its lock for this short, non-blocking call. The source is read again
+/// here, so a choice made while the check was running wins: nothing is released or refused. A
+/// name that now resolves to this network is released, a permanent refusal is made, and an `Err`
+/// or a transient answer is tried again at the next round.
+pub fn apply_recheck(
+    config: &mut EmbeddingConfig,
+    pending: &Pending,
+    result: Result<AddressCheck, CheckFailure>,
 ) -> RecheckStep {
     let stop = |logs| RecheckStep {
         next: RecheckNext::Stop,
@@ -235,7 +249,7 @@ pub fn recheck_seeded(
         return stop(Vec::new()); // an administrator has chosen since: the seed no longer matters
     }
     let name = env_name(pending.which);
-    if let Ok(r) = check(&pending.url) {
+    if let Ok(r) = result {
         if r.ok {
             config.release_seeded(pending.which);
             return stop(vec![LogLine {
