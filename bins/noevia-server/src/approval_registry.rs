@@ -1250,24 +1250,19 @@ mod tests {
             r.decide(
                 OWNER,
                 &id,
-                case.get("decision")
-                    .and_then(Value::as_str).unwrap(),
+                case.get("decision").and_then(Value::as_str).unwrap(),
                 false,
                 live.as_ref(),
             )
             .unwrap();
-            let want = match case
-                .get("outcome")
-                .and_then(Value::as_str).unwrap()
-            {
+            let want = match case.get("outcome").and_then(Value::as_str).unwrap() {
                 "approve" => Outcome::Approve,
                 _ => Outcome::Deny,
             };
             assert_eq!(r.wait(OWNER, &id).await, Ok(want), "{case}");
             assert_eq!(
                 r.granted(OWNER, "c1", "space:free", Some(&b)),
-                case.get("grant")
-                    .and_then(Value::as_bool).unwrap(),
+                case.get("grant").and_then(Value::as_bool).unwrap(),
                 "{case}"
             );
         }
