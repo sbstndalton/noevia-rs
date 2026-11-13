@@ -83,7 +83,8 @@ fn transport_class(e: &reqwest::Error) -> &'static str {
 fn tokio_sleep() -> Sleep {
     Arc::new(|s: f64| {
         Box::pin(tokio::time::sleep(
-            Duration::try_from_secs_f64(s.max(0.0)).unwrap_or(Duration::ZERO),
+            // A wait too long to represent waits "forever" (Python's sleep raises), never zero.
+            Duration::try_from_secs_f64(s.max(0.0)).unwrap_or(Duration::MAX),
         )) as Pin<Box<dyn Future<Output = ()> + Send>>
     })
 }
@@ -390,7 +391,10 @@ impl Client {
         if texts.is_empty() {
             return Ok(Vec::new());
         }
-        let model = model.unwrap_or(&self.cfg.embed_model);
+        // Python `model or self.embed_model`: an empty id means the configured one.
+        let model = model
+            .filter(|m| !m.is_empty())
+            .unwrap_or(&self.cfg.embed_model);
         let body = json!({"model": model, "input": texts});
         let tries = self.cfg.max_retries;
         let mut last = String::from("None");

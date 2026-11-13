@@ -3,4 +3,5 @@
 //! behind `DIARY_RUST_ANSWER` (off by default) in a later step.
 
 pub mod deadline;
+pub mod exchange;
 pub mod model;

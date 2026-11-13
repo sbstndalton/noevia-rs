@@ -50,6 +50,9 @@ fn seconds(s: f64) -> Duration {
     Duration::try_from_secs_f64(s.max(0.0)).unwrap_or(Duration::MAX)
 }
 
+/// About 30 years: the end of a budget too long for an `Instant` (effectively unlimited).
+const FAR: Duration = Duration::from_secs(30 * 365 * 24 * 3600);
+
 /// One exchange's budget (Python `ExchangeBudget`).
 pub struct Budget {
     end: Instant,
@@ -62,6 +65,7 @@ impl Budget {
         Self {
             end: now
                 .checked_add(seconds(total_s.unwrap_or(EXCHANGE_DEADLINE_S)))
+                .or_else(|| now.checked_add(FAR))
                 .unwrap_or(now),
             first_token: seconds(first_token_s.unwrap_or(FIRST_TOKEN_DEADLINE_S)),
         }
@@ -83,9 +87,10 @@ impl Budget {
         F: FnOnce(Progress) -> Fut,
         Fut: Future<Output = T>,
     {
+        // Python `min(remaining, cap)`: a NaN cap compares false and leaves `remaining`.
         let total = match cap_s {
-            Some(cap) => self.remaining().min(seconds(cap)),
-            None => self.remaining(),
+            Some(cap) if !cap.is_nan() => self.remaining().min(seconds(cap)),
+            _ => self.remaining(),
         };
         if total.is_zero() {
             return Err(Timeout::BeforeCall);
