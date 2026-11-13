@@ -445,9 +445,11 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "chrono-tz",
+ "icu_properties",
  "js-json",
  "prompt-framing",
  "regex",
+ "server-projects",
 ]
 
 [[package]]

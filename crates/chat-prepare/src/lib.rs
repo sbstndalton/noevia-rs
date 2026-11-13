@@ -17,6 +17,10 @@
 //!   stored-only lines.
 //! - [`project`]: the project parts in chat.cjs's order and a shadow project's knowledge block in
 //!   front of the user's message.
+//! - [`frame`] (slice P4a): `chat-frame-steering.cjs` `storedFrame`, `frameBlock` and `gateBias`,
+//!   and chat.cjs's rules for reading the frame; [`frame::frame_part`] is the first
+//!   [`Turn::trailing`] part (recorded in `tests/fixtures/node-frame.v1.json`, written by
+//!   `tests/record_frame.cjs`).
 //! - [`SystemParts`]: chat.cjs's ordered `sysParts`, joined with `'\n\n'` into the system message.
 //! - [`prepare`] / [`messages`]: the parts ahead of the replayed history and the new user message.
 //!
@@ -58,11 +62,13 @@
 //!
 //! Later slices: the retrieval itself and `partialSources` (P2b, which pass `filesBlock` and
 //! `partialReads` in here); the skill index, auto-loaded and pinned skill blocks and the history's
-//! skill scrub (they arrive through [`project::ProjectTurn::skills`]); the frame and brain blocks
-//! ([`Turn::trailing`]); image assets; and what happens to the wire once the route is known
-//! (off-box zone and history filter, the hybrid route's read-file hint, vision, route notes).
+//! skill scrub (they arrive through [`project::ProjectTurn::skills`]); the brain block
+//! ([`Turn::trailing`], after the frame block) and the tool gate's use of [`frame::gate_bias`];
+//! image assets; and what happens to the wire once the route is known (off-box zone and history
+//! filter, the hybrid route's read-file hint, vision, route notes).
 
 pub mod account;
+pub mod frame;
 pub mod history;
 pub mod js;
 pub mod memory;
@@ -154,9 +160,10 @@ impl SystemParts {
 ///   context project (`diaryExtras.chatProjectId`): `None` when that is null. A free chat with
 ///   attachments has a hidden shadow project (`cowork-chat-context-*`), so it is a project turn.
 ///   [`ProjectTurn`] lists what a project turn must not hold yet (image assets, skills).
-/// - Chat framing off for this turn: chat.cjs ~735-755 pushes the confirmed frame's block and the
-///   linked brain block after everything else (the P4 slice). Chat framing is on live, so a live
-///   turn with a confirmed frame is not covered yet; such blocks go in `trailing` once ported.
+/// - Chat framing: chat.cjs ~745-765 pushes the confirmed frame's block and the linked brain
+///   block after everything else. The frame block is [`frame::frame_part`] of
+///   [`frame::chat_frame`], passed in `trailing`; the brain block (`features.brainContext`, off by
+///   default) is not ported yet, so a turn with it on is not covered.
 /// - No Diary space and no `compactOnly` side effects beyond the replay and the parts
 ///   (`message: None`).
 pub struct Turn<'a> {
