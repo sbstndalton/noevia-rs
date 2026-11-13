@@ -652,6 +652,18 @@ fn no_input_panics() {
         let turn = JValue::obj([("role", "user".into()), ("content", text.clone().into())]);
         let _ = first_user_message(&JValue::Arr(vec![turn]), &text);
         let _ = can_request("m", &text, &text);
+        // The reply text: the spread as `content`, as a key and as a bare value, through the crate function.
+        let quoted = JValue::Str(text.clone());
+        let reply = JValue::obj([(
+            "choices",
+            JValue::Arr(vec![JValue::obj([(
+                "message",
+                JValue::obj([("content", quoted.clone())]),
+            )])]),
+        )]);
+        let _ = title_from_reply_text(&wtf16::stringify(&reply).unwrap());
+        let _ = title_from_reply_text(&wtf16::stringify(&JValue::Arr(vec![quoted])).unwrap());
+        let _ = title_from_reply_text(&text);
         assert!(wtf16::len(&derived_title(&text)) <= CHAT_TITLE_MAX.max(wtf16::len(&text)));
         if let Some(t) = clean_title(&text) {
             assert!(wtf16::len(&t) <= TITLE_MAX);
