@@ -409,3 +409,70 @@ async fn the_in_process_server_gets_a_capability_token_signed_with_the_derived_k
     let exp = claims["exp"].as_i64().unwrap();
     assert!(exp >= started + 30_000 && exp <= now() + 30_000, "{exp}");
 }
+
+/// The core checkout with the native paths (`NOEVIA_R5_CORE`; CI: tests/fixtures/r5-live.core-ref). Unset:
+/// the live test is skipped (it needs a real `node` and that checkout).
+fn r5_core() -> Option<std::path::PathBuf> {
+    std::env::var_os("NOEVIA_R5_CORE").map(std::path::PathBuf::from)
+}
+
+/// One phase of `r5_node_live.cjs` in a real `node` process against the front's internal store.
+async fn node_phase(
+    core: &std::path::Path,
+    phase: &str,
+    store: std::net::SocketAddr,
+) -> serde_json::Value {
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/r5_node_live.cjs");
+    let mut command = std::process::Command::new("node");
+    command
+        .arg(script)
+        .arg(phase)
+        .env("NOEVIA_R5_CORE", core)
+        .env("STORE_PORT", store.port().to_string())
+        .env("STORE_TOKEN", STORE_TOKEN)
+        .env("USER_ID", A);
+    // The front serves on this runtime: wait for node on a thread of its own.
+    let out = tokio::task::spawn_blocking(move || command.output())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "node {phase} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_str(String::from_utf8(out.stdout).unwrap().trim()).unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn node_hands_a_tool_call_to_the_real_front() {
+    let Some(core) = r5_core() else {
+        return;
+    };
+    let d = tempfile::tempdir().unwrap();
+    seed(d.path());
+    let up = upstream().await;
+    serve_tools(
+        &up,
+        r#"{"content":[{"type":"text","text":"qa from the server"}]}"#,
+        Duration::ZERO,
+    );
+    let f = front_env_discovering(d.path(), true, &env(&up, true)).await;
+    let out = node_phase(&core, "mcp", f.store).await;
+    // Node routed by the front's discovery, the front made the call, Node applied its reducer.
+    assert_eq!(out["tools"], serde_json::json!(["one"]));
+    assert_eq!(out["text"], "[reduced 8000] qa from the server");
+    assert_eq!(
+        out["unknown"],
+        "ERROR: unknown tool \"nope\" on MCP server \"open\""
+    );
+    let call = up
+        .seen()
+        .into_iter()
+        .find(|s| body_of(s)["method"] == "tools/call")
+        .unwrap();
+    assert_eq!(
+        body_of(&call)["params"],
+        j(r#"{"name":"one","arguments":{"q":"qa é"}}"#)
+    );
+}
