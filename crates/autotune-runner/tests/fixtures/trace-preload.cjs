@@ -1,7 +1,7 @@
 'use strict';
 // R6 oracle recorder (preload). Loaded with `node --require` before noevia-core's
 // server/llamacpp-full-autotune.test.cjs; records every createFullAutotuner instance as one trace
-// (format: noevia-work/handoff/tracks/R6-trace-format.md). Read-only on the core checkout.
+// (format: FORMAT.md beside this file). Read-only on the core checkout.
 // Env: TRACE_CORE (core checkout root), TRACE_OUT (output directory).
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), util = require('node:util');
 const Module = require('node:module');

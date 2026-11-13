@@ -7,8 +7,7 @@
 //! rollback of the implementation switch leaves a job either can show and resume.
 //!
 //! Oracle: traces of the Node runner recorded at its dependency boundary
-//! (`tests/fixtures/record-node.cjs`, format in sbstndalton/noevia's R6 handoff
-//! `R6-trace-format.md`): every router call, profile write, hold, calibrator call and state-file
+//! (`tests/fixtures/record-node.cjs`, format in `tests/fixtures/FORMAT.md`): every router call, profile write, hold, calibrator call and state-file
 //! save in order. The pure parts here are also checked against Node's exported functions
 //! (`tests/pure`).
 //!

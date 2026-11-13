@@ -150,6 +150,10 @@ pub struct StageHooks<D: Deps> {
     pub(crate) foreign_stop: Arc<Mutex<Option<Fail>>>,
     /// fillCheck's calibrator: given no `contextCurrent` (Node's check then reads `undefined`).
     pub(crate) fill: bool,
+    /// The first state-file save that failed inside a callback: Node's callback would have thrown
+    /// into the calibrator and ended its stage; the stage ends with it here once the calibrator
+    /// returns.
+    pub(crate) save_error: Arc<Mutex<Option<Fail>>>,
 }
 
 impl<D: Deps> Clone for StageHooks<D> {
@@ -162,7 +166,17 @@ impl<D: Deps> Clone for StageHooks<D> {
             phase: self.phase.clone(),
             foreign_stop: Arc::clone(&self.foreign_stop),
             fill: self.fill,
+            save_error: Arc::clone(&self.save_error),
         }
+    }
+}
+
+/// Clears `starting` when dropped (start's `finally`).
+struct Starting<'a, D: Deps>(&'a Runner<D>);
+
+impl<D: Deps> Drop for Starting<'_, D> {
+    fn drop(&mut self) {
+        self.0.st().starting = false;
     }
 }
 
@@ -219,10 +233,15 @@ impl<D: Deps> Runner<D> {
     /// as an object, starts empty, as Node's `catch { state = {} }`), then arms the startup
     /// recovery of a trial an earlier process left unrestored.
     pub fn new(deps: D, config: Config, state_text: Option<&str>) -> Result<Self, Fail> {
-        let mut state = state_text
-            .and_then(|t| wtf16::parse(t).ok())
-            .filter(JValue::is_object)
-            .unwrap_or(JValue::Obj(Vec::new()));
+        // Node: `try { state = JSON.parse(text) } catch { state = {} }`, then `state.history ||= {}`,
+        // which throws for null, a number, a string or a boolean (the auto-tuner is then not
+        // built). An array would pass in Node and every later save would write `[]`, losing the
+        // job: refused here too (a named difference).
+        let mut state = match state_text.map(wtf16::parse) {
+            None | Some(Err(_)) => JValue::Obj(Vec::new()),
+            Some(Ok(v)) if v.is_object() => v,
+            Some(Ok(_)) => return Err(Fail::new("The auto-tune state file is not a JSON object.")),
+        };
         js::or_insert(&mut state, "history", JValue::Obj(Vec::new()));
         js::or_insert(&mut state, "settings", JValue::Obj(Vec::new()));
         let runner = Runner(Arc::new(Inner {
@@ -268,6 +287,11 @@ impl<D: Deps> Runner<D> {
     /// `save()`: the whole state, atomically; every token generation moves on.
     pub(crate) fn save(&self) -> Result<(), Fail> {
         let mut st = self.st();
+        self.save_locked(&mut st)
+    }
+
+    /// `save()` with the state already locked (a compare-and-change keeps the lock throughout).
+    pub(crate) fn save_locked(&self, st: &mut St<D::Context>) -> Result<(), Fail> {
         let text = wtf16::stringify(&st.state).unwrap_or_default();
         self.0.deps.save(&text)?;
         st.clear_generation += 1;
@@ -414,48 +438,58 @@ impl<D: Deps> Runner<D> {
     /// `start(model, { confirmPause, promptBudgetSeconds, untuned, mode })`. `Err` is an
     /// exception Node's `start` does not catch (the route answers it as an internal error).
     pub async fn start(&self, model: &str, body: StartBody) -> Result<Answer, Fail> {
-        let run_active = {
-            let st = self.st();
-            st.starting || st.state.get("job").get("status").as_str() == Some("running")
-        };
-        let admission = autotune_start::admit(&autotune_start::Start {
-            confirm_pause: body.confirm_pause.as_ref(),
-            mode: body.mode.as_ref(),
-            prompt_budget_seconds: body.prompt_budget_seconds.as_ref(),
-            bulk: body.untuned,
-            run_active,
-            system_model: self.0.deps.is_system_model(model, None),
-        });
-        let plan = match admission {
-            Ok(plan) => plan,
-            Err(r) => return Ok((r.status, error_body(r.message))),
-        };
         let bulk = body.untuned;
+        // Node's checks up to `starting = true` run in one synchronous turn, so no second start or
+        // resume can slip between the "already running" check and the flag: one lock here.
+        let plan = {
+            let mut st = self.st();
+            let run_active =
+                st.starting || st.state.get("job").get("status").as_str() == Some("running");
+            let admission = autotune_start::admit(&autotune_start::Start {
+                confirm_pause: body.confirm_pause.as_ref(),
+                mode: body.mode.as_ref(),
+                prompt_budget_seconds: body.prompt_budget_seconds.as_ref(),
+                bulk,
+                run_active,
+                // Asked below, only where Node asks it (a single model, every earlier check passed).
+                system_model: false,
+            });
+            let plan = match admission {
+                Ok(plan) => plan,
+                Err(r) => return Ok((r.status, error_body(r.message))),
+            };
+            if !bulk && self.0.deps.is_system_model(model, None) {
+                return Ok((400, error_body(autotune_start::SYSTEM_MODEL_REASON)));
+            }
+            // #223: the context ladder must be readable before any hold or write.
+            if let Err(err) = self.0.deps.ladder(0) {
+                if err.code.as_deref() != Some("autoconfig_impl") {
+                    return Err(err);
+                }
+                return Ok((
+                    // `err.status || 503`.
+                    err.status.filter(|s| *s != 0).unwrap_or(503),
+                    JValue::obj([
+                        (
+                            "error",
+                            JValue::from(format!("Auto-tune is unavailable: {}", err.message)),
+                        ),
+                        ("code", JValue::from("autoconfig_impl")),
+                    ]),
+                ));
+            }
+            st.starting = true;
+            plan
+        };
+        // Node's `finally { starting = false }`, also when this future is dropped mid-start.
+        let _starting = Starting(self);
         let mode = match plan.mode {
             autotune_start::Mode::Fast => "fast",
             autotune_start::Mode::Long => "long",
         };
-        // #223: the context ladder must be readable before any hold or write.
-        if let Err(err) = self.0.deps.ladder(0) {
-            if err.code.as_deref() != Some("autoconfig_impl") {
-                return Err(err);
-            }
-            return Ok((
-                err.status.unwrap_or(503),
-                JValue::obj([
-                    (
-                        "error",
-                        JValue::from(format!("Auto-tune is unavailable: {}", err.message)),
-                    ),
-                    ("code", JValue::from("autoconfig_impl")),
-                ]),
-            ));
-        }
-        self.st().starting = true;
         let result = self
             .start_prepared(model, bulk, mode, f64::from(plan.prompt_budget_seconds))
             .await;
-        self.st().starting = false;
         Ok(match result {
             Ok(answer) => answer,
             Err(e) => (
@@ -776,11 +810,13 @@ impl<D: Deps> Runner<D> {
                 idle,
             )
             .await?;
+        // Kept before the save, as Node assigns `release` first: a failed save still gives the
+        // hold back (the loop's `finally`).
+        *release_slot = Some(release);
         self.st().set_idle(None);
         self.with_job(|j| js::set(j, "waiting", false));
         self.with_item(index, |item| js::set(item, "status", "running"));
         self.save()?;
-        *release_slot = Some(release);
         let release = release_slot.as_ref().ok_or_else(|| Fail::new("no hold"))?;
         if self.item(index).get("mode").as_str() == Some("long") {
             self.ensure_long_section(index).await?;

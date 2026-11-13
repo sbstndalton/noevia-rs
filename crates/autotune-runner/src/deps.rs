@@ -72,16 +72,35 @@ impl Fail {
     }
 }
 
-/// An abort signal the runner raises and a dependency watches (`AbortController`).
+/// An abort signal the runner raises and a dependency watches (`AbortController`). A dependency
+/// handed one must give up promptly once it is raised ([`Abort::wait`] resolves then), as a
+/// `fetch` rejects at once on `controller.abort()`.
 #[derive(Debug, Clone, Default)]
-pub struct Abort(Arc<AtomicBool>);
+pub struct Abort(Arc<AbortInner>);
+
+#[derive(Debug, Default)]
+struct AbortInner {
+    flag: AtomicBool,
+    notify: tokio::sync::Notify,
+}
 
 impl Abort {
     pub fn abort(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        self.0.flag.store(true, Ordering::SeqCst);
+        self.0.notify.notify_waiters();
     }
     pub fn aborted(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.0.flag.load(Ordering::SeqCst)
+    }
+    /// Resolves once the signal is raised (at once if it already is).
+    pub async fn wait(&self) {
+        loop {
+            let notified = self.0.notify.notified();
+            if self.aborted() {
+                return;
+            }
+            notified.await;
+        }
     }
     /// The same signal (for identity checks).
     pub fn same(&self, other: &Abort) -> bool {
@@ -189,7 +208,9 @@ pub trait Deps: Send + Sync + 'static {
     // ── the engine (behind `engineBoundary`) ──
     /// `rawModels()`: `{ ok, status?, body: { data: [...] } }`.
     fn raw_models(&self) -> impl Future<Output = Result<JValue, Fail>> + Send;
-    /// `request(path, opts, timeoutMs)`: `{ ok, status?, body }`; `abort` is the call's signal.
+    /// `request(path, opts, timeoutMs)`: `{ ok, status?, body }`; `abort` is the call's signal:
+    /// once it is raised the call must end promptly with an error (Node's fetch rejects), so the
+    /// memory guard and a cancel never wait for the request's own timeout.
     fn request(
         &self,
         call: Call,
@@ -247,7 +268,9 @@ pub trait Deps: Send + Sync + 'static {
     fn allow_below_q5(&self) -> bool;
 
     // ── maintenance ──
-    /// `maintenance.holdWhenIdle(reason, { timeoutMs, signal })`.
+    /// `maintenance.holdWhenIdle(reason, { timeoutMs, signal })`. Once `abort` is raised the wait
+    /// must end promptly with `Fail::cancelled()`; at the deadline, with `idle_timeout` set and the
+    /// message `Timed out waiting for chat to become idle.`.
     fn hold_when_idle(
         &self,
         reason: &str,

@@ -764,8 +764,9 @@ impl<D: Deps> Runner<D> {
                         self.with_plan(mi, |plan| js::set(plan, "before", before));
                         self.save()?;
                     }
-                    let sized = self.baseline_size(self.plan_of(mi).get("request"))?;
+                    // Node evaluates `presets.get(j.model).options` before `baselineSize(plan)`.
                     let options = self.deps().presets_get(&model).get("options").clone();
+                    let sized = self.baseline_size(self.plan_of(mi).get("request"))?;
                     self.ensure_baseline(
                         &options,
                         BaselineOpts {

@@ -9,7 +9,7 @@
 use crate::deps::{Context as _, Deps, Fail};
 use crate::engine::string_of;
 use crate::phases::private_key;
-use crate::runner::{Child, Runner};
+use crate::runner::{Child, Runner, St};
 use crate::{hash, js};
 use js_json::{wtf16, JValue};
 
@@ -117,6 +117,22 @@ fn pick(job: &JValue, fields: &[&str], hidden: fn(&str) -> bool) -> JValue {
     copy_without(&picked, hidden)
 }
 
+/// prepareResume's deadline (Node: `Date.now() + 120000`).
+const PREPARE_LIMIT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Gives back `resumePreparing`/`starting` when dropped (prepareResume's `finally`).
+struct Preparing<'a, D: Deps>(&'a Runner<D>);
+
+impl<D: Deps> Drop for Preparing<'_, D> {
+    fn drop(&mut self) {
+        let mut st = self.0.st();
+        if st.resume_preparing {
+            st.resume_preparing = false;
+            st.starting = false;
+        }
+    }
+}
+
 /// A conditional change's answer: `{ applied: false }`.
 fn not_applied() -> JValue {
     JValue::obj([("applied", JValue::Bool(false))])
@@ -163,87 +179,90 @@ fn indices(list: &JValue, length: usize) -> Option<Vec<usize>> {
 }
 
 impl<D: Deps> Runner<D> {
-    fn digest(&self, value: &JValue) -> String {
-        let salt = self.st().salt.clone();
+    fn digest(st: &St<D::Context>, value: &JValue) -> String {
         hash(&JValue::obj([
-            ("salt", JValue::from(salt)),
+            ("salt", JValue::from(st.salt.as_str())),
             ("value", value.clone()),
         ]))
     }
 
-    fn cancel_generation(&self) -> String {
-        let (job, run) = {
-            let st = self.st();
-            (
-                st.state.get("job").truthy().then_some(st.job_object),
-                st.run,
-            )
-        };
-        self.digest(&JValue::obj([
-            ("job", job.map_or(JValue::Null, |n| JValue::Num(n as f64))),
-            ("run", JValue::Num(run as f64)),
-        ]))
-    }
-
-    fn cancel_token(&self) -> String {
-        let v = {
-            let st = self.st();
-            let id = |n: u64| {
-                if n == 0 {
-                    JValue::Null
-                } else {
-                    JValue::Num(n as f64)
-                }
-            };
-            JValue::obj([
-                ("job", st.state.get("job").clone()),
-                (
-                    "object",
-                    if st.state.get("job").truthy() {
-                        id(st.job_object)
-                    } else {
-                        JValue::Null
-                    },
-                ),
+    fn cancel_generation(st: &St<D::Context>) -> String {
+        let job = st.state.get("job").truthy().then_some(st.job_object);
+        Self::digest(
+            st,
+            &JValue::obj([
+                ("job", job.map_or(JValue::Null, |n| JValue::Num(n as f64))),
                 ("run", JValue::Num(st.run as f64)),
-                ("starting", JValue::Bool(st.starting)),
-                ("cancelled", JValue::Bool(st.cancelled)),
-                ("child", id(st.child_id)),
-                ("inflight", id(st.inflight_id)),
-                ("idle", id(st.idle_id)),
-            ])
-        };
-        self.digest(&v)
+            ]),
+        )
     }
 
-    /// `cancellationFacts()`: `{ token, generation, job }`.
-    pub fn cancellation_facts(&self) -> JValue {
-        let job = self.job();
+    fn cancel_token(st: &St<D::Context>) -> String {
+        let id = |n: u64| {
+            if n == 0 {
+                JValue::Null
+            } else {
+                JValue::Num(n as f64)
+            }
+        };
+        let v = JValue::obj([
+            ("job", st.state.get("job").clone()),
+            (
+                "object",
+                if st.state.get("job").truthy() {
+                    id(st.job_object)
+                } else {
+                    JValue::Null
+                },
+            ),
+            ("run", JValue::Num(st.run as f64)),
+            ("starting", JValue::Bool(st.starting)),
+            ("cancelled", JValue::Bool(st.cancelled)),
+            ("child", id(st.child_id)),
+            ("inflight", id(st.inflight_id)),
+            ("idle", id(st.idle_id)),
+        ]);
+        Self::digest(st, &v)
+    }
+
+    fn cancellation_of(st: &St<D::Context>) -> JValue {
+        let job = st.state.get("job");
         JValue::obj([
-            ("token", JValue::from(self.cancel_token())),
-            ("generation", JValue::from(self.cancel_generation())),
+            ("token", JValue::from(Self::cancel_token(st))),
+            ("generation", JValue::from(Self::cancel_generation(st))),
             (
                 "job",
                 if job.is_nullish() {
                     JValue::Null
                 } else {
-                    pick(&job, &PUBLIC_FIELDS, hidden_strict)
+                    pick(job, &PUBLIC_FIELDS, hidden_strict)
                 },
             ),
         ])
     }
 
+    /// `cancellationFacts()`: `{ token, generation, job }`.
+    pub fn cancellation_facts(&self) -> JValue {
+        Self::cancellation_of(&self.st())
+    }
+
     /// `compareAndAbort(expected)` (#2294): cancels the run the token was read from: the stage's
-    /// calibrator, the request in flight and the wait for chat to go idle.
+    /// calibrator, the request in flight and the wait for chat to go idle. The comparison and the
+    /// flag are one critical section (Node's one synchronous turn).
     pub fn compare_and_abort(&self, expected: &str) -> JValue {
-        if expected != self.cancel_token() || !self.job().truthy() {
-            return not_applied();
-        }
-        let before = self.cancellation_facts();
-        let (child, inflight, idle) = {
+        let (before, child, inflight, idle) = {
             let mut st = self.st();
+            if expected != Self::cancel_token(&st) || !st.state.get("job").truthy() {
+                return not_applied();
+            }
+            let before = Self::cancellation_of(&st);
             st.cancelled = true;
-            (st.child.clone(), st.inflight.clone(), st.idle_abort.clone())
+            (
+                before,
+                st.child.clone(),
+                st.inflight.clone(),
+                st.idle_abort.clone(),
+            )
         };
         match child {
             Some(Child::Stage(c)) => c.abort(),
@@ -367,9 +386,8 @@ impl<D: Deps> Runner<D> {
         ]))
     }
 
-    fn settings_token(&self, model: &str) -> (String, JValue) {
+    fn settings_token(&self, st: &St<D::Context>, model: &str) -> (String, JValue) {
         let profile = self.deps().presets_get(model);
-        let st = self.st();
         let job = st.state.get("job");
         let job_guard = if job.truthy() {
             let models = match job.get("models") {
@@ -415,7 +433,6 @@ impl<D: Deps> Runner<D> {
         ]);
         let generation = st.settings_generation;
         let salt = st.salt.clone();
-        drop(st);
         let token = hash(&JValue::obj([
             ("process", JValue::from(salt)),
             ("generation", JValue::Num(generation as f64)),
@@ -425,10 +442,8 @@ impl<D: Deps> Runner<D> {
         (token, guard)
     }
 
-    /// `settingsFacts(model)` (#2287): the token Rust's settings route compares, and the views.
-    pub fn settings_facts(&self, model: &str) -> JValue {
-        let (token, guard) = self.settings_token(model);
-        let st = self.st();
+    fn settings_of(&self, st: &St<D::Context>, model: &str) -> JValue {
+        let (token, guard) = self.settings_token(st, model);
         let history = st.state.get("history");
         let list = |k: &str| {
             let v = history.get(k);
@@ -450,54 +465,58 @@ impl<D: Deps> Runner<D> {
         ])
     }
 
+    /// `settingsFacts(model)` (#2287): the token Rust's settings route compares, and the views.
+    pub fn settings_facts(&self, model: &str) -> JValue {
+        let st = self.st();
+        self.settings_of(&st, model)
+    }
+
     /// `commitSettings(model, allowQ5Kv, expected)`: the one map change, only over the exact state
-    /// the token was read from.
+    /// the token was read from (compared and changed under one lock).
     pub fn commit_settings(
         &self,
         model: &str,
         allow_q5: bool,
         expected: &str,
     ) -> Result<JValue, Fail> {
-        if model.is_empty() || wtf16::len(model) > 200 || self.settings_token(model).0 != expected {
+        let mut st = self.st();
+        if model.is_empty()
+            || wtf16::len(model) > 200
+            || self.settings_token(&st, model).0 != expected
+        {
             return Ok(not_applied());
         }
-        let prior = {
-            let mut st = self.st();
-            let prior = st.state.get("settings").get(model).clone();
-            let had = js::has(st.state.get("settings"), model);
-            if let Some(settings) = js::get_mut(&mut st.state, "settings") {
-                if allow_q5 {
-                    js::set(
-                        settings,
-                        model,
-                        JValue::obj([("allowQ5Kv", JValue::Bool(true))]),
-                    );
-                } else {
-                    js::del(settings, model);
-                }
+        let had = js::has(st.state.get("settings"), model);
+        let prior = st.state.get("settings").get(model).clone();
+        if let Some(settings) = js::get_mut(&mut st.state, "settings") {
+            if allow_q5 {
+                js::set(
+                    settings,
+                    model,
+                    JValue::obj([("allowQ5Kv", JValue::Bool(true))]),
+                );
+            } else {
+                js::del(settings, model);
             }
-            (had, prior)
-        };
-        if let Err(e) = self.save() {
-            let mut st = self.st();
+        }
+        if let Err(e) = self.save_locked(&mut st) {
             if let Some(settings) = js::get_mut(&mut st.state, "settings") {
-                if prior.0 {
-                    js::set(settings, model, prior.1);
+                if had {
+                    js::set(settings, model, prior);
                 } else {
                     js::del(settings, model);
                 }
             }
             return Err(e);
         }
+        let facts = self.settings_of(&st, model);
         Ok(JValue::obj([
             ("applied", JValue::Bool(true)),
-            ("facts", self.settings_facts(model)),
+            ("facts", facts),
         ]))
     }
 
-    /// `clearFacts()` (#1978).
-    pub fn clear_facts(&self) -> JValue {
-        let st = self.st();
+    fn clear_of(st: &St<D::Context>) -> JValue {
         let job = st.state.get("job");
         let generation = hash(&JValue::obj([
             ("process", JValue::from(st.salt.as_str())),
@@ -541,33 +560,35 @@ impl<D: Deps> Runner<D> {
         out
     }
 
+    /// `clearFacts()` (#1978).
+    pub fn clear_facts(&self) -> JValue {
+        Self::clear_of(&self.st())
+    }
+
     /// `compareAndClear(token)`: drops a finished job record (history, settings and models.ini
-    /// stay), never an active one or one whose restore the router has not re-read.
+    /// stay), never an active one or one whose restore the router has not re-read. Compared and
+    /// removed under one lock.
     pub fn compare_and_clear(&self, token: &str) -> Result<JValue, Fail> {
-        if self.clear_facts().get("token").as_str() != Some(token) {
+        let mut st = self.st();
+        if Self::clear_of(&st).get("token").as_str() != Some(token) {
             return Ok(not_applied());
         }
-        let removed = {
-            let mut st = self.st();
-            let job = st.state.get("job").clone();
-            let finished = matches!(
-                job.get("status").as_str(),
-                Some("failed" | "cancelled" | "interrupted" | "passed")
-            );
-            if st.starting
-                || !job.truthy()
-                || !finished
-                || job.get("_reloadPending").truthy()
-                || job.get("_recovery").truthy()
-            {
-                return Ok(not_applied());
-            }
-            js::del(&mut st.state, "job");
-            job
-        };
-        if let Err(e) = self.save() {
-            let mut st = self.st();
-            js::set(&mut st.state, "job", removed);
+        let job = st.state.get("job").clone();
+        let finished = matches!(
+            job.get("status").as_str(),
+            Some("failed" | "cancelled" | "interrupted" | "passed")
+        );
+        if st.starting
+            || !job.truthy()
+            || !finished
+            || job.get("_reloadPending").truthy()
+            || job.get("_recovery").truthy()
+        {
+            return Ok(not_applied());
+        }
+        js::del(&mut st.state, "job");
+        if let Err(e) = self.save_locked(&mut st) {
+            js::set(&mut st.state, "job", job);
             return Err(e);
         }
         Ok(JValue::obj([("applied", JValue::Bool(true))]))
@@ -808,9 +829,8 @@ impl<D: Deps> Runner<D> {
         Ok(())
     }
 
-    fn resume_outside(&self) -> JValue {
+    fn resume_outside(&self, st: &St<D::Context>) -> JValue {
         let (_, revision) = self.deps().presets_snapshot();
-        let st = self.st();
         let system: Vec<JValue> = js::items(st.state.get("job").get("models"))
             .iter()
             .map(|item| {
@@ -832,16 +852,14 @@ impl<D: Deps> Runner<D> {
         ])
     }
 
-    fn resume_token(&self) -> String {
-        let mut v = self.resume_outside();
-        let st = self.st();
+    fn resume_token(&self, st: &St<D::Context>) -> String {
+        let mut v = self.resume_outside(st);
         js::set(
             &mut v,
             "generation",
             JValue::Num(st.resume_generation as f64),
         );
         js::set(&mut v, "state", st.state.clone());
-        drop(st);
         hash(&v)
     }
 
@@ -934,19 +952,14 @@ impl<D: Deps> Runner<D> {
         )
     }
 
-    /// `resumeFacts()` (#2301).
-    pub fn resume_facts(&self) -> JValue {
-        let j = self.job();
+    fn resume_facts_of(&self, st: &St<D::Context>) -> JValue {
+        let j = st.state.get("job");
         let (_, revision) = self.deps().presets_snapshot();
-        let (starting, generation) = {
-            let st = self.st();
-            let generation = hash(&JValue::obj([
-                ("process", JValue::from(st.salt.as_str())),
-                ("job", JValue::Num(st.job_object as f64)),
-                ("completion", JValue::Num(st.run as f64)),
-            ]));
-            (st.starting, generation)
-        };
+        let generation = hash(&JValue::obj([
+            ("process", JValue::from(st.salt.as_str())),
+            ("job", JValue::Num(st.job_object as f64)),
+            ("completion", JValue::Num(st.run as f64)),
+        ]));
         let job = if j.truthy() {
             JValue::obj([
                 ("status", status_of(j.get("status"))),
@@ -954,51 +967,57 @@ impl<D: Deps> Runner<D> {
                 ("unsafe", JValue::Bool(j.get("_unsafe").truthy())),
                 ("revision", string_or_null(j.get("_revision"))),
                 ("pendingRevision", string_or_null(j.get("_pendingRevision"))),
-                ("models", self.resume_queue(&j)),
+                ("models", self.resume_queue(j)),
             ])
         } else {
             JValue::Null
         };
         JValue::obj([
-            ("token", JValue::from(self.resume_token())),
+            ("token", JValue::from(self.resume_token(st))),
             ("generation", JValue::from(generation)),
-            ("starting", JValue::Bool(starting)),
+            ("starting", JValue::Bool(st.starting)),
             ("revision", JValue::from(revision)),
             ("job", job),
         ])
+    }
+
+    /// `resumeFacts()` (#2301).
+    pub fn resume_facts(&self) -> JValue {
+        let st = self.st();
+        self.resume_facts_of(&st)
     }
 
     // Indices into `models` are checked against its length before use.
     #[allow(clippy::indexing_slicing)]
     /// `prepareResume(expected, { stage, selectors })`: the listing or identity facts the front's
     /// resume policy needs, read while the actor is held `starting` so nothing else changes it.
-    pub async fn prepare_resume(
+    /// prepareResume's entry, in one critical section: the token compared, the request checked,
+    /// and `resumePreparing`/`starting` taken. `Err(answer)` is the reply to give at once.
+    #[allow(clippy::type_complexity)]
+    fn prepare_entry(
         &self,
         expected: &str,
         stage: &str,
         selectors: &JValue,
-    ) -> Result<JValue, Fail> {
-        {
-            let st = self.st();
-            if st.resume_preparing || st.starting || !st.state.get("job").truthy() {
-                return Ok(not_applied());
-            }
+    ) -> Result<(Vec<JValue>, Vec<(usize, String)>, u64, u64, String), Result<JValue, Fail>> {
+        let mut st = self.st();
+        if st.resume_preparing || st.starting || !st.state.get("job").truthy() {
+            return Err(Ok(not_applied()));
         }
-        if expected != self.resume_token() {
-            return Ok(not_applied());
+        if expected != self.resume_token(&st) {
+            return Err(Ok(not_applied()));
         }
         let selectors = match selectors {
             JValue::Undefined => Vec::new(),
             JValue::Arr(s) if s.len() <= 512 => s.clone(),
-            _ => return Err(Fail::new("Invalid preparation request")),
+            _ => return Err(Err(Fail::new("Invalid preparation request"))),
         };
         if stage != "listing" && stage != "identities" {
-            return Err(Fail::new("Invalid preparation request"));
+            return Err(Err(Fail::new("Invalid preparation request")));
         }
-        let j = self.job();
-        let models = match j.get("models") {
+        let models = match st.state.get("job").get("models") {
             JValue::Arr(m) if m.len() <= 512 => m.clone(),
-            _ => return Err(Fail::new("Resume queue exceeds preparation bounds")),
+            _ => return Err(Err(Fail::new("Resume queue exceeds preparation bounds"))),
         };
         let mut picks = Vec::new();
         for pick in &selectors {
@@ -1011,23 +1030,37 @@ impl<D: Deps> Runner<D> {
                 .as_str()
                 .filter(|f| *f == "model" || *f == "base");
             let (Some(index), Some(field)) = (index, field) else {
-                return Err(Fail::new("Invalid queued identity request"));
+                return Err(Err(Fail::new("Invalid queued identity request")));
             };
             let index = index as usize;
             if picks.iter().any(|(i, _)| *i == index) || models[index].get(field).as_str().is_none()
             {
-                return Err(Fail::new("Invalid queued identity request"));
+                return Err(Err(Fail::new("Invalid queued identity request")));
             }
             picks.push((index, field.to_string()));
         }
-        let (job_object, run) = {
-            let mut st = self.st();
-            st.resume_preparing = true;
-            st.starting = true;
-            (st.job_object, st.run)
-        };
+        // Checked and taken in one critical section; given back by `Preparing` however this ends
+        // (Node's `finally`), also when the caller drops this future.
+        st.resume_preparing = true;
+        st.starting = true;
+        let (job_object, run) = (st.job_object, st.run);
+        let baseline = self.resume_token(&st);
+        Ok((models, picks, job_object, run, baseline))
+    }
+
+    pub async fn prepare_resume(
+        &self,
+        expected: &str,
+        stage: &str,
+        selectors: &JValue,
+    ) -> Result<JValue, Fail> {
+        let (models, picks, job_object, run, mut baseline) =
+            match self.prepare_entry(expected, stage, selectors) {
+                Ok(entry) => entry,
+                Err(answer) => return answer,
+            };
+        let _preparing = Preparing(self);
         let started = std::time::Instant::now();
-        let mut baseline = self.resume_token();
         let stale = || Fail {
             code: Some("resume_stale".into()),
             ..Fail::new("Resume state changed")
@@ -1036,18 +1069,25 @@ impl<D: Deps> Runner<D> {
             let st = self.st();
             let held =
                 st.resume_preparing && st.starting && st.job_object == job_object && st.run == run;
-            drop(st);
-            if started.elapsed().as_secs() >= 120 || !held || self.resume_token() != baseline {
+            if started.elapsed() >= PREPARE_LIMIT || !held || self.resume_token(&st) != baseline {
                 return Err(stale());
             }
             Ok(())
         };
+        // Node races each wait against the deadline (`wait()`): a read that hangs ends at it. The
+        // flush below is not raced: dropping it half done would leave its re-read unrecorded
+        // (Node's flush keeps running after its race is lost); its own router call is bounded.
+
         let outcome: Result<JValue, Fail> = async {
             current(&baseline)?;
             if stage == "listing" {
                 self.adopt_pending_revision()?;
-                baseline = self.resume_token();
-                let rows = self.raw_models().await.ok();
+                baseline = self.resume_token(&self.st());
+                let rows = self
+                    .by_deadline(started, Box::pin(self.raw_models()))
+                    .await
+                    .ok_or_else(stale)?
+                    .ok();
                 current(&baseline)?;
                 let data = rows
                     .as_ref()
@@ -1108,15 +1148,24 @@ impl<D: Deps> Runner<D> {
                 {
                     return Err(stale());
                 }
-                baseline = self.resume_token();
+                baseline = self.resume_token(&self.st());
             } else {
                 current(&baseline)?;
             }
             current(&baseline)?;
             let mut identities = Vec::new();
             for (index, field) in &picks {
-                let id = string_of(models[*index].get(field));
-                let identity = self.deps().identity_for(&id).await.ok().flatten();
+                let id = string_of(
+                    models
+                        .get(*index)
+                        .map_or(&JValue::Undefined, |m| m.get(field)),
+                );
+                let identity = self
+                    .by_deadline(started, Box::pin(self.deps().identity_for(&id)))
+                    .await
+                    .ok_or_else(stale)?
+                    .ok()
+                    .flatten();
                 current(&baseline)?;
                 identities.push(JValue::obj([
                     ("index", JValue::Num(*index as f64)),
@@ -1133,13 +1182,7 @@ impl<D: Deps> Runner<D> {
             Ok(JValue::obj([("identities", JValue::Arr(identities))]))
         }
         .await;
-        {
-            let mut st = self.st();
-            if st.resume_preparing {
-                st.resume_preparing = false;
-                st.starting = false;
-            }
-        }
+        drop(_preparing);
         let result = match outcome {
             Ok(r) => r,
             Err(e) if e.code.as_deref() == Some("resume_stale") => return Ok(not_applied()),
@@ -1172,16 +1215,15 @@ impl<D: Deps> Runner<D> {
     /// `compareAndResume(expected, plan)`: a filter of the queue, or a relaunch with the given items,
     /// phases and steps reset.
     pub fn compare_and_resume(&self, expected: &str, plan: &JValue) -> Result<JValue, Fail> {
-        {
-            let st = self.st();
-            if st.resume_preparing || st.starting || !st.state.get("job").truthy() {
-                return Ok(not_applied());
-            }
-        }
-        if expected != self.resume_token() {
+        // Compared, validated, changed and saved under one lock (Node's one synchronous turn).
+        let mut st = self.st();
+        if st.resume_preparing || st.starting || !st.state.get("job").truthy() {
             return Ok(not_applied());
         }
-        let j = self.job();
+        if expected != self.resume_token(&st) {
+            return Ok(not_applied());
+        }
+        let j = st.state.get("job").clone();
         let models = match j.get("models") {
             JValue::Arr(m) if m.len() <= 512 && plan.is_object() => m.clone(),
             _ => return Err(Fail::new("Invalid resume patch")),
@@ -1213,14 +1255,21 @@ impl<D: Deps> Runner<D> {
             {
                 return Err(Fail::new("Invalid skipped queue patch"));
             }
+            // `[...(j.skipped || []), ...]`: a truthy non-iterable throws (Node then rolls back).
+            let earlier: Vec<JValue> = match j.get("skipped") {
+                JValue::Arr(list) => list.clone(),
+                JValue::Str(text) => text.chars().map(|c| JValue::from(c.to_string())).collect(),
+                v if !v.truthy() => Vec::new(),
+                _ => return Err(Fail::new("j.skipped is not iterable")),
+            };
             let now = self.deps().now();
-            self.with_job(|j| {
+            if let Some(j) = js::get_mut(&mut st.state, "job") {
                 js::set(
                     j,
                     "models",
                     JValue::Arr(keep.iter().map(|i| models[*i].clone()).collect()),
                 );
-                let mut list: Vec<JValue> = js::items(j.get("skipped")).to_vec();
+                let mut list = earlier;
                 list.extend(skipped.iter().map(|p| {
                     let i = p.get("index").as_num().unwrap_or(0.0) as usize;
                     JValue::obj([
@@ -1238,7 +1287,7 @@ impl<D: Deps> Runner<D> {
                     js::set(j, "finishedAt", JValue::Num(now));
                     js::set(j, "error", JValue::Undefined);
                 }
-            });
+            }
         } else if kind == "launch" {
             let JValue::Arr(reset) = plan.get("reset") else {
                 return Err(Fail::new("Invalid item reset patch"));
@@ -1272,7 +1321,7 @@ impl<D: Deps> Runner<D> {
                     }
                 }
             }
-            self.with_job(|j| {
+            if let Some(j) = js::get_mut(&mut st.state, "job") {
                 js::set(j, "status", "running");
                 js::set(j, "error", JValue::Undefined);
                 js::set(j, "finishedAt", JValue::Undefined);
@@ -1321,18 +1370,21 @@ impl<D: Deps> Runner<D> {
                         js::set(p, "steps", JValue::Arr(next));
                     }
                 }
-            });
+            }
         } else {
             return Err(Fail::new("Invalid resume patch kind"));
         }
-        if let Err(e) = self.save() {
-            // The worker has not started: the live object goes back to exactly what it was.
-            let mut st = self.st();
-            js::set(&mut st.state, "job", j);
+        if let Err(e) = self.save_locked(&mut st) {
+            // The worker has not started: the live object goes back to the patch's starting point
+            // (`Object.assign(j, JSON.parse(JSON.stringify(before)))`: `undefined` members gone).
+            js::set(&mut st.state, "job", js::json_copy(&j));
             return Err(e);
         }
         if kind == "launch" {
-            self.st().cancelled = false;
+            st.cancelled = false;
+        }
+        drop(st);
+        if kind == "launch" {
             self.launch();
         }
         let mut out = JValue::obj([("applied", JValue::Bool(true))]);
@@ -1345,6 +1397,31 @@ impl<D: Deps> Runner<D> {
             pick(&self.job(), &PUBLIC_FIELDS, hidden_strict),
         );
         Ok(out)
+    }
+
+    /// `fut`, unless prepareResume's deadline passes first (`None`).
+    async fn by_deadline<T>(
+        &self,
+        started: std::time::Instant,
+        fut: std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + '_>>,
+    ) -> Option<T> {
+        let left = PREPARE_LIMIT.saturating_sub(started.elapsed());
+        let mut fut = fut;
+        let timer = self
+            .deps()
+            .tick(u64::try_from(left.as_millis()).unwrap_or(u64::MAX));
+        let mut timer = std::pin::pin!(timer);
+        use std::future::Future as _;
+        std::future::poll_fn(|cx| {
+            if let std::task::Poll::Ready(v) = fut.as_mut().poll(cx) {
+                return std::task::Poll::Ready(Some(v));
+            }
+            if timer.as_mut().poll(cx).is_ready() {
+                return std::task::Poll::Ready(None);
+            }
+            std::task::Poll::Pending
+        })
+        .await
     }
 
     /// `flushReload(model)` for the routes and a start's caller.

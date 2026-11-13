@@ -272,20 +272,21 @@ impl<D: Deps> Runner<D> {
             "running",
             JValue::obj([("startedAt", JValue::Num(now))]),
         )?;
+        // The "passed" record is inside Node's `try` too: a save that fails there is handled as
+        // a failed candidate.
         let attempt: Result<JValue, Fail> = async {
             self.write(options.clone()).await?;
             self.load().await?;
-            evaluate().await
+            let result = evaluate().await?;
+            let mut details = compact(&result);
+            js::set(&mut details, "value", options.clone());
+            js::set(&mut details, "finishedAt", JValue::Num(self.deps().now()));
+            self.record(mi, pi, id, "passed", details)?;
+            Ok(result)
         }
         .await;
         match attempt {
-            Ok(result) => {
-                let mut details = compact(&result);
-                js::set(&mut details, "value", options);
-                js::set(&mut details, "finishedAt", JValue::Num(self.deps().now()));
-                self.record(mi, pi, id, "passed", details)?;
-                Ok(Some(result))
-            }
+            Ok(result) => Ok(Some(result)),
             Err(e) => {
                 let status = if self.cancelled() {
                     "interrupted"
@@ -344,6 +345,7 @@ impl<D: Deps> Runner<D> {
             phase,
             foreign_stop: Arc::new(Mutex::new(None)),
             fill: false,
+            save_error: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -365,6 +367,7 @@ impl<D: Deps> Runner<D> {
         };
         let hooks = self.hooks(Some((mi, pi, prefix.to_string(), offset)));
         let foreign_stop = Arc::clone(&hooks.foreign_stop);
+        let save_error = Arc::clone(&hooks.save_error);
         let child = Arc::new(self.deps().context(hooks, false));
         self.st().set_child(Some(Child::Stage(Arc::clone(&child))));
         let outcome = async {
@@ -385,6 +388,9 @@ impl<D: Deps> Runner<D> {
                 child.abort();
             }
             child.completion().await?;
+            if let Some(e) = lock(&save_error).clone() {
+                return Err(e);
+            }
             self.check()?;
             let result = child.status_job(&model);
             let passed = result.get("status").as_str() == Some("passed");
@@ -695,14 +701,20 @@ impl<D: Deps> Runner<D> {
             let free = self.deps().read_memory();
             let config = self.config();
             let budget = self.deps().budget_gib()? * 1024.0;
-            let usable = budget.min(match free {
+            let other = match free {
                 None => f64::INFINITY,
                 Some(free) => {
                     free * 1024.0
                         - config.services_reserve_mib as f64
                         - config.memory_floor_gib * 1024.0
                 }
-            });
+            };
+            // `Math.min`: NaN on either side is NaN (then no rung fits), where `f64::min` ignores it.
+            let usable = if budget.is_nan() || other.is_nan() {
+                f64::NAN
+            } else {
+                budget.min(other)
+            };
             let native = uint(read.get("meta").get("contextLength"), f64::from(1u32 << 24));
             let rungs = self.deps().ladder(native as u64)?;
             let ubatch = uint(
@@ -1189,6 +1201,8 @@ impl<D: Deps> Runner<D> {
         let label = p.get("label").clone();
         self.with_job(|j| js::set(j, "phase", label));
         self.save()?;
+        // Node's `try` covers the phase and its success record (a save that fails there runs the
+        // catch block's restore and bookkeeping).
         let outcome: Result<(), Fail> = async {
             match id.as_str() {
                 "sampling" => self.run_sampling(mi, pi).await?,
@@ -1196,29 +1210,24 @@ impl<D: Deps> Runner<D> {
                 "context" => self.run_context(mi, pi).await?,
                 "drafting" => self.run_drafting(mi, pi).await?,
                 "batch" => self.run_batch(mi, pi).await?,
-                // `phaseRuns[p.id]` is undefined: calling it throws a TypeError.
-                other => {
-                    return Err(Fail::new(format!(
-                        "phaseRuns[p.id] is not a function ({other})"
-                    )))
-                }
+                // `phaseRuns[p.id]` is undefined: calling it throws V8's TypeError.
+                _ => return Err(Fail::new("phaseRuns[p.id] is not a function")),
             }
             self.check()?;
-            self.guard_revision()
+            self.guard_revision()?;
+            let now = self.deps().now();
+            let revision = self.job().get("_revision").clone();
+            self.with_phase(mi, pi, |p| {
+                js::set(p, "status", "passed");
+                js::set(p, "finishedAt", JValue::Num(now));
+                js::set(p, "_committedRevision", revision);
+                js::del(p, "_beforeText");
+            });
+            self.save()
         }
         .await;
         match outcome {
-            Ok(()) => {
-                let now = self.deps().now();
-                let revision = self.job().get("_revision").clone();
-                self.with_phase(mi, pi, |p| {
-                    js::set(p, "status", "passed");
-                    js::set(p, "finishedAt", JValue::Num(now));
-                    js::set(p, "_committedRevision", revision);
-                    js::del(p, "_beforeText");
-                });
-                self.save()
-            }
+            Ok(()) => Ok(()),
             Err(e) => {
                 let restored = self.restore_phase(mi, pi).await?;
                 if id == "sampling" && restored && !self.cancelled() && !e.cancelled && !e.fatal {
@@ -1759,15 +1768,17 @@ impl<D: Deps> Hooks for StageHooks<D> {
     }
 
     fn on_write(&self, revision: &str) {
-        self.runner.with_job(|j| js::set(j, "_revision", revision));
-        if let Err(e) = self.runner.save() {
-            self.runner
-                .deps()
-                .log(&format!("[autotune] save failed: {}", e.message));
+        if !self.current_job() {
+            return;
         }
+        self.runner.with_job(|j| js::set(j, "_revision", revision));
+        self.keep(self.runner.save());
     }
 
     fn on_update(&self, c: &JValue) {
+        if !self.current_job() {
+            return;
+        }
         let Some((mi, pi, prefix, offset)) = &self.phase else {
             return;
         };
@@ -1820,9 +1831,25 @@ impl<D: Deps> Hooks for StageHooks<D> {
             steps.extend(mapped);
             js::set(p, "steps", JValue::Arr(steps));
         });
-        if let Err(e) = r.save() {
-            r.deps()
+        self.keep(r.save());
+    }
+}
+
+impl<D: Deps> StageHooks<D> {
+    /// The job this stage was made for is still the live one, in the same run (Node's callbacks
+    /// write to the captured `j`; here they find it by index, so a replaced job is left alone).
+    fn current_job(&self) -> bool {
+        let st = self.runner.st();
+        st.job_object == self.job_object && st.run == self.run
+    }
+
+    /// Keeps the first failed save for the stage to end with.
+    fn keep(&self, saved: Result<(), Fail>) {
+        if let Err(e) = saved {
+            self.runner
+                .deps()
                 .log(&format!("[autotune] save failed: {}", e.message));
+            lock(&self.save_error).get_or_insert(e);
         }
     }
 }
