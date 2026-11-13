@@ -20,6 +20,10 @@
 //! `tests/fixtures/node-turn-record.v1.json` (recorded from the Node functions by
 //! `tests/record_entries.cjs`) and the whole turns of `node-turns.v1.json`, compared as bytes.
 //!
+//! Not a difference: lone surrogates, whether they arrive in an event or a cut makes them. They
+//! are held, counted, rejoined and written exactly as Node does (the cases `lone_*`,
+//! `preamble_*_half*`, `*_cap_splits_pair`).
+//!
 //! Named differences from Node (each tested):
 //! - **A meta route that `String()` cannot convert** (an object with its own `toString` key):
 //!   Node's `observe` throws out of the stream writer; here the event is ignored, which leaves the
@@ -752,6 +756,16 @@ mod tests {
             wtf16::lone_char(0xde00).unwrap().to_string()
         );
         assert_eq!(tail("x😀", 2), "😀");
+    }
+
+    #[test]
+    fn the_remaining_differences() {
+        // A string `length` (JS: "70000" > 65536 is true) never counts as over the cap.
+        let out = bounded(&ev(r#"{"content":{"length":"70000"}}"#), 1);
+        assert_eq!(out.get("truncated"), &JValue::Undefined);
+        // Inputs the record never sees: Infinity, and text in the range lone surrogates use.
+        assert!(wtf16::parse(r#"{"type":"usage","promptTokens":1e400}"#).is_err());
+        assert!(wtf16::parse("{\"type\":\"delta\",\"text\":\"\u{10f800}\"}").is_err());
     }
 
     #[test]
