@@ -75,9 +75,13 @@ impl Lines {
         let text = decoder.decode(chunk);
         self.buffer.push_str(&text);
         let mut out = Vec::new();
-        while let Some(at) = self.buffer.find('\n') {
-            let line: String = self.buffer.drain(..=at).collect();
-            let line = crate::js::trim(&line);
+        // One pass over the lines; what is left after the last newline waits for the next chunk.
+        let buffer = std::mem::take(&mut self.buffer);
+        let mut rest = buffer.as_str();
+        while let Some(at) = rest.find('\n') {
+            let (line, after) = rest.split_at(at);
+            rest = after.get(1..).unwrap_or("");
+            let line = crate::js::trim(line);
             let Some(payload) = line.strip_prefix("data:") else {
                 continue;
             };
@@ -86,6 +90,7 @@ impl Lines {
                 out.push(payload.to_string());
             }
         }
+        self.buffer = rest.to_string();
         out
     }
 }
@@ -110,6 +115,15 @@ mod tests {
         let mut bom = Utf8Stream::new();
         assert_eq!(bom.decode(b"\xef\xbb\xbfx"), "x");
         assert_eq!(bom.decode("\u{FEFF}y".as_bytes()), "\u{FEFF}y");
+    }
+
+    #[test]
+    fn many_lines_in_one_chunk_are_read_in_one_pass() {
+        let (mut l, mut d) = (Lines::new(), Utf8Stream::new());
+        let chunk = "data: x\n".repeat(200_000);
+        let started = std::time::Instant::now();
+        assert_eq!(l.feed(&mut d, chunk.as_bytes()).len(), 200_000);
+        assert!(started.elapsed().as_secs() < 5, "{:?}", started.elapsed());
     }
 
     #[test]

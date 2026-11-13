@@ -86,9 +86,12 @@ impl Cap {
     fn over_cap(&mut self, chunk: &[u8]) -> bool {
         let text = self.decoder.decode(chunk);
         self.buffer.push_str(&text);
-        while let Some(at) = self.buffer.find('\n') {
-            let line: String = self.buffer.drain(..=at).collect();
-            let line = crate::js::trim(&line);
+        let buffer = std::mem::take(&mut self.buffer);
+        let mut rest = buffer.as_str();
+        while let Some(at) = rest.find('\n') {
+            let (line, after) = rest.split_at(at);
+            rest = after.get(1..).unwrap_or("");
+            let line = crate::js::trim(line);
             let Some(payload) = line.strip_prefix("data:") else {
                 continue;
             };
@@ -119,6 +122,7 @@ impl Cap {
                     .saturating_add(u64::try_from(wtf16::len(t)).unwrap_or(u64::MAX));
             }
         }
+        self.buffer = rest.to_string();
         !self.answered && self.reasoning_chars > self.limit_chars
     }
 
@@ -160,10 +164,11 @@ impl Cap {
     }
 }
 
-/// `evt?.choices?.[0]?.delta`.
+/// `evt?.choices?.[0]?.delta`: an array's first item, or an object's `"0"` key, as JS reads `[0]`.
 pub fn first_delta(frame: &JValue) -> &JValue {
     match frame.get("choices") {
         JValue::Arr(c) => c.first().map_or(&JValue::Undefined, |c| c.get("delta")),
+        o @ JValue::Obj(_) => o.get("0").get("delta"),
         _ => &JValue::Undefined,
     }
 }
@@ -233,6 +238,14 @@ mod tests {
                 before: None
             }
         );
+    }
+
+    #[test]
+    fn choices_as_an_object_are_read_as_js_reads_index_zero() {
+        let frame = js_json::parse(r#"{"choices":{"0":{"delta":{"content":"a"}}}}"#).unwrap();
+        assert_eq!(first_delta(&frame).get("content").as_str(), Some("a"));
+        let none = js_json::parse(r#"{"choices":"x"}"#).unwrap();
+        assert!(matches!(first_delta(&none), JValue::Undefined));
     }
 
     #[test]
