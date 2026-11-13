@@ -139,7 +139,6 @@ impl Leaving {
 }
 
 /// What the fakes answer for the case under test, and what they saw.
-#[derive(Default)]
 struct Script {
     case: JValue,
     engine: String,
@@ -163,6 +162,31 @@ struct Script {
     /// Engine streams held open by a `stall` or `leave`.
     held: Vec<http_body_util::channel::Sender<Bytes, std::io::Error>>,
     leaving: Arc<Leaving>,
+}
+
+impl Default for Script {
+    fn default() -> Self {
+        Script {
+            case: JValue::Null,
+            engine: String::new(),
+            started: 0.0,
+            user: String::new(),
+            data: PathBuf::new(),
+            loaded: false,
+            round: 0,
+            bridge: Vec::new(),
+            stubs: Vec::new(),
+            calls: Vec::new(),
+            errors: Vec::new(),
+            handoff_header: None,
+            engine_bodies: Vec::new(),
+            engine_leases: Vec::new(),
+            asked: Vec::new(),
+            executions: Vec::new(),
+            held: Vec::new(),
+            leaving: Arc::default(),
+        }
+    }
 }
 
 type Shared = Arc<Mutex<Script>>;
@@ -291,10 +315,7 @@ fn health(sc: &Script) -> JValue {
     };
     js::obj([
         ("ok", JValue::Bool(true)),
-        (
-            "body",
-            js::obj([("all_models_loaded", JValue::Arr(rows))]),
-        ),
+        ("body", js::obj([("all_models_loaded", JValue::Arr(rows))])),
     ])
 }
 
@@ -337,7 +358,10 @@ fn tool_bridge(sc: &mut Script, op: &str, sent: &JValue) -> Option<JValue> {
     Some(next)
 }
 
-async fn core_service(s: Shared, req: Request<Incoming>) -> Result<Response<UpBody>, std::io::Error> {
+async fn core_service(
+    s: Shared,
+    req: Request<Incoming>,
+) -> Result<Response<UpBody>, std::io::Error> {
     let hold = req.uri().query() == Some("hold=1");
     let (method, path, headers, body) = read_req(req).await;
     let sent = if body.is_empty() {
@@ -415,10 +439,8 @@ async fn core_service(s: Shared, req: Request<Incoming>) -> Result<Response<UpBo
         "/internal/chat/native/health" => ok(health(&sc)),
         "/internal/chat/native/load" => {
             if sent.get("lease").as_str() != Some(LEASE) {
-                sc.errors.push(format!(
-                    "load: lease {}",
-                    js::stringify(sent.get("lease"))
-                ));
+                sc.errors
+                    .push(format!("load: lease {}", js::stringify(sent.get("lease"))));
             }
             sc.loaded = true;
             ok(js::obj([("ok", JValue::Bool(true))]))
@@ -509,7 +531,10 @@ async fn engine_service(
             sc.errors.push(format!("no engine round {}", i + 1));
             return Err(std::io::Error::other("no such round"));
         };
-        let chunks = arr(input.get("chunks")).get(i).cloned().unwrap_or(JValue::Null);
+        let chunks = arr(input.get("chunks"))
+            .get(i)
+            .cloned()
+            .unwrap_or(JValue::Null);
         (round, chunks)
     };
     if round.get("throws").as_str().is_some() {
@@ -572,7 +597,7 @@ impl TestApprovals {
 }
 
 impl Approvals for TestApprovals {
-    fn binding(&self, user: &str, chat: &str, scope: &str, _holder: &JValue) -> Result<JValue, ()> {
+    fn binding(&self, user: &str, chat: &str, scope: &str, _holder: &JValue) -> Option<JValue> {
         let context = js::obj([
             ("canonicalChatId", js::s(chat)),
             ("holder", js::obj([("kind", js::s("absent"))])),
@@ -580,7 +605,7 @@ impl Approvals for TestApprovals {
             ("start", js::s(START)),
             ("tombstoned", JValue::Bool(false)),
         ]);
-        Ok(js::obj([
+        Some(js::obj([
             ("user", js::s(user)),
             ("canonicalChatId", js::s(chat)),
             ("scope", js::s(scope)),
@@ -612,8 +637,7 @@ impl Approvals for TestApprovals {
         let mut sc = s.lock().unwrap();
         sc.asked.push(request.clone());
         let stub = sc.stub("awaitApproval").unwrap_or(JValue::Null);
-        if stub.get("left") == &JValue::Bool(true)
-            || stub.get("answer").as_str() == Some("aborted")
+        if stub.get("left") == &JValue::Bool(true) || stub.get("answer").as_str() == Some("aborted")
         {
             sc.leaving.leave.notify_one();
             return Box::pin(std::future::pending());
@@ -910,7 +934,12 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
         }
     }
     eprintln!("ran and matched ({}): {ran:?}", ran.len());
-    assert!(failures.is_empty(), "{} differ:\n{}", failures.len(), failures.join("\n\n"));
+    assert!(
+        failures.is_empty(),
+        "{} differ:\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
     if only.is_none() {
         assert_eq!(ran.len() + SKIPPED.len(), cases.len());
     }
@@ -1003,10 +1032,27 @@ async fn run_case(
         _ => BTreeMap::new(),
     };
     let leased = !input.get("leaseRefusal").is_object();
+    // The reply a leaving client's turn kept, where Node's store took it: saved at the turn's very
+    // end (after the lease went back), so the wait below includes it.
+    let want_kept = arr(case.get("stores"))
+        .into_iter()
+        .find(|s| s.get("op").as_str() == Some("transcripts.appendIfLast"))
+        .filter(|_| chat_id.is_some() && input.get("appendOutcome").as_str().is_none())
+        .map(|kept| texts(&[kept.get("entry").clone()], "", (0.0, 0.0)));
+    let kept_now = |window: (f64, f64)| -> Result<Vec<String>, String> {
+        let chat = chat_id.as_deref().unwrap_or_default();
+        let now = server_projects::transcript::read(&f.data, &f.user, chat)
+            .map_err(|e| format!("the transcript: {e:?}"))?;
+        let last = arr(&now.history).last().cloned().unwrap_or(JValue::Null);
+        Ok(texts(&[last], &f.user, window))
+    };
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     let got_files = loop {
         let window = (t0, now_ms());
         let got = state_files(&dir, &f.user, window);
+        let kept = want_kept
+            .as_ref()
+            .is_none_or(|want| kept_now(window).ok().as_ref() == Some(want));
         let released = !leased
             || script
                 .lock()
@@ -1014,7 +1060,7 @@ async fn run_case(
                 .calls
                 .iter()
                 .any(|c| c.starts_with("DELETE ") && c.contains(LEASE_PATH));
-        if (got == want_files && released) || tokio::time::Instant::now() >= deadline {
+        if (got == want_files && released && kept) || tokio::time::Instant::now() >= deadline {
             break got;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1126,21 +1172,9 @@ async fn run_case(
         ));
     }
 
-    // The reply a leaving client's turn kept, where Node's store took it.
-    let kept = arr(case.get("stores"))
-        .into_iter()
-        .find(|s| s.get("op").as_str() == Some("transcripts.appendIfLast"));
-    if let (Some(kept), Some(chat), true) = (
-        kept,
-        &chat_id,
-        input.get("appendOutcome").as_str().is_none(),
-    ) {
-        let now = server_projects::transcript::read(&f.data, &f.user, chat)
-            .map_err(|e| format!("the transcript: {e:?}"))?;
-        let last = arr(&now.history).last().cloned().unwrap_or(JValue::Null);
-        let got = texts(&[last], &f.user, window);
-        let want = texts(&[kept.get("entry").clone()], "", (0.0, 0.0));
-        if got != want {
+    if let Some(want) = &want_kept {
+        let got = kept_now(window)?;
+        if got != *want {
             return Err(format!(
                 "the kept reply:\n front: {got:?}\n node:  {want:?}"
             ));

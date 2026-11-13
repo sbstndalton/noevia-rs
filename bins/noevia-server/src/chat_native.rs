@@ -113,9 +113,9 @@ impl Switch {
 
 /// The approval registry's calls a native turn makes (chat port S9's `approval_registry`).
 pub trait Approvals: Send + Sync {
-    /// The chat's permission binding for `scope` (chat.cjs permissionContext), or `Err` when it cannot
+    /// The chat's permission binding for `scope` (chat.cjs permissionContext), or `None` when it cannot
     /// be verified (store failing, chat moved, deleted or held elsewhere, workspace revoked).
-    fn binding(&self, user: &str, chat: &str, scope: &str, holder: &JValue) -> Result<JValue, ()>;
+    fn binding(&self, user: &str, chat: &str, scope: &str, holder: &JValue) -> Option<JValue>;
     /// "Allow for this chat" holds.
     fn chat_wide(&self, user: &str, chat: Option<&str>, scope: &str, binding: &JValue) -> bool;
     /// Opens the card and waits for its answer: "approve", "deny", "timeout" or "aborted".
@@ -773,7 +773,9 @@ impl Host for FrontHost {
         );
         tokio::task::spawn_blocking(move || approvals.binding(&user, &chat, &scope, &holder))
             .await
-            .map_err(|_| ())?
+            .ok()
+            .flatten()
+            .ok_or(())
     }
 
     fn chat_wide_approved(&self, chat_id: Option<&str>, scope: &str, binding: &JValue) -> bool {
