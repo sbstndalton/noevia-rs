@@ -22,6 +22,11 @@
 //!
 //! The lease: a task holds the inference admission authority's maintenance-only lease (the one
 //! Node's latch takes as `modelManager.enterInference()`, as Node's own Code tasks hold) for its run.
+//! A lease the authority ends (Node restarted, stopped confirming it, the hard cap) stops the run
+//! (logged `code.lease_lost`): Node's own lease cannot end under a task, the front's can.
+//!
+//! Code actions are answered only when core says the front owns them (`owner: 'front'` on the
+//! facts bridge); a core that still runs Code tasks itself gets 503, never a second writer.
 use crate::code_egress::Issuer;
 use crate::task_routes::{self, Facts};
 use crate::{identity::Rejection, reply, App};
@@ -316,10 +321,28 @@ struct FrontGate {
 struct Held {
     lease: Option<engine_admission::Lease>,
     rt: tokio::runtime::Handle,
+    watch: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl code_harness::executor::Holding for Held {
+    /// The authority ends a lease that no longer covers its holder (`Lease::lost`).
+    fn on_lost(&mut self, hook: Box<dyn FnOnce() + Send>) {
+        let Some(lost) = self.lease.as_ref().map(|l| l.lost().clone()) else {
+            return;
+        };
+        self.watch = Some(self.rt.spawn(async move {
+            lost.cancelled().await;
+            // Stopping the run takes locks and waits briefly: not on a runtime worker.
+            let _ = tokio::task::spawn_blocking(hook).await;
+        }));
+    }
 }
 
 impl Drop for Held {
     fn drop(&mut self) {
+        if let Some(w) = self.watch.take() {
+            w.abort();
+        }
         if let Some(lease) = self.lease.take() {
             self.rt.spawn(lease.release());
         }
@@ -344,6 +367,7 @@ impl Inference for FrontGate {
         Ok(Box::new(Held {
             lease: Some(lease),
             rt: self.rt.clone(),
+            watch: None,
         }))
     }
     fn paused(&self) -> bool {
@@ -392,49 +416,25 @@ pub fn service(app: &Arc<App>) -> Arc<Service> {
         .clone()
 }
 
-/// What core says for one start.
-async fn resolve(
-    app: &Arc<App>,
-    user: &str,
-    project: &str,
-) -> Result<Resolved, Box<Response<Body>>> {
+/// What core says for one start, called by the service where Node reads the engine: after the
+/// body's checks and the one-task check. A project core does not know (or a bridge that is not
+/// mounted, which answers the same 404) is the "unavailable" answer: the front has just found it.
+async fn resolve(app: Arc<App>, user: String, project: String) -> Result<Resolved, Fail> {
+    let down = || fail(503, UNAVAILABLE);
     let body = json!({ "user": user, "projectId": project });
-    let Some((status, bytes)) = app
+    let (status, bytes) = app
         .config
         .research
         .node_call(ENGINE_PATH, &body, ENGINE_DEADLINE)
         .await
-    else {
-        return Err(Box::new(reply::error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            UNAVAILABLE,
-            true,
-        )));
-    };
-    if status == 404 {
-        return Err(Box::new(reply::error(
-            StatusCode::NOT_FOUND,
-            "project not found",
-            true,
-        )));
-    }
-    let parsed = (status == 200)
+        .ok_or_else(down)?;
+    let facts = (status == 200)
         .then(|| wtf16::parse(&String::from_utf8_lossy(&bytes)).ok())
         .flatten()
-        .filter(JValue::is_object);
-    let Some(facts) = parsed else {
-        return Err(Box::new(reply::error(
-            StatusCode::SERVICE_UNAVAILABLE,
-            UNAVAILABLE,
-            true,
-        )));
-    };
+        .filter(JValue::is_object)
+        .ok_or_else(down)?;
     if facts.get("machine").as_bool() == Some(true) {
-        return Err(Box::new(reply::error(
-            StatusCode::CONFLICT,
-            ON_A_MACHINE,
-            true,
-        )));
+        return Err(fail(409, ON_A_MACHINE));
     }
     let e = facts.get("engine");
     let text = |v: &JValue| v.as_str().filter(|s| !s.is_empty()).map(str::to_string);
@@ -455,6 +455,15 @@ async fn resolve(
         inference: Some(Arc::new(gate)),
         context: facts.get("context").as_str().unwrap_or("").to_string(),
     })
+}
+
+fn fail(status: u16, message: &str) -> Fail {
+    Fail {
+        status: Some(status),
+        message: message.to_string(),
+        public_message: Some(message.to_string()),
+        result: JValue::Undefined,
+    }
 }
 
 /// One Code action, after the session gate.
@@ -479,7 +488,12 @@ pub async fn serve(
         Some(Facts::Member) => {
             return reply::error(StatusCode::FORBIDDEN, "Administrator required", true)
         }
-        Some(_) => {}
+        Some(Facts::Front) => {}
+        // Code mode is on but core still runs Code tasks itself (it does not have the switch, or
+        // predates it): the front must not open the tenant's journals beside it.
+        Some(Facts::Admin(_)) => {
+            return reply::error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE, true)
+        }
     }
     let Some(project_id) = server_projects::js::decode_uri_component(action.project()) else {
         return failed();
@@ -513,16 +527,15 @@ pub async fn serve(
                 Ok(b) => b,
                 Err(r) => return *r,
             };
-            let resolved = match resolve(app, &user, &project_id).await {
-                Ok(r) => r,
-                Err(r) => return *r,
-            };
+            let (app, rt) = (Arc::clone(app), tokio::runtime::Handle::current());
             let work = tokio::task::spawn_blocking(move || {
                 let project = Project {
                     id: &project_id,
                     record: &record,
                 };
-                service.start(&dir, Some(&user), &project, resolved, &body)
+                let resolve =
+                    || rt.block_on(resolve(Arc::clone(&app), user.clone(), project_id.clone()));
+                service.start(&dir, Some(&user), &project, &resolve, &body)
             })
             .await;
             match work {

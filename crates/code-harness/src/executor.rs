@@ -97,7 +97,16 @@ impl std::fmt::Debug for Engine {
 }
 
 /// A lease the host holds for a run; dropping it gives it back.
-pub type Lease = Box<dyn Send>;
+pub trait Holding: Send {
+    /// Calls `hook` once if the lease stops covering the run before it is given back (a lease
+    /// that cannot be lost ignores it).
+    fn on_lost(&mut self, _hook: Box<dyn FnOnce() + Send>) {}
+}
+
+impl Holding for () {}
+
+/// What [`Deps::inference`] or a per-start gate hands back.
+pub type Lease = Box<dyn Holding>;
 
 /// Everything the executor is given.
 pub struct Deps {
@@ -402,9 +411,8 @@ impl Executor {
     /// `releaseRun`: the grant revoked (its report kept in the journal before it is
     /// acknowledged) and the workspace given back, once per handle.
     fn release(&self, handle: &Handle, uncertain_via_ctx: Option<()>) -> JValue {
-        let Ok(mut done) = handle.done.lock() else {
-            return JValue::Null;
-        };
+        // A release that panicked part-way is done again rather than skipped.
+        let mut done = handle.done.lock().unwrap_or_else(PoisonError::into_inner);
         if *done {
             return handle
                 .released
@@ -575,6 +583,21 @@ impl Executor {
             drop(lease);
             self.abandon(&task_id, &handle);
             return Ok(started);
+        }
+        // A lease that stops covering the run stops it (Node's own lease cannot end under a task;
+        // the front's can, when Node restarts): the agent must not keep using the engine while a
+        // tune may start.
+        let mut lease = lease;
+        if let Some(held) = lease.as_mut() {
+            let me = Arc::downgrade(self);
+            let id = task_id.clone();
+            held.on_lost(Box::new(move || {
+                if let Some(me) = me.upgrade() {
+                    if me.abort(&id) {
+                        me.log(&id, vec![("event", s("code.lease_lost"))]);
+                    }
+                }
+            }));
         }
         let me = self.clone();
         let spawned = std::thread::Builder::new()

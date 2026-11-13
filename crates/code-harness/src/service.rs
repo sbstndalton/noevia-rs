@@ -198,8 +198,9 @@ struct Registry {
 }
 
 impl Registry {
-    /// `finish(decision)` of one card: the first answer settles it, later ones change nothing.
-    fn finish(&self, id: &str, decision: &str) {
+    /// `finish(decision)` of one card: the first answer settles it, later ones change nothing
+    /// (false).
+    fn finish(&self, id: &str, decision: &str) -> bool {
         let taken = {
             let mut pending = self.pending.lock().unwrap_or_else(PoisonError::into_inner);
             pending
@@ -208,7 +209,7 @@ impl Registry {
                 .map(|i| pending.remove(i))
         };
         let Some(waiting) = taken else {
-            return;
+            return false;
         };
         if decision == "timeout" {
             let now = (self.now)();
@@ -223,10 +224,12 @@ impl Registry {
             .decision
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        if slot.is_none() {
+        let settled = slot.is_none();
+        if settled {
             *slot = Some(decision.to_string());
         }
         waiting.slot.settled.notify_all();
+        settled
     }
 
     fn abort_task(&self, task_id: &str) {
@@ -239,7 +242,7 @@ impl Registry {
             .map(|w| w.id.clone())
             .collect();
         for id in ids {
-            self.finish(&id, "aborted");
+            let _ = self.finish(&id, "aborted");
         }
     }
 }
@@ -269,10 +272,12 @@ impl Approvals for Asker {
         {
             let registry = registry.clone();
             let id = id.clone();
-            ended.on_end(Box::new(move || registry.finish(&id, "aborted")));
+            ended.on_end(Box::new(move || {
+                let _ = registry.finish(&id, "aborted");
+            }));
         }
         if ended.is_ended() {
-            registry.finish(&id, "aborted");
+            let _ = registry.finish(&id, "aborted");
         }
         let deadline = Instant::now() + registry.timeout;
         let mut decision = slot.decision.lock().unwrap_or_else(PoisonError::into_inner);
@@ -283,7 +288,7 @@ impl Approvals for Asker {
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
                 drop(decision);
-                registry.finish(&id, "timeout");
+                let _ = registry.finish(&id, "timeout");
                 return slot
                     .decision
                     .lock()
@@ -333,6 +338,8 @@ impl Jobs for StoreJobs {
 struct Tenant {
     store: Arc<Store>,
     executor: Arc<Executor>,
+    /// One start at a time, from the one-task check to the job (Node's are one synchronous step).
+    starting: Mutex<()>,
 }
 
 /// One Code service per process.
@@ -469,7 +476,11 @@ impl Service {
             base_path: o.base_path.clone(),
             base_lang: o.base_lang.clone(),
         });
-        let tenant = Arc::new(Tenant { store, executor });
+        let tenant = Arc::new(Tenant {
+            store,
+            executor,
+            starting: Mutex::new(()),
+        });
         stores.insert(dir.to_string(), tenant.clone());
         Ok(tenant)
     }
@@ -583,7 +594,7 @@ impl Service {
         dir: &str,
         user_id: Option<&str>,
         project: &Project<'_>,
-        resolved: Resolved,
+        resolve: &dyn Fn() -> Result<Resolved, Fail>,
         body: &JValue,
     ) -> Result<JValue, Fail> {
         // `body.repository` of a JSON null is Node's TypeError: the route's 500.
@@ -653,9 +664,16 @@ impl Service {
             _ => Vec::new(),
         };
         let tenant = self.tenant(dir)?;
+        let _one = tenant
+            .starting
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         if self.active(&tenant, project.id) {
             return Err(fail(409, "This project already has a task running."));
         }
+        // What the host learns for this start (the engine, the gate, the shared context), where
+        // Node first reads them: after the checks above.
+        let resolved = resolve()?;
         let gate = resolved
             .inference
             .clone()
@@ -751,7 +769,8 @@ impl Service {
             .unwrap_or_else(PoisonError::into_inner)
             .iter()
             .any(|w| w.id == approval_id && w.task_id == task_id);
-        if !waiting {
+        // Settled by this answer, or by a timeout or cancel that came first: then it is 409 too.
+        if !waiting || !self.registry.finish(approval_id, decision) {
             let now = (self.options.now)();
             let was_expired = self
                 .registry
@@ -769,7 +788,6 @@ impl Service {
                 },
             ));
         }
-        self.registry.finish(approval_id, decision);
         Ok(JValue::obj([("ok", JValue::Bool(true))]))
     }
 

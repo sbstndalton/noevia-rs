@@ -482,6 +482,8 @@ fn engine_hosts_are_what_nodes_url_parser_makes_of_them() {
 
 struct Held(Arc<AtomicBool>);
 
+impl code_harness::executor::Holding for Held {}
+
 impl Drop for Held {
     fn drop(&mut self) {
         self.0.store(false, Ordering::SeqCst);

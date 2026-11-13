@@ -121,7 +121,7 @@ impl Inference for Gate {
         if self.0 == "refuses" {
             return Err(Fail::new(Some(503), "QA gate held"));
         }
-        Ok(Box::new(()))
+        Ok(Box::new(()) as Lease)
     }
     fn paused(&self) -> bool {
         self.0 == "paused"
@@ -292,7 +292,13 @@ fn every_node_service_answer_replays() {
             let got = if let JValue::Obj(_) = op.get("start") {
                 let a = routed(
                     202,
-                    service.start(&t, Some("qa-user"), &project, resolved(), op.get("start")),
+                    service.start(
+                        &t,
+                        Some("qa-user"),
+                        &project,
+                        &|| Ok(resolved()),
+                        op.get("start"),
+                    ),
                 );
                 if let Some(id) = a.get("body").get("taskId").as_str() {
                     tasks.push(id.to_string());
@@ -481,4 +487,249 @@ fn the_configuration_parsers_answer_as_nodes() {
         assert_eq!(text(&got), text(&pair[1]), "defaultHarnesses {}", text(env));
     }
     assert_eq!(APPROVAL_TIMEOUT, Duration::from_secs(300));
+}
+
+/// A harness that accepts the connection and never answers: the task stays running.
+fn silent_agent() -> (u16, std::thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    listener.set_nonblocking(true).unwrap();
+    let held = std::thread::spawn(move || {
+        let mut open = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            match listener.accept() {
+                Ok((s, _)) => open.push(s),
+                Err(_) => std::thread::sleep(Duration::from_millis(10)),
+            }
+            if open.len() >= 2 {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    });
+    (port, held)
+}
+
+fn quiet_service(base: &Path, port: u16) -> (Arc<Service>, String, Arc<Mutex<Vec<JValue>>>) {
+    let repo_path = repo(base, "qa-repo");
+    let tenant = base.join("tenant");
+    fs::create_dir_all(&tenant).unwrap();
+    let logs = Arc::new(Mutex::new(Vec::<JValue>::new()));
+    let sink = logs.clone();
+    let service = Service::new(Options {
+        repos: vec![code_harness::service::Repo {
+            id: "qa-repo".into(),
+            path: repo_path,
+        }],
+        harnesses: default_harnesses(None, None),
+        sandboxed: true,
+        transport: Some(Transport::Socket(format!("127.0.0.1:{port}"))),
+        tree_root: None,
+        harness_user: None,
+        egress: None,
+        engine: Arc::new(Engine::default),
+        inference: None,
+        guard: Arc::new(|| false),
+        log: Arc::new(move |e| sink.lock().unwrap().push(e)),
+        now: Arc::new(|| 5000.0),
+        timeout: Duration::from_secs(60),
+        base_path: std::env::var("PATH").ok(),
+        base_lang: None,
+        new_id: Arc::new(server_projects::source_jobs::new_id),
+        epoch: "qa-epoch".into(),
+    });
+    (service, tenant.to_str().unwrap().to_string(), logs)
+}
+
+fn journal(dir: &str, task: &str) -> Vec<JValue> {
+    fs::read_to_string(Path::new(dir).join("jobs").join(format!("{task}.jsonl")))
+        .unwrap_or_default()
+        .lines()
+        .map(|l| wtf16::parse(l).unwrap())
+        .collect()
+}
+
+fn wait_ended(dir: &str, task: &str) -> String {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let rows = journal(dir, task);
+        if let Some(end) = rows.iter().rev().find_map(|r| {
+            r.get("type")
+                .as_str()
+                .filter(|t| ["job.completed", "job.failed", "job.cancelled"].contains(t))
+                .map(str::to_string)
+        }) {
+            return end;
+        }
+        assert!(Instant::now() < deadline, "{task} never ended");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Node's one-task check and the job's creation are one synchronous step; here two concurrent
+/// starts for one project give one task and one 409.
+#[test]
+fn two_concurrent_starts_give_one_task() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = fs::canonicalize(dir.path()).unwrap();
+    let (port, agent) = silent_agent();
+    let (service, t, _) = quiet_service(&base, port);
+    let record = JValue::obj([("id", JValue::Str("qa-project".into()))]);
+    let body = wtf16::parse(r#"{"repository":"qa-repo","prompt":"QA: one at a time."}"#).unwrap();
+    let starts: Vec<_> = (0..2)
+        .map(|_| {
+            let (service, t, record, body) =
+                (service.clone(), t.clone(), record.clone(), body.clone());
+            std::thread::spawn(move || {
+                let project = Project {
+                    id: "qa-project",
+                    record: &record,
+                };
+                // Slow to resolve, so both starts are past their body checks together.
+                let resolve = || {
+                    std::thread::sleep(Duration::from_millis(200));
+                    Ok(Resolved {
+                        engine: Some(Engine {
+                            base_url: Some("http://qa-engine.invalid:8080/v1".into()),
+                            model: Some("qa-model".into()),
+                            ..Engine::default()
+                        }),
+                        ..Resolved::default()
+                    })
+                };
+                service.start(&t, Some("qa-user"), &project, &resolve, &body)
+            })
+        })
+        .collect();
+    let results: Vec<_> = starts.into_iter().map(|h| h.join().unwrap()).collect();
+    let started: Vec<_> = results.iter().filter_map(|r| r.as_ref().ok()).collect();
+    let refused: Vec<_> = results.iter().filter_map(|r| r.as_ref().err()).collect();
+    assert_eq!(started.len(), 1, "{results:?}");
+    assert_eq!(refused.len(), 1);
+    assert_eq!(refused[0].status, Some(409));
+    assert_eq!(
+        refused[0].message,
+        "This project already has a task running."
+    );
+    let task = started[0].get("taskId").as_str().unwrap().to_string();
+    service.cancel(&t, "qa-project", &task).unwrap();
+    assert_eq!(wait_ended(&t, &task), "job.cancelled");
+    agent.join().unwrap();
+}
+
+type LostHook = Arc<Mutex<Option<Box<dyn FnOnce() + Send>>>>;
+
+struct Watched {
+    entered: Arc<AtomicUsize>,
+    held: Arc<AtomicUsize>,
+    lost: LostHook,
+}
+
+struct WatchedLease(Arc<AtomicUsize>, LostHook);
+
+impl code_harness::executor::Holding for WatchedLease {
+    fn on_lost(&mut self, hook: Box<dyn FnOnce() + Send>) {
+        *self.1.lock().unwrap() = Some(hook);
+    }
+}
+
+impl Drop for WatchedLease {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+impl Inference for Watched {
+    fn enter(&self) -> Result<Lease, Fail> {
+        self.entered.fetch_add(1, Ordering::SeqCst);
+        self.held.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::new(WatchedLease(self.held.clone(), self.lost.clone())) as Lease)
+    }
+    fn paused(&self) -> bool {
+        false
+    }
+}
+
+/// The front's path: the engine and the gate resolved for this start are the ones the run uses,
+/// and a lease that stops covering the run stops it.
+#[test]
+fn a_start_runs_on_what_was_resolved_for_it_and_a_lost_lease_stops_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let base = fs::canonicalize(dir.path()).unwrap();
+    let (port, agent) = silent_agent();
+    let (service, t, logs) = quiet_service(&base, port);
+    let gate = Arc::new(Watched {
+        entered: Arc::new(AtomicUsize::new(0)),
+        held: Arc::new(AtomicUsize::new(0)),
+        lost: Arc::new(Mutex::new(None)),
+    });
+    let record = JValue::obj([("id", JValue::Str("qa-project".into()))]);
+    let project = Project {
+        id: "qa-project",
+        record: &record,
+    };
+    let g = gate.clone();
+    let resolve = move || {
+        Ok(Resolved {
+            engine: Some(Engine {
+                base_url: Some("http://qa-resolved.invalid:9090/v1".into()),
+                api_key: None,
+                model: Some("qa-resolved-model".into()),
+                context_tokens: Some(4096.0),
+            }),
+            inference: Some(g.clone() as Arc<dyn Inference>),
+            context: String::new(),
+        })
+    };
+    let body = wtf16::parse(r#"{"repository":"qa-repo","prompt":"QA: resolved."}"#).unwrap();
+    let started = service
+        .start(&t, Some("qa-user"), &project, &resolve, &body)
+        .unwrap();
+    let task = started.get("taskId").as_str().unwrap().to_string();
+    assert_eq!(gate.entered.load(Ordering::SeqCst), 1);
+    assert_eq!(gate.held.load(Ordering::SeqCst), 1, "held while it runs");
+    // The pin files name the resolved engine and model.
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let pinned = loop {
+        let rows = journal(&t, &task);
+        if let Some(p) = rows.iter().find(|r| {
+            r.get("type").as_str() == Some("step.completed")
+                && r.get("data").get("id").as_str() == Some("harness.config")
+        }) {
+            break p.get("data").clone();
+        }
+        assert!(Instant::now() < deadline, "no pin step");
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let pinned = wtf16::stringify(&pinned).unwrap();
+    assert!(pinned.contains("qa-resolved-model"), "{pinned}");
+    assert!(
+        pinned.contains("http://qa-resolved.invalid:9090/v1"),
+        "{pinned}"
+    );
+    // The authority ends the lease: the run stops, and says why in the log.
+    let hook = gate
+        .lost
+        .lock()
+        .unwrap()
+        .take()
+        .expect("the executor watches the lease");
+    hook();
+    assert_eq!(wait_ended(&t, &task), "job.cancelled");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while gate.held.load(Ordering::SeqCst) != 0 {
+        assert!(
+            Instant::now() < deadline,
+            "the lease was kept after the run"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(logs
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|l| l.get("event").as_str() == Some("code.lease_lost")
+            && l.get("taskId").as_str() == Some(&task)));
+    agent.join().unwrap();
 }
