@@ -98,6 +98,8 @@ server-chatgpt-status = { path = "../../crates/server-chatgpt-status", optional 
 secret-envelope = { path = "../../crates/secret-envelope" }
 ssrf-policy = { path = "../../crates/ssrf-policy" }
 mcp-frame = { path = "../../crates/mcp-frame" }
+tool-rate-limit = { path = "../../crates/tool-rate-limit" }
+drive-tools = { path = "../../crates/drive-tools" }
 mcp-servers = { path = "../../crates/mcp-servers" }
 # sbstndalton/noevia#2202 round 2: GET /api/toolboxes/permitted (toolbox_routes.rs).
 toolboxes-permitted = { path = "../../crates/toolboxes-permitted" }

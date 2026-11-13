@@ -37,6 +37,7 @@ pub mod export_routes;
 pub mod extraction;
 pub mod feature_context;
 pub mod gdrive;
+pub mod gdrive_tools;
 pub mod health;
 pub mod health_routes;
 pub mod identity;
@@ -47,6 +48,8 @@ pub mod load_model;
 pub mod machine_service;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
+#[cfg(feature = "rust-storage-reads")]
+pub mod mcp_call;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_directory;
 #[cfg(feature = "rust-storage-reads")]

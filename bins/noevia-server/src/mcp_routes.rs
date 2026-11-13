@@ -26,6 +26,8 @@
 //!   { server }` -> `{ client }`
 //! - `forget { server }` or `forget { user }` -> `{ ok }`; `key-set { user, server, headers }` -> `{ ok }`
 //! - `reseal {}` -> `{ ok, tables, failures }` (secrets rotation)
+//! - `call { server, name, arguments, user?, workspaceUser?, project?, editTarget?, write?, nextcloud? }`
+//!   -> `{ text, reduce }`: one tool call (mcp_call.rs; a 404 unless `NOEVIA_RUST_MCP_CALLS=1`)
 use crate::mcp_broker::{auth_error, Fail};
 use crate::{identity, reply, App};
 use axum::body::Body;
@@ -321,7 +323,7 @@ async fn callback(
 // ---------------------------------------------------------------------------------------------
 // The internal operations (project_store.rs routes them after its secret check).
 
-fn internal(status: u16, body: &JValue) -> Response<Body> {
+pub(crate) fn internal(status: u16, body: &JValue) -> Response<Body> {
     let mut res = Response::new(Body::from(js_json::stringify(body).unwrap_or_default()));
     *res.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     res.headers_mut().insert(
@@ -338,7 +340,7 @@ fn internal(status: u16, body: &JValue) -> Response<Body> {
 /// A refusal that is not a credential failure (a malformed call, an unknown operation). Like
 /// [`internal_fail`] it carries its own `status`: Node's client treats an answer without one as
 /// "unusable, try again" (503), which would hide a 400 or 404 as an outage.
-fn internal_error(status: u16, message: &str) -> Response<Body> {
+pub(crate) fn internal_error(status: u16, message: &str) -> Response<Body> {
     internal(
         status,
         &JValue::obj([
@@ -409,6 +411,10 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
     let Some(app) = app else {
         return internal_error(503, "unavailable");
     };
+    // Track R5: with NOEVIA_RUST_MCP_CALLS off, a tool call is a 404 whatever else holds (Node runs it).
+    if op == "call" && !app.config.mcp.calls {
+        return internal_error(404, "not found");
+    }
     let Some(mcp) = app.mcp.as_ref().map(Arc::clone) else {
         return internal_error(503, "unavailable");
     };
@@ -418,6 +424,10 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
     };
     if op == "discovery" {
         return discovery_op(&app, &body).await;
+    }
+    // Track R5: one MCP tool call (mcp_call.rs), behind NOEVIA_RUST_MCP_CALLS.
+    if op == "call" {
+        return crate::mcp_call::op(&app, &mcp, &body).await;
     }
     mcp.sweep_once(&app).await;
     let user = word(&body, "user", 256);

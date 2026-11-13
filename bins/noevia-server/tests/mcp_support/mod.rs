@@ -131,6 +131,8 @@ pub struct Seen {
     pub method: String,
     pub path: String,
     pub headers: String,
+    /// The head as sent (`headers` is lower-cased).
+    pub raw_headers: String,
     pub body: String,
 }
 
@@ -261,6 +263,7 @@ pub async fn upstream() -> Upstream {
                     method: first.next().unwrap_or("").into(),
                     path: first.next().unwrap_or("").into(),
                     headers: head.to_ascii_lowercase(),
+                    raw_headers: head.clone(),
                     body: String::from_utf8_lossy(&buf[head_end..]).to_string(),
                 };
                 seen.lock().unwrap().push(request.clone());
