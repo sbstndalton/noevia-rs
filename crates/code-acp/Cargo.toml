@@ -1,0 +1,18 @@
+[package]
+name = "code-acp"
+version = "0.1.0"
+description = "noevia-core's code-acp.cjs in Rust: the Agent Client Protocol client a Code task's harness is driven through (JSON-RPC lines over the sandbox socket or a child's stdio); nothing calls it yet (R7)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+rustix = { version = "=1.1.5", features = ["fs", "process"] }
+
+[dev-dependencies]
+tempfile = "3"

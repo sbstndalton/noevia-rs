@@ -1,0 +1,694 @@
+{
+ "generator": "crates/code-acp/tools/gen-fixtures.cjs",
+ "sources": {
+  "code-acp.cjs": "5521d82bca54984b40874865483447758cc7cb42ab5497ee3e42a592c874ffc2",
+  "code-meta.cjs": "1fb1a895f1f2db33d9e075848935167dce774b9a6ea4f0d1c5ca10621831ba8b"
+ },
+ "env": {
+  "PATH": "/usr/local/bin:/usr/bin:/bin",
+  "LANG": "C.UTF-8"
+ },
+ "scenarios": {
+  "happy": {
+   "options": {
+    "cwd": "/qa/tree",
+    "home": "/qa/home",
+    "env": {
+     "QA_EXTRA": "yes"
+    },
+    "permission": {
+     "edit": "ask",
+     "bash": "ask",
+     "webfetch": "ask"
+    },
+    "harness": "opencode",
+    "model": "qa-model",
+    "proxy": {
+     "url": "http://task:qa-token@egress:3128",
+     "noProxy": "engine"
+    }
+   },
+   "answers": {
+    "readTextFile": [
+     {
+      "ok": {
+       "content": "qa file\n"
+      }
+     }
+    ],
+    "writeTextFile": [
+     {
+      "error": {
+       "code": -32602,
+       "message": "Outside this task’s workspace",
+       "data": {
+        "violation": "path",
+        "tool": "write_file"
+       }
+      }
+     },
+     {
+      "error": {
+       "message": ""
+      }
+     },
+     {
+      "ok": null
+     }
+    ],
+    "requestPermission": [
+     {
+      "ok": {
+       "outcome": "selected",
+       "optionId": "allow-once"
+      }
+     }
+    ]
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"1\",\"agentInfo\":{\"name\":\"qa-agent-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"version\":\"0.0.1-qa-vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv\"}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session-1\"}}\n"
+    },
+    {
+     "prompt": "Fix the QA test."
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":\"r1\",\"method\":\"fs/read_text_file\",\"params\":{\"sessionId\":\"qa-session-1\",\"path\":\"/qa/tree/a.txt\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"fs/write_text_file\",\"params\":{\"path\":\"../escape\",\"content\":\"x\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"fs/write_text_file\",\"params\":{\"path\":\"a\",\"content\":\"x\"}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"fs/write_text_file\"}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"hé \\ud83d lone\"}}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionUpdate\":\"plan\",\"entries\":[]}}\n"
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"method\":\"session/upd"
+    },
+    {
+     "send": "ate\",\"params\":{\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":1,\"size\":2}}}\r\n\n  \n"
+    },
+    {
+     "send": "this is not json\n"
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"method\":\"unknown/notification\",\"params\":{}}\n"
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":999,\"result\":{\"stray\":true}}\n"
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":\"u1\",\"method\":\"terminal/create\",\"params\":{}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":\"p1\",\"method\":\"session/request_permission\",\"params\":{\"toolCall\":{\"toolCallId\":\"t1\",\"title\":\"npm test\"},\"options\":[{\"optionId\":\"allow-once\",\"kind\":\"allow_once\"}]}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"session/update\",\"params\":{\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\"}}}\n"
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\",\"_meta\":{\"usage\":{\"inputTokens\":5}}}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "home": null,
+   "transcript": {
+    "lines": [
+     "{\"noevia\":\"start\",\"cwd\":\"/qa/tree\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"/qa/home\",\"LANG\":\"C.UTF-8\",\"HTTP_PROXY\":\"http://task:qa-token@egress:3128\",\"HTTPS_PROXY\":\"http://task:qa-token@egress:3128\",\"http_proxy\":\"http://task:qa-token@egress:3128\",\"https_proxy\":\"http://task:qa-token@egress:3128\",\"NO_PROXY\":\"engine\",\"QA_EXTRA\":\"yes\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"/qa/tree\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\",\"bash\":\"ask\",\"webfetch\":\"ask\"}}}}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session-1\",\"prompt\":[{\"type\":\"text\",\"text\":\"Fix the QA test.\"}],\"_meta\":{\"noevia\":{\"model\":\"qa-model\"}}}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":\"r1\",\"result\":{\"content\":\"qa file\\n\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32602,\"message\":\"Outside this task’s workspace\",\"data\":{\"violation\":\"path\",\"tool\":\"write_file\"}}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":8,\"error\":{\"code\":-32603,\"message\":\"refused\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":null}",
+     "{\"jsonrpc\":\"2.0\",\"id\":\"u1\",\"error\":{\"code\":-32601,\"message\":\"Method not supported by this client\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":\"p1\",\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"allow-once\"}}}"
+    ],
+    "handlers": [
+     {
+      "handler": "readTextFile",
+      "params": {
+       "sessionId": "qa-session-1",
+       "path": "/qa/tree/a.txt"
+      }
+     },
+     {
+      "handler": "writeTextFile",
+      "params": {
+       "path": "../escape",
+       "content": "x"
+      }
+     },
+     {
+      "handler": "writeTextFile",
+      "params": {
+       "path": "a",
+       "content": "x"
+      }
+     },
+     {
+      "handler": "writeTextFile",
+      "params": {}
+     },
+     {
+      "handler": "sessionUpdate",
+      "params": {
+       "sessionUpdate": "agent_message_chunk",
+       "content": {
+        "type": "text",
+        "text": "hé \ud83d lone"
+       }
+      }
+     },
+     {
+      "handler": "sessionUpdate",
+      "params": {
+       "sessionUpdate": "plan",
+       "entries": []
+      }
+     },
+     {
+      "handler": "sessionUpdate",
+      "params": {
+       "sessionUpdate": "usage_update",
+       "used": 1,
+       "size": 2
+      }
+     },
+     {
+      "handler": "requestPermission",
+      "params": {
+       "toolCall": {
+        "toolCallId": "t1",
+        "title": "npm test"
+       },
+       "options": [
+        {
+         "optionId": "allow-once",
+         "kind": "allow_once"
+        }
+       ]
+      }
+     },
+     {
+      "handler": "sessionUpdate",
+      "params": {
+       "sessionUpdate": "tool_call",
+       "toolCallId": "t1"
+      }
+     }
+    ],
+    "logs": [
+     "The harness sent something that is not JSON-RPC."
+    ],
+    "connect": {
+     "ok": {
+      "sessionId": "qa-session-1",
+      "agent": {
+       "name": "qa-agent-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+       "version": "0.0.1-qa-vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
+       "protocolVersion": 1
+      }
+     }
+    },
+    "prompt": {
+     "ok": {
+      "stopReason": "end_turn",
+      "_meta": {
+       "usage": {
+        "inputTokens": 5
+       }
+      }
+     }
+    },
+    "connectedTo": [
+     "qa-sandbox",
+     9000
+    ],
+    "closed": true
+   }
+  },
+  "initialize-error": {
+   "options": {
+    "cwd": "/qa/tree",
+    "harness": "opencode"
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"QA refusal\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "home": null,
+   "transcript": {
+    "lines": [
+     "{\"noevia\":\"start\",\"cwd\":\"/qa/tree\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}"
+    ],
+    "handlers": [],
+    "logs": [],
+    "connect": {
+     "error": {
+      "message": "QA refusal",
+      "publicMessage": null,
+      "status": null,
+      "code": -32000
+     }
+    },
+    "prompt": null,
+    "connectedTo": [
+     "qa-sandbox",
+     9000
+    ],
+    "closed": true
+   }
+  },
+  "no-session": {
+   "options": {
+    "cwd": "/qa/tree",
+    "harness": "opencode"
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"serverInfo\":{\"name\":\"qa\",\"version\":3}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "home": null,
+   "transcript": {
+    "lines": [
+     "{\"noevia\":\"start\",\"cwd\":\"/qa/tree\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"/qa/tree\",\"mcpServers\":[]}}"
+    ],
+    "handlers": [],
+    "logs": [],
+    "connect": {
+     "error": {
+      "message": "The harness did not open a session.",
+      "publicMessage": "The coding harness did not open a session.",
+      "status": null,
+      "code": null
+     }
+    },
+    "prompt": null,
+    "connectedTo": [
+     "qa-sandbox",
+     9000
+    ],
+    "closed": true
+   }
+  },
+  "cancel-during-prompt": {
+   "options": {
+    "cwd": "/qa/tree",
+    "harness": "opencode"
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":null,\"_meta\":{\"agentInfo\":{\"name\":\"qa\"}}}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session-2\"}}\n"
+    },
+    {
+     "prompt": "Long QA task"
+    },
+    {
+     "expect": true
+    },
+    {
+     "abort": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "home": null,
+   "transcript": {
+    "lines": [
+     "{\"noevia\":\"start\",\"cwd\":\"/qa/tree\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"/qa/tree\",\"mcpServers\":[]}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session-2\",\"prompt\":[{\"type\":\"text\",\"text\":\"Long QA task\"}]}}",
+     "{\"jsonrpc\":\"2.0\",\"method\":\"session/cancel\",\"params\":{\"sessionId\":\"qa-session-2\"}}"
+    ],
+    "handlers": [],
+    "logs": [],
+    "connect": {
+     "ok": {
+      "sessionId": "qa-session-2",
+      "agent": {
+       "name": "qa",
+       "version": null,
+       "protocolVersion": 0
+      }
+     }
+    },
+    "prompt": {
+     "error": {
+      "message": "Cancelled",
+      "publicMessage": "The task was cancelled.",
+      "status": null,
+      "code": null
+     }
+    },
+    "connectedTo": [
+     "qa-sandbox",
+     9000
+    ],
+    "closed": true
+   }
+  },
+  "sandbox-closes": {
+   "options": {
+    "cwd": "/qa/tree",
+    "harness": "opencode"
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session-3\"}}\n"
+    },
+    {
+     "prompt": "QA"
+    },
+    {
+     "expect": true
+    },
+    {
+     "close": true
+    }
+   ],
+   "home": null,
+   "transcript": {
+    "lines": [
+     "{\"noevia\":\"start\",\"cwd\":\"/qa/tree\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"/qa/tree\",\"mcpServers\":[]}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session-3\",\"prompt\":[{\"type\":\"text\",\"text\":\"QA\"}]}}"
+    ],
+    "handlers": [],
+    "logs": [],
+    "connect": {
+     "ok": {
+      "sessionId": "qa-session-3",
+      "agent": {
+       "name": null,
+       "version": null,
+       "protocolVersion": null
+      }
+     }
+    },
+    "prompt": {
+     "error": {
+      "message": "The coding sandbox closed the connection.",
+      "publicMessage": "The coding harness stopped unexpectedly.",
+      "status": null,
+      "code": null
+     }
+    },
+    "connectedTo": [
+     "qa-sandbox",
+     9000
+    ],
+    "closed": true
+   }
+  },
+  "prompt-error": {
+   "options": {
+    "cwd": "/qa/tree",
+    "harness": "opencode",
+    "model": null
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":-1}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session-4\"}}\n"
+    },
+    {
+     "prompt": "QA"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":3,\"error\":{\"code\":\"odd\",\"message\":\"\"}}\n"
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "home": null,
+   "transcript": {
+    "lines": [
+     "{\"noevia\":\"start\",\"cwd\":\"/qa/tree\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"/qa/tree\",\"mcpServers\":[]}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"qa-session-4\",\"prompt\":[{\"type\":\"text\",\"text\":\"QA\"}]}}"
+    ],
+    "handlers": [],
+    "logs": [],
+    "connect": {
+     "ok": {
+      "sessionId": "qa-session-4",
+      "agent": {
+       "name": null,
+       "version": null,
+       "protocolVersion": null
+      }
+     }
+    },
+    "prompt": {
+     "error": {
+      "message": "The harness reported an error.",
+      "publicMessage": null,
+      "status": null,
+      "code": "odd"
+     }
+    },
+    "connectedTo": [
+     "qa-sandbox",
+     9000
+    ],
+    "closed": true
+   }
+  },
+  "claude-code-settings": {
+   "home": {
+    ".claude/settings.json": "{\"permissions\":{\"ask\":[\"Bash\"]},\"env\":{\"QA\":\"1\"}}"
+   },
+   "options": {
+    "cwd": "/qa/tree",
+    "harness": "claude-code",
+    "permission": {
+     "edit": "ask"
+    }
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1}}\n"
+    },
+    {
+     "expect": true
+    },
+    {
+     "send": "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"qa-session-5\"}}\n"
+    }
+   ],
+   "transcript": {
+    "lines": [
+     "{\"noevia\":\"start\",\"cwd\":\"/qa/tree\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"HOME\":\"<HOME>\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"session/new\",\"params\":{\"cwd\":\"/qa/tree\",\"mcpServers\":[],\"_meta\":{\"noevia\":{\"permission\":{\"edit\":\"ask\"}},\"claudeCode\":{\"options\":{\"settingSources\":[],\"strictMcpConfig\":true,\"allowDangerouslySkipPermissions\":false,\"plugins\":[],\"tools\":[\"Read\",\"Edit\",\"Write\",\"NotebookEdit\",\"Bash\",\"Glob\",\"Grep\",\"WebFetch\",\"WebSearch\"],\"extraArgs\":{\"disable-slash-commands\":null},\"settings\":{\"permissions\":{\"ask\":[\"Bash\"]},\"env\":{\"QA\":\"1\"}}}}}}}"
+    ],
+    "handlers": [],
+    "logs": [],
+    "connect": {
+     "ok": {
+      "sessionId": "qa-session-5",
+      "agent": {
+       "name": null,
+       "version": null,
+       "protocolVersion": 1
+      }
+     }
+    },
+    "prompt": null,
+    "connectedTo": [
+     "qa-sandbox",
+     9000
+    ],
+    "closed": false
+   }
+  },
+  "claude-code-missing-settings": {
+   "home": {},
+   "options": {
+    "cwd": "/qa/tree",
+    "harness": "claude-code"
+   },
+   "script": [],
+   "transcript": {
+    "lines": [],
+    "handlers": [],
+    "logs": [],
+    "connect": {
+     "error": {
+      "message": "Claude Code’s pinned settings are missing or invalid.",
+      "publicMessage": null,
+      "status": 409,
+      "code": null
+     }
+    },
+    "prompt": null,
+    "connectedTo": null,
+    "closed": false
+   }
+  },
+  "handshake-timeout": {
+   "options": {
+    "cwd": "/qa/tree",
+    "harness": "opencode",
+    "handshakeMs": 100
+   },
+   "script": [
+    {
+     "expect": true
+    },
+    {
+     "expect": true
+    },
+    {
+     "expectClose": true
+    }
+   ],
+   "home": null,
+   "transcript": {
+    "lines": [
+     "{\"noevia\":\"start\",\"cwd\":\"/qa/tree\",\"env\":{\"PATH\":\"/usr/local/bin:/usr/bin:/bin\",\"LANG\":\"C.UTF-8\",\"CURL_HOME\":\"/nonexistent\",\"WGETRC\":\"/dev/null\"}}",
+     "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":1,\"clientCapabilities\":{\"fs\":{\"readTextFile\":true,\"writeTextFile\":true},\"terminal\":false},\"clientInfo\":{\"name\":\"noevia\",\"version\":\"1\"}}}"
+    ],
+    "handlers": [],
+    "logs": [],
+    "connect": {
+     "error": {
+      "message": "The coding harness did not answer.",
+      "publicMessage": "The coding harness did not answer.",
+      "status": null,
+      "code": null
+     }
+    },
+    "prompt": null,
+    "connectedTo": [
+     "qa-sandbox",
+     9000
+    ],
+    "closed": true
+   }
+  }
+ }
+}

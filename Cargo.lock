@@ -460,6 +460,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-acp"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "rustix",
+ "tempfile",
+]
+
+[[package]]
 name = "code-actions"
 version = "0.1.0"
 dependencies = [
