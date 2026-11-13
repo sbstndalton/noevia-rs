@@ -564,6 +564,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-pipeline"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "review-verdict",
+ "sha2",
+]
+
+[[package]]
 name = "code-sandbox-supervisor"
 version = "0.1.0"
 dependencies = [
