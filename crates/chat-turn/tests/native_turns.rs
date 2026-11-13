@@ -83,14 +83,18 @@ const START_ID: &str = "0123456789abcdef0123456789abcdef";
 
 /// The bytes the recorder's engine sent for one streamed round, exactly (`input.chunks`).
 fn chunks_of(recorded: &JValue) -> Vec<Chunk> {
-    let JValue::Arr(items) = recorded else { return Vec::new() };
+    let JValue::Arr(items) = recorded else {
+        return Vec::new();
+    };
     items
         .iter()
         .map(|c| match c {
             JValue::Str(m) if m == "leave" => Chunk::Leave,
             JValue::Str(m) if m == "stall" => Chunk::Stall,
             JValue::Str(m) if m == "wait" => Chunk::Bytes(Vec::new()),
-            _ if c.get("text").as_str().is_some() => Chunk::Bytes(c.get("text").as_str().unwrap().as_bytes().to_vec()),
+            _ if c.get("text").as_str().is_some() => {
+                Chunk::Bytes(c.get("text").as_str().unwrap().as_bytes().to_vec())
+            }
             _ => Chunk::Bytes(base64(c.get("b64").as_str().unwrap())),
         })
         .collect()
@@ -181,13 +185,23 @@ impl Host for Script {
             });
         }
         *self.leased.lock().unwrap() = true;
-        self.store("modelManager.acquireLease", vec![("model", js::s(model)), ("lease", js::s("qa-lease-1"))]);
+        self.store(
+            "modelManager.acquireLease",
+            vec![("model", js::s(model)), ("lease", js::s("qa-lease-1"))],
+        );
         Ok(Some(vec![("X-Noevia-Lease".into(), "qa-lease-1".into())]))
     }
 
     async fn health(&self) -> Option<JValue> {
         let ctx = self.case.get("input").get("ctxSize").clone();
-        let model = self.case.get("input").get("project").get("model").as_str().unwrap_or("qa-model").to_string();
+        let model = self
+            .case
+            .get("input")
+            .get("project")
+            .get("model")
+            .as_str()
+            .unwrap_or("qa-model")
+            .to_string();
         let rows = if *self.loaded.lock().unwrap() {
             vec![js::obj([
                 ("model_name", js::s(model)),
@@ -244,8 +258,17 @@ impl Host for Script {
             });
         }
         let recorded = self.case.get("input").get("chunks").clone();
-        let JValue::Arr(per_round) = recorded else { panic!() };
-        Ok(Answer { status: 200, headers: Vec::new(), body: Body { chunks: chunks_of(&per_round[*next - 1]), ..Body::default() } })
+        let JValue::Arr(per_round) = recorded else {
+            panic!()
+        };
+        Ok(Answer {
+            status: 200,
+            headers: Vec::new(),
+            body: Body {
+                chunks: chunks_of(&per_round[*next - 1]),
+                ..Body::default()
+            },
+        })
     }
 
     async fn read(&self, body: &mut Body, idle_ms: Option<u64>) -> Read {
@@ -290,7 +313,10 @@ impl Host for Script {
     }
 
     fn mark_tools_unsupported(&self, model: &str) {
-        self.store("templateToolsGate.markUnsupported", vec![("model", js::s(model))]);
+        self.store(
+            "templateToolsGate.markUnsupported",
+            vec![("model", js::s(model))],
+        );
     }
 
     fn engine_busy(&self) -> bool {
@@ -446,32 +472,6 @@ impl Host for Script {
     fn mtp_evidence(&self, _model: &str, _drafted: f64, _accepted: f64) {}
 }
 
-// final-answer.cjs, for this test until the helpers port lands (track R8 B0c): the recorded results
-// hold at most one plain link, so a simple scan is enough here.
-const FINAL_ANSWER_NOTE: &str = "Write your final answer to the user now, using the tool results above. Cite the source links they contain. Do not call any more tools. If a tool failed, say so in one line and answer from the results that did come back.";
-
-fn source_links(text: &str) -> Vec<String> {
-    text.split_whitespace()
-        .filter(|w| w.starts_with("http://") || w.starts_with("https://"))
-        .map(|w| {
-            w.trim_end_matches(['.', ',', ';', ':', '!', '?'])
-                .to_string()
-        })
-        .take(5)
-        .collect()
-}
-
-fn fallback_text(sources: &[String]) -> String {
-    if sources.is_empty() {
-        "\n\nThe model did not write a final answer from the tool results. Its reasoning is in the thinking above. Try again or choose another model.".into()
-    } else {
-        format!(
-            "\n\nThe model did not write a final answer. Its reasoning is in the thinking above; these are the sources the tools returned:\n{}",
-            sources.iter().map(|u| format!("- {u}")).collect::<Vec<_>>().join("\n")
-        )
-    }
-}
-
 impl Keep for Script {
     fn append_if_last(&self, chat: &str, message: &str, entry: &JValue) -> Result<String, String> {
         self.store(
@@ -542,13 +542,13 @@ fn replay(f: &JValue, case: &JValue) -> (Script, Ended) {
     let script = Script::new(case.clone());
     let process = Process::default();
     let helpers = Helpers {
-        clean_search_args: &|_, a| a.to_string(),
-        announces_tool_action: &|_| false,
-        announced_note: "",
+        clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
+        announces_tool_action: &chat_turn::helpers::announces_tool_action,
+        announced_note: chat_turn::helpers::ANNOUNCED_NOTE,
         reduce_tool_result: &|text, cap| chat_turn::reduce::reduce_tool_result(text, cap).text,
-        source_links: &source_links,
-        fallback_text: &fallback_text,
-        final_answer_note: FINAL_ANSWER_NOTE,
+        source_links: &chat_turn::helpers::source_links,
+        fallback_text: &|s| chat_turn::helpers::fallback_text(s),
+        final_answer_note: chat_turn::helpers::FINAL_ANSWER_NOTE,
         tool_result_cap: 8000,
     };
     let ended = block_on(native::run(&script, &process, &helpers, &prepared));
@@ -630,11 +630,24 @@ fn the_native_continuation_is_node_after_the_cut() {
         let got = script.events.lock().unwrap().clone();
         let kinds = |list: &[String]| {
             list.iter()
-                .map(|e| wtf16::parse(e).unwrap().get("type").as_str().unwrap_or("").to_string())
+                .map(|e| {
+                    wtf16::parse(e)
+                        .unwrap()
+                        .get("type")
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string()
+                })
                 .collect::<Vec<_>>()
                 .join(" ")
         };
-        assert_eq!(got, want, "{name}: events after the cut\n native: {}\n node:   {}", kinds(&got), kinds(&want));
+        assert_eq!(
+            got,
+            want,
+            "{name}: events after the cut\n native: {}\n node:   {}",
+            kinds(&got),
+            kinds(&want)
+        );
         let JValue::Arr(requests) = c.get("requests") else {
             panic!()
         };
@@ -721,13 +734,13 @@ fn the_native_turn_can_be_spawned() {
     let script = Script::new(cases[0].clone());
     let process = Process::default();
     let helpers = Helpers {
-        clean_search_args: &|_, a| a.to_string(),
-        announces_tool_action: &|_| false,
-        announced_note: "",
+        clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
+        announces_tool_action: &chat_turn::helpers::announces_tool_action,
+        announced_note: chat_turn::helpers::ANNOUNCED_NOTE,
         reduce_tool_result: &|text, cap| chat_turn::reduce::reduce_tool_result(text, cap).text,
-        source_links: &source_links,
-        fallback_text: &fallback_text,
-        final_answer_note: FINAL_ANSWER_NOTE,
+        source_links: &chat_turn::helpers::source_links,
+        fallback_text: &|s| chat_turn::helpers::fallback_text(s),
+        final_answer_note: chat_turn::helpers::FINAL_ANSWER_NOTE,
         tool_result_cap: 8000,
     };
     let turn = native::run(&script, &process, &helpers, &prepared);

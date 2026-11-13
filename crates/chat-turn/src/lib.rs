@@ -13,6 +13,8 @@
 //!   telemetry the client needs;
 //! - [`title`]: a chat's generated title, from the title request to the cleaned name and the per-chat
 //!   attempt limit.
+//! - [`helpers`]: the search-query cleaner, the announced-action check, the final-answer round's
+//!   helpers and the tool route notes.
 //!
 //! Not here: context and framing assembly, routing and decision calls, persistence through the
 //! store, approvals, the Diary stream, rounds with tool results fed back to the model.
@@ -23,6 +25,7 @@ pub mod effort;
 pub mod event;
 pub mod gate;
 pub mod guard;
+pub mod helpers;
 pub mod host;
 pub mod js;
 pub mod native;

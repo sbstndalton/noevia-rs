@@ -152,6 +152,8 @@ fn what_follows_an_error_depends_on_where_it_came_from() {
     // stream at once, as do a failed preparation and a refused tool round.
     const BREAKS: [&str; 3] = ["engine_http_500", "engine_stalls", "engine_unreachable"];
     const FALLBACK: &str = "fallback_fails_then_final_pass";
+    // A stream broken after reasoning only (here the forced answer after a thinking cut): the note follows.
+    const NOTED: &str = "thinking_cut_forced_fails";
     let mut seen = BTreeSet::new();
     for c in cases().iter().filter(|c| streamed(c)) {
         let name = c["name"].as_str().unwrap();
@@ -166,6 +168,8 @@ fn what_follows_an_error_depends_on_where_it_came_from() {
         seen.insert(name.to_string());
         if BREAKS.contains(&name) {
             assert_eq!(rest, ["telemetry", "done"], "{name}");
+        } else if name == NOTED {
+            assert_eq!(rest, ["delta", "telemetry", "done"], "{name}");
         } else if name == FALLBACK {
             assert_eq!(&rest[rest.len() - 2..], ["telemetry", "done"], "{name}");
             assert!(
@@ -179,6 +183,7 @@ fn what_follows_an_error_depends_on_where_it_came_from() {
     }
     let mut expected: BTreeSet<String> = BREAKS.iter().map(|n| n.to_string()).collect();
     expected.insert(FALLBACK.to_string());
+    expected.insert(NOTED.to_string());
     assert_eq!(seen, expected);
     assert_eq!(kinds(&case("engine_stream_error")).last().unwrap(), "error");
     assert_eq!(kinds(&case("context_too_full")).last().unwrap(), "error");
