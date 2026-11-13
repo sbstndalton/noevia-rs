@@ -71,6 +71,30 @@ fn set_mtime(path: &Path, secs: i64) -> std::io::Result<()> {
         .set_modified(time)
 }
 
+/// The mtime the filesystem actually stored, in whole seconds since the epoch (floor).
+fn stored_mtime(path: &Path) -> std::io::Result<i64> {
+    use std::os::unix::fs::MetadataExt;
+    fs::metadata(path).map(|m| m.mtime())
+}
+
+/// Some filesystems cannot store every recorded mtime: ext4 (the CI runners' temporary directory)
+/// clamps anything before 1901-12-13T20:45:52Z (`i32::MIN` seconds) to that instant. A case whose
+/// mtime lies outside the signed 32-bit range and did not survive the round trip says nothing
+/// about the port, so it is skipped; any other mismatch is a real failure.
+fn mtime_unstorable(path: &Path, secs: i64) -> Result<bool, Box<dyn std::error::Error>> {
+    let stored = stored_mtime(path)?;
+    if stored == secs {
+        return Ok(false);
+    }
+    let outside_i32 = secs < i64::from(i32::MIN) || secs > i64::from(i32::MAX);
+    assert!(
+        outside_i32,
+        "{}: mtime {secs} stored as {stored}",
+        path.display()
+    );
+    Ok(true)
+}
+
 fn str_at(v: &Value, i: usize) -> Result<&str, Box<dyn std::error::Error>> {
     Ok(v[i].as_str().ok_or("string")?)
 }
@@ -185,6 +209,7 @@ fn infer_date_matches_python() -> TestResult {
     let cases = fx["infer_date"].as_array().ok_or("infer_date")?;
     assert!(cases.len() >= 150, "{} infer_date cases", cases.len());
     let base = TempBase::new("infer")?;
+    let mut unstorable = 0usize;
     for (i, case) in cases.iter().enumerate() {
         let name = case["name"].as_str().ok_or("name")?;
         let label = format!("{name:?}");
@@ -196,7 +221,12 @@ fn infer_date_matches_python() -> TestResult {
             fs::create_dir_all(&dir)?;
             let file = dir.join(name);
             fs::write(&file, b"x")?;
-            set_mtime(&file, case["mtime"].as_i64().ok_or("mtime")?)?;
+            let mtime = case["mtime"].as_i64().ok_or("mtime")?;
+            set_mtime(&file, mtime)?;
+            if mtime_unstorable(&file, mtime)? {
+                unstorable += 1;
+                continue;
+            }
             file
         } else {
             PathBuf::from(OsStr::new(&format!(
@@ -219,6 +249,17 @@ fn infer_date_matches_python() -> TestResult {
             assert_eq!(got, want, "{label}");
         }
     }
+    if unstorable > 0 {
+        eprintln!(
+            "infer_date: skipped {unstorable} cases whose mtime this filesystem cannot store"
+        );
+    }
+    // At most the cases recorded before 1901-12-13 (the ext4 floor) may be skipped.
+    assert!(
+        unstorable <= cases.len() / 4,
+        "{unstorable} of {} cases skipped",
+        cases.len()
+    );
     Ok(())
 }
 
