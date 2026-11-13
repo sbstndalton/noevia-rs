@@ -310,12 +310,19 @@ where
     Outcome::Hits(hits.into_iter().take(inputs.limit).collect())
 }
 
+/// How long [`store_answer`] may take: under core `rust-retrieval.cjs` `DEADLINE_MS` (30 s).
+pub const STORE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(25);
+
 /// `POST /v1/retrieval/search` on the store listener (`--features rust-retrieval-v1`): Node's own
 /// `rag.cjs` `searchProject` asking through core `rust-retrieval.cjs`. Body `{user, projectId, query,
 /// versions}` (`versions`: Node's wanted versions of the project's files, a string or `null` each);
 /// answer `{hits: [{file, body, score}]}` (at most [`TOP_K`]) or `{defer: reason}`, on which Node
-/// searches itself. Node has resolved the project; an index without an account (the shared
-/// `RAG_DIR`) is Node's. The caller has checked the per-start secret.
+/// searches itself. Node has resolved the project and run its own account and tombstone guards;
+/// an index without an account (the shared `RAG_DIR`) is Node's. The caller has checked the
+/// per-start secret. One variable feeds both processes, so Node's mode decides how the answer is
+/// used: this route answers while the front's switch is `on` or `shadow` and defers when it is
+/// `off`. It answers within [`STORE_DEADLINE`], under the client's 30 s, so a slow embedding
+/// service ends in a deferral here, not a second embed in Node after a timeout.
 pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, serde_json::Value) {
     use serde_json::{json, Value};
     let bad = |why: &str| (400, json!({ "error": why }));
@@ -360,20 +367,21 @@ pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, 
             .ok()
             .flatten();
     let held = || app.config.maint.authority.held();
-    let outcome = retrieval
-        .retrieve(Inputs {
-            data_dir: &data_dir,
-            user,
-            project,
-            question: query,
-            start: app.config.start_id.as_deref().unwrap_or_default(),
-            now_ms: crate::identity::now_ms() as f64,
-            maintenance_held: &held,
-            rerank_env: rerank_env.as_ref(),
-            versions,
-            limit: TOP_K,
-        })
-        .await;
+    let search = retrieval.retrieve(Inputs {
+        data_dir: &data_dir,
+        user,
+        project,
+        question: query,
+        start: app.config.start_id.as_deref().unwrap_or_default(),
+        now_ms: crate::identity::now_ms() as f64,
+        maintenance_held: &held,
+        rerank_env: rerank_env.as_ref(),
+        versions,
+        limit: TOP_K,
+    });
+    let Ok(outcome) = tokio::time::timeout(STORE_DEADLINE, search).await else {
+        return defer("deadline");
+    };
     match outcome {
         Outcome::Hits(hits) => (
             200,

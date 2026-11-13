@@ -325,6 +325,13 @@ async fn refuses_bad_bodies_and_defers_what_is_nodes() {
         json!({ "defer": "reranker on" })
     );
     assert_eq!(rr.embeds.load(Ordering::SeqCst), 0);
+    // An account id that is not one: no account directory, no hits (Node's search found the index).
+    let (_, body) = ask(&r, Some(TOKEN), &json!({ "user": "qa-not-an-account", "projectId": "qa-proj-1", "query": "q", "versions": {} }).to_string()).await;
+    assert_eq!(body, json!({ "hits": [] }));
+    // Shadow (one variable feeds both processes): the front answers, Node keeps its own answer.
+    let shadow = rig("shadow", &[]).await;
+    let (_, body) = ask(&shadow, Some(TOKEN), &query(json!({}))).await;
+    assert_eq!(body["hits"].as_array().unwrap(), &shadow.want);
     // Switched off: every question is Node's.
     let off = rig("off", &[]).await;
     assert_eq!(
