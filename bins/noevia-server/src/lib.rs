@@ -46,6 +46,8 @@ pub mod machine_service;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_broker;
 #[cfg(feature = "rust-storage-reads")]
+pub mod mcp_call;
+#[cfg(feature = "rust-storage-reads")]
 pub mod mcp_directory;
 #[cfg(feature = "rust-storage-reads")]
 pub mod mcp_directory_routes;

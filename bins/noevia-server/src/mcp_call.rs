@@ -26,10 +26,15 @@
 //! in-process server's call answers [`UNAVAILABLE`] (core always holds its key). The transport's own
 //! differences are `mcp_egress.rs`'s (a non-JSON body's text; a connect-time refusal of a directory
 //! server's address is `fetch failed`, where core's public-fetch names the host).
+use crate::mcp_broker::{Fail, Mcp};
 use crate::mcp_discovery_actor::ServerSpec;
+use crate::mcp_egress::{CallFailure, Egress, RpcFailure};
+use crate::App;
+use axum::body::Body;
+use axum::http::Response;
 use js_json::JValue;
 use std::future::Future;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tool_rate_limit::RateLimit;
 
 /// What a call answers when the front itself cannot make it.
@@ -470,6 +475,219 @@ pub fn mint_call_token(
     crate::mcp_discovery_backend::sign_token(key, &payload)
 }
 
+// ── in the running front ──
+
+/// What every call shares: the two clients and the back-off.
+pub struct Calls {
+    /// Directory servers: public addresses only, checked again at connect time.
+    guarded: Arc<Egress>,
+    /// The operator's own servers: any address the operator configured.
+    open: Arc<Egress>,
+    limits: Mutex<RateLimit>,
+}
+
+fn calls_of(app: &App, mcp: &Mcp) -> Option<Arc<Calls>> {
+    mcp.calls
+        .get_or_init(|| {
+            Some(Arc::new(Calls {
+                guarded: Egress::for_discovery(app.config.mcp.qa_loopback, 1)?,
+                open: Egress::operator(1)?,
+                limits: Mutex::new(RateLimit::default()),
+            }))
+        })
+        .clone()
+}
+
+/// The broker's refusal as a credential: "sign in / add a key" (core `needsSignIn`), anything else
+/// "try again" (core `brokerUnavailable`).
+fn credential<T>(answer: Result<T, Fail>) -> Credential<T> {
+    match answer {
+        Ok(v) => Credential::Ready(v),
+        Err(e) if e.status == 401 && matches!(e.code, Some("disconnected" | "reconnect")) => {
+            Credential::Absent
+        }
+        Err(_) => Credential::Transient,
+    }
+}
+
+/// [`Backend`] over this front: the broker, the directory table, the clients.
+struct AppBackend {
+    app: Arc<App>,
+    mcp: Arc<Mcp>,
+    calls: Arc<Calls>,
+    servers: Vec<ServerSpec>,
+    /// Fires when the caller (Node's request) has gone.
+    stop: tokio::sync::watch::Receiver<bool>,
+}
+
+impl Backend for AppBackend {
+    fn now_ms(&self) -> f64 {
+        crate::identity::now_ms() as f64
+    }
+
+    async fn server(&self, id: &str) -> Option<ServerSpec> {
+        self.servers.iter().find(|s| s.id == id).cloned()
+    }
+
+    async fn key_headers(&self, user: &str, server: &str) -> Credential<Vec<(String, String)>> {
+        credential(self.mcp.key_headers(&self.app, user, server).await)
+    }
+
+    async fn oauth_session(
+        &self,
+        user: &str,
+        server: &str,
+        rejected: Option<&str>,
+    ) -> Credential<Session> {
+        credential(self.mcp.session(&self.app, user, server, rejected).await).map(|t| Session {
+            access: t.access.to_string(),
+            generation: t.generation,
+        })
+    }
+
+    async fn reject(&self, user: &str, server: &str, generation: &str) {
+        let _ = self.mcp.reject(&self.app, user, server, generation).await;
+    }
+
+    async fn directory_headers(&self, id: &str) -> Vec<(String, String)> {
+        let (app, mcp, id) = (Arc::clone(&self.app), Arc::clone(&self.mcp), id.to_owned());
+        tokio::task::spawn_blocking(move || {
+            mcp.dir_rows(&app)
+                .ok()
+                .and_then(|rows| rows.into_iter().find(|r| r.id == id))
+                .map(|row| mcp.shared_headers(&row))
+                .unwrap_or_default()
+        })
+        .await
+        .unwrap_or_default()
+    }
+
+    fn static_token(&self, env: &str) -> Option<String> {
+        std::env::var(env).ok().filter(|v| !v.is_empty())
+    }
+
+    fn internal_token(
+        &self,
+        uid: Option<&str>,
+        pid: Option<&str>,
+        write: bool,
+        target: Option<&str>,
+    ) -> Option<String> {
+        let key = crate::mcp_discovery_backend::internal_token_key(&self.mcp)?;
+        let jti = crate::mcp_discovery_backend::uuid_v4();
+        Some(mint_call_token(
+            &key,
+            uid,
+            pid,
+            write,
+            target,
+            crate::identity::now_ms(),
+            &jti,
+        ))
+    }
+
+    async fn url_public(&self, url: &str) -> bool {
+        self.calls.guarded.url_allowed(url).await
+    }
+
+    async fn call(
+        &self,
+        server: &ServerSpec,
+        headers: &[(String, String)],
+        name: &str,
+        arguments: &JValue,
+    ) -> Result<JValue, Failed> {
+        let egress = if server.directory {
+            &self.calls.guarded
+        } else {
+            &self.calls.open
+        };
+        let mut stop = self.stop.clone();
+        let stopped = async move {
+            // A dropped sender (the request went away) ends the wait as a stop does.
+            let _ = stop.wait_for(|gone| *gone).await;
+        };
+        crate::mcp_egress::call_tool(
+            egress,
+            &server.url,
+            headers,
+            name,
+            arguments,
+            &self.mcp.rpc_id,
+            stopped,
+        )
+        .await
+        .map_err(|f| Failed {
+            http_status: match &f {
+                CallFailure::Rpc(RpcFailure::Http { status, .. }) => Some(*status),
+                _ => None,
+            },
+            retry_after: match &f {
+                CallFailure::Rpc(RpcFailure::Http { retry_after, .. }) => retry_after.clone(),
+                _ => None,
+            },
+            message: f.text(),
+        })
+    }
+}
+
+impl<T> Credential<T> {
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> Credential<U> {
+        match self {
+            Credential::Ready(v) => Credential::Ready(f(v)),
+            Credential::Absent => Credential::Absent,
+            Credential::Transient => Credential::Transient,
+        }
+    }
+}
+
+/// `POST /v1/mcp/call` (after the store secret): one call (see the module docs) -> 200 `{ text, reduce }`.
+/// 404 while `NOEVIA_RUST_MCP_CALLS` is off; 400 for a body that is not a call; 503 when the front cannot
+/// run calls (no clients, or the directory table cannot be read). The call runs in its own task: the
+/// request going away stops it, and its session is still closed.
+pub async fn op(app: &Arc<App>, mcp: &Arc<Mcp>, body: &JValue) -> Response<Body> {
+    use crate::mcp_routes::{internal, internal_error};
+    if !app.config.mcp.calls {
+        return internal_error(404, "not found");
+    }
+    let request = match Request::from_json(body) {
+        Ok(r) => r,
+        Err(why) => return internal_error(400, why),
+    };
+    let Some(calls) = calls_of(app, mcp) else {
+        return internal_error(503, "unavailable");
+    };
+    let Some(servers) = crate::mcp_discovery_backend::server_specs(app).await else {
+        return internal_error(503, "unavailable");
+    };
+    let (gone, stop) = tokio::sync::watch::channel(false);
+    let backend = AppBackend {
+        app: Arc::clone(app),
+        mcp: Arc::clone(mcp),
+        calls,
+        servers,
+        stop,
+    };
+    let task = tokio::spawn(async move {
+        let answer = execute(&backend, &backend.calls.limits, &request).await;
+        drop(backend);
+        answer
+    });
+    // Held until the answer is in: dropping this handler (the caller went away) drops `gone`.
+    let answer = task.await;
+    drop(gone);
+    match answer {
+        Ok(a) => internal(
+            200,
+            &JValue::obj([
+                ("text", JValue::Str(a.text)),
+                ("reduce", JValue::Bool(a.reduce)),
+            ]),
+        ),
+        Err(_) => internal_error(500, "the call failed"),
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -479,7 +697,10 @@ mod tests {
     fn a_request_is_read_strictly() {
         let body = js_json::parse(r#"{"server":"s","name":"t","user":"u","workspaceUser":null,"arguments":{"q":1},"write":true,"nextcloud":{"Authorization":"Basic x"}}"#).unwrap();
         let r = Request::from_json(&body).unwrap();
-        assert_eq!((r.user.as_str(), r.workspace_user, r.write), ("u", None, true));
+        assert_eq!(
+            (r.user.as_str(), r.workspace_user, r.write),
+            ("u", None, true)
+        );
         assert_eq!(r.nextcloud.unwrap()[0].0, "Authorization");
         for bad in [
             r#"{"name":"t"}"#,
@@ -488,7 +709,10 @@ mod tests {
             r#"{"server":"s","name":"t","nextcloud":{"a":1}}"#,
             r#"{"server":"s","name":"t","nextcloud":"x"}"#,
         ] {
-            assert!(Request::from_json(&js_json::parse(bad).unwrap()).is_err(), "{bad}");
+            assert!(
+                Request::from_json(&js_json::parse(bad).unwrap()).is_err(),
+                "{bad}"
+            );
         }
     }
 

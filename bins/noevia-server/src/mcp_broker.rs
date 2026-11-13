@@ -542,6 +542,9 @@ pub struct Settings {
     pub enabled_toolboxes: Option<String>,
     pub nextcloud_origins: String,
     pub discovery_fail_ttl_ms: Option<f64>,
+    /// `NOEVIA_RUST_MCP_CALLS=1` (track R5, off by default): this front runs MCP tool calls for Node
+    /// (`POST /v1/mcp/call`, mcp_call.rs). Off, that operation is a 404.
+    pub calls: bool,
 }
 
 impl Settings {
@@ -555,6 +558,7 @@ impl Settings {
             discovery_fail_ttl_ms: get("MCP_DISCOVERY_FAIL_TTL_MS")
                 .and_then(|v| v.trim().parse::<f64>().ok())
                 .filter(|v| v.is_finite() && *v >= 0.0),
+            calls: get("NOEVIA_RUST_MCP_CALLS").as_deref() == Some("1"),
         }
     }
 }
@@ -603,6 +607,8 @@ pub struct Mcp {
     /// Signs the custom-server preview tokens (core `previewKey`): made here, never stored, so a
     /// restart makes an old preview ask to be run again.
     pub(crate) preview_key: [u8; 32],
+    /// The clients and back-off of tool calls (mcp_call.rs), made on the first call.
+    pub(crate) calls: std::sync::OnceLock<Option<Arc<crate::mcp_call::Calls>>>,
 }
 
 impl Mcp {
@@ -631,6 +637,7 @@ impl Mcp {
             swept: std::sync::atomic::AtomicBool::new(false),
             rpc_id: std::sync::atomic::AtomicI64::new(0),
             preview_key: random::<32>(),
+            calls: std::sync::OnceLock::new(),
         })
     }
 
