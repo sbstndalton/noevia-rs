@@ -39,6 +39,9 @@ pub struct Prepared {
     pub writes: Vec<String>,
     pub public: Vec<String>,
     pub automatic_only_writes: Vec<String>,
+    /// The offered project file edit tools (chat.cjs `projectEditTool`; absent from an older core: none,
+    /// as an older core never hands off a turn that offers one).
+    pub edit_tools: Vec<String>,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -171,6 +174,10 @@ impl Prepared {
             writes: names(frame, "writes")?,
             public: names(frame, "public")?,
             automatic_only_writes: names(frame, "automaticOnlyWrites")?,
+            edit_tools: match frame.get("editTools") {
+                JValue::Undefined => Vec::new(),
+                _ => names(frame, "editTools")?,
+            },
             route_note: opt_text(frame, "routeNote").unwrap_or_default(),
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),

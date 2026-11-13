@@ -374,6 +374,7 @@ impl<H: Host> Turn<'_, H> {
             self.helpers.source_links,
             self.helpers.tool_result_cap,
         );
+        gate.edit_tools = names(&p.edit_tools);
         let mut round: i32 = 0;
         loop {
             if round >= if s.final_pass { 4 } else { 3 } || host.left() {
