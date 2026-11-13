@@ -455,12 +455,20 @@ fn tool_bridge(sc: &mut Script, op: &str, sent: &JValue) -> Option<JValue> {
         ));
         return None;
     }
+    // The fields of a recorded call that are core's answer, not what the front sends.
+    let answers: &[&str] = match op {
+        "skills-revoked" => &["gone"],
+        "skills-read" => &["loaded", "ledger"],
+        "skills-scrub" => &["changed", "removed"],
+        _ => &[],
+    };
     if let JValue::Obj(fields) = &next {
         for (k, v) in fields {
             if matches!(
                 k.as_str(),
                 "op" | "text" | "failed" | "threw" | "left" | "found"
-            ) {
+            ) || answers.contains(&k.as_str())
+            {
                 continue;
             }
             let mut got = sent.get(k).clone();
@@ -577,6 +585,12 @@ async fn core_service(
         }
         "/internal/chat/turn" => {
             sc.handoff_header = headers.get("x-noevia-chat-handoff").cloned();
+            if headers.get("x-noevia-chat-handoff-caps").map(String::as_str) != Some("skills") {
+                sc.errors.push(format!(
+                    "turn: caps header {:?}",
+                    headers.get("x-noevia-chat-handoff-caps")
+                ));
+            }
             if headers.get("x-noevia-chat-wire").map(String::as_str) != Some("ndjson/1") {
                 sc.errors.push(format!(
                     "turn: wire header {:?}",
@@ -625,6 +639,33 @@ async fn core_service(
             } else {
                 js::obj(Vec::<(String, JValue)>::new())
             })
+        }
+        "/internal/chat/skills/revoked" => {
+            let Some(next) = tool_bridge(&mut sc, "skills-revoked", &sent) else {
+                return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
+            };
+            ok(js::obj([("gone", next.get("gone").clone())]))
+        }
+        "/internal/chat/skills/read" => {
+            let Some(next) = tool_bridge(&mut sc, "skills-read", &sent) else {
+                return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
+            };
+            // Core records the read in the account's skill ledger, as Node's turn did.
+            if next.get("ledger").is_object() {
+                if let Ok(dir) = server_projects::store::user_dir(&sc.data, &sc.user) {
+                    let _ = std::fs::write(dir.join("skill-history.json"), js::stringify(next.get("ledger")));
+                }
+            }
+            ok(js::obj([("loaded", next.get("loaded").clone())]))
+        }
+        "/internal/chat/skills/scrub" => {
+            let Some(next) = tool_bridge(&mut sc, "skills-scrub", &sent) else {
+                return Ok(json(500, &js::obj([("error", js::s("unrecorded"))])));
+            };
+            ok(js::obj([
+                ("changed", next.get("changed").clone()),
+                ("removed", next.get("removed").clone()),
+            ]))
         }
         "/internal/chat/tools/edit-target" => {
             let Some(next) = tool_bridge(&mut sc, "edit-target", &sent) else {
@@ -726,6 +767,12 @@ async fn engine_service(
                     return;
                 }
                 JValue::Str(_) => return,
+                // The recorder's clock moves on (a skill check is due once a second): so does this one.
+                _ if c.get("tick").as_num().is_some() => {
+                    let ms = c.get("tick").as_num().unwrap_or(0.0).max(0.0);
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    tokio::time::sleep(Duration::from_millis(ms as u64 + 20)).await;
+                }
                 _ => {
                     let bytes = match c.get("text").as_str() {
                         Some(t) => t.as_bytes().to_vec(),
@@ -1025,7 +1072,8 @@ fn state_files(dir: &Path, user: &str, window: (f64, f64)) -> BTreeMap<String, S
     };
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
-        if name.starts_with("context-") && name.ends_with(".json") {
+        // The skill ledger is core's (written through the skills bridges), listed as Node's run lists it.
+        if (name.starts_with("context-") && name.ends_with(".json")) || name == "skill-history.json" {
             add(name, &e.path());
         } else if name == "chat-partials" {
             for p in std::fs::read_dir(e.path()).unwrap().flatten() {
@@ -1139,6 +1187,13 @@ async fn run_case(
     // The account as core's preparation leaves it: its directory, its tool policies, the turn's user
     // message last in the transcript (unless the case records a store that does not have it).
     server_projects::store::ensure_user_dir(&f.data, &f.user).unwrap();
+    // What core's preparation wrote before the cut (a pinned skill's ledger record), as core leaves it.
+    if let JValue::Obj(files) = case.get("handoff").get("files") {
+        let dir = server_projects::store::user_dir(&f.data, &f.user).unwrap();
+        for (name, content) in files {
+            std::fs::write(dir.join(name), js::stringify(content)).unwrap();
+        }
+    }
     if let JValue::Obj(policy) = input.get("policy") {
         for (tool, mode) in policy {
             let first = match mode {
@@ -1315,7 +1370,15 @@ async fn run_case(
     if aborted != input.get("leaveInTool").as_str().is_some() {
         return Err(format!("tool abort asked: {aborted}"));
     }
-    if sc.executions != want {
+    // The recorder logs the runs of the tools it stubs (Drive, the QA documents box); core's own project
+    // file readers run for real there and are seen in the bridge calls instead.
+    let ran: Vec<String> = sc
+        .executions
+        .iter()
+        .filter(|n| !matches!(n.as_str(), "read_project_file" | "project_read_file"))
+        .cloned()
+        .collect();
+    if ran != want {
         return Err(format!(
             "tools run: front {:?} node {want:?}",
             sc.executions

@@ -1,7 +1,9 @@
 //! One tool call of a native turn, from the model's request to the result the model and the client
-//! get: chat.cjs's tool loop (lines ~2250-2600) for the turns core hands off. Those carry no skills,
-//! no coworker-page tool, no provenance policy and only the local default provider
-//! (rust-chat-native.cjs `refusal`), so the parts of the loop for those are not here.
+//! get: chat.cjs's tool loop (lines ~2250-2600) for the turns core hands off. Those carry no
+//! coworker-page tool, no provenance policy and only the local default provider
+//! (rust-chat-native.cjs `refusal`), so the parts of the loop for those are not here. A loaded
+//! instruction skill revoked meanwhile ([`crate::skills`], #272) refuses the call before it starts,
+//! after the card's answer and before the run.
 //!
 //! In Node's order: the tool-exchange checks and the per-turn result cache (tool-exchange.cjs, the
 //! `tool-exchange` crate), a write after a declined one, an oversized call, the account's policy, the
@@ -29,6 +31,7 @@ use js_json::JValue;
 
 use crate::host::{EditTarget, Host, Target, ToolRun};
 use crate::js;
+use crate::skills::Skills;
 
 pub const CHECK_FAULT: &str = "ERROR: the tool call could not be checked; tool was not run.";
 pub const ERROR_FAULT: &str = "ERROR: the tool failed and its error could not be read.";
@@ -188,6 +191,8 @@ pub struct Outcome {
     /// The call was a write and was about to run (#1456).
     pub wrote: bool,
     pub links: Vec<String>,
+    /// The whole result of a call that succeeded, for the skill reads (chat.cjs `noteSkillRead`).
+    pub read: Option<String>,
 }
 
 /// The turn's tool state shared across its rounds.
@@ -200,6 +205,8 @@ pub struct Tools<'a> {
     pub automatic_only_writes: HashSet<String>,
     /// The offered project file edit tools (chat.cjs `projectEditTool`).
     pub edit_tools: HashSet<String>,
+    /// The turn's instruction skills (#272), when it has a project.
+    pub skills: Option<&'a Skills>,
     pub routes: Vec<(String, String)>,
     pub chat_id: Option<String>,
     pub chat_key: Option<String>,
@@ -288,6 +295,7 @@ impl<'a> Tools<'a> {
             public,
             automatic_only_writes,
             edit_tools: HashSet::new(),
+            skills: None,
             routes,
             chat_id,
             chat_key,
@@ -462,7 +470,8 @@ impl<'a> Tools<'a> {
         if !applied && self.public.contains(&call.name) {
             event.push(("public", JValue::Bool(true)));
         }
-        let links = if !failed && !is_error {
+        let ok = !failed && !is_error;
+        let links = if ok {
             (self.source_links)(&result)
         } else {
             Vec::new()
@@ -477,7 +486,21 @@ impl<'a> Tools<'a> {
             applied: applied.then(|| (call.name.clone(), card_target.clone())),
             wrote,
             links,
+            read: ok.then_some(result),
         }
+    }
+
+    /// chat.cjs `revokedSkills()` in the gate: `Some(result)` refusing the call when a loaded skill was revoked.
+    /// A skills bridge that gave no answer refuses it unchecked (skills.rs).
+    async fn skill_refusal<H: Host>(&self, host: &H, name: &str) -> Option<String> {
+        let skills = self.skills?;
+        if skills.revoked(host).await {
+            if skills.failed() {
+                return Some(CHECK_FAULT.to_string());
+            }
+            return Some(skills.refuse(host, name));
+        }
+        None
     }
 
     /// The gate up to (and with) the approval card: a result when the call does not run.
@@ -491,6 +514,10 @@ impl<'a> Tools<'a> {
     ) -> Gate {
         let name = call.name.as_str();
         let write = self.is_write(name);
+        // A call requested under a skill that has since been disabled or changed never runs (#272).
+        if let Some(r) = self.skill_refusal(host, name).await {
+            return Gate::Result(r);
+        }
         if !self.declined.is_empty() && write {
             audit_denied(host, name, "earlier-decline");
             let r = format!("ERROR: {name} was not run because an earlier write in this reply was declined. Nothing was changed.");
@@ -672,6 +699,10 @@ impl<'a> Tools<'a> {
             audit_denied(host, name, "blocked");
             return Some(blocked_text(name));
         }
+        // A skill disabled while the card was open: the approval does not outlive it.
+        if let Some(r) = self.skill_refusal(host, name).await {
+            return Some(r);
+        }
         // An edit whose name now lands on another file (or none): the approval was for the file shown.
         if let Some(pin) = edit {
             let again = self.edit_target(host, call).await;
@@ -756,6 +787,16 @@ impl<'a> Tools<'a> {
             || (permission != "ask" && host.tool_policy(name, write) == "ask")
         {
             return Some(PERMISSION_CHANGED.into());
+        }
+        if let Some(skills) = self.skills {
+            if skills.revoked(host).await {
+                let text = if skills.failed() {
+                    CHECK_FAULT
+                } else {
+                    PERMISSION_CHANGED
+                };
+                return Some(text.into());
+            }
         }
         None
     }
