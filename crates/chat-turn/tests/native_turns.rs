@@ -241,7 +241,10 @@ impl Host for Script {
         *self.leased.lock().unwrap() = true;
         self.store(
             "modelManager.acquireLease",
-            vec![("model", js::s(model)), ("lease", js::s(self.lease.clone()))],
+            vec![
+                ("model", js::s(model)),
+                ("lease", js::s(self.lease.clone())),
+            ],
         );
         Ok(Some(vec![("X-Noevia-Lease".into(), self.lease.clone())]))
     }
