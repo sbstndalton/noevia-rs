@@ -395,7 +395,7 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
     // inside this loop and the next poll reads again without anything being dropped (#1970).
     for (method, path, cookie, csrf) in [
         ("POST", "/api/auto-roles", "", None),
-        ("POST", "/api/models/load", ADMIN, Some("wrong")),
+        ("POST", "/api/models/pull", ADMIN, Some("wrong")),
         ("PUT", "/api/auto-roles", MEMBER, None),
         ("GET", "/api/models/downloads", ADMIN, None),
         ("POST", "/api/modelsx", ADMIN, Some("csrf")),
@@ -411,9 +411,9 @@ async fn a_gated_model_or_role_write_drops_the_shared_answer_nothing_else_does()
     let mut dropped = 0;
     for (method, path, cookie) in [
         ("PUT", "/api/auto-roles", MEMBER),
-        ("POST", "/api/models/load", ADMIN),
+        ("POST", "/api/models/pull", ADMIN),
         ("DELETE", "/api/model-manager/sections/x", ADMIN),
-        ("POST", "/api/models/../models/unload", ADMIN),
+        ("POST", "/api/models/../models/pull", ADMIN),
     ] {
         let (status, _, body) = call(addr, method, path, cookie, Some("csrf")).await;
         if path == "/api/auto-roles" {
@@ -508,7 +508,7 @@ async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queue
     // the drop is skipped, so the next poll inside the TTL keeps the shared answer.
     let held = stats.hold_every_permit();
     assert_eq!(
-        call(addr, "POST", "/api/models/load", ADMIN, Some("csrf"))
+        call(addr, "POST", "/api/models/pull", ADMIN, Some("csrf"))
             .await
             .0,
         502
@@ -520,7 +520,7 @@ async fn model_writes_past_the_invalidation_bound_skip_the_drop_instead_of_queue
     let reads = listings.load(Ordering::SeqCst);
     // With permits free the same write drops it again.
     assert_eq!(
-        call(addr, "POST", "/api/models/load", ADMIN, Some("csrf"))
+        call(addr, "POST", "/api/models/pull", ADMIN, Some("csrf"))
             .await
             .0,
         502

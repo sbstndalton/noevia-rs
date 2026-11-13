@@ -316,6 +316,196 @@ impl Gate {
     }
 }
 
+/// `X-Noevia-Lease`: the header a request carries to run under a lease.
+pub const LEASE_HEADER: &str = "x-noevia-lease";
+/// The gate's event stream is not larger than this per event (`MAX_EVENT_BYTES`); a longer one is not the gate's.
+const MAX_EVENT_BYTES: usize = 16 * 1024;
+/// The longest a lease request is left open (the gate's own queue limit ends it sooner).
+const LEASE_WAIT: Duration = Duration::from_secs(15 * 60);
+
+/// A refusal of a lease (`GateError`): the gate's own, or the engine not answering.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeaseRefusal {
+    pub status: u16,
+    pub code: String,
+    pub message: String,
+    pub retryable: bool,
+}
+
+impl LeaseRefusal {
+    fn unavailable() -> Self {
+        LeaseRefusal {
+            status: 502,
+            code: "engine_unavailable".into(),
+            message: "The local model engine is not answering. Try again shortly.".into(),
+            retryable: true,
+        }
+    }
+}
+
+/// A lease the gate granted on a model: requests under it carry [`LEASE_HEADER`]. It is given back by
+/// [`Lease::release`], or in the background when it is dropped (a client that left, a failed step).
+pub struct Lease {
+    gate: Arc<Gate>,
+    token: String,
+    released: bool,
+}
+
+impl Lease {
+    pub fn header(&self) -> (HeaderName, HeaderValue) {
+        (
+            HeaderName::from_static(LEASE_HEADER),
+            HeaderValue::from_str(&self.token).unwrap_or_else(|_| HeaderValue::from_static("")),
+        )
+    }
+
+    /// Gives the lease back (best effort: the gate ends an idle lease on its own).
+    pub async fn release(mut self) {
+        self.released = true;
+        self.gate.release_lease(&self.token).await;
+    }
+}
+
+impl Drop for Lease {
+    fn drop(&mut self) {
+        if self.released {
+            return;
+        }
+        if let Ok(rt) = tokio::runtime::Handle::try_current() {
+            let (gate, token) = (Arc::clone(&self.gate), self.token.clone());
+            rt.spawn(async move { gate.release_lease(&token).await });
+        }
+    }
+}
+
+impl Gate {
+    /// `acquire(model)`: waits in the gate's queue for a lease on `model`. `Ok(None)`: no gate answers at the engine
+    /// address (404 without a refusal), so the work runs without a lease. Dropping this future leaves the queue (the
+    /// stream is closed), which is how a client that goes away starts no switch.
+    pub async fn lease(self: &Arc<Self>, model: &str) -> Result<Option<Lease>, LeaseRefusal> {
+        let mut res = self
+            .client
+            .post(format!("{}/gate/v1/leases", self.base))
+            .header(CONTENT_TYPE, "application/json")
+            .header(CLIENT_HEADER, "front")
+            .timeout(LEASE_WAIT)
+            .body(serde_json::json!({ "model": model, "holder": "front" }).to_string())
+            .send()
+            .await
+            .map_err(|_| LeaseRefusal::unavailable())?;
+        let status = res.status().as_u16();
+        let stream = res.status().is_success()
+            && res
+                .headers()
+                .get(CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|t| t.starts_with("text/event-stream"));
+        if !stream {
+            let mut bytes: Vec<u8> = Vec::new();
+            while let Ok(Some(chunk)) = res.chunk().await {
+                bytes.extend_from_slice(&chunk);
+                if bytes.len() > MAX_EVENT_BYTES {
+                    break;
+                }
+            }
+            let body: Option<Value> = serde_json::from_slice(&bytes).ok();
+            if let Some(e) = body
+                .as_ref()
+                .and_then(|b| b.get("error"))
+                .filter(|e| e.get("type").and_then(Value::as_str) == Some("gate_error"))
+            {
+                if let Some(code) = e.get("code").and_then(Value::as_str) {
+                    return Err(LeaseRefusal {
+                        status,
+                        code: code.to_owned(),
+                        message: e
+                            .get("message")
+                            .and_then(Value::as_str)
+                            .filter(|m| !m.is_empty())
+                            .map(|m| clip(m, 300))
+                            .unwrap_or_else(|| "The inference gate refused the request.".into()),
+                        retryable: e.get("retryable") == Some(&Value::Bool(true)),
+                    });
+                }
+            }
+            return if status == 404 {
+                Ok(None)
+            } else {
+                Err(LeaseRefusal::unavailable())
+            };
+        }
+        let mut buffer = String::new();
+        loop {
+            let chunk = match res.chunk().await {
+                Ok(Some(c)) => c,
+                _ => return Err(LeaseRefusal::unavailable()),
+            };
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(end) = buffer.find("\n\n") {
+                let block: String = buffer.drain(..end + 2).collect();
+                let (mut event, mut data) = ("message", String::new());
+                for line in block.split('\n') {
+                    if let Some(e) = line.strip_prefix("event:") {
+                        event = e.trim();
+                    } else if let Some(d) = line.strip_prefix("data:") {
+                        data.push_str(d.trim());
+                    }
+                }
+                let data: Option<Value> = serde_json::from_str(&data).ok();
+                match event {
+                    "granted" => {
+                        let token = data
+                            .as_ref()
+                            .and_then(|d| d.get("lease"))
+                            .and_then(Value::as_str)
+                            .filter(|t| is_token(t))
+                            .ok_or_else(LeaseRefusal::unavailable)?;
+                        return Ok(Some(Lease {
+                            gate: Arc::clone(self),
+                            token: token.to_owned(),
+                            released: false,
+                        }));
+                    }
+                    "error" => {
+                        let d = data.as_ref();
+                        return Err(LeaseRefusal {
+                            status: 503,
+                            code: d
+                                .and_then(|d| d.get("code"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("gate_error")
+                                .to_owned(),
+                            message: d
+                                .and_then(|d| d.get("message"))
+                                .and_then(Value::as_str)
+                                .filter(|m| !m.is_empty())
+                                .map(|m| clip(m, 300))
+                                .unwrap_or_else(|| {
+                                    "The inference gate refused the request.".into()
+                                }),
+                            retryable: d.and_then(|d| d.get("retryable"))
+                                == Some(&Value::Bool(true)),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            if buffer.len() > MAX_EVENT_BYTES {
+                return Err(LeaseRefusal::unavailable());
+            }
+        }
+    }
+
+    async fn release_lease(&self, token: &str) {
+        let _ = self
+            .client
+            .delete(format!("{}/gate/v1/leases/{token}", self.base))
+            .timeout(CALL_TIMEOUT)
+            .send()
+            .await;
+    }
+}
+
 /// Added to a step's limit for what it does around its router call (reading models.ini).
 const STEP_MARGIN: Duration = Duration::from_secs(15);
 
