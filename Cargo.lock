@@ -2116,6 +2116,7 @@ dependencies = [
  "code-net-guard",
  "context-fit",
  "dav-parse",
+ "drive-tools",
  "egress",
  "egress-issuer",
  "embedding-worker",

@@ -702,7 +702,14 @@ pub fn router_with_app(
         );
     }
     // sbstndalton/noevia#2190 round 7: Google Drive's token broker (connector_routes.rs `internal_op`).
-    for op in ["session", "reject", "disconnect", "reseal"] {
+    for op in [
+        "session",
+        "reject",
+        "disconnect",
+        "reseal",
+        "tool",
+        "target",
+    ] {
         let (store, app) = (store.clone(), app.clone());
         router = router.route(
             &format!("/v1/gdrive/{op}"),

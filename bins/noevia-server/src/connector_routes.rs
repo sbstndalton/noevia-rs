@@ -465,6 +465,14 @@ fn internal_fail(e: &Fail) -> Response<Body> {
 /// id the table does not know, `Err` (503) when the table cannot be read. An unreadable table is
 /// not an answer: calling the caller a member would send an administrator to their own Drive
 /// instead of the backup's, and the request would look like it worked.
+/// An account id the users table can hold (`[\w-]+`); anything else is never an administrator.
+fn word_id_ok(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
 async fn is_admin(app: &Arc<App>, user: &str) -> Result<bool, Fail> {
     let (a, u) = (Arc::clone(app), user.to_owned());
     let unreadable = || Fail::new("The account could not be checked. Try again shortly.", 503);
@@ -511,6 +519,33 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
             ),
             Ok(Err(e)) => internal_fail(&e),
             Err(_) => internal_fail(&Fail::new("The re-seal did not finish.", 502)),
+        };
+    }
+    // Track R5: the chat's Drive tools (gdrive_tools.rs), behind NOEVIA_RUST_DRIVE_TOOLS. `user` may be
+    // null (the tool then says to sign in).
+    if op == "tool" || op == "target" {
+        if !drive.settings.tools {
+            return internal(404, &JValue::obj([("error", s("not found"))]));
+        }
+        let user = match body.get("user") {
+            JValue::Str(u) if u.len() <= 256 => {
+                let admin = body.get("admin").as_bool() == Some(true)
+                    && word_id_ok(u)
+                    && match is_admin(&app, u).await {
+                        Ok(admin) => admin,
+                        Err(e) => return internal_fail(&e),
+                    };
+                Some(crate::gdrive_tools::User {
+                    id: u.clone(),
+                    admin,
+                })
+            }
+            JValue::Null | JValue::Undefined => None,
+            _ => return internal(400, &JValue::obj([("error", s("invalid user"))])),
+        };
+        return match crate::gdrive_tools::op(drive, op, user, &body).await {
+            Ok(answer) => internal(200, &answer),
+            Err(why) => internal(400, &JValue::obj([("error", s(why))])),
         };
     }
     let user = match body.get("user") {
