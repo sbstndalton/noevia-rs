@@ -35,6 +35,13 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
+/// sha256 of the `server/code-service.cjs` (core 0c294a3, whose Planner branch core main keeps) and
+/// `server/code-pipeline.cjs` the service fixture was recorded from.
+pub const CODE_SERVICE_SHA256: &str =
+    "bdb2292fde574cc9a04b8d1b468155e863578096f956a388fa287f63fa6f8b0c";
+pub const CODE_PIPELINE_SHA256: &str =
+    "18d7e6ce2f3e779345d0789af10c5aa0bd056501f8ac55659ec6c3c3a0b339b5";
+
 /// code-service.cjs `PLANNER_PREPARATION`.
 pub const PLANNER_PREPARATION: (&str, &str, bool, &str) = (
     "planner",

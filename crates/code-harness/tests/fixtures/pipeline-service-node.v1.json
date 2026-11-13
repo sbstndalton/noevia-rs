@@ -1,0 +1,3058 @@
+{
+ "generator": "crates/code-harness/tools/gen-pipeline-service-fixtures.cjs",
+ "sources": {
+  "code-service.cjs": "bdb2292fde574cc9a04b8d1b468155e863578096f956a388fa287f63fa6f8b0c",
+  "code-pipeline.cjs": "18d7e6ce2f3e779345d0789af10c5aa0bd056501f8ac55659ec6c3c3a0b339b5",
+  "jobs.cjs": "3a04aea9e594428d62cb5dc7f29eb937d322c6b24d83c9b2d9b08211366e5457",
+  "planner-plan.cjs": "b37efeaae70136bd50786bfa71bf11d49903e7a1290879f35fb9c9659083ee03",
+  "code-review.cjs": "4cc944fdffd5d7c374257d8b301252ec947ac1fb729006c53895fe0db293287f"
+ },
+ "standins": {
+  "plan": {
+   "goal": "Add the QA greeting to the QA project",
+   "context": [
+    "The QA project prints a greeting."
+   ],
+   "constraints": [
+    "Keep the change small."
+   ],
+   "investigation": [
+    "Read src/qa.js."
+   ],
+   "steps": [
+    {
+     "n": 1,
+     "do": "Edit src/qa.js to print the QA greeting",
+     "done_when": "The QA greeting is printed"
+    }
+   ],
+   "capabilities": [
+    "read_repository",
+    "edit_file"
+   ],
+   "approval_boundaries": [
+    "Every write asks."
+   ],
+   "verification": [
+    "Run the QA tests."
+   ],
+   "completion": "The QA greeting is printed and tested.",
+   "non_goals": [
+    "No other QA files."
+   ]
+  },
+  "answers": {
+   "planner": {
+    "goal": "Add the QA greeting to the QA project",
+    "context": [
+     "The QA project prints a greeting."
+    ],
+    "constraints": [
+     "Keep the change small."
+    ],
+    "investigation": [
+     "Read src/qa.js."
+    ],
+    "steps": [
+     {
+      "n": 1,
+      "do": "Edit src/qa.js to print the QA greeting",
+      "done_when": "The QA greeting is printed"
+     }
+    ],
+    "capabilities": [
+     "read_repository",
+     "edit_file"
+    ],
+    "approval_boundaries": [
+     "Every write asks."
+    ],
+    "verification": [
+     "Run the QA tests."
+    ],
+    "completion": "The QA greeting is printed and tested.",
+    "non_goals": [
+     "No other QA files."
+    ]
+   },
+   "reviewer": {
+    "verdict": "approve",
+    "summary": "The QA change does what the QA task asks.",
+    "findings": []
+   },
+   "auditor": {
+    "completeness": "complete",
+    "summary": "The QA revision is complete.",
+    "evidence": [
+     {
+      "source": "tests",
+      "note": "The QA tests passed."
+     }
+    ],
+    "gaps": []
+   }
+  },
+  "snapshot": {
+   "files": [
+    "README.md",
+    "src/qa.js"
+   ],
+   "truncated": false,
+   "readme": {
+    "path": "README.md",
+    "text": "The QA project."
+   }
+  },
+  "change": {
+   "files": [
+    {
+     "path": "src/qa.js",
+     "status": "M"
+    }
+   ],
+   "truncated": false
+  },
+  "workspace": {
+   "branch": "noevia/qa-task",
+   "path": "/qa/work/qa-task",
+   "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "head": "1111111111111111111111111111111111111111"
+ },
+ "scenarios": {
+  "planner-flow": {
+   "enabled": true,
+   "sandboxKind": "sandbox",
+   "noCreate": false,
+   "inference": null,
+   "ops": [
+    {
+     "facts": true
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner",
+      "approvePlan": true,
+      "model": "qa-model-b"
+     }
+    },
+    {
+     "waitCard": "<T1>"
+    },
+    {
+     "facts": true
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      "<A1>"
+     ]
+    },
+    {
+     "waitCard": "<T1>"
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      "<A2>"
+     ]
+    },
+    {
+     "waitEnd": "<T1>"
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      "<A2>"
+     ]
+    },
+    {
+     "facts": true
+    }
+   ],
+   "answers": [
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       },
+       {
+        "id": "planner",
+        "label": "Planner",
+        "available": true,
+        "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    },
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/qa-task",
+      "workspace": "/qa/work/qa-task",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "planner",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "approve_plan"
+    },
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       },
+       {
+        "id": "planner",
+        "label": "Planner",
+        "available": true,
+        "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {
+       "00000000-0000-4000-8000-000000000001": {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "taskId": "00000000-0000-4000-8000-000000000001",
+        "action": "approve_plan",
+        "title": "Approve the plan",
+        "kind": "plan",
+        "command": "",
+        "paths": [],
+        "reason": "The Planner’s plan for this task. Approving lets the coding agent start on it; every write it makes still asks.",
+        "arguments": {
+         "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+         "goal": "Add the QA greeting to the QA project",
+         "steps": [
+          "Edit src/qa.js to print the QA greeting"
+         ]
+        },
+        "diff": null,
+        "plan": {
+         "goal": "Add the QA greeting to the QA project",
+         "context": [
+          "The QA project prints a greeting."
+         ],
+         "constraints": [
+          "Keep the change small."
+         ],
+         "investigation": [
+          "Read src/qa.js."
+         ],
+         "steps": [
+          {
+           "n": 1,
+           "do": "Edit src/qa.js to print the QA greeting",
+           "done_when": "The QA greeting is printed"
+          }
+         ],
+         "capabilities": [
+          "read_repository",
+          "edit_file"
+         ],
+         "approval_boundaries": [
+          "Every write asks."
+         ],
+         "verification": [
+          "Run the QA tests."
+         ],
+         "completion": "The QA greeting is printed and tested.",
+         "non_goals": [
+          "No other QA files."
+         ]
+        }
+       }
+      }
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "ok": true
+     }
+    },
+    {
+     "waited": "review_change"
+    },
+    {
+     "status": 200,
+     "body": {
+      "ok": true
+     }
+    },
+    {
+     "waited": "ended"
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "That approval is no longer waiting."
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       },
+       {
+        "id": "planner",
+        "label": "Planner",
+        "available": true,
+        "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 5000,
+      "data": {}
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "planned",
+       "revision": 0,
+       "reason": "Planning"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/qa-task",
+       "task": "QA: add the greeting.",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "pipeline",
+       "kind": "pipeline",
+       "version": 1,
+       "maxLoops": 2,
+       "merge": false
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan",
+       "title": "The Planner writes the plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "approval.requested",
+      "at": 5000,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "approve_plan",
+       "title": "Approve the plan",
+       "kind": "plan",
+       "command": "",
+       "paths": [],
+       "reason": "The Planner’s plan for this task. Approving lets the coding agent start on it; every write it makes still asks.",
+       "arguments": {
+        "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+        "goal": "Add the QA greeting to the QA project",
+        "steps": [
+         "Edit src/qa.js to print the QA greeting"
+        ]
+       },
+       "diff": null,
+       "plan": {
+        "goal": "Add the QA greeting to the QA project",
+        "context": [
+         "The QA project prints a greeting."
+        ],
+        "constraints": [
+         "Keep the change small."
+        ],
+        "investigation": [
+         "Read src/qa.js."
+        ],
+        "steps": [
+         {
+          "n": 1,
+          "do": "Edit src/qa.js to print the QA greeting",
+          "done_when": "The QA greeting is printed"
+         }
+        ],
+        "capabilities": [
+         "read_repository",
+         "edit_file"
+        ],
+        "approval_boundaries": [
+         "Every write asks."
+        ],
+        "verification": [
+         "Run the QA tests."
+        ],
+        "completion": "The QA greeting is printed and tested.",
+        "non_goals": [
+         "No other QA files."
+        ]
+       }
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "approval.decided",
+      "at": 5000,
+      "data": {
+       "decision": "approve",
+       "action": "approve_plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "implementing",
+       "revision": 0,
+       "reason": "Plan ready"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "plan",
+       "kind": "plan",
+       "revision": 1,
+       "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+       "plan": {
+        "goal": "Add the QA greeting to the QA project",
+        "context": [
+         "The QA project prints a greeting."
+        ],
+        "constraints": [
+         "Keep the change small."
+        ],
+        "investigation": [
+         "Read src/qa.js."
+        ],
+        "steps": [
+         {
+          "n": 1,
+          "do": "Edit src/qa.js to print the QA greeting",
+          "done_when": "The QA greeting is printed"
+         }
+        ],
+        "capabilities": [
+         "read_repository",
+         "edit_file"
+        ],
+        "approval_boundaries": [
+         "Every write asks."
+        ],
+        "verification": [
+         "Run the QA tests."
+        ],
+        "completion": "The QA greeting is printed and tested.",
+        "non_goals": [
+         "No other QA files."
+        ]
+       }
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 12,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/qa-task",
+       "task": "QA: add the greeting.",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "headSha": "1111111111111111111111111111111111111111"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 13,
+      "type": "task.revision",
+      "at": 5000,
+      "data": {
+       "n": 1,
+       "headSha": "1111111111111111111111111111111111111111",
+       "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 14,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "revision",
+       "kind": "revision",
+       "revision": 1,
+       "headSha": "1111111111111111111111111111111111111111",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 15,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "implementing",
+       "to": "verifying",
+       "revision": 1,
+       "reason": "Change committed"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 16,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "tests",
+       "title": "Run the tests"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 17,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "kind": "test-report",
+       "passed": true,
+       "exitCode": 0,
+       "signal": null,
+       "timedOut": false,
+       "tail": "QA ok",
+       "tailBytes": 5,
+       "totalBytes": 5,
+       "truncated": false,
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "headSha": "1111111111111111111111111111111111111111",
+       "revision": 1,
+       "repo": "qa-repo",
+       "durationMs": 7,
+       "name": "test-report"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 18,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "tests",
+       "failed": false
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 19,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "verifying",
+       "to": "reviewing",
+       "revision": 1,
+       "reason": "Tests passed",
+       "reportHash": "ea3529073213863163c87128cc07656ca5d70486b959de6eaee1f906edf14e46"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 20,
+      "type": "review.requested",
+      "at": 5000,
+      "data": {
+       "status": "pending",
+       "reviewer": "planner",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "headSha": "1111111111111111111111111111111111111111",
+       "files": 1
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 21,
+      "type": "review.completed",
+      "at": 5000,
+      "data": {
+       "status": "completed",
+       "reviewer": "planner",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "headSha": "1111111111111111111111111111111111111111",
+       "verdict": "approve",
+       "summary": "The QA change does what the QA task asks.",
+       "findings": [],
+       "corrected": false
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 22,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "review",
+       "kind": "review-verdict",
+       "revision": 1,
+       "headSha": "1111111111111111111111111111111111111111",
+       "verdict": "approve",
+       "summary": "The QA change does what the QA task asks.",
+       "findings": []
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 23,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "audit",
+       "kind": "audit-report",
+       "revision": 1,
+       "headSha": "1111111111111111111111111111111111111111",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+       "overall": "complete",
+       "checks": [
+        {
+         "name": "revision-bound",
+         "status": "pass",
+         "detail": "Revision 1 is bound to 111111111111."
+        },
+        {
+         "name": "plan-recorded",
+         "status": "pass",
+         "detail": "The plan for this revision is recorded (c0c9b0150e48)."
+        },
+        {
+         "name": "tests-measured",
+         "status": "pass",
+         "detail": "The operator’s tests passed at this head (exit 0)."
+        },
+        {
+         "name": "completeness-gate",
+         "status": "pass",
+         "detail": "The completeness report allowed review of this revision."
+        },
+        {
+         "name": "review-bound",
+         "status": "pass",
+         "detail": "The Planner approved this head."
+        },
+        {
+         "name": "head-unchanged",
+         "status": "pass",
+         "detail": "The task branch is still at the audited head."
+        },
+        {
+         "name": "nothing-unresolved",
+         "status": "pass",
+         "detail": "No uncertain tool result or open approval remains."
+        }
+       ],
+       "evidence": {
+        "plan": {
+         "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc"
+        },
+        "tests": {
+         "passed": true,
+         "exitCode": 0,
+         "timedOut": false,
+         "durationMs": 7,
+         "headSha": "1111111111111111111111111111111111111111"
+        },
+        "review": {
+         "verdict": "approve",
+         "findings": 0,
+         "headSha": "1111111111111111111111111111111111111111"
+        },
+        "completeness": {
+         "reportHash": "ea3529073213863163c87128cc07656ca5d70486b959de6eaee1f906edf14e46"
+        }
+       },
+       "writeUp": {
+        "completeness": "complete",
+        "summary": "The QA revision is complete.",
+        "evidence": [
+         {
+          "source": "tests",
+          "note": "The QA tests passed."
+         }
+        ],
+        "gaps": []
+       }
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 24,
+      "type": "approval.requested",
+      "at": 5000,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "review_change",
+       "title": "Accept this change",
+       "kind": "review",
+       "command": "",
+       "paths": [
+        "src/qa.js"
+       ],
+       "reason": "The Planner approved revision 1 and the operator’s tests passed at it. Accepting records this reviewed head as accepted; nothing is merged.",
+       "arguments": {
+        "branch": "noevia/qa-task",
+        "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "headSha": "1111111111111111111111111111111111111111",
+        "files": [
+         "src/qa.js"
+        ],
+        "revision": 1,
+        "mergeInto": null
+       },
+       "diff": null,
+       "review": {
+        "status": "completed",
+        "reviewer": "planner",
+        "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "headSha": "1111111111111111111111111111111111111111",
+        "verdict": "approve",
+        "summary": "The QA change does what the QA task asks.",
+        "findings": [],
+        "corrected": false
+       },
+       "verdict": {
+        "verdict": "approve",
+        "summary": "The QA change does what the QA task asks.",
+        "findings": 0
+       },
+       "audit": {
+        "overall": "complete",
+        "checks": [
+         {
+          "name": "revision-bound",
+          "status": "pass"
+         },
+         {
+          "name": "plan-recorded",
+          "status": "pass"
+         },
+         {
+          "name": "tests-measured",
+          "status": "pass"
+         },
+         {
+          "name": "completeness-gate",
+          "status": "pass"
+         },
+         {
+          "name": "review-bound",
+          "status": "pass"
+         },
+         {
+          "name": "head-unchanged",
+          "status": "pass"
+         },
+         {
+          "name": "nothing-unresolved",
+          "status": "pass"
+         }
+        ],
+        "writeUp": {
+         "completeness": "complete",
+         "summary": "The QA revision is complete."
+        }
+       },
+       "evidence": {
+        "revision": 1,
+        "headSha": "1111111111111111111111111111111111111111",
+        "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+        "tests": {
+         "passed": true,
+         "exitCode": 0,
+         "timedOut": false,
+         "durationMs": 7,
+         "headSha": "1111111111111111111111111111111111111111"
+        },
+        "completeness": {
+         "reportHash": "ea3529073213863163c87128cc07656ca5d70486b959de6eaee1f906edf14e46"
+        }
+       },
+       "merge": null,
+       "mergeWithheld": null
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 25,
+      "type": "approval.decided",
+      "at": 5000,
+      "data": {
+       "decision": "approve",
+       "action": "review_change"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 26,
+      "type": "job.completed",
+      "at": 5000,
+      "data": {
+       "result": {
+        "pipeline": true,
+        "revision": 1,
+        "branch": "noevia/qa-task",
+        "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "headSha": "1111111111111111111111111111111111111111",
+        "verdict": "approve",
+        "audit": "complete",
+        "accepted": true,
+        "decision": "approve",
+        "merged": false,
+        "mergedInto": null,
+        "loops": 0
+       }
+      }
+     }
+    ]
+   },
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "planned",
+     "revision": 0
+    },
+    {
+     "event": "planner.plan",
+     "constrained": false,
+     "fallback": false,
+     "reason": null,
+     "corrected": false,
+     "problems": []
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "implementing",
+     "revision": 0
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "verifying",
+     "revision": 1
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "reviewing",
+     "revision": 1
+    },
+    {
+     "event": "code.reviewed",
+     "verdict": "approve",
+     "findings": 0,
+     "corrected": false
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_decided",
+     "decision": "approve",
+     "revision": 1,
+     "merge": false
+    }
+   ]
+  },
+  "no-plan-card": {
+   "enabled": true,
+   "sandboxKind": "sandbox",
+   "noCreate": false,
+   "inference": null,
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner"
+     }
+    },
+    {
+     "waitCard": "<T1>"
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve_all",
+      "<A1>"
+     ]
+    },
+    {
+     "waitEnd": "<T1>"
+    }
+   ],
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/qa-task",
+      "workspace": "/qa/work/qa-task",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "planner",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "review_change"
+    },
+    {
+     "status": 200,
+     "body": {
+      "ok": true
+     }
+    },
+    {
+     "waited": "ended"
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 5000,
+      "data": {}
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "planned",
+       "revision": 0,
+       "reason": "Planning"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/qa-task",
+       "task": "QA: add the greeting.",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "pipeline",
+       "kind": "pipeline",
+       "version": 1,
+       "maxLoops": 2,
+       "merge": false
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan",
+       "title": "The Planner writes the plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "implementing",
+       "revision": 0,
+       "reason": "Plan ready"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "plan",
+       "kind": "plan",
+       "revision": 1,
+       "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+       "plan": {
+        "goal": "Add the QA greeting to the QA project",
+        "context": [
+         "The QA project prints a greeting."
+        ],
+        "constraints": [
+         "Keep the change small."
+        ],
+        "investigation": [
+         "Read src/qa.js."
+        ],
+        "steps": [
+         {
+          "n": 1,
+          "do": "Edit src/qa.js to print the QA greeting",
+          "done_when": "The QA greeting is printed"
+         }
+        ],
+        "capabilities": [
+         "read_repository",
+         "edit_file"
+        ],
+        "approval_boundaries": [
+         "Every write asks."
+        ],
+        "verification": [
+         "Run the QA tests."
+        ],
+        "completion": "The QA greeting is printed and tested.",
+        "non_goals": [
+         "No other QA files."
+        ]
+       }
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/qa-task",
+       "task": "QA: add the greeting.",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "headSha": "1111111111111111111111111111111111111111"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "task.revision",
+      "at": 5000,
+      "data": {
+       "n": 1,
+       "headSha": "1111111111111111111111111111111111111111",
+       "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 12,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "revision",
+       "kind": "revision",
+       "revision": 1,
+       "headSha": "1111111111111111111111111111111111111111",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 13,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "implementing",
+       "to": "verifying",
+       "revision": 1,
+       "reason": "Change committed"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 14,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "tests",
+       "title": "Run the tests"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 15,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "kind": "test-report",
+       "passed": true,
+       "exitCode": 0,
+       "signal": null,
+       "timedOut": false,
+       "tail": "QA ok",
+       "tailBytes": 5,
+       "totalBytes": 5,
+       "truncated": false,
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "headSha": "1111111111111111111111111111111111111111",
+       "revision": 1,
+       "repo": "qa-repo",
+       "durationMs": 7,
+       "name": "test-report"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 16,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "tests",
+       "failed": false
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 17,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "verifying",
+       "to": "reviewing",
+       "revision": 1,
+       "reason": "Tests passed",
+       "reportHash": "ea3529073213863163c87128cc07656ca5d70486b959de6eaee1f906edf14e46"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 18,
+      "type": "review.requested",
+      "at": 5000,
+      "data": {
+       "status": "pending",
+       "reviewer": "planner",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "headSha": "1111111111111111111111111111111111111111",
+       "files": 1
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 19,
+      "type": "review.completed",
+      "at": 5000,
+      "data": {
+       "status": "completed",
+       "reviewer": "planner",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "headSha": "1111111111111111111111111111111111111111",
+       "verdict": "approve",
+       "summary": "The QA change does what the QA task asks.",
+       "findings": [],
+       "corrected": false
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 20,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "review",
+       "kind": "review-verdict",
+       "revision": 1,
+       "headSha": "1111111111111111111111111111111111111111",
+       "verdict": "approve",
+       "summary": "The QA change does what the QA task asks.",
+       "findings": []
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 21,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "audit",
+       "kind": "audit-report",
+       "revision": 1,
+       "headSha": "1111111111111111111111111111111111111111",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+       "overall": "complete",
+       "checks": [
+        {
+         "name": "revision-bound",
+         "status": "pass",
+         "detail": "Revision 1 is bound to 111111111111."
+        },
+        {
+         "name": "plan-recorded",
+         "status": "pass",
+         "detail": "The plan for this revision is recorded (c0c9b0150e48)."
+        },
+        {
+         "name": "tests-measured",
+         "status": "pass",
+         "detail": "The operator’s tests passed at this head (exit 0)."
+        },
+        {
+         "name": "completeness-gate",
+         "status": "pass",
+         "detail": "The completeness report allowed review of this revision."
+        },
+        {
+         "name": "review-bound",
+         "status": "pass",
+         "detail": "The Planner approved this head."
+        },
+        {
+         "name": "head-unchanged",
+         "status": "pass",
+         "detail": "The task branch is still at the audited head."
+        },
+        {
+         "name": "nothing-unresolved",
+         "status": "pass",
+         "detail": "No uncertain tool result or open approval remains."
+        }
+       ],
+       "evidence": {
+        "plan": {
+         "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc"
+        },
+        "tests": {
+         "passed": true,
+         "exitCode": 0,
+         "timedOut": false,
+         "durationMs": 7,
+         "headSha": "1111111111111111111111111111111111111111"
+        },
+        "review": {
+         "verdict": "approve",
+         "findings": 0,
+         "headSha": "1111111111111111111111111111111111111111"
+        },
+        "completeness": {
+         "reportHash": "ea3529073213863163c87128cc07656ca5d70486b959de6eaee1f906edf14e46"
+        }
+       },
+       "writeUp": {
+        "completeness": "complete",
+        "summary": "The QA revision is complete.",
+        "evidence": [
+         {
+          "source": "tests",
+          "note": "The QA tests passed."
+         }
+        ],
+        "gaps": []
+       }
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 22,
+      "type": "approval.requested",
+      "at": 5000,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "review_change",
+       "title": "Accept this change",
+       "kind": "review",
+       "command": "",
+       "paths": [
+        "src/qa.js"
+       ],
+       "reason": "The Planner approved revision 1 and the operator’s tests passed at it. Accepting records this reviewed head as accepted; nothing is merged.",
+       "arguments": {
+        "branch": "noevia/qa-task",
+        "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "headSha": "1111111111111111111111111111111111111111",
+        "files": [
+         "src/qa.js"
+        ],
+        "revision": 1,
+        "mergeInto": null
+       },
+       "diff": null,
+       "review": {
+        "status": "completed",
+        "reviewer": "planner",
+        "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "headSha": "1111111111111111111111111111111111111111",
+        "verdict": "approve",
+        "summary": "The QA change does what the QA task asks.",
+        "findings": [],
+        "corrected": false
+       },
+       "verdict": {
+        "verdict": "approve",
+        "summary": "The QA change does what the QA task asks.",
+        "findings": 0
+       },
+       "audit": {
+        "overall": "complete",
+        "checks": [
+         {
+          "name": "revision-bound",
+          "status": "pass"
+         },
+         {
+          "name": "plan-recorded",
+          "status": "pass"
+         },
+         {
+          "name": "tests-measured",
+          "status": "pass"
+         },
+         {
+          "name": "completeness-gate",
+          "status": "pass"
+         },
+         {
+          "name": "review-bound",
+          "status": "pass"
+         },
+         {
+          "name": "head-unchanged",
+          "status": "pass"
+         },
+         {
+          "name": "nothing-unresolved",
+          "status": "pass"
+         }
+        ],
+        "writeUp": {
+         "completeness": "complete",
+         "summary": "The QA revision is complete."
+        }
+       },
+       "evidence": {
+        "revision": 1,
+        "headSha": "1111111111111111111111111111111111111111",
+        "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+        "tests": {
+         "passed": true,
+         "exitCode": 0,
+         "timedOut": false,
+         "durationMs": 7,
+         "headSha": "1111111111111111111111111111111111111111"
+        },
+        "completeness": {
+         "reportHash": "ea3529073213863163c87128cc07656ca5d70486b959de6eaee1f906edf14e46"
+        }
+       },
+       "merge": null,
+       "mergeWithheld": null
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 23,
+      "type": "approval.decided",
+      "at": 5000,
+      "data": {
+       "decision": "approve_all",
+       "action": "review_change"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 24,
+      "type": "job.completed",
+      "at": 5000,
+      "data": {
+       "result": {
+        "pipeline": true,
+        "revision": 1,
+        "branch": "noevia/qa-task",
+        "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "headSha": "1111111111111111111111111111111111111111",
+        "verdict": "approve",
+        "audit": "complete",
+        "accepted": true,
+        "decision": "approve_all",
+        "merged": false,
+        "mergedInto": null,
+        "loops": 0
+       }
+      }
+     }
+    ]
+   },
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "planned",
+     "revision": 0
+    },
+    {
+     "event": "planner.plan",
+     "constrained": false,
+     "fallback": false,
+     "reason": null,
+     "corrected": false,
+     "problems": []
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "implementing",
+     "revision": 0
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "verifying",
+     "revision": 1
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "reviewing",
+     "revision": 1
+    },
+    {
+     "event": "code.reviewed",
+     "verdict": "approve",
+     "findings": 0,
+     "corrected": false
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_decided",
+     "decision": "approve_all",
+     "revision": 1,
+     "merge": false
+    }
+   ]
+  },
+  "plan-denied": {
+   "enabled": true,
+   "sandboxKind": "sandbox",
+   "noCreate": false,
+   "inference": null,
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner",
+      "approvePlan": true
+     }
+    },
+    {
+     "waitCard": "<T1>"
+    },
+    {
+     "decide": [
+      "<T1>",
+      "deny",
+      "<A1>"
+     ]
+    },
+    {
+     "waitEnd": "<T1>"
+    }
+   ],
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/qa-task",
+      "workspace": "/qa/work/qa-task",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "planner",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "approve_plan"
+    },
+    {
+     "status": 200,
+     "body": {
+      "ok": true
+     }
+    },
+    {
+     "waited": "ended"
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 5000,
+      "data": {}
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "planned",
+       "revision": 0,
+       "reason": "Planning"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/qa-task",
+       "task": "QA: add the greeting.",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "pipeline",
+       "kind": "pipeline",
+       "version": 1,
+       "maxLoops": 2,
+       "merge": false
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan",
+       "title": "The Planner writes the plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "approval.requested",
+      "at": 5000,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "approve_plan",
+       "title": "Approve the plan",
+       "kind": "plan",
+       "command": "",
+       "paths": [],
+       "reason": "The Planner’s plan for this task. Approving lets the coding agent start on it; every write it makes still asks.",
+       "arguments": {
+        "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+        "goal": "Add the QA greeting to the QA project",
+        "steps": [
+         "Edit src/qa.js to print the QA greeting"
+        ]
+       },
+       "diff": null,
+       "plan": {
+        "goal": "Add the QA greeting to the QA project",
+        "context": [
+         "The QA project prints a greeting."
+        ],
+        "constraints": [
+         "Keep the change small."
+        ],
+        "investigation": [
+         "Read src/qa.js."
+        ],
+        "steps": [
+         {
+          "n": 1,
+          "do": "Edit src/qa.js to print the QA greeting",
+          "done_when": "The QA greeting is printed"
+         }
+        ],
+        "capabilities": [
+         "read_repository",
+         "edit_file"
+        ],
+        "approval_boundaries": [
+         "Every write asks."
+        ],
+        "verification": [
+         "Run the QA tests."
+        ],
+        "completion": "The QA greeting is printed and tested.",
+        "non_goals": [
+         "No other QA files."
+        ]
+       }
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "approval.decided",
+      "at": 5000,
+      "data": {
+       "decision": "deny",
+       "action": "approve_plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "blocked",
+       "revision": 0,
+       "reason": "The plan was not approved."
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "job.failed",
+      "at": 5000,
+      "data": {
+       "error": "The plan was not approved.",
+       "result": {
+        "pipeline": true,
+        "blocked": true,
+        "revision": 0,
+        "headSha": null,
+        "loops": 0
+       }
+      }
+     }
+    ]
+   },
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "planned",
+     "revision": 0
+    },
+    {
+     "event": "planner.plan",
+     "constrained": false,
+     "fallback": false,
+     "reason": null,
+     "corrected": false,
+     "problems": []
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "blocked",
+     "revision": 0
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_blocked",
+     "revision": 0
+    }
+   ]
+  },
+  "cancel-on-plan-card": {
+   "enabled": true,
+   "sandboxKind": "sandbox",
+   "noCreate": false,
+   "inference": null,
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner",
+      "approvePlan": true
+     }
+    },
+    {
+     "waitCard": "<T1>"
+    },
+    {
+     "cancel": "<T1>"
+    },
+    {
+     "waitEnd": "<T1>"
+    },
+    {
+     "decide": [
+      "<T1>",
+      "approve",
+      "<A1>"
+     ]
+    },
+    {
+     "cancel": "<T1>"
+    },
+    {
+     "facts": true
+    }
+   ],
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/qa-task",
+      "workspace": "/qa/work/qa-task",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "planner",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "approve_plan"
+    },
+    {
+     "status": 200,
+     "body": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "waiting_approval",
+      "stage": null,
+      "error": null,
+      "task": "QA: add the greeting.",
+      "branch": "noevia/qa-task",
+      "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "headSha": null,
+      "meta": null,
+      "identityHash": null,
+      "createdAt": 5000,
+      "updatedAt": 5000,
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "steps": [
+       {
+        "id": "pipeline.plan",
+        "title": "The Planner writes the plan",
+        "status": "completed"
+       }
+      ],
+      "plan": null,
+      "assistantOutput": null,
+      "approval": null,
+      "result": null,
+      "lifecycle": "planned",
+      "revision": null,
+      "stages": [
+       {
+        "from": "planned",
+        "to": "planned",
+        "revision": 0,
+        "reason": "Planning",
+        "at": 5000
+       }
+      ],
+      "pipeline": {
+       "maxLoops": 2,
+       "merge": false,
+       "plan": null,
+       "evidence": [],
+       "audit": null
+      }
+     }
+    },
+    {
+     "waited": "ended"
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "That approval is no longer waiting."
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "cancelled",
+      "stage": null,
+      "error": null,
+      "task": "QA: add the greeting.",
+      "branch": "noevia/qa-task",
+      "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "headSha": null,
+      "meta": null,
+      "identityHash": null,
+      "createdAt": 5000,
+      "updatedAt": 5000,
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "steps": [
+       {
+        "id": "pipeline.plan",
+        "title": "The Planner writes the plan",
+        "status": "completed"
+       }
+      ],
+      "plan": null,
+      "assistantOutput": null,
+      "approval": null,
+      "result": null,
+      "lifecycle": "blocked",
+      "revision": null,
+      "stages": [
+       {
+        "from": "planned",
+        "to": "planned",
+        "revision": 0,
+        "reason": "Planning",
+        "at": 5000
+       },
+       {
+        "from": "planned",
+        "to": "blocked",
+        "revision": 0,
+        "reason": "Cancelled",
+        "at": 5000
+       }
+      ],
+      "pipeline": {
+       "maxLoops": 2,
+       "merge": false,
+       "plan": null,
+       "evidence": [],
+       "audit": null
+      }
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       },
+       {
+        "id": "planner",
+        "label": "Planner",
+        "available": true,
+        "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 5000,
+      "data": {}
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "planned",
+       "revision": 0,
+       "reason": "Planning"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/qa-task",
+       "task": "QA: add the greeting.",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "pipeline",
+       "kind": "pipeline",
+       "version": 1,
+       "maxLoops": 2,
+       "merge": false
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan",
+       "title": "The Planner writes the plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "approval.requested",
+      "at": 5000,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "approve_plan",
+       "title": "Approve the plan",
+       "kind": "plan",
+       "command": "",
+       "paths": [],
+       "reason": "The Planner’s plan for this task. Approving lets the coding agent start on it; every write it makes still asks.",
+       "arguments": {
+        "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+        "goal": "Add the QA greeting to the QA project",
+        "steps": [
+         "Edit src/qa.js to print the QA greeting"
+        ]
+       },
+       "diff": null,
+       "plan": {
+        "goal": "Add the QA greeting to the QA project",
+        "context": [
+         "The QA project prints a greeting."
+        ],
+        "constraints": [
+         "Keep the change small."
+        ],
+        "investigation": [
+         "Read src/qa.js."
+        ],
+        "steps": [
+         {
+          "n": 1,
+          "do": "Edit src/qa.js to print the QA greeting",
+          "done_when": "The QA greeting is printed"
+         }
+        ],
+        "capabilities": [
+         "read_repository",
+         "edit_file"
+        ],
+        "approval_boundaries": [
+         "Every write asks."
+        ],
+        "verification": [
+         "Run the QA tests."
+        ],
+        "completion": "The QA greeting is printed and tested.",
+        "non_goals": [
+         "No other QA files."
+        ]
+       }
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "approval.decided",
+      "at": 5000,
+      "data": {
+       "decision": "aborted",
+       "action": "approve_plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "blocked",
+       "revision": 0,
+       "reason": "Cancelled"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "job.cancelled",
+      "at": 5000,
+      "data": {}
+     }
+    ]
+   },
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "planned",
+     "revision": 0
+    },
+    {
+     "event": "planner.plan",
+     "constrained": false,
+     "fallback": false,
+     "reason": null,
+     "corrected": false,
+     "problems": []
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "blocked",
+     "revision": 0
+    }
+   ]
+  },
+  "second-start-while-running": {
+   "enabled": true,
+   "sandboxKind": "sandbox",
+   "noCreate": false,
+   "inference": null,
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner",
+      "approvePlan": true
+     }
+    },
+    {
+     "waitCard": "<T1>"
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner"
+     }
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "direct"
+     }
+    },
+    {
+     "cancel": "<T1>"
+    },
+    {
+     "waitEnd": "<T1>"
+    }
+   ],
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/qa-task",
+      "workspace": "/qa/work/qa-task",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "planner",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "approve_plan"
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "This project already has a task running."
+     }
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "This project already has a task running."
+     }
+    },
+    {
+     "status": 200,
+     "body": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "status": "waiting_approval",
+      "stage": null,
+      "error": null,
+      "task": "QA: add the greeting.",
+      "branch": "noevia/qa-task",
+      "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "headSha": null,
+      "meta": null,
+      "identityHash": null,
+      "createdAt": 5000,
+      "updatedAt": 5000,
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "steps": [
+       {
+        "id": "pipeline.plan",
+        "title": "The Planner writes the plan",
+        "status": "completed"
+       }
+      ],
+      "plan": null,
+      "assistantOutput": null,
+      "approval": null,
+      "result": null,
+      "lifecycle": "planned",
+      "revision": null,
+      "stages": [
+       {
+        "from": "planned",
+        "to": "planned",
+        "revision": 0,
+        "reason": "Planning",
+        "at": 5000
+       }
+      ],
+      "pipeline": {
+       "maxLoops": 2,
+       "merge": false,
+       "plan": null,
+       "evidence": [],
+       "audit": null
+      }
+     }
+    },
+    {
+     "waited": "ended"
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.started",
+      "at": 5000,
+      "data": {}
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 3,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "planned",
+       "revision": 0,
+       "reason": "Planning"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 4,
+      "type": "checkpoint.created",
+      "at": 5000,
+      "data": {
+       "branch": "noevia/qa-task",
+       "task": "QA: add the greeting.",
+       "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 5,
+      "type": "artifact.created",
+      "at": 5000,
+      "data": {
+       "name": "pipeline",
+       "kind": "pipeline",
+       "version": 1,
+       "maxLoops": 2,
+       "merge": false
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 6,
+      "type": "step.started",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan",
+       "title": "The Planner writes the plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 7,
+      "type": "step.completed",
+      "at": 5000,
+      "data": {
+       "id": "pipeline.plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 8,
+      "type": "approval.requested",
+      "at": 5000,
+      "data": {
+       "taskId": "00000000-0000-4000-8000-000000000001",
+       "action": "approve_plan",
+       "title": "Approve the plan",
+       "kind": "plan",
+       "command": "",
+       "paths": [],
+       "reason": "The Planner’s plan for this task. Approving lets the coding agent start on it; every write it makes still asks.",
+       "arguments": {
+        "planHash": "c0c9b0150e489d480f531627359f04e74da32b37957e9bab131e9b34dc16d9fc",
+        "goal": "Add the QA greeting to the QA project",
+        "steps": [
+         "Edit src/qa.js to print the QA greeting"
+        ]
+       },
+       "diff": null,
+       "plan": {
+        "goal": "Add the QA greeting to the QA project",
+        "context": [
+         "The QA project prints a greeting."
+        ],
+        "constraints": [
+         "Keep the change small."
+        ],
+        "investigation": [
+         "Read src/qa.js."
+        ],
+        "steps": [
+         {
+          "n": 1,
+          "do": "Edit src/qa.js to print the QA greeting",
+          "done_when": "The QA greeting is printed"
+         }
+        ],
+        "capabilities": [
+         "read_repository",
+         "edit_file"
+        ],
+        "approval_boundaries": [
+         "Every write asks."
+        ],
+        "verification": [
+         "Run the QA tests."
+        ],
+        "completion": "The QA greeting is printed and tested.",
+        "non_goals": [
+         "No other QA files."
+        ]
+       }
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 9,
+      "type": "approval.decided",
+      "at": 5000,
+      "data": {
+       "decision": "aborted",
+       "action": "approve_plan"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 10,
+      "type": "task.stage",
+      "at": 5000,
+      "data": {
+       "from": "planned",
+       "to": "blocked",
+       "revision": 0,
+       "reason": "Cancelled"
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 11,
+      "type": "job.cancelled",
+      "at": 5000,
+      "data": {}
+     }
+    ]
+   },
+   "logs": [
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "planned",
+     "revision": 0
+    },
+    {
+     "event": "planner.plan",
+     "constrained": false,
+     "fallback": false,
+     "reason": null,
+     "corrected": false,
+     "problems": []
+    },
+    {
+     "at": 5000,
+     "taskId": "00000000-0000-4000-8000-000000000001",
+     "event": "code.pipeline_stage",
+     "to": "blocked",
+     "revision": 0
+    }
+   ]
+  },
+  "flag-off": {
+   "enabled": false,
+   "sandboxKind": "sandbox",
+   "noCreate": false,
+   "inference": null,
+   "ops": [
+    {
+     "facts": true
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner"
+     }
+    }
+   ],
+   "answers": [
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "Unknown prompt preparation."
+     }
+    }
+   ],
+   "journals": {},
+   "logs": []
+  },
+  "spawn": {
+   "enabled": true,
+   "sandboxKind": "spawn",
+   "noCreate": false,
+   "inference": null,
+   "ops": [
+    {
+     "facts": true
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner"
+     }
+    }
+   ],
+   "answers": [
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       }
+      ],
+      "sandboxed": false,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    },
+    {
+     "status": 400,
+     "body": {
+      "error": "Unknown prompt preparation."
+     }
+    }
+   ],
+   "journals": {},
+   "logs": []
+  },
+  "not-set-up": {
+   "enabled": true,
+   "sandboxKind": "sandbox",
+   "noCreate": true,
+   "inference": null,
+   "ops": [
+    {
+     "facts": true
+    },
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner"
+     }
+    }
+   ],
+   "answers": [
+    {
+     "status": 200,
+     "body": {
+      "repositories": [
+       {
+        "id": "qa-repo"
+       }
+      ],
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command",
+       "install_dependency",
+       "network",
+       "delete",
+       "git_push"
+      ],
+      "defaultCapabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "harnesses": [
+       {
+        "id": "opencode",
+        "label": "OpenCode",
+        "version": "0.0.0-qa"
+       }
+      ],
+      "promptPreparation": [
+       {
+        "id": "direct",
+        "label": "Direct",
+        "available": true,
+        "reason": "Your request goes to the model as you wrote it."
+       },
+       {
+        "id": "local",
+        "label": "Local architect",
+        "available": false,
+        "reason": "Not offered yet: as an architect the 4B returned 0 of 18 usable execution prompts (list fields came back as strings). Direct stays the default until that changes."
+       },
+       {
+        "id": "frontier",
+        "label": "Frontier architect",
+        "available": false,
+        "reason": "Not built: it needs a provider, official authentication and the outbound allowlist enforced in code (spec §2)."
+       },
+       {
+        "id": "planner",
+        "label": "Planner",
+        "available": true,
+        "reason": "The Planner plans the task, the coding agent carries it out, the operator’s tests verify it and the Planner reviews it, at most twice more, before you accept."
+       }
+      ],
+      "sandboxed": true,
+      "network": false,
+      "networkState": "unconfigured",
+      "approvals": {}
+     }
+    },
+    {
+     "status": 409,
+     "body": {
+      "error": "The Planner pipeline is not set up on this server."
+     }
+    }
+   ],
+   "journals": {},
+   "logs": []
+  },
+  "paused": {
+   "enabled": true,
+   "sandboxKind": "sandbox",
+   "noCreate": false,
+   "inference": "paused",
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner"
+     }
+    }
+   ],
+   "answers": [
+    {
+     "status": 503,
+     "body": {
+      "error": "Coding tasks wait while noevia tunes or reconfigures models. Start this task when that finishes."
+     }
+    }
+   ],
+   "journals": {},
+   "logs": []
+  },
+  "lease-refused": {
+   "enabled": true,
+   "sandboxKind": "sandbox",
+   "noCreate": false,
+   "inference": "refuses",
+   "ops": [
+    {
+     "start": {
+      "repository": "qa-repo",
+      "prompt": "QA: add the greeting.",
+      "promptPreparation": "planner"
+     }
+    },
+    {
+     "waitEnd": "<T1>"
+    }
+   ],
+   "answers": [
+    {
+     "status": 202,
+     "body": {
+      "taskId": "00000000-0000-4000-8000-000000000001",
+      "branch": "noevia/qa-task",
+      "workspace": "/qa/work/qa-task",
+      "repository": "qa-repo",
+      "capabilities": [
+       "read_repository",
+       "edit_file",
+       "execute_command"
+      ],
+      "domains": [],
+      "harness": "opencode",
+      "promptPreparation": "planner",
+      "sharedContext": false
+     }
+    },
+    {
+     "waited": "ended"
+    }
+   ],
+   "journals": {
+    "00000000-0000-4000-8000-000000000001": [
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 1,
+      "type": "job.created",
+      "at": 5000,
+      "data": {
+       "kind": "code",
+       "projectId": "qa-project",
+       "parentId": null,
+       "capabilities": [
+        "read_repository",
+        "edit_file",
+        "execute_command"
+       ]
+      }
+     },
+     {
+      "job": "00000000-0000-4000-8000-000000000001",
+      "seq": 2,
+      "type": "job.failed",
+      "at": 5000,
+      "data": {
+       "error": "Coding tasks wait while noevia tunes or reconfigures models. Start this task when that finishes."
+      }
+     }
+    ]
+   },
+   "logs": []
+  }
+ }
+}

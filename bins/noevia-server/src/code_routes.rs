@@ -14,10 +14,24 @@
 //! The order is core's: the flag (404), the administrator (403), the project (404), the method (405),
 //! the body (400/413), then the service's own answers.
 //!
+//! The Planner preparation (core code-service.cjs `PLANNER_PREPARATION`, the Code pipeline #705)
+//! runs here too, through crates/code-pipeline's driver over code-harness's `pipeline_host`, with
+//! the role engine (crates/role-engine) on [`FrontRoles`] and the verifier (crates/code-verify,
+//! `CODE_VERIFY_ENDPOINT`). It is offered exactly when Node offers it: features.codeHarness and
+//! features.codePipeline on (read from the front's own settings, as features.cjs reads them) and
+//! Code mode in the sandbox (`CODE_HARNESS_ENDPOINT`). Its start needs the role engine's endpoint
+//! from core's engine facts (`role`, an additive fact): a core without it answers the Planner start
+//! with Node's 409 "The Planner pipeline is not set up on this server.". Flags off, the front
+//! offers and runs exactly what it did before.
+//!
 //! Named differences (each refused, never run differently):
-//! - the Code role on an inference machine (core's relay, #1853) is refused with 409;
-//! - the Planner preparation is not offered and no Planner review runs (`codePipeline`,
-//!   `plannerReview` stay Node's): the switch stays off where either flag is on;
+//! - the Code role on an inference machine (core's relay, #1853) is refused with 409, for the
+//!   Planner too (so no role call ever goes to a machine);
+//! - no Planner review of a direct task runs (`plannerReview` stays Node's): the switch stays off
+//!   where that flag is on;
+//! - the inference budget check (core `modelManager.loadRefusal`) is core's, asked over its bridge:
+//!   when core cannot answer, the Planner's pin is refused as over budget ([`BUDGET_UNCHECKED`])
+//!   rather than pinned unchecked;
 //! - a Cowork session's task start from chat stays Node's, which refuses it while the front owns Code.
 //!
 //! The lease: a task holds the inference admission authority's maintenance-only lease (the one
@@ -36,10 +50,12 @@ use axum::{
     response::IntoResponse,
 };
 use code_harness::executor::{Egress, Engine, Fail, Lease};
+use code_harness::pipeline_host::{EngineRoles, Flag, PipeHost, PipeVerify};
 use code_harness::service::{
-    default_harnesses, parse_repos, parse_user, Inference, Options, Project, Resolved, Service,
-    APPROVAL_TIMEOUT,
+    default_harnesses, parse_repos, parse_user, Inference, Options, Parts, Project, Resolved,
+    Service, Setup, APPROVAL_TIMEOUT,
 };
+use code_pipeline::driver;
 use engine_admission::{Admission, Ask};
 use js_json::{to_js_string, wtf16, JValue};
 use serde_json::json;
@@ -52,6 +68,9 @@ pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";
 const ENGINE_PATH: &str = "/internal/code/engine";
 const ENGINE_DEADLINE: Duration = Duration::from_secs(5);
 const UNAVAILABLE: &str = "Code tasks are unavailable right now. Try again shortly.";
+/// The Planner's pin when core cannot say whether the model fits the inference budget.
+pub const BUDGET_UNCHECKED: &str =
+    "The inference memory budget could not be checked, so no model was pinned for this task.";
 const ON_A_MACHINE: &str = "The Code role runs on an inference machine, which this server's native Code executor cannot reach yet. Move the Code role back to this machine, or ask an administrator.";
 /// core `readJson`'s limit.
 const BODY_LIMIT: usize = 1024 * 1024;
@@ -70,6 +89,8 @@ pub struct Settings {
     pub harness_user: Option<String>,
     pub path: Option<String>,
     pub lang: Option<String>,
+    /// `CODE_VERIFY_ENDPOINT`: the pipeline's verifier.
+    pub verify_endpoint: Option<String>,
 }
 
 impl Settings {
@@ -92,6 +113,7 @@ impl Settings {
             harness_user: get("CODE_HARNESS_USER"),
             path: get("PATH"),
             lang: get("LANG"),
+            verify_endpoint: set("CODE_VERIFY_ENDPOINT"),
         }
     }
 
@@ -375,6 +397,229 @@ impl Inference for FrontGate {
     }
 }
 
+fn log_code(entry: &JValue) {
+    println!("[code] {}", wtf16::stringify(entry).unwrap_or_default());
+}
+
+/// features.cjs `enabled(name)` for a restart-free flag: the env value, else the admin setting,
+/// else the default; an unreadable setting is off.
+pub fn feature(app: &App, feature: server_features::Feature) -> bool {
+    let spec = server_features::spec(feature);
+    let env = server_features::Feature::ALL
+        .iter()
+        .position(|f| *f == feature)
+        .and_then(|i| app.config.feature_context_env.get(i).copied().flatten());
+    let stored = if env.is_some() {
+        None
+    } else {
+        app.writes.writer().ok().and_then(|w| {
+            w.read(|r| {
+                r.row(
+                    "SELECT CASE WHEN typeof(value)='text' AND value IN ('true','false') THEN value ELSE NULL END FROM settings WHERE key=?1",
+                    [spec.setting],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+            })
+            .ok()
+            .flatten()
+            .flatten()
+        })
+    };
+    server_features::evaluate(feature, env, stored.as_deref(), true).enabled
+}
+
+/// core index.cjs's `pipeline: { enabled, create }` for the front.
+struct FrontPipeline {
+    app: std::sync::Weak<App>,
+    rt: tokio::runtime::Handle,
+    verify: Arc<code_verify::Adapter>,
+}
+
+/// core's `role` engine fact (index.cjs `codeRoleEndpoint`): `None` when core did not give one.
+pub fn role_endpoint(facts: &JValue) -> Option<role_engine::Endpoint> {
+    let role = facts.get("role");
+    if !role.is_object() {
+        return None;
+    }
+    let text = |v: &JValue| v.as_str().filter(|s| !s.is_empty()).map(str::to_string);
+    Some(role_engine::Endpoint {
+        base_url: text(role.get("baseUrl")),
+        api_key: text(role.get("apiKey")),
+        model: text(role.get("model")),
+        provider: JValue::obj([(
+            "capabilities",
+            JValue::obj([(
+                "jsonSchemaParam",
+                JValue::Bool(role.get("jsonSchema").as_bool() == Some(true)),
+            )]),
+        )]),
+        external: role.get("external").as_bool() == Some(true),
+        machine: None,
+    })
+}
+
+impl Setup for FrontPipeline {
+    fn enabled(&self) -> bool {
+        use server_features::Feature;
+        self.app.upgrade().is_some_and(|app| {
+            feature(&app, Feature::CodeHarness) && feature(&app, Feature::CodePipeline)
+        })
+    }
+
+    fn create(&self, parts: Parts, resolved: &Resolved) -> Option<driver::Deps> {
+        let endpoint = role_endpoint(resolved.facts.as_ref()?)?;
+        let client = model_stream::client().ok()?;
+        let engine_key = endpoint.api_key.clone();
+        let roles = role_engine::RoleEngine::new(FrontRoles {
+            endpoint,
+            app: self.app.clone(),
+            client,
+        });
+        let app = self.app.clone();
+        let flag = move |f: Flag| {
+            use server_features::Feature;
+            let feature_of = match f {
+                Flag::Merge => Feature::CodeMerge,
+                Flag::Constrain => Feature::ConstrainedPlanDecoding,
+                Flag::Guard => Feature::ExecutorGuard,
+            };
+            app.upgrade().is_some_and(|a| feature(&a, feature_of))
+        };
+        Some(driver::Deps::new(
+            parts.jobs,
+            parts.workspaces,
+            parts.harness,
+            Some(Arc::new(EngineRoles {
+                engine: Arc::new(roles),
+                blocking: Arc::new(role_engine::Blocking::with_handle(self.rt.clone())),
+            })),
+            Some(Arc::new(PipeVerify {
+                adapter: self.verify.clone(),
+                workspaces: parts.tree,
+            })),
+            parts.approvals,
+            Arc::new(PipeHost {
+                flag: Arc::new(flag),
+                engine_key,
+                log: Arc::new(|e| log_code(&e)),
+                now: Arc::new(server_projects::task_store::date_now),
+            }),
+        ))
+    }
+}
+
+/// The role engine's dependencies in the front (core index.cjs `createRoleEngine({...})`): this
+/// start's endpoint, the front's HTTP client (no redirect, no proxy), the sidecars' models as
+/// the keep-list (core's facts), the roles file beside models.ini, core's budget check, no
+/// admission (production passes none) and no machines (refused before any start).
+pub struct FrontRoles {
+    endpoint: role_engine::Endpoint,
+    app: std::sync::Weak<App>,
+    client: reqwest::Client,
+}
+
+/// A response body, chunk by chunk.
+pub struct FrontBody(Option<reqwest::Response>);
+
+fn transport(detail: impl ToString) -> role_engine::TransportError {
+    role_engine::TransportError {
+        detail: detail.to_string(),
+    }
+}
+
+impl role_engine::Body for FrontBody {
+    async fn read(&mut self) -> Result<Option<Vec<u8>>, role_engine::TransportError> {
+        match self.0.as_mut() {
+            None => Ok(None),
+            Some(r) => r
+                .chunk()
+                .await
+                .map(|c| c.map(|b| b.to_vec()))
+                .map_err(transport),
+        }
+    }
+    fn cancel(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl role_engine::Deps for FrontRoles {
+    type Body = FrontBody;
+
+    fn engine(&self) -> Option<role_engine::Endpoint> {
+        Some(self.endpoint.clone())
+    }
+
+    async fn fetch(
+        &self,
+        req: role_engine::Request,
+        cancel: role_engine::Cancel,
+    ) -> Result<role_engine::Response<FrontBody>, role_engine::TransportError> {
+        let method = if req.method == "GET" {
+            reqwest::Method::GET
+        } else {
+            reqwest::Method::POST
+        };
+        let mut b = self.client.request(method, &req.url);
+        for (k, v) in &req.headers {
+            b = b.header(k.as_str(), v.as_str());
+        }
+        if let Some(body) = req.body {
+            b = b.body(body);
+        }
+        if let Some(ms) = req.timeout_ms {
+            b = b.timeout(Duration::from_millis(ms));
+        }
+        let sent = tokio::select! {
+            r = b.send() => r.map_err(transport)?,
+            () = cancel.cancelled() => return Err(transport("aborted")),
+        };
+        Ok(role_engine::Response {
+            status: sent.status().as_u16(),
+            body: FrontBody(Some(sent)),
+        })
+    }
+
+    async fn keep(&self) -> Option<Vec<String>> {
+        let app = self.app.upgrade()?;
+        crate::model_state_routes::sidecar_names(&app)
+            .await
+            .map(|names| names.into_iter().collect())
+    }
+
+    fn system_roles(&self) -> std::collections::HashMap<String, String> {
+        self.app
+            .upgrade()
+            .map(|a| crate::model_kind::roles_beside(a.config.sizing.presets_path()))
+            .unwrap_or_default()
+    }
+
+    async fn budget_refusal(&self, model: &str) -> Option<role_engine::BudgetRefusal> {
+        use crate::model_maint::node_lease::LoadDecision;
+        let unchecked = || role_engine::BudgetRefusal {
+            error: Some(BUDGET_UNCHECKED.into()),
+        };
+        let Some(app) = self.app.upgrade() else {
+            return Some(unchecked());
+        };
+        match app.config.maint.node.load_refusal(model).await {
+            LoadDecision::Proceed => None,
+            LoadDecision::Refused(r) => Some(role_engine::BudgetRefusal {
+                error: r.get("error").and_then(|e| e.as_str()).map(str::to_string),
+            }),
+            LoadDecision::Unavailable => Some(unchecked()),
+        }
+    }
+
+    fn log(&self, entry: JValue) {
+        log_code(&entry);
+    }
+
+    fn now(&self) -> f64 {
+        server_projects::task_store::date_now()
+    }
+}
+
 /// The process's Code service, made on first use.
 pub fn service(app: &Arc<App>) -> Arc<Service> {
     app.code_service
@@ -402,15 +647,24 @@ pub fn service(app: &Arc<App>) -> Arc<Service> {
                 engine: Arc::new(Engine::default),
                 inference: None,
                 guard: Arc::new(|| false),
-                log: Arc::new(|entry| {
-                    println!("[code] {}", wtf16::stringify(&entry).unwrap_or_default());
-                }),
+                log: Arc::new(|entry| log_code(&entry)),
                 now: Arc::new(server_projects::task_store::date_now),
                 timeout: APPROVAL_TIMEOUT,
                 base_path: s.path.clone(),
                 base_lang: s.lang.clone(),
                 new_id: Arc::new(server_projects::source_jobs::new_id),
                 epoch: server_projects::source_jobs::new_id(),
+                pipeline: Some(Arc::new(FrontPipeline {
+                    app: Arc::downgrade(app),
+                    rt: rt.clone(),
+                    verify: Arc::new(code_verify::Adapter::new(Some(Box::new(
+                        code_verify::Verify::new(code_verify::Options {
+                            log: Box::new(|e| log_code(&e.to_json())),
+                            ..code_verify::Options::new(s.verify_endpoint.clone())
+                        }),
+                    )
+                        as Box<dyn code_verify::Verifier>))),
+                })),
             })
         })
         .clone()
@@ -454,6 +708,7 @@ async fn resolve(app: Arc<App>, user: String, project: String) -> Result<Resolve
         engine: Some(engine),
         inference: Some(Arc::new(gate)),
         context: facts.get("context").as_str().unwrap_or("").to_string(),
+        facts: Some(facts),
     })
 }
 
