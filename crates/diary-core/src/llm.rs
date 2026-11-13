@@ -1119,3 +1119,33 @@ pub fn too_large(status: u16, text: &str) -> Option<TooLarge> {
         limit: first_int(&body, &[("current batch size:", ""), ("\"n_ctx\":", "")]),
     })
 }
+
+/// Python `embed()`'s `parse_embed`: one vector per input, in the order of each item's `index`
+/// (a stable sort; a missing index counts as 0). Known difference: an `embedding` that is not a
+/// list of numbers is a protocol error here; Python returns it as is and fails later.
+pub fn parse_embed(data: &Value, sent: usize) -> Result<Vec<Vec<f64>>, LlmError> {
+    let items = match get(data, "data")? {
+        None => Vec::new(),
+        Some(Value::Array(items)) => items.iter().collect(),
+        Some(_) => return Err(LlmError::Protocol("TypeError")),
+    };
+    if items.len() != sent {
+        return Err(LlmError::Llm(format!("embedding count mismatch: sent {sent}, got {}", items.len())));
+    }
+    let mut keyed = Vec::with_capacity(items.len());
+    for item in items {
+        let order = match get(item, "index")? {
+            None => 0.0,
+            Some(Value::Number(n)) => n.as_f64().unwrap_or(0.0),
+            Some(Value::Bool(b)) => f64::from(u8::from(*b)),
+            Some(_) => return Err(LlmError::Protocol("TypeError")),
+        };
+        let Value::Array(values) = index(item, "embedding")? else {
+            return Err(LlmError::Protocol("TypeError"));
+        };
+        let vector = values.iter().map(Value::as_f64).collect::<Option<Vec<f64>>>().ok_or(LlmError::Protocol("TypeError"))?;
+        keyed.push((order, vector));
+    }
+    keyed.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    Ok(keyed.into_iter().map(|(_, v)| v).collect())
+}
