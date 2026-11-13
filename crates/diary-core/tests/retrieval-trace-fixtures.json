@@ -1,0 +1,1338 @@
+{
+  "clock": [
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "09:30"
+      },
+      "header": "09:30 Morning walk",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "9:05"
+      },
+      "header": "9:05",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "12:00"
+      },
+      "header": "12:00",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "7:45"
+      },
+      "header": "  7:45 leading spaces",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "3:10"
+      },
+      "header": "\t\t3:10 tab indent",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "12:345 too many minutes",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "123:45 too many hours",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "12:3 short minutes",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "1:23_ underscore boundary",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "10:15é accented boundary",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "10:15"
+      },
+      "header": "10:15 ",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "10:15"
+      },
+      "header": "10:15",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "10:15"
+      },
+      "header": "10:15-note",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "Morning 09:30",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "no time here",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": ":30 missing hour",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "09:",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "x",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "١٠:١٥"
+      },
+      "header": "١٠:١٥ arabic digits",
+      "known_deviation": true
+    },
+    {
+      "expected": {
+        "day": "2026-08-02",
+        "id": 2,
+        "time": null
+      },
+      "known_deviation": false,
+      "raw_header": null
+    },
+    {
+      "expected": {
+        "day": "2026-08-02",
+        "id": 2,
+        "time": null
+      },
+      "known_deviation": false,
+      "raw_header": 0
+    },
+    {
+      "expected": {
+        "day": "2026-08-02",
+        "id": 2,
+        "time": null
+      },
+      "known_deviation": false,
+      "raw_header": 12
+    },
+    {
+      "expected": {
+        "day": "2026-08-02",
+        "id": 2,
+        "time": null
+      },
+      "known_deviation": false,
+      "raw_header": 12.5
+    },
+    {
+      "expected": {
+        "day": "2026-08-02",
+        "id": 2,
+        "time": null
+      },
+      "known_deviation": false,
+      "raw_header": true
+    },
+    {
+      "expected": {
+        "day": "2026-08-02",
+        "id": 2,
+        "time": null
+      },
+      "known_deviation": false,
+      "raw_header": [
+        "09:30"
+      ]
+    },
+    {
+      "expected": {
+        "day": "2026-08-02",
+        "id": 2,
+        "time": null
+      },
+      "known_deviation": false,
+      "raw_header": {
+        "t": "09:30"
+      }
+    },
+    {
+      "expected": {
+        "day": null,
+        "id": null,
+        "time": "08:00"
+      },
+      "known_deviation": false,
+      "raw_row": {
+        "header": "08:00 x"
+      }
+    }
+  ],
+  "schema_version": 1,
+  "source_sha256": "ec4172f5135e70754aceab4a218e57e5730509dfd741851e53870a06bd1394d4",
+  "traces": [
+    {
+      "attached": {
+        "answer": "synthetic",
+        "retrieval_trace": {
+          "budget": {},
+          "candidates": [],
+          "counts": {
+            "candidates": 0,
+            "dropped_budget": 0,
+            "dropped_top_k": 0,
+            "loaded": 0
+          },
+          "direct_fallback": {
+            "found": false,
+            "tokens": 0,
+            "used": false
+          },
+          "focus": {
+            "checked": false
+          },
+          "loaded": [],
+          "params": {},
+          "rerank": {
+            "present": false
+          },
+          "score_gap": {
+            "applied": false,
+            "best": null,
+            "gap": null,
+            "removed": []
+          },
+          "status": "not_run",
+          "version": 1
+        }
+      },
+      "data": {
+        "budget": {},
+        "candidates": [],
+        "counts": {
+          "candidates": 0,
+          "dropped_budget": 0,
+          "dropped_top_k": 0,
+          "loaded": 0
+        },
+        "direct_fallback": {
+          "found": false,
+          "tokens": 0,
+          "used": false
+        },
+        "focus": {
+          "checked": false
+        },
+        "loaded": [],
+        "params": {},
+        "rerank": {
+          "present": false
+        },
+        "score_gap": {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "removed": []
+        },
+        "status": "not_run",
+        "version": 1
+      },
+      "name": "empty_trace",
+      "ops": []
+    },
+    {
+      "attached": {
+        "answer": "synthetic",
+        "retrieval_trace": {
+          "budget": {},
+          "candidates": [],
+          "counts": {
+            "candidates": 0,
+            "dropped_budget": 0,
+            "dropped_top_k": 0,
+            "loaded": 0
+          },
+          "direct_fallback": {
+            "found": false,
+            "tokens": 0,
+            "used": false
+          },
+          "focus": {
+            "checked": false
+          },
+          "loaded": [],
+          "params": {},
+          "rerank": {
+            "present": false
+          },
+          "score_gap": {
+            "applied": false,
+            "best": null,
+            "gap": null,
+            "removed": []
+          },
+          "status": "no_retriever",
+          "version": 1
+        }
+      },
+      "data": {
+        "budget": {},
+        "candidates": [],
+        "counts": {
+          "candidates": 0,
+          "dropped_budget": 0,
+          "dropped_top_k": 0,
+          "loaded": 0
+        },
+        "direct_fallback": {
+          "found": false,
+          "tokens": 0,
+          "used": false
+        },
+        "focus": {
+          "checked": false
+        },
+        "loaded": [],
+        "params": {},
+        "rerank": {
+          "present": false
+        },
+        "score_gap": {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "removed": []
+        },
+        "status": "no_retriever",
+        "version": 1
+      },
+      "name": "status_only_no_retriever",
+      "ops": [
+        {
+          "op": "status",
+          "value": "no_retriever"
+        }
+      ]
+    },
+    {
+      "attached": {
+        "answer": "synthetic",
+        "retrieval_trace": {
+          "budget": {
+            "max_context_tokens": 5200,
+            "used_chars": 71,
+            "used_tokens": 21
+          },
+          "candidates": [
+            {
+              "day": "2026-08-01",
+              "dropped": null,
+              "id": 101,
+              "loaded": true,
+              "rank": 0,
+              "score": 0.91,
+              "time": "09:30",
+              "vector_rank": 0
+            },
+            {
+              "day": "2026-08-02",
+              "dropped": null,
+              "id": 102,
+              "loaded": true,
+              "rank": 1,
+              "score": 0.88,
+              "time": "14:05",
+              "vector_rank": 1
+            },
+            {
+              "day": "2026-08-03",
+              "dropped": "budget",
+              "id": 103,
+              "loaded": false,
+              "rank": 2,
+              "score": 0.7,
+              "time": null,
+              "vector_rank": 2
+            },
+            {
+              "day": "2026-08-04",
+              "dropped": "top_k",
+              "id": 104,
+              "loaded": false,
+              "rank": 3,
+              "score": 0.65,
+              "time": "23:59",
+              "vector_rank": 3
+            }
+          ],
+          "counts": {
+            "candidates": 4,
+            "dropped_budget": 1,
+            "dropped_top_k": 1,
+            "loaded": 2
+          },
+          "direct_fallback": {
+            "found": false,
+            "tokens": 0,
+            "used": false
+          },
+          "focus": {
+            "checked": false
+          },
+          "loaded": [
+            {
+              "chars": 40,
+              "day": "2026-08-01",
+              "id": 101,
+              "score": 0.91,
+              "time": "09:30",
+              "tokens": 12
+            },
+            {
+              "chars": 31,
+              "day": "2026-08-02",
+              "id": 102,
+              "score": 0.88,
+              "time": "14:05",
+              "tokens": 9
+            }
+          ],
+          "params": {
+            "candidate_k": 4,
+            "min_score": 0.3,
+            "top_k": 2
+          },
+          "rerank": {
+            "present": false
+          },
+          "score_gap": {
+            "applied": false,
+            "best": null,
+            "gap": null,
+            "removed": []
+          },
+          "status": "ok",
+          "version": 1
+        }
+      },
+      "data": {
+        "budget": {
+          "max_context_tokens": 5200,
+          "used_chars": 71,
+          "used_tokens": 21
+        },
+        "candidates": [
+          {
+            "day": "2026-08-01",
+            "dropped": null,
+            "id": 101,
+            "loaded": true,
+            "rank": 0,
+            "score": 0.91,
+            "time": "09:30",
+            "vector_rank": 0
+          },
+          {
+            "day": "2026-08-02",
+            "dropped": null,
+            "id": 102,
+            "loaded": true,
+            "rank": 1,
+            "score": 0.88,
+            "time": "14:05",
+            "vector_rank": 1
+          },
+          {
+            "day": "2026-08-03",
+            "dropped": "budget",
+            "id": 103,
+            "loaded": false,
+            "rank": 2,
+            "score": 0.7,
+            "time": null,
+            "vector_rank": 2
+          },
+          {
+            "day": "2026-08-04",
+            "dropped": "top_k",
+            "id": 104,
+            "loaded": false,
+            "rank": 3,
+            "score": 0.65,
+            "time": "23:59",
+            "vector_rank": 3
+          }
+        ],
+        "counts": {
+          "candidates": 4,
+          "dropped_budget": 1,
+          "dropped_top_k": 1,
+          "loaded": 2
+        },
+        "direct_fallback": {
+          "found": false,
+          "tokens": 0,
+          "used": false
+        },
+        "focus": {
+          "checked": false
+        },
+        "loaded": [
+          {
+            "chars": 40,
+            "day": "2026-08-01",
+            "id": 101,
+            "score": 0.91,
+            "time": "09:30",
+            "tokens": 12
+          },
+          {
+            "chars": 31,
+            "day": "2026-08-02",
+            "id": 102,
+            "score": 0.88,
+            "time": "14:05",
+            "tokens": 9
+          }
+        ],
+        "params": {
+          "candidate_k": 4,
+          "min_score": 0.3,
+          "top_k": 2
+        },
+        "rerank": {
+          "present": false
+        },
+        "score_gap": {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "removed": []
+        },
+        "status": "ok",
+        "version": 1
+      },
+      "name": "full_ok_with_budget_and_top_k",
+      "ops": [
+        {
+          "op": "status",
+          "value": "ok"
+        },
+        {
+          "op": "params",
+          "value": {
+            "candidate_k": 4,
+            "min_score": 0.3,
+            "top_k": 2
+          }
+        },
+        {
+          "op": "budget",
+          "value": {
+            "max_context_tokens": 5200
+          }
+        },
+        {
+          "dropped": null,
+          "loaded": true,
+          "op": "candidate",
+          "rank": 0,
+          "row": {
+            "day": "2026-08-01",
+            "embedding": [
+              0.1
+            ],
+            "header": "09:30 Morning walk",
+            "id": 101,
+            "score": 0.91,
+            "text": "SECRET-ENTRY-TEXT"
+          }
+        },
+        {
+          "dropped": null,
+          "loaded": true,
+          "op": "candidate",
+          "rank": 1,
+          "row": {
+            "day": "2026-08-02",
+            "embedding": [
+              0.1
+            ],
+            "header": "14:05 Coffee",
+            "id": 102,
+            "score": 0.88,
+            "text": "SECRET-ENTRY-TEXT"
+          }
+        },
+        {
+          "dropped": "budget",
+          "loaded": false,
+          "op": "candidate",
+          "rank": 2,
+          "row": {
+            "day": "2026-08-03",
+            "embedding": [
+              0.1
+            ],
+            "header": "no time",
+            "id": 103,
+            "score": 0.7,
+            "text": "SECRET-ENTRY-TEXT"
+          }
+        },
+        {
+          "dropped": "top_k",
+          "loaded": false,
+          "op": "candidate",
+          "rank": 3,
+          "row": {
+            "day": "2026-08-04",
+            "embedding": [
+              0.1
+            ],
+            "header": "23:59 late",
+            "id": 104,
+            "score": 0.65,
+            "text": "SECRET-ENTRY-TEXT"
+          }
+        },
+        {
+          "chars": 40,
+          "op": "loaded",
+          "row": {
+            "day": "2026-08-01",
+            "embedding": [
+              0.1
+            ],
+            "header": "09:30 Morning walk",
+            "id": 101,
+            "score": 0.91,
+            "text": "SECRET-ENTRY-TEXT"
+          },
+          "tokens": 12
+        },
+        {
+          "chars": 31,
+          "op": "loaded",
+          "row": {
+            "day": "2026-08-02",
+            "embedding": [
+              0.1
+            ],
+            "header": "14:05 Coffee",
+            "id": 102,
+            "score": 0.88,
+            "text": "SECRET-ENTRY-TEXT"
+          },
+          "tokens": 9
+        },
+        {
+          "op": "finish",
+          "used_chars": 71
+        }
+      ]
+    },
+    {
+      "attached": {
+        "answer": "synthetic",
+        "retrieval_trace": {
+          "budget": {},
+          "candidates": [
+            {
+              "day": "2026-08-01",
+              "dropped": null,
+              "id": 101,
+              "loaded": false,
+              "rank": 5,
+              "score": 0.91,
+              "time": "09:30",
+              "vector_rank": 5
+            },
+            {
+              "day": "2026-08-02",
+              "dropped": null,
+              "id": 102,
+              "loaded": false,
+              "rank": 1,
+              "score": 0.88,
+              "time": "14:05",
+              "vector_rank": 7
+            }
+          ],
+          "counts": {
+            "candidates": 0,
+            "dropped_budget": 0,
+            "dropped_top_k": 0,
+            "loaded": 0
+          },
+          "direct_fallback": {
+            "found": false,
+            "tokens": 0,
+            "used": false
+          },
+          "focus": {
+            "checked": false
+          },
+          "loaded": [],
+          "params": {},
+          "rerank": {
+            "present": false
+          },
+          "score_gap": {
+            "applied": false,
+            "best": null,
+            "gap": null,
+            "removed": []
+          },
+          "status": "not_run",
+          "version": 1
+        }
+      },
+      "data": {
+        "budget": {},
+        "candidates": [
+          {
+            "day": "2026-08-01",
+            "dropped": null,
+            "id": 101,
+            "loaded": false,
+            "rank": 5,
+            "score": 0.91,
+            "time": "09:30",
+            "vector_rank": 5
+          },
+          {
+            "day": "2026-08-02",
+            "dropped": null,
+            "id": 102,
+            "loaded": false,
+            "rank": 1,
+            "score": 0.88,
+            "time": "14:05",
+            "vector_rank": 7
+          }
+        ],
+        "counts": {
+          "candidates": 0,
+          "dropped_budget": 0,
+          "dropped_top_k": 0,
+          "loaded": 0
+        },
+        "direct_fallback": {
+          "found": false,
+          "tokens": 0,
+          "used": false
+        },
+        "focus": {
+          "checked": false
+        },
+        "loaded": [],
+        "params": {},
+        "rerank": {
+          "present": false
+        },
+        "score_gap": {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "removed": []
+        },
+        "status": "not_run",
+        "version": 1
+      },
+      "name": "vector_rank_defaults_to_rank_and_explicit_value_kept",
+      "ops": [
+        {
+          "dropped": null,
+          "loaded": false,
+          "op": "candidate",
+          "rank": 5,
+          "row": {
+            "day": "2026-08-01",
+            "embedding": [
+              0.1
+            ],
+            "header": "09:30 Morning walk",
+            "id": 101,
+            "score": 0.91,
+            "text": "SECRET-ENTRY-TEXT"
+          },
+          "vector_rank": null
+        },
+        {
+          "dropped": null,
+          "loaded": false,
+          "op": "candidate",
+          "rank": 1,
+          "row": {
+            "day": "2026-08-02",
+            "embedding": [
+              0.1
+            ],
+            "header": "14:05 Coffee",
+            "id": 102,
+            "score": 0.88,
+            "text": "SECRET-ENTRY-TEXT"
+          },
+          "vector_rank": 7
+        }
+      ]
+    },
+    {
+      "attached": {
+        "answer": "synthetic",
+        "retrieval_trace": {
+          "budget": {},
+          "candidates": [],
+          "counts": {
+            "candidates": 0,
+            "dropped_budget": 0,
+            "dropped_top_k": 0,
+            "loaded": 0
+          },
+          "direct_fallback": {
+            "found": false,
+            "tokens": 0,
+            "used": false
+          },
+          "focus": {
+            "checked": false
+          },
+          "loaded": [],
+          "params": {},
+          "rerank": {
+            "present": false
+          },
+          "score_gap": {
+            "applied": false,
+            "best": null,
+            "gap": null,
+            "removed": []
+          },
+          "status": "ok",
+          "version": 1
+        }
+      },
+      "data": {
+        "budget": {},
+        "candidates": [],
+        "counts": {
+          "candidates": 0,
+          "dropped_budget": 0,
+          "dropped_top_k": 0,
+          "loaded": 0
+        },
+        "direct_fallback": {
+          "found": false,
+          "tokens": 0,
+          "used": false
+        },
+        "focus": {
+          "checked": false
+        },
+        "loaded": [],
+        "params": {},
+        "rerank": {
+          "present": false
+        },
+        "score_gap": {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "removed": []
+        },
+        "status": "ok",
+        "version": 1
+      },
+      "name": "score_gap_with_diagnostics",
+      "ops": [
+        {
+          "op": "status",
+          "value": "ok"
+        },
+        {
+          "applied": true,
+          "best": 0.91,
+          "diagnostics": {
+            "kept": 3,
+            "note": "n"
+          },
+          "gap": 0.25,
+          "op": "score_gap",
+          "removed": [
+            [
+              4,
+              {
+                "day": "2026-08-05",
+                "embedding": [
+                  0.1
+                ],
+                "header": "08:15 far",
+                "id": 105,
+                "score": 0.2,
+                "text": "SECRET-ENTRY-TEXT"
+              }
+            ]
+          ]
+        },
+        {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "op": "score_gap",
+          "removed": []
+        }
+      ]
+    },
+    {
+      "attached": {
+        "answer": "synthetic",
+        "retrieval_trace": {
+          "budget": {},
+          "candidates": [],
+          "counts": {
+            "candidates": 0,
+            "dropped_budget": 0,
+            "dropped_top_k": 0,
+            "loaded": 0
+          },
+          "direct_fallback": {
+            "found": true,
+            "tokens": 33,
+            "used": true
+          },
+          "focus": {
+            "checked": false
+          },
+          "loaded": [],
+          "params": {},
+          "rerank": {
+            "present": false
+          },
+          "score_gap": {
+            "applied": false,
+            "best": null,
+            "gap": null,
+            "removed": []
+          },
+          "status": "not_run",
+          "version": 1
+        }
+      },
+      "data": {
+        "budget": {},
+        "candidates": [],
+        "counts": {
+          "candidates": 0,
+          "dropped_budget": 0,
+          "dropped_top_k": 0,
+          "loaded": 0
+        },
+        "direct_fallback": {
+          "found": true,
+          "tokens": 33,
+          "used": true
+        },
+        "focus": {
+          "checked": false
+        },
+        "loaded": [],
+        "params": {},
+        "rerank": {
+          "present": false
+        },
+        "score_gap": {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "removed": []
+        },
+        "status": "not_run",
+        "version": 1
+      },
+      "name": "direct_fallback_found_and_empty",
+      "ops": [
+        {
+          "found": true,
+          "op": "direct_fallback",
+          "tokens": 33
+        }
+      ]
+    },
+    {
+      "attached": {
+        "answer": "synthetic",
+        "retrieval_trace": {
+          "budget": {},
+          "candidates": [],
+          "counts": {
+            "candidates": 0,
+            "dropped_budget": 0,
+            "dropped_top_k": 0,
+            "loaded": 0
+          },
+          "direct_fallback": {
+            "found": false,
+            "tokens": 0,
+            "used": true
+          },
+          "focus": {
+            "checked": false
+          },
+          "loaded": [],
+          "params": {},
+          "rerank": {
+            "present": false
+          },
+          "score_gap": {
+            "applied": false,
+            "best": null,
+            "gap": null,
+            "removed": []
+          },
+          "status": "not_run",
+          "version": 1
+        }
+      },
+      "data": {
+        "budget": {},
+        "candidates": [],
+        "counts": {
+          "candidates": 0,
+          "dropped_budget": 0,
+          "dropped_top_k": 0,
+          "loaded": 0
+        },
+        "direct_fallback": {
+          "found": false,
+          "tokens": 0,
+          "used": true
+        },
+        "focus": {
+          "checked": false
+        },
+        "loaded": [],
+        "params": {},
+        "rerank": {
+          "present": false
+        },
+        "score_gap": {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "removed": []
+        },
+        "status": "not_run",
+        "version": 1
+      },
+      "name": "direct_fallback_empty",
+      "ops": [
+        {
+          "found": false,
+          "op": "direct_fallback",
+          "tokens": 0
+        }
+      ]
+    },
+    {
+      "attached": {
+        "answer": "synthetic"
+      },
+      "data": {
+        "budget": {},
+        "candidates": [],
+        "counts": {
+          "candidates": 0,
+          "dropped_budget": 0,
+          "dropped_top_k": 0,
+          "loaded": 0
+        },
+        "direct_fallback": {
+          "found": false,
+          "tokens": 0,
+          "used": false
+        },
+        "focus": {
+          "checked": false
+        },
+        "loaded": [],
+        "params": {},
+        "rerank": {
+          "present": false
+        },
+        "score_gap": {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "removed": []
+        },
+        "status": "ok",
+        "version": 1
+      },
+      "name": "failed_trace_is_not_attached",
+      "ops": [
+        {
+          "op": "status",
+          "value": "ok"
+        },
+        {
+          "op": "fail"
+        }
+      ]
+    },
+    {
+      "attached": {
+        "answer": "synthetic",
+        "retrieval_trace": {
+          "budget": {
+            "used_chars": 0,
+            "used_tokens": 0
+          },
+          "candidates": [
+            {
+              "day": null,
+              "dropped": null,
+              "id": null,
+              "loaded": false,
+              "rank": 0,
+              "score": null,
+              "time": null,
+              "vector_rank": 0
+            },
+            {
+              "day": null,
+              "dropped": null,
+              "id": null,
+              "loaded": true,
+              "rank": 1,
+              "score": null,
+              "time": null,
+              "vector_rank": 1
+            }
+          ],
+          "counts": {
+            "candidates": 2,
+            "dropped_budget": 0,
+            "dropped_top_k": 0,
+            "loaded": 1
+          },
+          "direct_fallback": {
+            "found": false,
+            "tokens": 0,
+            "used": false
+          },
+          "focus": {
+            "checked": false
+          },
+          "loaded": [
+            {
+              "chars": 0,
+              "day": null,
+              "id": null,
+              "score": null,
+              "time": null,
+              "tokens": 0
+            }
+          ],
+          "params": {},
+          "rerank": {
+            "present": false
+          },
+          "score_gap": {
+            "applied": false,
+            "best": null,
+            "gap": null,
+            "removed": []
+          },
+          "status": "not_run",
+          "version": 1
+        }
+      },
+      "data": {
+        "budget": {
+          "used_chars": 0,
+          "used_tokens": 0
+        },
+        "candidates": [
+          {
+            "day": null,
+            "dropped": null,
+            "id": null,
+            "loaded": false,
+            "rank": 0,
+            "score": null,
+            "time": null,
+            "vector_rank": 0
+          },
+          {
+            "day": null,
+            "dropped": null,
+            "id": null,
+            "loaded": true,
+            "rank": 1,
+            "score": null,
+            "time": null,
+            "vector_rank": 1
+          }
+        ],
+        "counts": {
+          "candidates": 2,
+          "dropped_budget": 0,
+          "dropped_top_k": 0,
+          "loaded": 1
+        },
+        "direct_fallback": {
+          "found": false,
+          "tokens": 0,
+          "used": false
+        },
+        "focus": {
+          "checked": false
+        },
+        "loaded": [
+          {
+            "chars": 0,
+            "day": null,
+            "id": null,
+            "score": null,
+            "time": null,
+            "tokens": 0
+          }
+        ],
+        "params": {},
+        "rerank": {
+          "present": false
+        },
+        "score_gap": {
+          "applied": false,
+          "best": null,
+          "gap": null,
+          "removed": []
+        },
+        "status": "not_run",
+        "version": 1
+      },
+      "name": "hostile_row_with_no_fields",
+      "ops": [
+        {
+          "dropped": null,
+          "loaded": false,
+          "op": "candidate",
+          "rank": 0,
+          "row": {}
+        },
+        {
+          "dropped": null,
+          "loaded": true,
+          "op": "candidate",
+          "rank": 1,
+          "row": {
+            "header": 12,
+            "score": null
+          }
+        },
+        {
+          "chars": 0,
+          "op": "loaded",
+          "row": {},
+          "tokens": 0
+        },
+        {
+          "op": "finish",
+          "used_chars": 0
+        }
+      ]
+    }
+  ]
+}

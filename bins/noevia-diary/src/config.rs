@@ -52,6 +52,9 @@ pub struct Config {
     /// Python's DIARY_CORPUS_WRITE_IMPL ("python" when absent).
     #[serde(default)]
     pub corpus_write_impl: String,
+    /// R9 answering, step 1: the internal answer endpoint (absent: it answers 404).
+    #[serde(default)]
+    pub answer: Option<crate::answer::AnswerConfig>,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

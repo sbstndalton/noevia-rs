@@ -447,7 +447,11 @@ fn latch(calls: Arc<AtomicUsize>, acquire: &'static str, status: u16) -> Handler
 }
 
 async fn maint(node_port: u16) -> (Arc<Maint>, tempfile::TempDir) {
-    let (router_port, _) = engine(router_without_gate()).await;
+    maint_on(node_port, router_without_gate()).await
+}
+
+async fn maint_on(node_port: u16, router: Handler) -> (Arc<Maint>, tempfile::TempDir) {
+    let (router_port, _) = engine(router).await;
     let d = tempfile::tempdir().unwrap();
     let ini = d.path().join("models.ini");
     std::fs::write(&ini, "[A]\nmodel = /models/a.gguf\n").unwrap();
@@ -709,5 +713,74 @@ async fn a_hold_whose_authority_lease_ended_is_fenced_out() {
     assert!(
         m.authority.held_by_front(),
         "expired work must settle before writers resume"
+    );
+}
+
+#[tokio::test]
+async fn the_auto_tunes_long_prompt_stream_ends_when_its_hold_is_lost() {
+    // The private calibrator's long prompt (`stream`) is a covered call: when the authority's lease
+    // ends under the hold, a body read in flight ends with the coverage error (Node folds the
+    // lease's loss into the fetch signal), not when the engine finally answers.
+    use noevia_server::model_maint::autotune_context::{Body as _, Engine as _};
+    use noevia_server::model_maint::autotune_deps::{FrontDeps, ReadFacts};
+    // Node renews never within the test; the authority's lease outlasts the 15 s step margin (so
+    // the stream may start) by one second, then ends under the reading stream.
+    const SLOW: &str = r#"{"lease":"0123456789abcdef0123456789abcdef","ttlMs":180000,"renewMs":600000,"hardMs":3600000}"#;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let (node_port, _) = engine(latch(Arc::clone(&calls), SLOW, 201)).await;
+    let stalls: Handler = Arc::new(|req: &Req| {
+        if req.target.contains("chat/completions") {
+            return Answer::Stall("data: {}\n\n".into());
+        }
+        if req.target.starts_with("/gate/v1/") {
+            return Answer::Reply(404, r#"{"error":"not found"}"#.into());
+        }
+        Answer::Reply(200, r#"{"data":[]}"#.into())
+    });
+    let (mut m, d) = maint_on(node_port, stalls).await;
+    Arc::get_mut(&mut m).unwrap().authority =
+        Authority::with_timing(Duration::from_secs(16), lease::HARD, lease::MAX);
+    let read_facts: ReadFacts = Arc::new(|| Box::pin(async { (0.0, None) }));
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let deps = FrontDeps::new(
+        Arc::clone(&m),
+        d.path().join("native-autotune-qa.json"),
+        read_facts,
+        tx,
+        &|_: &str| None,
+    );
+    let hold = m
+        .acquire("tune", Duration::from_secs(300), false)
+        .await
+        .unwrap();
+    let hold = Arc::new(hold);
+    deps.cover_with(Some(Arc::clone(&hold)));
+    let engine = deps.engine();
+    let body = js_json::JValue::obj([("model", js_json::JValue::from("qa-synth"))]);
+    let mut reply = engine
+        .stream("/chat/completions", body, autotune_runner::Abort::default())
+        .await
+        .unwrap();
+    assert!(reply.ok());
+    let started = std::time::Instant::now();
+    let mut ended = None;
+    for _ in 0..8 {
+        match tokio::time::timeout(Duration::from_secs(25), reply.read()).await {
+            Ok(Ok(Some(_))) => continue,
+            Ok(other) => {
+                ended = Some(other);
+                break;
+            }
+            Err(_) => panic!("a lost hold left the stream reading"),
+        }
+    }
+    let err = ended.expect("the stream ended").unwrap_err();
+    assert!(err.coverage_lost, "{}", err.message);
+    assert!(!hold.excluded());
+    // Within the loss poll of the lease's end, not when the engine answers.
+    assert!(
+        started.elapsed() < Duration::from_secs(19),
+        "{:?}",
+        started.elapsed()
     );
 }
