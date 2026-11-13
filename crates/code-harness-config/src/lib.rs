@@ -23,6 +23,10 @@
 //! hold are not representable; every other input behaves as in Node, including JS `trim()`
 //! (which strips U+FEFF but not U+0085, unlike `str::trim`).
 //!
+//! Regenerating: `node tools/gen-fixtures.cjs <noevia-core>/server` rewrites
+//! `tests/fixtures/code-harness-config.v1.json` (deterministic; the sha256 of the Node source it
+//! exercised is in the fixture's `source` field). Synthetic inputs only.
+//!
 //! Named differences from Node: none. Two Node behaviours are kept on purpose and covered by the
 //! fixture: a missing working directory is refused with the same "needs a private home directory"
 //! message as a missing home, and a later file's refusal leaves the earlier files written (the
