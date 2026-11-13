@@ -272,7 +272,8 @@ impl<D: Deps> Runner<D> {
         Ok(runner)
     }
 
-    pub(crate) fn deps(&self) -> &D {
+    /// The dependencies this actor was built with.
+    pub fn deps(&self) -> &D {
         &self.0.deps
     }
 

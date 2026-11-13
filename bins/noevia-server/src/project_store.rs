@@ -724,6 +724,11 @@ pub fn router_with_app(
         store.clone(),
         app.as_ref().map(|a| a.config.maint.guard.clone()),
     ));
+    // #2516: Core's half of the native auto-tune runner (its prepareLoad's re-read, its "tuning").
+    router = router.merge(crate::autotune_runner::core_routes(
+        store.clone(),
+        app.as_ref().and_then(|a| a.config.autotune.clone()),
+    ));
     // Port contract 2026-11-04 S9: the chat approval registry (approval_registry.rs).
     for op in ["open", "wait", "cancel", "granted", "redeem", "revoke"] {
         let (store, app) = (store.clone(), app.clone());

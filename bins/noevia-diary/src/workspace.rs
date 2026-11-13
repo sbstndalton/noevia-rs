@@ -126,15 +126,21 @@ pub(crate) fn safe_path(path: &str, directory: bool) -> Result<(), &'static str>
     Ok(())
 }
 
-struct Listed {
-    name: String,
-    is_dir: bool,
+pub(crate) struct Listed {
+    pub(crate) name: String,
+    pub(crate) is_dir: bool,
     /// `lastmod`: the `updated` of the last row that produced this name (None for a directory row).
     lastmod: Option<f64>,
 }
 
 /// ManagedCorpusBackend.list_dir with lastmod. None: a value Python would read differently.
-fn list_dir(store: &Managed, path: &str) -> Result<Option<Vec<Listed>>, managed::Error> {
+/// `dir_ties_ok`: the caller (`filtered_listing`) checks names that differ only in letter case
+/// itself, after its own filtering, instead of leaving the whole folder to Python.
+fn list_dir(
+    store: &Managed,
+    path: &str,
+    dir_ties_ok: bool,
+) -> Result<Option<Vec<Listed>>, managed::Error> {
     let prefix = if path.is_empty() {
         String::new()
     } else {
@@ -146,6 +152,8 @@ fn list_dir(store: &Managed, path: &str) -> Result<Option<Vec<Listed>>, managed:
     )?;
     let mut rows = stmt.query([])?;
     let mut entries: Vec<Listed> = Vec::new();
+    // Name -> position in `entries`: Python's dict keeps the first position and the last value.
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     while let Some(row) = rows.next()? {
         let p: String = row.get(0)?;
         let version: Option<String> = row.get(1)?;
@@ -167,9 +175,12 @@ fn list_dir(store: &Managed, path: &str) -> Result<Option<Vec<Listed>>, managed:
             lastmod: updated,
             name,
         };
-        match entries.iter_mut().find(|e| e.name == entry.name) {
+        match seen.get(&entry.name).and_then(|&at| entries.get_mut(at)) {
             Some(slot) => *slot = entry,
-            None => entries.push(entry),
+            None => {
+                seen.insert(entry.name.clone(), entries.len());
+                entries.push(entry);
+            }
         }
     }
     if entries.iter().any(|e| e.name.chars().any(newer_case)) {
@@ -178,9 +189,10 @@ fn list_dir(store: &Managed, path: &str) -> Result<Option<Vec<Listed>>, managed:
     entries.sort_by_key(|e| e.name.to_lowercase());
     // Distinct names with the same lower-case form keep the scan order, which the query planner
     // may choose differently from Python's SQLite: leave such folders to Python.
-    if entries
-        .windows(2)
-        .any(|w| matches!(w, [a, b] if a.name.to_lowercase() == b.name.to_lowercase()))
+    if !dir_ties_ok
+        && entries
+            .windows(2)
+            .any(|w| matches!(w, [a, b] if a.name.to_lowercase() == b.name.to_lowercase()))
     {
         return Ok(None);
     }
@@ -202,14 +214,36 @@ struct Files {
     files: Vec<FileEntry>,
 }
 
-/// GET /api/files?path= (file_list).
-pub fn files(store: &Managed, path: &str) -> Reply {
-    if let Err(msg) = safe_path(path, true) {
-        return detail(400, msg);
-    }
-    let entries = match list_dir(store, path) {
+/// What `filtered_listing` found.
+pub(crate) enum Filtered {
+    /// The entries file_list returns, in its order.
+    Items(Vec<Listed>),
+    /// The 413 refusal: more than MAX_FILES entries.
+    TooMany,
+    /// The listing could not be read.
+    Failed,
+    /// A state whose Python result this side does not reproduce (see `list_dir`, or `accept`).
+    Undetermined,
+}
+
+/// workspace_files.file_list's selection over a folder (`path` already safe): the ordering of
+/// `list_dir`, then the name filter, then the MAX_FILES refusal. `accept` is asked about every
+/// entry that would be listed, just before it is added; false ends the listing Undetermined.
+///
+/// `dir_ties_ok`: names that differ only in letter case keep the order of the database scan, which
+/// Python's SQLite may choose differently; the route refuses any such folder. A caller that skips
+/// directories passes true: a run of tied names that are all directories (after the filter) is
+/// then harmless, and any other tie among the listed entries is `Undetermined`.
+pub(crate) fn filtered_listing(
+    store: &Managed,
+    path: &str,
+    dir_ties_ok: bool,
+    accept: impl Fn(&Listed) -> bool,
+) -> Filtered {
+    let entries = match list_dir(store, path, dir_ties_ok) {
         Ok(Some(e)) => e,
-        _ => return Reply::Decline,
+        Ok(None) => return Filtered::Undetermined,
+        Err(_) => return Filtered::Failed,
     };
     let mut out = Vec::new();
     for item in entries {
@@ -217,27 +251,56 @@ pub fn files(store: &Managed, path: &str) -> Reply {
             continue;
         }
         if item.is_dir || item.name.to_lowercase().ends_with(".md") {
-            // _modified: a positive number, else nothing.
-            let modified = item.lastmod.filter(|v| *v > 0.0);
-            if modified.is_some_and(|v| !float_ok(v)) {
-                return Reply::Decline;
+            if !accept(&item) {
+                return Filtered::Undetermined;
             }
+            out.push(item);
+        }
+        if out.len() > MAX_FILES {
+            return Filtered::TooMany;
+        }
+    }
+    let tied_files = out.windows(2).any(|w| {
+        matches!(w, [a, b] if a.name.to_lowercase() == b.name.to_lowercase() && !(a.is_dir && b.is_dir))
+    });
+    if dir_ties_ok && tied_files {
+        return Filtered::Undetermined;
+    }
+    Filtered::Items(out)
+}
+
+/// GET /api/files?path= (file_list).
+pub fn files(store: &Managed, path: &str) -> Reply {
+    if let Err(msg) = safe_path(path, true) {
+        return detail(400, msg);
+    }
+    // _modified: a positive number, else nothing.
+    let modified_of = |item: &Listed| item.lastmod.filter(|v| *v > 0.0);
+    let items = match filtered_listing(store, path, false, |item| {
+        !modified_of(item).is_some_and(|v| !float_ok(v))
+    }) {
+        Filtered::Items(items) => items,
+        Filtered::TooMany => {
+            return detail(413, "This folder has too many files; choose a subfolder")
+        }
+        Filtered::Failed | Filtered::Undetermined => return Reply::Decline,
+    };
+    let out = items
+        .into_iter()
+        .map(|item| {
             let rel = if path.is_empty() {
                 item.name.clone()
             } else {
                 format!("{path}/{}", item.name)
             };
-            out.push(FileEntry {
+            FileEntry {
                 path: rel,
-                name: item.name,
+                modified: modified_of(&item),
                 is_dir: item.is_dir,
-                modified,
-            });
-        }
-        if out.len() > MAX_FILES {
-            return detail(413, "This folder has too many files; choose a subfolder");
-        }
-    }
+                name: item.name,
+            }
+        })
+        .collect();
     json_reply(200, &Files { files: out })
 }
 
@@ -279,6 +342,29 @@ struct FileRead {
     version: Option<String>,
 }
 
+/// What `read_text` found.
+pub(crate) enum Read {
+    /// safe_path refused the path (a 400).
+    BadPath(&'static str),
+    /// The read failed.
+    Failed,
+    /// More than MAX_FILE bytes (the 413).
+    TooLarge,
+    Text(Option<String>),
+}
+
+/// workspace_files.file_read's checks and read.
+pub(crate) fn read_text(store: &Managed, path: &str) -> Read {
+    if let Err(msg) = safe_path(path, false) {
+        return Read::BadPath(msg);
+    }
+    match store.get_text(path) {
+        Err(_) => Read::Failed,
+        Ok(text) if text.as_ref().is_some_and(|t| t.len() > MAX_FILE) => Read::TooLarge,
+        Ok(text) => Read::Text(text),
+    }
+}
+
 /// POST /api/file (file_read).
 pub fn file_read(store: &Managed, body: &serde_json::Map<String, Value>) -> Reply {
     let path = match body.get("path") {
@@ -286,16 +372,12 @@ pub fn file_read(store: &Managed, body: &serde_json::Map<String, Value>) -> Repl
         Some(Value::String(s)) => s.clone(),
         Some(_) => return detail(400, "Invalid path"),
     };
-    if let Err(msg) = safe_path(&path, false) {
-        return detail(400, msg);
-    }
-    let text = match store.get_text(&path) {
-        Ok(t) => t,
-        Err(_) => return Reply::Decline,
+    let text = match read_text(store, &path) {
+        Read::BadPath(msg) => return detail(400, msg),
+        Read::Failed => return Reply::Decline,
+        Read::TooLarge => return detail(413, "File exceeds the 512 KiB editor limit"),
+        Read::Text(text) => text,
     };
-    if text.as_ref().is_some_and(|t| t.len() > MAX_FILE) {
-        return detail(413, "File exceeds the 512 KiB editor limit");
-    }
     let version = text.as_ref().map(|t| sha256_hex(t.as_bytes()));
     json_reply(
         200,

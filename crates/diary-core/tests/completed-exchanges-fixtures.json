@@ -1,0 +1,215 @@
+{
+  "cases": [
+    {
+      "expected": [
+        {
+          "content": "What did I log on Monday?",
+          "role": "user"
+        },
+        {
+          "content": "You logged a walk.",
+          "role": "companion"
+        },
+        {
+          "content": "Replaced question",
+          "role": "user"
+        },
+        {
+          "content": "Answer to the replaced one",
+          "role": "assistant"
+        },
+        {
+          "content": "padded",
+          "role": "user"
+        },
+        {
+          "content": "  padded reply  ",
+          "role": "assistant"
+        },
+        {
+          "content": "Final question",
+          "role": "user"
+        },
+        {
+          "content": "Final answer",
+          "role": "assistant"
+        }
+      ],
+      "name": "mixed_conversation",
+      "turns": [
+        {
+          "content": "What did I log on Monday?",
+          "role": "user"
+        },
+        {
+          "content": "You logged a walk.",
+          "role": "companion"
+        },
+        {
+          "content": "Unanswered question",
+          "role": "user"
+        },
+        {
+          "content": "Replaced question",
+          "role": "user"
+        },
+        {
+          "content": "Answer to the replaced one",
+          "role": "assistant"
+        },
+        {
+          "content": "   ",
+          "role": "user"
+        },
+        {
+          "content": "reply to a blank question",
+          "role": "assistant"
+        },
+        {
+          "content": "Question with blank reply",
+          "role": "user"
+        },
+        {
+          "content": "   ",
+          "role": "companion"
+        },
+        {
+          "content": "orphan reply with no question",
+          "role": "companion"
+        },
+        {
+          "content": "system line",
+          "role": "system"
+        },
+        {
+          "content": "padded",
+          "role": "user"
+        },
+        {
+          "content": "  padded reply  ",
+          "role": "assistant"
+        },
+        {
+          "content": "\u001c",
+          "role": "user"
+        },
+        {
+          "content": "reply after control-only question",
+          "role": "assistant"
+        },
+        {
+          "content": "Question with non-string reply",
+          "role": "user"
+        },
+        {
+          "content": [
+            "not",
+            "a",
+            "string"
+          ],
+          "role": "assistant"
+        },
+        {
+          "content": 42,
+          "role": "user"
+        },
+        {
+          "content": "reply to non-string question",
+          "role": "assistant"
+        },
+        "not a dict",
+        null,
+        42,
+        {
+          "content": "no role key"
+        },
+        {
+          "role": "user"
+        },
+        {
+          "content": "reply to a turn with no content key",
+          "role": "assistant"
+        },
+        {
+          "content": "list role never matches",
+          "role": [
+            "user"
+          ]
+        },
+        {
+          "content": "Final question",
+          "role": "user"
+        },
+        {
+          "content": "Final answer",
+          "role": "assistant"
+        },
+        {
+          "content": "Trailing question with no reply",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "expected": [],
+      "name": "empty_list",
+      "turns": []
+    },
+    {
+      "expected": [],
+      "name": "none_input",
+      "turns": null
+    },
+    {
+      "expected": [],
+      "name": "only_user_turns",
+      "turns": [
+        {
+          "content": "a",
+          "role": "user"
+        },
+        {
+          "content": "b",
+          "role": "user"
+        }
+      ]
+    },
+    {
+      "expected": [],
+      "name": "reply_without_question",
+      "turns": [
+        {
+          "content": "x",
+          "role": "assistant"
+        }
+      ]
+    },
+    {
+      "expected": [],
+      "name": "question_then_blank_question",
+      "turns": [
+        {
+          "content": "a",
+          "role": "user"
+        },
+        {
+          "content": "",
+          "role": "user"
+        },
+        {
+          "content": "x",
+          "role": "companion"
+        }
+      ]
+    },
+    {
+      "expected": [],
+      "name": "non_list_input",
+      "turns": {
+        "content": "a",
+        "role": "user"
+      }
+    }
+  ],
+  "source_sha256": "b972d8d2af8ed51cf46068d5affe002d6992ac36be0791e942aa9fd9473e428f"
+}

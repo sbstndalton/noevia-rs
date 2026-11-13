@@ -20,6 +20,8 @@
 //! a client that goes away strands neither the work nor its hold (a [`gate::Hold`] is released by the
 //! task, has a deadline, and is given back from `Drop` if the task dies).
 
+pub mod autotune_context;
+pub mod autotune_deps;
 pub mod calibration;
 pub mod calibration_facts;
 pub mod calibration_worker;
