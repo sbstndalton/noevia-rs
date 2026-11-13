@@ -1,7 +1,7 @@
 [package]
 name = "code-harness"
 version = "0.1.0"
-description = "noevia-core's code-harness.cjs in Rust: the Code task session's file API (provisional manifest; the harness leaves and the session join it)"
+description = "noevia-core's code-harness.cjs in Rust: the Code task session's pieces: code-meta.cjs and code-tool-schemas.cjs (the Executor guard), and the agent's file API (defaultFiles); nothing calls it yet (R7)"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -11,7 +11,10 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+code-actions = { path = "../code-actions" }
 js-json = { path = "../js-json" }
+sha2 = "=0.10.9"
+stream-guard = { path = "../stream-guard" }
 rustix = { version = "=1.1.5", features = ["fs", "process"] }
 
 [dev-dependencies]

@@ -480,8 +480,11 @@ dependencies = [
 name = "code-harness"
 version = "0.1.0"
 dependencies = [
+ "code-actions",
  "js-json",
  "rustix",
+ "sha2",
+ "stream-guard",
  "tempfile",
 ]
 
