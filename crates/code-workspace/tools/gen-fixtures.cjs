@@ -8,6 +8,8 @@
 // Synthetic data only: QA-named repositories, fixed ids, fixed commit dates, a clock the script sets that
 // also moves on by one at every reading (so no two records share a time).
 //
+// A path in a step may hold `<FF>`: the byte 0xff, a name that is not valid UTF-8.
+//
 // Normalised in both: the scenario's base directory is `<BASE>`; uid/gid numbers are `<uid>`/`<gid>`;
 // git's own words after `Command failed: <command>\n` are `<stderr>` (they differ between git versions).
 
@@ -17,6 +19,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
+// Modes in the snapshots and the files noevia writes do not depend on the machine's umask.
+process.umask(0o022);
 const serverDir = path.resolve(process.argv[2] || '');
 const { createCodeWorkspaces, gitEnv } = require(path.join(serverDir, 'code-workspace.cjs'));
 
@@ -254,6 +258,79 @@ const SCENARIOS = {
     { op: 'mergeVerified', ws: 'c', taskId: T1, sha: '{tip:qa/clone}' },
     { op: 'branchTip', ws: 'c', taskId: T1 },
   ],
+  // What noevia refuses to run git on (#2528): a released clone whose own files would make git run
+  // a command, read configuration noevia did not check, or look inside another repository. Each is
+  // refused (the claim ends `stuck`, the tree is kept) before anything planted runs; the
+  // harness's own git may run what it planted, as the harness (`pwned` is checked in the snapshot).
+  'refusals': (() => {
+    const T = (n) => id(n), C = (n) => CL(id(n));
+    const refused = (n, plant) => [
+      { op: 'claim', ws: 'c', taskId: T(n), repo: 'repos/qa-repo', branch: `qa/r${n}` },
+      ...plant(C(n)),
+      { op: 'release', ws: 'c', taskId: T(n) },
+    ];
+    const keys = (...kv) => (tree) => kv.map(([k, v]) => ({ op: 'git', cwd: tree, args: ['config', k, v ?? 'touch <BASE>/pwned'] }));
+    const deep = (n) => Array(n).fill('d').join('/');
+    return [
+      { op: 'repo', name: 'qa-repo', files: { 'a.txt': 'a\n' } },
+      { op: 'ws', name: 'c', epoch: 'qa-epoch-1', treeRoot: 'trees', owner: 'self' },
+      { op: 'clock', t: 1000 },
+      ...refused(1, keys(['commit.gpgsign', 'true'])),
+      ...refused(2, keys(['gpg.program', '<BASE>/qa-sign.sh'])),
+      ...refused(3, keys(['gpg.ssh.defaultKeyCommand'])),
+      ...refused(4, keys(['tag.gpgSign', 'true'], ['push.gpgSign', 'true'], ['tag.forceSignAnnotated', 'true'])),
+      ...refused(5, keys(['extensions.worktreeConfig', 'true'])),
+      // A per-worktree config nothing here reads (git reads it when extensions.worktreeConfig is set).
+      ...refused(6, (tree) => [{ op: 'write', path: `${tree}/.git/config.worktree`, text: '[filter "qa"]\n\tclean = touch <BASE>/pwned\n' }]),
+      ...refused(7, (tree) => [{ op: 'write', path: `${tree}/.git/commondir`, text: '../..\n' }]),
+      ...refused(8, (tree) => [{ op: 'dir', path: `${tree}/sub` }, { op: 'git', cwd: `${tree}/sub`, args: ['init', '-q', '--template='] }]),
+      ...refused(9, keys(['core.fsmonitorHookVersion', '2'])),
+      ...refused(10, keys(['core.alternateRefsCommand'], ['core.alternateRefsPrefixes'], ['diff.external'], ['sequence.editor'], ['merge.tool'])),
+      ...refused(11, keys(['diff.tool'], ['diff.guitool'], ['merge.guitool'], ['difftool.x.cmd'], ['mergetool.x.cmd'])),
+      ...refused(12, keys(['guitool.x.cmd'], ['interactive.diffFilter'], ['pager.log'], ['browser.x.cmd'], ['man.x.cmd'])),
+      ...refused(13, keys(['instaweb.httpd'], ['gitcvs.enabled'], ['trailer.x.command'], ['maintenance.auto', 'false'], ['submodule.x.update', '!sh'])),
+      ...refused(14, keys(['url.x.insteadOf', 'y'], ['protocol.ext.allow', 'always'], ['web.browser'], ['help.browser'], ['gc.recentObjectsHook'])),
+      ...refused(15, keys(['gc.repackFilter', 'blob:none'], ['gc.repackFilterTo', 'x'], ['remote.o.uploadpack'], ['remote.o.receivepack'], ['remote.o.proxy'])),
+      ...refused(16, keys(['remote.o.vcs'], ['fsmonitor.watchman', 'x'], ['core.worktree', '/'], ['core.sshCommand'], ['diff.x.textconv'])),
+      ...refused(17, (tree) => [{ op: 'write', path: `${tree}/.git/info/attributes`, text: '*.txt filter=x\n' }]),
+      // The attributes walk stops 64 levels down and refuses what it cannot finish: 65 deep is
+      // refused, 64 deep is let through.
+      ...refused(18, (tree) => [{ op: 'dir', path: `${tree}/${deep(65)}` }]),
+      ...refused(19, (tree) => [{ op: 'dir', path: `${tree}/${deep(64)}` }]),
+      // A name that is not UTF-8 is walked as bytes: hiding a .gitattributes in one does not work,
+      // and one with nothing to hide is no reason to refuse.
+      ...refused(20, (tree) => [{ op: 'dir', path: `${tree}/bad<FF>` }, { op: 'write', path: `${tree}/bad<FF>/.gitattributes`, text: '* filter=x\n' }]),
+      ...refused(21, (tree) => [{ op: 'dir', path: `${tree}/bad<FF>` }, { op: 'write', path: `${tree}/bad<FF>/x.txt`, text: 'x\n' }]),
+      // The checked file is replaced by a copy only noevia has open; it must be a plain file.
+      ...refused(22, (tree) => [{ op: 'rm', path: `${tree}/.git/config` }, { op: 'symlink', target: '<BASE>/outside/config', path: `${tree}/.git/config` }]),
+      ...refused(23, (tree) => [{ op: 'rm', path: `${tree}/.git`, recursive: true }]),
+      ...refused(24, (tree) => [{ op: 'rm', path: `${tree}/.git`, recursive: true }, { op: 'write', path: `${tree}/.git`, text: 'gitdir: <BASE>/nowhere\n' }]),
+      // Taking the tree back stops 256 levels down.
+      ...refused(25, (tree) => [{ op: 'dir', path: `${tree}/${deep(256)}` }]),
+      ...refused(26, (tree) => [{ op: 'dir', path: `${tree}/${deep(257)}` }]),
+      { op: 'list', ws: 'c' },
+    ];
+  })(),
+  // Taking a clone back from the harness (#2529): what the seal leaves on disk. A config.worktree
+  // makes the release stuck after the seal, so the tree stays to be looked at.
+  'seal': [
+    { op: 'repo', name: 'qa-repo', files: { 'a.txt': 'a\n' } },
+    { op: 'ws', name: 'c', epoch: 'qa-epoch-1', treeRoot: 'trees', owner: 'self' },
+    { op: 'clock', t: 1000 },
+    { op: 'claim', ws: 'c', taskId: T1, repo: 'repos/qa-repo', branch: 'qa/seal' },
+    { op: 'write', path: `${CL(T1)}/tool`, text: '#!/bin/sh\n', mode: 0o4775 },
+    { op: 'write', path: `${CL(T1)}/group-writable.txt`, text: 'g\n', mode: 0o664 },
+    { op: 'write', path: `${CL(T1)}/private.txt`, text: 'p\n', mode: 0o600 },
+    { op: 'dir', path: `${CL(T1)}/sub`, mode: 0o2777 },
+    { op: 'write', path: `${CL(T1)}/sub/inner.txt`, text: 'i\n', mode: 0o666 },
+    { op: 'write', path: `${CL(T1)}/shared.txt`, text: 's\n', mode: 0o666 },
+    { op: 'link', target: `${CL(T1)}/shared.txt`, path: `${CL(T1)}/shared-too.txt` },
+    { op: 'symlink', target: 'a.txt', path: `${CL(T1)}/ln` },
+    { op: 'write', path: `${CL(T1)}/.git/config.worktree`, text: '\n' },
+    { op: 'release', ws: 'c', taskId: T1 },
+    ...['', '/tool', '/group-writable.txt', '/private.txt', '/sub', '/sub/inner.txt', '/shared.txt', '/shared-too.txt', '/a.txt']
+      .map((p) => ({ op: 'mode', path: `${CL(T1)}${p}` })),
+  ],
   // Node's own behaviour where the Rust port differs on purpose (src/lib.rs, "Fixed on purpose").
   'differences': [
     { op: 'repo', name: 'qa-repo', files: { 'a.txt': 'a\n' } },
@@ -269,33 +346,24 @@ const SCENARIOS = {
     { op: 'write', path: 'tenant/code-workspaces/stray.json', text: '{}' },
     { op: 'claim', ws: 'c', taskId: T3, repo: 'repos/qa-repo', branch: 'qa/x' },
     { op: 'list', ws: 'c' },
-    // Commit signing names a program; Node's release commit runs it.
-    { op: 'claim', ws: 'c', taskId: T4, repo: 'repos/qa-repo', branch: 'qa/sign' },
-    { op: 'write', path: 'qa-sign.sh', text: '#!/bin/sh\ntouch <BASE>/pwned\nexit 1\n', mode: 0o755 },
-    { op: 'git', cwd: CL(T4), args: ['config', 'commit.gpgsign', 'true'] },
-    { op: 'git', cwd: CL(T4), args: ['config', 'gpg.program', '<BASE>/qa-sign.sh'] },
-    { op: 'write', path: `${CL(T4)}/a.txt`, text: 'changed\n' },
+    // A `.git` that is a link to a directory holding a `config`: both refuse the release, but
+    // Node's frozen copy of the config is written into (and renamed over a file in) the directory
+    // the link names, a place outside the tree.
+    { op: 'claim', ws: 'c', taskId: T4, repo: 'repos/qa-repo', branch: 'qa/gitlink' },
+    { op: 'dir', path: 'outside' },
+    { op: 'write', path: 'outside/config', text: '[core]\n', mode: 0o600 },
+    { op: 'rm', path: `${CL(T4)}/.git`, recursive: true },
+    { op: 'symlink', target: '<BASE>/outside', path: `${CL(T4)}/.git` },
     { op: 'release', ws: 'c', taskId: T4 },
-    { op: 'rm', path: 'pwned' },
-    // A filter defined in .git/config.worktree (a file Node's check never reads), named by a
-    // .gitattributes only the index holds. Node releases such a clone; the Rust port refuses it.
-    { op: 'claim', ws: 'c', taskId: T5, repo: 'repos/qa-repo', branch: 'qa/wtconfig' },
-    { op: 'git', cwd: CL(T5), args: ['config', 'core.repositoryformatversion', '1'] },
-    { op: 'git', cwd: CL(T5), args: ['config', 'extensions.worktreeConfig', 'true'] },
-    { op: 'git', cwd: CL(T5), args: ['config', '--worktree', 'filter.qa.clean', 'sh -c "touch <BASE>/pwned; cat"'] },
-    { op: 'write', path: `${CL(T5)}/.gitattributes`, text: '* filter=qa\n' },
-    { op: 'git', cwd: CL(T5), args: ['add', '.gitattributes'] },
-    { op: 'rm', path: `${CL(T5)}/.gitattributes` },
-    { op: 'write', path: `${CL(T5)}/a.txt`, text: 'changed\n' },
-    // (The harness's own `git add` above ran the filter as the harness; only noevia's run counts.)
-    { op: 'rm', path: 'pwned' },
-    { op: 'release', ws: 'c', taskId: T5 },
+    { op: 'mode', path: 'outside/config' },
   ],
 };
 
 // ── Snapshot: what is on disk after a step ───────────────────────────────────────────────────
+// Listed down to ten levels (a tree made to be too deep is not written out in full).
 function walk(dir, rel = '') {
   let entries = [];
+  if (rel.split('/').length > 10) return [];
   try { entries = fs.readdirSync(path.join(dir, rel), { withFileTypes: true }); } catch { return []; }
   const out = [];
   for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
@@ -346,7 +414,8 @@ function outcome(base, fn) {
 
 function runScenario(steps) {
   const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'qa-code-ws-')));
-  const at = (p) => path.join(base, p);
+  // A path holding `<FF>` is a Buffer: Node takes names that are not valid UTF-8 that way.
+  const at = (p) => (p.includes('<FF>') ? Buffer.concat([Buffer.from(`${base}/`), ...p.split('<FF>').flatMap((x, i) => (i ? [Buffer.from([0xff]), Buffer.from(x)] : [Buffer.from(x)]))]) : path.join(base, p));
   const repos = [];
   const stores = {};
   let clock = 0, last = null;
@@ -366,9 +435,11 @@ function runScenario(steps) {
         repos.push(s.name);
         break;
       }
-      case 'dir': fs.mkdirSync(at(s.path), { recursive: true }); break;
+      case 'dir': fs.mkdirSync(at(s.path), { recursive: true }); if (s.mode !== undefined) fs.chmodSync(at(s.path), s.mode); break;
       case 'write': fs.writeFileSync(at(s.path), s.text.split('<BASE>').join(base), s.mode !== undefined ? { mode: s.mode } : {}); if (s.mode !== undefined) fs.chmodSync(at(s.path), s.mode); break;
-      case 'rm': fs.rmSync(at(s.path), { force: true }); break;
+      case 'rm': fs.rmSync(at(s.path), { force: true, ...(s.recursive ? { recursive: true } : {}) }); break;
+      case 'link': fs.linkSync(at(s.target), at(s.path)); break;
+      case 'mode': result = outcome(base, () => (fs.statSync(at(s.path)).mode & 0o7777).toString(8)); break;
       case 'symlink': fs.symlinkSync(s.target.split('<BASE>').join(base), at(s.path)); break;
       case 'git': shell(s.args.map((a) => a.split('<BASE>').join(base)), at(s.cwd)); break;
       case 'clock': clock = s.t; break;

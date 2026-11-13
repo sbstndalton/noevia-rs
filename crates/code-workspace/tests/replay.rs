@@ -4,7 +4,9 @@
 //! Each answer and the snapshot after every step (records, trust file, source refs and worktrees,
 //! exclude file, the trees on disk, directory modes, whether a planted command ran) must match.
 //! Where the port differs on purpose, the fixture shows Node's defect and the Rust answer is
-//! checked against its own expectation here.
+//! checked against its own expectation here. A scenario whose answer depends on the version of git
+//! (`empty-repo`) is compared with Node's recorded answer only when the git running the test does
+//! what the recording git did; otherwise only what the port must hold either way is asserted.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -13,7 +15,7 @@
 )]
 
 use code_workspace::git::Git;
-use code_workspace::{chown_tree, Claim, Error, Ids, Options, Workspaces};
+use code_workspace::{chown_tree, seal_tree, Claim, Error, Ids, Options, Workspaces};
 use js_json::{wtf16, JValue};
 use std::collections::BTreeMap;
 use std::fs;
@@ -88,15 +90,23 @@ fn shell(args: &[&str], cwd: &Path) -> String {
     String::from_utf8(out.stdout).unwrap()
 }
 
+/// The generator's `walk`: names as Node reads them (a name that is not UTF-8 has its U+FFFD
+/// spelling, which names nothing on disk, so what is inside such a directory is not listed), and
+/// listed down to ten levels.
 fn walk(base: &Path, rel: &str) -> Vec<JValue> {
     let mut out = Vec::new();
+    if rel.split('/').count() > 10 {
+        return out;
+    }
     let Ok(entries) = fs::read_dir(base.join(rel)) else {
         return out;
     };
-    let mut entries: Vec<_> = entries.flatten().collect();
-    entries.sort_by_key(|e| e.file_name());
-    for e in entries {
-        let name = e.file_name().into_string().unwrap();
+    let mut entries: Vec<(String, fs::DirEntry)> = entries
+        .flatten()
+        .map(|e| (e.file_name().to_string_lossy().into_owned(), e))
+        .collect();
+    entries.sort_by(|a, b| a.0.encode_utf16().cmp(b.0.encode_utf16()));
+    for (name, e) in entries {
         let r = format!("{rel}/{name}");
         let kind = e.file_type().unwrap();
         if name == ".git" {
@@ -214,6 +224,8 @@ struct Run {
 
 impl Run {
     fn new() -> Run {
+        // The recording ran under this umask (the generator sets it).
+        rustix::process::umask(rustix::fs::Mode::from_raw_mode(0o022));
         let dir = tempfile::tempdir().unwrap();
         let base = fs::canonicalize(dir.path()).unwrap();
         let meta = fs::metadata(&base).unwrap();
@@ -230,8 +242,18 @@ impl Run {
         }
     }
 
+    /// `<base>/<p>`, `<FF>` being the byte 0xff (a name that is not UTF-8).
     fn at(&self, p: &str) -> std::path::PathBuf {
-        self.base.join(p)
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+        let mut bytes = self.base.as_os_str().as_bytes().to_vec();
+        bytes.push(b'/');
+        for (i, part) in p.split("<FF>").enumerate() {
+            if i > 0 {
+                bytes.push(0xff);
+            }
+            bytes.extend_from_slice(part.as_bytes());
+        }
+        std::path::PathBuf::from(std::ffi::OsString::from_vec(bytes))
     }
 
     fn b(&self) -> String {
@@ -279,7 +301,12 @@ impl Run {
                 return None;
             }
             "dir" => {
-                fs::create_dir_all(self.at(&str_of("path"))).unwrap();
+                let p = self.at(&str_of("path"));
+                fs::create_dir_all(&p).unwrap();
+                if let Some(m) = s.get("mode").as_num() {
+                    use std::os::unix::fs::PermissionsExt;
+                    fs::set_permissions(&p, fs::Permissions::from_mode(m as u32)).unwrap();
+                }
                 return None;
             }
             "write" => {
@@ -292,9 +319,23 @@ impl Run {
                 return None;
             }
             "rm" => {
-                let _ = fs::remove_file(self.at(&str_of("path")));
+                let p = self.at(&str_of("path"));
+                if s.get("recursive").as_bool() == Some(true) {
+                    let _ = fs::remove_dir_all(&p);
+                } else {
+                    let _ = fs::remove_file(&p);
+                }
                 return None;
             }
+            "link" => {
+                fs::hard_link(self.at(&str_of("target")), self.at(&str_of("path"))).unwrap();
+                return None;
+            }
+            "mode" => Ok(
+                fs::metadata(self.at(&str_of("path"))).map_or(JValue::Null, |m| {
+                    JValue::Str(format!("{:o}", m.mode() & 0o7777))
+                }),
+            ),
             "symlink" => {
                 std::os::unix::fs::symlink(self.sub(&str_of("target")), self.at(&str_of("path")))
                     .unwrap();
@@ -429,11 +470,48 @@ fn steps(f: &JValue, name: &str) -> Vec<JValue> {
 #[test]
 fn fixture_records_its_source() {
     let f = fixture();
-    // core a72ae94; a fixture regenerated from another source fails here until updated on purpose.
+    // noevia-core 0c294a3 (#367); a fixture regenerated from another source fails here until
+    // updated on purpose.
     assert_eq!(
         f.get("sources").get("code-workspace.cjs").as_str(),
-        Some("d8cb106b0b6b59013b7b522b85ff2862b36c8cef7cb93e73c61e0deea54c3577")
+        Some("6241fc912ab6ae35be20c2456d47aa48aa68930250163a61c0012e17706bf632")
     );
+}
+
+/// Whether the git running here makes a worktree on a branch that has no commit yet (git 2.39
+/// refuses with exit code 255; newer git makes it). Node's own answer for `empty-repo` is whatever
+/// the recording git did.
+fn git_makes_worktree_on_unborn_branch() -> bool {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    shell(&["init", "-q", "--template=", "-b", "main"], &repo);
+    Command::new("git")
+        .args(["worktree", "add", "-B", "qa-probe"])
+        .arg(dir.path().join("wt"))
+        .current_dir(&repo)
+        .env_clear()
+        .env("PATH", std::env::var("PATH").unwrap_or_default())
+        .env("HOME", "/nonexistent")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .output()
+        .unwrap()
+        .status
+        .success()
+}
+
+/// Node's error `status` (git's exit code) is not the port's (a 500 has none): see the crate doc.
+fn without_error_status(t: &str) -> String {
+    let pat = r#""error":{"status":"#;
+    match t.find(pat) {
+        Some(i) => {
+            let from = i + pat.len();
+            let digits = t[from..].chars().take_while(char::is_ascii_digit).count();
+            format!("{}null{}", &t[..from], &t[from + digits..])
+        }
+        None => t.to_string(),
+    }
 }
 
 #[test]
@@ -447,16 +525,38 @@ fn every_node_scenario_replays() {
         if name == "differences" {
             continue;
         }
+        let script = steps(&f, name);
+        // The claim of an unborn branch: git decides. Compared with Node's recorded answer only
+        // when this git does what the recording git did; a recorded refusal differs from the
+        // port's answer only in the error's status (the crate doc, difference 2).
+        let mut refused_by_recording = false;
+        if name == "empty-repo" {
+            let claim = script
+                .iter()
+                .find(|s| s.get("op").as_str() == Some("claim"));
+            refused_by_recording = claim.is_some_and(|c| c.get("result").get("error").is_object());
+            if refused_by_recording == git_makes_worktree_on_unborn_branch() {
+                eprintln!(
+                    "empty-repo: this git ({}) answers an unborn branch differently from the recording ({}); asserting the port's own answer only",
+                    if refused_by_recording { "makes it" } else { "refuses it" },
+                    text(f.get("git"))
+                );
+                empty_repo_without_the_recorded_answer(&script);
+                seen += 1;
+                continue;
+            }
+        }
         let mut run = Run::new();
         let mut last = JValue::Null;
-        for (i, s) in steps(&f, name).iter().enumerate() {
+        for (i, s) in script.iter().enumerate() {
             if let Some(got) = run.step(s) {
-                assert_eq!(
-                    text(&got),
-                    text(s.get("result")),
-                    "{name} step {i}: {}",
-                    text(s)
-                );
+                let want = text(s.get("result"));
+                let want = if refused_by_recording {
+                    without_error_status(&want)
+                } else {
+                    want
+                };
+                assert_eq!(text(&got), want, "{name} step {i}: {}", text(s));
             }
             let want = match s.get("snapshot") {
                 JValue::Str(same) if same == "same" => last.clone(),
@@ -473,7 +573,28 @@ fn every_node_scenario_replays() {
         }
         seen += 1;
     }
-    assert_eq!(seen, 8);
+    assert_eq!(seen, 10);
+}
+
+/// What the port must do with an empty repository whatever git does with its unborn branch: a
+/// claim either holds a tree with no base commit, or fails with git's own words and leaves nothing.
+fn empty_repo_without_the_recorded_answer(script: &[JValue]) {
+    let mut run = Run::new();
+    for s in script {
+        let Some(got) = run.step(s) else { continue };
+        match s.get("op").as_str() {
+            Some("claim") => {
+                let t = text(&got);
+                assert!(
+                    t.contains(r#""baseSha":null"#)
+                        || t.contains("Command failed: git worktree add -B noevia/task-"),
+                    "{t}"
+                );
+            }
+            Some("headSha") => assert_eq!(text(&got), r#"{"ok":null}"#),
+            _ => {}
+        }
+    }
 }
 
 #[test]
@@ -489,6 +610,9 @@ fn differences_from_node() {
     assert!(node[0].contains(r#""status":128"#), "{}", node[0]);
     assert!(node[2].starts_with(r#"{"ok":{"#), "{}", node[2]);
     assert_eq!(node[3], r#"{"ok":[]}"#);
+    // Node's frozen copy of the config was written into the directory the `.git` link names, and
+    // renamed over the file in it: mode 0644 where the harness left 0600.
+    assert_eq!(node[6], r#"{"ok":"644"}"#);
 
     let mut run = Run::new();
     let mut got = Vec::new();
@@ -508,12 +632,16 @@ fn differences_from_node() {
         "{}",
         got[3]
     );
-    // Node's release ran the signing program (stuck only afterwards); the port refuses first.
-    assert!(node[5].contains(r#""status":"stuck""#), "{}", node[5]);
-    assert!(got[5].contains("Refused to release the workspace: its .git/config sets commit.gpgsign, gpg.program, which would make git run a command."), "{}", got[5]);
-    // Node released the clone with a worktree config; the port does not touch it.
-    assert!(node[7].contains(r#""status":"released""#), "{}", node[7]);
-    assert!(got[7].contains("Refused to release the workspace: its .git/config.worktree would be read as configuration."), "{}", got[7]);
+    // The same refusal, and nothing written through the link.
+    assert!(
+        node[5].contains("the clone\u{2019}s .git is not a plain directory"),
+        "{}",
+        node[5]
+    );
+    // (The clocks differ: Node's claim of the second clone on the branch ticked one more.)
+    let refusal = |t: &str| t[t.find("\"error\":").unwrap()..].to_string();
+    assert_eq!(refusal(&got[5]), refusal(&node[5]));
+    assert_eq!(got[6], r#"{"ok":"600"}"#);
     assert!(!run.base.join("pwned").exists(), "a planted command ran");
 }
 
@@ -522,7 +650,7 @@ fn no_planted_command_ever_runs_as_noevia() {
     // Replayed through the port: after every step noevia takes in the hostile scenarios, nothing
     // planted has run.
     let f = fixture();
-    for name in ["hostile-clone", "differences"] {
+    for name in ["hostile-clone", "refusals", "differences"] {
         let mut run = Run::new();
         for (i, s) in steps(&f, name).iter().enumerate() {
             let harness = matches!(s.get("op").as_str(), Some("git" | "write" | "rm"));
@@ -606,6 +734,7 @@ fn every_git_call_on_a_held_tree_switches_off_what_the_tree_could_run() {
     let tree = tree.to_str().unwrap().to_string();
     let lines = fs::read_to_string(&log).unwrap();
     let mut seen = 0;
+    let mut released_with = 0;
     for line in lines.lines() {
         // A commit message's later lines carry no " | ".
         let Some((cwd, cmd)) = line.split_once(" | ") else {
@@ -621,16 +750,26 @@ fn every_git_call_on_a_held_tree_switches_off_what_the_tree_could_run() {
             seen += 1;
             assert!(
                 cmd.starts_with(
-                    "-c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null "
+                    "-c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.attributesFile=/dev/null -c commit.gpgSign=false -c tag.gpgSign=false "
                 ),
                 "{line}"
             );
         }
-        if cmd.contains(" commit ") {
-            assert!(cmd.contains("-c commit.gpgSign=false"), "{line}");
+        // The release's own status, add and commit also run without auto-maintenance, submodule
+        // recursion or the ext transport; the fetch without the ext transport.
+        let clone_off = "-c gc.auto=0 -c maintenance.auto=false -c diff.ignoreSubmodules=all -c submodule.recurse=false -c protocol.ext.allow=never ";
+        for verb in [" status ", " add ", " commit "] {
+            if on_tree && cmd.contains(verb) {
+                assert!(cmd.contains(clone_off), "{line}");
+                released_with += 1;
+            }
+        }
+        if cmd.contains(" fetch ") {
+            assert!(cmd.contains("-c protocol.ext.allow=never fetch"), "{line}");
+            released_with += 1;
         }
     }
-    assert!(seen >= 5, "{lines}");
+    assert!(seen >= 5 && released_with >= 4, "{lines}");
 }
 
 #[test]
@@ -702,7 +841,7 @@ fn the_hand_over_never_follows_a_directory_swapped_for_a_link_mid_walk() {
             std::os::unix::fs::symlink(&outside, tree.join("d")).unwrap();
         }
     };
-    code_workspace::chown_tree_with(
+    let swapped = code_workspace::chown_tree_with(
         &tree,
         Ids {
             uid: me.uid(),
@@ -710,8 +849,62 @@ fn the_hand_over_never_follows_a_directory_swapped_for_a_link_mid_walk() {
         },
         &swap,
     )
-    .unwrap();
+    .unwrap_err();
+    // Refused, as in Node, and what the link names was not touched.
+    assert!(
+        swapped
+            .to_string()
+            .ends_with("d: it was replaced while it was being checked"),
+        "{swapped}"
+    );
     assert_eq!(before, ctime(), "the walk followed the swapped link");
+}
+
+#[test]
+fn the_seal_takes_modes_away_and_never_follows_a_directory_swapped_for_a_link() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let tree = dir.path().join("tree");
+    let outside = dir.path().join("outside");
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(outside.join("secret"), "x").unwrap();
+    fs::set_permissions(outside.join("secret"), fs::Permissions::from_mode(0o666)).unwrap();
+    fs::create_dir_all(tree.join("d")).unwrap();
+    fs::create_dir_all(tree.join("sub")).unwrap();
+    fs::write(tree.join("sub/tool"), "t").unwrap();
+    fs::write(tree.join("sub/other"), "t").unwrap();
+    fs::hard_link(tree.join("sub/other"), tree.join("other-too")).unwrap();
+    let set = |p: std::path::PathBuf, m: u32| {
+        fs::set_permissions(p, fs::Permissions::from_mode(m)).unwrap()
+    };
+    set(tree.join("sub/tool"), 0o6775);
+    set(tree.join("sub/other"), 0o666);
+    set(tree.join("sub"), 0o2777);
+    let me = fs::metadata(dir.path()).unwrap();
+    let ids = Ids {
+        uid: me.uid(),
+        gid: me.gid(),
+    };
+    let mode = |p: std::path::PathBuf| fs::metadata(p).unwrap().mode() & 0o7777;
+    let swap = |name: &std::ffi::CStr| {
+        if name.to_bytes() == b"d" {
+            fs::rename(tree.join("d"), tree.join("d.real")).unwrap();
+            std::os::unix::fs::symlink(&outside, tree.join("d")).unwrap();
+        }
+    };
+    let e = code_workspace::walk_tree(&tree, ids, true, &swap).unwrap_err();
+    assert!(
+        e.to_string()
+            .contains("it was replaced while it was being checked"),
+        "{e}"
+    );
+    assert_eq!(mode(outside.join("secret")), 0o666, "the link was followed");
+    // Undisturbed: setuid, setgid and group/other write are gone; a file with a second link is left.
+    fs::remove_file(tree.join("d")).unwrap();
+    seal_tree(&tree, ids).unwrap();
+    assert_eq!(mode(tree.join("sub/tool")), 0o755);
+    assert_eq!(mode(tree.join("sub")), 0o755);
+    assert_eq!(mode(tree.join("sub/other")), 0o666);
 }
 
 #[test]

@@ -10,11 +10,16 @@
 //! [`git::Git::run`], with Node's environment, deadline and error text.
 //!
 //! A tree a harness has held is hostile input: git runs commands its `.git/config`, hooks and
-//! attributes name. Every git call on such a tree switches those off ([`HOSTILE_OFF`]), a clone
-//! whose configuration reaches for them anyway is refused before anything is run on it, and the
-//! pinned configuration files (they hold the engine key) are removed without following a link.
+//! attributes name. Every git call on such a tree switches those off ([`HOSTILE_OFF`], and for the
+//! release's own status, add and commit also [`CLONE_EXTRA`]), a clone whose configuration (or
+//! per-worktree config, `commondir`, nested repository, attributes) reaches for them anyway is
+//! refused before anything is run on it, and the pinned configuration files (they hold the engine
+//! key) are removed without following a link. A clone is taken back from the harness user sealed
+//! ([`seal_tree`]) and its `.git/config` replaced by a copy only noevia has open, all through
+//! directory descriptors (noevia-core#2528, #2529; core 0c294a3).
 //!
-//! **Fixed on purpose against Node** (tested in tests/replay.rs):
+//! **Fixed on purpose against Node** (tested in tests/replay.rs, recorded in the fixture's
+//! `differences` scenario):
 //! 1. A stray `*.json` in `code-workspaces/` whose name is not a task id is skipped by [`Workspaces::list`];
 //!    in Node it made `list()` throw inside its own `try` and return `[]`, which switched off the
 //!    one-writer check for every repository.
@@ -22,21 +27,25 @@
 //!    status (a 500 for the route); Node's error kept execFileSync's exit code as its `status`
 //!    (128), which a route then answered with.
 //! 3. A record file that is not a JSON object reads as absent.
-//! 4. The pinned files are removed, and trees handed over, through directory file descriptors
-//!    opened with `O_NOFOLLOW` (`openat`/`unlinkat`/`fchownat`), so a link the harness swaps in
-//!    after a check is never followed; Node checked by path and then acted by path
-//!    (sbstndalton/noevia#2527, #2529).
-//! 5. A released clone is also refused when its config turns on commit signing (`commit.gpgsign`,
-//!    `gpg.*program`) or `extensions.worktreeConfig`, when it has `.git/config.worktree` or
-//!    `.git/commondir`, or when a name in it is not UTF-8; noevia's commit runs with
-//!    `commit.gpgSign=false`. Node ran the harness's command in each case
-//!    (sbstndalton/noevia#2528). This also stops a harness that ran `git sparse-checkout`
-//!    (which turns on `extensions.worktreeConfig`): such a release ends `stuck` for a person to
-//!    look at, which fails safe. Like Node, the attributes walk stops 64 levels down.
-//! 6. `contains` answers false for a path that exists but cannot be named as UTF-8 (Node said
-//!    true for a link to such a directory, #2529); an empty branch is no branch, as in Node.
+//! 4. The pinned files are removed through directory file descriptors opened with `O_NOFOLLOW`
+//!    (`openat`/`unlinkat`), so a link the harness swaps in after a check is never followed; Node
+//!    still checks by path and then acts by path (the hand-over, the seal and the removal of a
+//!    tree are descriptor walks in Node now too, and are parity).
+//! 5. The config copy that freezes a released clone's `.git/config` is not written when `.git` is
+//!    a link or a file rather than a directory (the refusal that follows is the same answer):
+//!    Node wrote it, and renamed it over `config`, in whatever directory the link named.
 //!
-//! OS error texts (an `lchown` that failed, an unremovable tree) are Rust's, not libuv's.
+//! Parity with Node 0c294a3 that was a difference before: a released clone is refused when its
+//! config turns on commit signing or names any program, hook, further config file or repository
+//! (`HOSTILE_KEYS`), has `extensions.worktreeConfig`, `.git/config.worktree`, `.git/commondir` or
+//! a nested repository, or has attributes nested 65 levels down or unreadable (names are walked as
+//! bytes, a name that is not UTF-8 is no reason to refuse); `contains` answers false for a path
+//! that exists but cannot be resolved; an empty branch is no branch. No `/proc` is needed (Node
+//! refuses a hand-over without `/proc/self/fd`), and removing a clone is `std`'s descriptor-based
+//! `remove_dir_all`, which has no depth limit (Node's stops at 256 levels).
+//!
+//! OS error texts: libuv's for the few the records can carry (`ENOENT: no such file or directory,
+//! lstat '<path>'`), Rust's for any other (an `lchown` that failed, an unremovable tree).
 
 #![forbid(unsafe_code)]
 
@@ -49,19 +58,37 @@ use js_json::{wtf16, JValue};
 use paths::{dirname, join, realpath, relative, resolve};
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// code-workspace.cjs `BRANCH_PREFIX`.
 pub const BRANCH_PREFIX: &str = "noevia/task-";
 /// Switches off what git would run from a tree's own config, hooks and attributes.
-pub const HOSTILE_OFF: [&str; 6] = [
+pub const HOSTILE_OFF: [&str; 10] = [
     "-c",
     "core.fsmonitor=false",
     "-c",
     "core.hooksPath=/dev/null",
     "-c",
     "core.attributesFile=/dev/null",
+    "-c",
+    "commit.gpgSign=false",
+    "-c",
+    "tag.gpgSign=false",
+];
+/// What the release's own `status`, `add` and `commit` in a clone add to [`HOSTILE_OFF`]: no
+/// auto-maintenance (a commit starts it, and it reads the clone's config), no submodule recursion.
+pub const CLONE_EXTRA: [&str; 10] = [
+    "-c",
+    "gc.auto=0",
+    "-c",
+    "maintenance.auto=false",
+    "-c",
+    "diff.ignoreSubmodules=all",
+    "-c",
+    "submodule.recurse=false",
+    "-c",
+    "protocol.ext.allow=never",
 ];
 const COMMITTER_NAME: &str = "noevia";
 const COMMITTER_EMAIL: &str = "noevia@localhost";
@@ -168,6 +195,8 @@ pub struct Claim<'a> {
 
 type Clock = Box<dyn Fn() -> f64 + Send + Sync>;
 type Chown = Box<dyn Fn(&Path, Ids) -> io::Result<()> + Send + Sync>;
+/// How a tree is taken back from the harness user: like a [`Chown`], and sealed (see [`seal_tree`]).
+pub type Seal = Box<dyn Fn(&Path, Ids) -> io::Result<()> + Send + Sync>;
 
 fn cwd_or_root() -> String {
     std::env::current_dir()
@@ -188,6 +217,7 @@ pub struct Workspaces {
     now: Clock,
     git: Git,
     chown: Chown,
+    seal: Seal,
     change_max_buffer: usize,
     lock: Mutex<()>,
 }
@@ -216,6 +246,16 @@ fn args(list: &[&str]) -> Vec<String> {
 fn hostile(list: &[&str]) -> Vec<String> {
     HOSTILE_OFF
         .iter()
+        .chain(list.iter())
+        .map(|s| (*s).to_string())
+        .collect()
+}
+
+/// code-workspace.cjs `CLONE_OFF`: [`HOSTILE_OFF`] and [`CLONE_EXTRA`], then `list`.
+fn clone_off(list: &[&str]) -> Vec<String> {
+    HOSTILE_OFF
+        .iter()
+        .chain(CLONE_EXTRA.iter())
         .chain(list.iter())
         .map(|s| (*s).to_string())
         .collect()
@@ -332,40 +372,79 @@ fn pins_of(record: &JValue) -> Vec<String> {
     }
 }
 
-/// A key a released clone's `.git/config` must not set (code-workspace.cjs `HOSTILE_KEYS`).
+/// A key a released clone's `.git/config` must not set (code-workspace.cjs `HOSTILE_KEYS`): every
+/// key git-config(1) documents as naming a program, a hook, a file of more configuration or
+/// another repository. `k` is lower-cased.
 fn hostile_key(k: &str) -> bool {
     let rest_ends = |prefix: &str, suffix: &str| {
         k.strip_prefix(prefix)
             .is_some_and(|rest| rest.ends_with(suffix))
     };
+    let prefixed = |prefixes: &[&str]| prefixes.iter().any(|p| k.starts_with(p));
+    let one_of = |keys: &[&str]| keys.contains(&k);
     k.starts_with("filter.")
         || rest_ends("diff.", ".command")
         || rest_ends("diff.", ".textconv")
         || rest_ends("merge.", ".driver")
-        || matches!(
-            k,
-            "core.fsmonitor"
-                | "core.hookspath"
-                | "core.sshcommand"
-                | "core.gitproxy"
-                | "core.worktree"
-                | "core.askpass"
-                | "core.editor"
-                | "core.pager"
-        )
+        // `core.fsmonitor` and anything that continues it (`core.fsmonitorHookVersion`).
+        || k.starts_with("core.fsmonitor")
+        || one_of(&[
+            "core.hookspath",
+            "core.sshcommand",
+            "core.gitproxy",
+            "core.worktree",
+            "core.askpass",
+            "core.editor",
+            "core.pager",
+        ])
         || k.strip_prefix("credential.")
             .is_some_and(|rest| rest == "helper" || rest.ends_with(".helper"))
-        // Signing runs a program of the config's choosing on noevia's own commit.
-        || matches!(k, "commit.gpgsign" | "tag.gpgsign" | "gpg.program")
-        || k.strip_prefix("gpg.").is_some_and(|rest| rest.ends_with(".program"))
-        // Makes git read `.git/config.worktree` as well, which this check does not.
+        || prefixed(&["alias.", "include.", "includeif.", "uploadpack.", "receive.", "sendemail."])
+        // Signing runs gpg.program (or gpg.<format>.program, gpg.ssh.defaultKeyCommand) on commit.
+        || k.starts_with("gpg.")
+        || one_of(&[
+            "commit.gpgsign",
+            "tag.gpgsign",
+            "push.gpgsign",
+            "tag.forcesignannotated",
+        ])
+        // With this set git also reads `.git/config.worktree`, which nothing here reads.
         || k == "extensions.worktreeconfig"
-        || k.starts_with("alias.")
-        || k.starts_with("include.")
-        || k.starts_with("includeif.")
-        || k.starts_with("uploadpack.")
-        || k.starts_with("receive.")
-        || k.starts_with("sendemail.")
+        || one_of(&[
+            "core.alternaterefscommand",
+            "core.alternaterefsprefixes",
+            "sequence.editor",
+            "diff.external",
+            "diff.tool",
+            "diff.guitool",
+            "merge.tool",
+            "merge.guitool",
+            "interactive.difffilter",
+            "web.browser",
+            "help.browser",
+            "gc.recentobjectshook",
+            "gc.repackfilter",
+            "gc.repackfilterto",
+        ])
+        || prefixed(&[
+            "fsmonitor.",
+            "difftool.",
+            "mergetool.",
+            "guitool.",
+            "pager.",
+            "browser.",
+            "man.",
+            "instaweb.",
+            "gitcvs.",
+            "trailer.",
+            "maintenance.",
+            "submodule.",
+            "url.",
+            "protocol.",
+        ])
+        || ["uploadpack", "receivepack", "proxy", "vcs"]
+            .iter()
+            .any(|name| rest_ends("remote.", &format!(".{name}")))
 }
 
 /// JS `\s`.
@@ -446,18 +525,82 @@ pub fn remove_all(target: &str) -> io::Result<()> {
     }
 }
 
-/// How deep [`chown_tree`] goes before it refuses the tree.
-const MAX_CHOWN_DEPTH: usize = 512;
+/// How deep [`chown_tree`] and [`seal_tree`] go before they refuse the tree (code-workspace.cjs
+/// `defaultChown`).
+const MAX_CHOWN_DEPTH: usize = 256;
+
+/// Node's error code for an OS error, as far as this crate names them.
+fn errno_code(e: &io::Error) -> Option<&'static str> {
+    Some(match e.raw_os_error()? {
+        1 => "EPERM",
+        2 => "ENOENT",
+        5 => "EIO",
+        9 => "EBADF",
+        12 => "ENOMEM",
+        13 => "EACCES",
+        16 => "EBUSY",
+        17 => "EEXIST",
+        18 => "EXDEV",
+        20 => "ENOTDIR",
+        21 => "EISDIR",
+        24 => "EMFILE",
+        28 => "ENOSPC",
+        30 => "EROFS",
+        36 => "ENAMETOOLONG",
+        39 => "ENOTEMPTY",
+        40 => "ELOOP",
+        _ => return None,
+    })
+}
+
+/// libuv's text for a failed call: `ENOENT: no such file or directory, lstat '<path>'` (an error
+/// this crate has no name for keeps Rust's own text).
+fn uv_error(e: &io::Error, syscall: &str, path: &str) -> io::Error {
+    let desc = match errno_code(e) {
+        Some("EPERM") => "operation not permitted",
+        Some("ENOENT") => "no such file or directory",
+        Some("EIO") => "i/o error",
+        Some("EBADF") => "bad file descriptor",
+        Some("ENOMEM") => "not enough memory",
+        Some("EACCES") => "permission denied",
+        Some("EBUSY") => "resource busy or locked",
+        Some("EEXIST") => "file already exists",
+        Some("EXDEV") => "cross-device link not permitted",
+        Some("ENOTDIR") => "not a directory",
+        Some("EISDIR") => "illegal operation on a directory",
+        Some("EMFILE") => "too many open files",
+        Some("ENOSPC") => "no space left on device",
+        Some("EROFS") => "read-only file system",
+        Some("ENAMETOOLONG") => "name too long",
+        Some("ENOTEMPTY") => "directory not empty",
+        Some("ELOOP") => "too many symbolic links encountered",
+        _ => return io::Error::new(e.kind(), e.to_string()),
+    };
+    let code = errno_code(e).unwrap_or("");
+    io::Error::other(format!("{code}: {desc}, {syscall} '{path}'"))
+}
 
 /// code-workspace.cjs `defaultChown`: `target` and every entry under it handed to `ids`, links
 /// themselves not followed. The walk goes through directory file descriptors opened with
-/// `O_NOFOLLOW` (`fchownat` relative to each), so a directory swapped for a link while it runs
-/// leads nowhere (Node walked by path: sbstndalton/noevia#2529).
+/// `O_NOFOLLOW` (`fchownat` relative to each), so a directory swapped for a link, or for another
+/// directory, while it runs is refused and the walk stops (Node walked by path: noevia-core#2529).
+/// A directory is given away only after everything in it, so nothing can be planted ahead of the
+/// walk in a tree noevia made. A regular file with a second link is left as it is: the other name
+/// may be anywhere.
 pub fn chown_tree(target: &Path, ids: Ids) -> io::Result<()> {
-    chown_tree_with(target, ids, &|_| {})
+    walk_tree(target, ids, false, &|_| {})
 }
 
-/// [`chown_tree`], calling `between(name)` after each entry is handed over and before it is
+/// [`chown_tree`] with `seal`: taking a tree back. Each directory is taken and loses group and
+/// other write (and setuid, setgid and sticky) before it is read, so nothing can be added behind
+/// the walk, and its regular files lose them too: the kernel clears setuid and setgid on chown, and
+/// putting them back on a file that is now noevia's would make a setuid program out of whatever
+/// the harness wrote.
+pub fn seal_tree(target: &Path, ids: Ids) -> io::Result<()> {
+    walk_tree(target, ids, true, &|_| {})
+}
+
+/// [`chown_tree`], calling `between(name)` after each entry has been looked at and before it is
 /// opened to descend: where a racing harness would swap it (tests use it to do exactly that).
 #[doc(hidden)]
 pub fn chown_tree_with(
@@ -465,49 +608,141 @@ pub fn chown_tree_with(
     ids: Ids,
     between: &dyn Fn(&std::ffi::CStr),
 ) -> io::Result<()> {
-    use rustix::fs::{chownat, open, openat, AtFlags, Dir, Gid, Mode, OFlags, Uid, CWD};
-    use rustix::io::Errno;
-    let (uid, gid) = (Some(Uid::from_raw(ids.uid)), Some(Gid::from_raw(ids.gid)));
-    chownat(CWD, target, uid, gid, AtFlags::SYMLINK_NOFOLLOW)?;
-    let dflags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
-    let root = match open(target, dflags, Mode::empty()) {
-        Ok(fd) => fd,
-        Err(Errno::NOTDIR | Errno::LOOP) => return Ok(()),
-        Err(e) => return Err(e.into()),
+    walk_tree(target, ids, false, between)
+}
+
+/// [`chown_tree_with`] for either direction.
+#[doc(hidden)]
+pub fn walk_tree(
+    target: &Path,
+    ids: Ids,
+    seal: bool,
+    between: &dyn Fn(&std::ffi::CStr),
+) -> io::Result<()> {
+    use rustix::fs::{open, Gid, Mode, OFlags, Uid};
+    let walker = TreeWalk {
+        uid: Some(Uid::from_raw(ids.uid)),
+        gid: Some(Gid::from_raw(ids.gid)),
+        seal,
+        between,
     };
-    let mut stack = vec![Dir::read_from(&root)?];
-    drop(root);
-    loop {
-        let child = {
-            let Some(dir) = stack.last_mut() else {
-                break;
-            };
-            let Some(entry) = dir.next() else {
-                stack.pop();
-                continue;
-            };
-            let entry = entry?;
-            let name = entry.file_name();
-            if matches!(name.to_bytes(), b"." | b"..") {
-                continue;
-            }
-            let parent = dir.fd()?;
-            chownat(parent, name, uid, gid, AtFlags::SYMLINK_NOFOLLOW)?;
-            between(name);
-            match openat(parent, name, dflags, Mode::empty()) {
-                Ok(fd) => Some(Dir::read_from(&fd)?),
-                Err(Errno::NOTDIR | Errno::LOOP) => None,
-                Err(e) => return Err(e.into()),
-            }
-        };
-        if let Some(child) = child {
-            if stack.len() >= MAX_CHOWN_DEPTH {
-                return Err(io::Error::other("the tree is nested too deep to hand over"));
-            }
-            stack.push(child);
+    let shown_target = target.to_string_lossy().into_owned();
+    let top = open(
+        target,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|e| uv_error(&io::Error::from(e), "open", &shown_target))?;
+    let name = target
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    walker.dir(&top, &name, 0)
+}
+
+/// One run of [`walk_tree`].
+struct TreeWalk<'a> {
+    uid: Option<rustix::fs::Uid>,
+    gid: Option<rustix::fs::Gid>,
+    seal: bool,
+    between: &'a dyn Fn(&std::ffi::CStr),
+}
+
+impl TreeWalk<'_> {
+    /// Hand an open file or directory over; sealing also strips what must not outlive the hand-over.
+    fn take(&self, fd: &rustix::fd::OwnedFd, mode: u32) -> io::Result<()> {
+        rustix::fs::fchown(fd, self.uid, self.gid)?;
+        if self.seal {
+            rustix::fs::fchmod(fd, rustix::fs::Mode::from_raw_mode(mode & 0o755))?;
         }
+        Ok(())
     }
-    Ok(())
+
+    fn dir(&self, fd: &rustix::fd::OwnedFd, shown: &str, depth: usize) -> io::Result<()> {
+        use rustix::fs::{fstat, openat, statat, AtFlags, Dir, FileType, Mode, OFlags};
+        use rustix::io::Errno;
+        if depth > MAX_CHOWN_DEPTH {
+            return Err(io::Error::other(format!(
+                "{shown} is nested too deeply to hand over"
+            )));
+        }
+        if self.seal {
+            self.take(fd, fstat(fd)?.st_mode)?;
+        }
+        let mut names = Vec::new();
+        for entry in Dir::read_from(fd)? {
+            let entry = entry?;
+            if !matches!(entry.file_name().to_bytes(), b"." | b"..") {
+                names.push(entry.file_name().to_owned());
+            }
+        }
+        // Node's readdirSync: libuv sorts the names.
+        names.sort_by(|a, b| a.to_bytes().cmp(b.to_bytes()));
+        let replaced = |where_: &str| {
+            io::Error::other(format!(
+                "{where_}: it was replaced while it was being checked"
+            ))
+        };
+        for name in names {
+            let where_ = if shown.is_empty() {
+                name.to_string_lossy().into_owned()
+            } else {
+                format!("{shown}/{}", name.to_string_lossy())
+            };
+            let st = statat(fd, name.as_c_str(), AtFlags::SYMLINK_NOFOLLOW)
+                .map_err(|e| uv_error(&io::Error::from(e), "lstat", &where_))?;
+            (self.between)(name.as_c_str());
+            match FileType::from_raw_mode(st.st_mode) {
+                FileType::Directory => {
+                    let flags =
+                        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+                    let child = match openat(fd, name.as_c_str(), flags, Mode::empty()) {
+                        Ok(child) => child,
+                        // A link, or a file, where the directory was a moment ago.
+                        Err(Errno::LOOP | Errno::NOTDIR) => return Err(replaced(&where_)),
+                        Err(e) => return Err(e.into()),
+                    };
+                    let now = fstat(&child)?;
+                    if FileType::from_raw_mode(now.st_mode) != FileType::Directory
+                        || now.st_dev != st.st_dev
+                        || now.st_ino != st.st_ino
+                    {
+                        return Err(replaced(&where_));
+                    }
+                    self.dir(&child, &where_, depth + 1)?;
+                }
+                FileType::RegularFile => {
+                    if st.st_nlink > 1 {
+                        continue;
+                    }
+                    // O_NONBLOCK: an entry swapped for a fifo must not hang the walk; it fails the check below.
+                    let flags =
+                        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC;
+                    let file = openat(fd, name.as_c_str(), flags, Mode::empty())
+                        .map_err(|e| uv_error(&io::Error::from(e), "open", &where_))?;
+                    let now = fstat(&file)?;
+                    if FileType::from_raw_mode(now.st_mode) == FileType::RegularFile
+                        && now.st_dev == st.st_dev
+                        && now.st_ino == st.st_ino
+                        && now.st_nlink == 1
+                    {
+                        self.take(&file, now.st_mode)?;
+                    }
+                }
+                // A link, fifo or socket: the entry itself, never what it names.
+                _ => rustix::fs::chownat(
+                    fd,
+                    name.as_c_str(),
+                    self.uid,
+                    self.gid,
+                    AtFlags::SYMLINK_NOFOLLOW,
+                )?,
+            }
+        }
+        if !self.seal {
+            self.take(fd, 0)?;
+        }
+        Ok(())
+    }
 }
 
 /// A pinned file could not be removed. `link`: a link sat on the way to it.
@@ -564,11 +799,20 @@ impl Workspaces {
             now,
             git,
             chown,
+            seal: Box::new(seal_tree),
             change_max_buffer: options
                 .change_max_buffer
                 .unwrap_or(pipeline::CHANGE_MAX_BUFFER),
             lock: Mutex::new(()),
         }
+    }
+
+    /// Replaces how a released or interrupted tree is taken back from the harness user (default:
+    /// [`seal_tree`]; `chown` given to [`Workspaces::with`] is only the hand-over at claim).
+    #[must_use]
+    pub fn with_seal(mut self, seal: Seal) -> Workspaces {
+        self.seal = seal;
+        self
     }
 
     /// Where the records live.
@@ -1036,6 +1280,16 @@ impl Workspaces {
                 paths::Real::Unnamed => return Ok(Some(false)),
                 paths::Real::Missing => {}
             }
+            // Only a path that is not there yet is judged by its parent. One that exists but has
+            // no realpath (a loop, a link to a directory that cannot be named) cannot be placed,
+            // so it is outside (noevia-core#2529).
+            let absent = match fs::symlink_metadata(&probe) {
+                Ok(_) => false,
+                Err(e) => matches!(e.raw_os_error(), Some(2 | 20)),
+            };
+            if !absent {
+                return Ok(Some(false));
+            }
             let parent = dirname(&probe);
             unresolved += 1;
             if parent == probe || unresolved > 64 {
@@ -1086,24 +1340,21 @@ impl Workspaces {
         if !meta.is_dir() {
             return Some("the clone\u{2019}s .git is not a plain directory".into());
         }
-        // Other configuration git would read from this directory: refused, not read.
-        for (file, why) in [
-            (
-                "config.worktree",
-                "its .git/config.worktree would be read as configuration",
-            ),
-            (
-                "commondir",
-                "its .git/commondir points git at another directory",
-            ),
-        ] {
-            if fs::symlink_metadata(join(&git_dir, file)).is_ok() {
-                return Some(why.to_string());
+        // Either file makes git read configuration the key check below never sees: the
+        // per-worktree config, or the config of whatever common directory `commondir` names.
+        for name in ["config.worktree", "commondir"] {
+            if fs::symlink_metadata(join(&git_dir, name)).is_ok() {
+                return Some(format!("the clone has a .git/{name}, which would make git read configuration noevia did not check"));
             }
         }
         let config = join(&git_dir, "config");
+        match fs::symlink_metadata(&config) {
+            Ok(m) if m.is_file() => {}
+            Ok(_) => return Some("the clone\u{2019}s .git/config is not a plain file".into()),
+            Err(_) => return Some("the clone has no .git/config".into()),
+        }
         let listing = match self.run(
-            &args(&["config", "--file", &config, "--name-only", "--list"]),
+            &hostile(&["config", "--file", &config, "--name-only", "--list"]),
             Some(tree),
         ) {
             Ok(l) => l,
@@ -1145,16 +1396,24 @@ impl Workspaces {
                 let _ = m;
             }
         }
-        let mut attr_files = vec![join(&git_dir, "info/attributes")];
-        if let Err(why) = walk_attributes(tree, 0, &mut attr_files) {
+        // Names are walked as bytes: a directory whose name is not valid UTF-8 has no string
+        // spelling, and skipping it would hide a `.gitattributes`. Anything the walk cannot
+        // finish is refused.
+        let mut attr_files = vec![PathBuf::from(join(&git_dir, "info/attributes"))];
+        if let Err(why) = walk_attributes(Path::new(tree), "", 0, &mut attr_files) {
             return Some(why);
         }
+        // Attributes only name drivers, and every driver lives in configuration refused above
+        // (and the global attributes file is /dev/null), so this is a second line, not the only one.
         for file in attr_files {
             let Ok(bytes) = fs::read(&file) else {
                 continue;
             };
             if names_filter(&String::from_utf8_lossy(&bytes)) {
-                return Some(format!("{} names a filter driver", relative(tree, &file)));
+                return Some(format!(
+                    "{} names a filter driver",
+                    relative(tree, &file.to_string_lossy())
+                ));
             }
         }
         None
@@ -1181,7 +1440,12 @@ impl Workspaces {
             if let (true, Some(noevia)) =
                 (record.get("owner").truthy(), ids_of(record.get("noevia")))
             {
-                if let Err(e) = (self.chown)(Path::new(&path), noevia) {
+                // Sealed as it is taken: owned by noevia and writable by nobody else, so a harness
+                // process still running cannot change what is checked below before git reads it,
+                // and the config is a fresh copy no such process holds open (noevia-core#2529).
+                if let Err(e) =
+                    (self.seal)(Path::new(&path), noevia).and_then(|()| freeze_config(&path))
+                {
                     return self.stuck(
                         &record,
                         format!("Could not take the workspace back from the harness user: {e}"),
@@ -1202,10 +1466,10 @@ impl Workspaces {
             }
             let saved = (|| -> Result<(), GitError> {
                 if !self
-                    .run(&hostile(&["status", "--porcelain"]), Some(&path))?
+                    .run(&clone_off(&["status", "--porcelain"]), Some(&path))?
                     .is_empty()
                 {
-                    self.run(&hostile(&["add", "--all"]), Some(&path))?;
+                    self.run(&clone_off(&["add", "--all"]), Some(&path))?;
                     let name = format!("user.name={COMMITTER_NAME}");
                     let email = format!("user.email={COMMITTER_EMAIL}");
                     let message = format!(
@@ -1213,9 +1477,7 @@ impl Workspaces {
                         text_of(record.get("taskId"))
                     );
                     self.run(
-                        &hostile(&[
-                            "-c",
-                            "commit.gpgSign=false",
+                        &clone_off(&[
                             "-c",
                             &name,
                             "-c",
@@ -1242,7 +1504,14 @@ impl Workspaces {
             }
             let refspec = format!("{branch}:{branch}");
             if let Err(e) = self.run(
-                &hostile(&["fetch", "--quiet", &path, &refspec]),
+                &hostile(&[
+                    "-c",
+                    "protocol.ext.allow=never",
+                    "fetch",
+                    "--quiet",
+                    &path,
+                    &refspec,
+                ]),
                 Some(&repo),
             ) {
                 let lower = e.message.to_lowercase();
@@ -1278,7 +1547,7 @@ impl Workspaces {
             let _ = self.run(&hostile(&["worktree", "prune"]), Some(&repo));
         }
         if removed && remove_branch {
-            let _ = self.run(&args(&["branch", "-D", &branch]), Some(&repo));
+            let _ = self.run(&hostile(&["branch", "-D", &branch]), Some(&repo));
         }
         let at = JValue::Num((self.now)());
         let head = self.branch_head(&record);
@@ -1314,7 +1583,7 @@ impl Workspaces {
                 ids_of(interrupted.get("noevia")),
             ) {
                 let path = interrupted.get("path").as_str().unwrap_or("").to_string();
-                let _ = (self.chown)(Path::new(&path), noevia);
+                let _ = (self.seal)(Path::new(&path), noevia);
             }
             interrupted = match self.drop_pinned(&interrupted) {
                 Ok(()) => with(&interrupted, vec![("pinnedDropped", JValue::Bool(true))]),
@@ -1332,36 +1601,89 @@ impl Workspaces {
     }
 }
 
-/// Every `.gitattributes` under `dir`, at most 64 levels down, `.git` skipped, links not followed.
-/// A name that is not UTF-8 cannot be judged (nor named to git here), so it refuses the tree.
-fn walk_attributes(dir: &str, depth: usize, out: &mut Vec<String>) -> Result<(), String> {
+/// Every `.gitattributes` under `dir`, at most 64 levels down, `.git` skipped at the top and a
+/// nested one refused, links not followed. `shown` is `dir` relative to the tree, for the reason.
+fn walk_attributes(
+    dir: &Path,
+    shown: &str,
+    depth: usize,
+    out: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    use std::os::unix::ffi::OsStrExt;
     if depth > 64 {
-        return Ok(());
+        return Err(format!("{shown} is nested too deeply to check"));
     }
-    let Ok(entries) = fs::read_dir(dir) else {
-        return Ok(());
+    let unread = |e: &io::Error| {
+        format!(
+            "{} could not be read ({})",
+            if shown.is_empty() { "the tree" } else { shown },
+            errno_code(e).unwrap_or("error")
+        )
     };
     let mut named = Vec::new();
-    for entry in entries.flatten() {
-        let Ok(name) = entry.file_name().into_string() else {
-            return Err("a name in the clone is not valid UTF-8".into());
-        };
-        let Ok(kind) = entry.file_type() else {
-            continue;
-        };
-        named.push((name, kind));
+    for entry in fs::read_dir(dir).map_err(|e| unread(&e))? {
+        let entry = entry.map_err(|e| unread(&e))?;
+        let kind = entry.file_type().map_err(|e| unread(&e))?;
+        named.push((entry.file_name(), kind));
     }
     named.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
     for (name, kind) in named {
-        if name == ".git" {
+        let label = if shown.is_empty() {
+            name.to_string_lossy().into_owned()
+        } else {
+            format!("{shown}/{}", name.to_string_lossy())
+        };
+        if name.as_bytes() == b".git" {
+            // A repository inside the tree has a config of its own, and `git add` runs its filters.
+            if depth > 0 {
+                return Err(format!(
+                    "{label} is a nested repository, whose own configuration git would read"
+                ));
+            }
             continue;
         }
-        let full = join(dir, &name);
+        let full = dir.join(&name);
         if kind.is_dir() {
-            walk_attributes(&full, depth + 1, out)?;
-        } else if name == ".gitattributes" {
+            walk_attributes(&full, &label, depth + 1, out)?;
+        } else if name.as_bytes() == b".gitattributes" {
             out.push(full);
         }
     }
     Ok(())
+}
+
+/// Replace the clone's `.git/config` with a copy only noevia has open (noevia-core#2529). A harness
+/// process that opened the old file for writing before the tree was taken back keeps only the old
+/// inode, so the configuration checked next is the one git reads. The tree is sealed by then, so
+/// nothing can put another file in its place. A `.git` that is not a plain directory is not
+/// written through (the check that follows refuses it); Node wrote the copy into whatever
+/// directory such a link named.
+fn freeze_config(tree: &str) -> io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let git_dir = join(tree, ".git");
+    let file = join(&git_dir, "config");
+    let plain = fs::symlink_metadata(&file).map_err(|e| uv_error(&e, "lstat", &file))?;
+    if !plain.is_file() {
+        return Err(io::Error::other(
+            "the clone\u{2019}s .git/config is not a plain file",
+        ));
+    }
+    if !fs::symlink_metadata(&git_dir).is_ok_and(|m| m.is_dir()) {
+        return Ok(());
+    }
+    let body = fs::read(&file).map_err(|e| uv_error(&e, "open", &file))?;
+    let copy = join(&git_dir, &format!("config.noevia-{}", std::process::id()));
+    let _ = fs::remove_file(&copy);
+    let mut out = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32)
+        .mode(0o644)
+        .open(&copy)
+        .map_err(|e| uv_error(&e, "open", &copy))?;
+    out.write_all(&body)
+        .map_err(|e| uv_error(&e, "write", &copy))?;
+    drop(out);
+    fs::rename(&copy, &file).map_err(|e| uv_error(&e, "rename", &copy))
 }
