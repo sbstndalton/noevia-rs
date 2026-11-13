@@ -1789,6 +1789,7 @@ fn an_operator_invitation_is_accepted_by_the_normal_flow_for_each_role() {
         let now = T0 + 10 * i as i64;
         let made = operator::create(&ops, role, now).unwrap();
         assert_eq!(made.expires_at, now + 86_400_000);
+        assert!(!format!("{made:?}").contains(&made.token));
         let (created_by, stored): (String, String) = w
             .node
             .query_row(

@@ -47,10 +47,19 @@ impl Role {
 }
 
 /// The invitation made: the token is shown once and stored only as its digest.
-#[derive(Debug)]
 pub struct Invitation {
     pub token: String,
     pub expires_at: i64,
+}
+
+/// Never the token: a stray `{:?}` must not print it.
+impl std::fmt::Debug for Invitation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Invitation")
+            .field("token", &"<redacted>")
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 /// Why no invitation was made.
