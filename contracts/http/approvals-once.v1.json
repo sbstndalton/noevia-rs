@@ -1,0 +1,42 @@
+{
+  "source": "noevia-core server/approvals.cjs",
+  "core": "0c294a3b7161ec80b386e8e5f20e4f37a630bbb0",
+  "cases": [
+    {
+      "once": false,
+      "decision": "approve",
+      "outcome": "approve",
+      "grant": false
+    },
+    {
+      "once": false,
+      "decision": "approve_all",
+      "outcome": "approve",
+      "grant": true
+    },
+    {
+      "once": false,
+      "decision": "deny",
+      "outcome": "deny",
+      "grant": false
+    },
+    {
+      "once": true,
+      "decision": "approve",
+      "outcome": "approve",
+      "grant": false
+    },
+    {
+      "once": true,
+      "decision": "approve_all",
+      "outcome": "approve",
+      "grant": false
+    },
+    {
+      "once": true,
+      "decision": "deny",
+      "outcome": "deny",
+      "grant": false
+    }
+  ]
+}

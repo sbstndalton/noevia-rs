@@ -83,6 +83,8 @@ fn require(ok: bool, message: &str) -> Result<()> {
         Err(message.into())
     }
 }
+/// Sanity bound on the hashed native binary; debug builds of the public front exceed 512 MiB.
+const BINARY_ARTIFACT_CAP: usize = 2 * 1024 * 1024 * 1024;
 fn binary_sha256(path: &Path) -> Result<String> {
     let mut file = fs::File::open(path)?;
     require(
@@ -98,7 +100,7 @@ fn binary_sha256(path: &Path) -> Result<String> {
             break;
         }
         total = total.checked_add(n).ok_or("binary hash overflow")?;
-        require(total <= 512 * 1024 * 1024, "binary artifact cap")?;
+        require(total <= BINARY_ARTIFACT_CAP, "binary artifact cap")?;
         hash.update(buffer.get(..n).ok_or("binary hash count")?);
     }
     Ok(format!("{:x}", hash.finalize()))
