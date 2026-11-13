@@ -20,7 +20,7 @@
   "server/instruction-skills.cjs": "5ba01387704a3b74d73a4a6659e594404e0183ce49c2343293059e67e47930ba",
   "server/skill-history.cjs": "3f5bc9be0413ef3bd56c0fec7415137770ebb50c5f2ce4914eff21a0efaf0ff7",
   "server/skill-reads.cjs": "197489baf7958df035339b077b388a6aba5d1059d8f5780af376c210e75d2162",
-  "server/rust-approval-registry.cjs": "013215b1cb70f6450a6988bf9e1a3a7f3597336b3d45d672cd584b57d192f548",
+  "server/rust-approval-registry.cjs": "8b747fe0ba20f9459b5ae3797421e2fd7905cf31df33a1dcfbc26379a3f7c874",
   "server/tool-write-fence.cjs": "25bfeae8ec9713fb8ad3e9bbc0d522b9f9e5959a9371d0d27cb1ff8ac00a1c7d",
   "server/dav-parse.lock": "bcbac548e0f685d940bf8fffc96a7e7c385ece9c41c77318cd80091baf7cc795"
  },
