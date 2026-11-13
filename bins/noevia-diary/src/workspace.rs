@@ -175,8 +175,8 @@ fn list_dir(
             lastmod: updated,
             name,
         };
-        match seen.get(&entry.name) {
-            Some(&at) => entries[at] = entry,
+        match seen.get(&entry.name).and_then(|&at| entries.get_mut(at)) {
+            Some(slot) => *slot = entry,
             None => {
                 seen.insert(entry.name.clone(), entries.len());
                 entries.push(entry);
