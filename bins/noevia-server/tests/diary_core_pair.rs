@@ -46,7 +46,11 @@ fn core() -> Option<PathBuf> {
         eprintln!("SKIPPED: NOEVIA_DIARY_CORE (a noevia-core checkout at contracts/http/front-core.ref) is not set");
         return None;
     };
-    if Command::new("node").arg("--version").output().is_err() {
+    if Command::new("timeout")
+        .args(["5", "node", "--version"])
+        .output()
+        .is_err()
+    {
         assert!(!required, "node is required here");
         eprintln!("SKIPPED: node is not on PATH");
         return None;
@@ -95,8 +99,8 @@ fn core_refuses_exactly_the_diary_methods_routes_toml_gives_the_front() {
             .collect::<Vec<_>>()
             .join(",")
     );
-    let out = Command::new("node")
-        .args(["-e", ASK])
+    let out = Command::new("timeout")
+        .args(["10", "node", "-e", ASK])
         .arg(&core)
         .arg(&list)
         .output()
@@ -147,4 +151,118 @@ fn core_refuses_exactly_the_diary_methods_routes_toml_gives_the_front() {
             .all(|((_, _, ours), r)| *ours && matches!(r, js_json::JValue::Bool(true))),
         "local-exchange is the front's and Core refuses it"
     );
+}
+
+#[path = "support/approval_front.rs"]
+mod approval_fixture;
+
+/// The existing required paired-Core job supplies the exact front-core.ref checkout and pinned
+/// WASM. These cases exercise its real registry, executor, credentials and HTTP MCP transport.
+async fn paired_approval_executor(op: &str) {
+    use serde_json::json;
+    use std::sync::Arc;
+    let Some(core) = core() else { return };
+    let script =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/support/approval-executor.cjs");
+    let child_core = core.clone();
+    let (mut child, port, _stdout) = tokio::task::spawn_blocking(move || {
+        use std::io::BufRead;
+        let mut child = Command::new("timeout")
+            .args(["45", "node"])
+            .arg(script)
+            .arg(child_core)
+            .env("DAV_PARSE_WASM_REQUIRED", "1")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut ready = String::new();
+        let mut reader = std::io::BufReader::new(stdout);
+        reader.read_line(&mut ready).unwrap();
+        let port: u16 = ready.trim().parse().unwrap();
+        (child, port, reader)
+    })
+    .await
+    .unwrap();
+    let peer: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    let f = approval_fixture::front_with_upstream(
+        format!("http://{peer}"),
+        Arc::new(approval_fixture::Node::default()),
+    )
+    .await;
+    let (b, _) = f.ticket("ap-real-executor", "qa-one").await;
+    let mut payload = json!({"user":f.user,"chat":"qa-one","scope":"space:free","binding":b,"protocol":noevia_server::approval_registry::PROTOCOL});
+    if op == "redeem" {
+        let (status, ticket) = f.op("approvals/granted", payload.clone()).await;
+        assert_eq!(status, 200);
+        payload["ticket"] = ticket["ticket"].clone();
+    }
+    let control = |path: &str| format!("POST {path} HTTP/1.1\r\nhost: fixture\r\n");
+    let (status, configured) = approval_fixture::http(
+        peer,
+        &control("/configure"),
+        &json!({"port":f.store.port(),"user":f.user,"binding":b}).to_string(),
+    )
+    .await;
+    assert_eq!(status, 200, "{configured}");
+    let (status, paused) = approval_fixture::http(peer, &control("/start"), "{}").await;
+    assert_eq!(status, 200, "{paused}");
+    assert_eq!(paused["paused"], json!(true));
+    if op != "control" {
+        server_projects::chat_move::move_chat(
+            &f.data,
+            &f.user,
+            "qa-one",
+            server_projects::chat_move::Holder::Project("qa-p".into()),
+            None,
+            approval_fixture::START,
+        )
+        .unwrap();
+        let (status, answer) = f.op(&format!("approvals/{op}"), payload).await;
+        assert_eq!(status, 200, "{answer}");
+        assert_eq!(
+            answer[if op == "granted" {
+                "granted"
+            } else {
+                "redeemed"
+            }],
+            json!(false)
+        );
+    }
+    let (status, completed) = approval_fixture::http(peer, &control("/resume"), "{}").await;
+    let _ = approval_fixture::http(peer, &control("/stop"), "{}").await;
+    assert!(
+        tokio::task::spawn_blocking(move || child.wait().unwrap().success())
+            .await
+            .unwrap()
+    );
+    assert_eq!(status, 200, "{completed}");
+    if op == "control" {
+        assert_eq!(
+            completed["outbound"],
+            json!(1),
+            "positive control must reach the actual outbound endpoint: {completed}"
+        );
+        assert_ne!(completed["outcome"]["notRun"], json!(true));
+    } else {
+        assert_eq!(completed["outbound"], json!(0), "no write request may reach the endpoint after {op} context invalidation returns: {completed}");
+        assert_eq!(
+            completed["outcome"]["notRun"],
+            json!(true),
+            "the real executor must classify the stopped call: {completed}"
+        );
+    }
+}
+#[tokio::test]
+async fn paired_real_executor_stops_after_context_invalidating_granted() {
+    paired_approval_executor("granted").await;
+}
+#[tokio::test]
+async fn paired_real_executor_stops_after_context_invalidating_redeem() {
+    paired_approval_executor("redeem").await;
+}
+#[tokio::test]
+async fn paired_real_executor_control_reaches_the_outbound_endpoint() {
+    paired_approval_executor("control").await;
 }
