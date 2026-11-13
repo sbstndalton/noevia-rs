@@ -484,6 +484,19 @@ pub trait Setup: Send + Sync {
     /// `create(...)` for one start, with what the host resolved for it: the driver's dependencies,
     /// or `None` when this start cannot have a pipeline (refused as [`NOT_SET_UP`]).
     fn create(&self, parts: Parts, resolved: &crate::service::Resolved) -> Option<driver::Deps>;
+    /// features.plannerReview (index.cjs's `codeReview.enabled()`), read once per direct start (a
+    /// panic is off). Off unless the host says so.
+    fn review_enabled(&self) -> bool {
+        false
+    }
+    /// The reviewer of one direct start with the review on: `createPlannerReview` over this
+    /// start's Code role engine ([`crate::review_gate::PlannerReview`] on [`EngineRoles`]).
+    fn reviewer(
+        &self,
+        _resolved: &crate::service::Resolved,
+    ) -> Arc<dyn crate::review_gate::Reviewer> {
+        Arc::new(crate::review_gate::Unconfigured)
+    }
 }
 
 /// Flags, engine key, log and clock.
@@ -563,6 +576,29 @@ impl<D: role_engine::Deps + 'static> driver::Roles for EngineRoles<D> {
                 reason: s(&f.reason),
             },
         })
+    }
+}
+
+/// A review alone: `pinModel({ taskId })` (the pipeline's roles), with no signal, as Node's.
+impl<D: role_engine::Deps + 'static> crate::review_gate::ReviewRoles for EngineRoles<D> {
+    fn pin(&self, task_id: &str) -> Result<Arc<dyn driver::Session>, code_pipeline::RoleFail> {
+        let pin = role_engine::PinRequest {
+            task_id: task_id.to_string(),
+            model: None,
+            thinking: false,
+            roles: None,
+            cancel: None,
+        };
+        match self.blocking.block_on(self.engine.pin_model(pin)) {
+            Ok(session) => Ok(Arc::new(EngineSession {
+                session,
+                blocking: self.blocking.clone(),
+            })),
+            Err(f) => Err(code_pipeline::RoleFail {
+                code: s(&f.code),
+                reason: s(&f.reason),
+            }),
+        }
     }
 }
 

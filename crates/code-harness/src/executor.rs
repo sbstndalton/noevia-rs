@@ -12,10 +12,15 @@
 //! (one agent turn with the brief, released after) and [`Executor::release_run`]; see
 //! [`crate::pipeline_host`]. Its lease is the pipeline's, held for the whole task.
 //!
-//! Not here (yet): the Planner review gate (`features.plannerReview`) and a Code role on another
-//! inference machine (the relay). A host that has either on keeps such tasks with Node.
+//! The Planner review of a direct task (`features.plannerReview`) is [`crate::review_gate`]: a
+//! start that carries a reviewer ([`StartRequest::review`], decided once by the host) puts the
+//! finished, released change in front of the person on a `review_change` card.
+//!
+//! Not here (yet): a Code role on another inference machine (the relay). A host that has it on
+//! keeps such tasks with Node.
 
 use crate::meta;
+use crate::review_gate::{self, Reviewer};
 use crate::session::{Ended, Host, Refusal, Session, Task};
 use code_acp::{Cancel, Handlers, Transport};
 use code_workspace::{Claim, Workspaces};
@@ -56,6 +61,11 @@ pub trait Jobs: Send + Sync {
     fn create(&self, project_id: Option<&str>, capabilities: &[String]) -> Result<String, Fail>;
     fn append(&self, id: &str, kind: &str, data: JValue) -> Result<(), Fail>;
     fn status(&self, id: &str) -> Option<String>;
+    /// jobs.cjs `get(id)`'s derived job as a JS value, for the review gate (the plan it sends,
+    /// the review it shows). `None`: not known, so neither is sent.
+    fn get(&self, _id: &str) -> Option<JValue> {
+        None
+    }
 }
 
 /// The egress controller (the front's code_egress): a grant for named domains, its revoke with
@@ -157,6 +167,8 @@ pub struct StartRequest {
     pub engine: Option<Engine>,
     /// This task's lease, when the host's gate is per start (else [`Deps::inference`]).
     pub inference: Option<Gate>,
+    /// The Planner review (features.plannerReview, decided once for this task): `None` is off.
+    pub review: Option<Arc<dyn Reviewer>>,
 }
 
 impl std::fmt::Debug for StartRequest {
@@ -169,6 +181,7 @@ impl std::fmt::Debug for StartRequest {
             .field("harness", &self.harness)
             .field("model", &self.model)
             .field("engine", &self.engine)
+            .field("review", &self.review.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -746,7 +759,14 @@ impl Executor {
         cancel: &Arc<Cancel>,
     ) {
         let outcome = catch_unwind(AssertUnwindSafe(|| {
-            self.execute(task_id, handle, req, &req.prompt, guarded, cancel)
+            let result = self.execute(task_id, handle, req, &req.prompt, guarded, cancel)?;
+            // A cancelled run is recorded as cancelled below; there is nothing to accept.
+            match &req.review {
+                Some(reviewer) if !cancel.is_cancelled() => {
+                    self.review_gate(task_id, handle, req, &**reviewer, cancel, result)
+                }
+                _ => Ok(result),
+            }
         }))
         .unwrap_or_else(|_| Err(Fail::new(None, "failed")));
         // A run that panicked never reached its release; it happens once per handle either way.
@@ -802,6 +822,51 @@ impl Executor {
             };
         }
         live.remove(task_id);
+    }
+
+    /// `reviewGate(ctx, result)` over this run's released handle.
+    fn review_gate(
+        &self,
+        task_id: &str,
+        handle: &Handle,
+        req: &StartRequest,
+        reviewer: &dyn Reviewer,
+        cancel: &Arc<Cancel>,
+        result: JValue,
+    ) -> Result<JValue, Fail> {
+        let nullish = |v: &JValue| match v {
+            JValue::Undefined => JValue::Null,
+            v => v.clone(),
+        };
+        let released = handle
+            .released
+            .lock()
+            .ok()
+            .and_then(|r| r.clone())
+            .unwrap_or(JValue::Null);
+        let engine = req.engine.clone().unwrap_or_else(|| (self.deps.engine)());
+        let log = |entry: Vec<(&str, JValue)>| self.log(task_id, entry);
+        review_gate::Gate {
+            task_id,
+            jobs: &*self.deps.jobs,
+            workspaces: &self.deps.workspaces,
+            approvals: &*self.deps.approvals,
+            log: &log,
+            reviewer,
+            prompt: &req.prompt,
+            tenant_id: req.tenant_id.as_deref(),
+            capabilities: &req.capabilities,
+            branch: handle.workspace.get("branch").clone(),
+            base_sha: nullish(handle.workspace.get("baseSha")),
+            head_sha: nullish(released.get("headSha")),
+            engine_key: engine.api_key,
+            grant_token: handle
+                .grant
+                .as_ref()
+                .map_or(JValue::Undefined, |g| g.get("token").clone()),
+            cancel,
+        }
+        .run(result)
     }
 
     fn checkpoint(&self, task_id: &str, data: JValue) -> Result<(), Fail> {

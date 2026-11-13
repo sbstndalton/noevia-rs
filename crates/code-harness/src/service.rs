@@ -14,8 +14,11 @@
 //! for a start ([`Setup::create`] answers `None`, or the lifecycle authority was already claimed
 //! for the tenant's directory) the start is refused with Node's [`NOT_SET_UP`] (409).
 //!
-//! Not here: the Planner review of a direct task (`features.plannerReview`): a direct task is never
-//! reviewed, so a deployment with that flag on keeps Code mode with Node.
+//! The Planner review of a direct task (`features.plannerReview`, [`crate::review_gate`]) is decided
+//! once per direct start from the host's [`Setup::review_enabled`] (a panic is off; no pipeline
+//! host is off) with its [`Setup::reviewer`]; its `review_change` card is this service's, answered
+//! through the same decide route and refused as `aborted` on a cancel and as `timeout` after
+//! [`APPROVAL_TIMEOUT`].
 
 use crate::executor::{Approvals, Deps, Egress, Engine, Executor, Fail, Jobs, Lease, StartRequest};
 use crate::pipeline_host::{to_x, Live, PipeHarness, PipeJobs, PipeWorkspaces, StartState};
@@ -378,6 +381,13 @@ impl Jobs for StoreJobs {
             .ok()
             .flatten()
             .and_then(|j| j.status.as_str().map(str::to_string))
+    }
+    fn get(&self, id: &str) -> Option<JValue> {
+        self.0
+            .get(id)
+            .ok()
+            .flatten()
+            .map(|j| crate::pipeline_host::job_value(&j))
     }
 }
 
@@ -783,6 +793,10 @@ impl Service {
                 },
             )?
         } else {
+            // Planner review (#519) is decided once, here, for the life of this task.
+            let review = self.options.pipeline.as_ref().and_then(|p| {
+                crate::review_gate::decide(&|| p.review_enabled(), &|| p.reviewer(&resolved))
+            });
             tenant.executor.start(StartRequest {
                 project_id: Some(project.id.to_string()),
                 repo_path: repo.path.clone(),
@@ -803,6 +817,7 @@ impl Service {
                 inference: resolved
                     .inference
                     .map(|g| Arc::new(move || g.enter()) as crate::executor::Gate),
+                review,
             })?
         };
         let mut out = match started {

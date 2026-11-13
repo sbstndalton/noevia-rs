@@ -24,11 +24,19 @@
 //! with Node's 409 "The Planner pipeline is not set up on this server.". Flags off, the front
 //! offers and runs exactly what it did before.
 //!
+//! The Planner review of a direct task (core code-harness.cjs `reviewGate`, #519) runs here too
+//! (code-harness's `review_gate`): features.plannerReview is read once per direct start (an
+//! unreadable setting is off), and with it on the finished, released change goes to the reviewer
+//! (code-review.cjs `createPlannerReview` over the same role engine as the Planner: a review alone
+//! pins the task's model for that task) and then on a `review_change` card, answered through the
+//! decide route below. A core that gives no `role` fact gets Node's "No reviewer model is
+//! configured on this server." on that card. The switch-flip condition "codePipeline and
+//! plannerReview off" therefore goes away: the front runs both, so `NOEVIA_CODE_EXECUTOR=rust`
+//! no longer has to wait for either flag to be off.
+//!
 //! Named differences (each refused, never run differently):
 //! - the Code role on an inference machine (core's relay, #1853) is refused with 409, for the
-//!   Planner too (so no role call ever goes to a machine);
-//! - no Planner review of a direct task runs (`plannerReview` stays Node's): the switch stays off
-//!   where that flag is on;
+//!   Planner and the review too (so no role call ever goes to a machine);
 //! - the inference budget check (core `modelManager.loadRefusal`) is core's, asked over its bridge:
 //!   when core cannot answer, the Planner's pin is refused as over budget ([`BUDGET_UNCHECKED`])
 //!   rather than pinned unchecked;
@@ -51,6 +59,7 @@ use axum::{
 };
 use code_harness::executor::{Egress, Engine, Fail, Lease};
 use code_harness::pipeline_host::{EngineRoles, Flag, PipeHost, PipeVerify};
+use code_harness::review_gate::{PlannerReview, Reviewer, Unconfigured};
 use code_harness::service::{
     default_harnesses, parse_repos, parse_user, Inference, Options, Parts, Project, Resolved,
     Service, Setup, APPROVAL_TIMEOUT,
@@ -458,6 +467,25 @@ pub fn role_endpoint(facts: &JValue) -> Option<role_engine::Endpoint> {
     })
 }
 
+impl FrontPipeline {
+    /// This start's Code role engine (core's `role` fact) and its key, or `None` without one.
+    fn roles(&self, resolved: &Resolved) -> Option<(EngineRoles<FrontRoles>, Option<String>)> {
+        let endpoint = role_endpoint(resolved.facts.as_ref()?)?;
+        let client = model_stream::client().ok()?;
+        let engine_key = endpoint.api_key.clone();
+        let engine = role_engine::RoleEngine::new(FrontRoles {
+            endpoint,
+            app: self.app.clone(),
+            client,
+        });
+        let roles = EngineRoles {
+            engine: Arc::new(engine),
+            blocking: Arc::new(role_engine::Blocking::with_handle(self.rt.clone())),
+        };
+        Some((roles, engine_key))
+    }
+}
+
 impl Setup for FrontPipeline {
     fn enabled(&self) -> bool {
         use server_features::Feature;
@@ -466,15 +494,24 @@ impl Setup for FrontPipeline {
         })
     }
 
+    fn review_enabled(&self) -> bool {
+        self.app
+            .upgrade()
+            .is_some_and(|app| feature(&app, server_features::Feature::PlannerReview))
+    }
+
+    fn reviewer(&self, resolved: &Resolved) -> Arc<dyn Reviewer> {
+        match self.roles(resolved) {
+            Some((roles, _)) => Arc::new(PlannerReview::new(
+                Arc::new(roles),
+                Arc::new(|e| log_code(&e)),
+            )),
+            None => Arc::new(Unconfigured),
+        }
+    }
+
     fn create(&self, parts: Parts, resolved: &Resolved) -> Option<driver::Deps> {
-        let endpoint = role_endpoint(resolved.facts.as_ref()?)?;
-        let client = model_stream::client().ok()?;
-        let engine_key = endpoint.api_key.clone();
-        let roles = role_engine::RoleEngine::new(FrontRoles {
-            endpoint,
-            app: self.app.clone(),
-            client,
-        });
+        let (roles, engine_key) = self.roles(resolved)?;
         let app = self.app.clone();
         let flag = move |f: Flag| {
             use server_features::Feature;
@@ -489,10 +526,7 @@ impl Setup for FrontPipeline {
             parts.jobs,
             parts.workspaces,
             parts.harness,
-            Some(Arc::new(EngineRoles {
-                engine: Arc::new(roles),
-                blocking: Arc::new(role_engine::Blocking::with_handle(self.rt.clone())),
-            })),
+            Some(Arc::new(roles)),
             Some(Arc::new(PipeVerify {
                 adapter: self.verify.clone(),
                 workspaces: parts.tree,

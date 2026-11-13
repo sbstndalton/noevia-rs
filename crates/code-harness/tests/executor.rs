@@ -357,6 +357,7 @@ fn every_node_task_run_replays() {
             tenant_id: Some("qa-tenant".into()),
             engine: None,
             inference: None,
+            review: None,
         });
         let started = match started {
             Ok(v) => v,
