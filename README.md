@@ -510,3 +510,12 @@ cargo test
 ```
 
 The toolchain is pinned in `rust-toolchain.toml`.
+
+### CI
+
+A new push to a pull request cancels the superseded runs. A pull request that only adds or changes
+crates in `crates/` that no other workspace member depends on and nothing outside them names (plus
+docs) runs only `Rust fmt, clippy, test`; every other job reports as skipped. Anything else runs
+everything (`tools/ci/changed_areas.py`; test: `python3 -m unittest tools/ci/test_changed_areas.py`).
+Work-in-progress pushes put `[skip ci]` in the head commit message, so they start no runs at all.
+Drop it from the last push, which must run CI before review.
