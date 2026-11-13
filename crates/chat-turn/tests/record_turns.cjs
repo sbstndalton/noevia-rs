@@ -11,7 +11,8 @@
 // → handleChat), with the real context, partial, interrupted-turn, effort, thinking-cap, toolbox,
 // Drive-tool and tool-exchange modules. Only the edges are stubs, and each records what the turn
 // asked of it: the engine (a scripted fetch answering with real Response objects), the model
-// manager (one loaded model, a configured context size), the approval gate (a fixed answer), the
+// manager (one loaded model, a configured context size), the approval registry (port contract S9: core's own
+// rust-approval-registry.cjs over a scripted front answering open, wait, granted, redeem and revoke), the
 // stores (chat list, titles, transcript append), the audit log and, for the project edit cases, a
 // Project documents box as MCP discovery offers it (its server only answers the call). Everything is synthetic and
 // QA-named; the engine is a .invalid host and nothing touches the network.
@@ -35,7 +36,10 @@
 //             args and result, the candidates, the ones it loaded and the skill ledger file after core recorded
 //             them) and skills-scrub (the round-0 messages as the scrub reads them, what it changed and removed)
 //   stubs     after the hand-off's cut, every answer of the other stubs, in order: the tool policy, the chat-wide
-//             grant, the approval decision, the tombstones, the template tools gate and the engine's busy signal
+//             grant (chatWideApproved), the question opened (openApproval), the approval decision, the grant's
+//             redeem (redeemChatGrant: redeemed | refused | unavailable), the tombstones, the template tools gate
+//             and the engine's busy signal. An execute run behind a redeemed grant's fence says `fenced: true`, and
+//             `notRun: true` when the fence was closed at the outbound write.
 //   files     the workspace files after the turn (context state, partial), parsed, run-local ids out
 //   record    createTurnRecord() fed with the events: the transcript entry the client keeps
 //   handoff   (a core with rust-chat-native.cjs) the same turn asked for by the front's native executor:
@@ -90,6 +94,8 @@ const SOURCES = {
   'server/instruction-skills.cjs': null,
   'server/skill-history.cjs': null,
   'server/skill-reads.cjs': null,
+  'server/rust-approval-registry.cjs': null,
+  'server/tool-write-fence.cjs': null,
   'server/dav-parse.lock': null,
 };
 for (const rel of Object.keys(SOURCES)) {
@@ -177,6 +183,8 @@ const { createDriveTools } = require(path.join(server, 'gdrive-tools.cjs'));
 const { createToolExchange } = require(path.join(server, 'tool-exchange.cjs'));
 const { createTurnRecord } = require(path.join(server, 'chat-interrupted-turn.cjs'));
 const grantFixture = require(path.join(core, 'tests', 'server', 'chat-grant-fixture.cjs'));
+const { createApprovalRegistry, REGISTRY_PROTOCOL } = require(path.join(server, 'rust-approval-registry.cjs'));
+const writeFence = require(path.join(server, 'tool-write-fence.cjs'));
 
 const ENGINE = 'http://qa-engine.invalid';
 const CHAT_URL = `${ENGINE}/v1/chat/completions`;
@@ -303,6 +311,34 @@ async function runTurn(c, { handoff = false } = {}) {
     const store = (op, args) => log.stores.push({ op, ...args });
     let cut = false;
     const stub = (op, entry) => { if (cut) log.stubs.push({ op, ...entry }); return entry.answer; };
+    // Port contract S9: core's own registry client over a scripted front (approval_registry.rs's answers).
+    // `openRefused`: the front refuses to open the question; `waitUnavailable`: its wait fails; `leaveOnCard`: the
+    // client leaves while the card is open (the wait ends with the turn's abort); `chatWide`: the chat holds a grant;
+    // `redeem`: 'refused' or 'unavailable' instead of a redeemed grant.
+    let tickets = 0;
+    const front = async (op, payload, options = {}) => {
+      if (op === 'open') return c.openRefused ? { status: 503, body: { error: 'too many open approvals', code: 'APPROVALS_FULL' } } : { status: 200, body: { opened: true } };
+      if (op === 'wait') {
+        if (c.waitUnavailable) return { status: 503, body: { error: 'approval registry unavailable' } };
+        if (c.leaveOnCard) {
+          res.destroyed = true;
+          res.emit('close');
+          options.signal?.throwIfAborted();
+          throw new Error('QA: the wait was not aborted with the turn');
+        }
+        return { status: 200, body: { outcome: c.decision || 'approve' } };
+      }
+      if (op === 'cancel') return { status: 200, body: { cancelled: true } };
+      if (op === 'granted') return { status: 200, body: c.chatWide ? { granted: true, ticket: `qa-ticket-${++tickets}` } : { granted: false } };
+      if (op === 'redeem') {
+        if (c.redeem === 'unavailable') return { status: 503, body: { error: 'Approval revocation pending; retry' } };
+        return { status: 200, body: { redeemed: c.redeem !== 'refused', protocol: REGISTRY_PROTOCOL, window_ms: 2000 } };
+      }
+      if (op === 'revoke') return { status: 200, body: { revoked: true } };
+      throw new Error(`QA: unexpected approval op ${op}`);
+    };
+    const registry = createApprovalRegistry({ approvals: front, log: () => {}, now: () => FIXED_NOW, monotonic: () => 0,
+      schedule: () => ({ clear() {} }) });
     onTombstones = (ids) => stub('tombstones', { answer: [...ids].sort() });
     let editResolutions = 0;
     onEditTarget = (proj, rawArgs, options) => {
@@ -376,7 +412,11 @@ async function runTurn(c, { handoff = false } = {}) {
       if (c.executeThrows) throw new Error(c.executeThrows);
       // `leaveInTool`: the client goes away while this tool runs; the tool still returns.
       if (c.leaveInTool === tool) { res.destroyed = true; res.emit('close'); }
-      return (c.toolResults && c.toolResults[tool]) || `QA ${tool} result: synthetic-file.txt (1 KB)`;
+      // `revokeInTool`: the chat's grant is revoked at the front while this tool runs, before its write is sent.
+      if (c.revokeInTool === tool) registry.frontRevoked(user.id, 'qa-chat-1');
+      // gdrive-broker.cjs: every outbound write goes through the dispatch fence (tool-write-fence.cjs send).
+      const text = (c.toolResults && c.toolResults[tool]) || `QA ${tool} result: synthetic-file.txt (1 KB)`;
+      return definitions.reads.has(tool) ? text : writeFence.send(() => text);
     } };
     // `docs`: the Project documents box (noevia's own MCP server, QA_DOCS_BOX) is discovered; its server answers each call.
     const executeMcp = async (name) => { log.executions.push(name); return (c.toolResults && c.toolResults[name]) || `QA ${name} result: done.`; };
@@ -481,19 +521,30 @@ async function runTurn(c, { handoff = false } = {}) {
         let text;
         try { text = await toolbox.executeToolCall(proj, name, args, allowed, signal, outcome, options); }
         catch (error) { log.bridge.push({ ...asked, threw: String(error?.message || error) }); throw error; }
-        log.bridge.push({ ...asked, text, failed: outcome.failed === true, ...(!wasLeft && res.destroyed ? { left: true } : {}) });
+        log.bridge.push({ ...asked, ...(options.writeFence ? { fenced: true } : {}), text, failed: outcome.failed === true,
+          ...(outcome.notRun ? { notRun: true } : {}), ...(!wasLeft && res.destroyed ? { left: true } : {}) });
         return text;
       },
       grantContext: async (raw) => grantFixture.context(raw, { holder: { kind: 'absent' } }),
-      chatWideApproved: (userId, chatId, scope) => stub('chatWideApproved', { chatId, scope, answer: c.chatWide === true }),
+      chatWideApproved: async (userId, chatId, scope, binding) => {
+        const grant = await registry.chatWideApproved(userId, chatId, scope, binding);
+        stub('chatWideApproved', { chatId, scope, answer: !!grant });
+        return grant;
+      },
+      redeemChatGrant: async (userId, chatId, scope, binding, grant) => {
+        const fence = await registry.redeemChatGrant(userId, chatId, scope, binding, grant);
+        stub('redeemChatGrant', { chatId, scope, answer: fence === 'unavailable' ? 'unavailable' : fence ? 'redeemed' : 'refused' });
+        return fence;
+      },
       // A grant ended by the per-call gate (a write target or project file that changed before the run).
-      revokeChatGrant: (userId, chatId) => store('revokeChatGrant', { userId, chatId }),
+      revokeChatGrant: async (userId, chatId) => { store('revokeChatGrant', { userId, chatId }); return registry.revokeChatGrant(userId, chatId); },
+      openApproval: async (question) => stub('openApproval', { answer: await registry.openApproval(question) }),
       // `leaveOnCard`: the client goes away while the card is open; the gate answers 'aborted' as its abortSignal fires.
       awaitApproval: async (request) => {
         const { abortSignal: _signal, ...asked } = request;
         log.approvals.push(asked);
-        if (c.leaveOnCard) { res.destroyed = true; res.emit('close'); return stub('awaitApproval', { left: true, answer: 'aborted' }); }
-        return stub('awaitApproval', { answer: c.decision || 'approve' });
+        const answer = await registry.awaitApproval(request);
+        return stub('awaitApproval', { ...(c.leaveOnCard ? { left: true } : {}), answer });
       },
       // index.cjs: Drive writes are described before their card and again before dispatch (gdrive-tools describeTarget).
       writeTargetFor: async (name, rawArgs, { user: who }) => {
@@ -542,6 +593,7 @@ async function runTurn(c, { handoff = false } = {}) {
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
         retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
+        ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null } } : {}),
         rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
@@ -717,6 +769,17 @@ const CASES = [
       summary('QA summary of the two earlier exchanges.'), answer('Answer from the listing.')] },
   { name: 'tool_chat_wide_grant', about: 'A write under "Allow for this chat": no card, the grant is checked again before the call runs.', chatWide: true,
     rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-6"}'), finish('tool_calls')] }, answer('Trashed it under the chat grant.')] },
+  // Port contract S9 (core's rust-approval-registry.cjs against the front's answers).
+  { name: 'grant_redeem_refused', about: 'A write under the chat grant whose redeem the front refuses (revoked meanwhile): not run, the grant revoked.', chatWide: true, redeem: 'refused',
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-30"}'), finish('tool_calls')] }, answer('The permission changed, so nothing was trashed.')] },
+  { name: 'grant_redeem_unavailable', about: 'A write under the chat grant whose redeem cannot be checked: not run, not a decline.', chatWide: true, redeem: 'unavailable',
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-31"}'), finish('tool_calls')] }, answer('The permission could not be checked.')] },
+  { name: 'grant_revoked_in_tool', about: 'A write under the chat grant revoked while its tool runs: the fence stops the outbound write (notRun).', chatWide: true, revokeInTool: 'drive_trash_file',
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-32"}'), finish('tool_calls')] }, answer('The write was stopped before it was sent.')] },
+  { name: 'approval_open_refused', about: 'The front cannot open the question: no card, the write is not run.', openRefused: true,
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-33"}'), finish('tool_calls')] }, answer('The approval could not be asked.')] },
+  { name: 'approval_wait_unavailable', about: 'The card is shown but its wait fails at the front: the write is not run, not declined.', waitUnavailable: true,
+    rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-34"}'), finish('tool_calls')] }, answer('The approval could not be asked.')] },
   { name: 'tool_two_writes_first_declined', about: 'Two writes in one round, the first declined: the second is not run (earlier decline), then the pause.', decision: 'deny',
     rounds: [{ frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-7"}', 'qa-w1', 0), toolCall('drive_trash_file', '{"fileId":"qa-file-8"}', 'qa-w2', 1), finish('tool_calls')] }] },
   { name: 'tool_repeat_flag', about: 'A write matching one the history says was applied: its card carries repeatOf.', decision: 'approve',
