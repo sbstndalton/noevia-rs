@@ -10,8 +10,11 @@
 // Synthetic data only: a QA repository, fixed ids, a fixed clock, a fake engine address.
 //
 // Sandbox script steps (the same shape as crates/code-acp's): { expect: true } waits for one line
-// from noevia; { send: "<text>" } writes to it; { expectClose: true } waits for the close.
-// `<TREE>` in a sent line is the task's worktree.
+// from noevia; { send: "<text>" } writes to it; { cancel: true } cancels the task (the harness's
+// `cancel`); { expectClose: true } waits for the close. `<TREE>` in a sent line is the task's worktree.
+// A scenario may set `engine` (the deployment's endpoint), `prompt`, and `grantNull` (the egress
+// controller grants nothing). `engineHosts` is what Node's URL parser makes of engine addresses
+// (core `engineHost`: `new URL(engine().baseUrl).hostname`, '' when it throws).
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -62,6 +65,35 @@ const SCENARIOS = {
     egress: { confirmed: true, report: { available: true, state: 'closed', final: true, partial: false, snapshotId: 'qa-snap', requests: 2 } },
     script: [...HANDSHAKE, { send: reply(3, { stopReason: 'end_turn' }) }, { expectClose: true }],
   },
+  'network-agent-error-cleanup-unconfirmed': {
+    capabilities: ['read_repository', 'network'],
+    domains: ['registry.example.invalid'],
+    egress: null,
+    egressRevokeFails: true,
+    script: [...HANDSHAKE, { send: line({ jsonrpc: '2.0', id: 3, error: { code: -32000, message: 'QA agent failure' } }) }, { expectClose: true }],
+  },
+  'cancelled': {
+    capabilities: ['read_repository'],
+    script: [...HANDSHAKE, { cancel: true }, { expectClose: true }],
+  },
+  'engine-falsy-values': {
+    capabilities: ['read_repository', 'network'],
+    domains: ['registry.example.invalid'],
+    egress: { confirmed: true, report: { available: true, state: 'closed', final: false, partial: false, requests: 0 } },
+    engine: { baseUrl: 'http://[FE80::1]:8080/v1', model: '', apiKey: 'qa-engine-key', contextTokens: 0 },
+    script: [...HANDSHAKE, { send: reply(3, { stopReason: 'end_turn' }) }, { expectClose: true }],
+  },
+  'grant-null': {
+    capabilities: ['read_repository', 'network'],
+    domains: ['registry.example.invalid'],
+    egress: { confirmed: true, report: { available: true, state: 'closed', final: true, partial: false } },
+    grantNull: true,
+    script: [...HANDSHAKE, { send: reply(3, { stopReason: 'end_turn' }) }, { expectClose: true }],
+  },
+  'blank-prompt-bom': {
+    prompt: '\ufeff \u2028',
+    script: [],
+  },
   'network-cleanup-unconfirmed': {
     capabilities: ['read_repository', 'install_dependency'],
     domains: ['registry.example.invalid'],
@@ -83,7 +115,12 @@ function repo(base) {
   return r;
 }
 
-function sandbox(script, tree) {
+const ENGINE_HOSTS = ['http://qa-engine.invalid:8080/v1', 'http://[::1]:8080/v1', 'http://[FE80::1]/', 'http://llama\\@evil.invalid/',
+  'http:llama:8080/v1', 'http:\\\\llama:8080\\v1', 'http://0x7f.1:8080/', 'http://LLAMA%41:8080/', 'HTTP://Qa-Engine.Invalid./v1',
+  ' http://qa-engine.invalid ', 'qa-engine.invalid:8080', 'file:///srv/x', 'http://user:pw@qa-engine.invalid:8080/', 'http://xn--nxasmq6b.invalid/',
+  'http://bücher.invalid/', 'http://1.2.3.4.5/', 'http://256.1.1.1/', '', 'not a url'];
+
+function sandbox(script, tree, onCancel) {
   const lines = [];
   let closed = false;
   return new Promise((ready) => {
@@ -103,6 +140,7 @@ function sandbox(script, tree) {
           if (step.expect) { if (lines.length <= seen) await new Promise((r) => waiters.push(r)); seen++; }
           else if (step.send !== undefined) { await new Promise((r) => setTimeout(r, 5)); sock.write(step.send.split('<TREE>').join(tree())); }
           else if (step.close) { sock.destroy(); }
+          else if (step.cancel) { await new Promise((r) => setTimeout(r, 20)); onCancel(); }
           else if (step.expectClose) { if (!closed) await new Promise((r) => { closeWaiter = r; }); }
         }
         server.close();
@@ -124,32 +162,37 @@ async function run(name, sc) {
   const egress = sc.egress !== undefined || sc.egressRevokeFails ? {
     endpoint: 'egress:3128',
     available: () => true,
-    grant: async ({ taskId, domains }) => { egressCalls.push({ grant: { taskId, domains } }); return { token: 'qa-token', id: 'qa-grant' }; },
+    grant: async ({ taskId, domains }) => { egressCalls.push({ grant: { taskId, domains } }); return sc.grantNull ? null : { token: 'qa-token', id: 'qa-grant' }; },
     revoke: async (grant) => { egressCalls.push({ revoke: grant.id }); if (sc.egressRevokeFails) throw Error('QA egress down'); return sc.egress; },
     forget: async (grant, snapshotId) => { egressCalls.push({ forget: [grant.id, snapshotId] }); return { confirmed: true }; },
   } : null;
-  const box = await sandbox(sc.script, () => tree);
-  const harness = createCodeHarness({
+  let harness = null;
+  const box = sc.script.length ? await sandbox(sc.script, () => tree, () => harness.cancel('00000000-0000-4000-8000-0000000000bb')) : { lines: [] };
+  harness = createCodeHarness({
     jobs, workspaces, egress, now: () => 5000, log: (e) => logs.push(e),
-    engine: () => ({ baseUrl: 'http://qa-engine.invalid:8080/v1', model: 'qa-model', apiKey: 'qa-engine-key', contextTokens: 8192 }),
+    engine: () => (sc.engine || { baseUrl: 'http://qa-engine.invalid:8080/v1', model: 'qa-model', apiKey: 'qa-engine-key', contextTokens: 8192 }),
     askApproval: async (request) => { asked.push(JSON.parse(JSON.stringify(request))); return answers.shift() ?? 'deny'; },
     guard: { enabled: () => false },
   });
-  const transport = createAcpTransport({ endpoint: `127.0.0.1:${box.port}` });
+  const transport = createAcpTransport({ endpoint: `127.0.0.1:${box.port || 9}` });
   const connect = (args) => { tree = args.cwd; return transport(args); };
   let started;
   try {
-    started = await harness.start({ projectId: 'qa-project', repoPath: repo(base), prompt: 'Write NEW.md for the QA test.', capabilities: sc.capabilities || [],
+    started = await harness.start({ projectId: 'qa-project', repoPath: repo(base), prompt: sc.prompt ?? 'Write NEW.md for the QA test.', capabilities: sc.capabilities || [],
       domains: sc.domains || [], harness: 'opencode', connect, model: null, sandboxKind: 'sandbox', promptPreparation: 'direct', context: '', tenantId: 'qa-tenant' });
   } catch (e) { started = { error: String(e.message) }; }
   const id = '00000000-0000-4000-8000-0000000000bb';
-  for (let i = 0; i < 1000 && !['completed', 'failed', 'cancelled'].includes(jobs.get(id)?.status); i++) await new Promise((r) => setTimeout(r, 10));
+  for (let i = 0; i < 1000 && !started.error && !['completed', 'failed', 'cancelled'].includes(jobs.get(id)?.status); i++) await new Promise((r) => setTimeout(r, 10));
   await new Promise((r) => setTimeout(r, 50));
   const norm = (v) => JSON.parse(JSON.stringify(v ?? null).split(tree || '\u0000').join('<TREE>').split(base).join('<BASE>')
     .replace(/"(uid|gid)":\d+/g, '"$1":"<$1>"'));
-  const journal = fs.readFileSync(path.join(dir, 'jobs', `${id}.jsonl`), 'utf8').split('\n').filter(Boolean).map((l) => norm(JSON.parse(l)));
-  const record = norm(JSON.parse(fs.readFileSync(path.join(dir, 'code-workspaces', `${id}.json`), 'utf8')));
+  const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null);
+  const rows = read(path.join(dir, 'jobs', `${id}.jsonl`));
+  const journal = rows === null ? null : rows.split('\n').filter(Boolean).map((l) => norm(JSON.parse(l)));
+  const rec = read(path.join(dir, 'code-workspaces', `${id}.json`));
+  const record = rec === null ? null : norm(JSON.parse(rec));
   const out = { capabilities: sc.capabilities || [], domains: sc.domains || [], answers: sc.answers || [], egress: sc.egressRevokeFails ? 'fails' : (sc.egress ?? null),
+    engine: sc.engine ?? null, prompt: sc.prompt ?? null, grantNull: sc.grantNull === true,
     script: sc.script, started: norm(started), journal, record, egressCalls: norm(egressCalls), asked: norm(asked), logs: norm(logs), sandboxLines: box.lines.map((l) => norm(l)) };
   fs.rmSync(base, { recursive: true, force: true });
   return out;
@@ -159,9 +202,11 @@ async function run(name, sc) {
   const keep = setInterval(() => {}, 1000);
   const sha = (n) => crypto.createHash('sha256').update(fs.readFileSync(path.join(serverDir, n))).digest('hex');
   const out = {};
-  for (const [name, sc] of Object.entries(SCENARIOS)) out[name] = await run(name, sc);
+  for (const [name, sc] of Object.entries(SCENARIOS)) { process.stderr.write(`scenario ${name}\n`); out[name] = await run(name, sc); }
   process.stdout.write(JSON.stringify({ generator: 'crates/code-harness/tools/gen-executor-fixtures.cjs',
     sources: { 'code-harness.cjs': sha('code-harness.cjs'), 'code-acp.cjs': sha('code-acp.cjs'), 'jobs.cjs': sha('jobs.cjs'), 'code-workspace.cjs': sha('code-workspace.cjs'), 'code-harness-config.cjs': sha('code-harness-config.cjs') },
-    env: { PATH: process.env.PATH, LANG: process.env.LANG }, scenarios: out }, null, 1) + '\n');
+    env: { PATH: process.env.PATH, LANG: process.env.LANG },
+    engineHosts: ENGINE_HOSTS.map((baseUrl) => [baseUrl, (() => { try { return new URL(baseUrl).hostname; } catch { return ''; } })()]),
+    scenarios: out }, null, 1) + '\n', () => process.exit(0));
   clearInterval(keep);
 })();

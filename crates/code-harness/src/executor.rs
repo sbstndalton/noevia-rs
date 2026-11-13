@@ -4,6 +4,9 @@
 //! and the clock come from the host ([`Deps`]); the pin files are code-harness-config's, the agent
 //! is reached with code-acp, and the rules are the [`Session`]'s.
 //!
+//! The inference lease (code-service.cjs `leased`) is the host's [`Deps::inference`]: taken
+//! before the run starts and held until it ends.
+//!
 //! Not here (yet): the Planner review gate (`features.plannerReview`), the pipeline
 //! (`features.codePipeline`) and a Code role on another inference machine (the relay). A host
 //! that has any of them on keeps such tasks with Node.
@@ -14,8 +17,13 @@ use code_acp::{Cancel, Handlers, Transport};
 use code_workspace::{Claim, Workspaces};
 use js_json::{wtf16, JValue};
 use std::collections::HashMap;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
+
+/// code-service.cjs `INFERENCE_PAUSED`: what a task refused by the maintenance gate says.
+pub const INFERENCE_PAUSED: &str =
+    "Coding tasks wait while noevia tunes or reconfigures models. Start this task when that finishes.";
 
 /// A refused or failed step: Node's `Error` (`status`, `message`, `publicMessage`, `result`).
 #[derive(Debug, Clone, PartialEq)]
@@ -65,13 +73,27 @@ pub trait Approvals: Send + Sync {
 }
 
 /// The deployment's model endpoint for coding tasks (core index.cjs `engine`).
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct Engine {
     pub base_url: Option<String>,
     pub api_key: Option<String>,
     pub model: Option<String>,
     pub context_tokens: Option<f64>,
 }
+
+impl std::fmt::Debug for Engine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Engine")
+            .field("base_url", &self.base_url)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("model", &self.model)
+            .field("context_tokens", &self.context_tokens)
+            .finish()
+    }
+}
+
+/// A lease the host holds for a run; dropping it gives it back.
+pub type Lease = Box<dyn Send>;
 
 /// Everything the executor is given.
 pub struct Deps {
@@ -83,6 +105,10 @@ pub struct Deps {
     pub transport: Transport,
     pub log: Box<dyn Fn(JValue) + Send + Sync>,
     pub now: Box<dyn Fn() -> f64 + Send + Sync>,
+    /// code-service.cjs `inference.enter()`: the maintenance gate's lease, held for the whole run.
+    /// `None`: no gate. A refusal fails the job (a 503 says [`INFERENCE_PAUSED`]) and gives the
+    /// claim back.
+    pub inference: Option<Box<dyn Fn() -> Result<Lease, Fail> + Send + Sync>>,
     /// features.executorGuard, read once per task.
     pub guard: Box<dyn Fn() -> bool + Send + Sync>,
     /// Who the harness runs as (CODE_HARNESS_USER): the pin files are handed over to it.
@@ -128,18 +154,11 @@ fn clip(text: &str, n: usize) -> String {
     wtf16::slice(text, n)
 }
 
-/// The engine's host name, kept off the proxy (core `engineHost`).
-fn engine_host(base: Option<&str>) -> String {
-    base.and_then(|b| b.split_once("://").map(|(_, rest)| rest))
-        .map(|rest| rest.split(['/', '?', '#']).next().unwrap_or(""))
-        .map(|authority| authority.rsplit('@').next().unwrap_or(""))
-        .map(|host| {
-            if let Some(v6) = host.strip_prefix('[') {
-                v6.split(']').next().unwrap_or("").to_string()
-            } else {
-                host.split(':').next().unwrap_or("").to_ascii_lowercase()
-            }
-        })
+/// The engine's host name, kept off the proxy (core `engineHost`: `new URL(baseUrl).hostname`,
+/// '' when it does not parse).
+pub fn engine_host(base: Option<&str>) -> String {
+    base.and_then(|b| url::Url::parse(b).ok())
+        .and_then(|u| u.host_str().map(str::to_string))
         .unwrap_or_default()
 }
 
@@ -250,13 +269,37 @@ impl Executor {
 
     /// Stops a live run (it records its own `job.cancelled`); false when there is none.
     pub fn abort(&self, task_id: &str) -> bool {
-        let token = self.live.lock().ok().and_then(|l| l.get(task_id).cloned());
+        let token = self
+            .live
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(task_id)
+            .cloned();
         match token {
             Some(t) => {
                 t.cancel();
                 true
             }
             None => false,
+        }
+    }
+
+    /// jobs.cjs `cancel` for a code job: a live run is stopped (it records its own
+    /// `job.cancelled`), an unfinished one that is not running is recorded cancelled here, a
+    /// finished one is left as it is. Under the live lock, so a run either sees the cancel
+    /// before it ends or has already ended.
+    pub fn cancel(&self, task_id: &str) -> Result<(), Fail> {
+        let live = self.live.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(t) = live.get(task_id) {
+            t.cancel();
+            return Ok(());
+        }
+        match self.deps.jobs.status(task_id).as_deref() {
+            None | Some("completed" | "failed" | "cancelled") => Ok(()),
+            Some(_) => self
+                .deps
+                .jobs
+                .append(task_id, "job.cancelled", JValue::Obj(Vec::new())),
         }
     }
 
@@ -310,7 +353,9 @@ impl Executor {
             .filter(|_| wants_network && !req.domains.is_empty())
         {
             match egress.grant(task_id, &req.domains) {
-                Ok(grant) => handle.grant = Some(grant),
+                // A controller that grants nothing leaves the task without a proxy.
+                Ok(grant) if grant.truthy() => handle.grant = Some(grant),
+                Ok(_) => {}
                 Err(e) => {
                     let handle = Arc::new(handle);
                     self.release(&handle, None);
@@ -422,7 +467,7 @@ impl Executor {
     /// `start`: the task's job and workspace now, its run on a thread of its own. Answers
     /// `{ taskId, branch, workspace }`.
     pub fn start(self: &Arc<Self>, req: StartRequest) -> Result<JValue, Fail> {
-        if req.prompt.trim().is_empty() {
+        if code_workspace::git::js_trim(&req.prompt).is_empty() {
             return Err(Fail::new(Some(400), "A task needs a prompt"));
         }
         let mut capabilities: Vec<String> = Vec::new();
@@ -452,91 +497,138 @@ impl Executor {
             ("branch", handle.workspace.get("branch").clone()),
             ("workspace", handle.workspace.get("path").clone()),
         ]);
+        // code-service's lease, then jobs.run up to its first await: both before start answers,
+        // as in Node, so a cancel right after start finds the run live.
+        let lease = match self.deps.inference.as_ref().map(|enter| enter()) {
+            Some(Err(e)) => {
+                let refusal = if e.status == Some(503) {
+                    Fail::new(Some(503), INFERENCE_PAUSED)
+                } else {
+                    e
+                };
+                let message = refusal
+                    .public_message
+                    .clone()
+                    .filter(|m| !m.is_empty())
+                    .unwrap_or_else(|| refusal.message.clone());
+                let _ = self.deps.jobs.append(
+                    &task_id,
+                    "job.failed",
+                    JValue::obj([("error", s(&clip(&message, 500)))]),
+                );
+                self.abandon(&task_id, &handle);
+                return Ok(started);
+            }
+            Some(Ok(lease)) => Some(lease),
+            None => None,
+        };
+        let cancel = Cancel::new();
+        let began = {
+            let mut live = self.live.lock().unwrap_or_else(PoisonError::into_inner);
+            // job.started must be on file before the run counts as live.
+            !live.contains_key(&task_id)
+                && self
+                    .deps
+                    .jobs
+                    .append(&task_id, "job.started", JValue::Obj(Vec::new()))
+                    .is_ok()
+                && live.insert(task_id.clone(), cancel.clone()).is_none()
+        };
+        if !began {
+            drop(lease);
+            self.abandon(&task_id, &handle);
+            return Ok(started);
+        }
         let me = self.clone();
         let spawned = std::thread::Builder::new()
             .name(format!("code task {task_id}"))
             .spawn({
                 let task_id = task_id.clone();
                 let handle = handle.clone();
-                move || me.run(&task_id, &handle, &req, guarded)
+                let cancel = cancel.clone();
+                move || {
+                    let _lease = lease;
+                    me.run(&task_id, &handle, &req, guarded, &cancel);
+                }
             });
         if spawned.is_err() {
             // The run never started: the grant and the claim come back, the job says why.
+            self.live
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&task_id);
             self.release(&handle, None);
-            if self.deps.jobs.status(&task_id).as_deref() == Some("queued") {
-                let _ = self.deps.jobs.append(
-                    &task_id,
-                    "job.failed",
-                    JValue::obj([("error", s("Code task could not start."))]),
-                );
-            }
+            let _ = self.deps.jobs.append(
+                &task_id,
+                "job.failed",
+                JValue::obj([("error", s("Code task could not start."))]),
+            );
         }
         Ok(started)
     }
 
-    /// jobs.cjs `run(id, work)` with `runExecutor` as the work.
-    fn run(&self, task_id: &str, handle: &Arc<Handle>, req: &StartRequest, guarded: bool) {
-        let cancel = Cancel::new();
-        let refused = match self.live.lock() {
-            Ok(live) if live.contains_key(task_id) => true,
-            Ok(mut live) => {
-                live.insert(task_id.to_string(), cancel.clone());
-                false
-            }
-            Err(_) => true,
-        };
-        if refused
-            || self
-                .deps
-                .jobs
-                .append(task_id, "job.started", JValue::Obj(Vec::new()))
-                .is_err()
-        {
-            if let Ok(mut live) = self.live.lock() {
-                if !refused {
-                    live.remove(task_id);
-                }
-            }
-            self.release(handle, None);
-            if self.deps.jobs.status(task_id).as_deref() == Some("queued") {
-                let _ = self.deps.jobs.append(
-                    task_id,
-                    "job.failed",
-                    JValue::obj([("error", s("Code task could not start."))]),
-                );
-            }
-            return;
+    /// start's `.catch`: a run that never started gives the grant and the claim back, and a job
+    /// still queued says why.
+    fn abandon(&self, task_id: &str, handle: &Arc<Handle>) {
+        self.release(handle, None);
+        if self.deps.jobs.status(task_id).as_deref() == Some("queued") {
+            let _ = self.deps.jobs.append(
+                task_id,
+                "job.failed",
+                JValue::obj([("error", s("Code task could not start."))]),
+            );
         }
-        let outcome = self.execute(task_id, handle, req, guarded, &cancel);
+    }
+
+    /// jobs.cjs `run(id, work)` after its start, with `runExecutor` as the work.
+    fn run(
+        &self,
+        task_id: &str,
+        handle: &Arc<Handle>,
+        req: &StartRequest,
+        guarded: bool,
+        cancel: &Arc<Cancel>,
+    ) {
+        let outcome = catch_unwind(AssertUnwindSafe(|| {
+            self.execute(task_id, handle, req, guarded, cancel)
+        }))
+        .unwrap_or_else(|_| Err(Fail::new(None, "failed")));
+        // A run that panicked never reached its release; it happens once per handle either way.
+        self.release(handle, None);
+        // Under the live lock, as Node's one thread: a cancel either reaches this run before it
+        // ends or finds the job finished.
+        let mut live = self.live.lock().unwrap_or_else(PoisonError::into_inner);
         let aborted = cancel.is_cancelled();
-        let ended = match outcome {
-            Ok(result) if aborted => {
-                self.deps
-                    .jobs
-                    .append(task_id, "job.cancelled", JValue::obj([("result", result)]))
+        let message = |e: &Fail| {
+            let m = e
+                .public_message
+                .clone()
+                .filter(|m| !m.is_empty())
+                .unwrap_or_else(|| e.message.clone());
+            if m.is_empty() {
+                "failed".to_string()
+            } else {
+                m
             }
+        };
+        // The try: the terminal row for what the work answered.
+        let caught = match outcome {
             Ok(result) => {
+                let kind = if aborted { "job.cancelled" } else { "job.completed" };
                 self.deps
                     .jobs
-                    .append(task_id, "job.completed", JValue::obj([("result", result)]))
+                    .append(task_id, kind, JValue::obj([("result", result)]))
+                    .err()
             }
-            Err(_) if aborted => {
+            Err(e) => Some(e),
+        };
+        // The catch: a failed work, or a terminal row that could not be written.
+        if let Some(e) = caught {
+            let _ = if aborted {
                 self.deps
                     .jobs
                     .append(task_id, "job.cancelled", JValue::Obj(Vec::new()))
-            }
-            Err(e) => {
-                let message = e
-                    .public_message
-                    .clone()
-                    .filter(|m| !m.is_empty())
-                    .unwrap_or_else(|| {
-                        if e.message.is_empty() {
-                            "failed".to_string()
-                        } else {
-                            e.message.clone()
-                        }
-                    });
+            } else {
                 let result = if e.result.is_nullish() {
                     JValue::Null
                 } else {
@@ -545,14 +637,11 @@ impl Executor {
                 self.deps.jobs.append(
                     task_id,
                     "job.failed",
-                    JValue::obj([("error", s(&clip(&message, 500))), ("result", result)]),
+                    JValue::obj([("error", s(&clip(&message(&e), 500))), ("result", result)]),
                 )
-            }
-        };
-        let _ = ended;
-        if let Ok(mut live) = self.live.lock() {
-            live.remove(task_id);
+            };
         }
+        live.remove(task_id);
     }
 
     fn checkpoint(&self, task_id: &str, data: JValue) -> Result<(), Fail> {
@@ -583,13 +672,14 @@ impl Executor {
         }
         let mut scope: Option<JValue> = None;
         let mut meta_seen = JValue::Null;
+        let mut opened: Option<Arc<Session>> = None;
         let outcome = (|| -> Result<JValue, Fail> {
             let endpoint = (self.deps.engine)();
             let chosen = req
                 .model
                 .clone()
                 .filter(|m| !m.is_empty())
-                .or_else(|| endpoint.model.clone());
+                .or_else(|| endpoint.model.clone().filter(|m| !m.is_empty()));
             let path = workspace.get("path").as_str().unwrap_or("").to_string();
             let session = Arc::new(Session::new(
                 Arc::new(TaskHost {
@@ -607,6 +697,7 @@ impl Executor {
                     guarded,
                 },
             ));
+            opened = Some(session.clone());
             {
                 let session = session.clone();
                 cancel.on_cancel(Box::new(move || session.end()));
@@ -643,7 +734,7 @@ impl Executor {
                     model: chosen.as_deref(),
                     engine: endpoint.base_url.as_deref(),
                     api_key: endpoint.api_key.as_deref(),
-                    context_tokens: endpoint.context_tokens,
+                    context_tokens: endpoint.context_tokens.filter(|t| *t != 0.0 && !t.is_nan()),
                     output_tokens: None,
                 },
             };
@@ -819,8 +910,12 @@ impl Executor {
             finish(&session);
             Ok(JValue::Obj(result))
         })();
-        // Whatever happened, the task stops being able to reach anything, and its workspace is
-        // given back; then the checkpoint is corrected with the head the source repository holds.
+        // Whatever happened, no approval the task raised is left waiting, the task stops being
+        // able to reach anything, and its workspace is given back; then the checkpoint is
+        // corrected with the head the source repository holds.
+        if let Some(session) = &opened {
+            session.end();
+        }
         let released = self.release(handle, Some(()));
         let mut outcome = outcome;
         if let (Ok(JValue::Obj(items)), Some(_)) = (&mut outcome, handle.grant.as_ref()) {
@@ -859,18 +954,16 @@ impl Executor {
             }
         }
         let confirmed = handle.cleanup_confirmed.lock().map(|c| *c).unwrap_or(false);
-        if handle.grant.is_some() && !confirmed {
-            let result = match &outcome {
-                Ok(r) => r.clone(),
-                Err(_) => JValue::Undefined,
-            };
-            return Err(Fail {
+        // Only a run that succeeded is turned into this failure: a failed run keeps its own error
+        // (in Node that error is already unwinding past the line).
+        match outcome {
+            Ok(result) if handle.grant.is_some() && !confirmed => Err(Fail {
                 status: None,
                 message: "Native network cleanup could not be confirmed.".into(),
                 public_message: None,
                 result,
-            });
+            }),
+            other => other,
         }
-        outcome
     }
 }

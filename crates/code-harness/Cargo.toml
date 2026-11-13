@@ -19,6 +19,7 @@ js-json = { path = "../js-json" }
 sha2 = "=0.10.9"
 stream-guard = { path = "../stream-guard" }
 rustix = { version = "=1.1.5", features = ["fs", "process"] }
+url = "=2.5.8"
 
 [dev-dependencies]
 server-projects = { path = "../server-projects" }
