@@ -49,29 +49,9 @@ fn os(e: &std::io::Error) -> FileRefusal {
 /// `path.dirname` for an absolute path.
 fn dirname(p: &str) -> String {
     let trimmed = p.trim_end_matches('/');
-    if trimmed.is_empty() {
-        return "/".into();
-    }
     match trimmed.rfind('/') {
-        Some(0) | None => "/".into(),
-        Some(i) => trimmed.get(..i).unwrap_or("/").trim_end_matches('/').to_string(),
-    }
-    .chars()
-    .collect::<String>()
-    .pipe_root()
-}
-
-trait PipeRoot {
-    fn pipe_root(self) -> String;
-}
-
-impl PipeRoot for String {
-    fn pipe_root(self) -> String {
-        if self.is_empty() {
-            "/".into()
-        } else {
-            self
-        }
+        None | Some(0) => "/".into(),
+        Some(i) => trimmed.get(..i).unwrap_or("/").to_string(),
     }
 }
 
