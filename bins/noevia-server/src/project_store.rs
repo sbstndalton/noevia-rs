@@ -673,6 +673,11 @@ pub fn router_with_app(
         store.clone(),
         app.as_ref().map(|a| a.config.maint.guard.clone()),
     ));
+    // #2516: Core's half of the native auto-tune runner (its prepareLoad's re-read, its "tuning").
+    router = router.merge(crate::autotune_runner::core_routes(
+        store.clone(),
+        app.as_ref().and_then(|a| a.config.autotune.clone()),
+    ));
     // Port contract row H: Node's session with the inference admission lease authority.
     router = router.merge(inference_admission_routes(store.clone()));
     // Port contract row J: the maintenance lease authority, for Node's maintenance gate.

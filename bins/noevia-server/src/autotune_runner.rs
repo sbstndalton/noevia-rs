@@ -101,25 +101,22 @@ impl Native {
 
     async fn repair(&self, key: &str) {
         loop {
-            match self
+            if let Ok(hold) = self
                 .maint
                 .acquire_recovery(RECOVERY_REASON, RECOVERY_LEASE)
                 .await
             {
-                Ok(hold) => {
-                    let hold = Arc::new(hold);
-                    self.runner.deps().cover_with(Some(Arc::clone(&hold)));
-                    let done = self.runner.recover_trial().await;
-                    self.runner.deps().cover_with(None);
-                    if let Ok(hold) = Arc::try_unwrap(hold) {
-                        hold.release().await;
-                    }
-                    match done {
-                        Ok(()) => return,
-                        Err(e) => eprintln!("[autotune] recovery {key} failed: {}", e.message),
-                    }
+                let hold = Arc::new(hold);
+                self.runner.deps().cover_with(Some(Arc::clone(&hold)));
+                let done = self.runner.recover_trial().await;
+                self.runner.deps().cover_with(None);
+                if let Ok(hold) = Arc::try_unwrap(hold) {
+                    hold.release().await;
                 }
-                Err(_) => {}
+                match done {
+                    Ok(()) => return,
+                    Err(e) => eprintln!("[autotune] recovery {key} failed: {}", e.message),
+                }
             }
             tokio::time::sleep(RECOVERY_RETRY).await;
         }
@@ -285,4 +282,82 @@ pub async fn call(
         status,
         wtf16::stringify(&answer).unwrap_or_default().into_bytes(),
     ))
+}
+
+/// `POST /v1/autotune/{flush,state}` on the project-store listener, for Core when the front owns
+/// the runner (core rust-autotune-runner.cjs): `flush` is the runner's `flushReload(model)` (Core's
+/// `prepareLoad` asks it before a chat model loads, #1068), `state` whether a run is active (Core's
+/// `tuningActive`, for the preset writer and the code tasks). `None`: both answer 503.
+pub fn core_routes(
+    store: crate::project_store::Store,
+    native: Option<Arc<Native>>,
+) -> axum::Router {
+    use axum::routing::post;
+    let mut router = axum::Router::new();
+    for op in ["flush", "state"] {
+        let (store, native) = (store.clone(), native.clone());
+        router = router.route(
+            &format!("/v1/autotune/{op}"),
+            post(
+                move |headers: axum::http::HeaderMap, raw: axum::body::Bytes| {
+                    let (store, native) = (store.clone(), native.clone());
+                    async move { core_call(store, native, headers, raw, op).await }
+                },
+            ),
+        );
+    }
+    router.layer(axum::extract::DefaultBodyLimit::max(4096))
+}
+
+async fn core_call(
+    store: crate::project_store::Store,
+    native: Option<Arc<Native>>,
+    headers: axum::http::HeaderMap,
+    raw: axum::body::Bytes,
+    op: &'static str,
+) -> axum::response::Response {
+    use axum::http::StatusCode;
+    let answer = |status: StatusCode, v: JValue| {
+        crate::reply::json_text(status, wtf16::stringify(&v).unwrap_or_default(), true)
+    };
+    if !crate::project_store::authorised(&store, &headers) {
+        return answer(
+            StatusCode::UNAUTHORIZED,
+            JValue::obj([("error", JValue::from("unauthorised"))]),
+        );
+    }
+    let Some(native) = native else {
+        return answer(
+            StatusCode::SERVICE_UNAVAILABLE,
+            JValue::obj([("error", JValue::from("Auto-tune is not run by this front."))]),
+        );
+    };
+    let ask = std::str::from_utf8(&raw)
+        .ok()
+        .and_then(|t| wtf16::parse(t).ok());
+    let Some(ask) = ask.filter(JValue::is_object) else {
+        return answer(
+            StatusCode::BAD_REQUEST,
+            JValue::obj([("error", JValue::from("invalid JSON"))]),
+        );
+    };
+    if op == "state" {
+        let job = native.runner.job_record();
+        let running = native.runner.starting() || job.get("status").as_str() == Some("running");
+        return answer(
+            StatusCode::OK,
+            JValue::obj([("running", JValue::Bool(running))]),
+        );
+    }
+    let model = ask.get("model").as_str().filter(|m| !m.is_empty());
+    match native.runner.flush_reload_public(model).await {
+        Ok(()) => answer(StatusCode::OK, JValue::obj([("flushed", JValue::Bool(true))])),
+        Err(e) => answer(
+            StatusCode::SERVICE_UNAVAILABLE,
+            JValue::obj([(
+                "error",
+                JValue::from(e.public_message.unwrap_or_else(|| "The model server has not re-read the restored settings yet. Try again shortly.".to_owned())),
+            )]),
+        ),
+    }
 }

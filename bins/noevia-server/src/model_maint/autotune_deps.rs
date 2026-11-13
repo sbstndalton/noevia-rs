@@ -679,10 +679,11 @@ impl Deps for FrontDeps {
     async fn judge(&self, request: JValue) -> Result<JValue, Fail> {
         // load-advisor.cjs judge: Rust's rules (load-verdict). No decision service is asked from
         // this front yet, so a rule tie stays the step's own cause (`advisor: unavailable`).
-        let cause = match request.get("cause").as_str() {
-            Some(c @ ("oom" | "load" | "timeout" | "time" | "recall")) => c,
-            _ => "load",
-        };
+        let cause = request
+            .get("cause")
+            .as_str()
+            .filter(|c| matches!(*c, "oom" | "load" | "timeout" | "time" | "recall"))
+            .unwrap_or("load");
         let ev = request.get("evidence");
         let int = |v: &JValue, lo: f64, hi: f64| match v.as_num() {
             Some(n) if n.fract() == 0.0 && n >= lo && n <= hi => JValue::Num(n),
