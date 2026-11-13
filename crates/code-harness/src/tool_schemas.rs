@@ -210,7 +210,12 @@ pub fn tool_call_schema(kind: &str) -> JValue {
 
 /// `FS_SCHEMAS[method]`: ACP `fs/read_text_file` and `fs/write_text_file` params.
 pub fn fs_schema(method: &str) -> Option<JValue> {
-    let session = || ("sessionId".to_string(), JValue::obj([("type", s("string"))]));
+    let session = || {
+        (
+            "sessionId".to_string(),
+            JValue::obj([("type", s("string"))]),
+        )
+    };
     let int_or_null = || JValue::obj([("type", strings(&["integer", "null"]))]);
     Some(match method {
         READ_FILE => JValue::Obj(vec![
@@ -479,7 +484,10 @@ fn classify_input(call: &JValue) -> JValue {
         }
         out.push((
             "noeviaOutsideWorkspace".into(),
-            JValue::Bool(matches!(raw.get("noeviaOutsideWorkspace"), JValue::Bool(true))),
+            JValue::Bool(matches!(
+                raw.get("noeviaOutsideWorkspace"),
+                JValue::Bool(true)
+            )),
         ));
         JValue::Obj(out)
     } else {
@@ -575,7 +583,8 @@ pub fn check_tool_call(tool_call: &JValue) -> JValue {
     if !stated.is_nullish() && !known {
         // D2: Node's String() throws for an own toString; read it as though that key were absent.
         let text = js::to_string(stated).unwrap_or_else(|_| js::to_string_plain(stated));
-        let quoted = wtf16::stringify(&JValue::Str(js::slice(&text, KIND_TEXT_MAX))).unwrap_or_default();
+        let quoted =
+            wtf16::stringify(&JValue::Str(js::slice(&text, KIND_TEXT_MAX))).unwrap_or_default();
         return found(
             format!("Unknown tool kind {quoted} at $.kind"),
             "$.kind",
@@ -586,7 +595,9 @@ pub fn check_tool_call(tool_call: &JValue) -> JValue {
     let kind = stated.as_str().unwrap_or("other");
     let kind_value = s(kind);
     let hint = hint(kind).unwrap_or_default();
-    if let Some((message, path)) = validate(&tool_call_schema(kind), &project_tool_call(tool_call, kind)) {
+    if let Some((message, path)) =
+        validate(&tool_call_schema(kind), &project_tool_call(tool_call, kind))
+    {
         return found(message, path, kind_value, hint);
     }
     let paths = paths_of(tool_call, kind);
@@ -719,7 +730,9 @@ pub fn correction_for(found: &JValue) -> JValue {
         let message = js::slice(&message, stream_guard::MAX_CORRECTION_UNITS);
         let m = js::units(&message);
         let p = path.as_deref().map(js::units);
-        if p.as_ref().is_some_and(|p| p.len() > stream_guard::MAX_CORRECTION_UNITS) {
+        if p.as_ref()
+            .is_some_and(|p| p.len() > stream_guard::MAX_CORRECTION_UNITS)
+        {
             return None;
         }
         let mut input = vec![4u8];
@@ -1117,8 +1130,12 @@ impl<H: GuardHooks> ExecutorGuard<H> {
             JValue::Undefined => JValue::Null,
             a => a.clone(),
         };
-        self.refuse(&found, "session/request_permission", Record::Permission(&action))
-            .map(Some)
+        self.refuse(
+            &found,
+            "session/request_permission",
+            Record::Permission(&action),
+        )
+        .map(Some)
     }
 
     /// `guard.readTextFile(params)`.

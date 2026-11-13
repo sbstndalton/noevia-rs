@@ -180,10 +180,7 @@ pub fn read_agent(result: &JValue) -> JValue {
     JValue::obj([
         ("name", cut("name", NAME_MAX)),
         ("version", cut("version", VERSION_MAX)),
-        (
-            "protocolVersion",
-            opt(num(result.get("protocolVersion"))),
-        ),
+        ("protocolVersion", opt(num(result.get("protocolVersion")))),
     ])
 }
 
@@ -195,8 +192,9 @@ fn sorted_capabilities(capabilities: &JValue) -> Result<Vec<JValue>, Thrown> {
         JValue::Str(s) => s.chars().map(|c| JValue::Str(c.to_string())).collect(),
         _ => return Err(Thrown::type_error("capabilities is not iterable")),
     };
-    let (undefined, mut defined): (Vec<JValue>, Vec<JValue>) =
-        items.into_iter().partition(|v| matches!(v, JValue::Undefined));
+    let (undefined, mut defined): (Vec<JValue>, Vec<JValue>) = items
+        .into_iter()
+        .partition(|v| matches!(v, JValue::Undefined));
     // V8 converts an element only when it compares it, and with two or more every one is compared.
     if defined.len() >= 2 {
         let mut keyed = Vec::with_capacity(defined.len());
@@ -308,7 +306,10 @@ pub fn summarize(input: &JValue) -> JValue {
     };
     let message_chunks = finite(source.get("messageChunks")).unwrap_or(0.0);
     let context = match source.get("context") {
-        c if object_like(c) && finite(c.get("used")).is_some() && finite(c.get("size")).is_some() => {
+        c if object_like(c)
+            && finite(c.get("used")).is_some()
+            && finite(c.get("size")).is_some() =>
+        {
             c.clone()
         }
         _ => JValue::Null,
@@ -317,7 +318,8 @@ pub fn summarize(input: &JValue) -> JValue {
 
     let mut limitations = Vec::new();
     if !agent.get("version").truthy() {
-        limitations.push("The harness did not report its version, so this cannot be scoped to one.");
+        limitations
+            .push("The harness did not report its version, so this cannot be scoped to one.");
     }
     if reported.is_none() {
         limitations.push("The harness did not report token usage.");
@@ -347,12 +349,23 @@ pub fn summarize(input: &JValue) -> JValue {
         ("failedCommands", JValue::Num(failed as f64)),
         (
             "exitCodes",
-            JValue::Arr(exits.iter().take(EXIT_CODES_MAX).map(|e| (*e).clone()).collect()),
+            JValue::Arr(
+                exits
+                    .iter()
+                    .take(EXIT_CODES_MAX)
+                    .map(|e| (*e).clone())
+                    .collect(),
+            ),
         ),
         ("messageChunks", JValue::Num(message_chunks)),
         (
             "limitations",
-            JValue::Arr(limitations.into_iter().map(|s| JValue::Str(s.into())).collect()),
+            JValue::Arr(
+                limitations
+                    .into_iter()
+                    .map(|s| JValue::Str(s.into()))
+                    .collect(),
+            ),
         ),
     ])
 }

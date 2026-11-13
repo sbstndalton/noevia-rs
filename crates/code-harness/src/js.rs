@@ -24,21 +24,14 @@ pub(crate) fn units(s: &str) -> Vec<u16> {
 fn is_js_space(c: char) -> bool {
     matches!(
         c,
-        '\u{9}'
-            | '\u{a}'
-            | '\u{b}'
-            | '\u{c}'
-            | '\u{d}'
-            | ' '
-            | '\u{a0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200a}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202f}'
-            | '\u{205f}'
-            | '\u{3000}'
-            | '\u{feff}'
+        '\u{9}' | '\u{a}' | '\u{b}' | '\u{c}' | '\u{d}' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
     )
 }
 
@@ -282,8 +275,13 @@ mod tests {
 
     #[test]
     fn units_keep_lone_surrogates() {
-        let lone = wtf16::lone_char(0xD800).map(String::from).unwrap_or_default();
-        assert_eq!(units(&format!("a{lone}\u{1F600}")), [0x61, 0xD800, 0xD83D, 0xDE00]);
+        let lone = wtf16::lone_char(0xD800)
+            .map(String::from)
+            .unwrap_or_default();
+        assert_eq!(
+            units(&format!("a{lone}\u{1F600}")),
+            [0x61, 0xD800, 0xD83D, 0xDE00]
+        );
         assert_eq!(byte_length(&lone), 3);
         assert_eq!(byte_length("\u{1F600}é"), 6);
     }

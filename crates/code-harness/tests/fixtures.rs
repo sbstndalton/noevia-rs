@@ -126,7 +126,10 @@ fn rpc_error(e: &RpcError) -> JValue {
             ("message", s(&e.message)),
             (
                 "props",
-                obj([("code", JValue::Num(f64::from(e.code))), ("data", e.data.clone())]),
+                obj([
+                    ("code", JValue::Num(f64::from(e.code))),
+                    ("data", e.data.clone()),
+                ]),
             ),
         ]),
     )])
@@ -152,11 +155,7 @@ fn blocked_error(e: &BlockedError) -> JValue {
 
 /// Checks one row: the port's answer must be Node's, or for a named difference `port`. Returns the
 /// difference and whether Node's answer really differs from `port` there.
-fn check_row(
-    i: usize,
-    row: &JValue,
-    port: impl Fn(&JValue) -> JValue,
-) -> Option<(String, bool)> {
+fn check_row(i: usize, row: &JValue, port: impl Fn(&JValue) -> JValue) -> Option<(String, bool)> {
     let args = row.get("args");
     let ours = text(&port(args));
     match row.get("diff").as_str() {
@@ -196,7 +195,10 @@ fn the_fixture_names_the_sources_this_port_follows() {
 fn constants_and_schemas_are_nodes() {
     let f = fixture();
     let c = f.get("constants");
-    assert_eq!(c.get("MAX_VIOLATIONS"), &JValue::Num(f64::from(MAX_VIOLATIONS)));
+    assert_eq!(
+        c.get("MAX_VIOLATIONS"),
+        &JValue::Num(f64::from(MAX_VIOLATIONS))
+    );
     let strings = |items: &[&str]| JValue::Arr(items.iter().map(|t| s(t)).collect());
     assert_eq!(text(c.get("ACP_KINDS")), text(&strings(&ACP_KINDS)));
     assert_eq!(text(c.get("PATH_KEYS")), text(&strings(&PATH_KEYS)));
@@ -233,7 +235,10 @@ fn constants_and_schemas_are_nodes() {
         };
         for name in names {
             let name = name.as_str().unwrap();
-            assert!(ported.contains(&name), "{module} exports {name}, not ported");
+            assert!(
+                ported.contains(&name),
+                "{module} exports {name}, not ported"
+            );
         }
     }
 }
@@ -357,7 +362,11 @@ impl Scripted {
 
 impl GuardHooks for Scripted {
     fn event(&mut self, kind: &str, data: &JValue) -> Result<(), Thrown> {
-        let e = obj([("cb", s("event")), ("type", s(kind)), ("data", encode(data))]);
+        let e = obj([
+            ("cb", s("event")),
+            ("type", s(kind)),
+            ("data", encode(data)),
+        ]);
         self.hit("event", e)
     }
     fn log(&mut self, entry: &JValue) -> Result<(), Thrown> {
@@ -477,7 +486,10 @@ fn the_flag_is_off_until_a_check_answers_exactly_true() {
         if matches!(row.get("installNotFunction"), JValue::Obj(_)) {
             // Node's TypeError for a non-function cannot arise: install takes a function. The flag
             // keeps the check it had.
-            assert_eq!(text(row.get("installNotFunction").get("name")), "\"TypeError\"");
+            assert_eq!(
+                text(row.get("installNotFunction").get("name")),
+                "\"TypeError\""
+            );
         } else if !install.is_nullish() {
             let answer: Result<JValue, Thrown> = match install.get("throws") {
                 JValue::Undefined => Ok(decode(install.get("returns"))),
