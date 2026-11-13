@@ -152,6 +152,26 @@ impl Cancel {
             hook();
         }
     }
+    /// Runs `hook` once, when this is cancelled (at once if it already is).
+    pub fn on_cancel(&self, hook: Hook) {
+        if self.is_cancelled() {
+            hook();
+            return;
+        }
+        self.add(hook);
+        // Cancelled while it was being added: `cancel` may have taken the hooks already.
+        if self.is_cancelled() {
+            let hooks: Vec<_> = self
+                .hooks
+                .lock()
+                .map(|mut h| std::mem::take(&mut *h))
+                .unwrap_or_default();
+            for (_, hook) in hooks {
+                hook();
+            }
+        }
+    }
+
     fn add(&self, hook: Hook) -> u64 {
         let id = self.next.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut h) = self.hooks.lock() {

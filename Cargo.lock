@@ -481,10 +481,13 @@ dependencies = [
 name = "code-harness"
 version = "0.1.0"
 dependencies = [
+ "code-acp",
  "code-actions",
+ "code-harness-config",
  "code-workspace",
  "js-json",
  "rustix",
+ "server-projects",
  "sha2",
  "stream-guard",
  "tempfile",

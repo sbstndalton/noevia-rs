@@ -47,6 +47,7 @@
 //! or sort.
 #![forbid(unsafe_code)]
 
+pub mod executor;
 pub mod files;
 mod js;
 pub mod meta;

@@ -40,6 +40,8 @@ const MAX_CODE_PLAN_ENTRY_BYTES: usize = 200;
 const MAX_KNOWN_CALLS: usize = 200;
 const MAX_EXITS: usize = 200;
 const OUTSIDE: &str = "Outside this task\u{2019}s workspace";
+/// How long the guard's halt waits so the refusal that reached the limit reaches the agent first.
+const HALT_AFTER: std::time::Duration = std::time::Duration::from_millis(100);
 
 /// A handler's refusal, as the ACP layer answers it: `code` -32602 (with `data`) is the agent's
 /// own fault, anything else is internal.
@@ -188,9 +190,13 @@ impl GuardHooks for Hooks {
         // a thread that is waiting for that lock.
         self.ended.end();
         let host = self.host.clone();
+        // A moment first, as Node's `setImmediate` comes after the refusal is written back.
         if std::thread::Builder::new()
             .name("code-harness halt".into())
-            .spawn(move || host.halt())
+            .spawn(move || {
+                std::thread::sleep(HALT_AFTER);
+                host.halt();
+            })
             .is_err()
         {
             self.host.halt();
@@ -232,6 +238,7 @@ struct State {
     last_stage_at: f64,
     pending_stage: Option<String>,
     guard: Option<ExecutorGuard<Hooks>>,
+    unnamed: u64,
 }
 
 /// One task's session.
@@ -399,6 +406,7 @@ impl Session {
                 last_stage_at: f64::NEG_INFINITY,
                 pending_stage: None,
                 guard,
+                unnamed: 0,
             }),
         }
     }
@@ -694,6 +702,16 @@ impl Session {
             files::read(&target, MAX_FILE_BYTES, root.as_deref()).map_err(file_refusal)?;
         let line = nullish_or(params.get("line"), JValue::Null);
         let limit = nullish_or(params.get("limit"), JValue::Null);
+        if crate::js::conversion_throws(&line)
+            || (limit.truthy() && crate::js::conversion_throws(&limit))
+        {
+            // Node's `Number()` throws here, so the read fails.
+            return Err(Refusal {
+                code: None,
+                message: "Cannot convert object to primitive value".into(),
+                data: None,
+            });
+        }
         if line == JValue::Null && limit == JValue::Null {
             return Ok(JValue::obj([("content", JValue::Str(content))]));
         }
@@ -1048,9 +1066,12 @@ fn known(st: &mut State, update: &JValue) {
     if !id.truthy() {
         return;
     }
-    let Some(key) = key_of(id) else {
-        return;
-    };
+    // An object or array id is a Map key of its own that nothing can ever name again: it takes a
+    // place (and can push the oldest announcement out) but is never found.
+    let key = key_of(id).unwrap_or_else(|| {
+        st.unnamed += 1;
+        format!("\u{0}object {}", st.unnamed)
+    });
     let fields: Vec<(String, JValue)> = match update {
         JValue::Obj(items) => items
             .iter()

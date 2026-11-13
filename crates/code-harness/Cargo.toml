@@ -11,6 +11,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+code-acp = { path = "../code-acp" }
+code-harness-config = { path = "../code-harness-config" }
+code-workspace = { path = "../code-workspace" }
 code-actions = { path = "../code-actions", features = ["host"] }
 js-json = { path = "../js-json" }
 sha2 = "=0.10.9"
@@ -18,5 +21,5 @@ stream-guard = { path = "../stream-guard" }
 rustix = { version = "=1.1.5", features = ["fs", "process"] }
 
 [dev-dependencies]
-code-workspace = { path = "../code-workspace" }
+server-projects = { path = "../server-projects" }
 tempfile = "3"

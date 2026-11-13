@@ -1052,7 +1052,7 @@
     "registry.example.invalid"
    ],
    "answers": [],
-   "egress": null,
+   "egress": "fails",
    "script": [
     {
      "expect": true

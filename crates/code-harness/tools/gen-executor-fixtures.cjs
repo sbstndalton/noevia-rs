@@ -149,7 +149,7 @@ async function run(name, sc) {
     .replace(/"(uid|gid)":\d+/g, '"$1":"<$1>"'));
   const journal = fs.readFileSync(path.join(dir, 'jobs', `${id}.jsonl`), 'utf8').split('\n').filter(Boolean).map((l) => norm(JSON.parse(l)));
   const record = norm(JSON.parse(fs.readFileSync(path.join(dir, 'code-workspaces', `${id}.json`), 'utf8')));
-  const out = { capabilities: sc.capabilities || [], domains: sc.domains || [], answers: sc.answers || [], egress: sc.egress === undefined ? (sc.egressRevokeFails ? 'fails' : null) : sc.egress,
+  const out = { capabilities: sc.capabilities || [], domains: sc.domains || [], answers: sc.answers || [], egress: sc.egressRevokeFails ? 'fails' : (sc.egress ?? null),
     script: sc.script, started: norm(started), journal, record, egressCalls: norm(egressCalls), asked: norm(asked), logs: norm(logs), sandboxLines: box.lines.map((l) => norm(l)) };
   fs.rmSync(base, { recursive: true, force: true });
   return out;
