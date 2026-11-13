@@ -882,6 +882,36 @@ struct ModelRead {
 }
 
 impl Sizing {
+    /// The auto-tune runner's `planFacts(model)` (llamacpp-manager.cjs): `{ meta, modelBytes,
+    /// mmprojBytes }` of the model's GGUF, or `None` where `readModel` answers an error.
+    pub(crate) async fn plan_facts(self: &Arc<Self>, model: &str) -> Option<JValue> {
+        let file = self.presets.clone()?;
+        let listing = self.listing().await;
+        let me = Arc::clone(self);
+        let m = model.to_owned();
+        let read = tokio::task::spawn_blocking(move || me.read_model(&file, &m, &listing).ok())
+            .await
+            .ok()
+            .flatten()?;
+        let meta = js_json::wtf16::parse(&meta_json(&read.summary)).ok()?;
+        Some(JValue::obj([
+            ("meta", meta),
+            ("modelBytes", JValue::Num(read.model_bytes as f64)),
+            ("mmprojBytes", JValue::Num(read.mmproj_bytes as f64)),
+        ]))
+    }
+
+    /// `autoconfig.modelsPath` is set (the read-only models mount).
+    pub(crate) fn has_models_mount(&self) -> bool {
+        !self.models_path.is_empty()
+    }
+
+    /// `budgetFaultReason()`'s condition: the boot-time memory limit could not be evaluated.
+    pub(crate) fn budget_fault(&self) -> Option<String> {
+        self.budget_fault
+            .then(|| "The memory limit could not be evaluated.".to_owned())
+    }
+
     /// llamacpp-manager.cjs `readModel` after `modelFiles`' listing read.
     fn read_model(&self, file: &Path, model: &str, listing: &Read) -> Result<ModelRead, Stop> {
         // `fromPreset` (presets.files, which may throw) is read before `flag` runs, and only

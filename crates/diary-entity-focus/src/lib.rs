@@ -10,8 +10,8 @@ mod unicode15;
 pub use policy::{analyse, focus_candidates};
 mod checked;
 pub use checked::{
-    asked_entities, carried_entities, classify, identified_people, near_word, parse_margin,
-    refers_back, relational,
+    asked_entities, carried_entities, classify, identified_people, name_keys, near_word,
+    parse_margin, refers_back, relational,
 };
 
 pub const PYTHON_SOURCE_SHA256: &str = generated_rules::SOURCE_SHA256;
@@ -32,6 +32,22 @@ pub const EPSILON: f64 = 1e-9;
 
 /// Bounded CPython 3.12 / Unicode 15 lowercase, including contextual final sigma.
 /// Shared with metadata ordering; static tables only, no host Unicode or I/O.
+/// Python `str.isalnum()` for one character (CPython 3.12 / Unicode 15 tables); `\w` in a `str`
+/// regex is this or `_`.
+pub fn python_is_alnum(c: char) -> bool {
+    lexical::py_alnum(c)
+}
+
+/// The value of a Python decimal digit (`int()` of one `\d` character).
+pub fn python_decimal_value(c: char) -> Option<u8> {
+    lexical::decimal_digit(c)
+}
+
+/// Python `str.isdecimal()` for one character: what `\d` matches in a `str` regex.
+pub fn python_is_decimal(c: char) -> bool {
+    lexical::decimal_digit(c).is_some()
+}
+
 pub fn python_lower(value: &str) -> Result<String, Error> {
     if value.len() > MAX_QUERY_BYTES {
         return Err(Error::Capacity);

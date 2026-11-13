@@ -279,7 +279,20 @@ impl Worker {
 
     /// llamacpp-manager.cjs `tuneIdentity(model)`: `None` where it rejects.
     pub async fn identity_for(&self, model: &str) -> Option<JValue> {
-        let sizing = Arc::clone(&self.maint.sizing);
+        tune_identity(&self.maint, model, None).await
+    }
+}
+
+/// llamacpp-manager.cjs `tuneIdentity(model)` over this front's maintenance: `None` where it
+/// rejects (calibration and the native auto-tune runner both use it). `hold` is the token its
+/// `/props` read carries (Node reads it through the covered request).
+pub(super) async fn tune_identity(
+    maint: &super::Maint,
+    model: &str,
+    hold: Option<&str>,
+) -> Option<JValue> {
+    {
+        let sizing = Arc::clone(&maint.sizing);
         let listing = sizing.listing().await;
         let m = model.to_owned();
         let s = Arc::clone(&sizing);
@@ -308,8 +321,8 @@ impl Worker {
                 .map_or(JValue::Null, JValue::Str),
             None => JValue::Null,
         };
-        let build = match self.maint.router.as_ref() {
-            Some(r) => match r.get("/props", None, Duration::from_secs(8)).await {
+        let build = match maint.router.as_ref() {
+            Some(r) => match r.get("/props", hold, Duration::from_secs(8)).await {
                 Ok(reply) => reply
                     .body
                     .as_ref()
@@ -322,7 +335,7 @@ impl Worker {
             None => JValue::Null,
         };
         let mem = mem_total_gib();
-        let ini = self.maint.ini.clone()?;
+        let ini = maint.ini.clone()?;
         let m = model.to_owned();
         let sections = tokio::task::spawn_blocking(move || {
             let p = ini.read().ok()?;
@@ -362,7 +375,9 @@ impl Worker {
             ("hardware", hardware),
         ]))
     }
+}
 
+impl Worker {
     /// `preparationFacts(model, token, rowToken)` with Node's inference budget (0: none). `Err`
     /// where Node's throws (the profile could not be read).
     pub async fn preparation_facts(

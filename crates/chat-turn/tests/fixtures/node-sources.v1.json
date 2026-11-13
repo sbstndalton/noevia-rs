@@ -1,5 +1,5 @@
 {"version":1,"generator":"crates/chat-turn/tests/record_sources.cjs (noevia-core chat-sources.cjs usedInjected + buildSources, rust-chat-native.cjs injectedSources)",
-"sources":{"server/chat-sources.cjs":"56d929c4c3ea02152136e8c17fc6d6c10a9724b41016f2677c265e30945235f5","server/rust-chat-native.cjs":"19c432d59c76f01781fe6ae75457448788eb5113119cf702c1e57559b040f042","server/source-readability.cjs":"a04788baca24da87a5c83772fc32d145f6638a07d6027a278147474eccfb4902"},
+"sources":{"server/chat-sources.cjs":"56d929c4c3ea02152136e8c17fc6d6c10a9724b41016f2677c265e30945235f5","server/rust-chat-native.cjs":"9e6ecd58b46676c7c115f751a01cc538ce490b989e027de61374a2059ac017d0","server/source-readability.cjs":"a04788baca24da87a5c83772fc32d145f6638a07d6027a278147474eccfb4902"},
 "attributeMax":24000,
 "cases":[
 {"name":"digit_token","prepared":{"reply":[],"injected":[{"file":"qa-a.txt","text":"The QA code is ORCHID-42.","item":{"id":"qa-a.txt","file":"qa-a.txt","snippet":"The QA code is ORCHID-42.","kind":"file"}}]},"answer":"Your code is orchid-42.","question":"QA question?","used":["qa-a.txt"],"sources":[{"id":"qa-a.txt","file":"qa-a.txt","snippet":"The QA code is ORCHID-42.","kind":"file"}]},

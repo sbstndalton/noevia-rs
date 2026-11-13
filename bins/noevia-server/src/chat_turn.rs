@@ -143,6 +143,9 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
         chat_edge::Verdict::Cowork => chat_edge::COWORK_PATH,
         chat_edge::Verdict::Refuse(status, text) => return reply::json_text(status, text, true),
     };
+    // Track R8: an account the native executor runs (chat_native.rs; NOEVIA_CHAT_EXECUTOR, off by default).
+    let native = target == TURN_PATH && crate::chat_native::wanted(app, &authn.user.id);
+    crate::chat_native::strip_client_header(&mut parts.headers);
     parts.headers.remove(header::TRANSFER_ENCODING);
     // The wire is the front's to ask for: a turn gets NDJSON (chat_wire.rs), anything else nothing.
     parts.headers.remove(chat_wire::WIRE_HEADER);
@@ -165,7 +168,25 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     ];
     // Review P2-1: a lease lost while Core works (Node ended it, or stopped hearing its renewals)
     // stops the call: Core no longer counts it, so maintenance may begin.
-    let relaying = app.proxy.relay(conn.peer, req, target, &extra, RELAY_LIMIT);
+    // Track R8: the native executor's answer is core's NDJSON up to its hand-off, then the native turn's
+    // own lines (chat_native.rs), so everything below (the wire, the lease) is the same for both.
+    let relaying = async {
+        if native {
+            let user_id = authn.user.id.clone();
+            crate::chat_native::serve(app, user_id, |handoff| async move {
+                let mut extra = extra.to_vec();
+                extra.extend(crate::chat_native::handoff_headers(handoff));
+                app.proxy
+                    .relay(conn.peer, req, target, &extra, RELAY_LIMIT)
+                    .await
+            })
+            .await
+        } else {
+            app.proxy
+                .relay(conn.peer, req, target, &extra, RELAY_LIMIT)
+                .await
+        }
+    };
     let Some(res) = chat_admission::until_lost(&lease, relaying).await else {
         return chat_admission::lost_answer(chat_admission::Gate::Chat);
     };

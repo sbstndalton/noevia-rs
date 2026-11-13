@@ -16,6 +16,7 @@
 //! verdict) stay in those crates; this crate only orders the work around them.
 
 mod actor;
+pub mod decide;
 pub mod deps;
 mod engine;
 pub mod js;

@@ -84,6 +84,11 @@ pub struct App {
     pub writers: Writers,
     /// Native replay state; retrieval indexing has a separate Python lifecycle.
     pub recovered: Mutex<HashMap<String, Arc<Mutex<crate::recovery::State>>>>,
+    /// R9: the internal answer endpoint's config (None: 404) and the companion engine it calls.
+    pub answer: Option<crate::answer::AnswerConfig>,
+    pub llm_main: health::ClientConfig,
+    /// R9: the configured external source paths (None: the route is Python's).
+    pub external_sources: Option<Vec<String>>,
 }
 
 impl App {
@@ -110,6 +115,9 @@ impl App {
             corpus_write_impl: cfg.corpus_write_impl,
             writers: Writers::default(),
             recovered: Mutex::new(HashMap::new()),
+            answer: cfg.answer,
+            llm_main: cfg.llm.main,
+            external_sources: cfg.external_sources,
         }
     }
 }
@@ -204,6 +212,8 @@ pub enum Route {
     Health,
     Months,
     Day,
+    /// R9: GET /api/external-sources (the scan of the operator's external folders).
+    ExternalSources,
     /// D4b: GET /api/files, GET /api/storage-status, GET /api/workspace-export.
     Files,
     StorageStatus,
@@ -241,6 +251,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/health") => Some(Route::Health),
         ("GET", "/api/months") => Some(Route::Months),
         ("GET", "/api/day") => Some(Route::Day),
+        ("GET", "/api/external-sources") => Some(Route::ExternalSources),
         ("GET", "/api/files") => Some(Route::Files),
         ("GET", "/api/storage-status") => Some(Route::StorageStatus),
         ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
@@ -353,6 +364,7 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         }
         Route::Months
         | Route::Day
+        | Route::ExternalSources
         | Route::Files
         | Route::StorageStatus
         | Route::WorkspaceExport
@@ -368,6 +380,9 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
                 return Plan::Decline;
             }
             if r == Route::WorkspaceExport && export_settings(app, &Settings::new()).is_none() {
+                return Plan::Decline;
+            }
+            if r == Route::ExternalSources && app.external_sources.is_none() {
                 return Plan::Decline;
             }
             if header_uid.is_empty() {
@@ -467,6 +482,12 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
     if path.starts_with("/internal/") {
         if parts.method == Method::POST && path == "/internal/fence" {
             return fence(app, &query, &headers).await;
+        }
+        if parts.method == Method::POST && path == "/internal/answer" {
+            return crate::answer::internal(app, &query, &headers, body).await;
+        }
+        if parts.method == Method::POST && path == "/internal/reindex" {
+            return crate::reindex::internal(app, &query, &headers, body).await;
         }
         return control(&app, &parts.method, &path, &headers);
     }
@@ -699,7 +720,7 @@ async fn serve(
                 Err(_) => internal_error(),
             }
         }
-        Route::Months | Route::Day => {
+        Route::Months | Route::Day | Route::ExternalSources => {
             let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
                 Ok(t) => t,
                 Err(resp) => return *resp,
@@ -1007,6 +1028,124 @@ fn resolve_tenant(
     Ok(tenant)
 }
 
+/// Python `api_external_sources` after `_tenant_state` (which only resolves the tenant): each
+/// configured source scanned read-only, in order, with Python's key order. An error Python would
+/// not catch there (its 500) is declined so Python answers it.
+fn external_sources(paths: &[String]) -> Response<Body> {
+    if paths.is_empty() {
+        return json_response(
+            200,
+            &ExternalSources {
+                configured: false,
+                sources: Vec::new(),
+                total: 0,
+            },
+        );
+    }
+    let mut scans = Vec::new();
+    for p in paths {
+        let Ok(scan) = diary_core::external_sources::scan_source(p) else {
+            return decline();
+        };
+        if !python_serializes(&scan) {
+            return decline();
+        }
+        scans.push(scan);
+    }
+    let total = scans.iter().fold(0i64, |n, s| {
+        n.saturating_add(s.get("total").and_then(Value::as_i64).unwrap_or(0))
+    });
+    json_response(
+        200,
+        &ExternalSources {
+            configured: true,
+            sources: scans.iter().map(Scan::of).collect(),
+            total,
+        },
+    )
+}
+
+/// False where Python's reply is a 500 that this side would answer 200 (the crate's known
+/// differences): a file name that is not UTF-8 (Python keeps a lone surrogate, which its JSON
+/// encoder refuses; here it reads as U+FFFD) or a modification time Python cannot date.
+fn python_serializes(scan: &Value) -> bool {
+    scan.get("files")
+        .and_then(Value::as_array)
+        .is_none_or(|files| {
+            files.iter().all(|f| {
+                ["name", "rel_path"].iter().all(|k| {
+                    !f.get(*k)
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .contains('\u{FFFD}')
+                }) && f.get("date_source").and_then(Value::as_str) != Some("unavailable")
+            })
+        })
+}
+
+static NULL: Value = Value::Null;
+
+fn field<'a>(v: &'a Value, key: &str) -> &'a Value {
+    v.get(key).unwrap_or(&NULL)
+}
+
+#[derive(Serialize)]
+struct ExternalSources<'a> {
+    configured: bool,
+    sources: Vec<Scan<'a>>,
+    total: i64,
+}
+
+/// One source's scan in `scan_source`'s key order (serde_json maps here are sorted).
+#[derive(Serialize)]
+struct Scan<'a> {
+    path: &'a Value,
+    exists: &'a Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<&'a Value>,
+    files: Vec<ScannedFile<'a>>,
+    total: &'a Value,
+    truncated: &'a Value,
+}
+
+#[derive(Serialize)]
+struct ScannedFile<'a> {
+    name: &'a Value,
+    rel_path: &'a Value,
+    size: &'a Value,
+    date: &'a Value,
+    date_source: &'a Value,
+}
+
+impl<'a> Scan<'a> {
+    fn of(v: &'a Value) -> Self {
+        let files = v
+            .get("files")
+            .and_then(Value::as_array)
+            .map(|files| {
+                files
+                    .iter()
+                    .map(|f| ScannedFile {
+                        name: field(f, "name"),
+                        rel_path: field(f, "rel_path"),
+                        size: field(f, "size"),
+                        date: field(f, "date"),
+                        date_source: field(f, "date_source"),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Scan {
+            path: field(v, "path"),
+            exists: field(v, "exists"),
+            error: v.get("error"),
+            files,
+            total: field(v, "total"),
+            truncated: field(v, "truncated"),
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct Months {
     months: Vec<corpus::MonthItem>,
@@ -1026,8 +1165,9 @@ struct Today {
     standing: &'static str,
 }
 
-fn serve_corpus(_app: &App, r: Route, query: &[u8], t: &Tenant) -> Response<Body> {
+fn serve_corpus(app: &App, r: Route, query: &[u8], t: &Tenant) -> Response<Body> {
     match r {
+        Route::ExternalSources => external_sources(app.external_sources.as_deref().unwrap_or(&[])),
         Route::Months => match corpus::list_months(&t.store, &t.layout) {
             Ok(months) => json_response(200, &Months { months }),
             Err(corpus::ListError::Template) => internal_error(),

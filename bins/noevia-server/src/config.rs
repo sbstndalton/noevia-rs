@@ -18,6 +18,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub approval_revocation: crate::approval_revocation::Revoker,
     pub host: String,
     pub port: u16,
     pub trust_proxy: bool,
@@ -25,6 +26,8 @@ pub struct Config {
     /// Deep research (sbstndalton/noevia#2218): the engine address, the bridge to Node and the flag's
     /// environment override, as core index.cjs reads them.
     pub research: std::sync::Arc<crate::research_routes::Research>,
+    /// Native project retrieval for research (`NOEVIA_RUST_RETRIEVAL`, off by default; track R4).
+    pub retrieval: std::sync::Arc<crate::native_retrieval::Retrieval>,
     pub dist: PathBuf,
     pub stamp_version: Option<String>,
     /// COWORK_CODE_NET_ADDR, parsed as core code-net-guard.cjs does (empty: no guard).
@@ -87,6 +90,9 @@ pub struct Config {
     /// The public calibration worker (`GET`/`POST /api/models/calibration`, `.../cancel`):
     /// llama.cpp with a preset file only, as Core's manager made `createCalibrator` (#2303).
     pub calibration: Option<std::sync::Arc<crate::model_maint::calibration_worker::Worker>>,
+    /// The native auto-tune runner (#2516), only with `AUTOTUNE_RUNNER_IMPL=rust`; otherwise the
+    /// auto-tune routes ask Node's actor through its bridges, as before.
+    pub autotune: Option<std::sync::Arc<crate::autotune_runner::Native>>,
     /// GET /api/export/conversations (M4, sbstndalton/noevia#1315), read from the user's files on
     /// disk: always on (#1071), since free-chats.json on disk is the list (Rust is its only writer,
     /// the owner's 2026-10-12 condition).
@@ -101,6 +107,8 @@ pub struct Config {
     /// The code-sandbox egress profile (`CODE_EGRESS_*`, row V; src/code_egress.rs). `None` when
     /// `CODE_EGRESS_PORT` is unset or `0`; an invalid profile refuses startup, as Node's did.
     pub code_egress: Option<crate::code_egress::Settings>,
+    /// Code mode's deployment configuration and the executor switch (code_routes.rs).
+    pub code: crate::code_routes::Settings,
     /// NOEVIA_START_ID: the id the web supervisor makes for this container start (32 lowercase
     /// hex) and hands Node too, which writes it into a running reply's partial file
     /// (`running: { start }`, core chat-partial.cjs; sbstndalton/noevia#1071). A partial whose
@@ -109,6 +117,9 @@ pub struct Config {
     /// store is configured, which the supervisor always does and Node needs): a front that could
     /// not tell a running reply from an interrupted one never starts there.
     pub start_id: Option<String>,
+    /// Track R8: which accounts' chat turns the native executor runs (`NOEVIA_CHAT_EXECUTOR`, chat_native.rs);
+    /// default: none (every turn relayed to core as before). A value it cannot read refuses startup.
+    pub chat_executor: crate::chat_native::Switch,
     /// GET /api/providers/chatgpt (M6, sbstndalton/noevia#1373). An invalid
     /// NOEVIA_FEATURE_CHATGPT_OAUTH refuses startup (Node does not start with one either).
     pub rust_chatgpt_status: Option<ChatgptStatus>,
@@ -388,16 +399,27 @@ impl Config {
             *slot = server_features::parse_env(get(server_features::spec(feature).env).as_deref())
                 .map_err(str::to_owned)?;
         }
+        let chat_executor =
+            crate::chat_native::Switch::parse(get("NOEVIA_CHAT_EXECUTOR").as_deref())?;
+        let research = std::sync::Arc::new(crate::research_routes::Research::new(
+            crate::research_routes::Settings::from_lookup(
+                &get,
+                format!("http://{}", upstream.authority()),
+            )?,
+        )?);
+        // #2516: off unless AUTOTUNE_RUNNER_IMPL=rust (Core then builds no auto-tuner).
+        let autotune = crate::autotune_runner::build(&maint, &research, &get);
         Ok(Config {
+            chat_executor,
             host,
             port,
             trust_proxy: get("TRUST_PROXY").as_deref() == Some("true"),
-            research: std::sync::Arc::new(crate::research_routes::Research::new(
-                crate::research_routes::Settings::from_lookup(
-                    &get,
-                    format!("http://{}", upstream.authority()),
-                )?,
-            )?),
+            retrieval: std::sync::Arc::new(crate::native_retrieval::Retrieval::from_lookup(&get)?),
+            research,
+            approval_revocation: crate::approval_revocation::Revoker::new(
+                format!("http://{}", upstream.authority()),
+                get("NOEVIA_PROJECT_STORE_TOKEN"),
+            ),
             upstream,
             dist: get("NOEVIA_WEB_DIST")
                 .filter(|d| !d.is_empty())
@@ -455,9 +477,11 @@ impl Config {
             model_manager_scan: crate::model_manager_scan::Loader::from_lookup(&get)?,
             maint,
             calibration,
+            autotune,
             rust_export,
             project_store,
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,
+            code: crate::code_routes::Settings::from_lookup(&get),
             start_id,
             rust_chatgpt_status,
             #[cfg(feature = "rust-chatgpt-status")]

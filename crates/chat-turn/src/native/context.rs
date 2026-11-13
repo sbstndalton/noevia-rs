@@ -142,7 +142,8 @@ impl<H: Host> Turn<'_, H> {
             &p.messages,
             &tools,
             limit,
-            false,
+            // chat.cjs `force: body.compactOnly === true`.
+            p.compact_only,
             &saved,
             now_i,
             summarize,

@@ -1,0 +1,142 @@
+{
+ "constants": {
+  "AUX_STEP_DEADLINE_S": 60.0,
+  "EXCHANGE_DEADLINE_S": 300.0,
+  "FIRST_TOKEN_DEADLINE_S": 150.0
+ },
+ "describe": [
+  {
+   "case": "chained",
+   "text": "LLMError <- ValueError"
+  }
+ ],
+ "pinned_sha256": {
+  "agent/deadline.py": "aaff80faa686659203b835865782230f030f5a94ec2d7e1ffbb0bb9a316534a2",
+  "agent/streaming.py": "c6d2abfeb405075bb12560d11ff9ef832b30c0ac9b39ed7d16aae3fa6d4369eb"
+ },
+ "python": "3.12.15",
+ "source": "noevia-services diary/agent at origin/main 6d0ba0e",
+ "streams": [
+  {
+   "frames": [
+    "data: {\"type\":\"status\",\"text\":\"Opening diary context…\"}\n\n",
+    "data: {\"type\": \"status\", \"text\": \"QA step \\u00e9\"}\n\n",
+    "data: {\"type\": \"delta\", \"text\": \"Synthetic \\ud83c\\udf3f answer\"}\n\n",
+    "data: {\"type\": \"diary\", \"answer\": \"Synthetic answer\", \"saved\": true, \"xid\": \"qa-0001\", \"day\": \"2031-03-20\"}\n\n",
+    "data: {\"type\": \"done\"}\n\n"
+   ],
+   "headers": {
+    "cache-control": "no-cache, no-transform",
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-accel-buffering": "no"
+   },
+   "media_type": "text/event-stream",
+   "name": "ok"
+  },
+  {
+   "frames": [
+    "data: {\"type\":\"status\",\"text\":\"Opening diary context…\"}\n\n",
+    "data: {\"type\": \"status\", \"text\": \"QA step \\u00e9\"}\n\n",
+    "data: {\"type\": \"delta\", \"text\": \"Synthetic \\ud83c\\udf3f answer\"}\n\n",
+    "data: {\"type\": \"error\", \"code\": \"contextUnavailable\", \"saved\": false, \"text\": \"Diary date filtering is unavailable. Nothing was saved; try again later.\"}\n\n"
+   ],
+   "headers": {
+    "cache-control": "no-cache, no-transform",
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-accel-buffering": "no"
+   },
+   "media_type": "text/event-stream",
+   "name": "temporal_unavailable"
+  },
+  {
+   "frames": [
+    "data: {\"type\":\"status\",\"text\":\"Opening diary context…\"}\n\n",
+    "data: {\"type\": \"status\", \"text\": \"QA step \\u00e9\"}\n\n",
+    "data: {\"type\": \"delta\", \"text\": \"Synthetic \\ud83c\\udf3f answer\"}\n\n",
+    "data: {\"type\": \"error\", \"code\": \"modelFailed\", \"reason\": \"chat_timeout\", \"saved\": false, \"text\": \"The local model did not answer in time \\u2014 nothing was saved. You can resend.\"}\n\n"
+   ],
+   "headers": {
+    "cache-control": "no-cache, no-transform",
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-accel-buffering": "no"
+   },
+   "media_type": "text/event-stream",
+   "name": "timeout_nothing_saved"
+  },
+  {
+   "frames": [
+    "data: {\"type\":\"status\",\"text\":\"Opening diary context…\"}\n\n",
+    "data: {\"type\": \"status\", \"text\": \"QA step \\u00e9\"}\n\n",
+    "data: {\"type\": \"delta\", \"text\": \"Synthetic \\ud83c\\udf3f answer\"}\n\n",
+    "data: {\"type\": \"error\", \"text\": \"Diary processing failed. Saving may be incomplete; check the saved entry before sending again.\"}\n\n"
+   ],
+   "headers": {
+    "cache-control": "no-cache, no-transform",
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-accel-buffering": "no"
+   },
+   "media_type": "text/event-stream",
+   "name": "timeout_after_save"
+  },
+  {
+   "frames": [
+    "data: {\"type\":\"status\",\"text\":\"Opening diary context…\"}\n\n",
+    "data: {\"type\": \"status\", \"text\": \"QA step \\u00e9\"}\n\n",
+    "data: {\"type\": \"delta\", \"text\": \"Synthetic \\ud83c\\udf3f answer\"}\n\n",
+    "data: {\"type\": \"error\", \"code\": \"modelFailed\", \"reason\": \"length_cap\", \"saved\": false, \"text\": \"The answer cap (LLM_MAX_ANSWER_TOKENS) was reached before any answer text; nothing was saved. You can resend or raise the cap (or the reasoning allowance, LLM_MAX_REASONING_TOKENS).\"}\n\n"
+   ],
+   "headers": {
+    "cache-control": "no-cache, no-transform",
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-accel-buffering": "no"
+   },
+   "media_type": "text/event-stream",
+   "name": "length_cap"
+  },
+  {
+   "frames": [
+    "data: {\"type\":\"status\",\"text\":\"Opening diary context…\"}\n\n",
+    "data: {\"type\": \"status\", \"text\": \"QA step \\u00e9\"}\n\n",
+    "data: {\"type\": \"delta\", \"text\": \"Synthetic \\ud83c\\udf3f answer\"}\n\n",
+    "data: {\"type\": \"error\", \"code\": \"modelFailed\", \"reason\": \"empty_answer\", \"saved\": false, \"text\": \"The model returned no final answer \\u2014 nothing was saved. You can resend.\"}\n\n"
+   ],
+   "headers": {
+    "cache-control": "no-cache, no-transform",
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-accel-buffering": "no"
+   },
+   "media_type": "text/event-stream",
+   "name": "empty_answer"
+  },
+  {
+   "frames": [
+    "data: {\"type\":\"status\",\"text\":\"Opening diary context…\"}\n\n",
+    "data: {\"type\": \"status\", \"text\": \"QA step \\u00e9\"}\n\n",
+    "data: {\"type\": \"delta\", \"text\": \"Synthetic \\ud83c\\udf3f answer\"}\n\n",
+    "data: {\"type\": \"error\", \"text\": \"Diary processing failed. Saving may be incomplete; check the saved entry before sending again.\"}\n\n"
+   ],
+   "headers": {
+    "cache-control": "no-cache, no-transform",
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-accel-buffering": "no"
+   },
+   "media_type": "text/event-stream",
+   "name": "llm_error"
+  },
+  {
+   "frames": [
+    "data: {\"type\":\"status\",\"text\":\"Opening diary context…\"}\n\n",
+    "data: {\"type\": \"status\", \"text\": \"QA step \\u00e9\"}\n\n",
+    "data: {\"type\": \"delta\", \"text\": \"Synthetic \\ud83c\\udf3f answer\"}\n\n",
+    "data: {\"type\": \"error\", \"text\": \"Diary processing failed. Saving may be incomplete; check the saved entry before sending again.\"}\n\n"
+   ],
+   "headers": {
+    "cache-control": "no-cache, no-transform",
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-accel-buffering": "no"
+   },
+   "media_type": "text/event-stream",
+   "name": "other_error"
+  }
+ ]
+}

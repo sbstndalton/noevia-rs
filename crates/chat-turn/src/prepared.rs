@@ -7,6 +7,7 @@
 use js_json::JValue;
 
 use crate::effort::Provider;
+use crate::host::Skill;
 
 pub const VERSION: f64 = 1.0;
 
@@ -17,6 +18,20 @@ pub struct Title {
     pub first_message: String,
     pub first_reply: bool,
     pub enabled: bool,
+}
+
+/// A project turn's instruction skills (#272, #546) as core settled them before the cut.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Skills {
+    /// The skills the prompt carries (pinned or picked automatically), in chat.cjs `loadedSkills` order.
+    pub loaded: Vec<Skill>,
+    /// The turn's snapshot's enabled skills, in the project's list order: what a tool call may still load.
+    pub enabled: Vec<Skill>,
+    /// The skill names already taken out of the history (chat.cjs `revokedInHistory`).
+    pub revoked_in_history: Vec<String>,
+    /// The reply warning's other parts (chat.cjs `replyWarning`): the image warning and the coverage warning.
+    pub image_warning: String,
+    pub coverage_warning: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +54,13 @@ pub struct Prepared {
     pub writes: Vec<String>,
     pub public: Vec<String>,
     pub automatic_only_writes: Vec<String>,
+    /// The offered project file edit tools (chat.cjs `projectEditTool`; absent from an older core: none,
+    /// as an older core never hands off a turn that offers one).
+    pub edit_tools: Vec<String>,
+    /// #2446: the offered tools asked about on every call and never under a chat-wide grant (the coworker page
+    /// save; `onceTools`, present only when there are any; a core that offers one hands the turn off only to a
+    /// front naming the `once` capability).
+    pub once_tools: Vec<String>,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -58,8 +80,13 @@ pub struct Prepared {
     pub decline_ends_reply: bool,
     pub record: bool,
     pub stream_idle_ms: f64,
+    /// The turn only compacts the chat's context (the Compact action): the fit is forced, then `done`.
+    pub compact_only: bool,
     /// #1793: the reply's sources and the injected files the close may add to them (absent: none).
     pub sources: crate::sources::Sources,
+    /// The project's instruction skills; `None` without a project (and from an older core, which hands off no
+    /// turn whose project has skills).
+    pub skills: Option<Skills>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,6 +136,36 @@ fn names(v: &JValue, key: &str) -> Result<Vec<String>, Unreadable> {
                 .ok_or_else(|| Unreadable(format!("prepared.{key} holds a non-name")))
         })
         .collect()
+}
+
+fn skill_list(v: &JValue, key: &str) -> Result<Vec<Skill>, Unreadable> {
+    list(v, key)?
+        .iter()
+        .map(|k| match (k.get("file"), k.get("hash"), k.get("name")) {
+            (JValue::Str(file), JValue::Str(hash), JValue::Str(name)) => Ok(Skill {
+                file: file.clone(),
+                hash: hash.clone(),
+                name: name.clone(),
+            }),
+            _ => Err(Unreadable(format!(
+                "prepared.skills.{key} holds a bad skill"
+            ))),
+        })
+        .collect()
+}
+
+fn skills(v: &JValue) -> Result<Option<Skills>, Unreadable> {
+    match v {
+        JValue::Undefined | JValue::Null => Ok(None),
+        JValue::Obj(_) => Ok(Some(Skills {
+            loaded: skill_list(v, "loaded")?,
+            enabled: skill_list(v, "enabled")?,
+            revoked_in_history: names(v, "revokedInHistory")?,
+            image_warning: opt_text(v, "imageWarning").unwrap_or_default(),
+            coverage_warning: opt_text(v, "coverageWarning").unwrap_or_default(),
+        })),
+        _ => Err(Unreadable("prepared.skills is not an object".into())),
+    }
 }
 
 fn flag(v: &JValue, key: &str) -> bool {
@@ -171,6 +228,14 @@ impl Prepared {
             writes: names(frame, "writes")?,
             public: names(frame, "public")?,
             automatic_only_writes: names(frame, "automaticOnlyWrites")?,
+            edit_tools: match frame.get("editTools") {
+                JValue::Undefined => Vec::new(),
+                _ => names(frame, "editTools")?,
+            },
+            once_tools: match frame.get("onceTools") {
+                JValue::Undefined => Vec::new(),
+                _ => names(frame, "onceTools")?,
+            },
             route_note: opt_text(frame, "routeNote").unwrap_or_default(),
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),
@@ -194,11 +259,13 @@ impl Prepared {
             decline_ends_reply: flag(turn, "declineEndsReply"),
             record: flag(turn, "record"),
             stream_idle_ms: need(turn, "streamIdleMs")?.as_num().unwrap_or(0.0),
+            compact_only: flag(turn, "compactOnly"),
             sources: match turn.get("sources") {
                 JValue::Undefined | JValue::Null => crate::sources::Sources::default(),
                 v => crate::sources::Sources::read(v)
                     .ok_or_else(|| Unreadable("prepared.turn.sources is not readable".into()))?,
             },
+            skills: skills(frame.get("skills"))?,
         })
     }
 }

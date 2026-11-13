@@ -19,6 +19,14 @@ const PREPARED: &[u8] = b"{\"type\":\"prepared\"";
 /// with room for the tools and the rest.
 pub const PREPARED_CAP: usize = 40 * 1024 * 1024;
 
+/// The header the front names its executor's capabilities in when it asks for a hand-off (core
+/// rust-chat-native.cjs `CAPS_HEADER`; read only with the hand-off secret).
+pub const HANDOFF_CAPS_HEADER: &str = "x-noevia-chat-handoff-caps";
+/// What this executor runs beyond the first hand-off step, for [`HANDOFF_CAPS_HEADER`]: `skills`, the
+/// instruction skills checks ([`crate::skills`]); `once`, the coworker page save's per-call card (#2446,
+/// [`crate::gate`]). Without them core keeps a turn whose project has skills, or that offers the page save.
+pub const HANDOFF_CAPS: &str = "skills,once";
+
 /// What a chunk of core's stream gives.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Piece {
@@ -191,6 +199,27 @@ mod tests {
         assert_eq!(
             bad.feed(b"{\"type\":\"prepared\",x}\n"),
             vec![Piece::Unreadable]
+        );
+    }
+
+    #[test]
+    fn a_prepared_line_of_exactly_the_cap_is_read() {
+        let mut line = PREPARED.to_vec();
+        line.extend_from_slice(b",\"pad\":\"");
+        let body = PREPARED_CAP - line.len() - 2;
+        line.extend(std::iter::repeat_n(b'x', body));
+        line.extend_from_slice(b"\"}");
+        assert_eq!(line.len(), PREPARED_CAP);
+        line.push(b'\n');
+        let mut f = Frames::new();
+        let mut pieces = Vec::new();
+        for chunk in line.chunks(64 * 1024) {
+            pieces.extend(f.feed(chunk));
+        }
+        assert!(
+            matches!(pieces.as_slice(), [Piece::Prepared(_)]),
+            "{:?}",
+            pieces.len()
         );
     }
 

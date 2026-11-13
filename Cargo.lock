@@ -134,12 +134,16 @@ version = "0.1.0"
 dependencies = [
  "autotune-plan",
  "autotune-start",
+ "chat-template-caps",
  "js-json",
  "llamacpp-autoconfig",
  "llamacpp-presets",
+ "load-verdict",
+ "long-profile",
  "regex",
  "sha2",
  "tokio",
+ "tune-contention",
 ]
 
 [[package]]
@@ -440,6 +444,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-prepare"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "js-json",
+ "prompt-framing",
+ "regex",
+]
+
+[[package]]
 name = "chat-template-caps"
 version = "0.1.0"
 dependencies = [
@@ -509,8 +524,26 @@ dependencies = [
 name = "code-actions"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "prompt-framing",
  "proptest",
+]
+
+[[package]]
+name = "code-harness"
+version = "0.1.0"
+dependencies = [
+ "code-acp",
+ "code-actions",
+ "code-harness-config",
+ "code-workspace",
+ "js-json",
+ "rustix",
+ "server-projects",
+ "sha2",
+ "stream-guard",
+ "tempfile",
+ "url",
 ]
 
 [[package]]
@@ -531,6 +564,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-pipeline"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "prompt-framing",
+ "review-verdict",
+ "role-context",
+ "sha2",
+]
+
+[[package]]
 name = "code-sandbox-supervisor"
 version = "0.1.0"
 dependencies = [
@@ -539,6 +583,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "code-verify"
+version = "0.1.0"
+dependencies = [
+ "code-acp",
+ "js-json",
+ "rustix",
+ "tempfile",
 ]
 
 [[package]]
@@ -756,6 +810,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e9de72ce2ad1f90dc62fa25f0f430ef85eb4b0d8fa0be4f30373bc40a21d28e"
 
 [[package]]
+name = "diary-answer"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "diary-core",
+ "diary-retrieval",
+ "http-body",
+ "reqwest",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "diary-backup-format"
 version = "0.1.0"
 dependencies = [
@@ -772,6 +840,18 @@ dependencies = [
  "diary-backup-format",
  "rusqlite",
  "serde_json",
+]
+
+[[package]]
+name = "diary-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "diary-entity-focus",
+ "diary-score-gap",
+ "diary-temporal-focus",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
@@ -2048,12 +2128,16 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "diary-answer",
  "diary-backup-run",
+ "diary-core",
  "diary-corpus-parse",
  "diary-corpus-write",
  "diary-index-transform",
+ "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",
+ "http-body",
  "http-body-util",
  "regex",
  "reqwest",
@@ -2184,11 +2268,15 @@ name = "noevia-server"
 version = "0.1.0"
 dependencies = [
  "autotune-plan",
+ "autotune-runner",
  "axum",
  "base64 0.22.1",
  "brotli",
  "bytes",
  "chat-mirror-sched",
+ "chat-turn",
+ "code-acp",
+ "code-harness",
  "code-net-guard",
  "context-fit",
  "dav-parse",
@@ -2215,6 +2303,7 @@ dependencies = [
  "offsite-backup-format",
  "policy-leaves",
  "preset-reload",
+ "project-retrieval",
  "prompt-framing",
  "provider-egress",
  "rand_core 0.6.4",
@@ -2959,6 +3048,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "role-engine"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "role-context",
+ "sha2",
+ "stream-guard",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3427,6 +3528,7 @@ dependencies = [
 name = "server-projects"
 version = "0.1.0"
 dependencies = [
+ "completeness-report",
  "js-json",
  "libc",
  "prompt-framing",

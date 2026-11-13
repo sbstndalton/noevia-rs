@@ -134,7 +134,8 @@ pub enum Native {
     ToolboxesPermitted,
     /// POST /api/models/autotune/settings and every other method's refusal (#2287).
     AutotuneSettings,
-    /// POST /api/tool-approvals/{approvalId}: public decision policy, pending state in Node.
+    /// POST /api/tool-approvals/{approvalId}: public decision policy, answered from the front's
+    /// approval registry (approval_registry.rs, port contract S9).
     ToolApprovals,
     /// GET /api/toolboxes and every other method's 405 (#2281).
     ToolboxPicker,
@@ -1407,6 +1408,10 @@ mod tests {
                 "GET {p}"
             );
             for m in ["HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+                // #2516: the start's POST (checked below).
+                if m == "POST" && *p == crate::autotune_read_routes::PATH {
+                    continue;
+                }
                 assert_eq!(dispatch_under(m, p, on), None, "{m} {p}");
             }
         }
@@ -1429,11 +1434,15 @@ mod tests {
         assert!(crate::FEATURES.contains(&"rust-model-state-reads"));
         assert!(crate::FEATURES.contains(&"rust-model-maintenance"));
         assert!(crate::FEATURES.contains(&"rust-autotune-read"));
-        assert_eq!(
-            dispatch_under("GET", crate::autotune_read_routes::PATH, on),
-            Some(Native::Models)
-        );
-        for method in ["POST", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"] {
+        // #2516: POST is the front's handler too, which forwards it to Node unless the native
+        // runner is switched on (AUTOTUNE_RUNNER_IMPL=rust).
+        for method in ["GET", "POST"] {
+            assert_eq!(
+                dispatch_under(method, crate::autotune_read_routes::PATH, on),
+                Some(Native::Models)
+            );
+        }
+        for method in ["HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"] {
             assert_eq!(
                 dispatch_under(method, crate::autotune_read_routes::PATH, on),
                 None
@@ -1501,7 +1510,7 @@ mod tests {
             vec![
                 (crate::model_manager_scan::PATH, &["GET"][..]),
                 (crate::model_assignments::PATH, &["GET"][..]),
-                (crate::autotune_read_routes::PATH, &["GET"][..]),
+                (crate::autotune_read_routes::PATH, &["GET", "POST"][..]),
                 (crate::autotune_cancel_routes::PATH, &[][..]),
                 (crate::autotune_clear_routes::PATH, &[][..]),
                 (crate::autotune_resume_routes::PATH, &[][..]),
@@ -1641,6 +1650,8 @@ mod tests {
         }
         assert_eq!(dispatch("POST", "/api/tool-approvals/a/extra"), None);
         assert!(crate::FEATURES.contains(&"rust-tool-approvals"));
+        assert!(crate::FEATURES.contains(&"rust-approval-registry"));
+        assert!(crate::FEATURES.contains(&crate::approval_registry::PROTOCOL));
     }
 
     /// sbstndalton/noevia#2191 round 9: a project's configuration, its instruction skills and a

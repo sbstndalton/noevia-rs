@@ -174,6 +174,8 @@ pub enum Route {
     /// The Code and Browser task reads (sbstndalton/noevia#2257): `/api/code/active`, every method,
     /// and the GETs of a project's Code and Browser state and task.
     Tasks(crate::task_routes::Target),
+    /// A Code task action, only while the front runs Code tasks (code_routes.rs).
+    Code(crate::code_routes::Action),
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -487,7 +489,14 @@ pub async fn serve(
             .find(|(k, _)| k == "background")
             .is_some_and(|(_, v)| v == "1")
     });
-    let route = route(parts.method.as_str(), &path);
+    let route = route(parts.method.as_str(), &path).or_else(|| {
+        app.config
+            .code
+            .executor
+            .then(|| crate::code_routes::parse(parts.method.as_str(), &path))
+            .flatten()
+            .map(Route::Code)
+    });
     let Some(route) = route else {
         return app
             .proxy
@@ -538,6 +547,9 @@ pub async fn serve(
         )
         .await;
     }
+    if let Route::Code(action) = route {
+        return crate::code_routes::serve(app, authn, data_dir, action, body).await;
+    }
     if let Route::Research { project, shape } = &route {
         return crate::research_routes::serve(
             app,
@@ -558,7 +570,7 @@ pub async fn serve(
         .await;
     }
     let limit = match &route {
-        Route::Research { .. } | Route::Tasks(_) => None,
+        Route::Research { .. } | Route::Tasks(_) | Route::Code(_) => None,
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
@@ -783,6 +795,36 @@ pub async fn serve(
     )
     .then(|| (Arc::clone(app), authn.clone(), data_dir.clone()));
     let user = authn.user.id;
+    // Port contract S9: a chat's move or delete revokes its "Allow for this chat" grant at once
+    // (the registry also refuses any grant whose live context changed).
+    // Re-review 1ed3a14: before the change as well as after, whatever its outcome, so every grant
+    // redeem orders strictly before or after it at the registry's lock.
+    // Completion requires Node to acknowledge its executor epoch advance before the mutation.
+    let revoke_grant = match &route {
+        Route::MoveChat { chat }
+        | Route::DeleteFreeChat { chat }
+        | Route::DeleteChat { chat, .. } => {
+            if app.revoke_approvals(&user, chat).await.is_err() {
+                return reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Approval revocation pending; retry",
+                    true,
+                );
+            }
+            Some((Arc::clone(app), user.clone(), Some(chat.clone()), None))
+        }
+        Route::DeleteProject { project } => {
+            if app.revoke_project_approvals(&user, project).await.is_err() {
+                return reply::error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Approval revocation pending; retry",
+                    true,
+                );
+            }
+            Some((Arc::clone(app), user.clone(), None, Some(project.clone())))
+        }
+        _ => None,
+    };
     // The context GET writes too (getProject's self-heal), so it is re-gated as well; so do the
     // source reads, whose getProject may save the same way.
     let writes = matches!(
@@ -998,7 +1040,8 @@ pub async fn serve(
                 Route::Config { .. }
                 | Route::SkillInstall { .. }
                 | Route::Research { .. }
-                | Route::Tasks(_),
+                | Route::Tasks(_)
+                | Route::Code(_),
                 _,
             ) => Reply::internal(),
             // Answered above (source_job_routes).
@@ -1009,6 +1052,21 @@ pub async fn serve(
         })
     })
     .await;
+    let revocation = match revoke_grant {
+        Some((app, user, Some(chat), _)) => app.revoke_approvals(&user, &chat).await.map(|_| ()),
+        Some((app, user, None, Some(project))) => app
+            .revoke_project_approvals(&user, &project)
+            .await
+            .map(|_| ()),
+        _ => Ok(()),
+    };
+    if revocation.is_err() {
+        return reply::error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Approval revocation pending; retry",
+            true,
+        );
+    }
     if let (Some((app, authn, data_dir)), Ok(Ok(r))) = (sweep_inputs, &done) {
         if r.status == 200 {
             // Detached, as core's deleteProject never awaited its sweep; the job is durable in the

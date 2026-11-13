@@ -52,6 +52,13 @@ pub struct Config {
     /// Python's DIARY_CORPUS_WRITE_IMPL ("python" when absent).
     #[serde(default)]
     pub corpus_write_impl: String,
+    /// R9 answering, step 1: the internal answer endpoint (absent: it answers 404).
+    #[serde(default)]
+    pub answer: Option<crate::answer::AnswerConfig>,
+    /// R9: Python's `external_source_paths()` resolved at start (its DIARY_EXTERNAL_SOURCES with
+    /// `~` expanded by its own HOME). Absent: GET /api/external-sources stays with Python.
+    #[serde(default)]
+    pub external_sources: Option<Vec<String>>,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

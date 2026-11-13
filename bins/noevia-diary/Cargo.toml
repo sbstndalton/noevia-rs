@@ -14,6 +14,7 @@ workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util", "io-std", "signal"] }
 http-body-util = "0.1"
+http-body = "1"
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -26,6 +27,9 @@ tenant-assertion = { path = "../../crates/tenant-assertion" }
 diary-corpus-parse = { path = "../../crates/diary-corpus-parse" }
 diary-workspace-export = { path = "../../crates/diary-workspace-export" }
 diary-corpus-write = { path = "../../crates/diary-corpus-write" }
+diary-core = { path = "../../crates/diary-core" }
+diary-answer = { path = "../../crates/diary-answer" }
+diary-retrieval = { path = "../../crates/diary-retrieval" }
 
 diary-index-transform = { path = "../../crates/diary-index-transform" }
 s3-sign = { path = "../../crates/s3-sign" }

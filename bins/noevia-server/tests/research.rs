@@ -184,6 +184,15 @@ struct Front {
 }
 
 async fn front(flag: Option<&str>, node: Responder, engine: Responder) -> Front {
+    front_env(flag, node, engine, &[]).await
+}
+
+async fn front_env(
+    flag: Option<&str>,
+    node: Responder,
+    engine: Responder,
+    extra: &[(&'static str, String)],
+) -> Front {
     // A Node start is registered with this process's admission authority before any lease is issued.
     engine_admission::authority::global()
         .node_session("research-test", 1)
@@ -212,6 +221,9 @@ async fn front(flag: Option<&str>, node: Responder, engine: Responder) -> Front 
     env.insert("INFERENCE_BASE_URL", format!("http://{}", engine.addr));
     if let Some(v) = flag {
         env.insert(flag_name, v.into());
+    }
+    for (k, v) in extra {
+        env.insert(k, v.clone());
     }
     let mut app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     Arc::get_mut(&mut app).unwrap().storage_child =
@@ -1204,4 +1216,169 @@ async fn queued_documents_are_reported_as_unavailable_without_inventing_evidence
         "the notice creates no evidence"
     );
     assert!(done["artifacts"].as_array().is_some_and(|a| !a.is_empty()));
+}
+
+const SEARCH_FIXTURE: &str =
+    include_str!("../../../crates/project-retrieval/tests/fixtures/F2-F6-search.json");
+
+/// Rebuilds the index Node wrote for search S1 "mixed files" (crates/project-retrieval F2-F6) at
+/// `path`; answers that search's recorded query vector.
+fn seed_index(path: &std::path::Path) -> Vec<f64> {
+    let f: Value = serde_json::from_str(SEARCH_FIXTURE).unwrap();
+    let q = f["scenarios"][0]["searches"][0].clone();
+    assert_eq!(q["note"], "mixed files");
+    let dump = &f["snapshots"][q["index"].as_str().unwrap()];
+    embedding_worker::sqlite_vec_loader::register().unwrap();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let c = Connection::open(path).unwrap();
+    for sql in dump["schema"].as_array().unwrap() {
+        c.execute_batch(sql.as_str().unwrap()).unwrap();
+    }
+    for r in dump["chunks"].as_array().unwrap() {
+        c.execute(
+            "INSERT INTO chunks (id, file, chunk_no, body, content_hash, version, direct, kind, meta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            server_store::rusqlite::params![
+                r["id"].as_i64(),
+                r["file"].as_str(),
+                r["chunk_no"].as_i64(),
+                r["body"].as_str(),
+                r["content_hash"].as_str(),
+                r["version"].as_str(),
+                r["direct"].as_i64(),
+            r["kind"].as_str(),
+            r["meta"].as_str()
+            ],
+        )
+        .unwrap();
+    }
+    for r in dump["vec_meta"].as_array().unwrap() {
+        c.execute(
+            "INSERT INTO vec_meta (key, value) VALUES (?, ?)",
+            [r["key"].as_str(), r["value"].as_str()],
+        )
+        .unwrap();
+    }
+    for (table, rows) in dump["vectors"].as_object().unwrap() {
+        for r in rows.as_array().unwrap() {
+            let blob: Vec<u8> = r["embedding"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|x| (x.as_f64().unwrap() as f32).to_le_bytes())
+                .collect();
+            let id = r["chunk_id"].as_i64().unwrap();
+            c.execute(
+                &format!("INSERT INTO {table} (chunk_id, embedding) VALUES ({id}, ?)"),
+                [blob],
+            )
+            .unwrap();
+        }
+    }
+    for (table, rows) in dump["maps"].as_object().unwrap() {
+        for r in rows.as_array().unwrap() {
+            c.execute(
+                &format!("INSERT INTO {table} (chunk_id, content_hash) VALUES (?, ?)"),
+                server_store::rusqlite::params![r["chunk_id"].as_i64(), r["content_hash"].as_str()],
+            )
+            .unwrap();
+        }
+    }
+    q["query_vector"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_f64().unwrap())
+        .collect()
+}
+
+/// Track R4 `NOEVIA_RUST_RETRIEVAL`: on, a job's project search is this process's (the embedding
+/// service gets the query, Node's bridge is never asked), also with the reranker on (an unreachable
+/// one: the cosine order answers), unless it defers (a target on the shared engine); shadow, both
+/// run and Node's answer is used; off (the default), only the bridge.
+#[tokio::test]
+async fn native_retrieval_answers_a_job_when_on_and_runs_beside_the_bridge_in_shadow() {
+    let rerank = [
+        ("NOEVIA_FEATURE_RAG_RERANK", "1".to_owned()),
+        ("RERANK_BASE_URL", "http://127.0.0.1:9".to_owned()),
+    ];
+    for (mode, extra, shared) in [
+        ("on", &[][..], false),
+        ("shadow", &[][..], false),
+        ("off", &[][..], false),
+        ("on", &rerank[..], false),
+        ("on", &[][..], true),
+    ] {
+        let deferred = shared;
+        let vector: Arc<Mutex<Vec<f64>>> = Arc::default();
+        let answer = Arc::clone(&vector);
+        let embed = Stub::start(Arc::new(move |_m, p, _b| {
+            if p == "/v1/embeddings" {
+                let v = answer.lock().unwrap().clone();
+                Answer::Now(
+                    200,
+                    json!({"data": [{"index": 0, "embedding": v}]}).to_string(),
+                )
+            } else {
+                Answer::Now(404, "{}".into())
+            }
+        }))
+        .await;
+        let f = front_env(
+            Some("true"),
+            lease_node(),
+            engine_saying("The tower is 50 metres tall [S1]."),
+            &[&[("NOEVIA_RUST_RETRIEVAL", mode.to_owned())][..], extra].concat(),
+        )
+        .await;
+        *vector.lock().unwrap() = seed_index(&f.user_dir().join("rag").join("p1.db"));
+        std::fs::write(
+            f.data.join("embedding-config.json"),
+            json!({"version": 1, "active": {"model": "qa-embed-map", "profile": "embeddinggemma-2",
+                "baseUrl": if shared { Value::Null } else { json!(format!("http://{}", embed.addr)) }}, "next": null, "previous": null})
+            .to_string(),
+        )
+        .unwrap();
+        let (s, v) = f
+            .call(
+                "POST",
+                "/api/projects/p1/research",
+                r#"{"question":"alpha bravo"}"#,
+            )
+            .await;
+        assert_eq!(s, 202, "{mode}: {v}");
+        let id = v["id"].as_str().unwrap().to_owned();
+        let done = f.job_until(&id, |j| j["status"] != "running").await;
+        assert_eq!(done["status"], "completed", "{mode}: {done}");
+        // The bridge's answer is no hits; the native one is Node's recorded hits, all of qa-long-a.md.
+        let cited = done["result"]["markdown"]
+            .as_str()
+            .unwrap()
+            .contains("qa-long-a.md");
+        assert_eq!(cited, mode == "on" && !deferred, "{mode}: {done}");
+        let bridge = f.node.count("POST /internal/research/retrieve");
+        if mode == "shadow" {
+            // The native search runs beside the bridge, detached: it may finish after the job.
+            let (e, b) = (&embed, bridge);
+            assert!(
+                settle(|| e.count("POST /v1/embeddings") == b).await,
+                "shadow: bridge {bridge}"
+            );
+        }
+        let native = embed.count("POST /v1/embeddings");
+        match (mode, deferred) {
+            ("on", false) => assert!(
+                bridge == 0 && native > 0,
+                "{mode}: bridge {bridge}, native {native}"
+            ),
+            ("shadow", _) => assert!(
+                bridge > 0 && native == bridge,
+                "{mode}: bridge {bridge}, native {native}"
+            ),
+            // Off, and on with a shared-engine target (the native search defers): the bridge alone.
+            _ => assert!(
+                bridge > 0 && native == 0,
+                "{mode}: bridge {bridge}, native {native}"
+            ),
+        }
+    }
 }

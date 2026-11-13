@@ -2,6 +2,8 @@
 //! 127.0.0.1:8011 and forwards the routes named in DIARY_RUST_ROUTES to it; every other route,
 //! and every request this side declines, stays with Python.
 
+pub mod answer;
+pub mod answer_store;
 pub mod assertion;
 pub mod backup;
 pub mod config;
@@ -10,6 +12,7 @@ pub mod health;
 pub mod managed;
 pub mod py;
 pub mod recovery;
+pub mod reindex;
 pub mod server;
 pub mod storage_gate;
 pub mod workspace;

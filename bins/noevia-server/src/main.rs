@@ -77,6 +77,65 @@ fn legacy_claim_cli(args: impl Iterator<Item = OsString>) -> ExitCode {
         Err(_) => ExitCode::FAILURE,
     }
 }
+/// sbstndalton/noevia#2582: one invitation from the operator's shell (server_account::operator).
+/// Command line only; stdout carries the token and nothing else.
+fn operator_invitation_cli(
+    args: impl Iterator<Item = OsString>,
+    data_dir: Option<PathBuf>,
+    now: i64,
+    out: &mut impl Write,
+) -> ExitCode {
+    use server_account::operator::{self, Refusal, Role};
+    let mut args = args;
+    let usage = || {
+        eprintln!("usage: noevia-server --operator-invitation <member|admin>");
+        ExitCode::from(2)
+    };
+    let Some(role) = args.next().and_then(|v| v.into_string().ok()) else {
+        return usage();
+    };
+    let Some(role) = Role::parse(&role) else {
+        return usage();
+    };
+    if args.next().is_some() {
+        return usage();
+    }
+    let Some(dir) = data_dir else {
+        eprintln!("noevia-server: operator invitation refused: UI_DATA_DIR is not set");
+        return ExitCode::FAILURE;
+    };
+    let writer = match server_store::Writer::open(&dir, server_store::RustAuth::owned()) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("noevia-server: operator invitation refused: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let invitation = match operator::create(&writer, role, now) {
+        Ok(i) => i,
+        Err(Refusal::EmptyStore) => {
+            eprintln!("noevia-server: operator invitation refused: no account exists yet; use first-run setup");
+            return ExitCode::FAILURE;
+        }
+        Err(Refusal::NoActiveAdministrator) => {
+            eprintln!("noevia-server: operator invitation refused: no active administrator");
+            return ExitCode::FAILURE;
+        }
+        Err(Refusal::Store(e)) => {
+            eprintln!("noevia-server: operator invitation refused: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    eprintln!(
+        "noevia-server: one {} invitation, valid for 24 hours and once; accept it on the sign-in page",
+        role.as_str()
+    );
+    match writeln!(out, "{}", invitation.token).and_then(|()| out.flush()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::FAILURE,
+    }
+}
+
 fn main() -> ExitCode {
     let mut args = std::env::args_os();
     let _program = args.next();
@@ -91,6 +150,16 @@ fn main() -> ExitCode {
     // startup. Its caller owns/revalidates the database transaction; this process never opens DB.
     if command.as_deref() == Some(OsStr::new("--claim-legacy-root")) {
         return legacy_claim_cli(args);
+    }
+    // Before the runtime and any listener: no network surface (sbstndalton/noevia#2582).
+    if command.as_deref() == Some(OsStr::new("--operator-invitation")) {
+        let data_dir = std::env::var_os("UI_DATA_DIR")
+            .filter(|d| !d.is_empty())
+            .map(PathBuf::from);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+        return operator_invitation_cli(args, data_dir, now, &mut io::stdout().lock());
     }
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -219,6 +288,10 @@ async fn server_main() -> ExitCode {
     // `modelManager.calibration?.recover()`, which is off now that the worker is native).
     // The recovery takes the launch slot before the routes serve, so no launch races it.
     let _ = app.config.spawn_calibration_recovery();
+    // #2516: only with AUTOTUNE_RUNNER_IMPL=rust (Core's boot recovery is then off).
+    if let Some(autotune) = app.config.autotune.as_ref() {
+        autotune.spawn_boot();
+    }
     {
         let maint = std::sync::Arc::clone(&app.config.maint);
         tokio::spawn(async move {
@@ -348,6 +421,7 @@ async fn server_main() -> ExitCode {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -428,6 +502,97 @@ mod tests {
         assert_eq!(feature_probe(&mut writer), ExitCode::FAILURE);
         assert_eq!(writer.output, expected());
         assert!(writer.flushed);
+    }
+
+    const NODE_SCHEMA: &str =
+        include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql");
+
+    /// A Node-shaped cowork.db; `admin` adds one synthetic administrator.
+    fn store(admin: bool) -> (tempfile::TempDir, server_store::rusqlite::Connection) {
+        let dir = tempfile::tempdir().unwrap();
+        let node =
+            server_store::rusqlite::Connection::open(server_store::db_path(dir.path())).unwrap();
+        node.execute_batch(NODE_SCHEMA).unwrap();
+        if admin {
+            node.execute_batch(
+                "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES('qa-admin','QA-Admin','qa-admin','QA Admin','admin','x','w1',1,1)",
+            )
+            .unwrap();
+        }
+        (dir, node)
+    }
+
+    fn run(args: &[&str], dir: Option<PathBuf>) -> (ExitCode, String) {
+        let mut out = Vec::new();
+        let code = operator_invitation_cli(
+            args.iter().map(OsString::from),
+            dir,
+            1_800_000_000_000,
+            &mut out,
+        );
+        (code, String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    fn operator_invitation_prints_only_the_token_once() {
+        let (dir, node) = store(true);
+        let (code, out) = run(&["admin"], Some(dir.path().to_path_buf()));
+        assert_eq!(code, ExitCode::SUCCESS);
+        let token = out.strip_suffix('\n').unwrap();
+        assert_eq!(out.matches(token).count(), 1);
+        assert_eq!(out.lines().count(), 1);
+        let (hash, role): (String, String) = node
+            .query_row("SELECT token_hash, role FROM invitations", [], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(hash, server_auth::js::digest(token));
+        assert_eq!(role, "admin");
+    }
+
+    #[test]
+    fn operator_invitation_refusals_print_nothing_and_write_nothing() {
+        let (empty, node) = store(false);
+        let (dir, with_admin) = store(true);
+        let cases: [(&[&str], Option<PathBuf>, ExitCode); 6] = [
+            (
+                &["admin"],
+                Some(empty.path().to_path_buf()),
+                ExitCode::FAILURE,
+            ),
+            (
+                &["owner"],
+                Some(dir.path().to_path_buf()),
+                ExitCode::from(2),
+            ),
+            (
+                &["Admin"],
+                Some(dir.path().to_path_buf()),
+                ExitCode::from(2),
+            ),
+            (&[], Some(dir.path().to_path_buf()), ExitCode::from(2)),
+            (
+                &["member", "member"],
+                Some(dir.path().to_path_buf()),
+                ExitCode::from(2),
+            ),
+            (&["member"], None, ExitCode::FAILURE),
+        ];
+        for (args, data_dir, want) in cases {
+            let (code, out) = run(args, data_dir);
+            assert_eq!(code, want, "{args:?}");
+            assert!(out.is_empty(), "{args:?}");
+        }
+        for db in [&node, &with_admin] {
+            let n: i64 = db
+                .query_row(
+                    "SELECT (SELECT count(*) FROM invitations)+(SELECT count(*) FROM audit_events)",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 0);
+        }
     }
 
     #[test]

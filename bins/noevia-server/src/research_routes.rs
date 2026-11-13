@@ -17,6 +17,7 @@
 //! **Restart.** As in Node, a job does not survive the process that runs it: the next request for that
 //! account finds its row and ends it as interrupted (`research_jobs::recover`).
 use crate::identity::Rejection;
+use crate::native_retrieval;
 use crate::project_routes::Regate;
 use crate::project_store::TOKEN_HEADER;
 use crate::reply;
@@ -818,8 +819,9 @@ fn clip_bytes(text: &str, max: usize) -> &str {
     text.get(..end).unwrap_or("")
 }
 
-impl runner::Tools for JobTools {
-    async fn project_retrieve(&self, question: &str, cancel: &Cancel) -> Result<Vec<Hit>, Failure> {
+impl JobTools {
+    /// The project's sources through Node's bridge (core `index.cjs` research `retrieve`).
+    async fn bridge_retrieve(&self, question: &str, cancel: &Cancel) -> Result<Vec<Hit>, Failure> {
         let body =
             json!({ "user": self.account.user, "projectId": self.project, "question": question });
         let research = self.account.research();
@@ -858,6 +860,122 @@ impl runner::Tools for JobTools {
             None => Err(Failure(
                 "The project's sources could not be searched.".to_owned(),
             )),
+        }
+    }
+}
+
+/// The project's sources searched by this process (`crate::native_retrieval`), for one job.
+async fn native_retrieve(
+    account: &Account,
+    project: &str,
+    question: &str,
+) -> native_retrieval::Outcome {
+    use native_retrieval::{Inputs, Outcome, RESEARCH_HITS};
+    // core `retrieve`: `getProject(projectId)` as the user; a project that is gone has no hits.
+    match account.project(project).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return Outcome::Hits(Vec::new()),
+        Err(_) => return Outcome::Defer("project unreadable"),
+    }
+    let app = Arc::clone(&account.app);
+    let rerank_env =
+        tokio::task::spawn_blocking(move || crate::reranker_routes::effective_env(&app).ok())
+            .await
+            .ok()
+            .flatten();
+    let app = &account.app;
+    let held = || app.config.maint.authority.held();
+    app.config
+        .retrieval
+        .retrieve(Inputs {
+            data_dir: &account.data_dir,
+            user: &account.user,
+            project,
+            question,
+            start: app.config.start_id.as_deref().unwrap_or_default(),
+            now_ms: crate::identity::now_ms() as f64,
+            maintenance_held: &held,
+            rerank_env: rerank_env.as_ref(),
+            versions: Default::default(),
+            limit: RESEARCH_HITS,
+            until: None,
+        })
+        .await
+}
+
+/// [`native_retrieve`] within the bridge's deadline and the job's cancel: `None` when either ends it.
+async fn native_bounded(
+    account: &Account,
+    project: &str,
+    question: &str,
+    cancel: &Cancel,
+) -> Option<native_retrieval::Outcome> {
+    tokio::select! {
+        r = tokio::time::timeout(RETRIEVE_DEADLINE, native_retrieve(account, project, question)) => r.ok(),
+        _ = cancel.cancelled() => None,
+    }
+}
+
+fn research_hits(hits: Vec<project_retrieval::hits::Hit>) -> Vec<Hit> {
+    hits.into_iter()
+        .map(|h| Hit {
+            file: h.file,
+            text: h.body,
+        })
+        .collect()
+}
+
+fn hit_pairs(hits: &[Hit]) -> Vec<(String, String)> {
+    hits.iter()
+        .map(|h| (h.file.clone(), h.text.clone()))
+        .collect()
+}
+
+impl runner::Tools for JobTools {
+    /// `NOEVIA_RUST_RETRIEVAL` (track R4): off, the bridge; shadow, the bridge's answer with the
+    /// native one compared beside it; on, the native answer unless it defers to the bridge.
+    async fn project_retrieve(&self, question: &str, cancel: &Cancel) -> Result<Vec<Hit>, Failure> {
+        use native_retrieval::{compare, Mode, Outcome};
+        let unsearched = || Failure("The project's sources could not be searched.".to_owned());
+        match self.account.app.config.retrieval.mode {
+            Mode::Off => self.bridge_retrieve(question, cancel).await,
+            Mode::On => {
+                match native_bounded(&self.account, &self.project, question, cancel).await {
+                    Some(Outcome::Hits(hits)) => Ok(research_hits(hits)),
+                    Some(Outcome::Defer(_)) => self.bridge_retrieve(question, cancel).await,
+                    None if cancel.is_cancelled() => {
+                        Err(Failure("Research was cancelled.".to_owned()))
+                    }
+                    None => Err(unsearched()),
+                }
+            }
+            Mode::Shadow => {
+                // Beside the bridge, never in its way: Node's answer is returned as soon as it comes.
+                let (account, project, q, stop) = (
+                    self.account.clone(),
+                    self.project.clone(),
+                    question.to_owned(),
+                    cancel.clone(),
+                );
+                let native =
+                    tokio::spawn(
+                        async move { native_bounded(&account, &project, &q, &stop).await },
+                    );
+                let node = self.bridge_retrieve(question, cancel).await;
+                let pairs = node.as_ref().ok().map(|h| hit_pairs(h));
+                tokio::spawn(async move {
+                    let line = match (pairs, native.await.ok().flatten()) {
+                        (Some(node), Some(Outcome::Hits(hits))) => {
+                            compare(&node, &hit_pairs(&research_hits(hits)))
+                        }
+                        (None, Some(Outcome::Hits(_))) => "node failed".to_owned(),
+                        (_, Some(Outcome::Defer(why))) => format!("native deferred ({why})"),
+                        (_, None) => "native timed out or cancelled".to_owned(),
+                    };
+                    eprintln!("noevia-server: research retrieval shadow: {line}");
+                });
+                node
+            }
         }
     }
 

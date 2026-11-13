@@ -54,12 +54,15 @@ rust-project-writes = []
 
 [dependencies]
 autotune-plan = { path = "../../crates/autotune-plan" }
+autotune-runner = { path = "../../crates/autotune-runner" }
 chat-mirror-sched = { path = "../../crates/chat-mirror-sched" }
 embedding-worker = { path = "../../crates/embedding-worker" }
 context-fit = { path = "../../crates/context-fit" }
+chat-turn = { path = "../../crates/chat-turn" }
 engine-admission = { path = "../../crates/engine-admission" }
 model-stream = { path = "../../crates/model-stream" }
 research-core = { path = "../../crates/research-core" }
+project-retrieval = { path = "../../crates/project-retrieval" }
 server-features = { path = "../../crates/server-features" }
 server-diary = { path = "../../crates/server-diary" }
 server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }
@@ -113,6 +116,8 @@ http-body = "1"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "client", "server"] }
 code-net-guard = { path = "../../crates/code-net-guard" }
+code-acp = { path = "../../crates/code-acp" }
+code-harness = { path = "../../crates/code-harness" }
 server-auth = { path = "../../crates/server-auth" }
 server-account = { path = "../../crates/server-account" }
 url = "2.5"
