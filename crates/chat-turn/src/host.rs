@@ -15,6 +15,16 @@ pub struct EngineRequest {
     pub body: String,
     /// The round's stream (`stream: true`), read chunk by chunk; else read whole.
     pub stream: bool,
+    /// The whole request's deadline (the summary's 180 s, the fallback's 300 s, the title's 8 s); a
+    /// streamed round has none, only the idle limit after its first output.
+    pub timeout_ms: Option<u64>,
+}
+
+/// An engine answer: its status, headers (lower-case names) and body.
+pub struct Answer<B> {
+    pub status: u16,
+    pub headers: Vec<(String, String)>,
+    pub body: B,
 }
 
 /// What a read of an engine answer's body gives.
@@ -89,11 +99,12 @@ pub trait Host: Sync {
     /// an unknown answer is yes.
     fn template_allows_tools(&self, model: &str) -> impl Future<Output = bool> + Send;
 
-    /// One engine request: its status and body, or the error it failed with before any answer.
+    /// One engine request: its answer, or the error it failed with before any answer (its deadline
+    /// passing included). Dropping a body cancels it.
     fn request(
         &self,
         request: &EngineRequest,
-    ) -> impl Future<Output = Result<(u16, Self::Body), String>> + Send;
+    ) -> impl Future<Output = Result<Answer<Self::Body>, String>> + Send;
     /// The next read of a streamed body. `idle_ms`: the limit after the first output, if any.
     fn read(
         &self,
@@ -105,8 +116,16 @@ pub trait Host: Sync {
 
     /// The account's context state file for `id` (`context-<sha256(id)>.json`), parsed; `{}` when absent.
     fn read_state(&self, id: &str) -> JValue;
-    /// Writes it (atomically, mode 0600).
-    fn save_state(&self, id: &str, state: &JValue);
+    /// Writes it (atomically, mode 0600); `Err` with the reason when the workspace no longer stands.
+    fn save_state(&self, id: &str, state: &JValue) -> Result<(), String>;
+    /// Remembers that `model`'s chat template refused tools, so later turns send none (#1015).
+    fn mark_tools_unsupported(&self, model: &str);
+    /// Other inference is in flight on the local engine (model manager `inferenceBusy(1)`).
+    fn engine_busy(&self) -> bool;
+    /// The chat still carries the title derived from its first message (projects store `chatAutoNamed`).
+    fn title_auto_named(&self, list: Option<&str>, chat: &str, first_message: &str) -> bool;
+    /// Saves a generated title over the derived one (projects store `setChatTitle`).
+    fn title_save(&self, list: Option<&str>, chat: &str, title: &str, first_message: &str);
 
     /// `recordUsage(workspace, model, reported)`.
     fn record_usage(&self, model: &str, reported: &JValue);

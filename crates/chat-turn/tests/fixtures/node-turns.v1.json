@@ -3,7 +3,7 @@
  "generator": "crates/chat-turn/tests/record_turns.cjs (noevia-core server/chat.cjs handleChat)",
  "fixedNow": "2026-11-13T12:00:00.000Z",
  "sources": {
-  "server/chat.cjs": "3a645a18097f446599eb57ca298030a3f687637040ea8571bb8a1e5fd3711cc7",
+  "server/chat.cjs": "c45310e1cf247aba23c4555c0cc5d245d337aebcd0816ff228277163dd5a2903",
   "server/chat-context.cjs": "b7b804906d9d874fbcadecbe248b8bb718e96feb0f07de670f6a1c88d8863f51",
   "server/chat-partial.cjs": "d5d0da3548157fb90523354e86af153715dc801250a5864634558c65f330958d",
   "server/chat-interrupted-turn.cjs": "30a6816c8c651773b16fc2efaf50e8b9f291e286fdc80ce46e882a411cdaf76d",
@@ -780,6 +780,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -1321,6 +1323,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -1843,6 +1847,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -2401,6 +2407,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -2999,6 +3007,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -3575,6 +3585,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -4115,6 +4127,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -4605,6 +4619,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -5125,6 +5141,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -5609,6 +5627,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -6085,6 +6105,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -6597,6 +6619,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -7105,6 +7129,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -7691,6 +7717,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -8257,6 +8285,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -8879,6 +8909,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -9479,6 +9511,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -10132,6 +10166,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -10733,6 +10769,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -11486,6 +11524,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -12261,6 +12301,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -13065,6 +13107,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -13695,6 +13739,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -14466,6 +14512,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -15200,6 +15248,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -15915,6 +15965,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -17014,6 +17066,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -17954,6 +18008,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -18801,6 +18857,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -19415,6 +19473,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -20173,6 +20233,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",
@@ -20574,6 +20636,8 @@
      "automaticOnlyWrites": [],
      "routeNote": "",
      "templateGate": false,
+     "managerEnabled": true,
+     "modelLease": true,
      "chat": {
       "id": "qa-chat-1",
       "contextId": "qa-chat-1",

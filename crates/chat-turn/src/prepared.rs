@@ -41,6 +41,10 @@ pub struct Prepared {
     pub automatic_only_writes: Vec<String>,
     pub route_note: String,
     pub template_gate: bool,
+    /// The local model manager answers health and load; else the runtime limit is the fallback.
+    pub manager_enabled: bool,
+    /// The local model manager grants the model's lease.
+    pub model_lease: bool,
     pub chat_id: Option<String>,
     pub context_id: Option<String>,
     pub chat_key: Option<String>,
@@ -157,6 +161,8 @@ impl Prepared {
             automatic_only_writes: names(frame, "automaticOnlyWrites")?,
             route_note: opt_text(frame, "routeNote").unwrap_or_default(),
             template_gate: flag(frame, "templateGate"),
+            manager_enabled: flag(frame, "managerEnabled"),
+            model_lease: flag(frame, "modelLease"),
             chat_id: opt_text(chat, "id"),
             context_id: opt_text(chat, "contextId"),
             chat_key: opt_text(chat, "key"),

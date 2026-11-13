@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use std::task::{Context, Poll, Waker};
 
 use chat_turn::after::{Keep, Saving};
-use chat_turn::host::{EngineRequest, GateRefusal, Host, Read, Target, ToolRun};
+use chat_turn::host::{Answer, EngineRequest, GateRefusal, Host, Read, Target, ToolRun};
 use chat_turn::js;
 use chat_turn::native::{self, Ended, Helpers, Process};
 use chat_turn::prepared::Prepared;
@@ -32,12 +32,7 @@ use sha2::{Digest, Sha256};
 const FIXED_NOW: f64 = 1_794_571_200_000.0;
 
 /// The cases this step does not run yet, and why.
-const NOT_YET: [(&str, &str); 4] = [
-    ("title", "the title (B3)"),
-    ("title_still_derived", "the title (B3)"),
-    ("title_failed", "the title (B3)"),
-    ("title_renamed", "the title's store check (B3)"),
-];
+const NOT_YET: [(&str, &str); 0] = [];
 
 fn block_on<F: Future>(f: F) -> F::Output {
     let mut f = pin!(f);
@@ -203,7 +198,7 @@ impl Host for Script {
         true
     }
 
-    async fn request(&self, request: &EngineRequest) -> Result<(u16, Body), String> {
+    async fn request(&self, request: &EngineRequest) -> Result<Answer<Body>, String> {
         self.requests.lock().unwrap().push(request.clone());
         let mut next = self.next.lock().unwrap();
         let round = self
@@ -217,30 +212,33 @@ impl Host for Script {
         }
         if let Some(status) = round.get("status").as_num().filter(|s| *s != 200.0) {
             let text = round.get("body").as_str().unwrap_or("").to_string();
-            return Ok((
-                status as u16,
-                Body {
+            return Ok(Answer {
+                status: status as u16,
+                headers: Vec::new(),
+                body: Body {
                     text,
                     ..Body::default()
                 },
-            ));
+            });
         }
         if round.get("json").is_object() {
-            return Ok((
-                200,
-                Body {
+            return Ok(Answer {
+                status: 200,
+                headers: Vec::new(),
+                body: Body {
                     text: js::stringify(round.get("json")),
                     ..Body::default()
                 },
-            ));
+            });
         }
-        Ok((
-            200,
-            Body {
+        Ok(Answer {
+            status: 200,
+            headers: Vec::new(),
+            body: Body {
                 chunks: chunks_of(&round),
                 ..Body::default()
             },
-        ))
+        })
     }
 
     async fn read(&self, body: &mut Body, idle_ms: Option<u64>) -> Read {
@@ -276,11 +274,42 @@ impl Host for Script {
         }
     }
 
-    fn save_state(&self, id: &str, state: &JValue) {
+    fn save_state(&self, id: &str, state: &JValue) -> Result<(), String> {
         self.files
             .lock()
             .unwrap()
             .insert(Script::file_name(id), js::stringify(state));
+        Ok(())
+    }
+
+    fn mark_tools_unsupported(&self, _model: &str) {}
+
+    fn engine_busy(&self) -> bool {
+        false
+    }
+
+    fn title_auto_named(&self, list: Option<&str>, chat: &str, first: &str) -> bool {
+        self.store(
+            "chatTitles.autoNamed",
+            vec![
+                ("listId", list.map_or(JValue::Null, js::s)),
+                ("chatId", js::s(chat)),
+                ("first", js::s(first)),
+            ],
+        );
+        self.case.get("input").get("titles").get("autoNamed") != &JValue::Bool(false)
+    }
+
+    fn title_save(&self, list: Option<&str>, chat: &str, title: &str, first: &str) {
+        self.store(
+            "chatTitles.save",
+            vec![
+                ("listId", list.map_or(JValue::Null, js::s)),
+                ("chatId", js::s(chat)),
+                ("title", js::s(title)),
+                ("first", js::s(first)),
+            ],
+        );
     }
 
     fn record_usage(&self, model: &str, reported: &JValue) {
@@ -666,5 +695,30 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert!(ran.len() >= 15, "{ran:?}");
+    assert_eq!(ran.len(), 32, "{ran:?}");
+}
+
+/// The front spawns the turn on its runtime: `native::run` must be `Send` for a `Send + Sync` host.
+#[test]
+fn the_native_turn_can_be_spawned() {
+    fn spawnable<T: Send>(_: &T) {}
+    let f = fixture();
+    let JValue::Arr(cases) = f.get("cases") else {
+        panic!()
+    };
+    let prepared = Prepared::read(cases[0].get("handoff").get("prepared")).unwrap();
+    let script = Script::new(cases[0].clone());
+    let process = Process::default();
+    let helpers = Helpers {
+        clean_search_args: &|_, a| a.to_string(),
+        announces_tool_action: &|_| false,
+        announced_note: "",
+        reduce_tool_result: &|t, _| t.to_string(),
+        source_links: &source_links,
+        fallback_text: &fallback_text,
+        final_answer_note: FINAL_ANSWER_NOTE,
+        tool_result_cap: 8000,
+    };
+    let turn = native::run(&script, &process, &helpers, &prepared);
+    spawnable(&turn);
 }
