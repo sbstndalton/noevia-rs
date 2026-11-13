@@ -1,0 +1,3458 @@
+{
+ "version": 1,
+ "generator": "noevia-rs bins/noevia-server/tests/mcp-call-oracle.cjs (from noevia-core server/mcp-wiring.cjs executeMcpToolCall)",
+ "sources": {
+  "server/mcp-wiring.cjs": "b997753eae7bf89281290519cb743fe9c54b1c01244111df74ac3bf90bdf90bb",
+  "server/mcp.cjs": "8a20cc410642344d6feb73ecfe661cc100f5649d79fe6ceee1661f725e9aa077",
+  "server/tool-rate-limit.cjs": "053689162e70bad0a025f875e1b35efecf84dca84cf649ac179d94be92a397a2",
+  "server/mcp-internal.cjs": "4a9c178a2f70a36a52e883d0db9a6e5e8a0923128baeb04f167f166fe6b07063"
+ },
+ "coreRef": "a72ae943ffaa8f46e5f13cb3bfe098430ce2ccaf",
+ "internalKey": "6f7261636c652d696e7465726e616c2d6b65792d30313233343536373839616263646566",
+ "jti": "00000000-0000-4000-8000-000000000000",
+ "resultCap": 8000,
+ "reduceMarker": "[reduced to 8000] ",
+ "servers": [
+  {
+   "id": "noevia",
+   "url": "http://127.0.0.1:9/mcp",
+   "auth": "internal"
+  },
+  {
+   "id": "nextcloud",
+   "url": "http://nc.lan:8000/mcp",
+   "auth": "nextcloud"
+  },
+  {
+   "id": "search",
+   "url": "http://search.lan:9/mcp",
+   "auth": "bearer",
+   "tokenEnv": "SEARCH_TOKEN"
+  },
+  {
+   "id": "nobearer",
+   "url": "http://search2.lan:9/mcp",
+   "auth": "bearer",
+   "tokenEnv": "UNSET_TOKEN"
+  },
+  {
+   "id": "open",
+   "url": "http://open.lan:9/mcp",
+   "auth": "none"
+  },
+  {
+   "id": "dir-dup",
+   "url": "http://dup.lan:9/mcp",
+   "auth": "bearer",
+   "tokenEnv": "SEARCH_TOKEN"
+  },
+  {
+   "id": "dir-keys",
+   "url": "https://keys.example.test/mcp",
+   "auth": "personal",
+   "directory": true,
+   "title": "QA Keys",
+   "addedBy": "admin-1"
+  },
+  {
+   "id": "dir-untitled",
+   "url": "https://untitled.example.test/mcp",
+   "auth": "personal",
+   "directory": true,
+   "title": "",
+   "addedBy": "admin-1"
+  },
+  {
+   "id": "dir-oauth",
+   "url": "https://oauth.example.test/mcp",
+   "auth": "oauth",
+   "directory": true,
+   "title": "QA Sign-in",
+   "addedBy": "admin-1"
+  },
+  {
+   "id": "dir-shared",
+   "url": "https://shared.example.test/mcp",
+   "auth": "directory",
+   "directory": true,
+   "title": "QA Shared",
+   "addedBy": "admin-1"
+  },
+  {
+   "id": "dir-private",
+   "url": "https://private.example.test/mcp",
+   "auth": "none",
+   "directory": true,
+   "title": "QA Moved",
+   "addedBy": "admin-1"
+  },
+  {
+   "id": "dir-dup",
+   "url": "https://dup.example.test/mcp",
+   "auth": "none",
+   "directory": true,
+   "title": "QA Dup",
+   "addedBy": "admin-1"
+  }
+ ],
+ "sharedHeaders": {
+  "dir-shared": {
+   "X-Api-Key": "qa-shared-key"
+  }
+ },
+ "notPublic": [
+  "https://private.example.test/mcp"
+ ],
+ "env": {
+  "SEARCH_TOKEN": "qa-search-token"
+ },
+ "scenarios": [
+  {
+   "name": "an operator server with no credential answers text",
+   "calls": [
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "q": "qa é 😀"
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "qa answer"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "q": "qa é 😀"
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] qa answer"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "  a  "
+          },
+          {
+           "type": "image",
+           "data": "x"
+          },
+          {
+           "type": "text",
+           "text": "b"
+          },
+          {
+           "type": {
+            "a": 1
+           }
+          },
+          {
+           "type": "text",
+           "text": 5
+          },
+          "str",
+          7,
+          null
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] a  \n[image content omitted]\nb\n[[object Object] content omitted]\n[text content omitted]"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [],
+         "structuredContent": {
+          "rows": [
+           1,
+           "two",
+           {
+            "three": null
+           }
+          ]
+         }
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] {\"rows\":[1,\"two\",{\"three\":null}]}"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "   "
+          }
+         ],
+         "structuredContent": "just text"
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] \"just text\""
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": []
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "(the tool returned no output)"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {}
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "(the tool returned no output)"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": null
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "(the tool returned no output)"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": "a string"
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "(the tool returned no output)"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": 5
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: number 5 is not iterable (cannot read property Symbol(Symbol.iterator))"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": 1.5
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: number 1.5 is not iterable (cannot read property Symbol(Symbol.iterator))"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": {
+          "a": 1
+         }
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: object is not iterable (cannot read property Symbol(Symbol.iterator))"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": true
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: boolean true is not iterable (cannot read property Symbol(Symbol.iterator))"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": false,
+         "structuredContent": 0
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "(the tool returned no output)"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "isError": true,
+         "content": []
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] ERROR from tool: (no detail)"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "isError": 1,
+         "content": [
+          {
+           "type": "text",
+           "text": "bad qa input"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] ERROR from tool: bad qa input"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+   ]
+  },
+  {
+   "name": "failures are text the model can act on",
+   "calls": [
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 500,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: tool call failed (HTTP 500)"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 404,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: tool call failed (HTTP 404)"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "connect": {
+         "http": 502
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {}
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: tool call failed (HTTP 502)"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "error": "fetch failed"
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: fetch failed"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "error": "MCP error -32602: bad qa args"
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: MCP error -32602: bad qa args"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "error": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀😀😀😀😀😀😀😀"
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx😀😀😀😀😀"
+    },
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "error": "This operation was aborted"
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "open_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR calling open_tool: This operation was aborted"
+    }
+   ]
+  },
+  {
+   "name": "a 429 backs the provider off, a success clears it",
+   "calls": [
+    {
+     "at": 1800000000000,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "query": "qa"
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 429,
+        "retryAfter": "7"
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "query": "qa"
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 7 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800000003000,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-2",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: tavily_search was not called: its provider is rate limiting requests (HTTP 429), retry in about 4 s. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800000007500,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 429,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 30 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800000038500,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "isError": true,
+         "content": [
+          {
+           "type": "text",
+           "text": "Too Many Requests: quota exceeded"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 60 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800000098501,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "qa results"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] qa results"
+    },
+    {
+     "at": 1800000098501,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 429,
+        "retryAfter": "Fri, 15 Jan 2027 08:00:10 GMT"
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 15 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800000498501,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 429,
+        "retryAfter": "soon"
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 15 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800000898501,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "isError": true,
+         "content": [
+          {
+           "type": "text",
+           "text": "rate limited"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 15 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "isError": true,
+         "content": [
+          {
+           "type": "text",
+           "text": "not found"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] ERROR from tool: not found"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 429,
+        "retryAfter": "0"
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR: tavily_search was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 15 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    }
+   ]
+  },
+  {
+   "name": "a bearer server sends its service token or says what is missing",
+   "calls": [
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "search",
+      "name": "tavily_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "ok"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://search.lan:9/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-search-token"
+       },
+       "name": "tavily_search",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] ok"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "nobearer",
+      "name": "other_search",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: other_search needs UNSET_TOKEN, which is not configured on this deployment."
+    }
+   ]
+  },
+  {
+   "name": "a personal key is the caller own, asked for this call only",
+   "calls": [
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-keys",
+      "name": "keys_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "keyed"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [
+       {
+        "X-Api-Key": "qa-key-1",
+        "Accept": "text/html",
+        "mcp-session-id": "hijack"
+       }
+      ],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "https://keys.example.test/mcp",
+       "headers": {
+        "X-Api-Key": "qa-key-1",
+        "Accept": "text/html",
+        "mcp-session-id": "hijack"
+       },
+       "name": "keys_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "key",
+       "user": "user-1",
+       "server": "dir-keys"
+      }
+     ],
+     "text": "[reduced to 8000] keyed"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-keys",
+      "name": "keys_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [
+       null
+      ],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [
+      {
+       "op": "key",
+       "user": "user-1",
+       "server": "dir-keys"
+      }
+     ],
+     "text": "ERROR: keys_tool needs your own key for QA Keys: Plugins → Connected → Add key."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-keys",
+      "name": "keys_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [
+       {}
+      ],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [
+      {
+       "op": "key",
+       "user": "user-1",
+       "server": "dir-keys"
+      }
+     ],
+     "text": "ERROR: keys_tool needs your own key for QA Keys: Plugins → Connected → Add key."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-keys",
+      "name": "keys_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [
+       "transient"
+      ],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [
+      {
+       "op": "key",
+       "user": "user-1",
+       "server": "dir-keys"
+      }
+     ],
+     "text": "ERROR: keys_tool could not check your key for QA Keys right now. This is temporary: try again in a moment. Do not sign in again."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-untitled",
+      "name": "untitled_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [
+       "transient"
+      ],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [
+      {
+       "op": "key",
+       "user": "user-1",
+       "server": "dir-untitled"
+      }
+     ],
+     "text": "ERROR: untitled_tool could not check your key for this server right now. This is temporary: try again in a moment. Do not sign in again."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-untitled",
+      "name": "untitled_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [
+       null
+      ],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [
+      {
+       "op": "key",
+       "user": "user-1",
+       "server": "dir-untitled"
+      }
+     ],
+     "text": "ERROR: untitled_tool needs your own key for this server: Plugins → Connected → Add key."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-keys",
+      "name": "keys_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: keys_tool needs your own key for QA Keys: Plugins → Connected → Add key."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-keys",
+      "name": "keys_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 429,
+        "retryAfter": null
+       }
+      ],
+      "keys": [
+       {
+        "X-Api-Key": "qa-key-1"
+       }
+      ],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "https://keys.example.test/mcp",
+       "headers": {
+        "X-Api-Key": "qa-key-1"
+       },
+       "name": "keys_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "key",
+       "user": "user-1",
+       "server": "dir-keys"
+      }
+     ],
+     "text": "ERROR: keys_tool was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 15 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-keys",
+      "name": "keys_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-2",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "other account not paused"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [
+       {
+        "X-Api-Key": "qa-key-2"
+       }
+      ],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "https://keys.example.test/mcp",
+       "headers": {
+        "X-Api-Key": "qa-key-2"
+       },
+       "name": "keys_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "key",
+       "user": "user-2",
+       "server": "dir-keys"
+      }
+     ],
+     "text": "[reduced to 8000] other account not paused"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-keys",
+      "name": "keys_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [
+       {
+        "X-Api-Key": "qa-key-1"
+       }
+      ],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [
+      {
+       "op": "key",
+       "user": "user-1",
+       "server": "dir-keys"
+      }
+     ],
+     "text": "ERROR: keys_tool was not called: its provider is rate limiting requests (HTTP 429), retry in about 15 s. Answer from the results you already have, or say the search is rate limited."
+    }
+   ]
+  },
+  {
+   "name": "a sign-in is refreshed past a refused token once",
+   "calls": [
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "signed in"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": [
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       }
+      ]
+     },
+     "rounds": [
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-1"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      }
+     ],
+     "text": "[reduced to 8000] signed in"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": [
+       null
+      ]
+     },
+     "rounds": [],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      }
+     ],
+     "text": "ERROR: oauth_tool needs you to sign in to QA Sign-in first: Plugins → Connected → Sign in."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": [
+       "transient"
+      ]
+     },
+     "rounds": [],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      }
+     ],
+     "text": "ERROR: oauth_tool could not check your sign-in for QA Sign-in right now. This is temporary: try again in a moment. Do not sign in again."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": null,
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: oauth_tool needs you to sign in to QA Sign-in first: Plugins → Connected → Sign in."
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 401,
+        "retryAfter": null
+       },
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "after refresh"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": [
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       },
+       {
+        "accessToken": "qa-at-2",
+        "generation": "g2"
+       }
+      ]
+     },
+     "rounds": [
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-1"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      },
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-2"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      },
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": "qa-at-1"
+      }
+     ],
+     "text": "[reduced to 8000] after refresh"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 401,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": [
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       },
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       }
+      ]
+     },
+     "rounds": [
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-1"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      },
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": "qa-at-1"
+      },
+      {
+       "op": "reject",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "generation": "g1"
+      }
+     ],
+     "text": "ERROR calling oauth_tool: tool call failed (HTTP 401)"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 401,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": [
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       },
+       null
+      ]
+     },
+     "rounds": [
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-1"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      },
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": "qa-at-1"
+      }
+     ],
+     "text": "ERROR calling oauth_tool: tool call failed (HTTP 401)"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 401,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": [
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       },
+       "transient"
+      ]
+     },
+     "rounds": [
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-1"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      },
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": "qa-at-1"
+      }
+     ],
+     "text": "ERROR calling oauth_tool: tool call failed (HTTP 401)"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 401,
+        "retryAfter": null
+       },
+       {
+        "http": 401,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": [
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       },
+       {
+        "accessToken": "qa-at-2",
+        "generation": "g2"
+       }
+      ]
+     },
+     "rounds": [
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-1"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      },
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-2"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      },
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": "qa-at-1"
+      },
+      {
+       "op": "reject",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "generation": "g2"
+      }
+     ],
+     "text": "ERROR calling oauth_tool: tool call failed (HTTP 401)"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "connect": {
+         "http": 401
+        }
+       },
+       {
+        "http": 500,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": [
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       },
+       {
+        "accessToken": "qa-at-2",
+        "generation": "g2"
+       }
+      ]
+     },
+     "rounds": [
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-1"
+       }
+      },
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-2"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      },
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": "qa-at-1"
+      }
+     ],
+     "text": "ERROR calling oauth_tool: tool call failed (HTTP 500)"
+    },
+    {
+     "at": 1800001298501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 401,
+        "retryAfter": null
+       },
+       {
+        "http": 429,
+        "retryAfter": "12"
+       }
+      ],
+      "keys": [],
+      "sessions": [
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       },
+       {
+        "accessToken": "qa-at-2",
+        "generation": "g2"
+       }
+      ]
+     },
+     "rounds": [
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-1"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      },
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-2"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      },
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": "qa-at-1"
+      }
+     ],
+     "text": "ERROR: oauth_tool was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 12 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "dir-oauth",
+      "name": "oauth_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 403,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": [
+       {
+        "accessToken": "qa-at-1",
+        "generation": "g1"
+       }
+      ]
+     },
+     "rounds": [
+      {
+       "url": "https://oauth.example.test/mcp",
+       "headers": {
+        "Authorization": "Bearer qa-at-1"
+       },
+       "name": "oauth_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [
+      {
+       "op": "session",
+       "user": "user-1",
+       "server": "dir-oauth",
+       "rejected": null
+      }
+     ],
+     "text": "ERROR calling oauth_tool: tool call failed (HTTP 403)"
+    }
+   ]
+  },
+  {
+   "name": "directory servers: shared headers, and the address is checked again",
+   "calls": [
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "dir-shared",
+      "name": "shared_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "shared ok"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "https://shared.example.test/mcp",
+       "headers": {
+        "X-Api-Key": "qa-shared-key"
+       },
+       "name": "shared_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] shared ok"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "dir-private",
+      "name": "moved_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: moved_tool was not run: its server's address no longer resolves to a public host."
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "dir-shared",
+      "name": "shared_name",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "the directory server"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "https://shared.example.test/mcp",
+       "headers": {
+        "X-Api-Key": "qa-shared-key"
+       },
+       "name": "shared_name",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] the directory server"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "open",
+      "name": "shared_name",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "the operator server"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://open.lan:9/mcp",
+       "headers": {},
+       "name": "shared_name",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] the operator server"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "dir-dup",
+      "name": "dup_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "the later server with that id"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "https://dup.example.test/mcp",
+       "headers": {},
+       "name": "dup_tool",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] the later server with that id"
+    }
+   ]
+  },
+  {
+   "name": "the in-process server gets a capability token for this user and project",
+   "calls": [
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "noevia",
+      "name": "project_read_file",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": "user-1",
+      "project": "proj-1",
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "file text"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://127.0.0.1:9/mcp",
+       "headers": {
+        "Authorization": "Bearer eyJ2IjoxLCJ1aWQiOiJ1c2VyLTEiLCJwaWQiOiJwcm9qLTEiLCJjaWQiOm51bGwsImp0aSI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMCIsImV4cCI6MTgwMDAwMTM0ODUwMSwidyI6MCwiZCI6MH0.gxO9G0uQsJIZmFm5uporeyhMeXu6980-qFU-FT7B5ME"
+       },
+       "name": "project_read_file",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] file text"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "noevia",
+      "name": "project_edit_file",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": "user-1",
+      "project": "proj-1",
+      "editTarget": "digest-1",
+      "write": true,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "edited"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://127.0.0.1:9/mcp",
+       "headers": {
+        "Authorization": "Bearer eyJ2IjoxLCJ1aWQiOiJ1c2VyLTEiLCJwaWQiOiJwcm9qLTEiLCJjaWQiOm51bGwsImp0aSI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMCIsImV4cCI6MTgwMDAwMTM0ODUwMSwidyI6MSwiZCI6MCwidCI6ImRpZ2VzdC0xIn0.8vtiN6zgK_c14sqlngYfYxXYkesIzZfRJCBIYTJF0Hs"
+       },
+       "name": "project_edit_file",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] edited"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "noevia",
+      "name": "diary_append",
+      "arguments": {
+       "qa": true
+      },
+      "user": "admin-1",
+      "workspaceUser": "user-3",
+      "project": null,
+      "editTarget": null,
+      "write": true,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "appended"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://127.0.0.1:9/mcp",
+       "headers": {
+        "Authorization": "Bearer eyJ2IjoxLCJ1aWQiOiJ1c2VyLTMiLCJwaWQiOm51bGwsImNpZCI6bnVsbCwianRpIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAwIiwiZXhwIjoxODAwMDAxMzQ4NTAxLCJ3IjoxLCJkIjowfQ.yxqeHUkANlVGnIqc8fbg32rJMKqNKiy2ntW7YiFrwaQ"
+       },
+       "name": "diary_append",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] appended"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "noevia",
+      "name": "project_read_file",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": "user-1",
+      "project": "proj-1",
+      "editTarget": "digest-2",
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "read with a target"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://127.0.0.1:9/mcp",
+       "headers": {
+        "Authorization": "Bearer eyJ2IjoxLCJ1aWQiOiJ1c2VyLTEiLCJwaWQiOiJwcm9qLTEiLCJjaWQiOm51bGwsImp0aSI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMCIsImV4cCI6MTgwMDAwMTM0ODUwMSwidyI6MCwiZCI6MH0.gxO9G0uQsJIZmFm5uporeyhMeXu6980-qFU-FT7B5ME"
+       },
+       "name": "project_read_file",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] read with a target"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "noevia",
+      "name": "project_read_file",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: project_read_file needs a signed-in session and there is none."
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "noevia",
+      "name": "project_edit_file",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": "user-1",
+      "project": null,
+      "editTarget": "",
+      "write": true,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "edit, empty target"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://127.0.0.1:9/mcp",
+       "headers": {
+        "Authorization": "Bearer eyJ2IjoxLCJ1aWQiOiJ1c2VyLTEiLCJwaWQiOm51bGwsImNpZCI6bnVsbCwianRpIjoiMDAwMDAwMDAtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAwIiwiZXhwIjoxODAwMDAxMzQ4NTAxLCJ3IjoxLCJkIjowfQ.FTylr8Neo1u3MHd2NUfes3VO5HCRjjnQ0A_1gHLF7yg"
+       },
+       "name": "project_edit_file",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] edit, empty target"
+    }
+   ]
+  },
+  {
+   "name": "an approval for a project file edit is never sent elsewhere",
+   "calls": [
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "open",
+      "name": "open_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": "user-1",
+      "project": "proj-1",
+      "editTarget": "digest-1",
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: open_tool was approved as a project file edit, but \"open_tool\" was offered by MCP server \"open\"; it was not run."
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "dir-keys",
+      "name": "keys_tool",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-1",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": "digest-1",
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: keys_tool was approved as a project file edit, but \"keys_tool\" was offered by MCP server \"dir-keys\"; it was not run."
+    }
+   ]
+  },
+  {
+   "name": "nextcloud pass-through only to a declared origin",
+   "calls": [
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "nextcloud",
+      "name": "nc_notes_search_notes",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-nc",
+      "workspaceUser": "user-nc",
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": {
+       "Authorization": "Basic cWEtdXNlcjpxYS1hcHAtcGFzcw==",
+       "X-Cowork-User-ID": "user-nc"
+      }
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "notes"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://nc.lan:8000/mcp",
+       "headers": {
+        "Authorization": "Basic cWEtdXNlcjpxYS1hcHAtcGFzcw==",
+        "X-Cowork-User-ID": "user-nc"
+       },
+       "name": "nc_notes_search_notes",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] notes"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "nextcloud",
+      "name": "nc_notes_create_note",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-dav",
+      "workspaceUser": "user-dav",
+      "project": null,
+      "editTarget": null,
+      "write": true,
+      "nextcloud": {
+       "Authorization": "Basic cWEtZGF2OnFhLWRhdi1wYXNz",
+       "X-Cowork-User-ID": "user-dav"
+      }
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "created"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://nc.lan:8000/mcp",
+       "headers": {
+        "Authorization": "Basic cWEtZGF2OnFhLWRhdi1wYXNz",
+        "X-Cowork-User-ID": "user-dav"
+       },
+       "name": "nc_notes_create_note",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] created"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "nextcloud",
+      "name": "nc_notes_search_notes",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-far",
+      "workspaceUser": "user-far",
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: this tool needs your Nextcloud account. Connect Nextcloud in Settings → Storage, then try again. (If it is already connected, the administrator has not listed its address in MCP_NEXTCLOUD_ORIGINS.)"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "nextcloud",
+      "name": "nc_notes_search_notes",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-nouser",
+      "workspaceUser": "user-nouser",
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: this tool needs your Nextcloud account. Connect Nextcloud in Settings → Storage, then try again. (If it is already connected, the administrator has not listed its address in MCP_NEXTCLOUD_ORIGINS.)"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "nextcloud",
+      "name": "nc_notes_search_notes",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-local",
+      "workspaceUser": "user-local",
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: this tool needs your Nextcloud account. Connect Nextcloud in Settings → Storage, then try again. (If it is already connected, the administrator has not listed its address in MCP_NEXTCLOUD_ORIGINS.)"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "nextcloud",
+      "name": "nc_notes_search_notes",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-nc",
+      "workspaceUser": null,
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": null
+     },
+     "script": {
+      "transport": [],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [],
+     "broker": [],
+     "text": "ERROR: this tool needs your Nextcloud account. Connect Nextcloud in Settings → Storage, then try again. (If it is already connected, the administrator has not listed its address in MCP_NEXTCLOUD_ORIGINS.)"
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "nextcloud",
+      "name": "nc_notes_search_notes",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-nc",
+      "workspaceUser": "user-nc",
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": {
+       "Authorization": "Basic cWEtdXNlcjpxYS1hcHAtcGFzcw==",
+       "X-Cowork-User-ID": "user-nc"
+      }
+     },
+     "script": {
+      "transport": [
+       {
+        "http": 429,
+        "retryAfter": null
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://nc.lan:8000/mcp",
+       "headers": {
+        "Authorization": "Basic cWEtdXNlcjpxYS1hcHAtcGFzcw==",
+        "X-Cowork-User-ID": "user-nc"
+       },
+       "name": "nc_notes_search_notes",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "ERROR: nc_notes_search_notes was rate limited by its provider (HTTP 429). This is retryable, but not now: wait about 15 s before calling it again. Answer from the results you already have, or say the search is rate limited."
+    },
+    {
+     "at": 1800001318501,
+     "request": {
+      "server": "nextcloud",
+      "name": "nc_notes_search_notes",
+      "arguments": {
+       "qa": true
+      },
+      "user": "user-dav",
+      "workspaceUser": "user-dav",
+      "project": null,
+      "editTarget": null,
+      "write": false,
+      "nextcloud": {
+       "Authorization": "Basic cWEtZGF2OnFhLWRhdi1wYXNz",
+       "X-Cowork-User-ID": "user-dav"
+      }
+     },
+     "script": {
+      "transport": [
+       {
+        "result": {
+         "content": [
+          {
+           "type": "text",
+           "text": "another account is not paused"
+          }
+         ]
+        }
+       }
+      ],
+      "keys": [],
+      "sessions": []
+     },
+     "rounds": [
+      {
+       "url": "http://nc.lan:8000/mcp",
+       "headers": {
+        "Authorization": "Basic cWEtZGF2OnFhLWRhdi1wYXNz",
+        "X-Cowork-User-ID": "user-dav"
+       },
+       "name": "nc_notes_search_notes",
+       "args": {
+        "qa": true
+       }
+      }
+     ],
+     "broker": [],
+     "text": "[reduced to 8000] another account is not paused"
+    }
+   ]
+  }
+ ]
+}

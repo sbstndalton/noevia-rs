@@ -432,7 +432,12 @@ pub async fn serve(
 // The internal operations.
 
 fn internal(status: u16, body: &JValue) -> Response<Body> {
-    let mut res = Response::new(Body::from(js_json::stringify(body).unwrap_or_default()));
+    internal_text(status, js_json::stringify(body).unwrap_or_default())
+}
+
+/// [`internal`] for an answer already written as JSON text.
+fn internal_text(status: u16, text: String) -> Response<Body> {
+    let mut res = Response::new(Body::from(text));
     *res.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     res.headers_mut().insert(
         "content-type",
@@ -488,11 +493,21 @@ async fn is_admin(app: &Arc<App>, user: &str) -> Result<bool, Fail> {
 pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Response<Body> {
     let unavailable = || internal(503, &JValue::obj([("error", s("unavailable"))]));
     let Some(app) = app else { return unavailable() };
+    // Track R5: with NOEVIA_RUST_DRIVE_TOOLS off, a Drive tool is a 404 whatever else holds (Node runs it).
+    if (op == "tool" || op == "target") && !app.config.google.tools {
+        return internal(404, &JValue::obj([("error", s("not found"))]));
+    }
     let Some(drive) = gdrive::of(&app) else {
         return unavailable();
     };
-    let body = match js_json::parse(&String::from_utf8_lossy(raw)) {
-        Ok(b @ JValue::Obj(_)) => b,
+    // A tool call's arguments are the model's text: read losslessly (a lone surrogate is kept).
+    let parsed = if op == "tool" || op == "target" {
+        js_json::wtf16::parse(&String::from_utf8_lossy(raw)).ok()
+    } else {
+        js_json::parse(&String::from_utf8_lossy(raw)).ok()
+    };
+    let body = match parsed {
+        Some(b @ JValue::Obj(_)) => b,
         _ => return internal(400, &JValue::obj([("error", s("invalid JSON"))])),
     };
     if op == "reseal" {
@@ -511,6 +526,30 @@ pub async fn internal_op(app: Option<Arc<App>>, op: &str, raw: &[u8]) -> Respons
             ),
             Ok(Err(e)) => internal_fail(&e),
             Err(_) => internal_fail(&Fail::new("The re-seal did not finish.", 502)),
+        };
+    }
+    // Track R5: the chat's Drive tools (gdrive_tools.rs), behind NOEVIA_RUST_DRIVE_TOOLS. `user` may be
+    // null (the tool then says to sign in).
+    if op == "tool" || op == "target" {
+        let user = match body.get("user") {
+            JValue::Str(u) if u.len() <= 256 => {
+                let admin = body.get("admin").as_bool() == Some(true)
+                    && crate::gdrive_tools::word_id(u)
+                    && match is_admin(&app, u).await {
+                        Ok(admin) => admin,
+                        Err(e) => return internal_fail(&e),
+                    };
+                Some(crate::gdrive_tools::User {
+                    id: u.clone(),
+                    admin,
+                })
+            }
+            JValue::Null | JValue::Undefined => None,
+            _ => return internal(400, &JValue::obj([("error", s("invalid user"))])),
+        };
+        return match crate::gdrive_tools::op(drive, op, user, &body).await {
+            Ok(answer) => internal_text(200, answer),
+            Err(why) => internal(400, &JValue::obj([("error", s(why))])),
         };
     }
     let user = match body.get("user") {

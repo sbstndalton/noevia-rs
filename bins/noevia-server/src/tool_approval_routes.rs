@@ -1,11 +1,12 @@
-//! Native public approval decisions. Node owns only pending chat Promise resolution (#2282).
+//! Native public approval decisions (#2282), answered from the front's own approval registry
+//! (approval_registry.rs, port contract 2026-11-04 S9): no Node bridge.
+use crate::approval_registry::DecideError;
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
     http::{Method, Request, Response, StatusCode},
     response::IntoResponse,
 };
-use serde_json::{json, Value};
 use server_account::tool_approvals as policy;
 use std::{sync::Arc, time::Duration};
 const UNAVAILABLE: &str = "Tool approval state is unavailable right now. Try again shortly.";
@@ -22,17 +23,6 @@ async fn gate(
         Ok(result) => result,
         Err(_) => Err(identity::Rejection::Unavailable),
     }
-}
-async fn bridge(app: &App, path: &str, body: &Value) -> Option<Value> {
-    let (status, bytes) = app
-        .config
-        .research
-        .node_call(path, body, Duration::from_secs(5))
-        .await?;
-    if status != 200 {
-        return None;
-    }
-    serde_json::from_slice(&bytes).ok()
 }
 pub async fn serve(
     app: &Arc<App>,
@@ -72,35 +62,12 @@ pub async fn serve(
         Err(e) => return error(StatusCode::BAD_REQUEST, e),
     };
     let user = authn.user.id.as_str();
-    let Some(facts) = bridge(
-        app,
-        "/internal/tool-approvals/facts",
-        &json!({"user":user,"id":id}),
-    )
-    .await
-    else {
-        return error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE);
+    // The owner's lookup comes before the decision's coercion, as Node's facts call did.
+    let kind = match app.approvals.kind(user, &id) {
+        Ok(Some(kind)) => kind.name(),
+        Ok(None) => return error(StatusCode::NOT_FOUND, policy::MISSING),
+        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE),
     };
-    if facts.get("found") == Some(&Value::Bool(false)) {
-        return error(StatusCode::NOT_FOUND, policy::MISSING);
-    }
-    let Some(kind) = facts
-        .get("kind")
-        .and_then(Value::as_str)
-        .filter(|k| ["write", "route"].contains(k))
-    else {
-        return error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE);
-    };
-    let Some(generation) = facts
-        .get("generation")
-        .and_then(Value::as_str)
-        .filter(|g| g.len() == 32 && g.bytes().all(|b| b.is_ascii_hexdigit()))
-    else {
-        return error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE);
-    };
-    if facts.get("found") != Some(&Value::Bool(true)) {
-        return error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE);
-    }
     let decision = match policy::decision(&input) {
         Ok(d) => d,
         Err(e) => return error(StatusCode::INTERNAL_SERVER_ERROR, e),
@@ -115,38 +82,67 @@ pub async fn serve(
     if fresh.user.id != authn.user.id {
         return error(StatusCode::NOT_FOUND, policy::MISSING);
     }
-    // A client disconnect cannot interrupt a half-submitted resolution. The bridge atomically rechecks
-    // the active account, owner and pending-entry generation before calling the synchronous resolver.
+    // One blocking step a client disconnect cannot cut in half: the live grant context is read
+    // first (file locks, never under the account lock), then the account is checked live under
+    // cowork.db's IMMEDIATE writer lock and the answer is consumed inside that same lock, so a
+    // disable or delete cannot interleave with it.
     let app = Arc::clone(app);
-    let input = json!({"user":user,"id":id,"kind":kind,"generation":generation,"decision":decision.value,"remember":decision.remember});
+    let user = user.to_owned();
     let kind = kind.to_owned();
-    tokio::spawn(async move {
-        match bridge(&app, "/internal/tool-approvals/resolve", &input).await {
-            Some(v) if v.get("found") == Some(&Value::Bool(false)) => {
-                error(StatusCode::NOT_FOUND, policy::MISSING)
-            }
-            Some(v)
-                if v.get("found") == Some(&Value::Bool(true))
-                    && v.get("accepted") == Some(&Value::Bool(true)) =>
-            {
-                reply::json_text(StatusCode::OK, "{\"ok\":true}".into(), true)
-            }
-            Some(v)
-                if v.get("found") == Some(&Value::Bool(true))
-                    && v.get("accepted") == Some(&Value::Bool(false)) =>
-            {
-                error(
-                    StatusCode::BAD_REQUEST,
-                    if kind == "route" {
-                        policy::ROUTE_CHOICES
-                    } else {
-                        policy::WRITE_CHOICES
+    let done = tokio::task::spawn_blocking(move || -> Result<(), Decided> {
+        let live = if decision.value == "approve_all" {
+            app.approvals.grant_context(&user, &id)
+        } else {
+            None
+        };
+        let writer = app.writes.writer().map_err(|_| Decided::Unavailable)?;
+        writer
+            .write(|tx| {
+                let active = tx.reader().row(
+                    "SELECT id FROM users WHERE id=?1 AND (disabled_at IS NULL OR disabled_at=0)",
+                    [&user],
+                    |row| row.get::<_, String>(0),
+                )?;
+                if active.is_none() {
+                    return Ok(Err(Decided::Missing));
+                }
+                Ok(
+                    match app.approvals.decide(
+                        &user,
+                        &id,
+                        &decision.value,
+                        decision.remember,
+                        live.as_ref(),
+                    ) {
+                        Ok(()) => Ok(()),
+                        Err(DecideError::Missing) => Err(Decided::Missing),
+                        Err(DecideError::Choice) => Err(Decided::Choice),
+                        Err(DecideError::Unavailable) => Err(Decided::Unavailable),
                     },
                 )
-            }
-            _ => error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE),
-        }
+            })
+            .map_err(|_| Decided::Unavailable)?
     })
-    .await
-    .unwrap_or_else(|_| error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE))
+    .await;
+    match done {
+        Ok(Ok(())) => reply::json_text(StatusCode::OK, "{\"ok\":true}".into(), true),
+        Ok(Err(Decided::Missing)) => error(StatusCode::NOT_FOUND, policy::MISSING),
+        Ok(Err(Decided::Choice)) => error(
+            StatusCode::BAD_REQUEST,
+            if kind == "route" {
+                policy::ROUTE_CHOICES
+            } else {
+                policy::WRITE_CHOICES
+            },
+        ),
+        Ok(Err(Decided::Unavailable)) | Err(_) => {
+            error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE)
+        }
+    }
+}
+
+enum Decided {
+    Missing,
+    Choice,
+    Unavailable,
 }

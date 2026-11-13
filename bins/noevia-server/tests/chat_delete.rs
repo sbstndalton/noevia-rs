@@ -82,9 +82,22 @@ async fn front_new_account() -> Front {
         [server_auth::js::digest(CODE)],
     )
     .unwrap();
-    // Node answers nothing here: every route under test is the front's.
+    // Public deletes remain native. The peer only acknowledges the executor epoch barrier.
+    let peer = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let upstream = peer.local_addr().unwrap();
+    let router = axum::Router::new().route("/internal/approvals/revoke", axum::routing::post(
+        |headers: axum::http::HeaderMap, body: axum::body::Bytes| async move {
+            assert_eq!(headers.get(TOKEN_HEADER).unwrap(), TOKEN);
+            let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(value["protocol"], noevia_server::approval_registry::PROTOCOL);
+            ([("content-type", "application/json")], serde_json::json!({"acknowledged":true,"protocol":noevia_server::approval_registry::PROTOCOL}).to_string())
+        }));
+    tokio::spawn(async move {
+        axum::serve(peer, router).await.unwrap();
+    });
     let mut env: HashMap<&str, String> = HashMap::new();
-    env.insert("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".into());
+    env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{upstream}"));
+    env.insert("NOEVIA_PROJECT_STORE_TOKEN", TOKEN.into());
     env.insert("UI_PORT", "1".into());
     env.insert("UI_DATA_DIR", data.display().to_string());
     env.insert("NOEVIA_WEB_DIST", data.join("dist").display().to_string());
