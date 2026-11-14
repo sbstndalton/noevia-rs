@@ -1,0 +1,22 @@
+[package]
+name = "web-supervisor"
+version = "0.1.0"
+description = "Native entrypoint of the web image: pairs noevia-server with Core and supervises both (replaces build/web-supervisor.sh; not wired)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "noevia-web-supervisor"
+path = "src/main.rs"
+
+[dependencies]
+nix = { version = "0.30", features = ["signal", "process", "fs"] }
+tokio = { version = "1", features = ["rt", "process", "signal", "time", "macros"] }
+
+[dev-dependencies]
+tempfile = "3"

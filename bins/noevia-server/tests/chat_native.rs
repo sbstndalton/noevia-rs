@@ -708,6 +708,24 @@ async fn core_service(
                     ));
                 }
             }
+            if sc.case.get("input").get("reasoner").get("leave") == &JValue::Bool(true) {
+                // noevia#2663: the client leaves while core condenses (its question checked above); the
+                // answer comes once it has gone.
+                let leaving = Arc::clone(&sc.leaving);
+                let answer = rec.get("answer").clone();
+                drop(sc);
+                let (mut tx, b) = http_body_util::channel::Channel::<Bytes, std::io::Error>::new(1);
+                tokio::spawn(async move {
+                    leaving.leave.notify_one();
+                    leaving.wait_gone().await;
+                    let _ = tx.send_data(Bytes::from(js::stringify(&answer))).await;
+                });
+                return Ok(Response::builder()
+                    .status(200)
+                    .header("content-type", "application/json")
+                    .body(b.boxed())
+                    .unwrap());
+            }
             match rec.get("answer") {
                 a @ JValue::Obj(_) => {
                     sc.condensed.push(a.get("trace").clone());

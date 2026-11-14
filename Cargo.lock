@@ -526,6 +526,7 @@ dependencies = [
 name = "chat-upstream"
 version = "0.1.0"
 dependencies = [
+ "chat-turn",
  "engine-facts",
  "hmac",
  "js-json",
@@ -763,6 +764,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0369ee1ad671834580515889b80f2ea915f23b8be8d0daa4bbaf2ac5c7590835"
 dependencies = [
  "cipher",
+]
+
+[[package]]
+name = "current-time"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "js-json",
 ]
 
 [[package]]
@@ -2181,6 +2191,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-manager-proxy"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "js-json",
+]
+
+[[package]]
+name = "model-pull"
+version = "0.1.0"
+dependencies = [
+ "chat-turn",
+ "js-json",
+]
+
+[[package]]
 name = "model-router"
 version = "0.1.0"
 dependencies = [
@@ -2421,6 +2447,8 @@ dependencies = [
  "long-profile",
  "mcp-frame",
  "mcp-servers",
+ "model-manager-proxy",
+ "model-pull",
  "model-stream",
  "model-writes",
  "offsite-backup-format",
@@ -3060,6 +3088,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "release-assemble"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "replay"
 version = "0.1.0"
 dependencies = [
@@ -3138,6 +3175,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reviewed-source"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "rfc6979"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3185,12 +3231,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "route-pins"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "rs-capability"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde_json",
 ]
 
 [[package]]
@@ -3878,6 +3940,16 @@ checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
 dependencies = [
  "digest",
  "rand_core 0.6.4",
+]
+
+[[package]]
+name = "signin-transport"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "proptest",
+ "sha2",
+ "url",
 ]
 
 [[package]]
@@ -4584,6 +4656,15 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "web-supervisor"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

@@ -1,0 +1,15 @@
+[package]
+name = "route-pins"
+version = "0.1.0"
+description = "Node shims and route tables: core's recorded ownership refusals, which of them the Rust front pins natively, the exact refusal replies for the ones it still forwards, and the safe list of Node stub files"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

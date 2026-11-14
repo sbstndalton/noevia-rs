@@ -70,6 +70,16 @@ jobs:
         env:
           TZ: UTC
         run: NOEVIA_CHAT_LISTS_FIXTURE="$RUNNER_TEMP/node-chat-lists.json" cargo test --locked -p noevia-server --test chat_lists_read
+      - name: The same date corpora in a non-UTC zone (zone-less dates are local time, as in Node)
+        env:
+          TZ: America/New_York
+          ORACLE_TZ: America/New_York
+        run: |
+          set -euo pipefail
+          node crates/server-export/tests/js-date-oracle.cjs "$RUNNER_TEMP/node-dates-ny.json"
+          NOEVIA_DATES_FIXTURE="$RUNNER_TEMP/node-dates-ny.json" cargo test --locked -p server-export --test js_date
+          node bins/noevia-server/tests/chat-lists-oracle.cjs "$PWD/core" "$RUNNER_TEMP/node-chat-lists-ny.json"
+          NOEVIA_CHAT_LISTS_FIXTURE="$RUNNER_TEMP/node-chat-lists-ny.json" cargo test --locked -p noevia-server --test chat_lists_read
       - name: The lookup, the search and the file name
         run: |
           set -euo pipefail
@@ -82,5 +92,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-chat-lists-evidence
-          path: ${{ runner.temp }}/node-chat-lists.json
+          path: |
+            ${{ runner.temp }}/node-chat-lists.json
+            ${{ runner.temp }}/node-chat-lists-ny.json
+            ${{ runner.temp }}/node-dates-ny.json
           if-no-files-found: ignore
