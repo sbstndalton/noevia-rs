@@ -202,6 +202,13 @@ impl FrontPull {
     }
 }
 
+/// Whether an unrecorded `requested` is taken back with a best-effort `rejected`: only when core may
+/// hold its row (`Unsure`). Not when it said it recorded it, refused it (a 4xx: nothing recorded), or
+/// never saw the call (`Unsent`: a `rejected` would overwrite the model's earlier row, #2664).
+fn takes_back(told: Told) -> bool {
+    told == Told::Unsure
+}
+
 impl Fetcher for FrontPull {
     fn fetch(&mut self, _: &artifact::Fetch) -> Result<Fetched, FetchError> {
         // A pull fetches nothing public.
@@ -316,7 +323,7 @@ impl model_pull::Host for FrontPull {
                 // same model is marked rejected (idempotent on core), its outcome not read. Not
                 // when the call never connected (`Unsent`): core holds no row of this pull, and a
                 // `rejected` would overwrite the model's earlier one (a `completed` row, #2664).
-                if told == Told::Unsure {
+                if takes_back(told) {
                     let _ = self.tell(DOWNLOADS_REJECTED, model);
                 }
                 told
@@ -328,7 +335,7 @@ impl model_pull::Host for FrontPull {
         }
         log(&JValue::obj([
             ("event", JValue::from("pull.requested_unrecorded")),
-            ("rejectedSent", JValue::Bool(told == Told::Unsure)),
+            ("rejectedSent", JValue::Bool(takes_back(told))),
             ("connected", JValue::Bool(told != Told::Unsent)),
         ]));
         Err(Answered {
@@ -440,5 +447,18 @@ pub async fn serve(
             500,
             &JValue::obj([("error", JValue::from("Internal error"))]),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_an_unsure_requested_is_taken_back() {
+        assert!(takes_back(Told::Unsure));
+        assert!(!takes_back(Told::Unsent));
+        assert!(!takes_back(Told::Refused));
+        assert!(!takes_back(Told::Recorded));
     }
 }
