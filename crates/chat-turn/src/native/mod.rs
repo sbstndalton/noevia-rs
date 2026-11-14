@@ -42,6 +42,7 @@ use crate::prepared::Prepared;
 use crate::round::{Exchange, Round, Slot};
 use crate::skills::Skills;
 use crate::sse::Utf8Stream;
+use crate::taint::Taint;
 use crate::title::{self, AskFacts, AttemptCounter};
 use context::Fit;
 use stream::StreamEnd;
@@ -389,6 +390,8 @@ impl<H: Host> Turn<'_, H> {
         );
         gate.edit_tools = names(&p.edit_tools);
         gate.once_tools = names(&p.once_tools);
+        // #769: the untrusted text this exchange has put in front of the model, for the write check.
+        gate.provenance = p.provenance.then(Taint::new);
         gate.skills = Some(self.skills);
         let mut round: i32 = 0;
         loop {
@@ -415,6 +418,10 @@ impl<H: Host> Turn<'_, H> {
                 Ok(()) => {}
                 Err(true) => return Ended::Error,
                 Err(false) => break,
+            }
+            // chat.cjs: the round's messages join the taint store after the meter, before the request.
+            if let Some(taint) = gate.provenance.as_mut() {
+                taint.ingest(&s.messages);
             }
             let mut body = self.body(&s, &fit);
             // chat.cjs takes the round's start before its request (the prefill sample's clock).
