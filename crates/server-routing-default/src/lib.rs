@@ -2,20 +2,25 @@
 //! user's default routing, read from that user's `preferences.json` the way core
 //! `workspace.cjs` loads it (`readJson(file, {}) || {}`, then `defaultRouting === 'manual'`).
 //!
-//! Read only. Node keeps the PUT and every write to `preferences.json`. Tenant access is
+//! The PUT is [`put`] and [`Root::write_preferences`] (track R12), answered by the front only with
+//! `NOEVIA_RUST_SETTINGS_ROUTES=1`; without it Node keeps the PUT and every write to
+//! `preferences.json`. Tenant access is
 //! descriptor-relative from the data directory with `nofollow` on every component, and the file
 //! must be a single-link regular file no larger than [`BODY_LIMIT`]. Missing or malformed data is
 //! `auto`, as Node answers. Stricter (fail closed) boundaries: a symlink, non-regular file, a
 //! file over the limit, nesting Node would accept but serde refuses, a bad tenant id, or a
 //! cancelled read.
 
+pub mod put;
+
 use server_routing_mode::input::Json;
 use std::{
     fs::File,
     io::Read,
+    io::Write,
     os::fd::{AsFd, OwnedFd},
     path::Path,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use rustix::fs::{self, FileType, Mode, OFlags};
@@ -145,6 +150,66 @@ fn depth_excess(bytes: &[u8]) -> bool {
     false
 }
 
+/// The bytes of `preferences.json` in the tenant directory: `None` when there is none; a link, a
+/// non-regular file or one over [`BODY_LIMIT`] fails closed.
+fn stored(tenant: impl AsFd) -> Result<Option<Vec<u8>>, Fault> {
+    let fd = match fs::openat(
+        tenant.as_fd(),
+        FILE,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) {
+        Ok(fd) => fd,
+        Err(rustix::io::Errno::NOENT) => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    let stat = regular(&fd)?;
+    if stat.st_size < 0 || stat.st_size > BODY_LIMIT as i64 {
+        return Err(Fault::Unavailable);
+    }
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve(BODY_LIMIT + 1)
+        .map_err(|_| Fault::Unavailable)?;
+    File::from(fd)
+        .take((BODY_LIMIT + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > BODY_LIMIT {
+        return Err(Fault::Unavailable);
+    }
+    Ok(Some(bytes))
+}
+
+/// Distinguishes the temporary files of concurrent writes in one process.
+static TEMP: AtomicU64 = AtomicU64::new(0);
+
+/// `atomicJson`: the text to a new temporary file (mode 0600) beside `preferences.json`, synced,
+/// then renamed over it. The temporary file is removed when any step fails.
+fn replace(tenant: &OwnedFd, text: &str) -> Result<(), Fault> {
+    let tmp = format!(
+        "{FILE}.{}.{}.tmp",
+        std::process::id(),
+        TEMP.fetch_add(1, Ordering::Relaxed)
+    );
+    let fd = fs::openat(
+        tenant,
+        tmp.as_str(),
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::from_raw_mode(0o600),
+    )?;
+    let written = (|| -> Result<(), Fault> {
+        let mut file = File::from(fd);
+        file.write_all(text.as_bytes())?;
+        file.sync_all()?;
+        fs::renameat(tenant, tmp.as_str(), tenant, FILE)?;
+        Ok(())
+    })();
+    if written.is_err() {
+        let _ = fs::unlinkat(tenant, tmp.as_str(), fs::AtFlags::empty());
+    }
+    written
+}
+
 impl Root {
     /// Opens the data directory (`UI_DATA_DIR`) itself without following a link.
     pub fn open(path: &Path) -> Result<Self, Fault> {
@@ -170,31 +235,10 @@ impl Root {
         let Some(tenant) = tenant_dir(&users, user_id)? else {
             return Ok(routing_of(None));
         };
-        let fd = match fs::openat(
-            &tenant,
-            FILE,
-            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            Mode::empty(),
-        ) {
-            Ok(fd) => fd,
-            Err(rustix::io::Errno::NOENT) => return Ok(routing_of(None)),
-            Err(e) => return Err(e.into()),
+        let Some(bytes) = stored(&tenant)? else {
+            return Ok(routing_of(None));
         };
-        let stat = regular(&fd)?;
-        if stat.st_size < 0 || stat.st_size > BODY_LIMIT as i64 {
-            return Err(Fault::Unavailable);
-        }
-        let mut bytes = Vec::new();
-        bytes
-            .try_reserve(BODY_LIMIT + 1)
-            .map_err(|_| Fault::Unavailable)?;
-        File::from(fd)
-            .take((BODY_LIMIT + 1) as u64)
-            .read_to_end(&mut bytes)?;
         cancelled(cancel)?;
-        if bytes.len() > BODY_LIMIT {
-            return Err(Fault::Unavailable);
-        }
         match Json::parse(&bytes) {
             Ok(j) => Ok(routing_of(Some(&j))),
             // Malformed JSON is Node's readJson fallback ({}), i.e. auto. Nesting Node accepts
@@ -202,5 +246,20 @@ impl Root {
             Err(_) if depth_excess(&bytes) => Err(Fault::Unavailable),
             Err(_) => Ok(routing_of(None)),
         }
+    }
+
+    /// `PUT /api/routing-default`'s preferences write: `users/<user_id>/preferences.json` becomes
+    /// [`put::merged_preferences`] of what it holds now. The tenant directory must exist (the caller
+    /// makes it as Node's workspace load does); `user_id` must come from the authenticated identity.
+    pub fn write_preferences(&self, user_id: &str, routing: Routing) -> Result<(), Fault> {
+        if !valid_tenant(user_id) {
+            return Err(Fault::Unavailable);
+        }
+        let users = tenant_dir(&self.fd, "users")?.ok_or(Fault::Unavailable)?;
+        let tenant = tenant_dir(&users, user_id)?.ok_or(Fault::Unavailable)?;
+        let before = stored(&tenant)?;
+        let text = put::merged_preferences(before.as_deref(), routing)
+            .map_err(|_| Fault::Unavailable)?;
+        replace(&tenant, &text)
     }
 }
