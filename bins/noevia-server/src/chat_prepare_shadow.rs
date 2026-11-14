@@ -109,7 +109,7 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
     drop(tokio::spawn(async move {
         let _ = tokio::task::spawn_blocking(move || {
             // allToolboxes(), as the front's catalogue stands (None: not current).
-            let catalogue = quiet_catalogue(&app);
+            let tools = quiet_tools(&app);
             // index.cjs: chatFramingEnabled() and brainContext.enabled() (brainContext and chatFraming).
             let framing = crate::code_routes::feature(&app, Feature::ChatFraming);
             let flags = Flags {
@@ -118,20 +118,12 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
                     framing && crate::code_routes::feature(&app, Feature::BrainContext),
                 ),
             };
-            let boxes = catalogue.as_ref().map(|c| toolboxes(&c.boxes));
-            let writes: Option<std::collections::HashSet<String>> = catalogue.as_ref().map(|c| {
-                c.boxes
-                    .iter()
-                    .flat_map(|b| b.tools.iter().filter(|t| t.write).map(|t| t.name.clone()))
-                    .collect()
-            });
             let settings = settings_rows(&app);
             let zone = server_time_zone();
             let facts = Facts {
                 time_zone: &zone,
                 flags,
-                boxes: boxes.as_deref(),
-                writes: writes.as_ref(),
+                tools: tools.as_ref(),
                 settings: settings.as_ref(),
                 last_loaded: last_loaded.as_deref(),
             };
@@ -143,11 +135,43 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
     }));
 }
 
+/// The catalogue as the turn's tool questions read it; a build without the front's MCP discovery
+/// (`rust-storage-reads`) has no catalogue: a history or a tool list that needs one is then skipped.
+#[cfg(feature = "rust-storage-reads")]
+fn quiet_tools(app: &Arc<App>) -> Option<Tools> {
+    let c = quiet_catalogue(app)?;
+    let writes = c
+        .boxes
+        .iter()
+        .flat_map(|b| b.tools.iter().filter(|t| t.write).map(|t| t.name.clone()))
+        .collect();
+    // index.cjs MCP_INTERNAL_SERVER: the first configured server with `internal` auth; a name is held
+    // by the first configured server offering it (mcpState.tools).
+    let internal = c.servers.iter().find(|s| s.auth == "internal");
+    let in_app = c
+        .offers
+        .iter()
+        .filter(|(_, ids)| internal.is_some_and(|s| ids.first() == Some(&s.id)))
+        .map(|(name, _)| name.clone())
+        .collect();
+    Some(Tools {
+        boxes: toolboxes(&c.boxes),
+        writes,
+        in_app,
+    })
+}
+
+#[cfg(not(feature = "rust-storage-reads"))]
+fn quiet_tools(_app: &Arc<App>) -> Option<Tools> {
+    None
+}
+
 /// The toolbox catalogue as it stands, read without the side effects of
 /// [`crate::mcp_discovery::read`]: no touch of the demand marker (which wakes core's publishers),
 /// no discovery refresh and no wait. The facts file as published (a stale one is refused), then
 /// discovery's current snapshot (no older than its refresh age). `None` when either is not current:
 /// a history that needs the catalogue is then skipped.
+#[cfg(feature = "rust-storage-reads")]
 fn quiet_catalogue(app: &Arc<App>) -> Option<crate::mcp_discovery::Catalogue> {
     let dir = app.config.data_dir.clone()?;
     let file = dir.join(crate::mcp_discovery::FACTS_FILE);
@@ -214,6 +238,7 @@ fn settings_rows(app: &App) -> Option<(JValue, JValue)> {
 /// The catalogue's boxes as the replay's tool questions read them: each box's id and its tools
 /// (`{ type: 'function', function: { name } }`). The catalogue keeps at most 500 tools of a box and
 /// 128 units of a name; past that a tool is missed, which can only show as a diff.
+#[cfg(feature = "rust-storage-reads")]
 fn toolboxes(boxes: &[crate::mcp_discovery::BoxInfo]) -> Vec<Toolbox> {
     boxes
         .iter()
@@ -241,6 +266,17 @@ fn toolboxes(boxes: &[crate::mcp_discovery::BoxInfo]) -> Vec<Toolbox> {
         .collect()
 }
 
+/// The toolbox catalogue as the turn's tool questions read it.
+#[derive(Debug, Clone, Default)]
+pub struct Tools {
+    /// `allToolboxes()`.
+    pub boxes: Vec<Toolbox>,
+    /// The tool names the catalogue classifies as writes (`isWriteTool`).
+    pub writes: std::collections::HashSet<String>,
+    /// The tool names the in-process MCP server holds (index.cjs `projectEditTool`'s server check).
+    pub in_app: std::collections::HashSet<String>,
+}
+
 /// The feature flags the preparation reads (`None`: unknown).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Flags {
@@ -254,10 +290,8 @@ pub struct Facts<'a> {
     /// `serverTimeZone()`.
     pub time_zone: &'a str,
     pub flags: Flags,
-    /// `allToolboxes()`: without it a history that needs it is skipped.
-    pub boxes: Option<&'a [Toolbox]>,
-    /// The tool names the catalogue classifies as writes (`isWriteTool`), with `boxes`.
-    pub writes: Option<&'a std::collections::HashSet<String>>,
+    /// The catalogue: without it a history that needs it is skipped, and the tool facts too.
+    pub tools: Option<&'a Tools>,
     /// The settings rows `reasoning_effort_default` and `auto_sampling_presets_enabled`.
     pub settings: Option<&'a (JValue, JValue)>,
     /// The front's last-loaded model.
@@ -269,11 +303,11 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, facts: Facts<'_>) -> Ve
     let Facts {
         time_zone,
         flags,
-        boxes,
-        writes,
+        tools,
         settings,
         last_loaded,
     } = facts;
+    let boxes = tools.map(|t| t.boxes.as_slice());
     let Some(body) = std::str::from_utf8(body)
         .ok()
         .and_then(|t| wtf16::parse(t).ok())
@@ -299,9 +333,11 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, facts: Facts<'_>) -> Ve
     let carry = |name: &str| is_public_tool_name(Some(name), boxes.unwrap_or_default());
     // isWriteTool, as the catalogue classified each tool (a name no box offers is a write).
     let is_write = |name: &str| {
-        writes.is_some_and(|w| w.contains(name))
+        tools.is_some_and(|t| t.writes.contains(name))
             || !boxes.is_some_and(|b| b.iter().any(|b| b.offers(name)))
     };
+    // projectEditTool's server check: the in-process MCP server holds the name.
+    let in_app = |name: &str| tools.is_some_and(|t| t.in_app.contains(name));
     // getProject(body.projectId): the account's projects.json as the store reads it.
     let project_id = body.get("projectId").as_str();
     let projects = project_id.and_then(|_| {
@@ -336,11 +372,12 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, facts: Facts<'_>) -> Ve
             effort_default,
             sampling_presets,
         }),
-        catalogue: boxes.zip(writes).map(|(boxes, _)| Catalogue {
+        catalogue: boxes.map(|boxes| Catalogue {
             known_tool: &known,
             carry_orphan_tool: &carry,
             boxes,
             is_write: &is_write,
+            in_app: &in_app,
         }),
     })
 }
@@ -507,8 +544,7 @@ mod tests {
         let unknown = Facts {
             time_zone: "UTC",
             flags: Flags::default(),
-            boxes: None,
-            writes: None,
+            tools: None,
             settings: None,
             last_loaded: None,
         };
@@ -585,6 +621,15 @@ mod tests {
                 brain_context: Some(false),
             };
             // The recorded allToolboxes() (ids and tool names), as the catalogue gives them.
+            let names = |v: &JValue| -> Vec<String> {
+                match v {
+                    JValue::Arr(names) => names
+                        .iter()
+                        .filter_map(|n| n.as_str().map(str::to_string))
+                        .collect(),
+                    _ => Vec::new(),
+                }
+            };
             let boxes: Vec<Toolbox> = match input.get("toolboxes") {
                 JValue::Arr(list) => list
                     .iter()
@@ -616,17 +661,14 @@ mod tests {
             };
             // isWriteTool as core answered it per box.
             let writes: std::collections::HashSet<String> = match input.get("toolboxes") {
-                JValue::Arr(list) => list
-                    .iter()
-                    .flat_map(|b| match b.get("writes") {
-                        JValue::Arr(names) => names
-                            .iter()
-                            .filter_map(|n| n.as_str().map(str::to_string))
-                            .collect::<Vec<_>>(),
-                        _ => Vec::new(),
-                    })
-                    .collect(),
+                JValue::Arr(list) => list.iter().flat_map(|b| names(b.get("writes"))).collect(),
                 _ => Default::default(),
+            };
+            let tools = Tools {
+                boxes,
+                writes,
+                // The names the recorded in-process server holds.
+                in_app: names(input.get("inApp")).into_iter().collect(),
             };
             let tz = input.get("tz").as_str().unwrap();
             let rows = (
@@ -642,8 +684,7 @@ mod tests {
             let known = Facts {
                 time_zone: tz,
                 flags,
-                boxes: Some(&boxes),
-                writes: Some(&writes),
+                tools: Some(&tools),
                 settings: Some(&rows),
                 last_loaded: input.get("lastLoaded").as_str(),
             };
@@ -673,8 +714,7 @@ mod tests {
             // Without the catalogue and the settings rows: a history that needs the catalogue is skipped, and
             // a turn whose compared fields are all core's says the settings were not read.
             let unknown = Facts {
-                boxes: None,
-                writes: None,
+                tools: None,
                 settings: None,
                 last_loaded: None,
                 ..known

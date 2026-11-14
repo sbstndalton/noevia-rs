@@ -97,6 +97,12 @@ fn replay(f: &JValue) -> Vec<Replayed> {
             .flat_map(|b| items(b, "writes").iter().filter_map(|n| n.as_str()))
             .collect();
         let is_write = |name: &str| writes.contains(&name) || !boxes.iter().any(|b| b.offers(name));
+        // The names the recorded in-process MCP server holds (projectEditTool's server check).
+        let held: Vec<&str> = items(input, "inApp")
+            .iter()
+            .filter_map(|n| n.as_str())
+            .collect();
+        let in_app = |name: &str| held.contains(&name);
         let known =
             |name: &str| PRIVATE_CORE_TOOLS.contains(&name) || boxes.iter().any(|b| b.offers(name));
         let carry = |name: &str| is_public_tool_name(Some(name), &boxes);
@@ -143,6 +149,7 @@ fn replay(f: &JValue) -> Vec<Replayed> {
                 carry_orphan_tool: &carry,
                 boxes: &boxes,
                 is_write: &is_write,
+                in_app: &in_app,
             })),
             without_catalogue: run(None),
         });
@@ -575,6 +582,11 @@ fn a_manual_default_model_is_the_front_s_last_loaded_one() {
         .flat_map(|b| items(b, "writes").iter().filter_map(|n| n.as_str()))
         .collect();
     let is_write = |name: &str| writes.contains(&name) || !boxes.iter().any(|b| b.offers(name));
+    let held: Vec<&str> = items(input, "inApp")
+        .iter()
+        .filter_map(|n| n.as_str())
+        .collect();
+    let in_app = |name: &str| held.contains(&name);
     let known = |name: &str| boxes.iter().any(|b| b.offers(name));
     let carry = |name: &str| is_public_tool_name(Some(name), &boxes);
     let check = |last_loaded: Option<&str>| {
@@ -602,6 +614,7 @@ fn a_manual_default_model_is_the_front_s_last_loaded_one() {
                 carry_orphan_tool: &carry,
                 boxes: &boxes,
                 is_write: &is_write,
+                in_app: &in_app,
             }),
         })
     };

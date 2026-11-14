@@ -2373,6 +2373,7 @@ dependencies = [
  "rustls",
  "s3-sign",
  "secret-envelope",
+ "secrets-rotate",
  "serde",
  "serde_json",
  "server-account",
@@ -3327,6 +3328,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "secrets-rotate"
+version = "0.1.0"
+dependencies = [
+ "google-token-seal",
+ "js-json",
+ "secret-envelope",
+ "serde_json",
+ "zeroize",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3588,8 +3600,10 @@ name = "server-projects"
 version = "0.1.0"
 dependencies = [
  "completeness-report",
+ "document-read",
  "js-json",
  "libc",
+ "project-file-names",
  "prompt-framing",
  "proptest",
  "rand_core 0.6.4",

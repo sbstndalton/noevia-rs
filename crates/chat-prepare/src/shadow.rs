@@ -97,6 +97,10 @@ pub struct Catalogue<'a> {
     pub carry_orphan_tool: ToolQuestion<'a>,
     pub boxes: &'a [crate::toolboxes::Toolbox],
     pub is_write: ToolQuestion<'a>,
+    /// Whether the in-process MCP server holds the name (index.cjs `projectEditTool`:
+    /// `mcpState.tools.get(name)?.serverId === MCP_INTERNAL_SERVER.id`, the first configured server
+    /// offering a name holding it).
+    pub in_app: ToolQuestion<'a>,
 }
 
 /// Where the native frame first differs from core's.
@@ -552,8 +556,8 @@ fn model_field(t: &ShadowTurn<'_>, project: Option<&JValue>) -> Result<JValue, &
 const NEVER_STANDING: [&str; 1] = ["space_page_save"];
 
 /// The frame's per-tool facts for the tools core offered (`tools`, in its order; P7f): `writes`
-/// (`isWriteTool`), `public` (`isPublicTool`), `editTools` (project-edit-target.cjs `EDIT_TOOLS`)
-/// and `onceTools` (present only when some tool is never standing). The tool list itself is core's
+/// (`isWriteTool`), `public` (`isPublicTool`), `editTools` (index.cjs `projectEditTool`:
+/// project-edit-target.cjs `EDIT_TOOLS` held by the in-process MCP server) and `onceTools` (present only when some tool is never standing). The tool list itself is core's
 /// (the selection reads the tool router and prefill measurements of core's process).
 fn tool_facts(frame: &JValue, c: &Catalogue<'_>) -> Vec<(&'static str, JValue)> {
     let names: Vec<&str> = match frame.get("tools") {
@@ -581,7 +585,7 @@ fn tool_facts(frame: &JValue, c: &Catalogue<'_>) -> Vec<(&'static str, JValue)> 
         ),
         (
             "editTools",
-            pick(&|n| crate::offer::EDIT_TOOLS.contains(&n)),
+            pick(&|n| crate::offer::EDIT_TOOLS.contains(&n) && (c.in_app)(n)),
         ),
         (
             "onceTools",
