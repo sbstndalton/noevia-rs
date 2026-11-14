@@ -151,11 +151,9 @@ async fn the_planner_pins_and_calls_on_the_code_role_s_machine_with_no_credentia
     assert_eq!(session.model, "qa-coder");
     // The pinned machine key is the relay's target key: the pipeline Executor's `expect`.
     assert_eq!(session.machine.as_deref(), Some(code_machine::key_of(&t).as_str()));
-    assert_eq!(
-        session.machine.as_deref(),
-        code_engine_relay::target_key(Some(&code_machine::CodeTarget { machine: t.clone() }.relay()))
-            .as_deref()
-    );
+    let relay = code_machine::CodeTarget { machine: t.clone() }.relay();
+    let relay_key = code_engine_relay::target_key(Some(&relay));
+    assert_eq!(session.machine, relay_key);
     let answer = session.call(planner_call()).await.unwrap();
     assert_eq!(answer.text, ANSWER);
     assert_eq!(answer.attempts, 1);

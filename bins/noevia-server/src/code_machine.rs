@@ -1006,7 +1006,11 @@ impl FrontMachines {
     }
 
     /// `machines.connectError(t, err)` for a role call that never got an answer.
-    pub fn role_connect_error(&self, target: &JValue, error: &role_engine::TransportError) -> String {
+    pub fn role_connect_error(
+        &self,
+        target: &JValue,
+        error: &role_engine::TransportError,
+    ) -> String {
         let m = target.get("machine");
         let t = machines::Target {
             role: target.get("role").as_str().unwrap_or("code").to_string(),
@@ -1388,7 +1392,7 @@ mod tests {
             m.role_connect_error(&v, &err("machine: connection refused")),
             machines::connect_error(&t, false, false)
         );
-        assert!(machines::connect_error(&t, true, false)
-            .contains("its address is not on this network"));
+        let refused = machines::connect_error(&t, true, false);
+        assert!(refused.contains("its address is not on this network"));
     }
 }
