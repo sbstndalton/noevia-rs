@@ -167,8 +167,34 @@ pub fn prepare(
     Ok(launch)
 }
 
-/// The entrypoint: the exit code the container ends with.
+/// The secret-free summary `--check` prints: what each child would be told, never the store
+/// secret or the start id.
+pub fn describe(launch: &plan::Launch) -> String {
+    const SECRET: &[&str] = &["NOEVIA_PROJECT_STORE_TOKEN", "NOEVIA_START_ID"];
+    let mut out = String::from("web-supervisor: pair ok\n");
+    for (name, spec) in [("node", &launch.node), ("front", &launch.front)] {
+        out.push_str(
+            &format!("{name} {} {}", spec.program, spec.args.join(" "))
+                .trim_end()
+                .to_owned(),
+        );
+        for (k, v) in spec
+            .set
+            .iter()
+            .filter(|(k, _)| !SECRET.contains(&k.as_str()))
+        {
+            out.push_str(&format!(" {k}={v}"));
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// The entrypoint: the exit code the container ends with. With `--check` it runs every pre-launch
+/// check, prints the plan and exits (0 paired, 2 refused) without taking the lock or starting
+/// anything; any other argument is ignored, as the script ignored its arguments.
 pub fn run() -> i32 {
+    let check_only = std::env::args_os().skip(1).any(|a| a == "--check");
     let mut env = Env::from_process();
     let Ok(cwd) = std::env::current_dir() else {
         eprintln!("web-supervisor: no working directory");
@@ -182,6 +208,10 @@ pub fn run() -> i32 {
             return 2;
         }
     };
+    if check_only {
+        print!("{}", describe(&launch));
+        return 0;
+    }
     let data = match env.get("UI_DATA_DIR") {
         "" => cwd.join("server/ui-data"),
         dir => PathBuf::from(dir),
