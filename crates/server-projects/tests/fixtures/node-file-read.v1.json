@@ -209,10 +209,6 @@
      "name": "QA-nocontent.md"
     },
     {
-     "name": "QA-numcontent.md",
-     "content": 5
-    },
-    {
      "name": "QA-nocontent-queued.pdf",
      "document": {
       "state": "queued"
@@ -348,6 +344,10 @@
     {
      "name": 7,
      "content": "numbered"
+    },
+    {
+     "name": "QA-numcontent.md",
+     "content": 5
     },
     {
      "name": "skills/j/SKILL.md",
@@ -590,16 +590,6 @@
   {
    "projectId": "qa-proj-r13",
    "args": {
-    "name": "QA-numcontent.md"
-   },
-   "result": {
-    "threw": true
-   },
-   "contentless": true
-  },
-  {
-   "projectId": "qa-proj-r13",
-   "args": {
     "name": "QA-nocontent-queued.pdf"
    },
    "result": {
@@ -824,7 +814,7 @@
     "name": "nope.md"
    },
    "result": {
-    "text": "ERROR: no project file named \"nope.md\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-numcontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
+    "text": "ERROR: no project file named \"nope.md\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
     "failed": true
    }
   },
@@ -975,7 +965,7 @@
     "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
    },
    "result": {
-    "text": "ERROR: no project file named \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-numcontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
+    "text": "ERROR: no project file named \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
     "failed": true
    }
   },
@@ -985,7 +975,7 @@
     "name": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
    },
    "result": {
-    "text": "ERROR: no project file named \"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-numcontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
+    "text": "ERROR: no project file named \"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
     "failed": true
    }
   },
@@ -1015,7 +1005,7 @@
     "name": "-0"
    },
    "result": {
-    "text": "ERROR: no project file named \"-0\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-numcontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
+    "text": "ERROR: no project file named \"-0\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
     "failed": true
    }
   },
@@ -1025,7 +1015,7 @@
     "name": "true"
    },
    "result": {
-    "text": "ERROR: no project file named \"true\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-numcontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
+    "text": "ERROR: no project file named \"true\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
     "failed": true
    }
   },
@@ -1035,7 +1025,7 @@
     "name": "1e21"
    },
    "result": {
-    "text": "ERROR: no project file named \"1e21\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-numcontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
+    "text": "ERROR: no project file named \"1e21\". Available: QA-notes.md, Folder/Text/QA-report.md, Other/Text/QA-report.md, QA-long.txt, QA-exact.txt, QA-empty.txt, QA-textref.md, QA-missing-text.md, QA-stored.bin, QA-stored-text.txt, QA-queued.pdf, QA-queued-stale.pdf, QA-failed.pdf, QA-failed-stale.pdf, QA-doc.pdf, QA-doc-ok.pdf, QA-doc-bad.pdf, QA-doc-null.pdf, QA-doc-gone.pdf, QA-doc-badver.pdf, QA-doc-nover.pdf, QA-doc-weird.pdf, QA-nocontent.md, QA-nocontent-queued.pdf, skills/enabled/SKILL.md, skills/enabled/scripts/run.py, skills/enabled/notes.md, skills/enabled/readme.md, skills/long/SKILL.md, skills/disabled/SKILL.md, skills/updated/SKILL.md, skills/invalid/SKILL.md, skills/huge/SKILL.md, skills/scripts/SKILL.md, skills/scripts/tool.sh, skills/textref/SKILL.md, skills/gone/SKILL.md, QA-tracked.md, QA-café.md, QA-line name.md, dup.md, dup.md",
     "failed": true
    }
   },
@@ -1484,7 +1474,7 @@
     "name": "7"
    },
    "result": {
-    "text": "ERROR: no project file named \"7\". Available: QA-notes.md, skills/j/SKILL.md",
+    "text": "ERROR: no project file named \"7\". Available: QA-notes.md, QA-numcontent.md, skills/j/SKILL.md",
     "failed": true
    }
   },
@@ -1494,9 +1484,19 @@
     "name": "nope"
    },
    "result": {
-    "text": "ERROR: no project file named \"nope\". Available: QA-notes.md, skills/j/SKILL.md",
+    "text": "ERROR: no project file named \"nope\". Available: QA-notes.md, QA-numcontent.md, skills/j/SKILL.md",
     "failed": true
    }
+  },
+  {
+   "projectId": "qa-junk-r13",
+   "args": {
+    "name": "QA-numcontent.md"
+   },
+   "result": {
+    "threw": true
+   },
+   "contentless": true
   }
  ]
 }
