@@ -1,0 +1,20 @@
+[package]
+name = "embedding-migration"
+version = "0.1.0"
+description = "noevia-core's embedding configuration, migration (native worker mode) and POST/GET /api/embedding orchestration as pure Rust over a host the front implements (track R11); replayed on recorded Node output. Nothing calls it yet."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Request reading, the served-probe list and the two-half status (routes/embedding.cjs).
+embedding-admin = { path = "../embedding-admin" }
+js-json = { path = "../js-json" }
+# The JS string helpers (trim, white space, StringToNumber) the front already builds.
+chat-turn = { path = "../chat-turn" }
+serde_json = "1"
+url = "2.5"
