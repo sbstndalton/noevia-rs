@@ -247,6 +247,9 @@ pub enum Route {
     Directory,
     Append,
     Edit,
+    /// Shift 4: POST /api/external-sources/import (a writer tenant's import of one external file,
+    /// main mode: Python as the parent never forwards it).
+    ExternalImport,
 }
 
 impl Route {
@@ -266,7 +269,7 @@ impl Route {
     pub fn write(self) -> bool {
         matches!(
             self,
-            Route::PutFile | Route::Directory | Route::Append | Route::Edit
+            Route::PutFile | Route::Directory | Route::Append | Route::Edit | Route::ExternalImport
         )
     }
 }
@@ -285,6 +288,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("POST", "/api/directory") => Some(Route::Directory),
         ("POST", "/api/entries/append") => Some(Route::Append),
         ("POST", "/api/entries/edit") => Some(Route::Edit),
+        ("POST", "/api/external-sources/import") => Some(Route::ExternalImport),
         _ => None,
     }
 }
@@ -412,12 +416,18 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::PutFile
         | Route::Directory
         | Route::Append
-        | Route::Edit => {
+        | Route::Edit
+        | Route::ExternalImport => {
             if r.write() && header_uid.is_empty() {
                 // The legacy (header-less) tenant's writes stay with Python.
                 return Plan::Decline;
             }
-            if matches!(r, Route::Append | Route::Edit) && app.corpus_write_impl != "rust" {
+            if r == Route::ExternalImport && app.external_sources.is_none() {
+                return Plan::Decline;
+            }
+            if matches!(r, Route::Append | Route::Edit | Route::ExternalImport)
+                && app.corpus_write_impl != "rust"
+            {
                 return Plan::Decline;
             }
             if r == Route::WorkspaceExport && export_settings(app, &Settings::new()).is_none() {
@@ -857,7 +867,7 @@ async fn serve(
             let task = tokio::task::spawn_blocking(move || serve_corpus(&app2, r, &query, &tenant));
             task.await.unwrap_or_else(|_| internal_error())
         }
-        Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
+        Route::PutFile | Route::Directory | Route::Append | Route::Edit | Route::ExternalImport => {
             serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
         }
     }
@@ -931,6 +941,7 @@ async fn serve_write(
         Dir,
         Append(writes::AppendReq),
         Edit(writes::EditReq),
+        Import(writes::ImportReq),
     }
     let op = match r {
         Route::PutFile => Op::File,
@@ -938,6 +949,11 @@ async fn serve_write(
         Route::Append => match writes::append_validate(&json) {
             Ok(req) => Op::Append(req),
             Err(resp) => return reply(resp),
+        },
+        Route::ExternalImport => match writes::import_model(&json) {
+            Some(req) => Op::Import(req),
+            // FastAPI's 422 (or a body this side does not read as pydantic does).
+            None => return decline(),
         },
         Route::Edit => {
             let Some(req) = edit else {
@@ -1005,6 +1021,12 @@ async fn serve_write(
                     Op::Dir => writes::directory_create(&ctx, &json),
                     Op::Append(req) => writes::append(&ctx, req),
                     Op::Edit(req) => writes::edit(&ctx, req),
+                    Op::Import(req) => {
+                        let configured = app2.external_sources.as_deref().unwrap_or_default();
+                        let (reply, document) = writes::external_import(&ctx, req, configured);
+                        appended = document;
+                        reply
+                    }
                 };
                 if let (Op::Append(_), Reply::Json(200, body)) = (&op, &saved) {
                     appended = serde_json::from_slice::<Value>(body)
