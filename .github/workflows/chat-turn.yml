@@ -54,8 +54,15 @@ jobs:
           "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
       - name: The core's own handleChat reproduces the committed recording
-        # Synthetic QA turns through server/chat.cjs with a scripted engine and stub stores; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-turn/tests/record_turns.cjs --check crates/chat-turn/tests/fixtures/node-turns.v1.json
+        # Synthetic QA turns through server/chat.cjs with a scripted engine and stub stores; no network. When it
+        # differs, the fresh recording is uploaded below (chat-turn-recording), for a host that cannot run Node.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/node-turns.v1.json" node crates/chat-turn/tests/record_turns.cjs --check crates/chat-turn/tests/fixtures/node-turns.v1.json
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: chat-turn-recording
+          path: ${{ runner.temp }}/node-turns.v1.json
+          if-no-files-found: ignore
       - name: The core's own chat-title.cjs reproduces the committed title recording
         # Synthetic QA inputs through server/chat-title.cjs with a recording fake fetch; no network.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-turn/tests/record_titles.cjs --check crates/chat-turn/tests/fixtures/node-titles.v1.json

@@ -1688,7 +1688,7 @@ async fn run_case(
     // The turn's end (the lease back, the save) runs as the stream ends, or after the client left;
     // wait for the files to settle, at most 5 s.
     let dir = server_projects::store::user_dir(&f.data, &f.user).unwrap();
-    let want_files: BTreeMap<String, String> = match case.get("files") {
+    let mut want_files: BTreeMap<String, String> = match case.get("files") {
         JValue::Obj(files) => files
             .iter()
             .map(|(k, v)| {
@@ -1699,6 +1699,30 @@ async fn run_case(
             .collect(),
         _ => BTreeMap::new(),
     };
+    // Track R16: a chat deleted while its turn ran is removed through the store at the turn's end
+    // (`transcripts.deleteChat`, unlisted, origin turn). Node's recording stubs that store; the front's is the
+    // real one (server-projects chat_delete), which removes the chat's context meter and partial. The
+    // tombstones file the recording lists is the account's, not a state file (`state_files`).
+    let deleted: Vec<String> = arr(case.get("stores"))
+        .iter()
+        .filter(|s| s.get("op").as_str() == Some("transcripts.deleteChat"))
+        .filter_map(|s| s.get("chatId").as_str().map(str::to_string))
+        .collect();
+    want_files.retain(|name, _| {
+        let state = (name.starts_with("context-") && name.ends_with(".json"))
+            || name == "skill-history.json"
+            || (name.starts_with("chat-partials/") && name.ends_with(".json"));
+        state
+            && !deleted.iter().any(|id| {
+                *name
+                    == format!(
+                        "context-{}.json",
+                        context_fit::fingerprint(&js::s(id.as_str()))
+                    )
+                    || Path::new(name)
+                        == server_projects::partial::file_for(Path::new(""), id).as_path()
+            })
+    });
     let leased = !input.get("leaseRefusal").is_object();
     // The reply a leaving client's turn kept, where Node's store took it: saved at the turn's very
     // end (after the lease went back), so the wait below includes it.

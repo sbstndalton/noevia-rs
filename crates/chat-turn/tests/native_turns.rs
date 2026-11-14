@@ -990,7 +990,17 @@ impl Keep for Script {
     }
 
     fn delete_unlisted(&self, chat: &str) {
-        self.store("transcripts.deleteChat", vec![("chatId", js::s(chat))]);
+        // The store's delete of a chat no list holds, as core calls it (handleChatTurn's finally).
+        self.store(
+            "transcripts.deleteChat",
+            vec![
+                ("chatId", js::s(chat)),
+                (
+                    "options",
+                    js::obj([("kind", js::s("unlisted")), ("origin", js::s("turn"))]),
+                ),
+            ],
+        );
     }
 }
 
