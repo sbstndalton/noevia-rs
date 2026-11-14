@@ -27,7 +27,13 @@ struct Seen {
     body: Value,
 }
 
-type Answer = Arc<dyn Fn(&Value) -> (u16, Vec<(String, String)>, Vec<u8>) + Send + Sync>;
+type Reply = (u16, Vec<(String, String)>, Vec<u8>);
+type Answer = Arc<dyn Fn(&Value) -> Reply + Send + Sync>;
+
+/// Gives a closure the stub's answer type.
+fn answer(f: impl Fn(&Value) -> Reply + Send + Sync + 'static) -> Answer {
+    Arc::new(f)
+}
 
 /// A one-request-per-connection HTTP/1.1 stub; records every request it reads.
 async fn stub(answer: Answer) -> (String, Arc<Mutex<Vec<Seen>>>) {
@@ -97,7 +103,7 @@ async fn stub(answer: Answer) -> (String, Arc<Mutex<Vec<Seen>>>) {
     (base, seen)
 }
 
-fn vectors_for(body: &Value) -> (u16, Vec<(String, String)>, Vec<u8>) {
+fn vectors_for(body: &Value) -> Reply {
     let input = body["input"].as_array().cloned().unwrap_or_default();
     // Answered in reverse order with indexes: the batch rules put them back.
     let data: Vec<Value> = input
@@ -164,7 +170,7 @@ fn the_url_rule_is_nodes() {
 #[test]
 fn an_explicit_address_gets_no_credentials_and_the_engine_gets_its_bearer() {
     let rt = runtime();
-    let (base, seen) = rt.block_on(stub(Arc::new(vectors_for)));
+    let (base, seen) = rt.block_on(stub(answer(vectors_for)));
     let handle = rt.handle().clone();
     let b = base.clone();
     let items = off_runtime(move || {
@@ -221,12 +227,12 @@ fn one_call(answer: Answer) -> (Result<Vec<Value>, String>, usize) {
 
 #[test]
 fn refused_answers_redirects_and_oversized_bodies_fail() {
-    let (out, _) = one_call(Arc::new(|_: &Value| {
+    let (out, _) = one_call(answer(|_: &Value| {
         (500, vec![], br#"{"error":"down"}"#.to_vec())
     }));
     assert_eq!(out.unwrap_err(), "embeddings 500");
 
-    let (out, n) = one_call(Arc::new(|_: &Value| {
+    let (out, n) = one_call(answer(|_: &Value| {
         (
             302,
             vec![("location".into(), "http://127.0.0.1:9/elsewhere".into())],
@@ -236,9 +242,7 @@ fn refused_answers_redirects_and_oversized_bodies_fail() {
     assert!(out.is_err(), "a redirect is refused");
     assert_eq!(n, 1, "and never followed");
 
-    let (out, _) = one_call(Arc::new(|_: &Value| {
-        (200, vec![], br#"{"nope":1}"#.to_vec())
-    }));
+    let (out, _) = one_call(answer(|_: &Value| (200, vec![], br#"{"nope":1}"#.to_vec())));
     assert_eq!(
         out.unwrap(),
         Vec::<Value>::new(),
@@ -246,7 +250,7 @@ fn refused_answers_redirects_and_oversized_bodies_fail() {
     );
 
     let big = vec![b' '; 16 * 1024 * 1024 + 1];
-    let (out, _) = one_call(Arc::new(move |_: &Value| (200, vec![], big.clone())));
+    let (out, _) = one_call(answer(move |_: &Value| (200, vec![], big.clone())));
     assert!(out.is_err(), "answers past 16 MiB are cut");
 }
 
@@ -295,7 +299,7 @@ impl Host for TestHost {
 fn a_whole_index_run_goes_through_the_guarded_request() {
     sqlite_vec_loader::register().unwrap();
     let rt = runtime();
-    let (base, seen) = rt.block_on(stub(Arc::new(vectors_for)));
+    let (base, seen) = rt.block_on(stub(answer(vectors_for)));
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().to_path_buf();
     let handle = rt.handle().clone();
