@@ -43,7 +43,7 @@ rust-stats = []
 rust-export = []
 # M6 (#1373): GET /api/providers/chatgpt (permanent under NOEVIA_RUST_AUTH; src/routes.rs CHATGPT_STATUS,
 # crates/server-chatgpt-status).
-rust-chatgpt-status = ["dep:server-chatgpt-status"]
+rust-chatgpt-status = ["dep:server-chatgpt-status", "dep:signin-transport"]
 # M4's second slice: a project's chat list (permanent since #1071; src/routes.rs PROJECT_CHATS).
 rust-project-chats = []
 # M4's third slice: the free-chat list (permanent since #1071; src/routes.rs FREE_CHATS).
@@ -106,6 +106,8 @@ server-chatgpt-status = { path = "../../crates/server-chatgpt-status", optional 
 secret-envelope = { path = "../../crates/secret-envelope" }
 secrets-rotate = { path = "../../crates/secrets-rotate" }
 ssrf-policy = { path = "../../crates/ssrf-policy" }
+# The sign-in provider's chat transport (src/signin_wire.rs; inert until core offers its caps token).
+signin-transport = { path = "../../crates/signin-transport", optional = true }
 mcp-frame = { path = "../../crates/mcp-frame" }
 tool-rate-limit = { path = "../../crates/tool-rate-limit" }
 drive-tools = { path = "../../crates/drive-tools" }

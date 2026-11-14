@@ -11,7 +11,7 @@
 use js_json::JValue;
 use signin_transport::fetch::{self, read_capped, Answer, Body, Call, Outgoing, Upstream, Wire};
 use signin_transport::request::{Protocol, Session};
-use signin_transport::session::{BrokerAnswer, SessionCache};
+use signin_transport::session::{BrokerAnswer, SessionCache, Step};
 use signin_transport::texts::Texts;
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -118,6 +118,7 @@ impl Wire for Fake {
         Ok(Upstream {
             status,
             labelled: false,
+            headers: vec![("content-type".into(), "text/event-stream".into())],
             body: Some(chunks(&parts)),
         })
     }
@@ -371,9 +372,26 @@ fn no_token_in_debug_output() {
         headers: &h,
         body: "{}",
     };
-    let shown = format!("{out:?} {:?}", session("secret-tok", 1.0));
+    let steps = [
+        Step::AskBroker {
+            rejected_token: Some("secret-tok".into()),
+        },
+        Step::Send(session("secret-tok", 1.0)),
+    ];
+    let upstream: Upstream<Failing> = Upstream {
+        status: 200,
+        labelled: true,
+        headers: vec![("set-cookie".into(), "secret-tok".into())],
+        body: None,
+    };
+    let shown = format!(
+        "{out:?} {:?} {steps:?} {upstream:?}",
+        session("secret-tok", 1.0)
+    );
     assert!(!shown.contains("secret-tok"), "{shown}");
     assert!(shown.contains("authorization"), "{shown}");
+    assert!(shown.contains("AskBroker"), "{shown}");
+    assert!(shown.contains("set-cookie"), "{shown}");
 }
 
 /// A failing body for the stream tests: the text stream's first chunk, then a failed read.
@@ -407,6 +425,7 @@ impl Wire for FailingWire {
         Ok(Upstream {
             status: 200,
             labelled: false,
+            headers: Vec::new(),
             body: Some(Failing(0)),
         })
     }

@@ -9,7 +9,14 @@
 //! - A catalogue that is not an array is "could not be read" (core: `catalogue?.find` throws a
 //!   TypeError and the fetch rejects).
 //! - A body-less answer with status 204, 205 or 304 is a 502 with core's line (core builds its error
-//!   answer with that status, which the Response constructor refuses: the fetch rejects).
+//!   answer with that status, which the Response constructor refuses: the fetch rejects). 101 and
+//!   103 map the same way; a fetch never hands an informational answer on, so no case reaches it.
+//! - A catalogue entry that is not an object (`null`, a number) matches no model (core reads
+//!   `m.slug` on it and throws).
+//! - A request body that is JSON `null` is the 400 "not JSON" answer (core reads `body.model` on it
+//!   and throws).
+//! - One clock reading per call ([`Call::now_ms`]); core reads the clock again after each broker
+//!   await, so a cache entry stored after a slow broker answer lives up to that long more here.
 
 use crate::events::{ChatParts, Part, SseDecoder};
 use crate::reply::{completion, ChatStream, ReplyId, Start};
@@ -38,6 +45,9 @@ pub struct Upstream<B> {
     pub status: u16,
     /// It carried `x-noevia-provider-message: 1` itself: core passes such an answer on as is.
     pub labelled: bool,
+    /// The answer's headers as received (names in lower case, in order). Only a pass-through
+    /// answer uses them: it goes on with its own headers.
+    pub headers: Vec<(String, String)>,
     /// `None`: an answer without a body (fetch's `r.body === null`).
     pub body: Option<B>,
 }
@@ -47,6 +57,14 @@ impl<B> std::fmt::Debug for Upstream<B> {
         f.debug_struct("Upstream")
             .field("status", &self.status)
             .field("labelled", &self.labelled)
+            .field(
+                "headers",
+                &self
+                    .headers
+                    .iter()
+                    .map(|(k, _)| k.as_str())
+                    .collect::<Vec<_>>(),
+            )
             .field("body", &self.body.as_ref().map(|_| "…"))
             .finish()
     }
@@ -100,7 +118,7 @@ pub trait Wire: Send {
 pub struct Call<'a> {
     pub texts: &'a Texts,
     pub protocol: &'a Protocol,
-    /// The backend's base address (core: `config.codexBaseUrl`, trailing slashes dropped).
+    /// The backend's base address (core's configured backend base, trailing slashes dropped).
     pub base_url: &'a str,
     pub user: &'a str,
     /// The chat's conversation id; the backend sees only [`request::uuid_from`] of user and it.
@@ -272,7 +290,7 @@ fn null_body_status(status: u16) -> bool {
     matches!(status, 101 | 103 | 204 | 205 | 304)
 }
 
-/// The whole of core's `chatgptFetch(url, init)`. `cache` is the process's session cache (held
+/// The whole of core's fetch of the sign-in provider (`fetchFor(user)(url, init)`). `cache` is the process's session cache (held
 /// only between awaits, never across one).
 pub async fn fetch<W: Wire>(
     wire: &mut W,

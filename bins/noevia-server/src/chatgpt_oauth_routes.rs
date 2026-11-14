@@ -89,6 +89,9 @@ const OFF_MESSAGE: &str = "Sign in with ChatGPT is turned off on this server.";
 const DISCONNECTED: &str =
     "ChatGPT is not connected. Sign in with ChatGPT in Settings → AI providers.";
 const RECONNECT: &str = "Reconnect needed: your ChatGPT sign-in expired or was revoked. Sign in with ChatGPT again in Settings → AI providers.";
+/// core's line for a plan without the backend usage (`upstreamMessage`, `usage_not_included`).
+const NOT_INCLUDED: &str =
+    "Your ChatGPT plan does not include the Codex usage that Sign in with ChatGPT relies on.";
 const TRANSIENT: &str = "ChatGPT sign-in could not be refreshed right now. Try again in a moment.";
 
 /// A failure as core's `fail(message, status, code)`: written for people, never a credential.
@@ -402,6 +405,27 @@ impl Settings {
     }
 }
 
+/// The chat transport for these settings. The person-facing lines are core's (`MESSAGES`, the usage
+/// line, the stream error's source); the header names are the backend's.
+pub fn transport(settings: &Settings) -> crate::signin_wire::Transport {
+    crate::signin_wire::Transport {
+        texts: signin_transport::texts::Texts {
+            label: "ChatGPT".into(),
+            disconnected: DISCONNECTED.into(),
+            reconnect: RECONNECT.into(),
+            transient: TRANSIENT.into(),
+            not_included: NOT_INCLUDED.into(),
+            source: "chatgpt".into(),
+        },
+        protocol: signin_transport::request::Protocol {
+            account_header: "chatgpt-account-id".into(),
+            region_header: "x-openai-fedramp".into(),
+            user_agent: settings.user_agent.clone(),
+        },
+        base_url: settings.codex_base.trim_end_matches('/').to_owned(),
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // The broker's memory.
 
@@ -428,7 +452,8 @@ pub struct Model {
 }
 
 impl Model {
-    fn to_js(&self) -> JValue {
+    /// The entry as the internal store op sends it (core's `{ slug, effort, summary, summaryParam, levels }`).
+    pub(crate) fn to_js(&self) -> JValue {
         let opt = |v: &Option<String>| v.clone().map(JValue::Str).unwrap_or(JValue::Null);
         JValue::obj([
             ("slug", JValue::Str(self.slug.clone())),
@@ -795,6 +820,16 @@ impl Broker {
             keys: std::sync::OnceLock::new(),
             swept: std::sync::atomic::AtomicBool::new(false),
         })
+    }
+
+    /// The broker's change file (core reads its file signal before every cached session).
+    pub fn signal_path(&self) -> PathBuf {
+        self.data_dir.join(SIGNAL_FILE)
+    }
+
+    /// The chat transport's texts, header names and backend address (src/signin_wire.rs).
+    pub fn transport(&self) -> crate::signin_wire::Transport {
+        transport(&self.settings)
     }
 
     fn mem(&self) -> std::sync::MutexGuard<'_, Mem> {

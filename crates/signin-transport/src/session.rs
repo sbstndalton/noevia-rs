@@ -143,7 +143,8 @@ pub fn broker_refusal(texts: &Texts, answer: &BrokerAnswer) -> Option<Refusal> {
     }
 }
 
-/// One step of `authorised(userId, send)`. Debug output names a rejected token only as present.
+/// One step of `authorised(userId, send)`. Debug is written by hand: `AskBroker` holds the token
+/// the backend refused, which never appears in any output.
 #[derive(Clone, PartialEq)]
 pub enum Step {
     /// Ask the broker for a session (with the rejected access token on the second ask).

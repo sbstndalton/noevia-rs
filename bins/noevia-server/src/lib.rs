@@ -133,6 +133,8 @@ pub mod sampling_settings_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod secrets_rotate_routes;
 pub mod serve;
+#[cfg(feature = "rust-chatgpt-status")]
+pub mod signin_wire;
 pub mod snapshot;
 pub mod source_job_routes;
 #[cfg(feature = "rust-storage-browse")]
