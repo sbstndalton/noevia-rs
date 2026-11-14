@@ -1258,9 +1258,20 @@ fn the_native_continuation_is_node_after_the_cut() {
             let JValue::Obj(files) = c.get("files") else {
                 panic!()
             };
-            let mine = script.files.lock().unwrap().clone();
+            // A Diary extras preparation's record (diary-conversations/) is core's own: the front feeds it through
+            // core's diary-journal op (track R16), whose events the front's end-to-end test compares.
+            let core_own = |k: &str| k.starts_with("diary-conversations/");
+            let mine: BTreeMap<String, String> = script
+                .files
+                .lock()
+                .unwrap()
+                .clone()
+                .into_iter()
+                .filter(|(k, _)| !core_own(k))
+                .collect();
             let want: BTreeMap<String, String> = files
                 .iter()
+                .filter(|(k, _)| !core_own(k))
                 .map(|(k, v)| (k.clone(), js::stringify(v)))
                 .collect();
             assert_eq!(mine, want, "{name}: workspace files");

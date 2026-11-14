@@ -188,6 +188,9 @@ struct Script {
     condensed: Vec<JValue>,
     /// The reasoner-trace calls (#740).
     traced: usize,
+    /// Track R16: the events core's diary-journal op was fed, in order, and whether it was finished.
+    journal: Vec<JValue>,
+    journal_finished: bool,
 }
 
 impl Default for Script {
@@ -218,6 +221,8 @@ impl Default for Script {
             condense_fails: false,
             condensed: Vec::new(),
             traced: 0,
+            journal: Vec::new(),
+            journal_finished: false,
         }
     }
 }
@@ -570,6 +575,29 @@ async fn core_service(
             sc.errors
                 .push(format!("{path}: user {}", js::stringify(sent.get("user"))));
         }
+    }
+    // Track R16: a Diary extras preparation's journal (core rust-chat-journal.cjs), held under the frame's handle:
+    // what the front feeds it is compared with what Node's `send` journaled after the cut (the case's `journal`).
+    if path == "/internal/chat/native/diary-journal" {
+        let want = sc
+            .case
+            .get("handoff")
+            .get("prepared")
+            .get("turn")
+            .get("diaryJournal")
+            .as_str()
+            .map(str::to_string);
+        if want.is_none() || sent.get("handle").as_str() != want.as_deref() || sc.journal_finished {
+            sc.errors.push(format!(
+                "{path}: handle {} (finished: {})",
+                js::stringify(sent.get("handle")),
+                sc.journal_finished
+            ));
+            return Ok(empty(404));
+        }
+        sc.journal.extend(arr(sent.get("events")));
+        sc.journal_finished = sent.get("finish") == &JValue::Bool(true);
+        return Ok(empty(204));
     }
     if path == "/internal/chat/gate" {
         if hold {
@@ -1588,6 +1616,10 @@ async fn run_case(
     if let JValue::Obj(files) = case.get("handoff").get("files") {
         let dir = server_projects::store::user_dir(&f.data, &f.user).unwrap();
         for (name, content) in files {
+            // A Diary extras preparation's record (diary-conversations/<day>/<id>.json) is core's, in a folder.
+            if let Some(parent) = dir.join(name).parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
             std::fs::write(dir.join(name), js::stringify(content)).unwrap();
         }
     }
@@ -1821,6 +1853,18 @@ async fn run_case(
     // The fakes' contract checks, the approval cards, the tools run, every recorded answer asked for.
     if !sc.errors.is_empty() {
         return Err(format!("bridge contract: {:?}", sc.errors));
+    }
+    // Track R16: every event of the turn after the cut, in Node's order, fed to the preparation's journal, then its
+    // finish; nothing for a turn without one.
+    let want_journal = texts(&arr(case.get("journal")), "", (0.0, 0.0));
+    let got_journal = texts(&sc.journal, &f.user, window);
+    if got_journal != want_journal
+        || sc.journal_finished != matches!(case.get("journal"), JValue::Arr(_))
+    {
+        return Err(format!(
+            "the Diary journal (finished: {}):\n front: {got_journal:?}\n node:  {want_journal:?}",
+            sc.journal_finished
+        ));
     }
     // The grant revokes Node's turn made, asked of core's revoke bridge (Node's revokeChatGrant).
     let want_revokes: Vec<String> = arr(case.get("stores"))

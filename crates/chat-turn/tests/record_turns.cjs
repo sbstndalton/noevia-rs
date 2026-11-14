@@ -153,6 +153,15 @@ const chatLists = require(path.join(server, 'chat-lists.cjs'));
 const realReadTombstones = chatLists.readTombstones;
 let onTombstones = null;
 chatLists.readTombstones = (dir) => { const ids = realReadTombstones(dir); onTombstones?.(ids); return ids; };
+// A Diary extras preparation's recovery journal (diary-jobs.cjs, track R16): every event chat.cjs `send` feeds it after
+// the cut is recorded (`journal`), the events the front's diary-journal op must feed it in the same order.
+const diaryJobs = require(path.join(server, 'diary-jobs.cjs'));
+const realJobStart = diaryJobs.start;
+let onJournal = null;
+diaryJobs.start = (...args) => {
+  const job = realJobStart(...args);
+  return { event: (e) => { onJournal?.(e); return job.event(e); }, finish: () => job.finish() };
+};
 // A project file edit's resolutions (chat.cjs calls project-edit-target.cjs resolveEditTarget before the card, after
 // the answer and before the run), each logged as the edit-target bridge answers it. A case's `editChanges[k]` is
 // what the project looks like (fields over the stored ones) at the k-th resolution: its files changed meanwhile.
@@ -307,7 +316,7 @@ async function runTurn(c, { handoff = false } = {}) {
     // (rust-chat-native.cjs: executeToolCall, writeTargetFor), so its replay gets Node's own answers.
     // `stubs`: what the turn asked of the stubs after its preparation (from the line the hand-off would cut at,
     // chat.cjs's createToolExchange) and what they answered, so the replay answers the same.
-    const log = { requests: [], stores: [], approvals: [], executions: [], bridge: [], stubs: [] };
+    const log = { requests: [], stores: [], approvals: [], executions: [], bridge: [], stubs: [], journal: [] };
     const store = (op, args) => log.stores.push({ op, ...args });
     let cut = false;
     const stub = (op, entry) => { if (cut) log.stubs.push({ op, ...entry }); return entry.answer; };
@@ -345,6 +354,7 @@ async function runTurn(c, { handoff = false } = {}) {
     const registry = createApprovalRegistry({ approvals: front, log: () => {}, now: () => FIXED_NOW, monotonic: () => 0,
       schedule: () => ({ clear() {} }) });
     onTombstones = (ids) => stub('tombstones', { answer: [...ids].sort() });
+    onJournal = (event) => { if (cut) log.journal.push(event); };
     // `tombstoned`: the chat was deleted while the turn was prepared (track R16): its tombstone is in the workspace.
     if (c.tombstoned) chatLists.addTombstone(dir, 'qa-chat-1');
     let editResolutions = 0;
@@ -601,7 +611,7 @@ async function runTurn(c, { handoff = false } = {}) {
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
       templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       // The front names the capabilities its executor runs (rust-chat-native.cjs CAPS_HEADER; chat-turn HANDOFF_CAPS).
-      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images', 'supervise', 'tool-gate', 'reasoner', 'deleted', 'diary']), supervising: () => c.supervise !== undefined } } : {}),
+      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images', 'supervise', 'tool-gate', 'reasoner', 'deleted', 'diary', 'diary-journal']), supervising: () => c.supervise !== undefined } } : {}),
       // `supervise`: step supervision is on (features.stepSupervision); the decision service answers the k-th question
       // with c.supervise[k] (step-supervision.cjs's own rules apply). Each decide is recorded as the front's supervise
       // op sees it: its round, goal, write flag and the outputs the supervisor reads, and the action it answered.
@@ -663,6 +673,7 @@ async function runTurn(c, { handoff = false } = {}) {
         rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
+        ...(log.journal.length ? { journal: log.journal } : {}),
       files: listFiles(dir),
       record: { assistantEntry: record.assistantEntry(), partialEntry: record.partialEntry() },
     };
@@ -1236,6 +1247,10 @@ const CASES = [
   { name: 'diary_project_chat', about: 'A chat of the Diary extras project outside a Diary space, titles wired and supervision on: it keeps its turn record and its supervisor (the space is not a Diary one) but gets no title.',
     diaryEnabled: true, project: { id: 'cowork-diary-extras', name: 'QA Diary extras' }, supervise: [{ action: 'continue' }], titles: { autoNamed: true },
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-y3"}'), finish('tool_calls')] }, answer('Noted from the file.')] },
+  { name: 'diary_extras_preparation_journal', about: 'A Diary extras preparation the client can recover (recoveryId): every event after the cut goes into its journal, which ends complete; a read, then the answer.',
+    diaryEnabled: true, project: { id: 'cowork-diary-extras', name: 'QA Diary extras' },
+    body: { spaceId: 'diary-extras', extrasEnabled: true, sessionId: 'qa-session-2', recoveryId: 'qa-preparation-0002', entryDay: '2026-11-13' },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-y4"}'), finish('tool_calls')] }, answer('Prepared from the file.')] },
 ];
 
 (async () => {

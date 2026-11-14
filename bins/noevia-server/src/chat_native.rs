@@ -37,7 +37,7 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -498,6 +498,7 @@ async fn drive(
         queued,
         saving: Mutex::new(Saving::new(TurnRecord::new(crate::identity::now_ms))),
         partial: PartialGate::default(),
+        journal: OnceLock::new(),
         lease: Mutex::new(None),
         lease_token: Mutex::new(None),
         approvals,
@@ -510,6 +511,11 @@ async fn drive(
     if let Some(c) = &chat {
         // What core's saver left at the cut; the 4 s saver below goes on (noevia#2750: this once ended it).
         clear_partial(&host.user_dir, &chat_turn::after::safe_chat_id(c));
+    }
+    // Track R16: a Diary extras preparation's recovery journal, fed every event from here on.
+    if let Some(handle) = &p.diary_journal {
+        let journal = Journal::start(Arc::clone(&host.app), host.user.clone(), handle.clone());
+        let _ = host.journal.set(journal);
     }
     let ticks = tokio::spawn(ticks(Arc::clone(&host), chat.clone()));
     // Node's `close` handler gives the lease back the moment the client leaves, before the turn's
@@ -528,6 +534,10 @@ async fn drive(
     // A partial write in progress finishes before the turn's end is saved (review F1).
     let _ = ticks.await;
     watcher.abort();
+    // handleChatTurn's finally finishes the Diary journal first (track R16).
+    if let Some(journal) = host.journal.get() {
+        journal.finish().await;
+    }
     let left = matches!(ended, native::Ended::Left) || host.left();
     let keep = Arc::clone(&host);
     let message = p.message.clone();
@@ -686,6 +696,90 @@ impl PartialGate {
     }
 }
 
+/// core's diary-journal op (rust-chat-native.cjs, track R16).
+const JOURNAL_PATH: &str = "/internal/chat/native/diary-journal";
+/// The most events one journal call carries (core takes up to 10000; a tool result is at most 8000 units).
+const JOURNAL_BATCH: usize = 256;
+/// How long the turn's end waits for the journal's last call.
+const JOURNAL_FINISH: Duration = Duration::from_secs(10);
+
+enum JournalItem {
+    Event(JValue),
+    Finish,
+}
+
+/// Track R16: a Diary extras preparation's recovery journal (core diary-jobs.cjs), held by core under the frame's
+/// handle (rust-chat-journal.cjs). Every event the turn sends goes to it in order, as chat.cjs `send` feeds it, through
+/// core's diary-journal op: one call at a time, each with what came while the last one ran. The turn's end finishes
+/// it. A call that fails stops the journal (core finishes an idle one: its record reads `uncertain`).
+struct Journal {
+    tx: mpsc::UnboundedSender<JournalItem>,
+    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+impl Journal {
+    fn start(app: Arc<App>, user: String, handle: String) -> Journal {
+        let (tx, mut rx) = mpsc::unbounded_channel::<JournalItem>();
+        let task = tokio::spawn(async move {
+            let mut live = true;
+            while let Some(first) = rx.recv().await {
+                let mut events = Vec::new();
+                let mut finish = false;
+                let mut next = Some(first);
+                while let Some(item) = next.take() {
+                    match item {
+                        JournalItem::Event(e) => events.push(e),
+                        JournalItem::Finish => finish = true,
+                    }
+                    if !finish && events.len() < JOURNAL_BATCH {
+                        next = rx.try_recv().ok();
+                    }
+                }
+                if live {
+                    let body = js::obj([
+                        ("user", js::s(user.clone())),
+                        ("handle", js::s(handle.clone())),
+                        ("events", JValue::Arr(events)),
+                        ("finish", JValue::Bool(finish)),
+                    ]);
+                    let answer = app
+                        .config
+                        .research
+                        .node_call_text(JOURNAL_PATH, js::stringify(&body), BRIDGE_TIMEOUT)
+                        .await;
+                    if !matches!(answer, Some((204, _))) {
+                        eprintln!(
+                            "chat native: the Diary journal stopped (status {:?})",
+                            answer.map(|(s, _)| s)
+                        );
+                        live = false;
+                    }
+                }
+                if finish {
+                    break;
+                }
+            }
+        });
+        Journal {
+            tx,
+            task: Mutex::new(Some(task)),
+        }
+    }
+
+    fn event(&self, event: &JValue) {
+        let _ = self.tx.send(JournalItem::Event(event.clone()));
+    }
+
+    /// The turn's end: what is left, then the journal's finish (waited for, at most [`JOURNAL_FINISH`]).
+    async fn finish(&self) {
+        let _ = self.tx.send(JournalItem::Finish);
+        let task = self.task.lock().ok().and_then(|mut t| t.take());
+        if let Some(task) = task {
+            let _ = tokio::time::timeout(JOURNAL_FINISH, task).await;
+        }
+    }
+}
+
 /// Removes a chat's partial file (chat-partial.cjs's finish without a reply to keep).
 fn clear_partial(user_dir: &Path, chat: &str) {
     let path = server_projects::partial::file_for(user_dir, chat);
@@ -705,6 +799,8 @@ pub(crate) struct FrontHost {
     saving: Mutex<Saving>,
     /// Closed by the turn's end: a partial tick that comes later writes nothing (review F1).
     partial: PartialGate,
+    /// A Diary extras preparation's recovery journal (track R16), set once at the turn's start.
+    journal: OnceLock<Journal>,
     lease: Mutex<Option<engine_admission::Lease>>,
     /// The turn's `x-noevia-lease` value, as [`Host::lease`] returned it (the load bridge carries it).
     lease_token: Mutex<Option<String>>,
@@ -794,6 +890,10 @@ impl Host for FrontHost {
 
     fn emit(&self, event: &JValue) {
         let left = self.left();
+        // chat.cjs `send` journals every event, the client gone or not.
+        if let Some(journal) = self.journal.get() {
+            journal.event(event);
+        }
         self.observe(event, left);
         if !left {
             let _ = push(
