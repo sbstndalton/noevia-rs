@@ -19,7 +19,7 @@
 //! - a number under `timeToFirstToken` or `elapsedMs` below a minute reads as 0;
 //! - the signed-in user's id reads as `qa-user`;
 //! - a uuid v4 string, bare or after `ap-` or `gate-`, reads as `<uuid>` (on both sides), and a `gate-` uuid
-//!   inside an engine request body too.
+//!   inside an engine request body is numbered by first appearance (`gate-<1>`).
 //!
 //! Synthetic data only; local ports only; no model runs.
 #![allow(
@@ -1237,17 +1237,26 @@ fn is_uuid_v4(s: &str) -> bool {
         && s.bytes().all(|c| c == b'-' || c.is_ascii_hexdigit())
 }
 
-/// The tool gate's prefetched call id (`gate-` and a uuid v4) as `gate-<uuid>`, wherever it sits in a request
-/// body's text (the assistant's call and the tool message name it).
+/// The tool gate's prefetched call ids (`gate-` and a uuid v4) numbered by first appearance (`gate-<1>`, …) wherever
+/// they sit in a request body's text, so the call and its tool message must still name the same id, and two calls
+/// two ids.
 fn gate_ids(text: &str) -> String {
+    let mut seen: Vec<&str> = Vec::new();
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(at) = rest.find("gate-") {
         let (head, tail) = rest.split_at(at + 5);
         out.push_str(head);
         match tail.get(..36).filter(|u| is_uuid_v4(u)) {
-            Some(_) => {
-                out.push_str("<uuid>");
+            Some(id) => {
+                let n = match seen.iter().position(|s| *s == id) {
+                    Some(n) => n,
+                    None => {
+                        seen.push(id);
+                        seen.len() - 1
+                    }
+                };
+                out.push_str(&format!("<{}>", n + 1));
                 rest = tail.get(36..).unwrap_or_default();
             }
             None => rest = tail,
