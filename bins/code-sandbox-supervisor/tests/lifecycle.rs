@@ -264,12 +264,14 @@ async fn disconnect_before_session_ready_still_tears_down_descendants() {
     let entered = files.path().join("helper-entered");
     let marker = files.path().join("descendant-survived");
     let real_helper = env!("CARGO_BIN_EXE_code-sandbox-session-exec");
+    // noevia#2289: a shell wrapper, not Python: it starts in milliseconds even on a busy runner
+    // (Python's start-up was the one slow step before the helper entered). Same steps: mark,
+    // wait 250 ms, then exec the real helper with argv[0] = its path.
     std::fs::write(
         &wrapper,
         format!(
-            "#!/usr/bin/python3\nimport os, pathlib, sys, time\npathlib.Path({:?}).touch()\ntime.sleep(0.25)\nos.execv({:?}, [{:?}, *sys.argv[1:]])\n",
-            entered.display().to_string(),
-            real_helper,
+            "#!/bin/sh\ntouch '{}'\nsleep 0.25\nexec '{}' \"$@\"\n",
+            entered.display(),
             real_helper
         ),
     )
@@ -288,7 +290,7 @@ async fn disconnect_before_session_ready_still_tears_down_descendants() {
     .await;
     let mut socket = h.connect().await;
     socket.write_all(h.start("{}").as_bytes()).await.unwrap();
-    tokio::time::timeout(Duration::from_secs(2), async {
+    tokio::time::timeout(Duration::from_secs(10), async {
         while !entered.exists() {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
