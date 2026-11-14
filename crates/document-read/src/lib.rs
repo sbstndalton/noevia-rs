@@ -19,9 +19,8 @@
 //!   server's file path), which is not copied. The result is opened without following a symlink
 //!   and read only up to [`RESULT_BYTES`] (as the front's route does); JSON the port's parser
 //!   refuses but `JSON.parse` takes (a number past the `f64` range, nesting past 128) is
-//!   `Unreadable` too.
-//! - Two page texts whose ends are halves of one surrogate pair are joined as two lone halves
-//!   (`\ud83d\ude00` in JSON) where JS would join them into the pair.
+//!   `Unreadable` too, and so is text holding a raw character of U+10F800..=U+10FFFF (the range
+//!   [`js_json::wtf16`] keeps for lone surrogates; Node reads such a character).
 use js_json::{to_js_string, wtf16, JValue};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -164,9 +163,7 @@ fn string_to_number(raw: &str) -> f64 {
             if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
                 return f64::NAN;
             }
-            return digits.chars().fold(0.0, |acc, c| {
-                acc * f64::from(radix) + f64::from(c.to_digit(radix).unwrap_or(0))
-            });
+            return radix_value(digits, radix);
         }
     }
     // StrDecimalLiteral: sign? (digits [. digits?] | . digits) ([eE] sign? digits)?
@@ -202,6 +199,46 @@ fn string_to_number(raw: &str) -> f64 {
         return f64::NAN;
     }
     s.parse::<f64>().unwrap_or(f64::NAN)
+}
+
+/// The value of `digits` (hex, octal or binary, already checked) rounded once to the nearest `f64`
+/// (ties to even), as `Number("0x…")` rounds the exact integer; past 2^1024 it is infinity.
+fn radix_value(digits: &str, radix: u32) -> f64 {
+    let width = match radix {
+        16 => 4,
+        8 => 3,
+        _ => 1,
+    };
+    let mut bits: Vec<bool> = Vec::with_capacity(digits.len() * width);
+    for c in digits.chars() {
+        let d = c.to_digit(radix).unwrap_or(0);
+        for i in (0..width).rev() {
+            bits.push(d >> i & 1 == 1);
+        }
+    }
+    let first = bits.iter().position(|b| *b).unwrap_or(bits.len());
+    let bits = bits.get(first..).unwrap_or(&[]);
+    let value = |b: &[bool]| b.iter().fold(0u64, |acc, x| acc << 1 | u64::from(*x));
+    if bits.len() <= 53 {
+        return value(bits) as f64;
+    }
+    let (head, rest) = bits.split_at(53);
+    let mut mantissa = value(head);
+    let guard = rest.first().copied().unwrap_or(false);
+    let sticky = rest.iter().skip(1).any(|b| *b);
+    if guard && (sticky || mantissa & 1 == 1) {
+        mantissa += 1;
+    }
+    let exp = i32::try_from(rest.len()).unwrap_or(i32::MAX);
+    // mantissa < 2^54 is exact in an f64; scaling by a power of two is exact until it overflows.
+    let mut out = mantissa as f64;
+    let mut left = exp;
+    while left > 0 && out.is_finite() {
+        let step = left.min(1000);
+        out *= 2f64.powi(step);
+        left -= step;
+    }
+    out
 }
 
 /// JS `ToNumber(v)` for a JSON value (an array through its string, an object NaN, or a TypeError
@@ -578,7 +615,7 @@ pub fn stored_result(
     let path = documents_dir(data_dir, project_id).join(format!("{version}.json"));
     let file = std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
         .map_err(|_| Unreadable)?;
     let md = file.metadata().map_err(|_| Unreadable)?;

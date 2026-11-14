@@ -56,6 +56,9 @@ const POOLS = {
       page(11, 'failed', { retry: { outcome: 'failed', error: { qa: 1 } } }), page(12, 'failed', { retry: 'failed' })],
     [5, 'qa', page(2, 'native'), { status: 'failed' }, { number: [3, 4], status: 'failed', retry: { outcome: 'skipped' } }],
     Array.from({ length: 23 }, (_, i) => page(i + 1, 'failed', { retry: { outcome: i % 2 ? 'skipped' : 'recovered' } })),
+    [{ status: 'failed', retry: { outcome: 'skipped' } }, { number: null, status: 'failed', retry: { outcome: 'skipped' } },
+      page(3, 'failed', { retry: { outcome: 'failed', error: true } }), page(4, 'failed', { retry: { outcome: 'failed', error: ['x', 'y'] } }),
+      page(5, 'failed', { retry: { outcome: 'failed', error: true } }), page(6, 'failed', { retry: { outcome: 'failed', error: ['x', 'y'] } })],
     [page(1, 'native'), null], 'qa-not-a-list', { qa: 1 }, [page(1, { toString: 1 })]],
   stoppedAt: [undefined, { page: 3, limit: 'pages' }, { page: 2, limit: 'error', error: 'QA busy' }, { limit: 'text' },
     { page: 1, limit: 'constructor' }, { page: 1, limit: '__proto__' }, { page: 1, limit: 'toString' }, { page: 1, limit: 'hasOwnProperty' },
@@ -66,7 +69,7 @@ const POOLS = {
   version: [OTHER, undefined, 0, ['qa-version'], ''],
   availableVersion: [V, undefined, '', OTHER],
   indexing: ['ready', undefined, 'partial', 0, 'failed'],
-  name: ['QA-report.pdf', 'Synthetic/"quote" \\ name.pdf', 'QA line\u2028sep\u202Eflip\u0085.pdf', 'QA lone \ud83d half.pdf', 'QA tab\tctl\u0001.pdf', undefined, 42, {}, ['QA', 'list']],
+  name: ['QA-report.pdf', 'Synthetic/"quote" \\ name.pdf', 'QA line\u2028sep\u202Eflip\u0085.pdf', 'QA lone \ud83d half.pdf', 'QA tab\tctl\u0001.pdf', 'QA marks\u200E\u200F\u202A\u202B\u202C\u202D\u2066\u2067\u2068\u2069.pdf', undefined, 42, {}, ['QA', 'list']],
 };
 const randomDocument = () => {
   const d = {};
@@ -136,6 +139,7 @@ const stored = {
   badNumber: JSON.stringify({ pages: 3, pageTexts: [{ number: { toString: 1 }, status: 'native' }] }),
   objPages: JSON.stringify({ pages: { qa: 1 }, pageTexts: [{ number: 1, status: 'native', text: 'QA' }] }),
   dupPages: JSON.stringify({ pages: 3, pageTexts: [{ number: 1, status: 'native', text: 'a' }, { number: 1, status: 'ocr', text: 'b' }] }),
+  hexPages: JSON.stringify({ pages: '0x200000000000018', pageTexts: [{ number: '0x200000000000018', status: 'native', text: 'QA hex' }, { number: '0b11', status: 'native', text: 'QA bin' }] }),
   long: JSON.stringify({ pages: 5, pageTexts: pageTexts(5, (i) => `QA long ${i} ${'é😀'.repeat(900)}`) }),
 };
 const versions = {};
@@ -158,6 +162,7 @@ const MIDDLE = [{}, { start: 1, end: 3 }, { start: 2, end: 3, offset: 10, cap: 5
 const argsFor = (f) => {
   const v = f && f.document && f.document.availableVersion;
   if (v === versions.normal || v === versions.long) return f.document.pageStatus ? MIDDLE : ARGS;
+  if (v === versions.hexPages) return [{ start: 144115188075855904 }, { start: 144115188075855900 }, { start: 3 }, { start: 1, end: 3 }];
   if ([versions.noPages, versions.lone, versions.stringy, versions.arrays, versions.dupPages].includes(v)) return MIDDLE;
   return [{ start: 1, end: 2 }, { start: 1, end: 9 }];
 };
