@@ -54,6 +54,29 @@ impl Reply {
     }
 }
 
+/// A body read whatever the status (http.cjs `readCappedText`): at most `cap` bytes, and whether more were on offer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Capped {
+    pub bytes: Vec<u8>,
+    /// More than `cap` bytes were on offer (the rest is not read).
+    pub capped: bool,
+}
+
+/// The answer to [`Fetch::send`]: its status and its body, read for every status. `Err(Failed)`: the read broke
+/// (a reset, or the deadline passed while it ran).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sent {
+    pub status: u16,
+    pub body: Result<Capped, BodyError>,
+}
+
+impl Sent {
+    /// `response.ok`.
+    pub fn ok(&self) -> bool {
+        (200..=299).contains(&self.status)
+    }
+}
+
 /// One GET to a machine. `body_cap: None` reads no body (a probe); `Some(cap)` reads a 2xx body up to `cap` bytes.
 /// Implementations never follow a redirect and never send this machine's keys; `headers` are the caller's own.
 pub trait Fetch: Send + Sync {
@@ -64,6 +87,22 @@ pub trait Fetch: Send + Sync {
         timeout: Duration,
         body_cap: Option<usize>,
     ) -> impl Future<Output = Result<Reply, FetchError>> + Send;
+
+    /// One request with any method and an optional body (the router classifier's JSON, the image probe), under the
+    /// same rules as [`Fetch::get`]; the answer's body is read for every status, up to `cap` bytes. A fetch that only
+    /// reads (a test script) keeps this default: no answer.
+    fn send(
+        &self,
+        method: &str,
+        url: &str,
+        headers: &[(String, String)],
+        body: Option<String>,
+        timeout: Duration,
+        cap: usize,
+    ) -> impl Future<Output = Result<Sent, FetchError>> + Send {
+        let _ = (method, url, headers, body, timeout, cap);
+        async { Err(FetchError::Network) }
+    }
 }
 
 impl<F: Fetch> Fetch for Arc<F> {
@@ -75,6 +114,18 @@ impl<F: Fetch> Fetch for Arc<F> {
         body_cap: Option<usize>,
     ) -> impl Future<Output = Result<Reply, FetchError>> + Send {
         (**self).get(url, headers, timeout, body_cap)
+    }
+
+    fn send(
+        &self,
+        method: &str,
+        url: &str,
+        headers: &[(String, String)],
+        body: Option<String>,
+        timeout: Duration,
+        cap: usize,
+    ) -> impl Future<Output = Result<Sent, FetchError>> + Send {
+        (**self).send(method, url, headers, body, timeout, cap)
     }
 }
 
@@ -445,6 +496,23 @@ fn classify(e: &reqwest::Error) -> FetchError {
     FetchError::Network
 }
 
+/// A literal off this network, a login in the URL, or not http(s): Node throws before connecting.
+fn url_refusal(url: &str) -> Result<(), FetchError> {
+    if model_stream::net::url_allowed(url) {
+        return Ok(());
+    }
+    Err(match reqwest::Url::parse(url) {
+        Ok(u)
+            if matches!(u.scheme(), "http" | "https")
+                && u.username().is_empty()
+                && u.password().is_none() =>
+        {
+            FetchError::NotOnThisNetwork
+        }
+        _ => FetchError::Network,
+    })
+}
+
 impl Fetch for NetFetch {
     async fn get(
         &self,
@@ -453,19 +521,7 @@ impl Fetch for NetFetch {
         timeout: Duration,
         body_cap: Option<usize>,
     ) -> Result<Reply, FetchError> {
-        if !model_stream::net::url_allowed(url) {
-            // A literal off this network, a login in the URL, or not http(s): Node throws before connecting.
-            return Err(match reqwest::Url::parse(url) {
-                Ok(u)
-                    if matches!(u.scheme(), "http" | "https")
-                        && u.username().is_empty()
-                        && u.password().is_none() =>
-                {
-                    FetchError::NotOnThisNetwork
-                }
-                _ => FetchError::Network,
-            });
-        }
+        url_refusal(url)?;
         let mut req = self.client.get(url).timeout(timeout);
         for (k, v) in headers {
             req = req.header(k.as_str(), v.as_str());
@@ -502,5 +558,55 @@ impl Fetch for NetFetch {
             _ => None,
         };
         Ok(Reply { status, body })
+    }
+
+    async fn send(
+        &self,
+        method: &str,
+        url: &str,
+        headers: &[(String, String)],
+        body: Option<String>,
+        timeout: Duration,
+        cap: usize,
+    ) -> Result<Sent, FetchError> {
+        url_refusal(url)?;
+        let method =
+            reqwest::Method::from_bytes(method.as_bytes()).map_err(|_| FetchError::Network)?;
+        let mut req = self.client.request(method, url).timeout(timeout);
+        for (k, v) in headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+        if let Some(body) = body {
+            req = req.body(body);
+        }
+        let mut resp = req.send().await.map_err(|e| classify(&e))?;
+        let status = resp.status().as_u16();
+        if matches!(status, 301 | 302 | 303 | 307 | 308) {
+            return Err(FetchError::Redirect);
+        }
+        let mut bytes: Vec<u8> = Vec::new();
+        let body = loop {
+            match resp.chunk().await {
+                Ok(Some(chunk)) => {
+                    let room = cap.saturating_sub(bytes.len());
+                    if chunk.len() > room {
+                        bytes.extend_from_slice(chunk.get(..room).unwrap_or_default());
+                        break Ok(Capped {
+                            bytes,
+                            capped: true,
+                        });
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                Ok(None) => {
+                    break Ok(Capped {
+                        bytes,
+                        capped: false,
+                    })
+                }
+                Err(_) => break Err(BodyError::Failed),
+            }
+        };
+        Ok(Sent { status, body })
     }
 }
