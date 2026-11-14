@@ -118,6 +118,7 @@ pub mod upload;
 pub mod uploads_ingest;
 pub mod workspace;
 pub mod workspace_scan;
+pub mod workspace_view;
 
 /// The whole-file cap of a streamed storage read (96 MiB, core's upload limit and the default of
 /// `PROJECT_DOCUMENT_READ_BYTES`); noevia-server checks it equals server-storage-reads' `FILE_CAP`.

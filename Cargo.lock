@@ -1143,6 +1143,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "edit-target-lookup"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "project-edit-target",
+ "project-file-names",
+ "prompt-framing",
+ "sha2",
+]
+
+[[package]]
 name = "egress"
 version = "0.1.0"
 dependencies = [
@@ -2350,6 +2361,7 @@ dependencies = [
  "context-fit",
  "dav-parse",
  "drive-tools",
+ "edit-target-lookup",
  "egress",
  "egress-issuer",
  "embedding-worker",
