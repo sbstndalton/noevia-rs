@@ -2,7 +2,9 @@
 //! `project_append_file` and `project_replace_text` as core's in-app server answers them
 //! (edit_target_lookup::inapp, recorded against core's own handler), their write made by
 //! server_projects::text_write as the account the call's token names (text_write_op.rs `write_as`).
-//! Behind `NOEVIA_RUST_INAPP_WRITES=1` (read once; unset = core's in-app server, as today).
+//! Behind `NOEVIA_RUST_INAPP_WRITES=1` (read once; unset = core's in-app server, as today). It acts
+//! only on MCP calls the front runs, so only together with `NOEVIA_RUST_MCP_CALLS=1` (core sends
+//! its MCP calls to the front only then).
 //!
 //! [`answer`] gives `None` to leave the call to core's server: another tool, a write the turn did
 //! not approve (core's server refuses it itself), a workspace or argument shape the ports leave to

@@ -575,7 +575,10 @@ impl Backend for AppBackend {
         target: Option<&str>,
         write: bool,
     ) -> Option<JValue> {
-        if !crate::inapp_writes::enabled() || !write {
+        if !crate::inapp_writes::enabled()
+            || !write
+            || !edit_target_lookup::inapp::TOOLS.contains(&name)
+        {
             return None;
         }
         let app = Arc::clone(&self.app);
@@ -587,15 +590,26 @@ impl Backend for AppBackend {
             target.map(str::to_string),
         );
         match tokio::task::spawn_blocking(move || {
-            crate::inapp_writes::answer(&app, &uid, pid.as_deref(), &name, &arguments, target.as_deref(), write)
+            crate::inapp_writes::answer(
+                &app,
+                &uid,
+                pid.as_deref(),
+                &name,
+                &arguments,
+                target.as_deref(),
+                write,
+            )
         })
         .await
         {
             Ok(answer) => answer,
             // The write may have begun: never let core's server write again (inapp_writes.rs).
-            Err(_) => Some(edit_target_lookup::inapp::error_result(
+            Err(_) => {
+                eprintln!("noevia-server: an in-app project write task failed; answered as outcome unknown");
+                Some(edit_target_lookup::inapp::error_result(
                 "noevia could not finish this write, so it cannot tell whether it was saved. Outcome unknown: sync this project's Sources to check whether it was saved before trying again.",
-            )),
+                ))
+            }
         }
     }
 

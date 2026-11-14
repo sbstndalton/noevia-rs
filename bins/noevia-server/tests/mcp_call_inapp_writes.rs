@@ -178,4 +178,22 @@ async fn the_front_answers_an_in_app_write_and_otherwise_the_server_does() {
         core.called.lock().unwrap().clone(),
         vec!["noevia:project_create_file".to_owned()]
     );
+    // A call without write approval carries no pin; one without a workspace is never the front's.
+    let quiet = Fake {
+        answer: None,
+        asked: Mutex::new(Vec::new()),
+        called: Mutex::new(Vec::new()),
+    };
+    execute(
+        &quiet,
+        &limits,
+        &request("noevia", "project_append_file", false, Some("pin")),
+    )
+    .await;
+    assert_eq!(quiet.asked.lock().unwrap()[0].3, None);
+    assert!(!quiet.asked.lock().unwrap()[0].4);
+    let mut nobody = request("noevia", "project_append_file", true, Some("pin"));
+    nobody.workspace_user = Some(String::new());
+    execute(&quiet, &limits, &nobody).await;
+    assert_eq!(quiet.asked.lock().unwrap().len(), 1);
 }
