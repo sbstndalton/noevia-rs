@@ -438,11 +438,18 @@ fn move_capability_matches_the_shell() {
     let n = rounds() * 2;
     for case in 0..n {
         let mut s = String::new();
+        if case == 1 {
+            // An input the js kind reads as declared (that shape is rare in the generator).
+            s.push_str(
+                "const MOVE_MARKER = 'noevia-x/1';\nmodule.exports = { MOVE_MARKER, other };\n",
+            );
+        }
         for _ in 0..r.below(9) {
             s.push_str(r.pick(MOVE_LINES));
             s.push_str(if r.chance(5) { "\r\n" } else { "\n" });
         }
-        let (name, value) = match r.below(4) {
+        let pick = if case == 1 { 2 } else { r.below(4) };
+        let (name, value) = match pick {
             0 => ("MOVE_MARKER", "crate::x::MOVE_MARKER"),
             1 => ("MOVE_MARKER", "-"),
             _ => ("MOVE_MARKER", "noevia-x/1"),

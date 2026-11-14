@@ -136,6 +136,47 @@ fn a_gzip_bomb_ends_at_the_total_cap() {
     assert!(got.contains("4096-byte cap"), "{got}");
 }
 
+#[test]
+fn the_total_cap_holds_through_gzip() {
+    // Members each under `member`, together over `total`: refused while inflating, not after.
+    let mut w = Writer::new(Vec::new(), 0);
+    for i in 0..40 {
+        assert!(w
+            .file(format!("m{i}").as_bytes(), false, &[0x41u8; 3000])
+            .is_ok());
+    }
+    let raw = w.finish().unwrap_or_default();
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+    assert!(gz.write_all(&raw).is_ok());
+    let bytes = gz.finish().unwrap_or_default();
+    let got = match tar::read_gz_limited(&mut &bytes[..], small()) {
+        Ok(e) => format!("accepted {}", e.len()),
+        Err(e) => e.to_string(),
+    };
+    assert!(got.contains("archive's data"), "{got}");
+    assert_eq!(
+        tar::read_gz(&mut &bytes[..]).map(|e| e.len()).ok(),
+        Some(40)
+    );
+}
+
+/// The two-link escape a purely lexical check misses: `d/s -> ../x`, then `l -> d/s/../..`.
+#[test]
+fn a_climb_through_an_earlier_link_is_refused() {
+    let mut w = Writer::new(Vec::new(), 0);
+    assert!(w.dir(b"d").is_ok());
+    assert!(w.dir(b"x").is_ok());
+    assert!(w.symlink(b"d/s", b"../x").is_ok());
+    assert!(w.symlink(b"l", b"d/s/../..").is_ok());
+    let raw = w.finish().unwrap_or_default();
+    let entries = tar::read_all(&mut &raw[..]).unwrap_or_default();
+    assert_eq!(entries.len(), 4);
+    let Some(d) = tempfile::tempdir().ok() else {
+        return;
+    };
+    assert!(tar::extract(&entries, 0, d.path()).is_err());
+}
+
 fn link_archive(name: &[u8], target: &[u8]) -> Vec<tar::Entry> {
     let mut w = Writer::new(Vec::new(), 0);
     assert!(w.dir(b"top").is_ok());
@@ -155,6 +196,9 @@ fn symlinks_that_leave_the_tree_are_refused() {
         // after --strip-components=1 the link sits one level higher: the same target now escapes
         ("top/a/l", "../../x", 1),
         ("top/l", "..", 1),
+        // `..` after a named component (that component may be a link: noevia#2726 review)
+        ("top/a/l", "./b/../c", 1),
+        ("top/a/l", "s/../..", 0),
     ];
     for (name, target, strip) in refused {
         let d = tempfile::tempdir().ok();
@@ -172,8 +216,8 @@ fn symlinks_that_leave_the_tree_are_refused() {
     }
     let kept: &[(&str, &str, usize)] = &[
         ("top/a/l", "../../x", 0),
-        ("top/a/l", "./b/../c", 1),
         ("top/a/l", "..", 1),
+        ("top/a/l", "./../b/./c", 0),
         ("top/a/l", "sibling", 2),
     ];
     for (name, target, strip) in kept {

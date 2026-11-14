@@ -380,7 +380,7 @@ fn components(name: &[u8]) -> io::Result<Vec<&[u8]>> {
 /// noevia#2726 item 3: GNU tar writes a symlink's target as it is, absolute or pointing out of the tree.
 /// `pack` and the image build read the extracted tree back, so a target that is empty, absolute or that
 /// climbs above the extraction root (read lexically from the link's own directory, `depth` = the link's
-/// component count after the strip) is refused. No release input has a symlink today (all five repos
+/// component count after the strip), or that has a `..` after a named component, is refused. No release input has a symlink today (all five repos
 /// checked at the time of writing), so this only closes a door.
 fn link_stays_inside(depth: usize, target: &[u8]) -> io::Result<()> {
     let show = || String::from_utf8_lossy(target).into_owned();
@@ -390,17 +390,26 @@ fn link_stays_inside(depth: usize, target: &[u8]) -> io::Result<()> {
             show()
         )));
     }
-    // Directories above the link inside the root.
+    // Directories above the link inside the root. A `..` after a named component is refused too: the
+    // named component may itself be a link (`d/s -> ../x`, then `l -> d/s/../..`), so only leading `..`
+    // steps are counted, and those climb real directories (extraction never writes through a link).
     let mut at = depth.saturating_sub(1);
+    let mut named = false;
     for part in target.split(|c| *c == b'/') {
         match part {
             b"" | b"." => {}
             b".." => {
+                if named {
+                    return Err(bad(format!(
+                        "tar: symlink target {:?} climbs after a named component",
+                        show()
+                    )));
+                }
                 at = at.checked_sub(1).ok_or_else(|| {
                     bad(format!("tar: symlink target {:?} leaves the tree", show()))
                 })?;
             }
-            _ => at += 1,
+            _ => named = true,
         }
     }
     Ok(())
