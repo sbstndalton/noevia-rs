@@ -4,7 +4,7 @@
 //! The hub replays the llama.cpp scenarios core's own code was recorded on
 //! (crates/model-pull/tests/fixtures/node-model-pull.v1.json), and the answers must be Node's
 //! (all but `checkedAt`, which was the recorder's clock). Also: the cache, the two-at-a-time
-//! refusal, a member's refusal, a redirect off the hub, and POST /api/models/pull still relayed.
+//! refusal, a member's refusal, a redirect off the hub, and POST /api/models/pull no longer relayed.
 //! QA-named data only; no engine, no model loads, no network beyond 127.0.0.1.
 #![allow(
     clippy::unwrap_used,
@@ -332,7 +332,7 @@ async fn switch_unset_the_check_and_the_pull_stay_node_s() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn switch_on_the_pull_is_still_relayed_and_a_member_is_refused() {
+async fn switch_on_a_member_is_refused_and_the_pull_is_not_relayed() {
     let dir = tempfile::tempdir().unwrap();
     let (node_port, relayed) = node().await;
     let (hub, hub_seen) = stub(|_| meta()).await;
@@ -361,10 +361,12 @@ async fn switch_on_the_pull_is_still_relayed_and_a_member_is_refused() {
         r#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#,
     )
     .await;
-    assert_eq!(status, 202);
+    // The pull is the front's under the switch too (model_pull_post.rs): this synthetic Node does
+    // not confirm the scan clear, so the front answers its fail-closed 502 and relays nothing.
+    assert_eq!(status, 502);
     let heads = relayed.lock().unwrap().clone();
     assert!(
-        heads
+        !heads
             .iter()
             .any(|h| h.starts_with("POST /api/models/pull ")),
         "{heads:?}"
