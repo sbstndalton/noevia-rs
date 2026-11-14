@@ -38,7 +38,9 @@ echo)
   printf 'bridge=%s\n' "${SANDBOX_BRIDGE_IMPL-unset}"
   ;;
 two)
+  printf 'ready\n'
   IFS= read -r a
+  printf 'got=%s\n' "$a"
   IFS= read -r b
   printf '%s|%s\n' "$a" "$b"
   ;;
@@ -46,7 +48,7 @@ hold)
   printf 'held\n'
   cat >/dev/null
   ;;
-sleep) sleep 5 ;;
+sleep) sleep 60 ;;
 big) head -c 300000 /dev/zero | tr '\0' 'x' ;;
 exit3) printf 'bye\n'; exit 3 ;;
 *) printf 'unknown case %s\n' "${LANG-unset}" ;;
@@ -120,8 +122,20 @@ fn launch(node: Option<&Path>, harness: &Path, root: &Path, extra: &[(&str, &str
 
 fn connect(port: u16) -> TcpStream {
     let s = TcpStream::connect(("127.0.0.1", port)).unwrap();
-    s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(30))).unwrap();
+    // Separate writes stay separate segments, so a split start line really arrives split.
+    s.set_nodelay(true).unwrap();
     s
+}
+
+/// Reads exactly `want` bytes; the agent's own output is the signal to send the next bytes, so
+/// no session depends on a fixed sleep (noevia#2727 item 3).
+fn expect(s: &mut TcpStream, want: &str) -> String {
+    let mut got = vec![0u8; want.len()];
+    s.read_exact(&mut got).unwrap();
+    let got = String::from_utf8_lossy(&got).into_owned();
+    assert_eq!(got, want, "agent output out of step");
+    got
 }
 
 /// Everything the client receives until EOF or reset (a reset is part of the transcript).
@@ -258,17 +272,19 @@ fn default_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
         ),
     );
     {
+        // ACP bytes sent only after the agent is running, each one after the agent read the last.
         let mut s = connect(p);
         s.write_all(start(&l.work, r#"{"LANG":"two"}"#).as_bytes())
             .unwrap();
-        std::thread::sleep(Duration::from_millis(200));
+        let mut seen = expect(&mut s, "ready\n");
         s.write_all(b"first\n").unwrap();
-        std::thread::sleep(Duration::from_millis(100));
+        seen += &expect(&mut s, "got=first\n");
         s.write_all(b"second\n").unwrap();
-        add("later-acp-bytes", drain(s));
+        add("later-acp-bytes", seen + &drain(s));
     }
     {
-        // The start line itself split over writes.
+        // The start line itself split over writes. A coalesced segment still yields the same
+        // transcript, so this can only lose coverage under load, never fail falsely.
         let line = start(&l.work, r#"{"LANG":"two"}"#) + "one\ntwo\n";
         let (a, b) = line.split_at(10);
         let mut s = connect(p);
@@ -321,8 +337,9 @@ fn cap_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
     let refused = one(p, &(start(&l.work, r#"{"LANG":"echo"}"#) + "x\n"));
     held.shutdown(Shutdown::Both).unwrap();
     drop(held);
-    // The slot is released on close; retry briefly rather than racing the close event.
-    let deadline = Instant::now() + Duration::from_secs(5);
+    // The slot is released on close; retry rather than racing the close event. The deadline is
+    // generous for a loaded runner: a release is normally seen on the first or second try.
+    let deadline = Instant::now() + Duration::from_secs(30);
     let after = loop {
         let t = one(p, &(start(&l.work, r#"{"LANG":"echo"}"#) + "y\n"));
         if t.starts_with("line=") || Instant::now() > deadline {
@@ -337,11 +354,13 @@ fn cap_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
 }
 
 fn wall_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
+    // The agent sleeps 60 s under a 400 ms limit: anything well short of 60 s is the limit at
+    // work, so a loaded runner cannot fail this (noevia#2727 item 3).
     let started = Instant::now();
     let t = one(sup.port, &start(&l.work, r#"{"LANG":"sleep"}"#));
     let took = started.elapsed();
     assert!(
-        took < Duration::from_secs(4),
+        took < Duration::from_secs(30),
         "wall limit did not stop the agent ({took:?})"
     );
     vec![("wall-limit".to_owned(), t)]
@@ -405,6 +424,11 @@ fn transcripts_match_the_node_supervisor() {
             .unwrap_or("")
     };
     assert!(get("echo-allowlist").contains("line=hello\n"));
+    assert_eq!(
+        get("later-acp-bytes"),
+        "ready\ngot=first\nfirst|second\nEOF"
+    );
+    assert_eq!(get("split-start-line"), "ready\ngot=one\none|two\nEOF");
     assert!(get("cap-refusal").contains("already running 1 agents"));
     assert!(get("wall-limit").contains("time limit"));
     assert!(
