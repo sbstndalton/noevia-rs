@@ -77,6 +77,39 @@ fn js_string(v: &Value) -> Option<String> {
     }
 }
 
+/// StrUnsignedDecimalLiteral: `digits [. digits] [e [+-] digits]` or `. digits [e ...]`.
+fn js_decimal(b: &[u8]) -> bool {
+    let digits = |b: &[u8], mut i: usize| {
+        while b.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+        }
+        i
+    };
+    let int_end = digits(b, 0);
+    let mut i = int_end;
+    let mut any = int_end > 0;
+    if b.get(i) == Some(&b'.') {
+        let frac_end = digits(b, i + 1);
+        any |= frac_end > i + 1;
+        i = frac_end;
+    }
+    if !any {
+        return false;
+    }
+    if matches!(b.get(i), Some(b'e' | b'E')) {
+        i += 1;
+        if matches!(b.get(i), Some(b'+' | b'-')) {
+            i += 1;
+        }
+        let exp_end = digits(b, i);
+        if exp_end == i {
+            return false;
+        }
+        i = exp_end;
+    }
+    i == b.len()
+}
+
 /// JavaScript's StringToNumber: trimmed (JS white space and line terminators), empty is 0, signed
 /// decimal or `Infinity`, unsigned 0x/0o/0b integers; everything else NaN.
 fn string_number(s: &str) -> f64 {
@@ -84,10 +117,10 @@ fn string_number(s: &str) -> f64 {
     if t.is_empty() {
         return 0.0;
     }
-    let (sign, body) = match t.as_bytes()[0] {
-        b'-' => (-1.0, &t[1..]),
-        b'+' => (1.0, &t[1..]),
-        _ => (1.0, t),
+    let (sign, body) = match (t.strip_prefix('-'), t.strip_prefix('+')) {
+        (Some(rest), _) => (-1.0, rest),
+        (None, Some(rest)) => (1.0, rest),
+        (None, None) => (1.0, t),
     };
     if body == "Infinity" {
         return sign * f64::INFINITY;
@@ -109,12 +142,7 @@ fn string_number(s: &str) -> f64 {
             });
         }
     }
-    let decimal = !body.is_empty()
-        && body
-            .bytes()
-            .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-'))
-        && body.bytes().any(|b| b.is_ascii_digit());
-    if !decimal {
+    if !js_decimal(body.as_bytes()) {
         return f64::NAN;
     }
     body.parse::<f64>().map_or(f64::NAN, |n| sign * n)
@@ -319,5 +347,67 @@ mod tests {
         };
         let out = embed_framed(&mut call, &["a".into(), "b".into()]).unwrap();
         assert_eq!(out, vec![Some(vec![2.0]), Some(vec![1.0])]);
+    }
+
+    /// Recorded with Node: `Array.from(new Float32Array(v)).map(String)` (the input list below, run on
+    /// the builder with the CI node, 2026-11-14).
+    #[test]
+    fn vector_elements_read_as_float32array_reads_them() {
+        let input = json!([1, null, "2", true, false, "x", [], ["3"], [[4]], [null], {"a": 1}, [1, 2],
+            " 0x10 ", "-0x10", "0b101", "0o17", "-Infinity", "+Infinity", "1e3", "", "inf", "1.",
+            "  .5\n", "\u{a0}7\u{2028}", "1_0", "0x", "--1", "1e", "Infinity", 1.5e40, "NaN"]);
+        let node = [
+            "1",
+            "0",
+            "2",
+            "1",
+            "0",
+            "NaN",
+            "0",
+            "3",
+            "4",
+            "0",
+            "NaN",
+            "NaN",
+            "16",
+            "NaN",
+            "5",
+            "15",
+            "-Infinity",
+            "Infinity",
+            "1000",
+            "0",
+            "NaN",
+            "1",
+            "0.5",
+            "7",
+            "NaN",
+            "NaN",
+            "NaN",
+            "NaN",
+            "Infinity",
+            "Infinity",
+            "NaN",
+        ];
+        let got = vector(&json!({ "embedding": input })).unwrap();
+        let shown: Vec<String> = got
+            .iter()
+            .map(|&x| {
+                let f = x as f32;
+                if f.is_nan() {
+                    "NaN".into()
+                } else if f.is_infinite() {
+                    if f > 0.0 {
+                        "Infinity".into()
+                    } else {
+                        "-Infinity".into()
+                    }
+                } else {
+                    f.to_string()
+                }
+            })
+            .collect();
+        assert_eq!(shown, node);
+        assert_eq!(vector(&json!({ "embedding": "abc" })), None);
     }
 }
