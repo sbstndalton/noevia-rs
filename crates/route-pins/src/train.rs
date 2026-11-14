@@ -255,7 +255,8 @@ pub fn apply(tree: &Tree, plans: &[CorePlan], stages: &[Stage]) -> Result<Tree, 
         .filter(|(i, _)| !gone.contains(i))
         .map(|(_, l)| *l)
         .collect();
-    out.insert(INDEX.to_string(), kept.join("\n"));
+    let patched = kept.join("\n");
+    out.insert(INDEX.to_string(), patched);
     Ok(out)
 }
 
