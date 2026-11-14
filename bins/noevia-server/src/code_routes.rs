@@ -73,6 +73,7 @@
 //! Code actions are answered only when core says the front owns them (`owner: 'front'` on the
 //! facts bridge); a core that still runs Code tasks itself gets 503, never a second writer.
 use crate::code_egress::Issuer;
+use crate::code_machine;
 use crate::task_routes::{self, Facts};
 use crate::{identity::Rejection, reply, App};
 use axum::{

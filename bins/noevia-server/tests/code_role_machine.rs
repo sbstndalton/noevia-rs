@@ -126,7 +126,7 @@ fn planner_call() -> CallRequest {
     CallRequest {
         role: "planner".into(),
         state: wtf16::parse(
-            r#"{"taskId":"qa-task-1","tenantId":"qa-tenant","revision":1,"request":"Add a median helper to the QA repo."}"#,
+            r#"{"taskId":"qa-task-1","tenantId":"qa-tenant","revision":1,"request":"Add a median helper to the QA repo.","projectInstructions":"Keep functions small.","capabilities":[{"name":"read"},{"name":"edit"}],"plan":{"goal":"median helper","steps":[{"do":"write median","done_when":"tests pass"}]}}"#,
         )
         .unwrap(),
         instructions: "Act as the QA planner.".into(),
