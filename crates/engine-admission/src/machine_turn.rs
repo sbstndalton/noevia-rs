@@ -11,16 +11,17 @@
 //!   `/v1/models`), kept beside its health result in one ~30 s cache ([`HealthCache`]);
 //! - a Manual pick of a model a machine serves ([`manual_target`]), the Manual list ([`machine_models`]) and the
 //!   Automatic roles as a turn sees them ([`effective_roles`], [`local_roles`]);
-//! - the turns in flight per machine ([`Turns`]: `beginTurn`, `busy`, `onTurn`) a measurement reads.
+//!
+//! Not here: the turns in flight per machine (`beginTurn`/`busy`/`onTurn`, #1880). In the front the native machine
+//! service owns them (noevia-server machine_service.rs `turnBegin`/`turnEnd`, which also stops a measurement on that
+//! machine); a wiring takes the turn there, around the request, as chat.cjs `holdMachine` does.
 //!
 //! Every request goes through [`Fetch`]; [`NetFetch`] is the on-this-network client (model_stream::net: the
 //! address checked at connect time, no redirect, no proxy) with a deadline and a body cap.
 use crate::machine_health::{Fetch, FetchError, HealthCache, ProbeOptions};
 use crate::machines::Target;
 use js_json::{wtf16, JValue};
-use std::collections::HashMap;
 use std::future::Future;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// `ROLE_LABEL`.
@@ -593,125 +594,10 @@ pub fn pick(f: &TurnFacts<'_>, row: Option<&str>) -> Pick {
     Pick::Manual
 }
 
-/// The turns in flight per machine (#1880): a measurement never runs beside one.
-#[derive(Default)]
-pub struct Turns {
-    inner: Mutex<TurnsInner>,
-}
-
-type Listener = Arc<dyn Fn(&str) + Send + Sync>;
-
-#[derive(Default)]
-struct TurnsInner {
-    counts: HashMap<String, usize>,
-    listeners: Vec<(u64, Listener)>,
-    next: u64,
-}
-
-/// A counted turn; released once, by [`TurnGuard::release`] or on drop (Node's idempotent release).
-pub struct TurnGuard {
-    turns: Arc<Turns>,
-    id: String,
-    done: bool,
-}
-
-impl TurnGuard {
-    pub fn release(mut self) {
-        self.end();
-    }
-
-    fn end(&mut self) {
-        if std::mem::replace(&mut self.done, true) {
-            return;
-        }
-        let mut inner = self.turns.lock();
-        match inner.counts.get_mut(&self.id) {
-            Some(n) if *n > 1 => *n -= 1,
-            _ => {
-                inner.counts.remove(&self.id);
-            }
-        }
-    }
-}
-
-impl Drop for TurnGuard {
-    fn drop(&mut self) {
-        self.end();
-    }
-}
-
-/// An `onTurn` subscription; dropping it unsubscribes.
-pub struct Subscription {
-    turns: Arc<Turns>,
-    id: u64,
-}
-
-impl Drop for Subscription {
-    fn drop(&mut self) {
-        self.turns.lock().listeners.retain(|(id, _)| *id != self.id);
-    }
-}
-
-impl Turns {
-    fn lock(&self) -> std::sync::MutexGuard<'_, TurnsInner> {
-        self.inner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    /// core `beginTurn(machineId)`: counted until the guard is released; every listener hears of it (a listener
-    /// that panics never fails the turn).
-    pub fn begin(self: &Arc<Self>, machine_id: &str) -> TurnGuard {
-        let listeners: Vec<Listener> = {
-            let mut inner = self.lock();
-            *inner.counts.entry(machine_id.to_owned()).or_insert(0) += 1;
-            inner.listeners.iter().map(|(_, f)| f.clone()).collect()
-        };
-        for f in listeners {
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(machine_id)));
-        }
-        TurnGuard {
-            turns: self.clone(),
-            id: machine_id.to_owned(),
-            done: false,
-        }
-    }
-
-    /// core `busy(machineId)`.
-    pub fn busy(&self, machine_id: &str) -> bool {
-        self.lock().counts.get(machine_id).is_some_and(|n| *n > 0)
-    }
-
-    /// core `onTurn(fn)`.
-    pub fn on_turn(self: &Arc<Self>, f: impl Fn(&str) + Send + Sync + 'static) -> Subscription {
-        let mut inner = self.lock();
-        inner.next += 1;
-        let id = inner.next;
-        inner.listeners.push((id, Arc::new(f)));
-        Subscription {
-            turns: self.clone(),
-            id,
-        }
-    }
-
-    /// core `during(t, fn)`: `t`'s machine counted busy while `work` runs.
-    pub async fn during<T>(
-        self: &Arc<Self>,
-        t: Option<&Target>,
-        work: impl Future<Output = T>,
-    ) -> T {
-        let guard = t.map(|t| self.begin(&t.machine_id));
-        let out = work.await;
-        drop(guard);
-        out
-    }
-}
-
 /// core `createChatMachines`'s request side over one fetch and one shared health cache.
 pub struct MachineTurns<F> {
     health: Option<HealthCache<F>>,
     fetch: F,
-    turns: Arc<Turns>,
 }
 
 impl<F: Fetch + Clone> MachineTurns<F> {
@@ -720,7 +606,6 @@ impl<F: Fetch + Clone> MachineTurns<F> {
         MachineTurns {
             health: Some(HealthCache::new(fetch.clone())),
             fetch,
-            turns: Arc::new(Turns::default()),
         }
     }
 }
@@ -728,15 +613,7 @@ impl<F: Fetch + Clone> MachineTurns<F> {
 impl<F: Fetch> MachineTurns<F> {
     /// `health` `None`: every machine is ready and facts are read on each call (core's `health = null`).
     pub fn with(fetch: F, health: Option<HealthCache<F>>) -> Self {
-        MachineTurns {
-            health,
-            fetch,
-            turns: Arc::new(Turns::default()),
-        }
-    }
-
-    pub fn turns(&self) -> &Arc<Turns> {
-        &self.turns
+        MachineTurns { health, fetch }
     }
 
     pub fn health(&self) -> Option<&HealthCache<F>> {
