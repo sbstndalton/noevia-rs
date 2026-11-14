@@ -511,12 +511,27 @@ fn replay_log_exchange(set: &str, native: bool) -> (usize, usize, usize) {
             |t| t.to_string(),
         );
         // Marked dirty before the write, as the append route does (Python reindexes afterwards).
+        // R9 S6b (named difference, D23): an earlier pending row this pass replays marks its own
+        // document too (Python's replay marks nothing and leaves it to a later sweep).
         let payload: Value = serde_json::from_str(&rows[0].payload).unwrap();
-        assert_eq!(
-            dirty(dir.path(), &uid),
-            vec![payload["document"].as_str().unwrap().to_string()],
-            "{name}"
-        );
+        let mut want_dirty = vec![payload["document"].as_str().unwrap().to_string()];
+        for (before, after) in case["journal_before"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(expected["earlier"].as_array().unwrap())
+        {
+            let replayed = before["applied"] == 0
+                && (after["applied"] == 1 || after["attempts"].as_i64().unwrap_or(0) > 0);
+            if replayed {
+                assert_eq!(before["kind"], "exchange", "{name}: only exchange rows recorded");
+                let p: Value = serde_json::from_str(before["payload"].as_str().unwrap()).unwrap();
+                want_dirty.push(p["document"].as_str().unwrap().to_string());
+            }
+        }
+        want_dirty.sort();
+        want_dirty.dedup();
+        assert_eq!(dirty(dir.path(), &uid), want_dirty, "{name}");
         if expect_pending {
             pending += 1;
         } else {
