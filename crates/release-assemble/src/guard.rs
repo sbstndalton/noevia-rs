@@ -1273,7 +1273,10 @@ pub fn project_documents_pairing(tree: &Path) -> Result<(), String> {
         MoveKind::Features,
     );
     if !extraction {
-        return Err(format!("{}: needs the rust-document-extraction pipeline", p.label));
+        return Err(format!(
+            "{}: needs the rust-document-extraction pipeline",
+            p.label
+        ));
     }
     pairing_routes(tree, p)
 }

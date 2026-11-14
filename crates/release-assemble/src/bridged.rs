@@ -56,6 +56,13 @@ pub fn posix_ere(pattern: &str) -> Option<String> {
                     out.push_str("\\]");
                     i += 1;
                 }
+                // GNU refuses `[:alpha:]` outside a bracket expression (status 2).
+                if at(i) == Some(':') {
+                    let close = (i + 1..c.len()).find(|&k| at(k) == Some(']'));
+                    if close.is_some_and(|k| k > i + 1 && at(k - 1) == Some(':')) {
+                        return None;
+                    }
+                }
                 let mut prev_dash = false;
                 loop {
                     let b = at(i)?;
@@ -69,7 +76,7 @@ pub fn posix_ere(pattern: &str) -> Option<String> {
                         }
                         '[' if next == Some(':') => {
                             let mut j = i + 2;
-                            while !(at(j)? == ':' && at(j + 1) == Some(']')) {
+                            while at(j)? != ':' || at(j + 1) != Some(']') {
                                 j += 1;
                             }
                             for k in i..j + 2 {
@@ -143,7 +150,8 @@ fn interval(c: &[char], from: usize) -> Option<(String, Option<String>, usize)> 
         hi = Some(h);
         i = j;
     }
-    if lo.is_empty() && hi.as_deref().is_none_or(str::is_empty) {
+    // `{,}` is `{0,}` for GNU; a lone `{` or `{x` is a literal.
+    if lo.is_empty() && hi.is_none() {
         return None;
     }
     (c.get(i) == Some(&'}')).then_some((lo, hi, i + 1))
