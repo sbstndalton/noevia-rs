@@ -10,7 +10,8 @@
 //! The pipeline (`features.codePipeline`, crate code-pipeline) drives the same run in pieces:
 //! [`Executor::claim_run`] (a resume takes the released workspace again), [`Executor::run_turn`]
 //! (one agent turn with the brief, released after) and [`Executor::release_run`]; see
-//! [`crate::pipeline_host`]. Its lease is the pipeline's, held for the whole task.
+//! [`crate::pipeline_host`]. Its lease is the pipeline's, held for the whole task; on an inference
+//! machine each run also opens and closes its own relay lease ([`crate::pipeline_host::RunRelay`]).
 //!
 //! The Planner review of a direct task (`features.plannerReview`) is [`crate::review_gate`]: a
 //! start that carries a reviewer ([`StartRequest::review`], decided once by the host) puts the

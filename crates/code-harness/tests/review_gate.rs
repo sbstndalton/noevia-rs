@@ -283,7 +283,6 @@ fn norm(v: &JValue, tree: &str, base: &str) -> JValue {
     wtf16::parse(&text(v).replace(tree, "<TREE>").replace(base, "<BASE>")).unwrap()
 }
 
-/// One scenario through the Rust executor: what Node's recorder records.
 /// Council p14: the run's lease, watched. `run_ended` is where core's runExecutor `finally` closes
 /// a machine task's relay lease (before the review gate); the drop is the task's end.
 struct OrderLease(Log);
@@ -300,6 +299,7 @@ impl Drop for OrderLease {
     }
 }
 
+/// One scenario through the Rust executor: what Node's recorder records.
 fn replay(name: &str, sc: &JValue) {
     replay_with(name, sc, None);
 }
