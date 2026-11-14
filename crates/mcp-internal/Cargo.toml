@@ -1,0 +1,15 @@
+[package]
+name = "mcp-internal"
+version = "0.1.0"
+description = "noevia-core's server/mcp-internal.cjs in Rust: the in-app MCP server's capability tokens, single-use replay guard, catalogue and JSON-RPC handler (no listener, no tools; unused until wired)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+sha2 = "=0.10.9"
