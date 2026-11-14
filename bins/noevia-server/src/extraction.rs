@@ -177,6 +177,7 @@ impl HttpEngine {
         machine: bool,
         req: reqwest::RequestBuilder,
         cap: usize,
+        body: Option<&[u8]>,
     ) -> Result<(u16, Option<Vec<u8>>), EngineError> {
         if machine && !on_this_network(url) {
             return Err(EngineError::new("fetch failed"));
@@ -184,7 +185,7 @@ impl HttpEngine {
         if self.cancelled() {
             return Err(EngineError::new("background extraction cancelled"));
         }
-        self.rt.block_on(async {tokio::select! {r=fetch(req,cap)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}})
+        self.rt.block_on(async {tokio::select! {r=fetch_with(req,cap,body)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}})
     }
 
     /// [`Self::send`] for a request that may legitimately wait for minutes: while it waits, the
@@ -195,6 +196,7 @@ impl HttpEngine {
         machine: bool,
         req: reqwest::RequestBuilder,
         cap: usize,
+        body: Option<&[u8]>,
     ) -> Result<(u16, Option<Vec<u8>>), EngineError> {
         if machine && !on_this_network(url) {
             return Err(EngineError::new("fetch failed"));
@@ -206,7 +208,7 @@ impl HttpEngine {
             return Err(EngineError::new("background extraction cancelled"));
         }
         self.rt.block_on(async move {
-            let work = async {tokio::select! {r=fetch(req,cap)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}};
+            let work = async {tokio::select! {r=fetch_with(req,cap,body)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}};
             tokio::pin!(work);
             let mut ticks = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
             let mut missed = 0u32;
@@ -240,10 +242,49 @@ impl HttpEngine {
             .client
             .get(format!("{}/health", url.trim_end_matches('/')))
             .timeout(Duration::from_secs(10));
-        match self.send(&url, machine, req, HEALTH_CAP) {
+        match self.send(&url, machine, req, HEALTH_CAP, None) {
             Ok((_, Some(body))) => wtf16::parse(&String::from_utf8_lossy(&body)).ok(),
             _ => None,
         }
+    }
+}
+
+/// upload-body.cjs `SLICE`: the document goes out this many bytes at a time.
+const BODY_SLICE: usize = 1024 * 1024;
+
+/// [`fetch`] with `body` as the request body. upload-body.cjs `uploadInit` (#1885, noevia#2615): the
+/// document is sent as a stream of [`BODY_SLICE`] copies with an explicit Content-Length (the sidecars
+/// refuse a chunked body), so a request never holds a second full copy of a file of up to 96 MiB; at
+/// most a couple of slices are alive at once. A request that ends early (an answer, an error, a
+/// cancellation) drops the stream and the rest is never copied.
+async fn fetch_with(
+    req: reqwest::RequestBuilder,
+    cap: usize,
+    body: Option<&[u8]>,
+) -> Result<(u16, Option<Vec<u8>>), EngineError> {
+    let Some(bytes) = body else {
+        return fetch(req, cap).await;
+    };
+    let (mut tx, chan) = http_body_util::channel::Channel::<::bytes::Bytes>::new(1);
+    let req = req
+        .header(reqwest::header::CONTENT_LENGTH, bytes.len())
+        .body(reqwest::Body::wrap(chan));
+    let feed = async move {
+        for slice in bytes.chunks(BODY_SLICE) {
+            if tx
+                .send_data(::bytes::Bytes::copy_from_slice(slice))
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+    };
+    let work = fetch(req, cap);
+    tokio::pin!(work);
+    tokio::select! {
+        done = &mut work => done,
+        () = feed => work.await,
     }
 }
 
@@ -443,8 +484,7 @@ impl Engine for HttpEngine {
             .post(format!("{}/extract", url.trim_end_matches('/')))
             .header("Content-Type", "application/octet-stream")
             .header("X-Document-Name", header_safe_name(&document_name(name)))
-            .timeout(Duration::from_millis(timeout))
-            .body(bytes.to_vec());
+            .timeout(Duration::from_millis(timeout));
         if figures {
             req = req.header("X-Document-Figures", "1");
         }
@@ -452,7 +492,8 @@ impl Engine for HttpEngine {
             req = req.header("X-Document-Pages", format!("{a}-{b}"));
         }
         let invalid = || EngineError::new("Invalid extraction response; refresh to retry.");
-        let (status, body) = self.send_watched(&url, machine, req, DOCLING_REPLY_CAP)?;
+        let (status, body) =
+            self.send_watched(&url, machine, req, DOCLING_REPLY_CAP, Some(bytes))?;
         match status {
             200..=299 => {}
             503 => {
@@ -555,9 +596,8 @@ impl Engine for HttpEngine {
                 "Content-Type",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
-            .timeout(Duration::from_secs(60))
-            .body(bytes.to_vec());
-        let (status, body) = self.send(&url, machine, req, 2 * 1024 * 1024)?;
+            .timeout(Duration::from_secs(60));
+        let (status, body) = self.send(&url, machine, req, 2 * 1024 * 1024, Some(bytes))?;
         if !(200..300).contains(&status) {
             return Err(EngineError::new(if status == 503 {
                 "Document reader is busy. Re-upload or refresh connected storage to retry."
@@ -583,24 +623,25 @@ impl Engine for HttpEngine {
             .client
             .post(format!("{}/reduce-pdf", url.trim_end_matches('/')))
             .header("Content-Type", "application/pdf")
-            .timeout(Duration::from_secs(180))
-            .body(bytes.to_vec());
-        Some(match self.send_watched(&url, machine, req, cap) {
-            Err(e) => Err(e),
-            Ok((status, _)) if !(200..300).contains(&status) => Err(EngineError {
-                message: format!("storage returned {status}"),
-                status: Some(status),
-                ..Default::default()
-            }),
-            Ok((_, None)) => Err(EngineError {
-                message: "Document processor response was too large.".into(),
-                status: Some(502),
-                permanent: true,
-                ..Default::default()
-            }),
-            Ok((_, Some(body))) => wtf16::parse(&String::from_utf8_lossy(&body))
-                .map_err(|_| EngineError::new("Invalid PDF reduction response")),
-        })
+            .timeout(Duration::from_secs(180));
+        Some(
+            match self.send_watched(&url, machine, req, cap, Some(bytes)) {
+                Err(e) => Err(e),
+                Ok((status, _)) if !(200..300).contains(&status) => Err(EngineError {
+                    message: format!("storage returned {status}"),
+                    status: Some(status),
+                    ..Default::default()
+                }),
+                Ok((_, None)) => Err(EngineError {
+                    message: "Document processor response was too large.".into(),
+                    status: Some(502),
+                    permanent: true,
+                    ..Default::default()
+                }),
+                Ok((_, Some(body))) => wtf16::parse(&String::from_utf8_lossy(&body))
+                    .map_err(|_| EngineError::new("Invalid PDF reduction response")),
+            },
+        )
     }
 
     fn ocr_pages(
@@ -623,12 +664,11 @@ impl Engine for HttpEngine {
             .post(format!("{}/extract", url.trim_end_matches('/')))
             .header("Content-Type", "application/pdf")
             .header("X-OCR-Pages", format!("[{}]", list.join(",")))
-            .timeout(Duration::from_millis(timeout))
-            .body(bytes.to_vec());
+            .timeout(Duration::from_millis(timeout));
         if dpi == Some(400) {
             req = req.header("X-OCR-DPI", "400");
         }
-        let (status, body) = self.send_watched(&url, machine, req, OCR_REPLY_CAP)?;
+        let (status, body) = self.send_watched(&url, machine, req, OCR_REPLY_CAP, Some(bytes))?;
         if !(200..300).contains(&status) {
             return Err(EngineError {
                 message: if status == 503 {
@@ -815,7 +855,7 @@ mod tests {
             .unwrap()
             .with_background_control(control.clone());
         let pending = tokio::task::spawn_blocking(move || {
-            engine.send_watched(&url, false, engine.client.post(&url), 1024)
+            engine.send_watched(&url, false, engine.client.post(&url), 1024, None)
         });
         tokio::time::timeout(Duration::from_secs(2), received)
             .await
