@@ -28,7 +28,10 @@
 //!   (Node's server answers 408 and closes); an idle keep-alive connection lasts up to the head
 //!   timeout (10 s) rather than `keepAliveTimeout` (5 s);
 //! - the `Accept` header forwarded is cut at 200 UTF-16 units of its text as the caller decoded it
-//!   (Node slices the Latin-1 string it read).
+//!   (Node slices the Latin-1 string it read);
+//! - when the system's random source fails, [`Relay::open`] refuses with `machineRelayOff` ("The
+//!   relay could not make a token for this task.") before any lease exists (Node's
+//!   `crypto.randomBytes` throws there, an error without a public message).
 use js_json::{wtf16, JValue};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
