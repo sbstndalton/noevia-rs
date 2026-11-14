@@ -143,8 +143,8 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
         chat_edge::Verdict::Cowork => chat_edge::COWORK_PATH,
         chat_edge::Verdict::Refuse(status, text) => return reply::json_text(status, text, true),
     };
-    // Track R7 leftover (council p1): with NOEVIA_CODE_EXECUTOR=rust and core saying the front owns
-    // Code, the Cowork start is the front's own Code service's (code_routes.rs `cowork`); otherwise
+    // Track R7 leftover (council p1, noevia#2671): with NOEVIA_CODE_EXECUTOR=rust, NOEVIA_RUST_COWORK=1
+    // and core saying the front owns Code, the Cowork start is the front's own Code service's (code_routes.rs `cowork`); otherwise
     // it goes to Core as before. The start runs to its end under the gate (a task it made must not
     // be answered as lost), then the gate is given back: the task holds its own lease.
     if target == chat_edge::COWORK_PATH {

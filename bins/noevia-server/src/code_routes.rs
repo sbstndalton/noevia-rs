@@ -57,9 +57,10 @@
 //! (logged `code.lease_lost`): Node's own lease cannot end under a task, the front's can.
 //!
 //! A Cowork session's task start from chat (`POST /api/chat` with `mode: 'cowork'`, routes/chat.cjs)
-//! is the front's too when it owns Code ([`cowork`], called by chat_turn.rs after chat_edge.rs's
-//! refusals): the same service start with Node's Cowork body and answers. Before this, core
-//! refused every such start (409) once the switch was on.
+//! is the front's too when it owns Code and `NOEVIA_RUST_COWORK=1` ([`cowork`], called by
+//! chat_turn.rs after chat_edge.rs's refusals): the same service start with Node's Cowork body and
+//! answers. Without it core refuses every such start (409) once the executor switch is on
+//! (noevia#2671); the second switch keeps a release of this front from changing that unflipped.
 //!
 //! Code actions are answered only when core says the front owns them (`owner: 'front'` on the
 //! facts bridge); a core that still runs Code tasks itself gets 503, never a second writer.
@@ -88,6 +89,9 @@ use std::time::Duration;
 
 /// The switch: `rust` hands Code tasks to the front.
 pub const SWITCH: &str = "NOEVIA_CODE_EXECUTOR";
+/// Council p1: `NOEVIA_RUST_COWORK=1` (with [`SWITCH`] on) lets the front answer a Cowork start from
+/// chat ([`cowork`]); unset (or any other value), core answers it as before.
+pub const COWORK_SWITCH: &str = "NOEVIA_RUST_COWORK";
 const ENGINE_PATH: &str = "/internal/code/engine";
 const ENGINE_DEADLINE: Duration = Duration::from_secs(5);
 const UNAVAILABLE: &str = "Code tasks are unavailable right now. Try again shortly.";
@@ -116,6 +120,8 @@ pub struct Settings {
     pub verify_endpoint: Option<String>,
     /// Track R11: where a start's engine facts come from (`NOEVIA_RUST_ENGINE_FACTS`, code_facts.rs).
     pub facts: crate::code_facts::Settings,
+    /// [`COWORK_SWITCH`] is `1`.
+    pub cowork: bool,
 }
 
 impl Settings {
@@ -140,6 +146,7 @@ impl Settings {
             lang: get("LANG"),
             verify_endpoint: set("CODE_VERIFY_ENDPOINT"),
             facts: crate::code_facts::Settings::from_lookup(get),
+            cowork: get(COWORK_SWITCH).as_deref() == Some("1"),
         }
     }
 
@@ -1003,7 +1010,7 @@ pub const COWORK_FAILED: &str = "Cowork task could not start";
 ///
 /// `bytes` is the chat body chat_edge.rs already let through as [`chat_edge::Verdict::Cowork`]
 /// (an object, an administrator, `projectId` a non-empty string). `None` means "not the front's":
-/// the switch is unset, the data directory is not configured, core does not say the front owns
+/// either switch ([`SWITCH`], [`COWORK_SWITCH`]) is unset, the data directory is not configured, core does not say the front owns
 /// Code (`owner: 'front'`), the facts bridge did not answer or the body does not parse; the caller
 /// then relays the start to core's `/internal/chat/cowork` exactly as before, and core answers it
 /// (a core that hands Code to the front refuses it there, which is what this replaces).
@@ -1014,7 +1021,7 @@ pub async fn cowork(
     authn: &server_auth::Identity,
     bytes: &[u8],
 ) -> Option<Response<Body>> {
-    if !app.config.code.executor {
+    if !app.config.code.executor || !app.config.code.cowork {
         return None;
     }
     let data_dir = app.config.data_dir.clone()?;

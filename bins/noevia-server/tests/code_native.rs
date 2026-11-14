@@ -371,6 +371,8 @@ struct Opts {
     code_machine: bool,
     /// `NOEVIA_FEATURE_CODE_HARNESS=true` (the chat edge reads it for a Cowork start).
     harness: bool,
+    /// `NOEVIA_RUST_COWORK=1`: the front answers a Cowork start.
+    cowork: bool,
 }
 
 struct Rig {
@@ -494,6 +496,9 @@ async fn rig(o: Opts) -> Rig {
     }
     if o.harness {
         env.insert("NOEVIA_FEATURE_CODE_HARNESS", "true".into());
+    }
+    if o.cowork {
+        env.insert("NOEVIA_RUST_COWORK", "1".into());
     }
     if let Some(mode) = o.facts {
         env.insert("NOEVIA_RUST_ENGINE_FACTS", mode.into());
@@ -1291,6 +1296,7 @@ async fn a_cowork_start_from_chat_is_the_front_s_task_with_node_s_answers() {
         let r = rig(Opts {
             executor: true,
             harness: true,
+            cowork: true,
             ..Opts::default()
         })
         .await;
@@ -1413,21 +1419,34 @@ async fn a_cowork_start_from_chat_is_the_front_s_task_with_node_s_answers() {
 async fn a_cowork_start_goes_to_core_unless_the_front_owns_code() {
     within(async {
         let body = cowork(PROJECT, json!("qa-repo"), json!(RUN));
-        // Switch unset: core's, as before, the body as sent.
+        // Executor switch unset (NOEVIA_RUST_COWORK set): core's, as before, the body as sent.
         let unset = rig(Opts {
             harness: true,
+            cowork: true,
             ..Opts::default()
         })
         .await;
-        // Switch on, but core still runs Code tasks (no `owner: 'front'`): never a second writer.
+        // Both switches on, but core still runs Code tasks (no `owner: 'front'`): never a second writer.
         let node = rig(Opts {
+            executor: true,
+            harness: true,
+            cowork: true,
+            ..Opts::default()
+        })
+        .await;
+        node.core.lock().unwrap().node_owns = true;
+        // The executor's switch on and NOEVIA_RUST_COWORK unset: core's, as today in production.
+        let unflipped = rig(Opts {
             executor: true,
             harness: true,
             ..Opts::default()
         })
         .await;
-        node.core.lock().unwrap().node_owns = true;
-        for (what, r) in [("switch unset", &unset), ("core owns Code", &node)] {
+        for (what, r) in [
+            ("switch unset", &unset),
+            ("core owns Code", &node),
+            ("NOEVIA_RUST_COWORK unset", &unflipped),
+        ] {
             assert_eq!(
                 r.chat(body.clone()).await,
                 (202, json!({"relayed": "/internal/chat/cowork"})),
@@ -1447,6 +1466,7 @@ async fn a_cowork_start_goes_to_core_unless_the_front_owns_code() {
         assert_eq!(status, 403, "{member}");
         let off = rig(Opts {
             executor: true,
+            cowork: true,
             ..Opts::default()
         })
         .await;
