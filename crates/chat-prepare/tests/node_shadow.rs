@@ -109,6 +109,7 @@ fn replay(f: &JValue) -> Vec<Replayed> {
                 memory: memory.as_deref(),
                 free_chats: Some(free),
                 project,
+                roles: Some(input.get("roles")),
                 time_zone: input.get("tz").as_str().unwrap(),
                 chat_framing: input.get("chatFraming").as_bool(),
                 brain_context: Some(false),
@@ -179,14 +180,26 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
         replayed.len(),
         wrong[..wrong.len().min(8)].join("\n")
     );
-    let matched = replayed
+    // Everything built is core's: a match, or (P7d) all but a Manual turn's default model.
+    let covered = |v: Verdict| matches!(v, Verdict::Match | Verdict::Skip("manual-default"));
+    let matched = replayed.iter().filter(|r| covered(r.verdict)).count();
+    // The model is compared for Automatic turns and projects with their own model: they match.
+    let modelled: Vec<&Replayed> = replayed
         .iter()
-        .filter(|r| r.verdict == Verdict::Match)
-        .count();
+        .filter(|r| r.name.starts_with("auto_") || r.name.starts_with("project_own_model"))
+        .collect();
+    assert!(
+        modelled.len() >= 30,
+        "{} turns with a compared model",
+        modelled.len()
+    );
+    for r in &modelled {
+        assert_eq!(r.verdict, Verdict::Match, "{}", r.name);
+    }
     // P7c: project turns are covered; the ones with what is not ported yet are skipped by name.
     let project_matched = replayed
         .iter()
-        .filter(|r| r.name.contains("project") && r.verdict == Verdict::Match)
+        .filter(|r| r.name.contains("project") && covered(r.verdict))
         .count();
     assert!(
         project_matched >= 40,
@@ -197,6 +210,7 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
         ("project_shared_context_skipped", "shared-context"),
         ("project_assets_skipped", "assets"),
         ("free_chat_context_project_skipped", "context-project"),
+        ("project_context_high_skipped", "context-profile"),
     ] {
         let r = replayed.iter().find(|r| r.name == name).unwrap();
         assert_eq!(r.verdict, Verdict::Skip(reason), "{name}");
@@ -226,7 +240,7 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
                 "{}",
                 r.name
             );
-            assert_eq!(r.verdict, Verdict::Match, "{}", r.name);
+            assert!(covered(r.verdict), "{}", r.name);
         }
     }
     assert!(replayed
@@ -235,7 +249,7 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     // A confirmed frame with chat framing on: its block is built and matches.
     let framed: Vec<&Replayed> = replayed.iter().filter(|r| r.framed).collect();
     assert!(framed.len() >= 5, "{} framed", framed.len());
-    assert!(framed.iter().all(|r| r.verdict == Verdict::Match));
+    assert!(framed.iter().all(|r| covered(r.verdict)));
 }
 
 /// A frame whose messages are not the native ones is reported where they first differ, and a
@@ -262,6 +276,7 @@ fn a_difference_is_located_without_its_text() {
             memory: memory.as_deref(),
             free_chats: Some(&free),
             project: None,
+            roles: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
@@ -349,6 +364,7 @@ fn a_code_route_and_an_unreadable_free_list_are_skipped() {
             memory: None,
             free_chats: free,
             project: None,
+            roles: None,
             time_zone: "UTC",
             chat_framing: framing,
             brain_context: Some(false),
@@ -430,6 +446,7 @@ fn the_effort_and_sampling_follow_the_settings_rows() {
             memory: None,
             free_chats: Some(&empty),
             project: None,
+            roles: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
@@ -473,6 +490,7 @@ fn a_new_project_chat_takes_only_an_id_chat_cjs_makes() {
             memory: None,
             free_chats: Some(&empty),
             project: Some(project),
+            roles: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
@@ -486,7 +504,8 @@ fn a_new_project_chat_takes_only_an_id_chat_cjs_makes() {
             catalogue: None,
         })
     };
-    assert_eq!(check(t.get("prepared")), Verdict::Match);
+    // A Manual project turn with no project model: everything but the model is compared.
+    assert_eq!(check(t.get("prepared")), Verdict::Skip("manual-default"));
     let started = t.get("prepared").get("startedAt").as_num().unwrap();
     for bad in [
         "qa-chat".to_string(),

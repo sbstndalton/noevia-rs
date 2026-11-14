@@ -286,9 +286,12 @@ pub fn run(
         }
         _ => None,
     };
+    // autoRoles(): the account's auto-roles.json as core's workspace reads it.
+    let roles = crate::auto_roles_routes::read_roles(user_dir);
     compare(&ShadowTurn {
         body: &body,
         project,
+        roles: Some(&roles),
         frame,
         instructions: instructions.as_deref(),
         memory: memory.as_deref(),
@@ -518,6 +521,13 @@ mod tests {
                 }
             };
             write("account-instructions.json", input.get("instructions"));
+            if input.get("roles").is_object() {
+                std::fs::write(
+                    dir.join("auto-roles.json"),
+                    wtf16::stringify(input.get("roles")).unwrap(),
+                )
+                .unwrap();
+            }
             if let JValue::Arr(projects) = input.get("projects") {
                 let file = JValue::Obj(vec![("projects".into(), JValue::Arr(projects.clone()))]);
                 std::fs::write(
@@ -595,12 +605,21 @@ mod tests {
                 ("project_shared_context_skipped", "shared-context"),
                 ("project_assets_skipped", "assets"),
                 ("free_chat_context_project_skipped", "context-project"),
+                ("project_context_high_skipped", "context-profile"),
             ];
             if let Some((_, reason)) = skipped.iter().find(|(n, _)| *n == name) {
                 assert_eq!(verdict, Verdict::Skip(reason), "{name}");
                 continue;
             }
-            assert_eq!(verdict, Verdict::Match, "{name}");
+            // A Manual turn without a project model: everything but the model is compared (P7d).
+            assert!(
+                matches!(verdict, Verdict::Match | Verdict::Skip("manual-default")),
+                "{name}: {}",
+                verdict.line()
+            );
+            if name.starts_with("auto_") || name.starts_with("project_own_model") {
+                assert_eq!(verdict, Verdict::Match, "{name}");
+            }
             // Without the catalogue and the settings rows: a history that needs the catalogue is skipped, and
             // a turn whose compared fields are all core's says the settings were not read.
             let without = run(&dir, body.as_bytes(), frame, tz, flags, None, None);
@@ -610,7 +629,7 @@ mod tests {
                 t.get("name").as_str().unwrap_or_default(),
                 without.line()
             );
-            if verdict == Verdict::Match {
+            if matches!(verdict, Verdict::Match | Verdict::Skip("manual-default")) {
                 matched += 1;
                 let system = wtf16::stringify(frame.get("messages")).unwrap_or_default();
                 framed += usize::from(system.contains("Chat frame (set by the user)"));

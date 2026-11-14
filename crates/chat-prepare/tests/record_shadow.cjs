@@ -489,7 +489,10 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
   const DISTINCT = { fast: 'qa-fast-4b', smart: 'qa-smart-12b', code: 'qa-code-7b' };
   for (const pick of ['fast', 'smart']) {
     await addTurn(`auto_distinct_${pick}`, { roles: DISTINCT, pick, models: Object.values(DISTINCT), body: req() });
+    // A project is Automatic only with `routing: 'auto'` (chat.cjs wantsAuto); without it, Manual.
     await addTurn(`auto_distinct_${pick}_project`, { roles: DISTINCT, pick, models: Object.values(DISTINCT),
+      projects: [project({ routing: 'auto' })], body: preq() });
+    await addTurn(`project_manual_with_roles_${pick}`, { roles: DISTINCT, pick, models: Object.values(DISTINCT),
       projects: [project()], body: preq() });
   }
   await addTurn('auto_distinct_unassigned', { roles: { fast: 'qa-fast-4b' }, pick: 'smart', models: ['qa-fast-4b'], body: req() });
