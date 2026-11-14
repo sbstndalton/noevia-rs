@@ -67,7 +67,7 @@ pub fn answer(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -180,5 +180,77 @@ mod tests {
         // No account folder: core's.
         let empty = tempfile::tempdir().unwrap();
         assert_eq!(answer(empty.path(), USER, &refused, |_| true), None);
+    }
+
+    /// Every call core's executor recorded (crates/tool-dispatch's fixture) with an offer as the bridge
+    /// sends one: the front answers exactly core's refusals, with core's text, and nothing else.
+    #[test]
+    fn the_recorded_refusals_are_answered_and_nothing_else() {
+        use js_json::{wtf16, JValue};
+        let f = wtf16::parse(include_str!(
+            "../../../crates/tool-dispatch/tests/fixtures/tool-dispatch.v1.json"
+        ))
+        .unwrap();
+        let JValue::Arr(cases) = f.get("cases") else {
+            panic!("no cases")
+        };
+        let strs = |v: &JValue| match v {
+            JValue::Arr(items) => Some(
+                items
+                    .iter()
+                    .map(|x| x.as_str().unwrap().to_owned())
+                    .collect::<Vec<_>>(),
+            ),
+            _ => None,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        account(dir.path());
+        let (mut answered, mut left) = (0usize, 0usize);
+        for c in cases {
+            let (Some(allowed), JValue::Arr(routes)) = (strs(c.get("allowed")), c.get("routes"))
+            else {
+                continue;
+            };
+            let routes = routes
+                .iter()
+                .map(|p| {
+                    let p = strs(p).unwrap();
+                    (p[0].clone(), p[1].clone())
+                })
+                .collect();
+            let r = ToolRun {
+                name: c.get("name").as_str().unwrap().into(),
+                args: c.get("rawArgs").as_str().unwrap().into(),
+                allowed,
+                routes,
+                ..run("", "")
+            };
+            let text = c.get("text").as_str().unwrap();
+            let core_refused = c.get("failed").as_bool() == Some(true)
+                && (text.starts_with("ERROR: tool \"") && text.ends_with("\" is not enabled for this project")
+                    || text.starts_with("ERROR: tool arguments were not valid JSON: ")
+                    || text.starts_with("ERROR: tool arguments must be a JSON object: "));
+            match answer(dir.path(), USER, &r, |_| true) {
+                Some((got, failed)) => {
+                    assert_eq!((got.as_str(), failed), (text, true), "{r:?}");
+                    assert_eq!(c.get("notRun").as_bool(), Some(false));
+                    answered += 1;
+                }
+                None => {
+                    // Left to core: never one of its refusals, except for arguments this port does not
+                    // read as JSON.parse does (crates/tool-dispatch: Route::NotPorted).
+                    let not_ported = r.args.contains("1e400")
+                        || r.args.contains('\u{10F800}')
+                        || r.args.matches('[').count() > 100;
+                    assert!(
+                        !core_refused || not_ported,
+                        "core refused, the front did not answer: {r:?} {text:?}"
+                    );
+                    left += 1;
+                }
+            }
+        }
+        assert!(answered > 300, "answered {answered}");
+        assert!(left > 300, "left {left}");
     }
 }
