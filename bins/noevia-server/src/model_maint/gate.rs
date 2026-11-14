@@ -582,23 +582,44 @@ impl Shared {
     /// inference-maintenance.cjs `assertCovered(step)` (Delta review P2): not lost, the last
     /// confirmation (and the authority's lease) not lapsing within the margin, and the step plus the
     /// margin inside the hard limit. A long step is covered by renewal, not by its whole length
-    /// fitting one confirmation. Always true for the gate's hold.
+    /// fitting one confirmation. A lapse within the margin or a passed hard limit is the loss itself
+    /// (Node's `c.lose()`): sticky, so the release owes the settle; a step that merely does not fit
+    /// is refused without it. Always true for the gate's hold.
     fn covers(&self, step: Duration) -> bool {
         let Some(ttl) = self.lease_ttl else {
             return true;
         };
+        if self.lost.load(Ordering::Acquire) {
+            return false;
+        }
         let now = Instant::now();
-        !self.lost.load(Ordering::Acquire)
-            && self.auth.as_ref().is_none_or(|(a, g)| {
-                a.covers_step(&g.id, g.generation, STEP_MARGIN, step)
-            })
+        let alive = self
+            .auth
+            .as_ref()
+            .is_none_or(|(a, g)| a.covers_step(&g.id, g.generation, STEP_MARGIN, Duration::ZERO))
             && self
                 .confirmed
                 .lock()
                 .is_ok_and(|at| now + STEP_MARGIN < *at + ttl)
+            && self.lease_end.is_none_or(|end| now + STEP_MARGIN < end);
+        if !alive {
+            self.lose_at_margin();
+            return false;
+        }
+        self.auth
+            .as_ref()
+            .is_none_or(|(a, g)| a.covers_step(&g.id, g.generation, STEP_MARGIN, step))
             && self
                 .lease_end
                 .is_none_or(|end| now + step + STEP_MARGIN < end)
+    }
+
+    /// Node's `lose()` from a coverage check: only while the hold is not being given back.
+    fn lose_at_margin(&self) {
+        let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
+        if *state == ReleaseState::Idle && !self.lost.swap(true, Ordering::AcqRel) {
+            eprintln!("[models] this front's maintenance lease could not be renewed in time; the work stops before its next step");
+        }
     }
 
     /// Gives the authority's lease back at once; idempotent, synchronous.
@@ -1287,6 +1308,7 @@ mod tests {
         let short = s(160);
         assert!(short.covers(Duration::from_secs(140)));
         assert!(!short.covers(Duration::from_secs(150)), "the step past the hard cap");
+        assert!(!short.lost.load(Ordering::Acquire), "a step that does not fit is no loss");
         let lapsing = s(3600);
         if let (Ok(mut at), Some(old)) = (
             lapsing.confirmed.lock(),
@@ -1295,6 +1317,7 @@ mod tests {
             *at = old;
         }
         assert!(!lapsing.covers(Duration::ZERO), "a lapse within the margin");
+        assert!(lapsing.lost.load(Ordering::Acquire), "the lapse is the loss itself (sticky)");
         let lost = s(3600);
         lost.lost.store(true, Ordering::Release);
         assert!(!lost.covers(Duration::ZERO));
