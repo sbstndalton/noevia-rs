@@ -38,7 +38,11 @@ async fn rig(with_facts: bool) -> (tempfile::TempDir, Front) {
     let f = front_env(
         d.path(),
         true,
-        &[("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into())],
+        &[
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            // A background source job is bound to the container start (source work's store).
+            ("NOEVIA_START_ID", "0123456789abcdef0123456789abcdef".into()),
+        ],
     )
     .await;
     decoy(d.path());
@@ -208,7 +212,14 @@ async fn a_first_upload_waits_for_the_catalogue_and_keeps_the_documents_default(
     .unwrap();
     const UPLOAD: &str = r#"{"name":"qa-notes.txt","dataBase64":"UUEgbm90ZXM=","organized":true}"#;
     let started = std::time::Instant::now();
-    let (s, v) = write(f.addr, "POST", "/api/projects/qa-bg/upload?background=1", ADMIN, UPLOAD).await;
+    let (s, v) = write(
+        f.addr,
+        "POST",
+        "/api/projects/qa-bg/upload?background=1",
+        ADMIN,
+        UPLOAD,
+    )
+    .await;
     assert_eq!(s, 202, "{v}");
     let poll = v["poll"].as_str().unwrap().to_owned();
     let foreground = tokio::spawn({
@@ -228,7 +239,10 @@ async fn a_first_upload_waits_for_the_catalogue_and_keeps_the_documents_default(
             assert_eq!(v["status"], 200, "{v}");
             break;
         }
-        assert!(std::time::Instant::now() < deadline, "the job never finished: {v}");
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the job never finished: {v}"
+        );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
     for name in ["QA foreground", "QA background"] {
