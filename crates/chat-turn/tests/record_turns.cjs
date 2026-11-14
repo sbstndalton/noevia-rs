@@ -392,6 +392,8 @@ async function runTurn(c, { handoff = false } = {}) {
     // preparation sees the first). Otherwise writes ask and reads run.
     const policyCalls = new Map();
     const policyFor = (tool, write) => {
+      // `policyAfterCut`: the account's policy for a tool changed once the preparation ended (read so from the cut on).
+      if (cut && c.policyAfterCut && c.policyAfterCut[tool] !== undefined) return c.policyAfterCut[tool];
       const mode = c.policy && c.policy[tool];
       if (mode === undefined) return write ? 'ask' : 'allow';
       if (!Array.isArray(mode)) return mode;
@@ -427,7 +429,8 @@ async function runTurn(c, { handoff = false } = {}) {
     const executeMcp = async (name) => { log.executions.push(name); return (c.toolResults && c.toolResults[name]) || `QA ${name} result: done.`; };
     const toolbox = createToolboxes({
       boxes: [driveTools.box], driveTools, offered: (id) => id !== 'gdrive',
-      mcpBoxes: () => (c.docs ? [QA_DOCS_BOX] : []), mcpTools: () => (c.docs ? QA_DOCS_TOOLS : new Map()), executeMcp,
+      // `lookups`: two QA MCP servers' boxes offering a read of the same name (the first selected box wins it, #865).
+      mcpBoxes: () => (c.docs ? [QA_DOCS_BOX] : c.lookups ? QA_LOOKUP_BOXES : []), mcpTools: () => (c.docs ? QA_DOCS_TOOLS : c.lookups ? QA_LOOKUP_TOOLS : new Map()), executeMcp,
       prefill: { budgetFor: () => null, rateFor: () => 0 }, requestScope,
       scope: requestScope, documentSources: { notice: () => '' }, workspace: () => ({ dir }), getProject: (id) => stored(id),
       // `pageSave`: the coworker page tool (#2446), offered in a coworker's conversation (a `specialist-` project).
@@ -600,7 +603,7 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
+        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
         ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool || c.leaveInGrant ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null, ...(c.leaveInGrant ? { leaveInGrant: true } : {}) } } : {}),
         rounds: c.rounds || [], chunks: log.chunks },
@@ -644,6 +647,10 @@ const QA_DOCS_BOX = { id: 'qa-docs', label: 'QA documents', source: 'mcp', serve
   DOCS_TOOL('project_append_file', { name: { type: 'string' }, text: { type: 'string' } }),
   DOCS_TOOL('project_replace_text', { name: { type: 'string' }, find: { type: 'string' }, replace: { type: 'string' } })] };
 const QA_DOCS_TOOLS = new Map(QA_DOCS_BOX.tools.map((t) => [t.function.name, { readOnly: t.function.name === 'project_read_file', serverId: 'qa-internal' }]));
+// One read offered by two MCP servers (#865: a call goes to the server whose tool the model was shown).
+const QA_LOOKUP_BOXES = ['qa-left', 'qa-right'].map((id) => ({ id, label: `QA ${id}`, source: 'mcp', server: `${id}-server`, reads: ['qa_lookup'],
+  tools: [DOCS_TOOL('qa_lookup', { term: { type: 'string' } })] }));
+const QA_LOOKUP_TOOLS = new Map([['qa_lookup', { readOnly: true, serverId: 'qa-left-server' }]]);
 const QA_DOCS_FILES = [{ name: 'qa-notes.txt', content: 'QA notes line one.' }, { name: 'qa-plan.txt', content: 'QA plan: draft.' }];
 const QA_DOCS = { toolboxes: ['core', 'qa-docs'], files: QA_DOCS_FILES };
 // A storage account digest (project-edit-target.cjs storageAccount): synthetic.
@@ -984,11 +991,22 @@ const CASES = [
   { name: 'more_tools_twice', about: 'more_tools twice in one round: the second is told everything is already available; a widened read in the same round runs.', narrow: ['core'],
     rounds: [{ frames: [toolCall('more_tools', '{}', 'qa-call-1', 0), toolCall('more_tools', '{}', 'qa-call-2', 1), toolCall('drive_read_file', '{"fileId":"qa-file-m2"}', 'qa-call-3', 2), finish('tool_calls')] },
       answer('Done after widening.')] },
-  { name: 'more_tools_routes', about: 'Routing kept Drive only in a project with the documents box: widening brings the MCP tools with their routes; a read in the same round and the next both reach the documents server.', narrow: ['gdrive'], docs: true, project: QA_DOCS,
-    rounds: [{ frames: [toolCall('more_tools', '{}', 'qa-call-1', 0), toolCall('project_read_file', '{"name":"qa-notes.txt"}', 'qa-call-2', 1), finish('tool_calls')] },
-      { frames: [toolCall('project_read_file', '{"name":"qa-plan.txt"}', 'qa-call-3'), finish('tool_calls')] }, answer('Read both notes.')] },
-  { name: 'more_tools_blocked', about: 'The account blocks a Drive write: widening reads every policy again and still leaves it out.', narrow: ['core'], policy: { drive_trash_file: 'block' },
+  { name: 'more_tools_routes', about: 'Routing kept the core tools in a project with an MCP box: widening brings its read with its route; a call in the same round and one in the next both reach its server.', narrow: ['core'],
+    lookups: true, project: { toolboxes: ['core', 'qa-left'] },
+    rounds: [{ frames: [toolCall('more_tools', '{}', 'qa-call-1', 0), toolCall('qa_lookup', '{"term":"QA one"}', 'qa-call-2', 1), finish('tool_calls')] },
+      { frames: [toolCall('qa_lookup', '{"term":"QA two"}', 'qa-call-3'), finish('tool_calls')] }, answer('Looked both up.')] },
+  { name: 'more_tools_blocked', about: 'The account blocks a Drive write: core leaves it out of the widened list, and the widening reads the same policies again (unchanged).', narrow: ['core'], policy: { drive_trash_file: 'block' },
     rounds: [{ frames: [toolCall('more_tools', '{}'), finish('tool_calls')] }, answer('Widened without the blocked tool.')] },
+  { name: 'more_tools_policy_changed', about: 'The account blocks a Drive read after the preparation: widening reads it as blocked now and leaves it out; the model calling it anyway is refused.', narrow: ['core'], policyAfterCut: { drive_read_file: 'block' },
+    rounds: [{ frames: [toolCall('more_tools', '{}'), finish('tool_calls')] },
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-file-m5"}', 'qa-call-2'), finish('tool_calls')] }, answer('That read is blocked.')] },
+  { name: 'more_tools_write', about: 'A write that came with widening still asks: its card, approved, then it runs.', narrow: ['core'], decision: 'approve',
+    rounds: [{ frames: [toolCall('more_tools', '{}'), finish('tool_calls')] },
+      { frames: [toolCall('drive_create_file', '{"name":"qa-widened.txt","content":"QA."}', 'qa-call-2'), finish('tool_calls')] }, answer('Created it.')] },
+  { name: 'more_tools_route_clash', about: 'Two MCP servers offer the same read; routing kept the later box: in the widening round the call stays with the server the model was shown, from the next round the first box wins.', narrow: ['qa-right'],
+    lookups: true, project: { toolboxes: ['core', 'qa-left', 'qa-right'] },
+    rounds: [{ frames: [toolCall('more_tools', '{}', 'qa-call-1', 0), toolCall('qa_lookup', '{"term":"QA one"}', 'qa-call-2', 1), finish('tool_calls')] },
+      { frames: [toolCall('qa_lookup', '{"term":"QA two"}', 'qa-call-3'), finish('tool_calls')] }, answer('Looked both up.')] },
 ];
 
 (async () => {

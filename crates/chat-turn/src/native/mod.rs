@@ -828,9 +828,10 @@ impl<H: Host> Turn<'_, H> {
     /// the next round the widened routes win.
     ///
     /// chat.cjs resolves the list at the call, reading the account's policy for each candidate (`blocked`). The
-    /// same reads are made here, in core's order. Named difference: when one answers otherwise than at the cut, a
-    /// newly blocked tool is left out of core's list, but a newly allowed one (or one the tool cap then has room
-    /// for) is not added; nothing is ever offered that the account blocks now.
+    /// same reads are made here, in core's order, and a tool blocked now is left out. Named differences (the list
+    /// is core's from the cut): a tool allowed since the cut, or one the tool cap or the token budget (whose
+    /// prefill measurement this turn's first round may move) would then have room for, is not added. Only ever
+    /// fewer of the project's own tools; nothing the account blocks now is offered.
     fn more_tools(
         &self,
         s: &mut Rounds,
@@ -842,13 +843,10 @@ impl<H: Host> Turn<'_, H> {
         }
         s.widened = true;
         let mut now_blocked = HashSet::new();
-        let mut changed = false;
-        for (name, write, was) in &widen.asked {
-            let blocked = self.host.tool_policy(name, *write) == "block";
-            if blocked {
+        for (name, write, _) in &widen.asked {
+            if self.host.tool_policy(name, *write) == "block" {
                 now_blocked.insert(name.as_str());
             }
-            changed |= blocked != *was;
         }
         let name_of = |t: &JValue| {
             t.get("function")
@@ -860,7 +858,7 @@ impl<H: Host> Turn<'_, H> {
         let tools: Vec<JValue> = widen
             .tools
             .iter()
-            .filter(|t| !changed || !now_blocked.contains(name_of(t).as_str()))
+            .filter(|t| !now_blocked.contains(name_of(t).as_str()))
             .cloned()
             .collect();
         let names: Vec<String> = tools.iter().map(name_of).collect();
