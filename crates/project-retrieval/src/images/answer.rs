@@ -431,7 +431,13 @@ impl Captions {
     /// the answer of the caption already being made for `key`, or a new one from `generate`,
     /// trimmed and stored with `write` (a failed store is the writer's to swallow: the caption is
     /// still used for this answer).
-    pub async fn once<R, G, F, W>(&self, key: &str, read: R, generate: G, write: W) -> Option<Caption>
+    pub async fn once<R, G, F, W>(
+        &self,
+        key: &str,
+        read: R,
+        generate: G,
+        write: W,
+    ) -> Option<Caption>
     where
         R: FnOnce() -> Option<Caption>,
         G: FnOnce() -> F,

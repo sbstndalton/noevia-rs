@@ -56,8 +56,7 @@ pub fn part(mime: &str, bytes: &[u8]) -> JValue {
 
 /// `Buffer.toString('base64')`: standard alphabet, padded.
 pub fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let sym = |n: u32| char::from(ALPHABET.get((n & 63) as usize).copied().unwrap_or(b'A'));
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
@@ -78,7 +77,10 @@ pub fn figure_file(name: &str) -> bool {
     let Some((hex, rest)) = name.split_at_checked(64) else {
         return false;
     };
-    if !hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
+    if !hex
+        .bytes()
+        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
         return false;
     }
     let Some(rest) = rest.strip_prefix(".fig") else {
@@ -332,7 +334,10 @@ pub fn resolve_hit(project: &JValue, hit: &JValue, dirs: Dirs<'_>) -> Option<Res
     if figure.truthy() {
         let documents = dirs.documents?;
         if !figure_file(&js_str(figure))
-            || !strict_eq(file.get("document").get("availableVersion"), meta.get("version"))
+            || !strict_eq(
+                file.get("document").get("availableVersion"),
+                meta.get("version"),
+            )
         {
             return None;
         }
