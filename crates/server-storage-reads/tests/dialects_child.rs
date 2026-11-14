@@ -1,10 +1,12 @@
 //! The storage client against two WebDAV server dialects (track S1), through the real owned child
 //! (`private-request-child`, the same body as `noevia-server --storage-request-child`): the user's
-//! home at `/remote.php/dav/files/<user>/`, and a personal space at `/dav/spaces/<id>/` (with the
-//! id's `$` raw or percent-encoded, and the legacy files address on the same server). Every
-//! address gives the same answers: listing, text read, folder create, the conditional writes, the
-//! version read, discard, delete and the empty-folder sweep. Synthetic server and data only
-//! (support/dav_dialects.rs). Linux only: the child sets its limits before READY.
+//! home at `/remote.php/dav/files/<user>/`, and a personal space at `/dav/spaces/<id>/` (the id's `$`
+//! raw or percent-encoded). Every address gives the same answers: listing, text read, folder create,
+//! the conditional writes, the version read, discard, delete and the empty-folder sweep. The space
+//! server ignores `If-None-Match: *` on PUT and `If-Match` on DELETE, so on a space address the client
+//! checks first (`writes::checks_first`); its legacy files address does not get that check, and the
+//! last test pins what is lost there. Synthetic server and data only (support/dav_dialects.rs).
+//! Linux only: the child sets its limits before READY.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -42,7 +44,7 @@ fn units(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
 }
 
-/// Every address the two dialects serve: (dialect, home path as configured, what it is).
+/// The addresses that keep every guarantee: (dialect, home path as configured, what it is).
 fn addresses() -> Vec<(Dialect, String, &'static str)> {
     vec![
         (Dialect::Files, FILES_HOME.to_owned(), "files home"),
@@ -55,11 +57,6 @@ fn addresses() -> Vec<(Dialect, String, &'static str)> {
             Dialect::Spaces,
             format!("/dav/spaces/{}", SPACE_ID.replace('$', "%24")),
             "space, encoded id, no trailing slash",
-        ),
-        (
-            Dialect::Spaces,
-            FILES_HOME.to_owned(),
-            "space server, legacy files home",
         ),
     ]
 }
@@ -265,7 +262,13 @@ fn a_refused_token_is_a_refused_login_on_every_dialect() {
     }
     let cancelled = AtomicBool::new(false);
     let mut t = ChildTransport::new(child(), &[], &cancelled);
-    for (dialect, home, what) in addresses() {
+    let mut all = addresses();
+    all.push((
+        Dialect::Spaces,
+        FILES_HOME.to_owned(),
+        "space server, legacy files home",
+    ));
+    for (dialect, home, what) in all {
         let (port, _dav) = server(dialect);
         let bad = conn(port, &home, "qa-wrong-token");
         let e = writes::write_file(&bad, NOTE, b"x", &Condition::None, &mut t).unwrap_err();
@@ -283,4 +286,87 @@ fn a_refused_token_is_a_refused_login_on_every_dialect() {
             "{what}"
         );
     }
+}
+
+#[test]
+fn only_a_space_address_checks_first_and_the_legacy_address_loses_two_guards() {
+    if !cfg!(target_os = "linux") {
+        eprintln!("skipped: the owned child runs only on Linux");
+        return;
+    }
+    let cancelled = AtomicBool::new(false);
+    let mut t = ChildTransport::new(child(), &[], &cancelled);
+    let (port, dav) = server(Dialect::Spaces);
+    let space = conn(port, &format!("/dav/spaces/{SPACE_ID}"), TOKEN);
+    let legacy = conn(port, FILES_HOME, TOKEN);
+    assert!(writes::checks_first(&space));
+    assert!(!writes::checks_first(&legacy));
+    assert!(!writes::checks_first(&conn(
+        port,
+        "/dav/files/qa-user/",
+        TOKEN
+    )));
+    let s3 = Connection {
+        kind: Kind::S3,
+        ..conn(port, &format!("/dav/spaces/{SPACE_ID}"), TOKEN)
+    };
+    assert!(!writes::checks_first(&s3));
+
+    writes::create_folder(&space, "qa", &mut t).unwrap();
+    let first = writes::write_file(
+        &space,
+        "qa/a.md",
+        b"QA one",
+        &Condition::IfNoneMatch,
+        &mut t,
+    )
+    .unwrap();
+    assert!(first.created);
+
+    // The space address: a create-only write over an existing file reads its state first and
+    // refuses (no PUT is sent); a stale discard is refused, and the file stays.
+    dav.lock().unwrap().seen.clear();
+    let e = writes::write_file(
+        &space,
+        "qa/a.md",
+        b"QA two",
+        &Condition::IfNoneMatch,
+        &mut t,
+    )
+    .unwrap_err();
+    assert_eq!((e.status, e.code), (409, Some("changed")));
+    let methods: Vec<String> = dav
+        .lock()
+        .unwrap()
+        .seen
+        .iter()
+        .map(|(m, _)| m.clone())
+        .collect();
+    assert_eq!(methods, ["PROPFIND"]);
+    assert_eq!(
+        writes::discard_written(&space, "qa/a.md", "\"qa-stale\"", &mut t),
+        (false, "changed")
+    );
+    assert_eq!(dav.lock().unwrap().files["qa/a.md"].0, b"QA one");
+    // A folder at the path counts as existing, too.
+    let e = writes::write_file(&space, "qa", b"x", &Condition::IfNoneMatch, &mut t).unwrap_err();
+    assert_eq!(e.code, Some("changed"));
+
+    // The legacy files address of the same server sends today's single request, which that server
+    // does not hold to: the create-only write overwrites and the stale discard deletes.
+    let over = writes::write_file(
+        &legacy,
+        "qa/a.md",
+        b"QA two",
+        &Condition::IfNoneMatch,
+        &mut t,
+    )
+    .unwrap();
+    assert!(!over.created, "the server answered 204: it overwrote");
+    assert_eq!(dav.lock().unwrap().files["qa/a.md"].0, b"QA two");
+    assert_eq!(
+        writes::discard_written(&legacy, "qa/a.md", "\"qa-stale\"", &mut t),
+        (true, "")
+    );
+    assert!(!dav.lock().unwrap().files.contains_key("qa/a.md"));
 }

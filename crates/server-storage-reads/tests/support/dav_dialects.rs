@@ -7,17 +7,21 @@
 //!   byte but `A-Za-z0-9-_.~` in each segment; XML text escapes `"` as `&quot;`; a write answers
 //!   `ETag` and `OC-ETag`; errors carry an `<s:exception>` body.
 //! - [`Dialect::Spaces`]: the home at `/dav/spaces/<storage id>$<space id>/`, also reachable at the
-//!   legacy `/remote.php/dav/files/<user>/` (hrefs follow the address the request used). Hrefs keep
-//!   `$&+:=@` and percent-encode the rest as a path-segment encoder does, so `&` arrives as `&amp;`;
-//!   XML text escapes `"` as `&#34;` and `'` as `&#39;`, as an XML encoder that writes numeric
-//!   references does; a property a resource does not have comes back in a `404` propstat (empty
-//!   element); a write answers `ETag`, `OC-ETag` and `OC-FileId`.
+//!   legacy `/remote.php/dav/files/<user>/` (hrefs follow the address the request used). As its
+//!   WebDAV layer writes them (reva `3acb80d1`, ocdav `net.EncodePath` and `prop.Escaped`): an href
+//!   is the whole path escaped as a URL path (`$&+,:;=@` stay raw, so the space id's `$` does), then
+//!   XML-escaped by `encoding/xml` (`&` as `&amp;`, `"` as `&#34;`, `'` as `&#39;`); a property value
+//!   escapes only `& < >`, so an ETag's quotes arrive raw; a property a resource does not have comes
+//!   back in a `404` propstat (empty element); a write answers `ETag`, `OC-ETag` and `OC-FileId`.
+//!   Its PUT honours `If-Match` but ignores `If-None-Match: *` (a create-only write overwrites, `204`),
+//!   and its DELETE ignores `If-Match` (ocdav `put.go`, `delete.go`; the same in the server release's
+//!   vendored copy, opencloud `15d181d3`, reva `03685668969d`).
 //!
-//! Both: MKCOL `405` on an existing resource and `409` without a parent; PUT `409` without a parent,
-//! `412` for `If-None-Match: *` on an existing file or an `If-Match` that differs; DELETE `412` for
-//! an `If-Match` that differs (a collection's ETag included); `404` for a missing resource;
-//! collection ETags change when anything below them changes. Basic `qa-user:qa-token` only (else
-//! `401`).
+//! Both: MKCOL `405` on an existing resource and `409` without a parent; PUT `409` without a parent
+//! and `412` for an `If-Match` that differs; `404` for a missing resource;
+//! collection ETags change when anything below them changes. [`Dialect::Files`] also answers `412`
+//! for `If-None-Match: *` on an existing file and for a DELETE whose `If-Match` differs (a
+//! collection's ETag included). Basic `qa-user:qa-token` only (else `401`).
 #![allow(
     dead_code,
     clippy::unwrap_used,
@@ -71,7 +75,7 @@ impl Dialect {
     fn encode_segment(self, segment: &str) -> String {
         let keep: &[u8] = match self {
             Self::Files => b"-_.~",
-            Self::Spaces => b"-_.~$&+:=@",
+            Self::Spaces => b"-_.~$&+,:;=@",
         };
         let mut out = String::new();
         for b in segment.bytes() {
@@ -83,8 +87,8 @@ impl Dialect {
         }
         out
     }
-    /// XML character data as the dialect's writer escapes it.
-    fn text(self, s: &str) -> String {
+    /// An href as the dialect's writer escapes it in XML.
+    fn href_text(self, s: &str) -> String {
         let mut out = String::new();
         for c in s.chars() {
             match (self, c) {
@@ -94,6 +98,20 @@ impl Dialect {
                 (Self::Files, '"') => out.push_str("&quot;"),
                 (Self::Spaces, '"') => out.push_str("&#34;"),
                 (Self::Spaces, '\'') => out.push_str("&#39;"),
+                (_, c) => out.push(c),
+            }
+        }
+        out
+    }
+    /// A property value as the dialect's writer escapes it in XML.
+    fn prop_text(self, s: &str) -> String {
+        let mut out = String::new();
+        for c in s.chars() {
+            match (self, c) {
+                (_, '&') => out.push_str("&amp;"),
+                (_, '<') => out.push_str("&lt;"),
+                (_, '>') => out.push_str("&gt;"),
+                (Self::Files, '"') => out.push_str("&quot;"),
                 (_, c) => out.push(c),
             }
         }
@@ -110,8 +128,9 @@ impl Dialect {
             Self::Files => format!(
                 "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\">\n  <s:exception>Sabre\\DAV\\Exception\\{exception}</s:exception>\n  <s:message>{message}</s:message>\n</d:error>\n"
             ),
+            // Declared as `xmlns:d="DAV"` (no colon), as that server writes it.
             Self::Spaces => format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><d:error xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\"><s:exception>Sabre\\DAV\\Exception\\{exception}</s:exception><s:message>{message}</s:message></d:error>"
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><d:error xmlns:d=\"DAV\" xmlns:s=\"http://sabredav.org/ns\"><s:exception>Sabre\\DAV\\Exception\\{exception}</s:exception><s:message>{message}</s:message></d:error>"
             ),
         }
     }
@@ -144,13 +163,13 @@ impl Dav {
         feed(key);
         for (k, (_, n)) in &self.files {
             if key.is_empty() || k.starts_with(&below) {
-                feed(k);
-                feed(&n.to_string());
+                feed(k.as_str());
+                feed(n.to_string().as_str());
             }
         }
         for d in &self.dirs {
             if key.is_empty() || d.starts_with(&below) {
-                feed(d);
+                feed(d.as_str());
             }
         }
         format!("\"{h:016x}\"")
@@ -160,13 +179,13 @@ impl Dav {
         let mut out: Vec<(String, bool)> = self
             .dirs
             .iter()
-            .filter(|d| !d.is_empty() && parent_of(d) == key)
+            .filter(|d| !d.is_empty() && parent_of(d.as_str()) == key)
             .map(|d| (d.clone(), true))
             .collect();
         out.extend(
             self.files
                 .keys()
-                .filter(|f| parent_of(f) == key)
+                .filter(|f| parent_of(f.as_str()) == key)
                 .map(|f| (f.clone(), false)),
         );
         out
@@ -224,14 +243,18 @@ fn response_block(dav: &Dav, dialect: Dialect, home: &str, key: &str, dir: bool)
     } else {
         dav.etag(dav.files[key].1)
     };
-    let length = (!dir).then(|| dav.files[key].0.len());
+    let length = if dir {
+        None
+    } else {
+        Some(dav.files[key].0.len())
+    };
     let resourcetype = if dir { "<d:collection/>" } else { "" };
     let lastmod = "Sat, 14 Nov 2026 12:00:00 GMT";
     match dialect {
         Dialect::Files => {
             let mut prop = format!(
                 "<d:getlastmodified>{lastmod}</d:getlastmodified><d:resourcetype>{resourcetype}</d:resourcetype><d:getetag>{}</d:getetag>",
-                dialect.text(&etag)
+                dialect.prop_text(&etag)
             );
             match length {
                 Some(n) => prop.push_str(&format!(
@@ -243,14 +266,14 @@ fn response_block(dav: &Dav, dialect: Dialect, home: &str, key: &str, dir: bool)
             }
             format!(
                 "<d:response><d:href>{}</d:href><d:propstat><d:prop>{prop}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>",
-                dialect.text(&href)
+                dialect.href_text(&href)
             )
         }
         Dialect::Spaces => {
             let id = format!("{SPACE_ID}!{:08x}", key.len());
             let mut prop = format!(
                 "<oc:id>{id}</oc:id><oc:fileid>{id}</oc:fileid><oc:spaceid>{SPACE_ID}</oc:spaceid><oc:permissions>RDNVWZP</oc:permissions><d:getetag>{}</d:getetag><d:resourcetype>{resourcetype}</d:resourcetype>",
-                dialect.text(&etag)
+                dialect.prop_text(&etag)
             );
             let missing = match length {
                 Some(n) => {
@@ -267,7 +290,7 @@ fn response_block(dav: &Dav, dialect: Dialect, home: &str, key: &str, dir: bool)
             prop.push_str(&format!("<d:getlastmodified>{lastmod}</d:getlastmodified>"));
             format!(
                 "<d:response><d:href>{}</d:href><d:propstat><d:prop>{prop}</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>{missing}</d:response>",
-                dialect.text(&href)
+                dialect.href_text(&href)
             )
         }
     }
@@ -384,7 +407,10 @@ fn handle(mut stream: TcpStream, dialect: Dialect, dav: &Mutex<Dav>) {
             }
             let existing = d.files.get(&key).map(|(_, n)| *n);
             let current = existing.map(|n| d.etag(n));
-            if headers.get("if-none-match").map(String::as_str) == Some("*") && existing.is_some() {
+            if dialect == Dialect::Files
+                && headers.get("if-none-match").map(String::as_str) == Some("*")
+                && existing.is_some()
+            {
                 return error(
                     &mut stream,
                     dialect,
@@ -406,7 +432,7 @@ fn handle(mut stream: TcpStream, dialect: Dialect, dav: &Mutex<Dav>) {
             }
             d.next += 1;
             let n = d.next;
-            d.files.insert(key.clone(), (body, n));
+            d.files.insert(key, (body, n));
             let etag = d.etag(n);
             let status = if existing.is_some() { 204 } else { 201 };
             let headers = match dialect {
@@ -429,7 +455,7 @@ fn handle(mut stream: TcpStream, dialect: Dialect, dav: &Mutex<Dav>) {
         }
         "DELETE" => {
             if let Some((_, n)) = d.files.get(&key) {
-                if if_match.is_some_and(|m| m != d.etag(*n)) {
+                if dialect == Dialect::Files && if_match.is_some_and(|m| m != d.etag(*n)) {
                     return error(
                         &mut stream,
                         dialect,
@@ -441,7 +467,7 @@ fn handle(mut stream: TcpStream, dialect: Dialect, dav: &Mutex<Dav>) {
                 d.files.remove(&key);
                 respond(&mut stream, 204, "", b"")
             } else if !key.is_empty() && d.dirs.contains(&key) {
-                if if_match.is_some_and(|m| m != d.dir_etag(&key)) {
+                if dialect == Dialect::Files && if_match.is_some_and(|m| m != d.dir_etag(&key)) {
                     return error(
                         &mut stream,
                         dialect,
@@ -452,7 +478,7 @@ fn handle(mut stream: TcpStream, dialect: Dialect, dav: &Mutex<Dav>) {
                 }
                 let below = format!("{key}/");
                 d.files.retain(|k, _| !k.starts_with(&below));
-                d.dirs.retain(|k| k != &key && !k.starts_with(&below));
+                d.dirs.retain(|k| *k != key && !k.starts_with(&below));
                 respond(&mut stream, 204, "", b"")
             } else {
                 error(&mut stream, dialect, 404, "NotFound", "Resource not found")
