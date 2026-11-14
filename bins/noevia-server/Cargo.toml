@@ -118,6 +118,8 @@ hyper = { version = "1", features = ["http1", "client", "server"] }
 code-net-guard = { path = "../../crates/code-net-guard" }
 code-acp = { path = "../../crates/code-acp" }
 code-harness = { path = "../../crates/code-harness" }
+# Track R11: the inference budget and idle unload PUTs (model_writes_routes.rs).
+model-writes = { path = "../../crates/model-writes" }
 code-pipeline = { path = "../../crates/code-pipeline" }
 code-verify = { path = "../../crates/code-verify" }
 role-engine = { path = "../../crates/role-engine" }
