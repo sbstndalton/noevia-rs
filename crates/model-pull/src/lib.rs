@@ -129,7 +129,12 @@ fn shared_reads(path: &str) -> bool {
 
 /// One request, as `modelRoutes(req, res, ctx)` handles it: the prelude, the two routes, and the
 /// wrapper's invalidation after a write.
-pub fn handle(config: &Config, artifacts: &mut Artifacts, call: Call<'_>, host: &mut impl Host) -> Outcome {
+pub fn handle(
+    config: &Config,
+    artifacts: &mut Artifacts,
+    call: Call<'_>,
+    host: &mut impl Host,
+) -> Outcome {
     let write = writes(call.method) && shared_reads(call.path);
     if write {
         host.invalidate_model_reads();
@@ -160,7 +165,11 @@ pub fn handle(config: &Config, artifacts: &mut Artifacts, call: Call<'_>, host: 
 }
 
 /// The mtp-artifact route up to `check`: the repository and the variant's files, or the answer.
-pub fn mtp_selection(config: &Config, query: &str, host: &mut impl Host) -> Result<(String, JValue), Outcome> {
+pub fn mtp_selection(
+    config: &Config,
+    query: &str,
+    host: &mut impl Host,
+) -> Result<(String, JValue), Outcome> {
     let repo = js::search_param(query, "repo").unwrap_or_default();
     if !js::is_repo(&repo) {
         return Err(error(400, "Invalid repository"));
@@ -174,7 +183,11 @@ pub fn mtp_selection(config: &Config, query: &str, host: &mut impl Host) -> Resu
     let items: &[JValue] = match list {
         v if !v.truthy() => &[],
         JValue::Arr(items) => items,
-        _ => return Err(thrown(&Thrown::internal("result.body?.variants.find is not a function"))),
+        _ => {
+            return Err(thrown(&Thrown::internal(
+                "result.body?.variants.find is not a function",
+            )))
+        }
     };
     let wanted = js::search_param(query, "variant");
     let mut variant = None;
@@ -244,7 +257,12 @@ pub fn pull(config: &Config, body: Option<&[u8]>, host: &mut impl Host) -> Outco
     };
     let reply = match config.kind {
         Kind::Llamacpp => llamacpp_pull(config, checkpoint, host),
-        _ => host.send(&manager::lemonade_pull_request(config, &model_name, checkpoint, &recipe)),
+        _ => host.send(&manager::lemonade_pull_request(
+            config,
+            &model_name,
+            checkpoint,
+            &recipe,
+        )),
     };
     let r = match reply {
         Ok(r) => r,
@@ -276,14 +294,22 @@ pub fn pull(config: &Config, body: Option<&[u8]>, host: &mut impl Host) -> Outco
 /// llamacpp-manager.cjs `pull({ checkpoint })` under `mutate` (the maintenance gate entered for
 /// the whole call). A pull the router accepts answers with the checkpoint as its job id and model
 /// name.
-fn llamacpp_pull(config: &Config, checkpoint: &JValue, host: &mut impl Host) -> Result<Reply, Thrown> {
+fn llamacpp_pull(
+    config: &Config,
+    checkpoint: &JValue,
+    host: &mut impl Host,
+) -> Result<Reply, Thrown> {
     host.enter()?;
     let out = llamacpp_pull_entered(config, checkpoint, host);
     host.leave();
     out
 }
 
-fn llamacpp_pull_entered(config: &Config, checkpoint: &JValue, host: &mut impl Host) -> Result<Reply, Thrown> {
+fn llamacpp_pull_entered(
+    config: &Config,
+    checkpoint: &JValue,
+    host: &mut impl Host,
+) -> Result<Reply, Thrown> {
     // `/…/.test(checkpoint || '')` reads `String(checkpoint)`.
     let text = js::to_string(checkpoint).ok_or_else(|| Thrown::internal(js::NO_PRIMITIVE))?;
     if !manager::is_llamacpp_checkpoint(&text) {
@@ -300,7 +326,10 @@ fn llamacpp_pull_entered(config: &Config, checkpoint: &JValue, host: &mut impl H
         return Ok(reply);
     }
     Ok(Reply {
-        body: JValue::obj([("id", checkpoint.clone()), ("modelName", checkpoint.clone())]),
+        body: JValue::obj([
+            ("id", checkpoint.clone()),
+            ("modelName", checkpoint.clone()),
+        ]),
         ..reply
     })
 }

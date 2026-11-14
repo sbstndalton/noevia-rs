@@ -48,7 +48,12 @@ impl Inspection {
             ("tensorCount", JValue::Num(self.tensor_count as f64)),
             (
                 "tensors",
-                JValue::Arr(self.tensors.iter().map(|t| JValue::from(t.as_str())).collect()),
+                JValue::Arr(
+                    self.tensors
+                        .iter()
+                        .map(|t| JValue::from(t.as_str()))
+                        .collect(),
+                ),
             ),
         ])
     }

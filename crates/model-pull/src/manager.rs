@@ -24,7 +24,10 @@ pub enum Kind {
 impl Kind {
     /// `String(kind || 'none').toLowerCase()`; `Err` is the boot error for any other kind.
     pub fn parse(kind: Option<&str>) -> Result<Kind, String> {
-        let k = kind.filter(|k| !k.is_empty()).unwrap_or("none").to_lowercase();
+        let k = kind
+            .filter(|k| !k.is_empty())
+            .unwrap_or("none")
+            .to_lowercase();
         match k.as_str() {
             "none" => Ok(Kind::None),
             "lemonade" => Ok(Kind::Lemonade),
@@ -61,7 +64,11 @@ impl Config {
     /// hold (`holdHeaders()`); that one is the host's to add.
     pub fn headers(&self) -> Vec<(String, String)> {
         let mut out = vec![("Content-Type".to_string(), "application/json".to_string())];
-        if let Some(key) = self.api_key.as_deref().filter(|k| !k.is_empty() && *k != "local") {
+        if let Some(key) = self
+            .api_key
+            .as_deref()
+            .filter(|k| !k.is_empty() && *k != "local")
+        {
             out.push(("Authorization".to_string(), format!("Bearer {key}")));
         }
         out
@@ -124,13 +131,17 @@ impl Thrown {
                 s as u16,
                 JValue::obj([("error", JValue::from("Internal error"))]),
             ),
-            _ => (500, JValue::obj([("error", JValue::from("Internal error"))])),
+            _ => (
+                500,
+                JValue::obj([("error", JValue::from("Internal error"))]),
+            ),
         }
     }
 }
 
 /// The error `requireEnabled()` throws on a deployment without a model manager.
-pub const DISABLED: &str = "model management is disabled; configure MODEL_MANAGER_KIND to enable it";
+pub const DISABLED: &str =
+    "model management is disabled; configure MODEL_MANAGER_KIND to enable it";
 
 /// `modelManager.variants(repo)`'s request, for a repository the route has checked.
 pub fn variants_request(config: &Config, repo: &str) -> Result<Request, Thrown> {
@@ -234,7 +245,9 @@ pub fn quant_of(name: &str) -> Option<Quant> {
         // (?:IQ|Q)\d[\w]*: the word run is taken whole (the tail starts with '-' or '.', which it
         // cannot hold, so a shorter run never matches).
         for lead in ["IQ", "Q"] {
-            if js::starts_with_ci(rest, lead) && rest.get(lead.len()).is_some_and(u8::is_ascii_digit) {
+            if js::starts_with_ci(rest, lead)
+                && rest.get(lead.len()).is_some_and(u8::is_ascii_digit)
+            {
                 let mut end = g + lead.len() + 1;
                 while b.get(end).copied().is_some_and(js::is_word) {
                     end += 1;
@@ -336,14 +349,18 @@ pub fn variant_rows(siblings: &[JValue]) -> Result<Vec<JValue>, Thrown> {
         let complete = first.shard.is_some()
             && count == files.len() as f64
             && {
-                let mut shards: Vec<Option<&String>> = files.iter().map(|f| f.shard.as_ref()).collect();
+                let mut shards: Vec<Option<&String>> =
+                    files.iter().map(|f| f.shard.as_ref()).collect();
                 shards.sort();
                 shards.dedup();
                 shards.len() as f64 == count
             }
             && files.iter().all(|f| {
                 let n = number(f.shard.as_ref());
-                f.count == first.count && stem(&f.name) == stem(&first.name) && n >= 1.0 && n <= count
+                f.count == first.count
+                    && stem(&f.name) == stem(&first.name)
+                    && n >= 1.0
+                    && n <= count
             });
         if (files.len() != 1 && !complete) || (first.shard.is_some() && !complete) {
             continue;
@@ -353,7 +370,12 @@ pub fn variant_rows(siblings: &[JValue]) -> Result<Vec<JValue>, Thrown> {
             ("primary_file", JValue::from(first.name.as_str())),
             (
                 "files",
-                JValue::Arr(files.iter().map(|f| JValue::from(f.name.as_str())).collect()),
+                JValue::Arr(
+                    files
+                        .iter()
+                        .map(|f| JValue::from(f.name.as_str()))
+                        .collect(),
+                ),
             ),
         ]));
     }
@@ -397,7 +419,9 @@ pub fn is_llamacpp_checkpoint(s: &str) -> bool {
         None => (s, None),
     };
     js::is_repo(repo)
-        && quant.is_none_or(|q| !q.is_empty() && q.bytes().all(|b| js::is_word(b) || b == b'.' || b == b'-'))
+        && quant.is_none_or(|q| {
+            !q.is_empty() && q.bytes().all(|b| js::is_word(b) || b == b'.' || b == b'-')
+        })
 }
 
 /// The llama.cpp manager's refusal of a checkpoint that is not `owner/repo[:quant]`.
@@ -460,7 +484,10 @@ mod tests {
     #[test]
     fn derived_names_match_core() {
         let d = |v: JValue| derive_user_model_name(&v).unwrap();
-        assert_eq!(d(JValue::from("qa-org/Model-1:Q4_K_M")), "user.Model-1-Q4_K_M");
+        assert_eq!(
+            d(JValue::from("qa-org/Model-1:Q4_K_M")),
+            "user.Model-1-Q4_K_M"
+        );
         assert_eq!(d(JValue::from("qa/é😀")), "user.---");
         assert_eq!(d(JValue::from("qa/")), "user.qa-");
         assert_eq!(d(JValue::from("a:")), "user.a");

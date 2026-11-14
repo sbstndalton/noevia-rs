@@ -211,15 +211,27 @@ impl Host for Stub<'_> {
             ("method".to_string(), JValue::from(request.method)),
             (
                 "headers".to_string(),
-                JValue::obj(request.headers.iter().map(|(k, v)| (k.clone(), JValue::from(v.as_str())))),
+                JValue::obj(
+                    request
+                        .headers
+                        .iter()
+                        .map(|(k, v)| (k.clone(), JValue::from(v.as_str()))),
+                ),
             ),
         ];
         if let Some(body) = &request.body {
             send.push(("body".to_string(), JValue::from(body.as_str())));
         }
-        send.push(("timeout".to_string(), JValue::Num(f64::from(request.timeout_ms))));
+        send.push((
+            "timeout".to_string(),
+            JValue::Num(f64::from(request.timeout_ms)),
+        ));
         self.calls.push(JValue::obj([("send", JValue::Obj(send))]));
-        assert!(!self.script.is_empty(), "an unscripted manager call {}", request.url);
+        assert!(
+            !self.script.is_empty(),
+            "an unscripted manager call {}",
+            request.url
+        );
         reply_of(&self.script.remove(0))
     }
 
@@ -242,7 +254,8 @@ impl Host for Stub<'_> {
     fn downloads_requested(&mut self, checkpoint: &JValue) {
         assert!(self.requested.is_none());
         self.requested = Some(checkpoint.clone());
-        self.calls.push(JValue::obj([("sse", JValue::from(self.sse.as_str()))]));
+        self.calls
+            .push(JValue::obj([("sse", JValue::from(self.sse.as_str()))]));
     }
 
     fn downloads_rejected(&mut self, checkpoint: &JValue) {
@@ -281,10 +294,18 @@ fn the_fixture_names_its_sources_and_the_cut_lines() {
         assert!(f.get("blocks").get(block).is_object(), "{block}");
     }
     assert_eq!(f.get("limit"), &JValue::Num(gguf::LIMIT as f64));
-    let names: Vec<_> = items(f.get("differences")).iter().filter_map(JValue::as_str).collect();
+    let names: Vec<_> = items(f.get("differences"))
+        .iter()
+        .filter_map(JValue::as_str)
+        .collect();
     assert_eq!(
         names,
-        ["body-unsupported", "meta-not-json", "meta-unsupported", "meta-error-at-cap"]
+        [
+            "body-unsupported",
+            "meta-not-json",
+            "meta-unsupported",
+            "meta-error-at-cap"
+        ]
     );
 }
 
@@ -296,7 +317,9 @@ fn inspect_matches_node() {
         assert_eq!(JValue::Num(bytes.len() as f64), *c.get("bytes"));
         match gguf::inspect(&bytes) {
             Ok(i) => {
-                let JValue::Obj(mut got) = i.evidence("") else { panic!() };
+                let JValue::Obj(mut got) = i.evidence("") else {
+                    panic!()
+                };
                 got.remove(0);
                 assert_eq!(&JValue::Obj(got), c.get("out"), "{}", show(c));
                 read += 1;
@@ -330,7 +353,10 @@ fn llamacpp_variants_match_node() {
     for c in list(&fixture(), "quants") {
         let body = c.get("body").clone();
         let got = manager::variants(&config, "qa-org/qa-model", &mut |r| {
-            assert_eq!(r.url, "https://huggingface.co/api/models/qa-org/qa-model?blobs=true");
+            assert_eq!(
+                r.url,
+                "https://huggingface.co/api/models/qa-org/qa-model?blobs=true"
+            );
             assert!(r.headers.is_empty());
             Ok(Reply {
                 ok: true,
@@ -380,12 +406,18 @@ fn the_pull_matches_node() {
             path: "/api/models/pull",
             query: "",
             admin: c.get("role").as_str() == Some("admin"),
-            body: body.as_deref().filter(|b| b.len() <= model_pull::BODY_LIMIT),
+            body: body
+                .as_deref()
+                .filter(|b| b.len() <= model_pull::BODY_LIMIT),
         };
         let out = handle(&config, &mut Artifacts::new(), call, &mut host);
         if out == Outcome::Forward {
             // Named difference body-unsupported.
-            assert!(c.get("request").as_str().unwrap().contains("1e400"), "{}", show(c));
+            assert!(
+                c.get("request").as_str().unwrap().contains("1e400"),
+                "{}",
+                show(c)
+            );
             forwarded += 1;
             continue;
         }
@@ -398,8 +430,16 @@ fn the_pull_matches_node() {
         );
         assert_eq!(c.get("unhandled").as_bool() == Some(true), status.is_none());
         assert_eq!(&answer, c.get("body"), "{}", show(c));
-        assert_eq!(host.invalidated, c.get("invalidated").as_num().unwrap_or(0.0));
-        assert_eq!(JValue::Arr(host.calls.clone()), *c.get("calls"), "{}", show(c));
+        assert_eq!(
+            host.invalidated,
+            c.get("invalidated").as_num().unwrap_or(0.0)
+        );
+        assert_eq!(
+            JValue::Arr(host.calls.clone()),
+            *c.get("calls"),
+            "{}",
+            show(c)
+        );
         assert_eq!(host.entered, 0);
         if let JValue::Arr(downloads) = c.get("downloads") {
             let mine: Vec<JValue> = host
@@ -408,7 +448,14 @@ fn the_pull_matches_node() {
                 .map(|m| {
                     JValue::obj([
                         ("model", m.clone()),
-                        ("status", JValue::from(if host.rejected { "rejected" } else { "requested" })),
+                        (
+                            "status",
+                            JValue::from(if host.rejected {
+                                "rejected"
+                            } else {
+                                "requested"
+                            }),
+                        ),
                     ])
                 })
                 .collect();
@@ -423,7 +470,13 @@ fn the_pull_matches_node() {
 }
 
 /// One request's expected answer, with the named differences of the artifact check applied.
-fn compare_mtp(node: &JValue, status: Option<u16>, body: &JValue, hf: &JValue, seen: &mut BTreeMap<&'static str, usize>) {
+fn compare_mtp(
+    node: &JValue,
+    status: Option<u16>,
+    body: &JValue,
+    hf: &JValue,
+    seen: &mut BTreeMap<&'static str, usize>,
+) {
     let node_body = node.get("body");
     assert_eq!(
         status.map_or(JValue::Undefined, |s| JValue::Num(f64::from(s))),
@@ -438,7 +491,8 @@ fn compare_mtp(node: &JValue, status: Option<u16>, body: &JValue, hf: &JValue, s
     let meta = hf
         .get(&format!(
             "https://huggingface.co/api/models/{}",
-            model_pull::js::search_param(node.get("query").as_str().unwrap_or(""), "repo").unwrap_or_default()
+            model_pull::js::search_param(node.get("query").as_str().unwrap_or(""), "repo")
+                .unwrap_or_default()
         ))
         .clone();
     let same_but = |keys: &[&str]| {
@@ -462,7 +516,12 @@ fn compare_mtp(node: &JValue, status: Option<u16>, body: &JValue, hf: &JValue, s
         same_but(&["status"]);
         *seen.entry("meta-unsupported").or_default() += 1;
     } else if reason == "terminated" && node_body.get("status").as_str() != Some("unknown") {
-        assert_eq!(from_parts(meta.get("parts")).len(), artifact::META_CAP, "{}", show(node));
+        assert_eq!(
+            from_parts(meta.get("parts")).len(),
+            artifact::META_CAP,
+            "{}",
+            show(node)
+        );
         assert!(meta.get("error").as_str().is_some());
         same_but(&["status"]);
         *seen.entry("meta-error-at-cap").or_default() += 1;
@@ -516,15 +575,25 @@ fn the_mtp_artifact_check_matches_node() {
                         answers.push((key.clone(), artifacts.finish(key, ran, now)));
                     }
                 }
-                for ((p, host), r) in pending.into_iter().zip(hosts).zip(items(step.get("requests"))) {
+                for ((p, host), r) in pending
+                    .into_iter()
+                    .zip(hosts)
+                    .zip(items(step.get("requests")))
+                {
                     let (status, body) = match p {
                         Pending::Done(s, b) => (s, b),
-                        Pending::Run(key) | Pending::Join(key) => {
-                            (200, answers.iter().find(|(k, _)| *k == key).unwrap().1.clone())
-                        }
+                        Pending::Run(key) | Pending::Join(key) => (
+                            200,
+                            answers.iter().find(|(k, _)| *k == key).unwrap().1.clone(),
+                        ),
                     };
                     compare_mtp(r, Some(status), &body, hf, &mut seen);
-                    assert_eq!(JValue::Arr(host.calls.clone()), *r.get("calls"), "{}", show(r));
+                    assert_eq!(
+                        JValue::Arr(host.calls.clone()),
+                        *r.get("calls"),
+                        "{}",
+                        show(r)
+                    );
                     fetches.extend(host.fetches);
                     requests += 1;
                 }
@@ -543,8 +612,16 @@ fn the_mtp_artifact_check_matches_node() {
                     let out = handle(&config, &mut artifacts, call, &mut host);
                     let (status, body) = outcome_parts(&out);
                     compare_mtp(r, status, &body, hf, &mut seen);
-                    assert_eq!(host.invalidated, r.get("invalidated").as_num().unwrap_or(0.0));
-                    assert_eq!(JValue::Arr(host.calls.clone()), *r.get("calls"), "{}", show(r));
+                    assert_eq!(
+                        host.invalidated,
+                        r.get("invalidated").as_num().unwrap_or(0.0)
+                    );
+                    assert_eq!(
+                        JValue::Arr(host.calls.clone()),
+                        *r.get("calls"),
+                        "{}",
+                        show(r)
+                    );
                     fetches.extend(host.fetches);
                     if matches!(body.get("status").as_str(), Some("present" | "absent")) {
                         definite += 1;
@@ -561,8 +638,14 @@ fn the_mtp_artifact_check_matches_node() {
             );
         }
     }
-    assert!(requests > 300 && definite > 100, "{requests} requests, {definite} definite");
+    assert!(
+        requests > 300 && definite > 100,
+        "{requests} requests, {definite} definite"
+    );
     for name in ["meta-not-json", "meta-unsupported", "meta-error-at-cap"] {
-        assert!(seen.get(name).is_some_and(|n| *n > 0), "{name} is exercised: {seen:?}");
+        assert!(
+            seen.get(name).is_some_and(|n| *n > 0),
+            "{name} is exercised: {seen:?}"
+        );
     }
 }

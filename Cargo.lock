@@ -2089,6 +2089,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-pull"
+version = "0.1.0"
+dependencies = [
+ "chat-turn",
+ "js-json",
+]
+
+[[package]]
 name = "model-router"
 version = "0.1.0"
 dependencies = [

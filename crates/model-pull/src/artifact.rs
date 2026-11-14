@@ -136,7 +136,12 @@ pub fn validate(repo: &str, files: &JValue) -> Result<Key, &'static str> {
         };
         let bad_segment = f.split('/').any(|p| p.is_empty() || p == "." || p == "..");
         let bad_char = f.chars().any(|c| matches!(c, '?' | '#' | '\\') || c < ' ');
-        if !f.ends_with(".gguf") || f.starts_with('/') || bad_segment || bad_char || names.contains(&f) {
+        if !f.ends_with(".gguf")
+            || f.starts_with('/')
+            || bad_segment
+            || bad_char
+            || names.contains(&f)
+        {
             return Err(INVALID_FILES);
         }
         names.push(f);
@@ -223,7 +228,9 @@ impl Artifacts {
                     slot.1 = now as f64;
                     slot.2 = ran.answer.clone();
                 }
-                None => self.cache.push((key.clone(), now as f64, ran.answer.clone())),
+                None => self
+                    .cache
+                    .push((key.clone(), now as f64, ran.answer.clone())),
             }
         }
         ran.answer
@@ -279,7 +286,10 @@ fn prefix(url: String, host: &mut impl Fetcher) -> Result<Vec<u8>, String> {
         .map_err(|e| e.reason())?;
     let ok = (200..300).contains(&fetched.status);
     if !ok || matches!(fetched.status, 204 | 205) {
-        return Err(format!("Artifact metadata unavailable ({}).", fetched.status));
+        return Err(format!(
+            "Artifact metadata unavailable ({}).",
+            fetched.status
+        ));
     }
     if fetched.status == 206
         && !js::starts_with_ci(
@@ -318,7 +328,9 @@ fn checked(key: &Key, host: &mut impl Fetcher) -> Result<JValue, String> {
         String::new()
     };
     let hex = (40..=64).contains(&text.len())
-        && text.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
     if !hex {
         return Err(IMMUTABLE_UNAVAILABLE.to_string());
     }
@@ -330,7 +342,9 @@ fn checked(key: &Key, host: &mut impl Fetcher) -> Result<JValue, String> {
     for file in &key.files {
         let mut path = Vec::new();
         for segment in file.split('/') {
-            path.push(js::encode_uri_component(segment).ok_or_else(|| js::URI_MALFORMED.to_string())?);
+            path.push(
+                js::encode_uri_component(segment).ok_or_else(|| js::URI_MALFORMED.to_string())?,
+            );
         }
         let url = format!(
             "https://huggingface.co/{}/resolve/{text}/{}",
@@ -357,7 +371,10 @@ fn checked(key: &Key, host: &mut impl Fetcher) -> Result<JValue, String> {
     Ok(JValue::obj([
         ("status", JValue::from(status)),
         ("reason", JValue::from(reason)),
-        ("files", JValue::Arr(key.files.iter().map(|f| JValue::from(f.as_str())).collect())),
+        (
+            "files",
+            JValue::Arr(key.files.iter().map(|f| JValue::from(f.as_str())).collect()),
+        ),
         ("revision", revision),
         ("evidence", JValue::Arr(evidence)),
         ("checkedAt", JValue::from(js::iso_string(host.now_ms()))),
