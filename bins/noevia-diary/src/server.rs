@@ -101,6 +101,11 @@ pub struct App {
     /// save re-indexes with (S6b), following the owned configuration live as Python's retrievers
     /// follow SharedEmbedding. Unset: native saves leave their documents dirty for Python.
     pub save_embedder: std::sync::OnceLock<Arc<diary_answer::embedder::HttpEmbedder>>,
+    /// Shift 4, step 6 (DIARY_RUST_EXCHANGE=on, main mode): this process's reading of what the
+    /// exchange needs of the configuration. Unset: every exchange is the child's.
+    pub exchange: std::sync::OnceLock<Arc<crate::exchange::Setup>>,
+    /// The exchange sessions this process holds (Python `SESSIONS`).
+    pub sessions: Arc<crate::exchange::Sessions>,
 }
 
 impl App {
@@ -132,6 +137,8 @@ impl App {
             external_sources: cfg.external_sources,
             write_wait: None,
             save_embedder: std::sync::OnceLock::new(),
+            exchange: std::sync::OnceLock::new(),
+            sessions: Arc::default(),
         }
     }
 }
@@ -284,6 +291,13 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
 
 /// The X-Cowork-Storage descriptor, when it decodes strictly (unpadded base64url, a JSON
 /// object). Err(()) means "Python's lenient decoder might read it differently": decline.
+/// The `X-Cowork-Storage` header `_tenant_state` accepts without its own answer (absent, or a
+/// descriptor within the size limit that parses as Python reads it).
+pub(crate) fn storage_header_ok(headers: &HeaderMap) -> bool {
+    let storage = header(headers, "x-cowork-storage");
+    storage.len() <= MAX_STORAGE_HEADER_LEN && strict_descriptor(&storage).is_ok()
+}
+
 fn strict_descriptor(raw: &str) -> Result<Option<serde_json::Map<String, Value>>, ()> {
     if raw.is_empty() || raw.len() > MAX_STORAGE_HEADER_LEN {
         return Ok(None);
@@ -1064,6 +1078,7 @@ async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Bod
     let lease = crate::lease::lease_of(headers);
     match tokio::task::spawn_blocking(move || {
         app2.writers.fence_as(&uid, lease);
+        app2.sessions.forget_tenant(&uid);
         // A tenant created again under this id is recovered again (and swept) by this process.
         app2.recovered
             .lock()

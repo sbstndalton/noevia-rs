@@ -146,6 +146,9 @@ pub struct Front {
     /// Shift 4, step 4 (DIARY_RUST_RECOVERY=on): a writer tenant's reads without a fresh stamp
     /// recover the tenant here (recovery::recover_for_reads) instead of waiting for the child.
     recovery_here: bool,
+    /// Shift 4, step 6 (DIARY_RUST_EXCHANGE=on): what the exchange reads of this process's own
+    /// configuration, handed to the App at install. Unset: every exchange is the child's.
+    exchange_setup: OnceLock<Arc<crate::exchange::Setup>>,
     http: Client<HttpConnector, Body>,
 }
 
@@ -172,8 +175,14 @@ impl Front {
             owner: OnceLock::new(),
             own_config: OnceLock::new(),
             recovery_here: false,
+            exchange_setup: OnceLock::new(),
             http,
         }
+    }
+
+    /// DIARY_RUST_EXCHANGE=on: the exchange settings this process read at start.
+    pub fn set_exchange_setup(&self, setup: crate::exchange::Setup) {
+        let _ = self.exchange_setup.set(Arc::new(setup));
     }
 
     /// DIARY_RUST_RECOVERY=on (needs the embedding owner here: DIARY_RUST_EMBEDDING=on in the
@@ -218,6 +227,9 @@ impl Front {
         }
         let mut app = App::new(cfg);
         app.write_wait = Some(self.write_wait);
+        if let Some(setup) = self.exchange_setup.get() {
+            let _ = app.exchange.set(setup.clone());
+        }
         let app = Arc::new(app);
         self.app
             .set(app.clone())
@@ -427,6 +439,66 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
             return owner
                 .route(&app, &parts.method, &parts.headers, &bytes)
                 .await;
+        }
+    }
+    // Shift 4, step 6: the exchange of a writer tenant of this process (DIARY_RUST_EXCHANGE=on),
+    // recovered here as Python's `_tenant_state` recovers on entry; declined to the child before
+    // any effect when this side does not reproduce the request.
+    if parts.method == Method::POST && path == "/v1/chat/completions" {
+        let setup = app.exchange.get().cloned();
+        let tenant = stamp_tenant(&parts.headers).filter(|uid| !app.writers.is_fenced(uid));
+        let credited = matches!(server::check_auth(&app, &parts.headers), Ok(true))
+            && (app.tenant_key.is_empty() || asserted);
+        if let (Some(setup), Some(uid)) = (setup, tenant) {
+            let bounded = buffered.is_some()
+                || json_media(&parts.headers)
+                    && declared_length(&parts.headers)
+                        .is_some_and(|n| n <= server::MAX_BODY as u64)
+                    && !parts.headers.contains_key("transfer-encoding");
+            if credited
+                && bounded
+                && front.is_writer(&uid)
+                && app.save_embedder.get().is_some()
+                && server::storage_header_ok(&parts.headers)
+            {
+                let (app2, uid2) = (app.clone(), uid.clone());
+                let recovered = tokio::task::spawn_blocking(move || {
+                    crate::recovery::recover_for_reads(&app2, &uid2)
+                })
+                .await
+                .unwrap_or(false);
+                if recovered {
+                    let bytes = match (buffered.take(), stream.take()) {
+                        (Some(b), _) => b,
+                        (None, Some(s)) => match tokio::time::timeout(
+                            BODY_DEADLINE,
+                            axum::body::to_bytes(s, server::MAX_BODY),
+                        )
+                        .await
+                        {
+                            Ok(Ok(b)) => b,
+                            Ok(Err(_)) => return raw(413, TOO_LARGE),
+                            Err(_) => return raw(408, BODY_TIMEOUT),
+                        },
+                        (None, None) => axum::body::Bytes::new(),
+                    };
+                    buffered = Some(bytes.clone());
+                    let trace = crate::exchange::trace_requested(&parts.headers);
+                    if let Some(parsed) = crate::exchange::parse(&bytes, trace) {
+                        if let Some(resp) = crate::exchange::serve(
+                            app.clone(),
+                            setup,
+                            app.sessions.clone(),
+                            uid,
+                            parsed,
+                        )
+                        .await
+                        {
+                            return resp;
+                        }
+                    }
+                }
+            }
         }
     }
     // A native read: no body, a read route, served here unless it declines.
@@ -747,16 +819,31 @@ pub fn config_dir() -> std::path::PathBuf {
         .unwrap_or_else(|_| std::path::PathBuf::from("/app/config"))
 }
 
-/// This process's own resolution of the child's start-up config (config.yaml and this process's
-/// environment, which the child inherits): diary_operator::server_config::main_mode with this
-/// run's control port and secrets. The error is reduced to its first clause (a YAML or value
-/// error may quote configuration text).
-pub fn own_config(front: &Front, control_port: u16) -> Result<serde_json::Value, String> {
-    // Python sees a non-UTF-8 entry (surrogate-escaped) where this side cannot: not resolved.
-    let env: std::collections::BTreeMap<String, String> = std::env::vars_os()
+/// This process's environment, which the child inherits. Python sees a non-UTF-8 entry
+/// (surrogate-escaped) where this side cannot: not resolved then.
+fn utf8_env() -> Result<std::collections::BTreeMap<String, String>, String> {
+    std::env::vars_os()
         .map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
         .collect::<Option<_>>()
-        .ok_or_else(|| "environment not UTF-8".to_string())?;
+        .ok_or_else(|| "environment not UTF-8".to_string())
+}
+
+/// An error reduced to its first clause (a YAML or value error may quote configuration text).
+fn first_clause(e: &str) -> String {
+    e.split(':')
+        .next()
+        .unwrap_or("")
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '(' || *c == ')')
+        .take(60)
+        .collect()
+}
+
+/// This process's own resolution of the child's start-up config (config.yaml and this process's
+/// environment): diary_operator::server_config::main_mode with this run's control port and
+/// secrets.
+pub fn own_config(front: &Front, control_port: u16) -> Result<serde_json::Value, String> {
+    let env = utf8_env()?;
     let start = diary_operator::server_config::Start {
         port: control_port,
         control_token: &front.control_token,
@@ -764,15 +851,16 @@ pub fn own_config(front: &Front, control_port: u16) -> Result<serde_json::Value,
     };
     diary_operator::config::load(None, &config_dir(), &env)
         .and_then(|cfg| diary_operator::server_config::main_mode(&cfg.data, &env, &start))
-        .map_err(|e| {
-            e.split(':')
-                .next()
-                .unwrap_or("")
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '(' || *c == ')')
-                .take(60)
-                .collect()
-        })
+        .map_err(|e| first_clause(&e))
+}
+
+/// DIARY_RUST_EXCHANGE=on: what the exchange reads of the configuration, read here at start.
+pub fn own_exchange_setup() -> Result<crate::exchange::Setup, String> {
+    let env = utf8_env()?;
+    let dir = config_dir();
+    diary_operator::config::load(None, &dir, &env)
+        .and_then(|cfg| crate::exchange::setup(&cfg.data, &dir))
+        .map_err(|e| first_clause(&e))
 }
 
 /// The one log line of the comparison: key paths only, never a value.
@@ -932,6 +1020,18 @@ pub async fn run(args: Args) -> u8 {
         .unwrap_or(false)
     {
         front.set_own_config(own_config(&front, control_port));
+    }
+    if std::env::var(crate::exchange::SWITCH)
+        .map(|v| v.trim().eq_ignore_ascii_case("on"))
+        .unwrap_or(false)
+    {
+        match own_exchange_setup() {
+            Ok(setup) => front.set_exchange_setup(setup),
+            Err(e) => eprintln!(
+                "noevia-diary: {}: the configuration cannot be read here ({e}); the child answers every exchange",
+                crate::exchange::SWITCH
+            ),
+        }
     }
     let Some((program, rest)) = args.child.split_first() else {
         return 2;
