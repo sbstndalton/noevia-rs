@@ -57,9 +57,16 @@ fn outcome(status: &str) -> Outcome {
 }
 pub fn service_down(error: &str) -> bool {
     let s = error.to_ascii_lowercase();
-    !["timed out", "time out", "timeout", "aborted", "aborterror"]
-        .iter()
-        .any(|w| s.contains(w))
+    ![
+        "timed out",
+        "time out",
+        "timedout",
+        "timeout",
+        "aborted",
+        "aborterror",
+    ]
+    .iter()
+    .any(|w| s.contains(w))
         && [
             "busy",
             "unavailable",

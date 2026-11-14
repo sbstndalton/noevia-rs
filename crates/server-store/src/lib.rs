@@ -237,6 +237,18 @@ impl RustRerankerSettings {
     }
 }
 
+/// Settings -> Models -> the inference memory budget (track R11, `NOEVIA_RUST_MODEL_WRITES=rust`):
+/// the front saves `inference:memory-budget` through [`WriteTx::set_inference_budget`]; core
+/// refuses its own PUT under the same switch and reads the row on every use.
+#[derive(Debug, Clone, Copy)]
+pub struct RustInferenceBudget(());
+impl RustInferenceBudget {
+    pub const KEY: &'static str = "inference:memory-budget";
+    pub const fn owned() -> Self {
+        Self(())
+    }
+}
+
 /// Settings -> Diary & storage, the Nextcloud sign-in and the storage test/folder routes
 /// (sbstndalton/noevia#2190): a completed sign-in saves the account's `storage_connections` row
 /// through [`WriteTx::save_storage_connection`], Node's exact upsert. Since round 4 the Settings save
@@ -1252,6 +1264,21 @@ impl WriteTx<'_> {
         )?)
     }
 
+    /// core inference-budget.cjs `save`'s statement (features.cjs `settingsStore.set`), under its
+    /// own capability.
+    pub fn set_inference_budget(
+        &self,
+        _owner: RustInferenceBudget,
+        value: &str,
+    ) -> Result<usize, StoreError> {
+        self.settings_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.settings_open);
+        Ok(self.conn.execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('inference:memory-budget',?1)",
+            [value],
+        )?)
+    }
+
     /// The machine registry's sole writer; no arbitrary settings capability.
     pub fn set_inference_machines(
         &self,
@@ -1324,6 +1351,24 @@ impl WriteTx<'_> {
         ])?)
     }
 
+    /// Exactly core rust-storage-connection.cjs `RESEAL_SQL`, the secrets rotation's compare-and-swap
+    /// (track R12): the account's secret, re-sealed under the current key, replaces the ciphertext the
+    /// rotation read, only while the row still holds it. `0`: another writer changed it meanwhile.
+    pub fn reseal_storage_connection(
+        &self,
+        _storage: RustStorageIntegrations,
+        user_id: &str,
+        next: &str,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.storage_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.storage_open);
+        let mut stmt = self
+            .conn
+            .prepare("UPDATE storage_connections SET secret=? WHERE user_id=? AND secret=?")?;
+        Ok(stmt.execute(rusqlite::params![next, user_id, previous])?)
+    }
+
     /// Exactly core tool-policy.cjs `set()`'s statement for one tool: the account's mode upsert.
     pub fn upsert_tool_policy(
         &self,
@@ -1378,6 +1423,22 @@ impl WriteTx<'_> {
         self.chatgpt_statement(
             "UPDATE chatgpt_oauth_tokens SET data_enc=?, updated_at=? WHERE user_id=? AND state='connected' AND data_enc=?",
             rusqlite::params![next, updated_at, user_id, previous],
+        )
+    }
+
+    /// Exactly the secrets rotation's compare-and-swap (core secrets-rotate.cjs `sqlTable` write, track
+    /// R12): the tokens re-sealed under the current key replace the ciphertext the rotation read, only
+    /// while the row still holds it (any state; `updated_at` is left as it was).
+    pub fn reseal_chatgpt_tokens(
+        &self,
+        _cap: RustChatgptOAuth,
+        user_id: &str,
+        next: &str,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.chatgpt_statement(
+            "UPDATE chatgpt_oauth_tokens SET data_enc=? WHERE user_id=? AND data_enc=?",
+            rusqlite::params![next, user_id, previous],
         )
     }
 
