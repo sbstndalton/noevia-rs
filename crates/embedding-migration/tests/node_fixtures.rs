@@ -228,7 +228,7 @@ fn every_recorded_scenario_replays_as_node_ran_it() {
             };
             let at = format!("{name} step {i} ({op})");
             let want = &rec["result"];
-            // Node bug (filed): a locked configuration's set-next called the writer outside the
+            // Node bug noevia#2696: a locked configuration's set-next called the writer outside the
             // publication lock and threw a plain error (500). The port answers core's 409 badState.
             if name == "refuse-seeded-active" && op == "setNext" {
                 assert_eq!(

@@ -12,7 +12,7 @@
 //!   rollback   previous becomes active again; a next under way is abandoned.
 //!   finish     drop previous and its vectors.
 //!
-//! One difference from core, on purpose (filed): while a refused seeded active address has locked
+//! One difference from core, on purpose (noevia#2696): while a refused seeded active address has locked
 //! the configuration, core's set-next called the writer outside the publication lock and answered
 //! a plain 500 ("requires the publication lock"); here it answers core's own 409 `badState`.
 //!

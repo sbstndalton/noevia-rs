@@ -7,7 +7,7 @@
 //! lock core's `embedding-config-lock.cjs` (`flock -x -w 5`) and the native embedding worker's
 //! publication take. The file is written to `<file>.<pid>.tmp` (mode 0600) and renamed over it.
 //!
-//! Differences from core, on purpose (each filed): a state file that exists but cannot be read
+//! A difference from core, on purpose (noevia#2697): a state file that exists but cannot be read
 //! (permissions, an I/O error) is damaged here; core read it as absent and let the environment's
 //! values take over, which its own comment says must not happen.
 

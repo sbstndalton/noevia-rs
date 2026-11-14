@@ -12,9 +12,14 @@
 //!   with their served-model, coverage and endpoint-parity checks, the dropped vector slots and the
 //!   status object `GET /api/embedding` returns as `projects`.
 //!
-//! Network, index files and the worker are behind [`migration::Host`]; nothing here opens a socket.
-//! Profile names are data (the caller passes core's list, [`target::Profiles`]). Nothing calls this
-//! crate yet: the route, its switch and core's refusal are the next steps.
+//! - [`routes`]: `routes/embedding.cjs`'s `apply()` and `GET` for the non-service actions (address
+//!   rule, served probes, projects and Diary halves, audit, service sync, two-half status).
+//!   `service-switch` / `service-off` are still core's ([`routes::Outcome::Service`]).
+//!
+//! Network, index files and the worker are behind [`migration::Host`] and [`routes::RouteHost`];
+//! nothing here opens a socket. Profile names are data (the caller passes core's list,
+//! [`target::Profiles`]). Nothing calls this crate yet: the front's wiring, its switch and core's
+//! refusal are the next steps.
 
 #![forbid(unsafe_code)]
 
