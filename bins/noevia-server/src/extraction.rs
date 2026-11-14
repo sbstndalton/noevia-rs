@@ -271,7 +271,11 @@ async fn fetch_with(
         .body(reqwest::Body::wrap(Slices(rx)));
     let feed = async move {
         for slice in bytes.chunks(BODY_SLICE) {
-            if tx.send(::bytes::Bytes::copy_from_slice(slice)).await.is_err() {
+            if tx
+                .send(::bytes::Bytes::copy_from_slice(slice))
+                .await
+                .is_err()
+            {
                 return;
             }
         }
@@ -360,7 +364,9 @@ fn machine_url(data_dir: &Path, kind: &str) -> Result<Option<String>, ()> {
     let raw: Option<String> = store
         .read(|r| {
             r.row(
-                "SELECT value FROM settings WHERE key='inference:machines'",
+                // As the registry core asks reads it (machine_service.rs read_row): a value stored
+                // as another type is its text, not an unreadable store.
+                "SELECT CAST(value AS TEXT) FROM settings WHERE key='inference:machines'",
                 [],
                 |row| row.get(0),
             )

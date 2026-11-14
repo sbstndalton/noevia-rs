@@ -181,11 +181,12 @@ pub fn inapp_answer(
     arguments: &JValue,
     active: impl FnOnce(&str) -> bool,
 ) -> Option<JValue> {
-    // core's verifyToken refuses a token over 4 096 characters (a 401): a long id is core's.
+    // core's verifyToken refuses a token over 4 096 characters (a 401): a long id is core's. The
+    // token carries the id JSON-escaped, so the escaped length is what counts.
     if !matches!(name, "project_list_files" | "project_read_file")
         || uid.is_empty()
         || uid.len() > 200
-        || pid.is_some_and(|p| p.len() > 2048)
+        || pid.is_some_and(|p| json_len(p) > 2048)
         || !inapp_body_fits(name, arguments)
         || !active(uid)
     {
@@ -422,6 +423,8 @@ mod tests {
             )
         };
         assert_eq!(list(&long_pid), None);
+        // Short in bytes, too long once JSON-escaped as the token carries it.
+        assert_eq!(list(&"\"".repeat(1100)), None);
         assert!(list("qa-proj").is_some());
         let _ = std::fs::remove_dir_all(&data);
     }
