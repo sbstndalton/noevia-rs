@@ -234,6 +234,35 @@ function behind(patterns) {
   }
   return Object.fromEntries([...out].sort());
 }
+// Council p7 (CONTINUE 3 of p5): the methods a `behind` line itself compares the request method with
+// (`req.method === 'PUT'`, `method == "GET"`, `['GET', 'HEAD'].includes(req.method)`). Only the hit line: a
+// neighbour's test could belong to another route, and dropping a real handler is the unsafe direction. A negation
+// (`!==`, `!=`) or no comparison records nothing, and the Rust side then counts the line for every method.
+const textOf = new Map(handlerText);
+function methodsNear(hit) {
+  const at = hit.lastIndexOf(':');
+  const ls = textOf.get(hit.slice(0, at));
+  const i = Number(hit.slice(at + 1)) - 1;
+  if (!ls) return null;
+  const near = ls[i] || '';
+  if (/method\s*!==?\s*['"]/.test(near) || /['"][A-Z]+['"]\s*!==?\s*(?:req\.)?method/.test(near)) return null;
+  const named = new Set();
+  for (const m of near.matchAll(/method\s*===?\s*['"]([A-Z]+)['"]/g)) named.add(m[1]);
+  for (const m of near.matchAll(/['"]([A-Z]+)['"]\s*===?\s*(?:req\.)?method\b/g)) named.add(m[1]);
+  for (const m of near.matchAll(/\[([^\]]*)\]\.includes\((?:req\.)?method\)/g)) {
+    for (const q of m[1].matchAll(/['"]([A-Z]+)['"]/g)) named.add(q[1]);
+  }
+  const known = [...named].filter((x) => METHODS.includes(x)).sort();
+  return known.length ? known : null;
+}
+function behindMethods(behindMap) {
+  const out = {};
+  for (const hit of [...new Set(Object.values(behindMap).flat())].sort()) {
+    const m = methodsNear(hit);
+    if (m) out[hit] = m;
+  }
+  return out;
+}
 
 // Values a switch is asked with: on-spellings the stubs use (`1`, `rust`, `native`).
 const ON = ['1', 'rust', 'native'];
@@ -275,6 +304,7 @@ for (const { file, fn, pathname } of calls) {
     ls.forEach((l, i) => { if (needles.some((n) => l.includes(n))) pairing.push(`${f}:${i + 1}`); });
   }
   const refusedPatterns = [...new Set((base.refusals || []).map((r) => r.pattern).filter(Boolean))];
+  const behindOf = behind(refusedPatterns);
   // Every core file that names the stub by its file name (manifests, allowlists, preload lists, workflows, docs),
   // beyond the `./x.cjs` requires above.
   let mentions = [];
@@ -288,7 +318,7 @@ for (const { file, fn, pathname } of calls) {
   const stringRefs = mentions.filter((f) => quoted.test(fs.readFileSync(path.join(core, f), 'utf8')));
   mentions = mentions.filter((f) => !stringRefs.includes(f));
   const { exported, ...kept } = base;
-  stubs.push({ file: `server/${file}`, fn, pathname_arg: pathname, string_refs: stringRefs, mentions, lines: lines(file), env, importers, index_uses: indexUses(file), pairing, behind: behind(refusedPatterns), ...kept, switched });
+  stubs.push({ file: `server/${file}`, fn, pathname_arg: pathname, string_refs: stringRefs, mentions, lines: lines(file), env, importers, index_uses: indexUses(file), pairing, behind: behindOf, behind_methods: behindMethods(behindOf), ...kept, switched });
 }
 
 process.stdout.write(`${JSON.stringify({

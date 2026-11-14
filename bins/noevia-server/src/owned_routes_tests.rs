@@ -268,7 +268,7 @@ fn handlers_that_forward_by_method() {
             .collect();
         let mut want = methods.to_vec();
         want.sort_unstable();
-        let mut got = listed.clone();
+        let mut got = listed;
         got.sort_unstable();
         assert_eq!(got, want, "{file}: {pattern}");
     }

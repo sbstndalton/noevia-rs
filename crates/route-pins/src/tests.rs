@@ -25,6 +25,7 @@ fn stub(file: &str, refusals: Vec<Refusal>) -> Stub {
         switched: vec![],
         owned_routes: None,
         behind: BTreeMap::new(),
+        behind_methods: BTreeMap::new(),
         error: None,
     }
 }
@@ -868,4 +869,53 @@ fn the_delete_list_golden_is_current() {
     }
     let want = std::fs::read_to_string(at).unwrap_or_default();
     assert!(want == md, "fixtures/delete-list.md is stale: ROUTE_PINS_WRITE=1 cargo test -p route-pins");
+}
+
+#[test]
+fn a_handler_for_another_method_does_not_guard_the_stub() {
+    // Council p7 (CONTINUE 3 of p5): idle-unload's stub refuses the GET; core's PUT handler behind it is not exposed
+    // by deleting the stub.
+    let mut s = stub(
+        "server/rust-z.cjs",
+        vec![
+            refusal("GET", "/api/z", "/api/z", BODY),
+            refusal("HEAD", "/api/z", "/api/z", BODY),
+        ],
+    );
+    s.behind = [(
+        "/api/z".to_string(),
+        vec!["server/routes/z.cjs:4".to_string(), "server/routes/z.cjs:9".to_string(), "server/x.cjs:1".to_string()],
+    )]
+    .into_iter()
+    .collect();
+    s.behind_methods = [
+        ("server/routes/z.cjs:4".to_string(), vec!["PUT".to_string()]),
+        ("server/routes/z.cjs:9".to_string(), vec!["GET".to_string()]),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        handlers_behind(&s),
+        ["server/routes/z.cjs:9".to_string(), "server/x.cjs:1".to_string()]
+    );
+    // Only the PUT handler and an unrelated line: the PUT line drops, the unknown one stays.
+    s.behind = [("/api/z".to_string(), vec!["server/routes/z.cjs:4".to_string()])].into_iter().collect();
+    assert!(handlers_behind(&s).is_empty());
+    let all = |_: &str, _: &str| true;
+    let list = classify(&synthetic(vec![s.clone()]), &all);
+    assert_eq!(list[0].verdict, Verdict::DeleteFile);
+    // GET covers a HEAD-only refusal.
+    s.refusals = vec![refusal("HEAD", "/api/z", "/api/z", BODY)];
+    s.behind_methods.insert("server/routes/z.cjs:4".to_string(), vec!["GET".to_string()]);
+    assert_eq!(handlers_behind(&s), ["server/routes/z.cjs:4".to_string()]);
+}
+
+#[test]
+fn the_pinned_recording_has_no_method_facts_yet_so_every_line_counts() {
+    // Re-recording with the p7 recorder fills behind_methods; until then the verdicts are p5's.
+    for s in &rec().stubs {
+        assert!(s.behind_methods.is_empty(), "{}", s.file);
+        let all: BTreeSet<&String> = s.behind.values().flatten().collect();
+        assert_eq!(handlers_behind(s).len(), all.len(), "{}", s.file);
+    }
 }

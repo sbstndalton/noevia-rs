@@ -102,6 +102,11 @@ pub struct Stub {
     /// handler or matcher). Over-reported on purpose: the line only has to contain the pattern's literal pieces.
     #[serde(default)]
     pub behind: BTreeMap<String, Vec<String>>,
+    /// Per `file:line` in [`Stub::behind`], the methods that line compares the request method with, when it names
+    /// some and negates none (council p7, CONTINUE 3 of council p5). A line absent here tests no method the recorder
+    /// could read and counts for every method.
+    #[serde(default)]
+    pub behind_methods: BTreeMap<String, Vec<String>>,
     /// The recorder could not load the file.
     #[serde(default)]
     pub error: Option<String>,
@@ -339,9 +344,31 @@ pub fn unrecorded_owned(stub: &Stub) -> Vec<String> {
         .collect()
 }
 
-/// The core lines behind the stub's refused routes (see [`Stub::behind`]), deduplicated and sorted.
+/// The core lines behind the stub's refused routes (see [`Stub::behind`]), deduplicated and sorted. A line whose
+/// [`Stub::behind_methods`] shares no method with what the stub refuses on that pattern is a handler for another
+/// method (idle-unload's PUT behind a GET refusal) and is left out; `GET` there also covers `HEAD`, which Node
+/// answers through the GET handler. Without method facts every line counts (the safe side).
 pub fn handlers_behind(stub: &Stub) -> Vec<String> {
-    let set: BTreeSet<&String> = stub.behind.values().flatten().collect();
+    let mut set: BTreeSet<&String> = BTreeSet::new();
+    for (pattern, hits) in &stub.behind {
+        let refused: BTreeSet<&str> = stub
+            .refusals
+            .iter()
+            .filter(|r| r.pattern.as_deref() == Some(pattern.as_str()))
+            .map(|r| r.method.as_str())
+            .collect();
+        for hit in hits {
+            let other_method = stub.behind_methods.get(hit).is_some_and(|named| {
+                !refused.is_empty()
+                    && !named.iter().any(|m| {
+                        refused.contains(m.as_str()) || (m == "GET" && refused.contains("HEAD"))
+                    })
+            });
+            if !other_method {
+                set.insert(hit);
+            }
+        }
+    }
     set.into_iter().cloned().collect()
 }
 
