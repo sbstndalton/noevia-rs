@@ -113,6 +113,11 @@ pub struct Config {
     pub model_writes: crate::model_writes_routes::Settings,
     /// Track R11: `/api/embedding`, every method (`NOEVIA_RUST_EMBEDDING_ADMIN`).
     pub embedding_admin: crate::embedding_admin_routes::Settings,
+    /// Track R11 (S11): the public hub GET /api/models/mtp-artifact reads (always
+    /// `https://huggingface.co`; only a test sets another, through `Hub::for_tests`).
+    pub model_pull_hub: crate::model_pull_routes::Hub,
+    /// Track R11 (S9b): the `/api/model-manager/*` proxy (`NOEVIA_RUST_MODEL_MANAGER`).
+    pub model_manager: crate::model_manager_routes::Settings,
     /// Track R12, NOEVIA_RUST_SETTINGS_ROUTES=1: the front answers PUT /api/routing-default
     /// (routing_default_routes.rs) and GET /api/reasoning-settings (reasoning_settings_routes.rs)
     /// itself. Unset (anything but `1`): those methods stay Node's.
@@ -498,6 +503,8 @@ impl Config {
             code: crate::code_routes::Settings::from_lookup(&get),
             model_writes: crate::model_writes_routes::Settings::from_lookup(&get),
             embedding_admin: crate::embedding_admin_routes::Settings::from_lookup(&get),
+            model_pull_hub: crate::model_pull_routes::Hub::default(),
+            model_manager: crate::model_manager_routes::Settings::from_lookup(&get),
             settings_routes: get(SETTINGS_ROUTES).as_deref() == Some("1"),
             reasoning_defaults: server_reasoning_settings::read::Defaults::from_lookup(&get),
             secrets_rotate: get("NOEVIA_RUST_SECRETS_ROTATE").as_deref() == Some("1"),

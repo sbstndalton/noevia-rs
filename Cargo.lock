@@ -2144,6 +2144,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-manager-proxy"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "js-json",
+]
+
+[[package]]
+name = "model-pull"
+version = "0.1.0"
+dependencies = [
+ "chat-turn",
+ "js-json",
+]
+
+[[package]]
 name = "model-router"
 version = "0.1.0"
 dependencies = [
@@ -2210,8 +2226,11 @@ dependencies = [
  "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",
+ "futures-util",
  "http-body",
  "http-body-util",
+ "hyper-util",
+ "nix",
  "regex",
  "reqwest",
  "rusqlite",
@@ -2377,6 +2396,8 @@ dependencies = [
  "long-profile",
  "mcp-frame",
  "mcp-servers",
+ "model-manager-proxy",
+ "model-pull",
  "model-stream",
  "model-writes",
  "offsite-backup-format",

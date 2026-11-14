@@ -149,6 +149,7 @@ pub async fn internal(
             json!({"detail": "a re-index needs the tenant's writer lock"}),
         );
     }
+    let lease = crate::lease::lease_of(headers);
     let app2 = app.clone();
     let task = tokio::task::spawn_blocking(move || {
         let root = app2.data_root.join("users").join(&uid);
@@ -171,7 +172,8 @@ pub async fn internal(
             return crate::server::decline();
         }
         app2.writers
-            .with_lock(&uid, |held| {
+            // Main mode: Python asks under its lease (joined); otherwise its own lock is separate.
+            .with_lock_as(&uid, lease, app2.write_wait, |held| {
                 let Ok(Some((store, _))) = managed::ready_for_write(&root, &uid, true) else {
                     return crate::server::decline();
                 };
@@ -211,7 +213,10 @@ pub async fn internal(
                 }
                 status(200, json!({"documents": out}))
             })
-            .unwrap_or_else(|| status(410, json!({"detail": "tenant deleted"})))
+            .unwrap_or_else(|refused| match refused {
+                crate::write::Refused::Fenced => status(410, json!({"detail": "tenant deleted"})),
+                crate::write::Refused::Busy => crate::server::reply(crate::workspace::Reply::Busy),
+            })
     });
     task.await.unwrap_or_else(|_| status(500, json!({})))
 }

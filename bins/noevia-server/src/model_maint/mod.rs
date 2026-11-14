@@ -34,6 +34,8 @@ pub mod model_state;
 // Port contract row J: the one maintenance lease authority (replaces core model-maintenance-lease.cjs).
 pub mod lease;
 pub mod node_lease;
+// Track R11: `PUT /api/models/preset` behind NOEVIA_RUST_MODEL_WRITES (model_writes_routes.rs).
+pub mod preset;
 pub mod reload;
 pub mod router;
 pub mod v8_json;

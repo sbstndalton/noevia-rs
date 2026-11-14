@@ -90,7 +90,7 @@ fn sidecar_refusal(app: &App, name: &str) -> Answer {
 }
 
 /// `sidecarServiceOf`: the reranker when the deployment's reranker model is this one, else the embedding service.
-fn service_of(app: &App, name: &str) -> &'static str {
+pub(crate) fn service_of(app: &App, name: &str) -> &'static str {
     let env = &app.config.reranker.0;
     let on = env
         .get("NOEVIA_FEATURE_RAG_RERANK")

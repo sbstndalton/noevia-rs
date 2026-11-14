@@ -671,6 +671,11 @@ pub fn router_with_app(
         }),
     );
     router = router.merge(crate::machine_service::router(store.clone(), app.clone()));
+    // Track R14: core's writeProjectTextFile, asked only under core's NOEVIA_RUST_PROJECT_WRITE.
+    #[cfg(feature = "rust-storage-reads")]
+    {
+        router = crate::text_write_op::route(router, store.clone(), app.clone());
+    }
     let reranker_store = store.clone();
     let reranker_app = app.clone();
     router = router.route(
