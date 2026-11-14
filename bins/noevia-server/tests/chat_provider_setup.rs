@@ -3,7 +3,8 @@
 //! writer) and real provider files. Its own test binary: it sets the switch and `MEMBER_OUTBOUND_ORIGINS` for the
 //! whole process, so no other test sees them.
 //!
-//! Synthetic data only; no address is contacted.
+//! Synthetic data only; no address is contacted. Council p10-1 adds the sign-in row: refused with every switch on
+//! while the external-row rules are not cleared.
 #![cfg(feature = "rust-storage-reads")]
 #![allow(
     clippy::unwrap_used,
@@ -114,16 +115,22 @@ async fn setup_with_the_switch_on_reads_the_account_and_the_row_now() {
     // Switch unset: today's path for every frame, whatever it names.
     std::env::remove_var(chat_provider::SWITCH);
     assert!(!chat_provider::offered());
-    assert!(plain(&chat_provider::setup(&app, &data, MEMBER, &hosted).await));
+    assert!(plain(
+        &chat_provider::setup(&app, &data, MEMBER, &hosted).await
+    ));
     // Anything but `1` is off.
     std::env::set_var(chat_provider::SWITCH, "true");
-    assert!(plain(&chat_provider::setup(&app, &data, MEMBER, &hosted).await));
+    assert!(plain(
+        &chat_provider::setup(&app, &data, MEMBER, &hosted).await
+    ));
 
     std::env::set_var(chat_provider::SWITCH, "1");
     assert!(chat_provider::offered());
     // The default row: as before.
     let local = frame("default", "http://127.0.0.1:9/v1/chat/completions", "");
-    assert!(plain(&chat_provider::setup(&app, &data, MEMBER, &local).await));
+    assert!(plain(
+        &chat_provider::setup(&app, &data, MEMBER, &local).await
+    ));
     // The member's own row, its origin approved, the frame agreeing: cut.
     let s = chat_provider::setup(&app, &data, MEMBER, &hosted).await;
     assert!(provider(&s));
@@ -133,37 +140,78 @@ async fn setup_with_the_switch_on_reads_the_account_and_the_row_now() {
         "https://elsewhere.example/v1/chat/completions",
         HOSTED,
     );
-    assert!(refused(&chat_provider::setup(&app, &data, MEMBER, &moved).await));
+    assert!(refused(
+        &chat_provider::setup(&app, &data, MEMBER, &moved).await
+    ));
     assert!(refused(
         &chat_provider::setup(&app, &data, MEMBER, &frame("qa-provider", URL, "")).await
     ));
     // External rows stay core's.
     let flagged = frame("qa-flagged", URL, HOSTED);
-    assert!(refused(&chat_provider::setup(&app, &data, MEMBER, &flagged).await));
-    let trial = frame("qa-trial", "https://qa.nvidia.com/v1/chat/completions", HOSTED);
-    assert!(refused(&chat_provider::setup(&app, &data, MEMBER, &trial).await));
+    assert!(refused(
+        &chat_provider::setup(&app, &data, MEMBER, &flagged).await
+    ));
+    let trial = frame(
+        "qa-trial",
+        "https://qa.nvidia.com/v1/chat/completions",
+        HOSTED,
+    );
+    assert!(refused(
+        &chat_provider::setup(&app, &data, MEMBER, &trial).await
+    ));
     // A row this account does not have, and an account the store does not know.
     let other = frame("qa-other", URL, HOSTED);
-    assert!(refused(&chat_provider::setup(&app, &data, MEMBER, &other).await));
+    assert!(refused(
+        &chat_provider::setup(&app, &data, MEMBER, &other).await
+    ));
     assert!(refused(
         &chat_provider::setup(&app, &data, "00000000-0000-4000-8000-0000000000cc", &hosted).await
     ));
     // The member's origin no longer approved: Node's own refusal.
     std::env::set_var("MEMBER_OUTBOUND_ORIGINS", "");
-    assert!(refused(&chat_provider::setup(&app, &data, MEMBER, &hosted).await));
+    assert!(refused(
+        &chat_provider::setup(&app, &data, MEMBER, &hosted).await
+    ));
     std::env::set_var("MEMBER_OUTBOUND_ORIGINS", APPROVED);
-    assert!(provider(&chat_provider::setup(&app, &data, MEMBER, &hosted).await));
+    assert!(provider(
+        &chat_provider::setup(&app, &data, MEMBER, &hosted).await
+    ));
     // The account disabled since: read now, refused.
     let c = Connection::open(server_store::db_path(&data)).unwrap();
     c.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
     c.execute("UPDATE users SET disabled_at=5 WHERE id=?1", [MEMBER])
         .unwrap();
-    assert!(refused(&chat_provider::setup(&app, &data, MEMBER, &hosted).await));
+    assert!(refused(
+        &chat_provider::setup(&app, &data, MEMBER, &hosted).await
+    ));
     c.execute("UPDATE users SET disabled_at=NULL WHERE id=?1", [MEMBER])
         .unwrap();
-    assert!(provider(&chat_provider::setup(&app, &data, MEMBER, &hosted).await));
+    assert!(provider(
+        &chat_provider::setup(&app, &data, MEMBER, &hosted).await
+    ));
+    // Council p10-1: the sign-in row. With both switches on the front still names no sign-in token (the
+    // external-row rules are not cleared), so the row is refused as before and the broker is never asked.
+    write_rows(
+        &data,
+        r#"{"id":"qa-signin","kind":"chatgpt-oauth","label":"QA sign-in","baseUrl":"https://qa-provider.example/v1"}"#,
+    );
+    let signin = frame("qa-signin", URL, HOSTED);
+    for value in [None, Some("1")] {
+        match value {
+            Some(v) => std::env::set_var(chat_provider::SIGNIN_SWITCH, v),
+            None => std::env::remove_var(chat_provider::SIGNIN_SWITCH),
+        }
+        assert!(!chat_provider::signin_offered(), "{value:?}");
+        assert!(
+            refused(&chat_provider::setup(&app, &data, MEMBER, &signin).await),
+            "{value:?}"
+        );
+    }
+    std::env::remove_var(chat_provider::SIGNIN_SWITCH);
     // The row deleted since: refused.
     write_rows(&data, "");
-    assert!(refused(&chat_provider::setup(&app, &data, MEMBER, &hosted).await));
+    assert!(refused(
+        &chat_provider::setup(&app, &data, MEMBER, &hosted).await
+    ));
     std::env::remove_var(chat_provider::SWITCH);
 }
