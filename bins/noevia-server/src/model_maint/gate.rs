@@ -594,6 +594,9 @@ struct Shared {
     why: Mutex<Option<&'static str>>,
     lost_wake: tokio::sync::Notify,
     settle: Option<Arc<Registry>>,
+    /// The release found the recovery required (decided under the release lock): letting the hold
+    /// go owes the settle even without a loss of its own (a fenced or already-owed lease).
+    owes_settle: AtomicBool,
 }
 
 impl Shared {
@@ -624,6 +627,7 @@ impl Shared {
             why: Mutex::new(None),
             lost_wake: tokio::sync::Notify::new(),
             settle: None,
+            owes_settle: AtomicBool::new(false),
         })
     }
 
@@ -818,14 +822,15 @@ impl Shared {
     }
 
     /// Node's `release()`: the hold is let go (under the same lock as a loss, so a loss is either
-    /// seen here or never happens), and a lost one owes `settle`.
+    /// seen here or never happens), and a lost one, or one whose release found the recovery
+    /// required, owes `settle`.
     fn let_go(&self) {
         let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
         self.released.store(true, Ordering::Release);
-        let lost = self.lost.load(Ordering::Acquire);
+        let owes = self.lost.load(Ordering::Acquire) || self.owes_settle.load(Ordering::Acquire);
         drop(state);
         self.wake.notify_one();
-        if let (true, Some(r)) = (lost, self.settle.as_ref()) {
+        if let (true, Some(r)) = (owes, self.settle.as_ref()) {
             r.require(SETTLE, None);
         }
     }
@@ -860,6 +865,13 @@ impl Shared {
             tokio::select! {
                 () = lost => {}
                 () = tokio::time::sleep_until(at.into()) => {
+                    if Instant::now() < at {
+                        // The tokio clock ran ahead of the std clock this hold keeps its times on
+                        // (a paused test clock): no coverage check can fall due, only the loss
+                        // itself ends the wait (no spin). Production runs on the real clock.
+                        lost_signal(self).await;
+                        return;
+                    }
                     if self.assert_covered_at(Instant::now(), Duration::ZERO).is_err() {
                         return;
                     }
@@ -911,6 +923,21 @@ impl Shared {
         let Ok(rt) = tokio::runtime::Handle::try_current() else {
             return;
         };
+        let needs = || {
+            self.lost.load(Ordering::Acquire)
+                || !self.fenced(Duration::ZERO)
+                || self
+                    .auth
+                    .as_ref()
+                    .is_some_and(|(a, _)| a.recovery_pending())
+        };
+        let require = || {
+            self.auth.as_ref().map_or_else(
+                || self.lease_id.clone().unwrap_or_default(),
+                |(a, _)| a.require_recovery(),
+            )
+        };
+        let mut decided = None;
         {
             let mut state = match self.release.lock() {
                 Ok(s) => s,
@@ -920,21 +947,20 @@ impl Shared {
                 return;
             }
             *state = ReleaseState::Pending;
+            // #2641: the recovery is required before anyone can see the hold let go (`let_go` takes
+            // this lock), so the settle driver never finds a lost hold's recovery not yet owed.
+            if self.node {
+                let needs_recovery = needs();
+                if needs_recovery {
+                    self.owes_settle.store(true, Ordering::Release);
+                }
+                decided = Some((needs_recovery, needs_recovery.then(require)));
+            }
         }
-        let needs_recovery = self.lost.load(Ordering::Acquire)
-            || !self.fenced(Duration::ZERO)
-            || self
-                .auth
-                .as_ref()
-                .is_some_and(|(a, _)| a.recovery_pending());
-        let recovery_ticket = if needs_recovery {
-            Some(self.auth.as_ref().map_or_else(
-                || self.lease_id.clone().unwrap_or_default(),
-                |(a, _)| a.require_recovery(),
-            ))
-        } else {
-            None
-        };
+        let (needs_recovery, recovery_ticket) = decided.unwrap_or_else(|| {
+            let needs_recovery = needs();
+            (needs_recovery, needs_recovery.then(require))
+        });
         self.release_authority();
         self.released.store(true, Ordering::Release);
         self.wake.notify_one();
@@ -1041,9 +1067,9 @@ impl Hold {
         }
     }
 
-    /// A lease on Node's gate, renewed until `deadline`. `coverage`: Node's lifecycle when it is on,
-    /// and whether a loss owes the settle when the hold is let go (not for a recovery hold, whose
-    /// owner retries its own attempt).
+    /// A lease on Node's gate, renewed until `deadline`. `coverage`: Node's lifecycle when it is on;
+    /// then every hold (a recovery's too: Node's release re-adds the settle) owes the settle when it
+    /// is let go after a loss.
     pub(super) fn leased(
         local: Arc<AtomicBool>,
         node: Arc<NodeLeases>,
@@ -1051,7 +1077,7 @@ impl Hold {
         auth: Option<(lease::Authority, lease::Grant)>,
         reason: &str,
         deadline: Instant,
-        coverage: Option<(&Coverage, bool)>,
+        coverage: Option<&Coverage>,
     ) -> Hold {
         let mut shared = Shared::new(
             Some(grant.id),
@@ -1063,10 +1089,10 @@ impl Hold {
         if let Some(inner) = Arc::get_mut(&mut shared) {
             inner.auth = auth;
             inner.node_generation = grant.generation;
-            if let Some((c, owes)) = coverage.filter(|(c, _)| c.node) {
+            if let Some(c) = coverage.filter(|c| c.node) {
                 inner.node = true;
                 inner.margin = c.margin;
-                inner.settle = owes.then(|| Arc::clone(&c.recoveries));
+                inner.settle = Some(Arc::clone(&c.recoveries));
             }
         }
         if let Ok(mut at) = shared.confirmed.lock() {
@@ -1314,6 +1340,15 @@ impl Hold {
 
     /// Ends the hold: the gate's token is given back, the local flag cleared.
     pub async fn release(mut self) {
+        if self.shared.node {
+            // #2641: the recovery is required first, then the hold is let go, then the driver kicked.
+            if let Some(node) = self.node.as_ref() {
+                self.shared.start_release(Arc::clone(node));
+            }
+            self.finish();
+            self.release_node_lease().await;
+            return;
+        }
         self.finish();
         let token = self.shared.token.lock().ok().and_then(|mut t| t.take());
         if let (Some(gate), Some(token)) = (self.gate.as_ref(), token.as_ref()) {
@@ -1343,6 +1378,13 @@ impl Hold {
 
 impl Drop for Hold {
     fn drop(&mut self) {
+        if self.shared.node {
+            if let Some(node) = self.node.take() {
+                self.shared.start_release(node);
+            }
+            self.finish();
+            return;
+        }
         self.finish();
         if let Some(node) = self.node.take() {
             self.shared.start_release(node);

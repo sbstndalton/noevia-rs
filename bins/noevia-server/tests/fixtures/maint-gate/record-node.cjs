@@ -4,16 +4,20 @@
 // server/inference-maintenance.cjs `createMaintenanceGate` with a native lease grant (the
 // lose-at-margin lifecycle: nativeHolding/lose, assertCovered, release -> requireRecovery('settle'),
 // runRecovery with its backoff) on a virtual clock, and writes what each step observed.
-//   node record-node.cjs <core checkout> <out file>
-// Also writes SOURCES.sha256 beside this file (the core file it exercises). The remote is a scripted
+//   node record-node.cjs <core checkout> <out file> <core commit>
+// Also writes SOURCES.sha256 beside this file (the core file it exercises, and this recorder itself);
+// <core commit> (the checkout's HEAD, read by the caller: the synced tree has no .git) is pinned in
+// the fixture. The remote is a scripted
 // stub returning native grants ({native, token, askedAt, ttlMs, renewMs, hardMs}); its renewals
 // answer true / false / null or are held open ('defer') until a `resolve` step. Timers are virtual:
 // the gate's own `setTimer`/`clearTimer`/`now` options, and the global setTimeout/clearTimeout
 // (scheduleRecovery uses those) for the duration of a scenario. Synthetic QA data only.
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 
-const [coreArg, outArg] = process.argv.slice(2);
-if (!coreArg || !outArg) { console.error('usage: record-node.cjs <core checkout> <out file>'); process.exit(2); }
+const [coreArg, outArg, commitArg] = process.argv.slice(2);
+if (!coreArg || !outArg || !/^[0-9a-f]{40}$/.test(commitArg || '')) { console.error('usage: record-node.cjs <core checkout> <out file> <core commit>'); process.exit(2); }
+const RECORDER = 'tests/fixtures/maint-gate/record-node.cjs';
+const recorderSha = crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');
 const core = path.resolve(coreArg);
 const SOURCES = ['server/inference-maintenance.cjs'];
 const sha = file => crypto.createHash('sha256').update(fs.readFileSync(path.join(core, file))).digest('hex');
@@ -176,6 +180,6 @@ async function run(sc) {
   const scenarios = [];
   for (const sc of SCENARIOS) scenarios.push(await run(sc));
   const sourceSha256 = Object.fromEntries(SOURCES.map((f) => [f, sha(f)]));
-  fs.writeFileSync(outArg, JSON.stringify({ version: 1, options: { coverageMarginMs: 15000, recoveryRetryMs: 5000, recoveryMaxDelayMs: 60000 }, sourceSha256, scenarios }, null, 1) + '\n');
-  fs.writeFileSync(path.join(__dirname, 'SOURCES.sha256'), SOURCES.map((f) => `${sha(f)}  ${f}\n`).join(''));
+  fs.writeFileSync(outArg, JSON.stringify({ version: 1, coreCommit: commitArg, recorderSha256: recorderSha, options: { coverageMarginMs: 15000, recoveryRetryMs: 5000, recoveryMaxDelayMs: 60000 }, sourceSha256, scenarios }, null, 1) + '\n');
+  fs.writeFileSync(path.join(__dirname, 'SOURCES.sha256'), SOURCES.map((f) => `${sha(f)}  ${f}\n`).join('') + `${recorderSha}  ${RECORDER}\n`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -282,8 +282,15 @@ pub struct FrontEnv {
     pub(super) maint: Arc<super::Maint>,
 }
 
-/// This process's admission, held for one attempt.
+/// This process's admission, held for one attempt (given back when dropped).
 pub struct Fence(Option<super::gate::AdmissionFence>);
+
+impl Fence {
+    /// Takes this process's admission; `None` while another job of it holds it.
+    pub(super) fn admit(local: &Arc<std::sync::atomic::AtomicBool>) -> Option<Fence> {
+        super::gate::AdmissionFence::reserve(Arc::clone(local)).map(|f| Fence(Some(f)))
+    }
+}
 
 impl Drop for Fence {
     fn drop(&mut self) {
@@ -326,7 +333,7 @@ impl Env for FrontEnv {
         if self.maint.repairs_owed.load(Ordering::Acquire) > 0 {
             return None;
         }
-        super::gate::AdmissionFence::reserve(Arc::clone(&self.maint.local)).map(|f| Fence(Some(f)))
+        Fence::admit(&self.maint.local)
     }
 
     fn discharged(&self) -> bool {
@@ -428,7 +435,11 @@ impl Env for FrontEnv {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::bool_assert_comparison
+)]
 mod tests {
     use super::*;
 
@@ -451,6 +462,179 @@ mod tests {
         let (next, line) = r.after(&mut delay, &Outcome::Done);
         assert_eq!((next, line.as_deref()), (None, Some(FINISHED)));
         assert_eq!(delay, Duration::ZERO);
+    }
+
+    /// A Node latch stub on 127.0.0.1: grants (confirmed for 10 s: within the 15 s margin at once),
+    /// renews, takes the recovery barrier and its proof, and gives latches back.
+    async fn node_stub() -> u16 {
+        use axum::{body::Body, http::Request, http::Response};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let app = axum::Router::new().fallback(|r: Request<Body>| async move {
+            let path = r.uri().path().to_owned();
+            let (status, body) = if path.contains("/recovery/") || r.method() == "DELETE" {
+                (204, String::new())
+            } else if path == "/internal/model-maintenance/lease" {
+                (201, r#"{"lease":"0123456789abcdef0123456789abcdef","generation":1,"ttlMs":10000,"renewMs":100,"hardMs":3600000}"#.into())
+            } else {
+                (200, "{}".into())
+            };
+            Response::builder().status(status).body(Body::from(body)).unwrap()
+        });
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        port
+    }
+
+    fn test_maint(node_port: u16, switch: bool) -> Arc<super::super::Maint> {
+        let node = format!("http://127.0.0.1:{node_port}");
+        let mut env = vec![
+            ("MODEL_MANAGER_KIND", "llamacpp".to_owned()),
+            ("MODEL_MANAGER_BASE_URL", "http://127.0.0.1:9/v1".to_owned()),
+            ("NOEVIA_LEGACY_UPSTREAM", node),
+            (
+                "NOEVIA_PROJECT_STORE_TOKEN",
+                "synthetic-store-token-0123456789abcdef".to_owned(),
+            ),
+        ];
+        if switch {
+            env.push(("NOEVIA_RUST_LEASE_COVERAGE", "node".to_owned()));
+        }
+        let get = |k: &str| env.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone());
+        let engine = Arc::new(server_stats::Engine::from_lookup(&get).unwrap());
+        let sizing = Arc::new(crate::model_sizing::Sizing::from_lookup(
+            engine.kind(),
+            Arc::clone(&engine),
+            &get,
+        ));
+        Arc::new(super::super::Maint::from_lookup(engine.kind(), &engine, sizing, &get).unwrap())
+    }
+
+    /// Records, at each attempt, whether the recovery was already required (`discharged()`).
+    struct Probe {
+        maint: Arc<super::super::Maint>,
+        seen: Arc<Mutex<Vec<bool>>>,
+    }
+
+    impl Env for Probe {
+        type Hold = ();
+        type Fence = ();
+        fn reserve(&self) -> Option<()> {
+            Some(())
+        }
+        fn discharged(&self) -> bool {
+            let gone = !self.maint.authority.recovery_pending();
+            self.seen.lock().unwrap().push(gone);
+            gone
+        }
+        async fn hold(&self) -> Result<(), String> {
+            Err("probe".into())
+        }
+        async fn settle(&self, _: &()) -> Result<(), String> {
+            Ok(())
+        }
+        fn covered(&self, _: &()) -> Result<(), String> {
+            Ok(())
+        }
+        async fn complete(&self, _: &()) -> Result<(), String> {
+            Ok(())
+        }
+        async fn release(&self, _: ()) {}
+        fn log(&self, _: String) {}
+    }
+
+    /// Review finding 1: a lost hold's recovery is required (under the release lock, by
+    /// `start_release`) before the hold is let go and the driver kicked, by `release` and by `Drop`:
+    /// the driver, woken on another thread at once, never discharges the owed settle as done.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_lost_holds_settle_is_owed_only_once_its_recovery_is_required() {
+        let port = node_stub().await;
+        for by_drop in [false, true] {
+            let m = test_maint(port, true);
+            let seen = Arc::new(Mutex::new(Vec::new()));
+            let driver = tokio::spawn(drive(
+                Arc::clone(&m.coverage.recoveries),
+                Probe {
+                    maint: Arc::clone(&m),
+                    seen: Arc::clone(&seen),
+                },
+            ));
+            let hold = m
+                .acquire("qa reload", Duration::from_secs(300), false)
+                .await
+                .unwrap();
+            assert!(hold.node_coverage());
+            assert!(
+                hold.assert_covered(Duration::ZERO).is_err(),
+                "lost within the margin"
+            );
+            if by_drop {
+                drop(hold);
+            } else {
+                hold.release().await;
+            }
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+            while seen.lock().unwrap().is_empty() {
+                assert!(tokio::time::Instant::now() < deadline, "no attempt");
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            assert_eq!(seen.lock().unwrap()[0], false, "drop: {by_drop}");
+            assert!(m.coverage.recoveries.pending(), "the settle is still owed");
+            assert!(m.maintenance_held());
+            driver.abort();
+        }
+    }
+
+    /// Review finding 1: a recovery's own hold that is lost re-owes the settle when let go (Node's
+    /// release re-adds it), so the recovery the release requires again has a driver to run it.
+    #[tokio::test]
+    async fn a_lost_recovery_hold_re_owes_the_settle() {
+        let port = node_stub().await;
+        let m = test_maint(port, true);
+        m.authority.require_recovery();
+        let hold = m
+            .acquire_recovery("qa recovery", Duration::from_secs(900))
+            .await
+            .unwrap();
+        assert!(hold.assert_covered(Duration::ZERO).is_err());
+        assert!(!m.coverage.recoveries.pending());
+        hold.release().await;
+        assert!(m.coverage.recoveries.pending(), "the settle is owed again");
+        assert!(m.authority.recovery_pending());
+    }
+
+    /// Review finding 2: the runner's repair worker completes the shared ticket after its first key;
+    /// with the switch on, chat admission stays closed while it still owes another. Switch off:
+    /// admission is the authority's alone, as before.
+    #[tokio::test]
+    async fn admission_stays_closed_while_the_runner_owes_a_repair() {
+        use autotune_runner::Deps;
+        let port = node_stub().await;
+        for switch in [true, false] {
+            let m = test_maint(port, switch);
+            let d = tempfile::tempdir().unwrap();
+            let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+            let facts: super::super::autotune_deps::ReadFacts =
+                Arc::new(|| Box::pin(async { (0.0, None) }));
+            let deps = super::super::autotune_deps::FrontDeps::new(
+                Arc::clone(&m),
+                d.path().join("native-autotune-qa.json"),
+                facts,
+                tx,
+                &|_: &str| None,
+            );
+            deps.require_recovery("apply:qa-revision", "");
+            deps.require_recovery("settle", "");
+            deps.settle_owed("apply:qa-revision");
+            assert!(
+                !m.authority.recovery_pending(),
+                "the shared ticket completed"
+            );
+            assert_eq!(m.maintenance_held(), switch, "one repair still owed");
+            deps.settle_owed("settle");
+            assert!(!m.maintenance_held());
+        }
     }
 
     #[test]

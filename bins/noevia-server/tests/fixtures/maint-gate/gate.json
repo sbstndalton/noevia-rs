@@ -1,5 +1,7 @@
 {
  "version": 1,
+ "coreCommit": "d4272caa944217381c28226494e5281ad7ff23bb",
+ "recorderSha256": "eaf8968379118ba8aea655a720ee2215c0eed924819bb3b193620ac36321817d",
  "options": {
   "coverageMarginMs": 15000,
   "recoveryRetryMs": 5000,

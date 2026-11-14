@@ -529,9 +529,6 @@ impl Maint {
                     }
                     Ok(grant) => {
                         let own = pending.complete();
-                        // A lost hold owes the settle when let go (Node's release); a recovery hold's
-                        // owner retries its own attempt instead.
-                        let owes = !recovery;
                         Ok(Hold::leased(
                             Arc::clone(&self.local),
                             Arc::clone(&self.node),
@@ -539,7 +536,8 @@ impl Maint {
                             own.map(|g| (self.authority.clone(), g)),
                             reason,
                             deadline_after(max),
-                            Some((&self.coverage, owes)),
+                            // #2641: Node's lifecycle when the switch is on (a lost hold owes the settle).
+                            Some(&self.coverage),
                         ))
                     }
                     // Refused: Node holds no latch for it, but the guard's ticket release is harmless.
@@ -573,11 +571,14 @@ impl Maint {
     }
 
     /// Chat admission's view (Node's `held()`): a lease is held, or, with Node's coverage (#2641), a
-    /// recovery from lost coverage is still owed.
+    /// recovery from lost coverage is still owed (the authority's, the settle driver's, or a repair the
+    /// auto-tune runner owes: its worker completes the shared ticket after its first key).
     pub fn maintenance_held(&self) -> bool {
         self.authority.held()
             || (self.coverage.node
-                && (self.authority.recovery_pending() || self.coverage.recoveries.pending()))
+                && (self.authority.recovery_pending()
+                    || self.coverage.recoveries.pending()
+                    || self.repairs_owed.load(Ordering::Acquire) > 0))
     }
 
     /// #2641: the settle driver ([`recovery::drive`]), with Node's coverage only. Call once at boot.
