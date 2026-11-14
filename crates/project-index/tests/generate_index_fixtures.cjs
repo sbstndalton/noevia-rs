@@ -25,10 +25,11 @@ const sha = (rel) => crypto.createHash('sha256').update(fs.readFileSync(path.joi
 const sources = { 'server/rag.cjs': sha('rag.cjs'), 'server/vector-slots.cjs': sha('vector-slots.cjs'), 'server/embedding-profile.cjs': sha('embedding-profile.cjs') };
 
 const rag = require(path.join(srv, 'rag.cjs'));
-const profiles = require(path.join(srv, 'embedding-profile.cjs')).profileNames();
+const { DEFAULT_PROFILE, profileNames } = require(path.join(srv, 'embedding-profile.cjs'));
+const profiles = profileNames();
 const Database = require(path.join(srv, 'node_modules', 'better-sqlite3'));
 const sqliteVec = require(path.join(srv, 'node_modules', 'sqlite-vec'));
-const LEGACY = 'nomic-v1';
+const LEGACY = DEFAULT_PROFILE; // the raw-text profile, the only one before vector slots
 const MODERN = profiles.find((p) => p !== LEGACY);
 
 // ---- chunkText ----
