@@ -380,52 +380,33 @@ fn transitions_match_node_and_verified_leaves_the_rest_to_node() {
 }
 
 #[test]
-fn server_zone_only_from_an_exact_zone_id() {
-    let z = current_time::server_zone_from_tz;
-    assert_eq!(z(Some("America/New_York")), Some("America/New_York"));
-    assert_eq!(z(Some("UTC")), Some("UTC"));
-    assert_eq!(z(Some("Asia/Kolkata")), Some("Asia/Kolkata"));
-    for refused in [
-        Some("Eire"),
-        Some("Europe/Paris"),
-        None,
-        Some(""),
-        Some(":America/New_York"),
-        Some("america/new_york"),
-        Some("EST+5"),
-        Some("+05:00"),
-        Some("Bogus/Zone"),
-        Some("SystemV/EST5"),
-    ] {
-        assert_eq!(z(refused), None, "{refused:?}");
-    }
-    // A caller passes the TZ value where the recording passed the zone Node resolved from it
-    // (Asia/Kolkata as Asia/Calcutta): the answers are the same.
+fn server_zones_are_the_recorded_ones() {
     let f = fixture();
-    let mut compared = 0;
-    for c in arr(f.get("cases")) {
-        let process = c.get("processTZ").as_str().unwrap();
-        if let Some(zone) = z(Some(process)) {
-            let (args, now) = (c.get("args"), c.get("now").as_num().unwrap());
-            let server = c.get("serverZone").as_str().unwrap();
-            assert_eq!(
-                current_time::run(args, now, zone),
-                current_time::run(args, now, server),
-                "{process} resolved as {server} at {now}"
-            );
-            compared += 1;
-        }
-    }
-    assert!(compared > 100, "{compared}");
-    // The accepted server zones are exactly the recorded process zones Node knew.
-    let mut recorded: Vec<String> = arr(f.get("cases"))
+    let resolved: Vec<String> = arr(f.get("cases"))
         .iter()
-        .map(|c| c.get("processTZ").as_str().unwrap().to_string())
-        .filter(|p| z(Some(p)).is_some())
+        .map(|c| c.get("serverZone").as_str().unwrap().to_string())
         .collect();
-    recorded.sort();
-    recorded.dedup();
-    assert_eq!(recorded.len(), 7, "{recorded:?}");
+    // Every zone accepted is one a recorded Node resolved (and so replayed by every_tool_call...).
+    let mut candidates: Vec<String> = arr(f.get("zones"))
+        .iter()
+        .map(|z| z.get("id").as_str().unwrap().to_string())
+        .chain(resolved.iter().cloned())
+        .collect();
+    candidates.sort();
+    candidates.dedup();
+    let accepted: Vec<&String> = candidates
+        .iter()
+        .filter(|z| current_time::server_zone_recorded(z))
+        .collect();
+    for zone in &accepted {
+        assert!(resolved.contains(zone), "{zone} was never a recorded server zone");
+    }
+    assert_eq!(accepted.len(), 7, "{accepted:?}");
+    // A TZ Node could not resolve ("") and zones it never ran under are refused.
+    assert!(resolved.iter().any(String::is_empty));
+    for refused in ["", "Eire", "Europe/Paris", "Asia/Kolkata", "utc", "+05:00"] {
+        assert!(!current_time::server_zone_recorded(refused), "{refused}");
+    }
 }
 
 #[test]
