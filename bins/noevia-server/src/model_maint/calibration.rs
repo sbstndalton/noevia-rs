@@ -656,9 +656,10 @@ impl Maint {
         };
         // Row J review P1 (#2608): the write and its re-read are one step; it starts only while the
         // hold can still cover it, or nothing is written (Node throws its 503 coverage error here).
-        // Node's rule for the step (#2641: no lapse within the margin, the step inside the hard cap),
-        // and the re-read's own rule, so a write that starts is never refused its re-read.
-        if !holding.covers(PRESET_STEP) || !holding.may_start(super::reload::RELOAD_LIMIT) {
+        // Node's rule for the step (no lapse within the margin, the step inside the hard cap; not
+        // marking a loss here, #2641), and the re-read's own rule, which narrows the chance that a
+        // write that starts is refused its re-read (the commit takes time).
+        if !holding.fits(PRESET_STEP) || !holding.may_start(super::reload::RELOAD_LIMIT) {
             return (Applied::Uncovered, 503);
         }
         if let Err(e) = ini.commit(&candidate, backup).await {

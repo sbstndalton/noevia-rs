@@ -584,8 +584,9 @@ impl Shared {
     /// margin inside the hard limit. A long step is covered by renewal, not by its whole length
     /// fitting one confirmation. A lapse within the margin or a passed hard limit is the loss itself
     /// (Node's `c.lose()`): sticky, so the release owes the settle; a step that merely does not fit
-    /// is refused without it. Always true for the gate's hold.
-    fn covers(&self, step: Duration) -> bool {
+    /// is refused without it (`lose`: whether this check may mark the loss). Always true for the
+    /// gate's hold.
+    fn covers(&self, step: Duration, lose: bool) -> bool {
         let Some(ttl) = self.lease_ttl else {
             return true;
         };
@@ -602,7 +603,9 @@ impl Shared {
                 .is_ok_and(|at| now + STEP_MARGIN < *at + ttl)
                 && self.lease_end.is_none_or(|end| now + STEP_MARGIN < end);
         if !alive {
-            self.lose_at_margin();
+            if lose {
+                self.lose_at_margin();
+            }
             return false;
         }
         self.auth
@@ -902,7 +905,13 @@ impl Hold {
     /// margin), as the native auto-tune runner's calls do. A call that cannot be ended that way
     /// must use the stricter [`Hold::may_start`] (sbstndalton/noevia#2641).
     pub fn covers(&self, step: Duration) -> bool {
-        !self.shared.released.load(Ordering::Acquire) && self.shared.covers(step)
+        !self.shared.released.load(Ordering::Acquire) && self.shared.covers(step, true)
+    }
+
+    /// Node's rule without marking a loss: for a check whose caller cannot drive the settle a
+    /// lost hold owes (the public calibration worker, until sbstndalton/noevia#2641).
+    pub fn fits(&self, step: Duration) -> bool {
+        !self.shared.released.load(Ordering::Acquire) && self.shared.covers(step, false)
     }
 
     /// Whether the hold still excludes everyone else: not lost, and for Node's lease, Node's last
@@ -1302,12 +1311,12 @@ mod tests {
             )
         };
         let hour = s(3600);
-        assert!(hour.covers(Duration::from_secs(600)));
-        assert!(hour.covers(Duration::from_secs(180)));
+        assert!(hour.covers(Duration::from_secs(600), true));
+        assert!(hour.covers(Duration::from_secs(180), true));
         let short = s(160);
-        assert!(short.covers(Duration::from_secs(140)));
+        assert!(short.covers(Duration::from_secs(140), true));
         assert!(
-            !short.covers(Duration::from_secs(150)),
+            !short.covers(Duration::from_secs(150), true),
             "the step past the hard cap"
         );
         assert!(
@@ -1321,16 +1330,30 @@ mod tests {
         ) {
             *at = old;
         }
-        assert!(!lapsing.covers(Duration::ZERO), "a lapse within the margin");
+        assert!(!lapsing.covers(Duration::ZERO, true), "a lapse within the margin");
         assert!(
             lapsing.lost.load(Ordering::Acquire),
             "the lapse is the loss itself (sticky)"
         );
         let lost = s(3600);
         lost.lost.store(true, Ordering::Release);
-        assert!(!lost.covers(Duration::ZERO));
+        assert!(!lost.covers(Duration::ZERO, true));
+        let ending = s(10);
+        assert!(!ending.covers(Duration::ZERO, false), "the hard cap within the margin");
+        assert!(!ending.lost.load(Ordering::Acquire), "a check that may not mark it");
+        assert!(!ending.covers(Duration::ZERO, true));
+        assert!(ending.lost.load(Ordering::Acquire), "the hard cap within the margin is a loss");
+        let releasing = s(10);
+        if let Ok(mut state) = releasing.release.lock() {
+            *state = ReleaseState::Pending;
+        }
+        assert!(!releasing.covers(Duration::ZERO, true));
+        assert!(
+            !releasing.lost.load(Ordering::Acquire),
+            "no loss once the hold is being given back"
+        );
         let gate = Shared::new(None, Instant::now(), None, None, None);
-        assert!(gate.covers(Duration::from_secs(86_400)));
+        assert!(gate.covers(Duration::from_secs(86_400), true));
     }
 
     // The same test-only overlay compiles against the published pre-fix source.

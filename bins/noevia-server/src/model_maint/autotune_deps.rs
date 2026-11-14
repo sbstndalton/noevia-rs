@@ -717,7 +717,9 @@ impl Release for FrontRelease {
             // inference-maintenance.cjs release(): a lost lease (renewal refused or lapsing within
             // the margin) owes the settle step: every model confirmed idle under a fresh hold, chat
             // closed until then, whatever the run itself still owes.
-            if hold.lost() {
+            // `covers(ZERO)` marks a lapse, a passed hard cap or a fenced authority lease nobody
+            // has observed yet.
+            if !hold.covers(Duration::ZERO) || hold.lost() {
                 (self.settle)();
             }
             // The run holds the only other reference until it is told to let go; dropping the last

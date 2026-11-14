@@ -6724,6 +6724,39 @@ mod tests {
         );
     }
 
+    /// #2550: a lease whose renewals confirm it for less than the 15 s margin lapses within it the
+    /// moment it is checked (Node's `assertCovered` → `lose()`): the runner's release marks the
+    /// loss nobody observed yet and owes the settle repair.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_hold_lapsing_within_the_margin_owes_the_settle_when_released() {
+        use autotune_runner::{Abort, Deps, Release};
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("models.ini"), INI).unwrap();
+        let (port, _) = synthetic_engine(d.path().join("models.ini"), false).await;
+        let (lease, _) =
+            lease_stub_options(None, Arc::new(AtomicBool::new(false)), None, None, 10_000).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let facts: super::super::autotune_deps::ReadFacts =
+            Arc::new(|| Box::pin(async { (0.0, None) }));
+        let deps = super::super::autotune_deps::FrontDeps::new(
+            Arc::clone(&w.maint),
+            d.path().join("native-autotune-synthetic.json"),
+            facts,
+            tx,
+            &|_: &str| None,
+        );
+        let held = deps
+            .hold_when_idle("synthetic tune", 10_000, Abort::default())
+            .await
+            .unwrap();
+        held.release();
+        assert_eq!(
+            tokio::time::timeout(WATCHDOG, rx.recv()).await.unwrap().as_deref(),
+            Some("settle")
+        );
+    }
+
     /// #2550: the owed `apply:<revision>` repair of the native auto-tune runner, under a fresh
     /// hold: the text before the write goes back while models.ini is still at the write's
     /// revision, never over a later edit, and the router re-reads the file either way.
