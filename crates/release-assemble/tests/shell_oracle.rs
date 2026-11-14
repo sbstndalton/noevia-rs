@@ -236,21 +236,15 @@ fn random_lock(rng: &mut Lcg) -> Vec<u8> {
     text
 }
 
-fn compare(lock: &[u8], sha: &str, full: &str, dir: &Path) {
+fn compare(lock: &[u8], sha: &str, full: &str, dir: &Path) -> String {
     let sh = run_shell(lock, sha, full, dir);
     let rs = run_rust(lock, sha, full, dir);
-    assert_eq!(
-        rs.result,
-        sh.result,
-        "verdict differs for lock:\n{}",
-        String::from_utf8_lossy(lock)
-    );
-    assert_eq!(
-        rs.log,
-        sh.log,
-        "tree calls differ for lock:\n{}",
-        String::from_utf8_lossy(lock)
-    );
+    assert_eq!(rs.result, sh.result, "verdict differs for lock:\n{}", String::from_utf8_lossy(lock));
+    assert_eq!(rs.log, sh.log, "tree calls differ for lock:\n{}", String::from_utf8_lossy(lock));
+    match rs.result {
+        Ok(_) => "ok".to_string(),
+        Err(e) => e.split(" in versions.lock at ").last().unwrap_or_default().to_string() + &e,
+    }
 }
 
 #[test]
@@ -305,9 +299,15 @@ fn generated_locks_match_the_shell() {
         .unwrap_or(600);
     let mut rng = Lcg(0x5eed_0005);
     let full = "11bf2da7bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    let mut kinds = std::collections::BTreeSet::new();
     for _ in 0..rounds {
         let lock = random_lock(&mut rng);
-        compare(&lock, "11bf2da7", full, dir.path());
+        let verdict = compare(&lock, "11bf2da7", full, dir.path());
+        kinds.insert(verdict);
+    }
+    // The generator must reach every outcome, or the comparison proves little.
+    for want in ["ok", "must be 'self'", "is pinned but", "must be a 40-char", "not 64 lowercase", "no Cargo.toml", "could not download"] {
+        assert!(kinds.iter().any(|k| k.contains(want)), "no generated lock reached: {want} ({kinds:?})");
     }
 }
 
@@ -374,11 +374,17 @@ fn excerpt_is_verbatim() {
         return;
     };
     let real = std::fs::read_to_string(path).unwrap_or_default();
+    // Each section is whole lines of the real script. The resolve section is two runs (line 255,
+    // then lines 297-342); every other section is one contiguous block.
+    let real_lines: Vec<&str> = real.lines().collect();
     for section_name in ["resolve", "finish", "sources"] {
         let s = section(section_name);
-        assert!(
-            real.contains(s.trim_end()),
-            "the {section_name} excerpt no longer appears verbatim"
-        );
+        let mut lines: Vec<&str> = s.lines().collect();
+        if section_name == "resolve" {
+            let first = lines.remove(0);
+            assert!(real_lines.contains(&first), "resolve: {first} is no longer in the script");
+        }
+        let block = lines.join("\n");
+        assert!(real.contains(&block), "the {section_name} excerpt is no longer one verbatim block");
     }
 }

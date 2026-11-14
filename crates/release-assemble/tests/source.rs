@@ -53,7 +53,8 @@ fn qa_repo(root: &Path) -> String {
         "tests/server/a.test.cjs", "tests/fixtures/f.json",
     ];
     for f in web {
-        write(&root.join("apps/web").join(f), f.as_bytes(), f.ends_with(".sh"));
+        let body = if f == ".gitignore" { "node_modules/\n" } else { f };
+        write(&root.join("apps/web").join(f), body.as_bytes(), f.ends_with(".sh"));
     }
     write(&root.join("apps/web/server/ui-data/state.json"), b"{}", false);
     for s in ["diary", "docling", "laya", "model-manager", "ocr", "code-sandbox"] {
@@ -72,10 +73,17 @@ fn walk(root: &Path) -> Vec<String> {
     let mut lines: Vec<String> = out
         .map(|o| String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect())
         .unwrap_or_default();
-    // Directory modes come from the umask of whoever made them; files carry git's 644/755.
+    // Modes beyond the executable bit come from the extracting process's umask (GNU tar applies it,
+    // the Rust reader writes 0644/0755): compare the type, the executable bit and the size.
     for l in &mut lines {
-        if l.contains(" d ") {
-            *l = l.split(" d ").next().map(|n| format!("{n} d")).unwrap_or_default();
+        let parts: Vec<&str> = l.rsplitn(4, ' ').collect();
+        if let [size, mode, kind, name] = parts.as_slice() {
+            let x = mode.bytes().last().is_some_and(|b| (b - b'0') & 1 == 1);
+            *l = match *kind {
+                "d" => format!("{name} d"),
+                "f" => format!("{name} {} {size}", if x { "x" } else { "f" }),
+                other => format!("{name} {other} {size}"),
+            };
         }
     }
     lines.sort();
