@@ -383,6 +383,9 @@ struct Opts {
     /// machine, and `NOEVIA_RUST_CODE_RELAY=1` (with a relay port when `relay_port`).
     relay_machine: Option<SocketAddr>,
     relay_port: bool,
+    /// Council p6 (noevia#2720 item 5): with `relay_machine` and `relay_port`, leave
+    /// `NOEVIA_RUST_CODE_RELAY` unset (the port is configured, the switch is off).
+    relay_switch_off: bool,
 }
 
 struct Rig {
@@ -397,6 +400,8 @@ struct Rig {
     agent: Arc<Mutex<Agent>>,
     sandbox: Arc<Mutex<Sandbox>>,
     relay: Option<Arc<noevia_server::code_machine::RelayState>>,
+    /// The `CODE_ENGINE_RELAY_PORT` the rig configured, if any.
+    relay_port: Option<u16>,
 }
 
 fn seed(data: &Path) {
@@ -526,14 +531,16 @@ async fn rig(o: Opts) -> Rig {
     if let Some(mode) = o.facts {
         env.insert("NOEVIA_RUST_ENGINE_FACTS", mode.into());
     }
+    let mut relay_port = None;
     if o.relay_machine.is_some() {
-        env.insert("NOEVIA_RUST_CODE_RELAY", "1".into());
+        if !o.relay_switch_off {
+            env.insert("NOEVIA_RUST_CODE_RELAY", "1".into());
+        }
         if o.relay_port {
             let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            env.insert(
-                "CODE_ENGINE_RELAY_PORT",
-                free.local_addr().unwrap().port().to_string(),
-            );
+            let port = free.local_addr().unwrap().port();
+            relay_port = Some(port);
+            env.insert("CODE_ENGINE_RELAY_PORT", port.to_string());
             env.insert("CODE_ENGINE_RELAY_BIND", "127.0.0.1".into());
         }
     }
@@ -558,6 +565,7 @@ async fn rig(o: Opts) -> Rig {
         agent,
         sandbox: sandbox_state,
         relay,
+        relay_port,
     }
 }
 
@@ -1590,6 +1598,36 @@ async fn a_machine_code_task_runs_through_the_relay_and_its_lease_ends_with_the_
             refused["error"],
             json!("This task names qa-other, but the Code role runs qa-code on QA machine. One task runs on one model.")
         );
+    })
+    .await;
+}
+
+/// noevia#2720 item 5: the relay switch off with a relay port configured binds nothing, reads
+/// nothing and answers a machine start with the same 409 as before the relay existed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_relay_switch_off_binds_nothing_even_with_a_relay_port() {
+    within(async {
+        let (machine, asked) = qa_machine().await;
+        let r = rig(Opts {
+            executor: true,
+            relay_machine: Some(machine),
+            relay_port: true,
+            relay_switch_off: true,
+            ..Opts::default()
+        })
+        .await;
+        assert!(r.relay.is_none(), "no relay without the switch");
+        let port = r.relay_port.unwrap();
+        // Nothing listens on the configured port: this test can take it.
+        std::net::TcpListener::bind(("127.0.0.1", port)).unwrap();
+        let (status, refused) = r.start(json!({"repository": "qa-repo", "prompt": RUN})).await;
+        assert_eq!(status, 409, "{refused}");
+        assert_eq!(
+            refused["error"],
+            json!("The Code role runs on an inference machine, which this server's native Code executor cannot reach yet. Move the Code role back to this machine, or ask an administrator.")
+        );
+        // The machine was never asked anything.
+        assert!(asked.lock().unwrap().is_empty());
     })
     .await;
 }
