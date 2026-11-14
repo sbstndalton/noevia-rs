@@ -27,8 +27,8 @@
 use std::future::Future;
 
 use chat_turn::host::{
-    Answer, EditTarget, EngineRequest, GateRefusal, Host, Ran, Read, Scrub, Skill, Target as ToolTarget,
-    ToolRun,
+    Answer, EditTarget, EngineRequest, GateRefusal, Host, Ran, Read, Scrub, Skill,
+    Target as ToolTarget, ToolRun,
 };
 use js_json::JValue;
 
@@ -127,7 +127,9 @@ impl<'a, H: Host, R: Rows> ProviderHost<'a, H, R> {
     /// The request as it goes out, or the error it ends with before anything is sent.
     pub fn outgoing(&self, request: &EngineRequest) -> Result<EngineRequest, &'static str> {
         // Not before the expiry (NaN included) is expired, as `binding::open` reads it.
-        if self.inner.now_ms().partial_cmp(&self.binding.expires_ms) != Some(std::cmp::Ordering::Less) {
+        if self.inner.now_ms().partial_cmp(&self.binding.expires_ms)
+            != Some(std::cmp::Ordering::Less)
+        {
             return Err(EXPIRED);
         }
         let now = self.rows.now(&self.binding);

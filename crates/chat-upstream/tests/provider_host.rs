@@ -26,8 +26,8 @@ use std::sync::Mutex;
 use std::task::{Context, Poll, Waker};
 
 use chat_turn::host::{
-    Answer, EditTarget, EngineRequest, GateRefusal, Host, Ran, Read, Scrub, Skill, Target as ToolTarget,
-    ToolRun,
+    Answer, EditTarget, EngineRequest, GateRefusal, Host, Ran, Read, Scrub, Skill,
+    Target as ToolTarget, ToolRun,
 };
 use chat_turn::js;
 use chat_turn::native::{self, Ended, Helpers, Process};
@@ -519,7 +519,10 @@ fn wrapped_turns_write_the_plain_turns_events() {
         assert_eq!(wr.len(), pr.len(), "{name}: request count");
         for (p, w) in pr.iter().zip(&wr) {
             assert_eq!(w.url, p.url, "{name}");
-            assert_eq!(w.body, p.body, "{name}: the body is the executor's, unchanged");
+            assert_eq!(
+                w.body, p.body,
+                "{name}: the body is the executor's, unchanged"
+            );
             assert_eq!(w.stream, p.stream, "{name}");
             assert_eq!(w.timeout_ms, p.timeout_ms, "{name}");
             assert_eq!(
@@ -558,8 +561,14 @@ fn reply_turn_shape() {
         })
         .collect();
     assert_eq!(text, "QA réponse ✓ 🙂", "events: {events:#?}");
-    assert!(events.last().unwrap().contains(r#""type":"done""#), "{events:#?}");
-    assert!(inner.calls().iter().any(|c| c.starts_with("usage qa-model")));
+    assert!(
+        events.last().unwrap().contains(r#""type":"done""#),
+        "{events:#?}"
+    );
+    assert!(inner
+        .calls()
+        .iter()
+        .any(|c| c.starts_with("usage qa-model")));
 }
 
 /// The key as it is at each request: rotated between the tool round and the reply, the reply carries the new
@@ -652,7 +661,9 @@ fn recheck_failures_send_nothing() {
         ..now_of(&r)
     };
     let other_id = RowsNow {
-        row: Some(js_json::parse(r#"{"id":"qa-other","baseUrl":"https://qa-provider.example"}"#).unwrap()),
+        row: Some(
+            js_json::parse(r#"{"id":"qa-other","baseUrl":"https://qa-provider.example"}"#).unwrap(),
+        ),
         ..now_of(&r)
     };
     let moved = RowsNow {
@@ -727,7 +738,9 @@ fn row_changed_between_rounds() {
     let f = frame(&t.url, true, false);
     let ended = run_on(&host, &f);
     assert_eq!(inner.requests().len(), 1);
-    assert!(inner.calls().contains(&"execute get_current_time".to_string()));
+    assert!(inner
+        .calls()
+        .contains(&"execute get_current_time".to_string()));
     same_as_thrown(
         &inner,
         &ended,
@@ -778,7 +791,14 @@ fn wrong_address_or_model() {
 
     // Bodies that are not an object, or have no text model, are refused by `outgoing` itself.
     let host = ProviderHost::new(&inner, &rows, t.clone(), bound(&r, &t), DEFAULT_ID).unwrap();
-    for body in ["[]", "null", "\"qa-model\"", r#"{"model":7}"#, r#"{"messages":[]}"#, "{"] {
+    for body in [
+        "[]",
+        "null",
+        "\"qa-model\"",
+        r#"{"model":7}"#,
+        r#"{"messages":[]}"#,
+        "{",
+    ] {
         let req = EngineRequest {
             url: t.url.clone(),
             headers: Vec::new(),
@@ -860,7 +880,11 @@ fn deadlines_and_call_sites() {
             ]
         );
         // The plan's Debug never prints a header value.
-        assert!(!format!("{:?}", chat_upstream::plan::request(&t, chat_upstream::plan::Call::Round, Some("qa-key-1"))).contains("qa-key-1"));
+        assert!(!format!(
+            "{:?}",
+            chat_upstream::plan::request(&t, chat_upstream::plan::Call::Round, Some("qa-key-1"))
+        )
+        .contains("qa-key-1"));
     }
 }
 
@@ -871,20 +895,23 @@ fn only_direct_keyed_rows_are_wrapped() {
     let b = bound(&r, &t);
     let inner = Fake::new(Vec::new());
     let rows = ScriptRows::steady(&r);
-    let mk = |t: Target, b: Binding, d: &str| {
-        ProviderHost::new(&inner, &rows, t, b, d).err()
-    };
+    let mk = |t: Target, b: Binding, d: &str| ProviderHost::new(&inner, &rows, t, b, d).err();
     assert_eq!(mk(t.clone(), b.clone(), DEFAULT_ID), None);
     assert_eq!(
         mk(t.clone(), b.clone(), "qa-provider"),
         Some(Unsupported::DefaultProvider)
     );
     let machine = Target {
-        fetch: Fetch::Machine { id: "qa-machine".into() },
+        fetch: Fetch::Machine {
+            id: "qa-machine".into(),
+        },
         key: KeyUse::None,
         ..t.clone()
     };
-    assert_eq!(mk(machine, b.clone(), DEFAULT_ID), Some(Unsupported::Transport));
+    assert_eq!(
+        mk(machine, b.clone(), DEFAULT_ID),
+        Some(Unsupported::Transport)
+    );
     let broker = Target {
         fetch: Fetch::Broker {
             owner: "qa-member".into(),
@@ -893,15 +920,24 @@ fn only_direct_keyed_rows_are_wrapped() {
         key: KeyUse::None,
         ..t.clone()
     };
-    assert_eq!(mk(broker, b.clone(), DEFAULT_ID), Some(Unsupported::Transport));
+    assert_eq!(
+        mk(broker, b.clone(), DEFAULT_ID),
+        Some(Unsupported::Transport)
+    );
     let keyless = Target {
         key: KeyUse::None,
         ..t.clone()
     };
-    assert_eq!(mk(keyless, b.clone(), DEFAULT_ID), Some(Unsupported::Transport));
+    assert_eq!(
+        mk(keyless, b.clone(), DEFAULT_ID),
+        Some(Unsupported::Transport)
+    );
     let mut other = b.clone();
     other.provider_id = "qa-other".into();
-    assert_eq!(mk(t.clone(), other, DEFAULT_ID), Some(Unsupported::NotBound));
+    assert_eq!(
+        mk(t.clone(), other, DEFAULT_ID),
+        Some(Unsupported::NotBound)
+    );
     let mut moved = b;
     moved.url = "https://qa-elsewhere.example/v1/chat/completions".into();
     assert_eq!(mk(t, moved, DEFAULT_ID), Some(Unsupported::NotBound));
