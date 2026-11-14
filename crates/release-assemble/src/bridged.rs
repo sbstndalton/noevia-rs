@@ -418,3 +418,119 @@ pub fn research_pairing(tree: &Path) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// The four project task reads of the task read pairing (`$1 ~ /…(code|browser)(\/\{task\})?$/`).
+fn task_read_path(p: &[u8]) -> bool {
+    let Some(rest) = p.strip_prefix(b"/api/projects/{projectId}/".as_slice()) else {
+        return false;
+    };
+    matches!(
+        rest,
+        b"code" | b"browser" | b"code/{task}" | b"browser/{task}"
+    )
+}
+
+/// The five refusals Core's `rust-task-reads.cjs` must hold (params collapsed, byte order).
+pub const TASK_READS_REFUSED: &[&str] = &[
+    "ALL /api/code/active",
+    "GET /api/projects/{}/browser",
+    "GET /api/projects/{}/browser/{}",
+    "GET /api/projects/{}/code",
+    "GET /api/projects/{}/code/{}",
+];
+
+/// `grep -qE PATTERN FILE 2>/dev/null` over the raw file (comments included): a missing file is false.
+fn file_matches(path: &Path, pattern: &str) -> bool {
+    let (Some(src), Some(re)) = (read_file(path), ere(pattern)) else {
+        return false;
+    };
+    records(&src).iter().any(|l| re.is_match(l))
+}
+
+/// #2257 Code and Browser task reads: Core's `rust-task-reads.cjs` and the front's `rust-task-reads`.
+pub fn task_reads_pairing(tree: &Path) -> Result<(), String> {
+    let die = |what: &str| Err(format!("task read ownership pairing: {what}"));
+    let core = grep_fixed(
+        &tree.join("core/server/index.cjs"),
+        "require('./rust-task-reads.cjs')",
+    );
+    let rs = front_has(tree, "rust-task-reads");
+    if core != rs {
+        return die("Core and Rust must move together");
+    }
+    let contract = tree.join("rs/contracts/http/routes.toml");
+    if !contract.is_file() {
+        // An absent table is the route-table check's to report.
+        return Ok(());
+    }
+    let rt = routes_toml_file(&contract);
+    let mut paths: Vec<Vec<u8>> = Vec::new();
+    if rt.error.is_none() {
+        for r in &rt.routes {
+            let [p, owner, switch, methods] = tab_fields(r);
+            let ok = if p == b"/api/code/active" {
+                if rs {
+                    owner == b"rust" && switch == b"-" && methods == b"-"
+                } else {
+                    owner == b"node"
+                }
+            } else if task_read_path(&p) {
+                if rs {
+                    let runs: Vec<&[u8]> = methods
+                        .split(|c| !c.is_ascii_uppercase())
+                        .filter(|m| !m.is_empty())
+                        .collect();
+                    owner == b"rust" && switch == b"-" && runs == [b"GET".as_slice()]
+                } else {
+                    owner == b"node"
+                }
+            } else {
+                continue;
+            };
+            if !ok {
+                return die(
+                    "the active list must be Rust's whole and the four project reads Rust's for GET alone with the new pair, and Node's with the old",
+                );
+            }
+            paths.push(p);
+        }
+    }
+    if !rs {
+        return Ok(());
+    }
+    paths.sort();
+    paths.dedup();
+    if paths.len() != 5 {
+        return die("incomplete route ownership");
+    }
+    let refused = project_routes_core(
+        core_file(tree, "rust-task-reads.cjs").as_deref(),
+        "OWNED_ROUTES",
+    );
+    let want: Vec<Vec<u8>> = TASK_READS_REFUSED
+        .iter()
+        .map(|s| s.as_bytes().to_vec())
+        .collect();
+    if refused != want {
+        return die("Core must refuse exactly the five reads the front answers");
+    }
+    let server = tree.join("core/server");
+    for file in ["routes/code.cjs", "routes/browser.cjs"] {
+        if file_matches(&server.join(file), r"service\.(list|listActive|get)\(") {
+            return die("Core still carries the task read handlers");
+        }
+    }
+    if !server.join("rust-task-facts.cjs").is_file() {
+        return die("Core does not offer the front its task facts");
+    }
+    let index = code_lines(core_file(tree, "index.cjs").as_deref());
+    let mounted = ere(r"taskFactsBridge\(req, res\)")
+        .is_some_and(|re| here_lines(&index).iter().any(|l| re.is_match(l)));
+    if !mounted {
+        return die("Core does not mount the task facts bridge");
+    }
+    match captured_secret(&index) {
+        Some(secret) if secret_near(&index, r"createTaskFactsBridge\(\{", &secret) => Ok(()),
+        _ => die("Core does not hand its task facts bridge the front's captured secret"),
+    }
+}

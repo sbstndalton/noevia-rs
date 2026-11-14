@@ -178,7 +178,7 @@ fn gen_calibration(r: &mut Rng, root: &Path, p: &CalibrationPairing) {
     }
     manager.push_str("};\n");
     write(&root.join("core/server/llamacpp-manager.cjs"), &manager);
-    if !r.chance(7) {
+    if !r.chance(10) {
         write(&root.join("core/server").join(p.bridge_file), "'use strict';\n");
     }
     // index.cjs: marker, captured secret, bridge constructor with the secret, the mount.
@@ -397,6 +397,112 @@ fn gen_research(r: &mut Rng, root: &Path) {
     write(&root.join("core/server/index.cjs"), &index);
 }
 
+fn gen_task_reads(r: &mut Rng, root: &Path) {
+    fs::remove_dir_all(root).ok();
+    fs::create_dir_all(root).expect("the tree root");
+    let moved = r.chance(70);
+    let core_moved = if r.chance(6) { !moved } else { moved };
+    features(r, root, "rust-task-reads", moved);
+    let owner = if moved { "rust" } else { "node" };
+    if !r.chance(6) {
+        let mut toml = String::from("# routes\n");
+        if r.chance(3) {
+            toml.push_str("[[\"route\"]]\n");
+        }
+        let mut rows = vec![
+            "/api/code/active",
+            "/api/projects/{projectId}/code",
+            "/api/projects/{projectId}/code/{task}",
+            "/api/projects/{projectId}/browser",
+            "/api/projects/{projectId}/browser/{task}",
+        ];
+        if r.chance(6) {
+            rows.remove(r.below(rows.len()));
+        }
+        if r.chance(10) {
+            rows.push("/api/code/active");
+        }
+        for path in rows {
+            let o = if r.chance(4) { "node" } else { owner };
+            let o = if r.chance(3) { "rust" } else { o };
+            toml.push_str(&format!("[[route]]\npath = \"{path}\"\nowner = \"{o}\"\n"));
+            if r.chance(2) {
+                toml.push_str("switch = \"NOEVIA_RUST_X\"\n");
+            }
+            let active = path == "/api/code/active";
+            match r.below(30) {
+                0 => toml.push_str("methods = [\"GET\", \"POST\"]\n"),
+                1 => toml.push_str("methods = [\"GET\"]\n"),
+                _ if active || !moved => {}
+                _ => toml.push_str("methods = [\"GET\"]\n"),
+            }
+        }
+        toml.push_str("[[route]]\npath = \"/api/projects/{projectId}/code/{task}/x\"\nowner = \"node\"\n");
+        write(&root.join("rs/contracts/http/routes.toml"), &toml);
+    }
+    let mut refused = vec![
+        "'ALL /api/code/active'",
+        "'GET /api/projects/{projectId}/code'",
+        "'GET /api/projects/{projectId}/code/{task}'",
+        "'GET /api/projects/{id}/browser'",
+        "'GET /api/projects/{projectId}/browser/{task}'",
+    ];
+    match r.below(16) {
+        0 => refused.clear(),
+        1 => {
+            refused.remove(r.below(refused.len()));
+        }
+        2 => refused.push("'POST /api/projects/{projectId}/code'"),
+        _ => {}
+    }
+    write(
+        &root.join("core/server/rust-task-reads.cjs"),
+        &format!("const OWNED_ROUTES = new Set(([\n  {},\n]));\n", refused.join(",\n  ")),
+    );
+    for file in ["routes/code.cjs", "routes/browser.cjs"] {
+        match r.below(20) {
+            0 => write(&root.join("core/server").join(file), "const t = service.get(id);\n"),
+            1 => write(
+                &root.join("core/server").join(file),
+                "// const t = service.listActive(id);\n",
+            ),
+            2 => write(
+                &root.join("core/server").join(file),
+                "const t = service.start(id);\n",
+            ),
+            _ => {}
+        }
+    }
+    if !r.chance(10) {
+        write(&root.join("core/server/rust-task-facts.cjs"), "'use strict';\n");
+    }
+    let mut index = String::from("'use strict';\n");
+    if core_moved {
+        index.push_str("const reads = require('./rust-task-reads.cjs');\n");
+    }
+    match r.below(16) {
+        0 => {}
+        1 => index.push_str(
+            "// const FRONT = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');\n",
+        ),
+        _ => index.push_str("const FRONT = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');\n"),
+    }
+    if !r.chance(5) {
+        index.push_str("const facts = createTaskFactsBridge({\n");
+        for _ in 0..r.below(5) {
+            index.push_str("  store,\n");
+        }
+        index.push_str(if r.chance(6) { "  secret: OTHER,\n" } else { "  secret: FRONT,\n" });
+        index.push_str("});\n");
+    }
+    match r.below(14) {
+        0 => {}
+        1 => index.push_str("// if (await taskFactsBridge(req, res)) return;\n"),
+        _ => index.push_str("if (await taskFactsBridge(req, res)) return;\n"),
+    }
+    write(&root.join("core/server/index.cjs"), &index);
+}
+
 fn shell_verdict(dir: &Path, block: &str, tree: &Path) -> String {
     let prims = dir.join("primitives.sh");
     if !prims.exists() {
@@ -515,6 +621,19 @@ fn research_pairing_matches_the_shell() {
         11,
         &gen_research,
         &bridged::research_pairing,
+    );
+}
+
+#[test]
+fn task_reads_pairing_matches_the_shell() {
+    // PASS, move together, rows, incomplete, refused, handlers, facts file, mount, secret.
+    compare(
+        "task_reads",
+        "task read ownership pairing",
+        0xCA11_0000_0000_0005,
+        9,
+        &gen_task_reads,
+        &bridged::task_reads_pairing,
     );
 }
 

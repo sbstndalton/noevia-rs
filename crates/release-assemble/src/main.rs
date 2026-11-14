@@ -17,7 +17,8 @@
 //! release-assemble pairing NAME TREE              one ownership pairing over an assembled tree; NAME is
 //!                                                 feature, model-reads, project-reads, project-lifecycle,
 //!                                                 project-files, project-config, code-egress,
-//!                                                 calibration-cancel, calibration-routes or research
+//!                                                 calibration-cancel, calibration-routes, research
+//!                                                 or task-reads
 //! ```
 //! Refusals print `assemble-release: <reason>` on stderr and exit 1; bad usage exits 2.
 
@@ -199,6 +200,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                 "project-config" => guard::project_config_pairing(t)?,
                 "code-egress" => bridged::code_egress_pairing(t)?,
                 "research" => bridged::research_pairing(t)?,
+                "task-reads" => bridged::task_reads_pairing(t)?,
                 "calibration-cancel" => {
                     bridged::calibration_pairing(t, &bridged::CALIBRATION_CANCEL)?
                 }

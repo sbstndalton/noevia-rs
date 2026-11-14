@@ -288,3 +288,55 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "deep research ownership pairing: Core does not hand its admission lease and research bridge the front's secret (captured before clientFromEnv, never read from process.env after it)"
   fi
 fi
+#@task_reads
+tr_core_owner=""
+tr_rs_owner=""
+grep -qF "require('./rust-task-reads.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && tr_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-task-reads features; then
+  tr_rs_owner=rust
+fi
+[ "$tr_core_owner" = "$tr_rs_owner" ] \
+  || die "task read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # An unreadable table is the route-table check's to report, below.
+  tr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || tr_table=""
+  tr_routes="$(printf '%s\n' "$tr_table" | awk -F'\t' -v want="$tr_rs_owner" '
+    $1 == "/api/code/active" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }
+    $1 ~ /^\/api\/projects\/\{projectId\}\/(code|browser)(\/\{task\})?$/ {
+      if (want == "rust") {
+        if ($2 != "rust" || $3 != "-") exit 1
+        n = split($4, m, /[^A-Z]+/); k = 0
+        for (i = 1; i <= n; i++) if (m[i] != "") { if (m[i] != "GET") exit 1; k++ }
+        if (k != 1) exit 1
+      }
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "task read ownership pairing: the active list must be Rust's whole and the four project reads Rust's for GET alone with the new pair, and Node's with the old"
+  if [ "$tr_rs_owner" = rust ]; then
+    [ "$(printf '%s\n' "$tr_routes" | sort -u | wc -l | tr -d ' ')" = 5 ] || die "task read ownership pairing: incomplete route ownership"
+    tr_refused="$( { project_routes_core "$tree/core/server/rust-task-reads.cjs" || true; } | sort | tr '\n' ' ')"
+    tr_refused_expected="$(printf '%s\n' 'ALL /api/code/active' 'GET /api/projects/{}/code' 'GET /api/projects/{}/code/{}' 'GET /api/projects/{}/browser' 'GET /api/projects/{}/browser/{}' | sort | tr '\n' ' ')"
+    [ "$tr_refused" = "$tr_refused_expected" ] \
+      || die "task read ownership pairing: Core must refuse exactly the five reads the front answers"
+    for tr_file in routes/code.cjs routes/browser.cjs; do
+      ! grep -qE 'service\.(list|listActive|get)\(' "$tree/core/server/$tr_file" 2>/dev/null \
+        || die "task read ownership pairing: Core still carries the task read handlers"
+    done
+    [ -f "$tree/core/server/rust-task-facts.cjs" ] \
+      || die "task read ownership pairing: Core does not offer the front its task facts"
+    tr_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qE 'taskFactsBridge\(req, res\)' <<<"$tr_index" \
+      || die "task read ownership pairing: Core does not mount the task facts bridge"
+    tr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$tr_index" | head -1)"
+    [ -n "$tr_secret" ] && awk -v c="$tr_secret" '
+      /createTaskFactsBridge\(\{/ { bridge = NR }
+      index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+      END { exit !ok }
+    ' <<<"$tr_index" \
+      || die "task read ownership pairing: Core does not hand its task facts bridge the front's captured secret"
+  fi
+fi
