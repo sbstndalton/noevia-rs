@@ -735,9 +735,11 @@ pub fn config_dir() -> std::path::PathBuf {
 /// run's control port and secrets. The error is reduced to its first clause (a YAML or value
 /// error may quote configuration text).
 pub fn own_config(front: &Front, control_port: u16) -> Result<serde_json::Value, String> {
+    // Python sees a non-UTF-8 entry (surrogate-escaped) where this side cannot: not resolved.
     let env: std::collections::BTreeMap<String, String> = std::env::vars_os()
-        .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
-        .collect();
+        .map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+        .collect::<Option<_>>()
+        .ok_or_else(|| "environment not UTF-8".to_string())?;
     let start = diary_operator::server_config::Start {
         port: control_port,
         control_token: &front.control_token,
@@ -779,7 +781,26 @@ pub fn config_shadow_line(own: &Result<serde_json::Value, String>, child: &[u8])
     }
 }
 
-/// The key paths where two JSON values differ (objects key by key, anything else as a whole).
+/// The start-up config's own objects: below these, keys are the schema's; anything else (a raw
+/// configuration value, which may be a mapping of the operator's) is compared as a whole.
+const CONFIG_OBJECTS: &[&str] = &[
+    "",
+    "corpus",
+    "llm",
+    "llm.main",
+    "llm.aux",
+    "workspace_export",
+    "workspace_export.settings",
+    "answer",
+    "answer.embedding_seed",
+    "answer.embedding_seed.llm",
+    "embedding",
+    "embedding.llm",
+    "embedding.retrieval",
+];
+
+/// The key paths where two JSON values differ (the config's own objects key by key, anything
+/// else as a whole).
 pub fn config_differences(
     at: &str,
     a: &serde_json::Value,
@@ -788,7 +809,7 @@ pub fn config_differences(
 ) {
     use serde_json::Value;
     match (a, b) {
-        (Value::Object(x), Value::Object(y)) => {
+        (Value::Object(x), Value::Object(y)) if CONFIG_OBJECTS.contains(&at) => {
             let mut keys: Vec<&String> = x.keys().chain(y.keys()).collect();
             keys.sort();
             keys.dedup();
@@ -1002,15 +1023,16 @@ mod tests {
 
     #[test]
     fn config_shadow_names_paths_never_values() {
-        let own = serde_json::json!({"a": 1, "llm": {"main": {"api_key": "qa-one"}, "x": [1]}, "only_own": true});
-        let child =
-            br#"{"a": 1, "llm": {"main": {"api_key": "qa-two"}, "x": [1]}, "only_child": 0}"#;
+        let own = serde_json::json!({"a": 1, "llm": {"main": {"api_key": "qa-one"}, "x": [1]},
+                                     "only_own": true, "corpus": {"monthly_prefix": {"qa-key": 1}}});
+        let child = br#"{"a": 1, "llm": {"main": {"api_key": "qa-two"}, "x": [1]}, "only_child": 0,
+                         "corpus": {"monthly_prefix": {"qa-key": 2}}}"#;
         let line = config_shadow_line(&Ok(own.clone()), child);
         assert_eq!(
             line,
-            "start-up config shadow: differs from the child's at llm.main.api_key, only_child, only_own"
+            "start-up config shadow: differs from the child's at corpus.monthly_prefix, llm.main.api_key, only_child, only_own"
         );
-        assert!(!line.contains("qa-"));
+        assert!(!line.contains("qa-"), "{line}");
         let same = serde_json::to_vec(&own).unwrap();
         assert_eq!(
             config_shadow_line(&Ok(own), &same),

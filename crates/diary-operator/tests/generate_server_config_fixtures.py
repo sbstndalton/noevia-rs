@@ -48,10 +48,14 @@ _tree = ast.parse((diary / "agent/app.py").read_text(encoding="utf-8"))
 _default = [n for n in _tree.body if isinstance(n, ast.If) and "embedding_state_path" in ast.unparse(n.test)]
 assert len(_default) == 1, "app.py's embedding_state_path default moved"
 STATE_PATH_DEFAULT = compile(ast.Module(body=_default, type_ignores=[]), "app.py", "exec")
+# Its first use of retrieval.db_path at import (`Path(_base_cfg.get("retrieval.db_path"))`, the
+# shared credential gate's location): a value Path() refuses stops the import.
+_db_use = next(n for n in ast.walk(_tree) if isinstance(n, ast.Call) and ast.unparse(n) == "Path(_base_cfg.get('retrieval.db_path'))")
+DB_PATH_USE = compile(ast.Expression(body=_db_use), "app.py", "eval")
 
 shipped = (diary / "config/config.yaml").read_text(encoding="utf-8")
 UID_A, UID_B = "0b5f6c1e-3a2d-4c8e-9f10-1a2b3c4d5e6f", "00000000-0000-4000-8000-0000000000b9"
-BASE = {"DIARY_PARENT": "rust", "HOME": "/home/qa-synthetic"}
+BASE = {"DIARY_PARENT": "rust", "HOME": "/home/qa-synthetic", "DIARY_ALLOW_OPEN": "1"}
 FULL = {
     "LLM_BASE_URL": "http://qa-engine.invalid:8080/v1//", "LLM_API_KEY": "qa-engine-key",
     "LLM_CHAT_MODEL": "qa-chat", "LLM_CHAT_FALLBACK_MODEL": "  qa-chat-fallback ",
@@ -76,6 +80,7 @@ def case(name, yaml_text, env):
     return {"case": name, "yaml": yaml_text, "env": {**BASE, **env}}
 
 
+Y_BASE = "llm:\n  base_url: http://qa-engine.invalid/v1\n  aux:\n    base_url: http://qa-engine.invalid/v1\n"
 CASES = [
     case("shipped", shipped, {}),
     case("shipped-full-env", shipped, FULL),
@@ -118,8 +123,42 @@ CASES = [
          "retrieval:\n  db_path: /data/qa/index.db\n  embedding_state_path: ''\n", {"DIARY_RUST_EMBEDDING": "on"}),
     case("retrieval-not-a-mapping", "llm:\n  base_url: http://qa-engine.invalid/v1\n  aux:\n    base_url: http://qa-engine.invalid/v1\n"
          "retrieval: 5\n", {}),
+    case("open-mode-refused", shipped, {"DIARY_ALLOW_OPEN": "0"}),
+    case("open-mode-token", shipped, {"DIARY_ALLOW_OPEN": "0", "DIARY_AUTH_TOKEN": " qa-token "}),
+    case("write-impl-bogus", shipped, {"DIARY_CORPUS_WRITE_IMPL": "qa-bogus"}),
+    case("write-impl-blank", shipped, {"DIARY_CORPUS_WRITE_IMPL": " "}),
+    case("api-key-non-ascii", shipped, {"LLM_API_KEY": "qa-\u043a\u043b\u044e\u0447"}),
+    case("db-path-int", Y_BASE + "retrieval:\n  db_path: 5\n", {}),
+    case("db-path-missing", Y_BASE, {}),
+    case("db-path-root", shipped, {"DB_PATH": "/", "DIARY_RUST_EMBEDDING": "on"}),
+    case("db-path-double-slash", shipped, {"DB_PATH": "//x", "DIARY_RUST_EMBEDDING": "on"}),
+    case("db-path-inner-slashes", shipped, {"DB_PATH": "a//b", "DIARY_RUST_EMBEDDING": "on"}),
+    case("index-enabled-null", Y_BASE + "corpus:\n  index_enabled:\nretrieval:\n  db_path: /data/qa/index.db\n", {}),
+    case("embed-profile-null", Y_BASE.replace("llm:\n", "llm:\n  embed_profile:\n  embed_model: qa-embed-a\n")
+         + "retrieval:\n  db_path: /data/qa/index.db\n", {"DIARY_RUST_EMBEDDING": "on"}),
+    case("home-tilde", shipped, {"HOME": "~qa", "DIARY_EXTERNAL_SOURCES": "~/x"}),
+    case("timeout-inf-unsent", Y_BASE.replace("llm:\n", "llm:\n  timeout_s: .inf\n  max_retries: 99999999999999999999999\n")
+         + "retrieval:\n  db_path: /data/qa/index.db\n", {}),
+    case("timeout-inf-sent", Y_BASE.replace("llm:\n", "llm:\n  timeout_s: .inf\n")
+         + "retrieval:\n  db_path: /data/qa/index.db\n", {"DIARY_RUST_ANSWER": "on"}),
+    case("retries-wide-sent", Y_BASE.replace("llm:\n", "llm:\n  max_retries: 99999999999999999999999\n")
+         + "retrieval:\n  db_path: /data/qa/index.db\n", {"DIARY_RUST_ANSWER": "on"}),
+    case("reasoning-wide", shipped, {"DIARY_RUST_ANSWER": "on", "LLM_MAX_REASONING_TOKENS": "99999999999999999999"}),
+    case("reasoning-unicode-digits", shipped, {"DIARY_RUST_ANSWER": "on", "LLM_MAX_REASONING_TOKENS": "\u0661_\u0662"}),
     case("aux-base-missing", "llm:\n  base_url: http://qa-engine.invalid/v1\nretrieval:\n  db_path: /data/qa/index.db\n", {}),
 ]
+
+
+def wide_int(v):
+    if isinstance(v, bool):
+        return False
+    if isinstance(v, int):
+        return not -2**63 <= v < 2**64
+    if isinstance(v, dict):
+        return any(wide_int(x) for x in v.values())
+    if isinstance(v, list):
+        return any(wide_int(x) for x in v)
+    return False
 
 
 def record(c):
@@ -130,6 +169,7 @@ def record(c):
     data_dir = scratch / ("data-" + c["case"])
     try:
         cfg = load_config(str(cfg_path))
+        eval(DB_PATH_USE, {"_base_cfg": cfg, "Path": Path})
         exec(STATE_PATH_DEFAULT, {"_base_cfg": cfg, "Path": Path})
         # The index file goes to a scratch copy of retrieval.db_path; server_config reads the
         # configured value itself (data_root = its directory).
@@ -140,13 +180,18 @@ def record(c):
             data_dir.mkdir()
             retrieval["db_path"] = str(data_dir / "index.db") if real != ":memory:" else ":memory:"
         st = app_mod.AppState(state_cfg, backend=MemoryBackend({}))
+        app_mod.enforce_open_mode_policy(st.auth_token)  # the lifespan, before the POST
         config = rust_forward.server_config(cfg, st, PORT, CONTROL, FORWARD)
         writers_set = rust_forward.configured_writers()
         writers = ["*"] if writers_set == rust_forward.ALL_TENANTS else sorted(writers_set)
         owned = rust_parent.embedding_owned()
         sent = {**config, "native_routes": sorted(rust_forward.configured_routes(main=rust_parent.active())),
                 "native_writers": writers, **({"embedding": rust_parent.embedding_config(cfg)} if owned else {})}
-        return {**c, "config": json.loads(json.dumps(sent, allow_nan=False)), "error": None}
+        recorded = json.loads(json.dumps(sent, allow_nan=False))
+        if wide_int(recorded):
+            # The parent's start-up config parser takes 64-bit integers only: such a POST is refused.
+            raise OverflowError("an integer beyond 64 bits")
+        return {**c, "config": recorded, "error": None}
     except Exception as exc:  # noqa: BLE001 - the start would stop here
         return {**c, "config": None, "error": type(exc).__name__}
 

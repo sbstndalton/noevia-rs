@@ -50,7 +50,7 @@ fn unresolvable_home_forms_leave_the_external_sources_to_the_child() {
     let path = dir.path().join("config.yaml");
     std::fs::write(
         &path,
-        "llm:\n  base_url: http://qa-engine.invalid/v1\n  aux:\n    base_url: http://qa-engine.invalid/v1\n",
+        "llm:\n  base_url: http://qa-engine.invalid/v1\n  aux:\n    base_url: http://qa-engine.invalid/v1\nretrieval:\n  db_path: /data/qa/index.db\n",
     )
     .unwrap();
     let start = Start {
@@ -58,8 +58,15 @@ fn unresolvable_home_forms_leave_the_external_sources_to_the_child() {
         control_token: "qa-control",
         forward_secret: "qa-forward",
     };
-    for (sources, home) in [("~qa-user/x", Some("/home/qa")), ("~/x", None)] {
-        let mut env = BTreeMap::from([("DIARY_EXTERNAL_SOURCES".to_owned(), sources.to_owned())]);
+    for (sources, home) in [
+        ("~qa-user/x", Some("/home/qa")),
+        ("~/x", None),
+        ("~/x", Some("~qa")),
+    ] {
+        let mut env = BTreeMap::from([
+            ("DIARY_EXTERNAL_SOURCES".to_owned(), sources.to_owned()),
+            ("DIARY_ALLOW_OPEN".to_owned(), "1".to_owned()),
+        ]);
         if let Some(h) = home {
             env.insert("HOME".into(), h.into());
         }
@@ -70,6 +77,7 @@ fn unresolvable_home_forms_leave_the_external_sources_to_the_child() {
     let env = BTreeMap::from([
         ("DIARY_EXTERNAL_SOURCES".to_owned(), "~//qa/./x/".to_owned()),
         ("HOME".to_owned(), "//".to_owned()),
+        ("DIARY_ALLOW_OPEN".to_owned(), "1".to_owned()),
     ]);
     let cfg = load(Some(path.as_path()), dir.path(), &env).unwrap();
     let v = main_mode(&cfg.data, &env, &start).unwrap();
