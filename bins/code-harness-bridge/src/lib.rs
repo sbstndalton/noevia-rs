@@ -202,7 +202,7 @@ pub fn truthy(v: &Value) -> bool {
 
 /// JS `String(v)` of a parsed JSON value (`Err` where JS throws a TypeError: an object whose own
 /// `toString` is not callable, as every JSON one is).
-pub fn js_string(v: &Value) -> Result<String, ()> {
+fn js_string(v: &Value) -> Result<String, ()> {
     if let Value::String(s) = v {
         return Ok(s.clone());
     }
