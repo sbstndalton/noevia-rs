@@ -297,4 +297,14 @@ async fn the_switch_off_starts_no_relay() {
     assert!(!noevia_server::code_machine::enabled(&|k| {
         (k == noevia_server::code_machine::SWITCH).then(|| "yes".to_string())
     }));
+    // Council p9: the relay switch alone is not enough while Code tasks are Node's (core then keeps
+    // its own listener on CODE_ENGINE_RELAY_PORT): the front binds nothing.
+    assert!(!noevia_server::code_machine::enabled(&|k| {
+        (k == noevia_server::code_machine::SWITCH).then(|| "1".to_string())
+    }));
+    assert!(noevia_server::code_machine::enabled(&|k| match k {
+        noevia_server::code_machine::SWITCH => Some("1".to_string()),
+        noevia_server::code_routes::SWITCH => Some("rust".to_string()),
+        _ => None,
+    }));
 }

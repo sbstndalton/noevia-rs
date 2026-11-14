@@ -1,5 +1,5 @@
 //! Council p4: the front's side of the Code engine relay (core code-machine.cjs #1853 over
-//! chat-machines.cjs and machine-health.cjs), behind `NOEVIA_RUST_CODE_RELAY=1`, which is off by
+//! chat-machines.cjs and machine-health.cjs), behind `NOEVIA_RUST_CODE_RELAY=1` (with `NOEVIA_CODE_EXECUTOR=rust`: [`enabled`]), off by
 //! default. Unset (or any other value), a native Code start whose Code role is on an inference
 //! machine is refused with 409 exactly as before (code_routes.rs `ON_A_MACHINE`).
 //!
@@ -64,9 +64,14 @@ const CONTEXT_MAX: f64 = 2_000_000.0;
 /// `CONTEXT_FALLBACK`: a server that does not say its context gets the local engine's floor.
 pub const CONTEXT_FALLBACK: f64 = 8192.0;
 
-/// Whether the switch is on (exactly `1`).
+/// Whether the front owns the relay: Code tasks are the front's (`NOEVIA_CODE_EXECUTOR` exactly
+/// `rust`, code_routes.rs) and the switch is exactly `1`. This is core's `frontOwnsRelay`
+/// (rust-code-executor.cjs), so `CODE_ENGINE_RELAY_PORT` has one owner: with the relay switch on
+/// but Code tasks still Node's, Node keeps its relay and its listener and the front binds nothing
+/// (before p9 the front read only this switch and would have raced Node for the port).
 pub fn enabled(get: &impl Fn(&str) -> Option<String>) -> bool {
-    get(SWITCH).as_deref() == Some("1")
+    get(crate::code_routes::SWITCH).as_deref() == Some("rust")
+        && get(SWITCH).as_deref() == Some("1")
 }
 
 /// A chat role on another machine, with the role it was found for (the texts name the role).
@@ -1110,8 +1115,34 @@ mod tests {
             (Some(""), false),
             (None, false),
         ] {
-            let get = |k: &str| (k == SWITCH).then(|| v.map(str::to_string)).flatten();
+            let get = |k: &str| match k {
+                SWITCH => v.map(str::to_string),
+                crate::code_routes::SWITCH => Some("rust".to_string()),
+                _ => None,
+            };
             assert_eq!(enabled(&get), on, "{v:?}");
+        }
+    }
+
+    /// Core's `frontOwnsRelay` truth table (rust-code-executor.cjs, council p6 core branch): the
+    /// front owns the relay exactly when core yields the port, never when Code tasks are Node's.
+    #[test]
+    fn the_front_owns_the_relay_only_where_core_yields_the_port() {
+        for (executor, relay, on) in [
+            (Some("rust"), Some("1"), true),
+            (None, Some("1"), false),
+            (Some("node"), Some("1"), false),
+            (Some("Rust"), Some("1"), false),
+            (Some("rust "), Some("1"), false),
+            (Some("rust"), None, false),
+            (Some("rust"), Some("true"), false),
+        ] {
+            let get = |k: &str| match k {
+                SWITCH => relay.map(str::to_string),
+                crate::code_routes::SWITCH => executor.map(str::to_string),
+                _ => None,
+            };
+            assert_eq!(enabled(&get), on, "{executor:?} {relay:?}");
         }
     }
 
