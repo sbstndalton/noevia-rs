@@ -149,3 +149,24 @@ async fn start(app: &Arc<App>, body: Body) -> Response<Body> {
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_starts_post_without_a_native_runner_is_nodes() {
+        assert!(start_is_nodes("POST", PATH, false));
+        assert!(!start_is_nodes("POST", PATH, true));
+        for method in ["GET", "HEAD", "PUT", "DELETE", "OPTIONS"] {
+            assert!(!start_is_nodes(method, PATH, false), "{method}");
+        }
+        for path in [
+            "/api/models/autotune/cancel",
+            "/api/models/autotune/resume",
+            "/api/models",
+        ] {
+            assert!(!start_is_nodes("POST", path, false), "{path}");
+        }
+    }
+}

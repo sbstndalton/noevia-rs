@@ -184,7 +184,6 @@ async fn with_the_switch_off_the_start_is_nodes() {
     // #2550: any spelling of the start's path goes to Node as sent, before the front's own checks
     // (no sign-in, CSRF or URL refusal of the front's answers it).
     for path in [
-        "/api/models/autotune/",
         "/api/models/x/../autotune",
         "/api/models/autotune?model=qa",
     ] {

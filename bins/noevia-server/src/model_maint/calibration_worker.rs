@@ -6331,7 +6331,13 @@ mod tests {
             let options = vec![("ctx-size".to_owned(), Some("8192".to_owned()))];
             let reply = w
                 .maint
-                .apply_unlocked_reply(&hold, "synthetic", &super::super::ini::sha(INI), &options, true)
+                .apply_unlocked_reply(
+                    &hold,
+                    "synthetic",
+                    &super::super::ini::sha(INI),
+                    &options,
+                    true,
+                )
                 .await;
             let written = std::fs::read_to_string(&ini).unwrap();
             assert!(written.contains("ctx-size = 8192"), "{lapse}: {written}");

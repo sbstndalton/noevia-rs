@@ -210,7 +210,10 @@ impl FrontDeps {
                     .ok()?;
             }
             let hold = self.current.get()?;
-            let reply = self.maint.router_reload_reply(self.router().ok()?, &hold).await?;
+            let reply = self
+                .maint
+                .router_reload_reply(self.router().ok()?, &hold)
+                .await?;
             reply.ok.then_some(())
         }
         .await
@@ -791,9 +794,8 @@ impl Deps for FrontDeps {
     }
 
     fn is_system_model(&self, id: &str, path: Option<&str>) -> bool {
-        let roles = blocking(|| {
-            crate::model_kind::roles_beside(self.maint.ini.as_ref().map(|i| i.file()))
-        });
+        let roles =
+            blocking(|| crate::model_kind::roles_beside(self.maint.ini.as_ref().map(|i| i.file())));
         crate::model_kind::is_system_model_at(&roles, id, path)
     }
 

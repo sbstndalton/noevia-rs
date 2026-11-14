@@ -123,7 +123,9 @@ impl Native {
                     match self.runner.deps().restore_apply(key).await {
                         Some(true) => {}
                         Some(false) => {
-                            eprintln!("[autotune] recovery {key} failed: the restore did not complete");
+                            eprintln!(
+                                "[autotune] recovery {key} failed: the restore did not complete"
+                            );
                             done = false;
                         }
                         None => {
