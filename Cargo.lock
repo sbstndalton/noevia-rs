@@ -3700,6 +3700,7 @@ dependencies = [
  "icu_collator",
  "icu_locale",
  "indexmap",
+ "js-json",
  "proptest",
  "rustix",
  "serde",

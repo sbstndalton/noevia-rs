@@ -60,7 +60,14 @@ fn string_to_number(text: &str) -> f64 {
     if s.is_empty() {
         return 0.0;
     }
-    for (prefix, radix) in [("0x", 16), ("0X", 16), ("0o", 8), ("0O", 8), ("0b", 2), ("0B", 2)] {
+    for (prefix, radix) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
         if let Some(digits) = s.strip_prefix(prefix) {
             if digits.is_empty() {
                 return f64::NAN;
@@ -144,7 +151,12 @@ fn number_or_zero(v: &JValue) -> Result<f64, Thrown> {
 
 /// `readUsage(workspace)` on the file's bytes. `Err(())`: a file this port cannot hold.
 fn read(stored: Option<&[u8]>) -> Result<Vec<(String, JValue)>, ()> {
-    let empty = || vec![("days".to_string(), JValue::obj(Vec::<(String, JValue)>::new()))];
+    let empty = || {
+        vec![(
+            "days".to_string(),
+            JValue::obj(Vec::<(String, JValue)>::new()),
+        )]
+    };
     let Some(bytes) = stored else {
         return Ok(empty());
     };
@@ -220,7 +232,12 @@ fn bump(items: &mut Vec<(String, JValue)>, key: &str) -> Option<()> {
 }
 
 /// `atomicJson`'s bytes, after the retention trim.
-fn finish(mut store: Vec<(String, JValue)>, key: &str, day: Vec<(String, JValue)>, cutoff: Option<&str>) -> Outcome {
+fn finish(
+    mut store: Vec<(String, JValue)>,
+    key: &str,
+    day: Vec<(String, JValue)>,
+    cutoff: Option<&str>,
+) -> Outcome {
     let Some(days) = days_of(&mut store) else {
         return Outcome::Unusual;
     };
@@ -233,7 +250,12 @@ fn finish(mut store: Vec<(String, JValue)>, key: &str, day: Vec<(String, JValue)
 }
 
 /// usage.cjs `recordUsage(workspace, model, usage)` at `clock`.
-pub fn record_usage(stored: Option<&[u8]>, model: &JValue, usage: &JValue, clock: &Clock) -> Outcome {
+pub fn record_usage(
+    stored: Option<&[u8]>,
+    model: &JValue,
+    usage: &JValue,
+    clock: &Clock,
+) -> Outcome {
     if !usage.truthy() {
         return Outcome::Nothing;
     }
@@ -243,7 +265,12 @@ pub fn record_usage(stored: Option<&[u8]>, model: &JValue, usage: &JValue, clock
     ) else {
         return Outcome::Nothing;
     };
-    if !input.is_finite() || !output.is_finite() || input < 0.0 || output < 0.0 || (input == 0.0 && output == 0.0) {
+    if !input.is_finite()
+        || !output.is_finite()
+        || input < 0.0
+        || output < 0.0
+        || (input == 0.0 && output == 0.0)
+    {
         return Outcome::Nothing;
     }
     let name = if model.truthy() {
@@ -352,7 +379,15 @@ mod tests {
 
     #[test]
     fn number_rules() {
-        for (s, n) in [("", 0.0), (" 12 ", 12.0), ("0x1f", 31.0), ("1e3", 1000.0), (".5", 0.5), ("5.", 5.0), ("-Infinity", f64::NEG_INFINITY)] {
+        for (s, n) in [
+            ("", 0.0),
+            (" 12 ", 12.0),
+            ("0x1f", 31.0),
+            ("1e3", 1000.0),
+            (".5", 0.5),
+            ("5.", 5.0),
+            ("-Infinity", f64::NEG_INFINITY),
+        ] {
             assert_eq!(string_to_number(s), n, "{s}");
         }
         for s in ["1e", "e3", "-0x1", "inf", "NaN", "1 2", "."] {

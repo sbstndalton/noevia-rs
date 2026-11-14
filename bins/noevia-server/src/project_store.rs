@@ -1337,7 +1337,9 @@ async fn usage_record(store: Store, headers: HeaderMap, raw: Bytes) -> Response<
     let done = tokio::task::spawn_blocking(move || {
         use crate::usage_writes::{record, Record};
         let what = if kind.as_deref() == Some("tool") {
-            Record::Tool { name: body.get("name") }
+            Record::Tool {
+                name: body.get("name"),
+            }
         } else {
             Record::Reply {
                 model: body.get("model"),
