@@ -1,7 +1,7 @@
 {"version":1,"generator":"crates/chat-prepare/tests/record_prerules.cjs",
 "node":"v22.23.3",
-"sources":{"server/chat.cjs":"48ca4b623361f3b12994a9688d352febae9416922b629d3c3f8fb1a72e8d07fc","server/decision-qualification.cjs":"31cd6ecc8dc0a38ed519d5d7f16c3d1790b5ca9637c112a85f7affd79869134e","server/routing-modes.cjs":"4925c0329a3559eae11200a1af8f889697cceaf2bbd566875d9f4e659021e5c3","server/tools-mode.cjs":"8374113b31413ed8f6aeab4d2ff388d24370858a9c5cff125f7728e2c33cdb50"},
-"block":{"lines":[996,1008],"sha256":"53575326bf4232c7af5f762ed788586933cb99a02a75a5b75e480a2ccd71c66b"},
+"sources":{"server/chat.cjs":"21bdb2d0045e8b7b5ae191c41e10bd9cff377f7bd34bc45758402de5963f9d6c","server/decision-qualification.cjs":"31cd6ecc8dc0a38ed519d5d7f16c3d1790b5ca9637c112a85f7affd79869134e","server/routing-modes.cjs":"4925c0329a3559eae11200a1af8f889697cceaf2bbd566875d9f4e659021e5c3","server/tools-mode.cjs":"8374113b31413ed8f6aeab4d2ff388d24370858a9c5cff125f7728e2c33cdb50"},
+"block":{"lines":[1004,1016],"sha256":"53575326bf4232c7af5f762ed788586933cb99a02a75a5b75e480a2ccd71c66b"},
 "scanLimit":400000,
 "preRule":[
 {"text":"","flag":null,"public":null},

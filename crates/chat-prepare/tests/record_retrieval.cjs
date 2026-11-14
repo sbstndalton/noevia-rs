@@ -560,8 +560,8 @@ const EXT_TEXT = `QA external text. ${'e'.repeat(5000)}`;
   await addTurn('diary_other_space', { multimodal: true, refusedOk: true, body: { spaceId: 'diary-qa' }, project: P({ files: [plain('QA a.txt')] }), answer: { block: 'QA block' } });
   // The Diary itself: no project, no wait, no retrieval (its own companion stream answers; the fetch stub refuses it).
   await addTurn('diary_space', { multimodal: true, refusedOk: true, diarySpace: true, free: true, body: { spaceId: 'diary' }, project: P({ files: [plain('QA a.txt')] }), answer: { block: 'QA block' } });
-  // With a projectId as well (no client sends one): neither seam is asked; Node then throws at the grant holder
-  // (chat.cjs `expectedGrantHolder` reads `project.id` of the project it did not load), outside this slice.
+  // With a projectId as well (no client sends one): neither seam is asked; the project is not loaded, so the grant
+  // holder is the free one (#2587) and the turn goes on to the Diary companion, outside this slice.
   await addTurn('diary_space_project_id', { multimodal: true, refusedOk: true, diarySpace: true, body: { spaceId: 'diary' }, project: P({ files: [plain('QA a.txt')] }), answer: { block: 'QA block' } });
   // compactOnly: no wait, no images, the block in the system message even for attachments, no `sources` event.
   await addTurn('compact_project', { multimodal: true, project: P({ files: [plain('QA a.txt'), plain('QA big.txt', { content: BIG })] }), message: '', history: [U('q1'), A('a1')],
@@ -633,7 +633,10 @@ const EXT_TEXT = `QA external text. ${'e'.repeat(5000)}`;
     + `${turns.length} turns (${turns.filter((t) => t.throws).length} throw, ${turns.filter((t) => t.frame).length} frames), ${differences.length} differences`;
   if (check > 0) {
     const committed = fs.readFileSync(process.argv[check + 1], 'utf8');
-    if (committed !== text) { process.stderr.write('the recording differs from the committed fixture: record it again\n'); process.exit(1); }
+    if (committed !== text) {
+    // A host that cannot run Node takes the fresh recording from CI (chat-prepare.yml uploads RECORD_FRESH).
+    if (process.env.RECORD_FRESH) fs.writeFileSync(process.env.RECORD_FRESH, text);
+    process.stderr.write('the recording differs from the committed fixture: record it again\n'); process.exit(1); }
     process.stderr.write(`ok: ${counts} recorded as committed\n`, () => process.exit(0));
   } else {
     process.stderr.write(`recorded: ${counts}\n`);

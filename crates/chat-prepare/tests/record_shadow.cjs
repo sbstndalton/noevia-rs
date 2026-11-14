@@ -32,12 +32,14 @@
 //   freeChats    what the handler's freeChats() answers (the user's free chat list; index.cjs FREE_CHATS), or null
 //                when it answers an empty list
 //   chatFraming  what chatFramingEnabled() answers (index.cjs: features.enabled('chatFraming'))
-//   toolboxes    the toolbox catalogue allToolboxes() answers, as [{id, tools: [function names]}] (the history
+//   toolboxes    the toolbox catalogue allToolboxes() answers, as [{id, tools: [function names], writes: [the names
+//                isWriteTool calls writes]}] (the history
 //                replay's carryOrphanTool and knownTool read it: tools-mode.cjs isPublicToolName, PRIVATE_CORE_TOOLS)
 //   settings     (left out: no settings database) the settings table's rows chat.cjs reads, key -> value (a missing
 //                key: no row; null: SQL NULL): reasoning_effort_default and auto_sampling_presets_enabled
 //   roles, pick  (left out: Manual) what autoRoles() answers and the classifier's verdict (an Automatic turn)
 //   models       (left out: none) more loaded models besides the default one (distinct role and project models)
+//   lastLoaded   what lastLoadedModel() answers (the model a Manual turn without a project model answers with)
 //   projects     (left out: none) the account's stored projects, what getProject(id) finds (P7c): no skills
 //   codeTasks    (left out: none) what codeTasksFor(project) answers (a project sharing into Chat)
 //   body         the POST /api/chat body (no skill, turnToolboxes or compactOnly; a projectId on the P7c cases)
@@ -74,7 +76,7 @@ for (const k of ['log', 'info', 'warn', 'error', 'debug']) {
 }
 const READ_FILES = ['server/chat.cjs', 'server/index.cjs', 'server/rust-chat-native.cjs', 'server/account-instructions.cjs', 'server/account-memory.cjs',
   'server/current-time-part.cjs', 'server/chat-frame-steering.cjs', 'server/chat-framing.cjs', 'server/chat-sources.cjs', 'server/prompt-framing.cjs',
-  'server/tools-mode.cjs', 'server/toolboxes.cjs', 'server/chat-title.cjs', 'server/dav-parse.lock'];
+  'server/tools-mode.cjs', 'server/toolboxes.cjs', 'server/chat-title.cjs', 'server/project-edit-target.cjs', 'server/dav-parse.lock'];
 const sha = (f) => crypto.createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex');
 function sourcesRead() {
   const server = `${path.join(root, 'server')}${path.sep}`;
@@ -108,18 +110,36 @@ const pick = (list) => list[Math.floor(rand() * list.length)];
 const chance = (p) => rand() < p;
 const viaJson = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
 
+// index.cjs MCP_INTERNAL_SERVER: noevia's own in-process MCP server.
+const INTERNAL = 'noevia';
 // The toolbox catalogue: core, the Drive connector box, a public web-search box and a private-data notes box (MCP).
 const fn = (name, description) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties: { query: { type: 'string' } } } } });
 const MCP = [
   { id: 'web-search', label: 'QA Web search', description: 'QA web search', source: 'mcp', server: 'qa-search', tools: [fn('web_search', 'Search the web (QA).')], reads: ['web_search'] },
   { id: 'qa-notes', label: 'QA notes', description: 'QA notes for QA', source: 'mcp', server: 'qa-notes',
     tools: [fn('qa_notes_search', 'Search QA notes.'), fn('qa_notes_save', 'Save a QA note.')], reads: ['qa_notes_search'] },
+  // P7f review: the in-process server's project documents box (its two edit tools), and an outside box offering one of
+  // those names too (declared a read there: the write declaration wins) and a read its server reports as a write.
+  { id: 'project-docs', label: 'QA project documents', description: 'QA project documents', source: 'mcp', server: INTERNAL,
+    tools: [fn('project_list_files', 'List QA files.'), fn('project_append_file', 'Append to a QA file.'), fn('project_replace_text', 'Replace QA text.')],
+    reads: ['project_list_files'] },
+  { id: 'qa-docs', label: 'QA docs', description: 'QA docs', source: 'mcp', server: 'qa-docs',
+    tools: [fn('qa_docs_read', 'Read QA docs.'), fn('project_replace_text', 'Replace QA doc text.')], reads: ['qa_docs_read', 'project_replace_text'] },
 ];
-const MCP_TOOLS = new Map([['web_search', { readOnly: true, serverId: 'qa-search' }], ['qa_notes_search', { readOnly: true, serverId: 'qa-notes' }], ['qa_notes_save', { readOnly: false, serverId: 'qa-notes' }]]);
+// mcpState.tools: each name held by the first configured server offering it (the in-process server is first).
+const MCP_TOOLS = new Map([['web_search', { readOnly: true, serverId: 'qa-search' }], ['qa_notes_search', { readOnly: true, serverId: 'qa-notes' }], ['qa_notes_save', { readOnly: false, serverId: 'qa-notes' }],
+  ['project_list_files', { readOnly: true, serverId: INTERNAL }], ['project_append_file', { readOnly: false, serverId: INTERNAL }], ['project_replace_text', { readOnly: false, serverId: INTERNAL }],
+  ['qa_docs_read', { readOnly: false, serverId: 'qa-docs' }]]);
+const EDIT_TOOLS = serverRequire('project-edit-target.cjs').EDIT_TOOLS;
 const driveTools = createDriveTools({ accounts: { forUser: () => ({ drive: { state: () => ({ state: 'none' }) } }) }, cap: 8000 });
-const TB = toolboxesLib.createToolboxes({ boxes: [driveTools.box], kiwixTools: null, driveTools, mcpBoxes: () => MCP, mcpTools: () => MCP_TOOLS, offered: () => true,
+// A coworker conversation's page save (specialist-page-save.cjs): offered by a `specialist-` project, asked about every time.
+const TB = toolboxesLib.createToolboxes({ boxes: [driveTools.box], kiwixTools: null, driveTools, specialistTools: serverRequire('specialist-page-save.cjs').createPageSave({ store: {} }), mcpBoxes: () => MCP, mcpTools: () => MCP_TOOLS, offered: () => true,
   prefill: { budgetFor: () => null, rateFor: () => 0.5 } });
-const TOOLBOXES = TB.allToolboxes().map((b) => ({ id: b.id, tools: (b.tools || []).map((t) => t.function.name) }));
+// Each box's ids and tool names, and (P7f) the ones chat.cjs's isWriteTool calls writes.
+const TOOLBOXES = TB.allToolboxes().map((b) => {
+  const tools = (b.tools || []).map((t) => t.function.name);
+  return { id: b.id, tools, writes: tools.filter((n) => TB.isWriteTool(n)) };
+});
 const PROVIDER = { id: 'default', label: 'QA engine', baseUrl: ENGINE };
 const MODEL = 'qa-model-9b';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-shadow-'));
@@ -134,6 +154,10 @@ class FrozenDate extends RealDate {
 }
 
 let current = null;
+// The server holding a tool name for the current case.
+const holderOf = (name) => ((current.spec.holders || {})[name] ?? MCP_TOOLS.get(name)?.serverId);
+// The names the in-process server holds for the current case (recorded as input `inApp`).
+const inAppNames = () => [...new Set([...MCP_TOOLS.keys(), ...Object.keys(current.spec.holders || {})])].filter((n) => holderOf(n) === INTERNAL).sort();
 function handlerFor(dir) {
   const S = () => current.spec, L = () => current.log;
   let uuid = 0;
@@ -195,6 +219,8 @@ function handlerFor(dir) {
     codeTasksFor: () => structuredClone(S().codeTasks || []), sourceJobs: { settle: async () => ({ notReady: [], aborted: false }) },
     chatTitles: { save() {}, autoNamed: () => true },
     grantContext: async () => ({ holder: { kind: 'absent' } }),
+    // index.cjs: an edit tool held by the in-process server (a case's `holders` moves a name to another server).
+    projectEditTool: (name) => EDIT_TOOLS.has(name) && holderOf(name) === INTERNAL,
     nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once']), supervising: () => false },
   });
 }
@@ -233,6 +259,7 @@ async function addTurn(name, raw) {
     freeChats: spec.freeChats && spec.freeChats.length ? spec.freeChats : null, chatFraming: spec.chatFraming, toolboxes: TOOLBOXES,
     ...(spec.settings === undefined ? {} : { settings: spec.settings }),
     ...(spec.roles === undefined ? {} : { roles: spec.roles, pick: spec.pick }), ...(spec.models === undefined ? {} : { models: spec.models }),
+    lastLoaded: MODEL, inApp: inAppNames(),
     ...(spec.projects === undefined ? {} : { projects: spec.projects }), ...(spec.codeTasks === undefined ? {} : { codeTasks: spec.codeTasks }),
     body: viaJson(spec.body) };
   const from = logged.length;
@@ -498,6 +525,17 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
   await addTurn('auto_distinct_unassigned', { roles: { fast: 'qa-fast-4b' }, pick: 'smart', models: ['qa-fast-4b'], body: req() });
   await addTurn('project_own_model', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b' })], body: preq() });
   await addTurn('project_own_model_default', { projects: [project({ model: MODEL })], body: preq() });
+  // P7f: a write tool offered (the QA notes box's save), from the turn's own pick and from the project's boxes.
+  await addTurn('tools_turn_pick_notes', { body: req({ turnToolboxes: ['qa-notes'] }) });
+  await addTurn('tools_project_notes', { projects: [project({ toolboxes: ['core', 'qa-notes', 'web-search'] })], body: preq() });
+  await addTurn('tools_project_notes_message', { projects: [project({ toolboxes: ['qa-notes'] })], body: preq({ message: 'Save a QA note that says hello' }) });
+  // P7f review: the in-process server's edit tools (editTools), a name in two boxes, a read its server calls a write,
+  // and an edit tool name held by an outside server (not an edit tool for core).
+  await addTurn('tools_project_docs', { projects: [project({ toolboxes: ['core', 'project-docs'] })], body: preq() });
+  await addTurn('tools_project_docs_two_boxes', { projects: [project({ toolboxes: ['project-docs', 'qa-docs'] })], body: preq() });
+  await addTurn('tools_project_docs_outside_holder', { holders: { project_append_file: 'qa-docs' }, projects: [project({ toolboxes: ['project-docs', 'qa-docs'] })], body: preq() });
+  // The once card (#2446): a coworker project's page save, named in onceTools (the front says it runs that card).
+  await addTurn('tools_coworker_page_save', { projects: [project({ id: 'specialist-qa-writer', name: 'QA Writer' })], body: preq({ projectId: 'specialist-qa-writer' }) });
   await addTurn('project_own_model_context_low', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b', contextProfile: 'low' })], body: preq() });
   await addTurn('project_context_high_skipped', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b', contextProfile: 'high' })], body: preq() });
   // Not covered yet (the shadow skips them): knowledge files, a project sharing into Chat, attached images.
@@ -552,7 +590,10 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
   const check = process.argv.indexOf('--check');
   if (check > 0) {
     const committed = fs.readFileSync(process.argv[check + 1], 'utf8');
-    if (committed !== text) { process.stderr.write(`the recording differs from the committed fixture: record it again (${counts})\n`); process.exit(1); }
+    if (committed !== text) {
+    // A host that cannot run Node takes the fresh recording from CI (chat-prepare.yml uploads RECORD_FRESH).
+    if (process.env.RECORD_FRESH) fs.writeFileSync(process.env.RECORD_FRESH, text);
+    process.stderr.write(`the recording differs from the committed fixture: record it again (${counts})\n`); process.exit(1); }
     process.stderr.write(`ok: ${counts} recorded as committed\n`, () => process.exit(0));
   } else {
     process.stderr.write(`recorded: ${counts}\n`);

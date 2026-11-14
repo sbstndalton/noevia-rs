@@ -1,7 +1,7 @@
 //! A turn's image parts and its vision pass (slice P2c): what noevia-core's `server/chat.cjs` does
-//! with a project's attached images (`projectImages`, ~866-914 at the pinned core) and, after the
-//! stream opened, what it puts on the wire for them or asks a Vision role to describe (~1461-1547,
-//! `describeImagesNow` ~783-860). In chat.cjs's order:
+//! with a project's attached images (`projectImages`, ~870-923 at the pinned core) and, after the
+//! stream opened, what it puts on the wire for them or asks a Vision role to describe (~1469-1555,
+//! `describeImagesNow` ~787-864). In chat.cjs's order:
 //! 1. [`images`], before routing: the attached assets (`body.turnImageIds`, #1512; all without
 //!    it) as `image_url` parts, the loaded, missing and unattached names, the `[assets]` lines.
 //!    [`Images::reading`] is the status line's `readingImages` ([`crate::reroute::status_event`]).
@@ -20,12 +20,9 @@
 //!
 //! Recorded in `tests/fixtures/node-vision.v1.json`, written by `tests/record_vision.cjs` (whole
 //! turns through `createChatHandler`, the seams stubbed). Named differences, in the fixture's
-//! `differences` and tested:
-//! - An asset id that is not a plain file name ([`plain_asset_name`]) is a missing image and is
-//!   never read; Node reads `path.join(assetDir, id)`, which for `x/../img-1` or `../x` is another
-//!   file in or beyond the project's asset directory (an id holding a lone surrogate opens the
-//!   name with U+FFFD in its place). Ids are `img-<hex>` (uploads.cjs), so only a hand-edited
-//!   record differs, and the port never reads outside the directory.
+//! `differences` and tested (an asset id that is not a plain file name, [`plain_asset_name`], is a
+//! missing image and never read, in core too since noevia#2595; the recorder refuses a read
+//! through any other id):
 //! - The `[vision] describe failed:` line of a body that is not JSON says [`NOT_JSON`] where Node
 //!   writes V8's `JSON.parse` message (an empty or whitespace body's is V8's).
 //! - A describe reply `JSON.parse` reads but `wtf16` cannot hold (a number outside `f64`, nesting
@@ -92,7 +89,7 @@ impl Images {
     }
 }
 
-/// Whether the port reads an asset id as a file of the asset directory (the named difference).
+/// Whether an asset id is read as a file of the asset directory (chat.cjs `plainAssetName`, #2595).
 pub fn plain_asset_name(id: &str) -> bool {
     !id.is_empty()
         && id != "."

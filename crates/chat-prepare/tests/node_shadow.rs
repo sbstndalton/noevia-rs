@@ -91,6 +91,22 @@ fn replay(f: &JValue) -> Vec<Replayed> {
             .iter()
             .find(|p| !pid.is_nullish() && p.get("id") == pid);
         let boxes: Vec<Toolbox> = items(input, "toolboxes").iter().map(toolbox).collect();
+        // isWriteTool as core answered it per box (a name no box offers is a write, as in Node).
+        let writes: Vec<&str> = items(input, "toolboxes")
+            .iter()
+            .flat_map(|b| items(b, "writes").iter().filter_map(|n| n.as_str()))
+            .collect();
+        let is_write = |name: &str| {
+            chat_prepare::toolboxes::never_standing(name)
+                || writes.contains(&name)
+                || !boxes.iter().any(|b| b.offers(name))
+        };
+        // The names the recorded in-process MCP server holds (projectEditTool's server check).
+        let held: Vec<&str> = items(input, "inApp")
+            .iter()
+            .filter_map(|n| n.as_str())
+            .collect();
+        let in_app = |name: &str| held.contains(&name);
         let known =
             |name: &str| PRIVATE_CORE_TOOLS.contains(&name) || boxes.iter().any(|b| b.offers(name));
         let carry = |name: &str| is_public_tool_name(Some(name), &boxes);
@@ -110,6 +126,7 @@ fn replay(f: &JValue) -> Vec<Replayed> {
                 free_chats: Some(free),
                 project,
                 roles: Some(input.get("roles")),
+                last_loaded: input.get("lastLoaded").as_str(),
                 time_zone: input.get("tz").as_str().unwrap(),
                 chat_framing: input.get("chatFraming").as_bool(),
                 brain_context: Some(false),
@@ -134,6 +151,9 @@ fn replay(f: &JValue) -> Vec<Replayed> {
             verdict: run(Some(Catalogue {
                 known_tool: &known,
                 carry_orphan_tool: &carry,
+                boxes: &boxes,
+                is_write: &is_write,
+                in_app: &in_app,
             })),
             without_catalogue: run(None),
         });
@@ -183,6 +203,16 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     // Everything built is core's: a match, or (P7d) all but a Manual turn's default model.
     let covered = |v: Verdict| matches!(v, Verdict::Match | Verdict::Skip("manual-default"));
     let matched = replayed.iter().filter(|r| covered(r.verdict)).count();
+    // P7d-2: with the last-loaded model known, a Manual turn's model is compared too.
+    let full = replayed
+        .iter()
+        .filter(|r| r.verdict == Verdict::Match)
+        .count();
+    assert!(
+        full * 10 >= replayed.len() * 9,
+        "only {full} of {} fully matched",
+        replayed.len()
+    );
     // The model is compared for Automatic turns and projects with their own model: they match.
     let modelled: Vec<&Replayed> = replayed
         .iter()
@@ -234,11 +264,14 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     // Without the catalogue only a history that needs it is skipped; everything else is the same.
     for r in &replayed {
         if r.without_catalogue != r.verdict {
-            assert_eq!(
-                r.without_catalogue,
-                Verdict::Skip("tool-history"),
-                "{}",
-                r.name
+            assert!(
+                matches!(
+                    r.without_catalogue,
+                    Verdict::Skip("tool-history" | "catalogue")
+                ),
+                "{}: {}",
+                r.name,
+                r.without_catalogue.line()
             );
             assert!(covered(r.verdict), "{}", r.name);
         }
@@ -277,6 +310,7 @@ fn a_difference_is_located_without_its_text() {
             free_chats: Some(&free),
             project: None,
             roles: None,
+            last_loaded: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
@@ -365,6 +399,7 @@ fn a_code_route_and_an_unreadable_free_list_are_skipped() {
             free_chats: free,
             project: None,
             roles: None,
+            last_loaded: None,
             time_zone: "UTC",
             chat_framing: framing,
             brain_context: Some(false),
@@ -447,6 +482,7 @@ fn the_effort_and_sampling_follow_the_settings_rows() {
             free_chats: Some(&empty),
             project: None,
             roles: None,
+            last_loaded: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
@@ -491,6 +527,7 @@ fn a_new_project_chat_takes_only_an_id_chat_cjs_makes() {
             free_chats: Some(&empty),
             project: Some(project),
             roles: None,
+            last_loaded: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
@@ -528,5 +565,138 @@ fn a_new_project_chat_takes_only_an_id_chat_cjs_makes() {
             Verdict::Diff(d) => assert_eq!(d.field, "chat", "{bad}"),
             other => panic!("{bad}: {other:?}"),
         }
+    }
+}
+
+/// P7d-2: a Manual turn without a project model is compared with the front's own last-loaded model;
+/// another name than core's is a `model` diff, none known is not compared.
+#[test]
+fn a_manual_default_model_is_the_front_s_last_loaded_one() {
+    let f = fixture();
+    let t = items(&f, "turns")
+        .iter()
+        .find(|t| t.get("name").as_str() == Some("project_minimal"))
+        .unwrap();
+    let input = t.get("input");
+    let project = items(input, "projects").first().unwrap();
+    let empty = JValue::Arr(Vec::new());
+    let boxes: Vec<Toolbox> = items(input, "toolboxes").iter().map(toolbox).collect();
+    let writes: Vec<&str> = items(input, "toolboxes")
+        .iter()
+        .flat_map(|b| items(b, "writes").iter().filter_map(|n| n.as_str()))
+        .collect();
+    let is_write = |name: &str| {
+        chat_prepare::toolboxes::never_standing(name)
+            || writes.contains(&name)
+            || !boxes.iter().any(|b| b.offers(name))
+    };
+    let held: Vec<&str> = items(input, "inApp")
+        .iter()
+        .filter_map(|n| n.as_str())
+        .collect();
+    let in_app = |name: &str| held.contains(&name);
+    let known = |name: &str| boxes.iter().any(|b| b.offers(name));
+    let carry = |name: &str| is_public_tool_name(Some(name), &boxes);
+    let check = |last_loaded: Option<&str>| {
+        compare(&ShadowTurn {
+            body: input.get("body"),
+            frame: t.get("prepared"),
+            instructions: None,
+            memory: None,
+            free_chats: Some(&empty),
+            project: Some(project),
+            roles: None,
+            last_loaded,
+            time_zone: input.get("tz").as_str().unwrap(),
+            chat_framing: Some(false),
+            brain_context: Some(false),
+            history_cap: 1000,
+            titles: true,
+            workspace: true,
+            settings: Some(Settings {
+                effort_default: &JValue::Undefined,
+                sampling_presets: &JValue::Undefined,
+            }),
+            catalogue: Some(Catalogue {
+                known_tool: &known,
+                carry_orphan_tool: &carry,
+                boxes: &boxes,
+                is_write: &is_write,
+                in_app: &in_app,
+            }),
+        })
+    };
+    assert_eq!(check(input.get("lastLoaded").as_str()), Verdict::Match);
+    match check(Some("qa-other-model")) {
+        Verdict::Diff(d) => assert_eq!(d.field, "model"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(check(None), Verdict::Skip("manual-default"));
+}
+
+/// P7f: the frame's per-tool facts for core's tool list are the native ones; one that is not is
+/// named by its field, and without the catalogue they are not compared (`skip catalogue`).
+#[test]
+fn the_tool_facts_are_core_s() {
+    let f = fixture();
+    let frames: Vec<&JValue> = items(&f, "turns")
+        .iter()
+        .map(|t| t.get("prepared"))
+        .filter(|p| p.is_object())
+        .collect();
+    for field in ["writes", "public", "editTools", "onceTools"] {
+        assert!(
+            frames.iter().any(|p| !items(p, field).is_empty()),
+            "{field}"
+        );
+    }
+    let r = replay(&f);
+    assert!(r
+        .iter()
+        .any(|r| r.without_catalogue == Verdict::Skip("catalogue")));
+    // A fact that is not core's is named by its field: the outside holder's append tool counted as an
+    // edit tool, and the page save's once card dropped.
+    for (turn, field, value) in [
+        (
+            "tools_project_docs_outside_holder",
+            "editTools",
+            JValue::Arr(vec![
+                JValue::from("project_append_file"),
+                JValue::from("project_replace_text"),
+            ]),
+        ),
+        ("tools_coworker_page_save", "onceTools", JValue::Undefined),
+    ] {
+        let mut changed = f.clone();
+        let JValue::Obj(top) = &mut changed else {
+            panic!("fixture")
+        };
+        let (_, JValue::Arr(turns)) = top.iter_mut().find(|(k, _)| k == "turns").unwrap() else {
+            panic!("turns")
+        };
+        let t = turns
+            .iter_mut()
+            .find(|t| t.get("name").as_str() == Some(turn))
+            .unwrap();
+        let JValue::Obj(t) = t else { panic!("turn") };
+        let (_, JValue::Obj(frame)) = t.iter_mut().find(|(k, _)| k == "prepared").unwrap() else {
+            panic!("frame")
+        };
+        match frame.iter_mut().find(|(k, _)| k == field) {
+            Some((_, v)) => *v = value,
+            None => frame.push((field.to_string(), value)),
+        }
+        let r = replay(&changed);
+        let got = r.iter().find(|r| r.name == turn).unwrap();
+        assert!(
+            matches!(got.verdict, Verdict::Diff(d) if d.field == field),
+            "{turn}: {}",
+            got.verdict.line()
+        );
+        let same = replay(&f);
+        assert!(matches!(
+            same.iter().find(|r| r.name == turn).unwrap().verdict,
+            Verdict::Match | Verdict::Skip("manual-default")
+        ));
     }
 }

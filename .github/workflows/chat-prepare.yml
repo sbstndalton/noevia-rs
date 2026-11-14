@@ -34,6 +34,7 @@ jobs:
           targets: wasm32-unknown-unknown
       # All three recorders frame untrusted text through prompt-framing.cjs, which is the Rust port in dav-parse.wasm.
       - name: Build dav-parse.wasm at the core's pinned noevia-rs ref
+        id: wasm
         working-directory: oracle-core
         run: |
           set -euo pipefail
@@ -44,45 +45,67 @@ jobs:
           mkdir -p "$RUNNER_TEMP/rs-pin" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs-pin"
           "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
+      # Every recording runs even when one above differs; the fresh ones go up as an artifact (a host that cannot run Node).
+      - run: mkdir -p "$RUNNER_TEMP/fresh"
       - name: The core's own chat.cjs no-project turn reproduces the committed recording
         # Synthetic QA account files, clocks, histories and turns through server/chat.cjs with stub stores; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_prepare.cjs --check crates/chat-prepare/tests/fixtures/node-prepare.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-prepare.v1.json" node crates/chat-prepare/tests/record_prepare.cjs --check crates/chat-prepare/tests/fixtures/node-prepare.v1.json
       - name: The core's own project parts reproduce the committed recording
         # Synthetic QA projects, files and tasks through server/chat.cjs and its project helpers with stubs; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_project.cjs --check crates/chat-prepare/tests/fixtures/node-project.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-project.v1.json" node crates/chat-prepare/tests/record_project.cjs --check crates/chat-prepare/tests/fixtures/node-project.v1.json
       - name: The core's own chat frame steering reproduces the committed recording
         # Synthetic QA frames and lists through chat-frame-steering.cjs and chat-framing.cjs, and every code point; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_frame.cjs --check crates/chat-prepare/tests/fixtures/node-frame.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-frame.v1.json" node crates/chat-prepare/tests/record_frame.cjs --check crates/chat-prepare/tests/fixtures/node-frame.v1.json
       - name: The core's own instruction-skill parts reproduce the committed recording
         # Synthetic QA projects, skills, pins and picks through server/chat.cjs, instruction-skills.cjs, skill-index.cjs and chat-skill-routing.cjs; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_skills.cjs --check crates/chat-prepare/tests/fixtures/node-skills.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-skills.v1.json" node crates/chat-prepare/tests/record_skills.cjs --check crates/chat-prepare/tests/fixtures/node-skills.v1.json
       - name: The core's own reasoning effort, Fast thinking-off and sampling presets reproduce the committed recording
         # Synthetic QA projects, settings, provider rows and messages through reasoning-effort.cjs, sampling-presets.cjs and chat.cjs's own lines; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_route.cjs --check crates/chat-prepare/tests/fixtures/node-route.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-route.v1.json" node crates/chat-prepare/tests/record_route.cjs --check crates/chat-prepare/tests/fixtures/node-route.v1.json
       - name: The core's own routing of a turn's answering model and role reproduces the committed recording
         # Synthetic QA roles, catalogues, classifier and decision answers and turns through auto-router.cjs, system-one-router.cjs, auto-roles-check.cjs, chat-model-kind.cjs and chat.cjs's own lines; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_roles.cjs --check crates/chat-prepare/tests/fixtures/node-roles.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-roles.v1.json" node crates/chat-prepare/tests/record_roles.cjs --check crates/chat-prepare/tests/fixtures/node-roles.v1.json
       - name: The core's own tools of a turn reproduce the committed recording
         # Synthetic QA toolboxes, MCP boxes, projects, policies, router and gate answers and turns through toolboxes.cjs, tools-mode.cjs, tool-route-notes.cjs and chat.cjs's own lines; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_tools.cjs --check crates/chat-prepare/tests/fixtures/node-tools.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-tools.v1.json" node crates/chat-prepare/tests/record_tools.cjs --check crates/chat-prepare/tests/fixtures/node-tools.v1.json
       - name: The core's own knowledge-file retrieval of a project turn reproduces the committed recording
         # Synthetic QA projects, sources, file-job and retrieval answers and turns through server/chat.cjs (the front's native executor asking for them), chat-sources.cjs, source-coverage.cjs and rust-chat-native.cjs with stub stores; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_retrieval.cjs --check crates/chat-prepare/tests/fixtures/node-retrieval.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-retrieval.v1.json" node crates/chat-prepare/tests/record_retrieval.cjs --check crates/chat-prepare/tests/fixtures/node-retrieval.v1.json
       - name: The core's own move to a tool-capable role and long-context profile reproduce the committed recording
         # Synthetic QA roles, catalogues, template, gate and prefill answers and whole turns through server/chat.cjs, tools-mode.cjs, long-profile.cjs (dav-parse.wasm) and toolboxes.cjs with stub stores; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_reroute.cjs --check crates/chat-prepare/tests/fixtures/node-reroute.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-reroute.v1.json" node crates/chat-prepare/tests/record_reroute.cjs --check crates/chat-prepare/tests/fixtures/node-reroute.v1.json
       - name: The core's own routing modes of a turn reproduce the committed recording
         # Synthetic QA routing settings, chat flags, sensitivity verdicts and choices and whole turns through server/chat.cjs and routing-modes.cjs with stub stores; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_modes.cjs --check crates/chat-prepare/tests/fixtures/node-modes.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-modes.v1.json" node crates/chat-prepare/tests/record_modes.cjs --check crates/chat-prepare/tests/fixtures/node-modes.v1.json
       - name: The off-box wire recording (P5d part 2) matches noevia-core
         # Synthetic QA routing settings, chat flags, sensitivity verdicts and choices and whole turns through server/chat.cjs and routing-modes.cjs with stub stores; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_offbox.cjs --check crates/chat-prepare/tests/fixtures/node-offbox.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-offbox.v1.json" node crates/chat-prepare/tests/record_offbox.cjs --check crates/chat-prepare/tests/fixtures/node-offbox.v1.json
       - name: The pre-rules, cloud hold and router input recording (P5d part 3) matches noevia-core
         # Synthetic QA texts (hand-made edges plus a seeded PRNG), chat.cjs's holdForCloud lines over stub logs; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_prerules.cjs --check crates/chat-prepare/tests/fixtures/node-prerules.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-prerules.v1.json" node crates/chat-prepare/tests/record_prerules.cjs --check crates/chat-prepare/tests/fixtures/node-prerules.v1.json
       - name: The free-chat hand-off recording (P7a shadow) matches noevia-core
         # Synthetic QA account files, free lists, histories, zones and frozen clocks; whole turns through server/chat.cjs with the hand-off asked for; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_shadow.cjs --check crates/chat-prepare/tests/fixtures/node-shadow.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-shadow.v1.json" node crates/chat-prepare/tests/record_shadow.cjs --check crates/chat-prepare/tests/fixtures/node-shadow.v1.json
       - name: The core's own image parts and vision pass of a turn reproduce the committed recording
         # Synthetic QA image bytes, projects, roles, describe answers, probe answers and whole turns through server/chat.cjs (the front's native executor asking for them), prompt-framing.cjs (dav-parse.wasm) and provider-egress.cjs with stub stores; no network.
-        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_vision.cjs --check crates/chat-prepare/tests/fixtures/node-vision.v1.json
+        if: ${{ !cancelled() && steps.wasm.outcome == 'success' }}
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" RECORD_FRESH="$RUNNER_TEMP/fresh/node-vision.v1.json" node crates/chat-prepare/tests/record_vision.cjs --check crates/chat-prepare/tests/fixtures/node-vision.v1.json
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: chat-prepare-recording
+          path: ${{ runner.temp }}/fresh/
+          if-no-files-found: ignore

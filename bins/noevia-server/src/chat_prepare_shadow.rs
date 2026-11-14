@@ -6,7 +6,10 @@
 //! a blocking thread after the turn has started, at most [`MAX_RUNNING`] at a time, the rest skipped).
 //!
 //! The line holds no text of the turn: `chat prepare shadow: match`, `skip <reason>`,
-//! `failed <reason>` or `diff field=<messages|chat|turn> message=<i> unit=<u> ours=<n> core=<n>` (see `chat_prepare::shadow`).
+//! `failed <reason>` or `diff field=<f> message=<i> unit=<u> ours=<n> core=<n>`, `f` one of `messages`,
+//! `chat`, `turn`, `effort`, `thinkingOff`, `sampling`, `model`, `writes`, `public`, `editTools`
+//! and `onceTools` (see `chat_prepare::shadow`); `skip catalogue` when the per-tool facts could not
+//! be compared (the front's toolbox catalogue not current, or a build without it).
 //!
 //! Switch: `NOEVIA_CHAT_PREPARE` (config.rs): unset, empty or `node` is off (the default);
 //! `shadow` every account the executor runs; `shadow:<account id>,...` those. It only matters for
@@ -104,10 +107,12 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
         eprintln!("chat prepare shadow: skip busy");
         return;
     }
+    // What native preparation would answer a Manual turn with: the front's own copy, at hand-off.
+    let last_loaded = app.config.maint.last_loaded();
     drop(tokio::spawn(async move {
         let _ = tokio::task::spawn_blocking(move || {
             // allToolboxes(), as the front's catalogue stands (None: not current).
-            let boxes = quiet_boxes(&app);
+            let tools = quiet_tools(&app);
             // index.cjs: chatFramingEnabled() and brainContext.enabled() (brainContext and chatFraming).
             let framing = crate::code_routes::feature(&app, Feature::ChatFraming);
             let flags = Flags {
@@ -117,15 +122,15 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
                 ),
             };
             let settings = settings_rows(&app);
-            let verdict = run(
-                &user_dir,
-                &body,
-                &frame,
-                &server_time_zone(),
+            let zone = server_time_zone();
+            let facts = Facts {
+                time_zone: &zone,
                 flags,
-                boxes.as_deref(),
-                settings.as_ref(),
-            );
+                tools: tools.as_ref(),
+                settings: settings.as_ref(),
+                last_loaded: last_loaded.as_deref(),
+            };
+            let verdict = run(&user_dir, &body, &frame, facts);
             drop(slot);
             eprintln!("chat prepare shadow: {}", verdict.line());
         })
@@ -133,15 +138,43 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
     }));
 }
 
-/// The catalogue's boxes for the replay's tool questions; a build without the front's MCP discovery
-/// (`rust-storage-reads`) has no catalogue: a history that needs one is then skipped.
+/// The catalogue as the turn's tool questions read it; a build without the front's MCP discovery
+/// (`rust-storage-reads`) has no catalogue: a history or a tool list that needs one is then skipped.
 #[cfg(feature = "rust-storage-reads")]
-fn quiet_boxes(app: &Arc<App>) -> Option<Vec<Toolbox>> {
-    quiet_catalogue(app).map(|c| toolboxes(&c.boxes))
+fn quiet_tools(app: &Arc<App>) -> Option<Tools> {
+    let c = quiet_catalogue(app)?;
+    let writes = c
+        .boxes
+        .iter()
+        .flat_map(|b| b.tools.iter().filter(|t| t.write).map(|t| t.name.clone()))
+        .collect();
+    Some(Tools {
+        boxes: toolboxes(&c.boxes),
+        writes,
+        in_app: in_app_names(&c.servers, &c.offers),
+    })
+}
+
+/// The tool names the in-process MCP server holds: index.cjs `MCP_INTERNAL_SERVER` is the first
+/// configured server with `internal` auth, and a name is held by the first configured server
+/// offering it (`mcpState.tools`; `offers` lists each name's servers in configured order).
+#[cfg(feature = "rust-storage-reads")]
+fn in_app_names(
+    servers: &[crate::mcp_discovery::ServerInfo],
+    offers: &std::collections::HashMap<String, Vec<String>>,
+) -> std::collections::HashSet<String> {
+    let Some(internal) = servers.iter().find(|s| s.auth == "internal") else {
+        return Default::default();
+    };
+    offers
+        .iter()
+        .filter(|(_, ids)| ids.first() == Some(&internal.id))
+        .map(|(name, _)| name.clone())
+        .collect()
 }
 
 #[cfg(not(feature = "rust-storage-reads"))]
-fn quiet_boxes(_app: &Arc<App>) -> Option<Vec<Toolbox>> {
+fn quiet_tools(_app: &Arc<App>) -> Option<Tools> {
     None
 }
 
@@ -245,6 +278,17 @@ fn toolboxes(boxes: &[crate::mcp_discovery::BoxInfo]) -> Vec<Toolbox> {
         .collect()
 }
 
+/// The toolbox catalogue as the turn's tool questions read it.
+#[derive(Debug, Clone, Default)]
+pub struct Tools {
+    /// `allToolboxes()`.
+    pub boxes: Vec<Toolbox>,
+    /// The tool names the catalogue classifies as writes (`isWriteTool`).
+    pub writes: std::collections::HashSet<String>,
+    /// The tool names the in-process MCP server holds (index.cjs `projectEditTool`'s server check).
+    pub in_app: std::collections::HashSet<String>,
+}
+
 /// The feature flags the preparation reads (`None`: unknown).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Flags {
@@ -252,17 +296,30 @@ pub struct Flags {
     pub brain_context: Option<bool>,
 }
 
+/// What the server knows beside the account's files (each `None`: unknown).
+#[derive(Clone, Copy)]
+pub struct Facts<'a> {
+    /// `serverTimeZone()`.
+    pub time_zone: &'a str,
+    pub flags: Flags,
+    /// The catalogue: without it a history that needs it is skipped, and the tool facts too.
+    pub tools: Option<&'a Tools>,
+    /// The settings rows `reasoning_effort_default` and `auto_sampling_presets_enabled`.
+    pub settings: Option<&'a (JValue, JValue)>,
+    /// The front's last-loaded model.
+    pub last_loaded: Option<&'a str>,
+}
+
 /// One shadow preparation: the account's files read as core reads them.
-/// `boxes`: `allToolboxes()` (`None`: unknown, so a history that needs it is skipped).
-pub fn run(
-    user_dir: &Path,
-    body: &[u8],
-    frame: &JValue,
-    time_zone: &str,
-    flags: Flags,
-    boxes: Option<&[Toolbox]>,
-    settings: Option<&(JValue, JValue)>,
-) -> Verdict {
+pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, facts: Facts<'_>) -> Verdict {
+    let Facts {
+        time_zone,
+        flags,
+        tools,
+        settings,
+        last_loaded,
+    } = facts;
+    let boxes = tools.map(|t| t.boxes.as_slice());
     let Some(body) = std::str::from_utf8(body)
         .ok()
         .and_then(|t| wtf16::parse(t).ok())
@@ -286,6 +343,15 @@ pub fn run(
             || boxes.is_some_and(|b| b.iter().any(|b| b.offers(name)))
     };
     let carry = |name: &str| is_public_tool_name(Some(name), boxes.unwrap_or_default());
+    // isWriteTool, as the catalogue classified each tool (a name no box offers is a write).
+    // chat.cjs: `specialistPageSave.neverStanding(name) || injectedIsWriteTool(name)`.
+    let is_write = |name: &str| {
+        chat_prepare::toolboxes::never_standing(name)
+            || tools.is_some_and(|t| t.writes.contains(name))
+            || !boxes.is_some_and(|b| b.iter().any(|b| b.offers(name)))
+    };
+    // projectEditTool's server check: the in-process MCP server holds the name.
+    let in_app = |name: &str| tools.is_some_and(|t| t.in_app.contains(name));
     // getProject(body.projectId): the account's projects.json as the store reads it.
     let project_id = body.get("projectId").as_str();
     let projects = project_id.and_then(|_| {
@@ -305,6 +371,7 @@ pub fn run(
         body: &body,
         project,
         roles: Some(&roles),
+        last_loaded,
         frame,
         instructions: instructions.as_deref(),
         memory: memory.as_deref(),
@@ -319,9 +386,12 @@ pub fn run(
             effort_default,
             sampling_presets,
         }),
-        catalogue: boxes.map(|_| Catalogue {
+        catalogue: boxes.map(|boxes| Catalogue {
             known_tool: &known,
             carry_orphan_tool: &carry,
+            boxes,
+            is_write: &is_write,
+            in_app: &in_app,
         }),
     })
 }
@@ -485,15 +555,18 @@ mod tests {
     fn an_unreadable_body_is_skipped() {
         let dir = std::env::temp_dir();
         let frame = JValue::Null;
-        let flags = Flags::default();
+        let unknown = Facts {
+            time_zone: "UTC",
+            flags: Flags::default(),
+            tools: None,
+            settings: None,
+            last_loaded: None,
+        };
         assert_eq!(
-            run(&dir, b"{not json", &frame, "UTC", flags, None, None),
+            run(&dir, b"{not json", &frame, unknown),
             Verdict::Skip("body")
         );
-        assert_eq!(
-            run(&dir, b"{}", &frame, "UTC", flags, None, None),
-            Verdict::Skip("frame")
-        );
+        assert_eq!(run(&dir, b"{}", &frame, unknown), Verdict::Skip("frame"));
     }
 
     /// Recorded free-chat hand-offs (crates/chat-prepare's node-shadow.v1.json) prepared from the files
@@ -562,6 +635,15 @@ mod tests {
                 brain_context: Some(false),
             };
             // The recorded allToolboxes() (ids and tool names), as the catalogue gives them.
+            let names = |v: &JValue| -> Vec<String> {
+                match v {
+                    JValue::Arr(names) => names
+                        .iter()
+                        .filter_map(|n| n.as_str().map(str::to_string))
+                        .collect(),
+                    _ => Vec::new(),
+                }
+            };
             let boxes: Vec<Toolbox> = match input.get("toolboxes") {
                 JValue::Arr(list) => list
                     .iter()
@@ -591,6 +673,17 @@ mod tests {
                     .collect(),
                 _ => Vec::new(),
             };
+            // isWriteTool as core answered it per box.
+            let writes: std::collections::HashSet<String> = match input.get("toolboxes") {
+                JValue::Arr(list) => list.iter().flat_map(|b| names(b.get("writes"))).collect(),
+                _ => Default::default(),
+            };
+            let tools = Tools {
+                boxes,
+                writes,
+                // The names the recorded in-process server holds.
+                in_app: names(input.get("inApp")).into_iter().collect(),
+            };
             let tz = input.get("tz").as_str().unwrap();
             let rows = (
                 input
@@ -602,15 +695,14 @@ mod tests {
                     .get("auto_sampling_presets_enabled")
                     .clone(),
             );
-            let verdict = run(
-                &dir,
-                body.as_bytes(),
-                frame,
-                tz,
+            let known = Facts {
+                time_zone: tz,
                 flags,
-                Some(&boxes),
-                Some(&rows),
-            );
+                tools: Some(&tools),
+                settings: Some(&rows),
+                last_loaded: input.get("lastLoaded").as_str(),
+            };
+            let verdict = run(&dir, body.as_bytes(), frame, known);
             let name = t.get("name").as_str().unwrap_or_default();
             // The recorded turns made to be skipped (what is not ported yet) say why; all others match.
             let skipped = [
@@ -635,7 +727,13 @@ mod tests {
             }
             // Without the catalogue and the settings rows: a history that needs the catalogue is skipped, and
             // a turn whose compared fields are all core's says the settings were not read.
-            let without = run(&dir, body.as_bytes(), frame, tz, flags, None, None);
+            let unknown = Facts {
+                tools: None,
+                settings: None,
+                last_loaded: None,
+                ..known
+            };
+            let without = run(&dir, body.as_bytes(), frame, unknown);
             assert!(
                 matches!(without, Verdict::Skip("tool-history" | "settings")),
                 "{}: {}",
@@ -653,5 +751,72 @@ mod tests {
             matched >= 150 && framed >= 5,
             "{matched} matched, {framed} framed"
         );
+    }
+}
+
+#[cfg(all(test, feature = "rust-storage-reads"))]
+mod holder_tests {
+    use super::in_app_names;
+    use crate::mcp_discovery::ServerInfo;
+
+    fn server(id: &str, auth: &str) -> ServerInfo {
+        ServerInfo {
+            id: id.into(),
+            auth: auth.into(),
+            directory: false,
+            error: None,
+            tool_count: None,
+            tools: Vec::new(),
+            tools_truncated: false,
+        }
+    }
+
+    fn offers(list: &[(&str, &[&str])]) -> std::collections::HashMap<String, Vec<String>> {
+        list.iter()
+            .map(|(n, ids)| (n.to_string(), ids.iter().map(|s| s.to_string()).collect()))
+            .collect()
+    }
+
+    fn sorted(set: std::collections::HashSet<String>) -> Vec<String> {
+        let mut v: Vec<String> = set.into_iter().collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn the_first_configured_server_offering_a_name_holds_it() {
+        // An outside server configured before the in-process one wins the name it shares.
+        let servers = [server("qa-docs", "none"), server("noevia", "internal")];
+        let o = offers(&[
+            ("project_append_file", &["qa-docs", "noevia"]),
+            ("project_replace_text", &["noevia", "qa-docs"]),
+            ("project_list_files", &["noevia"]),
+            ("qa_docs_read", &["qa-docs"]),
+        ]);
+        assert_eq!(
+            sorted(in_app_names(&servers, &o)),
+            ["project_list_files", "project_replace_text"]
+        );
+    }
+
+    #[test]
+    fn without_an_in_process_server_no_name_is_held_by_it() {
+        let servers = [server("qa-docs", "none"), server("noevia", "oauth")];
+        let o = offers(&[("project_append_file", &["noevia"])]);
+        assert!(in_app_names(&servers, &o).is_empty());
+    }
+
+    #[test]
+    fn the_first_internal_server_is_the_in_process_one() {
+        let servers = [
+            server("qa-search", "none"),
+            server("noevia", "internal"),
+            server("noevia-2", "internal"),
+        ];
+        let o = offers(&[
+            ("project_append_file", &["noevia-2"]),
+            ("project_replace_text", &["noevia"]),
+        ]);
+        assert_eq!(sorted(in_app_names(&servers, &o)), ["project_replace_text"]);
     }
 }

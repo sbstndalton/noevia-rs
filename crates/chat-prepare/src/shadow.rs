@@ -52,6 +52,10 @@ pub struct ShadowTurn<'a> {
     /// `autoRoles()`: the account's `auto-roles.json` (`None`: not read; an Automatic turn's model
     /// is then not compared).
     pub roles: Option<&'a JValue>,
+    /// The model a Manual turn without a project model answers with in native preparation: the
+    /// front's own last-loaded model (chat.cjs: `lastLoadedModel()`, core's in-process copy; the two
+    /// copies are kept apart, so a difference shows as a `model` diff). `None`: none known.
+    pub last_loaded: Option<&'a str>,
     /// `serverTimeZone()`.
     pub time_zone: &'a str,
     /// `features.enabled('chatFraming')` and `brainContext.enabled()` (`brainContext` and
@@ -85,16 +89,25 @@ pub struct Settings<'a> {
 /// One of the replay's questions about a tool name.
 pub type ToolQuestion<'a> = &'a (dyn Fn(&str) -> bool + Sync);
 
-/// The replay's two questions about the server's toolboxes (see [`crate::ReplayOptions`]).
+/// The server's toolboxes (`allToolboxes()`): the replay's two questions about a tool name (see
+/// [`crate::ReplayOptions`]), and (P7f) the boxes and chat.cjs's `isWriteTool` for the per-tool facts
+/// of the frame.
 pub struct Catalogue<'a> {
     pub known_tool: ToolQuestion<'a>,
     pub carry_orphan_tool: ToolQuestion<'a>,
+    pub boxes: &'a [crate::toolboxes::Toolbox],
+    pub is_write: ToolQuestion<'a>,
+    /// Whether the in-process MCP server holds the name (index.cjs `projectEditTool`:
+    /// `mcpState.tools.get(name)?.serverId === MCP_INTERNAL_SERVER.id`, the first configured server
+    /// offering a name holding it).
+    pub in_app: ToolQuestion<'a>,
 }
 
 /// Where the native frame first differs from core's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Diff {
-    /// The frame field: `messages`, `chat`, `turn`, `effort`, `thinkingOff`, `sampling` or `model`.
+    /// The frame field: `messages`, `chat`, `turn`, `effort`, `thinkingOff`, `sampling`, `model`,
+    /// `writes`, `public`, `editTools` or `onceTools`.
     pub field: &'static str,
     /// The message index (`messages.len()` of the shorter list when one is a prefix of the other;
     /// 0 for `chat` and `turn`).
@@ -320,6 +333,9 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
         if let Ok(model) = model_field(t, project) {
             fields.push(("model", model));
         }
+        if let Some(c) = &t.catalogue {
+            fields.extend(tool_facts(t.frame, c));
+        }
         for (field, ours) in fields {
             let (a, b) = (text(&ours), text(t.frame.get(field)));
             if a != b {
@@ -342,6 +358,13 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
             // The same for the model: everything compared is core's, the model was not.
             return Verdict::Skip(reason);
         }
+    }
+    if ours.len() == core.len()
+        && t.catalogue.is_none()
+        && matches!(t.frame.get("tools"), JValue::Arr(tools) if !tools.is_empty())
+    {
+        // The same for the per-tool facts: everything compared is core's, they were not.
+        return Verdict::Skip("catalogue");
     }
     if ours.len() != core.len() {
         return Verdict::Diff(Diff {
@@ -502,8 +525,9 @@ fn new_chat_id(id: &JValue, started_at: &JValue) -> bool {
 /// The frame's `model` as chat.cjs picks it for a covered turn (P7d), or why it is not compared:
 /// an Automatic turn answers with its role's model (`autoRoles()[routedRole]`, the role being core's:
 /// the classification is a decision call); a Manual project turn with the project's own model
-/// (a handed-off turn passed the chat-model check). Not compared: a Manual turn without a project
-/// model (`manual-default`: chat.cjs then asks `lastLoadedModel()`, core's own state), a project
+/// (a handed-off turn passed the chat-model check); a Manual turn without one the front's own
+/// last-loaded model (P7d-2: what native preparation would use; core asks its own copy). Not
+/// compared: such a turn when the front knows no loaded model (`manual-default`), a project
 /// with Context: High (`context-profile`: the long-context pick), an Automatic turn whose roles
 /// were not read or name no model for the role (`roles`). Known limit: auto-roles.json saved
 /// between core's read and this one shows as a `model` diff.
@@ -523,8 +547,51 @@ fn model_field(t: &ShadowTurn<'_>, project: Option<&JValue>) -> Result<JValue, &
     }
     match project.map(|p| p.get("model")) {
         Some(model) if model.truthy() => Ok(model.clone()),
-        _ => Err("manual-default"),
+        // chat.cjs: no project model on the local default provider: `lastLoadedModel()`.
+        _ => t.last_loaded.map(JValue::from).ok_or("manual-default"),
     }
+}
+
+/// The frame's per-tool facts for the tools core offered (`tools`, in its order; P7f): `writes`
+/// (`isWriteTool`), `public` (`isPublicTool`), `editTools` (index.cjs `projectEditTool`:
+/// project-edit-target.cjs `EDIT_TOOLS` held by the in-process MCP server) and `onceTools` (present only when some tool is never standing). The tool list itself is core's
+/// (the selection reads the tool router and prefill measurements of core's process).
+fn tool_facts(frame: &JValue, c: &Catalogue<'_>) -> Vec<(&'static str, JValue)> {
+    let names: Vec<&str> = match frame.get("tools") {
+        JValue::Arr(tools) => tools
+            .iter()
+            .filter_map(|t| t.get("function").get("name").as_str())
+            .collect(),
+        _ => Vec::new(),
+    };
+    let pick = |f: &dyn Fn(&str) -> bool| {
+        JValue::Arr(
+            names
+                .iter()
+                .filter(|n| f(n))
+                .map(|n| JValue::from(*n))
+                .collect(),
+        )
+    };
+    let once = pick(&|n| crate::toolboxes::never_standing(n));
+    vec![
+        ("writes", pick(&|n| (c.is_write)(n))),
+        (
+            "public",
+            pick(&|n| crate::tools_mode::is_public_tool_name(Some(n), c.boxes)),
+        ),
+        (
+            "editTools",
+            pick(&|n| crate::offer::EDIT_TOOLS.contains(&n) && (c.in_app)(n)),
+        ),
+        (
+            "onceTools",
+            match once {
+                JValue::Arr(ref l) if l.is_empty() => JValue::Undefined,
+                other => other,
+            },
+        ),
+    ]
 }
 
 /// chat.cjs `createChatHandler`'s `streamIdleMs` default (index.cjs passes none).

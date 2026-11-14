@@ -31,32 +31,32 @@ const BLOCKS: [(&str, &str, [f64; 2]); 6] = [
     (
         "codeRouteNote",
         "7d72b1da3b0583cb7c3135d75e4db035ae821a41be2b4df86a3f54365ad9d2bc",
-        [210.0, 210.0],
+        [213.0, 213.0],
     ),
     (
         "describe",
         "32ae5d7cd1dbf23757144ac2365be277ca8eb4cc987049ba09f2c45dfe3dad4b",
-        [783.0, 860.0],
+        [787.0, 864.0],
     ),
     (
         "images",
-        "258911579779c218fb88c0f51407b402333d5dc0c5d81eb131da52a6b73518ef",
-        [866.0, 915.0],
+        "7a3f65494ec0b81893863bcc4c4cde0e975204da966cad2c55aa46283600e5d2",
+        [870.0, 923.0],
     ),
     (
         "pass",
         "c7a779371e4265304f65267626e8b88382dee3496ed511b01e514a46d416d816",
-        [1461.0, 1547.0],
+        [1469.0, 1555.0],
     ),
     (
         "replyWarning",
         "6e59e1b69262eba8572173bb53a0a8a18fb67503cb3cf76ae6f0df2f47370ec5",
-        [1616.0, 1619.0],
+        [1624.0, 1627.0],
     ),
     (
         "frameImageWarning",
         "b99f06cb0cacff7c4f34d1c116444e5155878ab94f5b91e397924de0874420ae",
-        [1738.0, 1740.0],
+        [1785.0, 1787.0],
     ),
 ];
 const DEFAULT: &str = "default";
@@ -466,13 +466,11 @@ fn whole_turns_are_nodes() {
             asked.push(format!("assets/{id} {}", bytes.is_some()));
             bytes
         });
-        if difference != Some("asset_path") {
-            d.check(
-                &format!("{n} reads"),
-                &node_reads(case).join("\n"),
-                &asked.join("\n"),
-            );
-        }
+        d.check(
+            &format!("{n} reads"),
+            &node_reads(case).join("\n"),
+            &asked.join("\n"),
+        );
         let Ok(images) = got else {
             thrown += 1;
             assert_eq!(case.get("throws").as_str(), Some("TypeError"), "{n}");
@@ -482,15 +480,6 @@ fn whole_turns_are_nodes() {
             );
             continue;
         };
-        if difference == Some("asset_path")
-            && list(&f, "differences")
-                .iter()
-                .any(|x| name(x) == n && !list(x, "nodeRead").is_empty())
-        {
-            // Node read the image through another path; the port has it missing (tested below).
-            assert!(!images.missing_names.is_empty(), "{n}");
-            continue;
-        }
 
         // The wire the pass starts from (prepare(); a turn off the box states the zoneless day).
         let r = route(&project, spec);
@@ -677,7 +666,7 @@ fn strict(a: &JValue, b: &JValue) -> bool {
 }
 
 #[test]
-fn the_named_differences_are_the_asset_paths_and_one_line() {
+fn the_named_differences_are_two_lines() {
     let f = fixture();
     let all = list(&f, "differences");
     let mut kinds: HashMap<&str, usize> = HashMap::new();
@@ -687,25 +676,6 @@ fn the_named_differences_are_the_asset_paths_and_one_line() {
         let case = list(&f, "turns").iter().find(|t| name(t) == n).unwrap();
         let spec = case.get("spec");
         match diff.get("kind").as_str().unwrap() {
-            "asset_path" => {
-                // The port never asks for an id that is not a plain file name.
-                let mut asked = Vec::new();
-                let images = vision::images(spec.get("project"), case.get("body"), &mut |id| {
-                    asked.push(id.to_string());
-                    None
-                })
-                .unwrap();
-                assert!(asked.iter().all(|id| vision::plain_asset_name(id)), "{n}");
-                if !list(diff, "nodeRead").is_empty() {
-                    // Node attached the file it found through that path; the port has it missing.
-                    assert!(
-                        stringify(case.get("frame")).contains("data:image/png;base64,"),
-                        "{n}"
-                    );
-                    assert_eq!(images.attached, Vec::<JValue>::new(), "{n}");
-                    assert_eq!(images.missing_names.len(), 1, "{n}");
-                }
-            }
             "parse_message" => {
                 let node = stringify(diff.get("nodeLines"));
                 assert!(node.contains("is not valid JSON"), "{n}: {node}");
@@ -732,12 +702,9 @@ fn the_named_differences_are_the_asset_paths_and_one_line() {
     }
     assert_eq!(kinds.get("parse_message"), Some(&1));
     assert_eq!(kinds.get("unreadable_json"), Some(&2));
-    assert!(kinds.get("asset_path").copied().unwrap_or(0) >= 9);
-    let attached_elsewhere = all
-        .iter()
-        .filter(|d| d.get("kind").as_str() == Some("asset_path") && !list(d, "nodeRead").is_empty())
-        .count();
-    assert_eq!(attached_elsewhere, 3);
+    // An asset id that is not a plain file name is a missing image in core too since noevia#2595: no
+    // longer a difference (the recorder refuses any read through such an id).
+    assert_eq!(kinds.len(), 2, "{kinds:?}");
 }
 
 #[test]

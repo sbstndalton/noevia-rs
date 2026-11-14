@@ -28,52 +28,52 @@ const BLOCKS: [(&str, &str, [f64; 2]); 10] = [
     (
         "offBoxTurn",
         "ebcf82a1367ec580563b50d788b42530e8c9368d0026ca4e402e31b3f89a678d",
-        [54.0, 56.0],
+        [57.0, 59.0],
     ),
     (
         "skillLeads",
         "b42cd57a7b0248525309f104f55d418ec63f974729de9ec50dc69150b7a864a9",
-        [214.0, 215.0],
+        [217.0, 218.0],
     ),
     (
         "isWriteTool",
         "1ad2b7960d8488054c7ea945b8335a3ed94ccb5f2aeb5899002fb774fe5371b1",
-        [311.0, 315.0],
+        [314.0, 318.0],
     ),
     (
         "requestToolboxes",
-        "fa8771d7fa69981b58152da97549509dc63a467009b2308374f0a6714d2a3e12",
-        [516.0, 540.0],
+        "9a4737d19f1840d1ce12535336cad93d3a55d3a9299d8e124b36c164fdc09e03",
+        [519.0, 543.0],
     ),
     (
         "privateTools",
         "7e0e1165ea3aaf9464dae663e67308e347d3c552859f978423e7a3d27cb46a38",
-        [1176.0, 1223.0],
+        [1184.0, 1231.0],
     ),
     (
         "tools",
         "a06a9dd2df8e54425c6a347429f862e593ad5926c2d4c2b9bcc6808fc1b17c34",
-        [1262.0, 1325.0],
+        [1270.0, 1333.0],
     ),
     (
         "gate",
         "16afa2e03431d99a822151f4db6d2be8adafc726e6ce0d118d73a41dffcc8f4a",
-        [1329.0, 1329.0],
+        [1337.0, 1337.0],
     ),
     (
         "activeTools",
         "bfb281ab578bc44c987c84b91250f7019045c32aa219eba9bd472e1baec34251",
-        [1641.0, 1679.0],
+        [1649.0, 1687.0],
     ),
     (
         "names",
         "127722f1f10a0356f3aef18a9e51db2a86dcec688dae613228c174daa54ecce7",
-        [1718.0, 1718.0],
+        [1758.0, 1758.0],
     ),
     (
         "frame",
-        "972bd05fb0e465d3610be6f964c0172c89f897a4ccff30e4e3c666ca3bc6956e",
-        [1726.0, 1729.0],
+        "40b4dc2d1d28554d2626927af19fd2ff8e0bf0382a5c2ea5ef527ed170cfdba8",
+        [1766.0, 1769.0],
     ),
 ];
 /// The modules the port follows, pinned: a change must be reviewed against the port.
@@ -92,7 +92,7 @@ const PINNED: [(&str, &str); 7] = [
     ),
     (
         "server/specialist-page-save.cjs",
-        "e75cc3b07fab2e104bc6fb5628a603db73580794d8aad7cc918a1c58741bd79e",
+        "e13bee695d3233a7016ac09db4ad31a24b1551a10fd6411c96f4311852039980",
     ),
     (
         "server/toolbox-flags.cjs",

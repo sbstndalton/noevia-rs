@@ -40,6 +40,12 @@ pub const PROJECT_DOCS_BOX: &str = "project-docs";
 /// `specialist-page-save.cjs` `NAME`: offered only in a coworker's conversation, and a write
 /// asked about every time (`neverStanding`).
 pub const PAGE_SAVE: &str = "space_page_save";
+
+/// specialist-page-save.cjs `neverStanding(name)` (`NEVER_STANDING`): asked about on every call,
+/// never under a chat-wide grant or an account policy.
+pub fn never_standing(name: &str) -> bool {
+    name == PAGE_SAVE
+}
 /// `specialist-page-save.cjs` `PROJECT_PREFIX`.
 pub const SPECIALIST_PREFIX: &str = "specialist-";
 
