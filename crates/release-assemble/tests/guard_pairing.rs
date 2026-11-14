@@ -394,6 +394,9 @@ fn pairings_excerpt_is_verbatim() {
         "project_lifecycle",
         "project_files",
         "project_config",
+        "code_egress",
+        "calibration_cancel",
+        "calibration_routes",
     ];
     for name in names {
         let block = section(name);

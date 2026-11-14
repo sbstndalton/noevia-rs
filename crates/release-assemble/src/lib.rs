@@ -15,8 +15,13 @@
 //!   `project_routes_rs`, `switched_routes`, `project_routes_core`, `code_lines`, `code_has`'s comment
 //!   filter, `move_capability`) and the first pairings built on them (feature, model reads).
 //!
+//! - [`guard`] (council p8) also: the four project pairings (source reads, create/delete, file delete,
+//!   configuration); [`bridged`]: the calibration cancel and start/read pairings and the code egress issuer
+//!   pairing, with `code_has` over real EREs.
+//!
 //! Nothing in the release path calls this crate yet.
 
+pub mod bridged;
 pub mod digest;
 pub mod guard;
 pub mod lock;

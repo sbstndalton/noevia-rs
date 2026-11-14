@@ -82,7 +82,7 @@ fn trim(s: &[u8]) -> &[u8] {
     s.get(start..end.max(start)).unwrap_or_default()
 }
 
-fn contains(hay: &[u8], needle: &[u8]) -> bool {
+pub(crate) fn contains(hay: &[u8], needle: &[u8]) -> bool {
     find(hay, needle).is_some()
 }
 
@@ -455,7 +455,7 @@ fn route_key_len(s: &[u8]) -> Option<usize> {
 }
 
 /// awk records: `\n`-separated, a final line without a newline still counts, none after a final newline.
-fn records(src: &[u8]) -> Vec<&[u8]> {
+pub(crate) fn records(src: &[u8]) -> Vec<&[u8]> {
     if src.is_empty() {
         return Vec::new();
     }
@@ -566,7 +566,7 @@ pub fn project_routes_rs(rt: &RoutesToml) -> Option<Vec<Vec<u8>>> {
 }
 
 /// awk `-F'\t'` over one record: fields 1..4 (a tab inside a quoted value shifts them, as in the shell).
-fn tab_fields(r: &Route) -> [Vec<u8>; 4] {
+pub(crate) fn tab_fields(r: &Route) -> [Vec<u8>; 4] {
     let rec = r.record();
     let mut it = rec.split(|c| *c == b'\t');
     let mut f = || it.next().unwrap_or_default().to_vec();
