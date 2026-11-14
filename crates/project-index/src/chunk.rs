@@ -57,6 +57,11 @@ fn js_space(u: u16) -> bool {
     )
 }
 
+/// [`js_space`] for a `char` (every such code point is in the BMP).
+pub(crate) fn is_js_space(c: char) -> bool {
+    u16::try_from(u32::from(c)).is_ok_and(js_space)
+}
+
 /// `String.prototype.trim` on code units.
 pub fn js_trim(text: &[u16]) -> &[u16] {
     let start = text

@@ -1,11 +1,13 @@
 //! The process-level indexer: rag.cjs's `indexProjectFile`, `appendFileTail` and `deleteProjectFile`
 //! with their per-file queue, over [`crate::state`] and [`crate::index`].
 //!
-//! Runs of one file are serialized (one lock per [`FileKey`]); every index or delete bumps the file's
-//! generation, so a run that was superseded while it waited or embedded stops before writing more.
-//! When a file's queue drains, its state is pruned (`pruneFileState`) with the outcome of the last
-//! index run, as Node's queue resolves. A delete is not queued (as in Node): it supersedes and drops
-//! at once. Everything the account and project lifecycle decide comes from the [`Host`].
+//! Runs of one file are serialized first in, first out (a ticket per run, like Node's promise chain
+//! per [`FileKey`]); every index or delete bumps the file's generation, so a run that was superseded
+//! while it waited or embedded stops before writing more. When a file's queue drains, its state is
+//! pruned (`pruneFileState`) with the outcome of the last index run, as Node's queue resolves, and when
+//! the run that drained it was an index run the [`Host::after_index`] hook fires (`afterIndex`). A delete
+//! is not queued (as in Node): it supersedes and drops at once. Everything the account and project
+//! lifecycle decide comes from the [`Host`].
 
 use crate::chunk::{hash, units};
 use crate::index::{
@@ -15,7 +17,7 @@ use crate::slots::Target;
 use crate::state::{FileKey, FileState, Outcome};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Condvar, Mutex, MutexGuard};
 
 /// What the indexer asks the server.
 pub trait Host: Send + Sync {
@@ -37,12 +39,33 @@ pub trait Host: Send + Sync {
     fn rag_available(&self) -> bool {
         true
     }
+    /// `afterIndex()` (set by `onIndexed`): the queue of a file drained after an index run. The server
+    /// kicks the embedding migration from here; a hook never breaks indexing (it cannot fail).
+    fn after_index(&self) {}
 }
 
+/// One file's queue: runs take tickets in call order and run when `serving` reaches theirs.
 struct Lane {
-    lock: Arc<Mutex<()>>,
+    next: u64,
+    serving: u64,
     pending: usize,
     last: Outcome,
+}
+
+/// A run's place in its file's queue. Dropping it without [`Indexer::leave`] (a panic in the run)
+/// still lets the next run go, so one failed run never stalls the file.
+struct Turn<'a, H: Host> {
+    ix: &'a Indexer<H>,
+    key: &'a FileKey,
+    left: bool,
+}
+
+impl<H: Host> Drop for Turn<'_, H> {
+    fn drop(&mut self) {
+        if !self.left {
+            self.ix.leave(self.key, None, false);
+        }
+    }
 }
 
 /// One per process, like rag.cjs's module state.
@@ -50,6 +73,7 @@ pub struct Indexer<H: Host> {
     host: H,
     state: Mutex<FileState>,
     lanes: Mutex<HashMap<FileKey, Lane>>,
+    turns: Condvar,
 }
 
 fn locked<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -70,6 +94,7 @@ impl<H: Host> Indexer<H> {
             host,
             state: Mutex::new(FileState::new()),
             lanes: Mutex::new(HashMap::new()),
+            turns: Condvar::new(),
         }
     }
 
@@ -96,37 +121,71 @@ impl<H: Host> Indexer<H> {
         .flatten()
     }
 
-    /// Joins the file's queue; returns its lock and whether a run was already queued.
-    fn enter(&self, key: &FileKey) -> (Arc<Mutex<()>>, bool) {
+    /// Joins the file's queue at its end; returns the ticket and whether a run was already queued.
+    fn enter(&self, key: &FileKey) -> (u64, bool) {
         let mut lanes = locked(&self.lanes);
         let lane = lanes.entry(key.clone()).or_insert_with(|| Lane {
-            lock: Arc::new(Mutex::new(())),
+            next: 0,
+            serving: 0,
             pending: 0,
             last: Outcome::None,
         });
         let prior = lane.pending > 0;
+        let ticket = lane.next;
+        lane.next += 1;
         lane.pending += 1;
-        (lane.lock.clone(), prior)
+        (ticket, prior)
     }
 
-    /// Leaves the queue; the last one out prunes the file's state. An index run records its outcome;
-    /// a tail append prunes only when it was queued behind another run (as Node's queue does).
-    fn leave(&self, key: &FileKey, outcome: Option<Outcome>, prune: bool) {
+    /// Waits until every run queued before `ticket` has left.
+    fn wait_turn<'a>(&'a self, key: &'a FileKey, ticket: u64) -> Turn<'a, H> {
         let mut lanes = locked(&self.lanes);
-        let Some(lane) = lanes.get_mut(key) else {
-            return;
-        };
-        lane.pending = lane.pending.saturating_sub(1);
-        if let Some(o) = outcome {
-            lane.last = o;
+        while lanes.get(key).is_some_and(|l| l.serving != ticket) {
+            lanes = self
+                .turns
+                .wait(lanes)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
         }
-        if lane.pending == 0 {
-            let last = lane.last;
-            lanes.remove(key);
-            if prune {
-                locked(&self.state).drained(key, last, self.host.rag_available());
+        Turn {
+            ix: self,
+            key,
+            left: false,
+        }
+    }
+
+    /// Leaves the queue and lets the next run go; the last one out prunes the file's state. An index
+    /// run records its outcome; a tail append prunes only when it was queued behind another run (as
+    /// Node's queue does). The last one out fires `afterIndex` when it was an index run.
+    fn leave(&self, key: &FileKey, outcome: Option<Outcome>, prune: bool) {
+        let drained_by_index = {
+            let mut lanes = locked(&self.lanes);
+            let Some(lane) = lanes.get_mut(key) else {
+                return;
+            };
+            lane.serving += 1;
+            lane.pending = lane.pending.saturating_sub(1);
+            if let Some(o) = outcome {
+                lane.last = o;
             }
+            let drained = lane.pending == 0;
+            let last = lane.last;
+            if drained {
+                lanes.remove(key);
+                if prune {
+                    locked(&self.state).drained(key, last, self.host.rag_available());
+                }
+            }
+            self.turns.notify_all();
+            drained && outcome.is_some()
+        };
+        if drained_by_index {
+            self.host.after_index();
         }
+    }
+
+    fn finish(&self, mut turn: Turn<'_, H>, outcome: Option<Outcome>, prune: bool) {
+        turn.left = true;
+        self.leave(turn.key, outcome, prune);
     }
 
     fn current(
@@ -156,9 +215,9 @@ impl<H: Host> Indexer<H> {
         let seen = self.host.lifecycle_generation(user);
         let version = hash(text);
         let generation = locked(&self.state).request_index(&key, &version);
-        let (lane, _) = self.enter(&key);
+        let (ticket, _) = self.enter(&key);
+        let turn = self.wait_turn(&key, ticket);
         let out = {
-            let _turn = locked(&lane);
             let mut is_current = || self.current(&key, Some(generation), project, user, seen);
             let mut open = || Ok(self.open(project, user));
             index::index_file_now(
@@ -170,7 +229,7 @@ impl<H: Host> Indexer<H> {
                 embed,
             )
         };
-        self.leave(&key, Some(outcome_of(&out)), true);
+        self.finish(turn, Some(outcome_of(&out)), true);
         out
     }
 
@@ -190,9 +249,9 @@ impl<H: Host> Indexer<H> {
         let key = FileKey::new(project, file, user);
         let seen = self.host.lifecycle_generation(user);
         let generation = locked(&self.state).generation(&key);
-        let (lane, prior) = self.enter(&key);
+        let (ticket, prior) = self.enter(&key);
+        let turn = self.wait_turn(&key, ticket);
         let out = {
-            let _turn = locked(&lane);
             let wanted: Option<Option<String>> = locked(&self.state)
                 .wanted(&key)
                 .map(|w| w.map(str::to_string));
@@ -220,7 +279,7 @@ impl<H: Host> Indexer<H> {
             let mut open = || Ok(self.open(project, user));
             index::append_tail_now(&mut open, &req, &mut gates, embed)
         };
-        self.leave(&key, None, prior);
+        self.finish(turn, None, prior);
         out
     }
 

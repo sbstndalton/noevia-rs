@@ -31,6 +31,10 @@ pub const TAIL_EMBED_REQUEST: usize = 4;
 /// The embedding call for document chunks (framed for `target`'s profile by the implementation).
 pub trait Embed {
     fn embed(&mut self, target: &Target, texts: &[String]) -> Res<Vec<Vector>>;
+    /// Node's warning `[rag] <model> returned <got>-wide vectors but its slot holds <slot>; skipped`:
+    /// a batch stored fewer vectors than it had rows and some vector did not fit the slot. Node logs it;
+    /// the caller logs it here (`got` is the first vector's width, None when it had none).
+    fn width_skipped(&mut self, _model: &str, _got: Option<usize>, _slot: usize) {}
 }
 
 impl<F: FnMut(&Target, &[String]) -> Res<Vec<Vector>>> Embed for F {
@@ -210,6 +214,14 @@ pub fn embed_rows_into(
         }
         slots::write_vectors(&tx, &slot, &items)?;
         tx.commit().map_err(err)?;
+        if items.len() < batch.len()
+            && vectors
+                .iter()
+                .any(|v| v.as_ref().map(Vec::len) != Some(slot.dim))
+        {
+            let got = vectors.first().and_then(|v| v.as_ref().map(Vec::len));
+            embed.width_skipped(&target.model, got, slot.dim);
+        }
         if slots::slot_id(&index.active) == slots::slot_id(target) {
             index.slot = Some(slot);
         }

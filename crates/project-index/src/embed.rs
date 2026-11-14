@@ -28,17 +28,96 @@ fn truthy(v: Option<&Value>) -> bool {
     }
 }
 
-/// A vector as Node passes it on: an array of numbers. Anything else is kept as None, which every
-/// later step treats as a vector of the wrong width (named difference: Node would read a string's
-/// `.length` as a width).
+/// A vector as Node passes it on: an array, each element read the way `new Float32Array(vector)`
+/// reads it (JavaScript `Number()`: `null` is 0, `"2"` is 2, `true` is 1, anything unreadable is NaN).
+/// Anything but an array is kept as None, which every later step treats as a vector of the wrong
+/// width (named difference: Node would read a string's `.length` as a width).
 pub type Vector = Option<Vec<f64>>;
 
 fn vector(item: &Value) -> Vector {
-    item.get("embedding")?
-        .as_array()?
-        .iter()
-        .map(Value::as_f64)
-        .collect()
+    Some(
+        item.get("embedding")?
+            .as_array()?
+            .iter()
+            .map(js_number)
+            .collect(),
+    )
+}
+
+/// JavaScript `Number(v)` for a JSON value.
+pub(crate) fn js_number(v: &Value) -> f64 {
+    match v {
+        Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
+        Value::Null => 0.0,
+        Value::Bool(b) => f64::from(u8::from(*b)),
+        Value::String(s) => string_number(s),
+        // `Number([])` is 0 and `Number([x])` is `Number(String(x))`; more elements join with ",".
+        Value::Array(a) => match a.as_slice() {
+            [] => 0.0,
+            [only] => js_string(only).map_or(f64::NAN, |s| string_number(&s)),
+            _ => f64::NAN,
+        },
+        Value::Object(_) => f64::NAN,
+    }
+}
+
+/// `String(v)` as an array element joins it (`null` is empty); None for a plain object.
+fn js_string(v: &Value) -> Option<String> {
+    match v {
+        Value::Null => Some(String::new()),
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Number(n) => Some(n.to_string()),
+        Value::String(s) => Some(s.clone()),
+        Value::Array(a) => a
+            .iter()
+            .map(js_string)
+            .collect::<Option<Vec<_>>>()
+            .map(|parts| parts.join(",")),
+        Value::Object(_) => None,
+    }
+}
+
+/// JavaScript's StringToNumber: trimmed (JS white space and line terminators), empty is 0, signed
+/// decimal or `Infinity`, unsigned 0x/0o/0b integers; everything else NaN.
+fn string_number(s: &str) -> f64 {
+    let t = s.trim_matches(|c: char| crate::chunk::is_js_space(c));
+    if t.is_empty() {
+        return 0.0;
+    }
+    let (sign, body) = match t.as_bytes()[0] {
+        b'-' => (-1.0, &t[1..]),
+        b'+' => (1.0, &t[1..]),
+        _ => (1.0, t),
+    };
+    if body == "Infinity" {
+        return sign * f64::INFINITY;
+    }
+    for (prefix, radix) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
+        if let Some(digits) = t.strip_prefix(prefix) {
+            if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+                return f64::NAN;
+            }
+            return digits.chars().fold(0.0, |n, c| {
+                n * f64::from(radix) + f64::from(c.to_digit(radix).unwrap_or(0))
+            });
+        }
+    }
+    let decimal = !body.is_empty()
+        && body
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-'))
+        && body.bytes().any(|b| b.is_ascii_digit());
+    if !decimal {
+        return f64::NAN;
+    }
+    body.parse::<f64>().map_or(f64::NAN, |n| sign * n)
 }
 
 fn integer_index(item: &Value) -> Option<f64> {
