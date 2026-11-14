@@ -121,6 +121,10 @@ fn owe(
     let ticket = maint.authority.require_recovery();
     let fence = super::gate::AdmissionFence::reserve(Arc::clone(&maint.local));
     owed.insert(key.to_owned(), (ticket, fence));
+    // #2641: the settle driver leaves the recovery to this repair worker meanwhile.
+    maint
+        .repairs_owed
+        .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     drop(owed);
     let _ = recoveries.send(key.to_owned());
 }
@@ -287,6 +291,9 @@ impl FrontDeps {
             if let Some(fence) = fence {
                 fence.release();
             }
+            self.maint
+                .repairs_owed
+                .fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
         }
         self.repaired.notify_waiters();
     }

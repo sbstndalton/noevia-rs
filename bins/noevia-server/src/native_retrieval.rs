@@ -506,7 +506,7 @@ pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, 
             .await
             .ok()
             .flatten();
-    let held = || app.config.maint.authority.held();
+    let held = || app.config.maint.maintenance_held();
     let search = retrieval.retrieve_images(
         Inputs {
             data_dir: &data_dir,
