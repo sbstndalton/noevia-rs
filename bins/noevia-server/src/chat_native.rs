@@ -72,6 +72,11 @@ const OBSERVE_EVENTS: usize = 256;
 /// the relay of a Node turn has it through its socket).
 const FORWARD_QUEUE: usize = 1024 * 1024;
 const BRIDGE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Core's step supervisor answers within its own deadline (step-supervision.cjs: at most 2 s); later is `continue`.
+const SUPERVISE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Core's framing reasoner answers within its own deadline (framing-reasoner.cjs: the decision timeout, 6 s by
+/// default) after its budget check; later is a skip (the raw result goes on, as on any skip).
+const CONDENSE_TIMEOUT: Duration = Duration::from_secs(60);
 /// Core's grant check for a native turn's write (rust-chat-native.cjs GRANT_PATH; D17).
 const GRANT_PATH: &str = "/internal/chat/tools/grant";
 /// Core's revoke of the chat's grant (rust-chat-native.cjs REVOKE_PATH; Node's revokeChatGrant).
@@ -1071,6 +1076,18 @@ impl Host for FrontHost {
         );
     }
 
+    fn gate_record(&self, event: &str, tool: &str) {
+        // Track R15: the tool gate's log stays core's (tool-gate.cjs record).
+        self.core_later(
+            "/internal/chat/native/gate-record",
+            js::obj([
+                ("user", js::s(self.user.clone())),
+                ("event", js::s(event)),
+                ("tool", js::s(tool)),
+            ]),
+        );
+    }
+
     async fn engine_busy(&self) -> bool {
         // chat.cjs asks inferenceBusy(1): its turn is one count in core's gate. A native turn holds the
         // route's admission lease (S8) and, while it lasts, the model's lease: each is one count there.
@@ -1083,6 +1100,94 @@ impl Host for FrontHost {
             )
             .await;
         r.is_some_and(|(s, v)| s == 200 && v.get("busy") == &JValue::Bool(true))
+    }
+
+    async fn condense(
+        &self,
+        kind: &str,
+        message: &str,
+        tool: &str,
+        result_text: &str,
+        model: &str,
+    ) -> Option<(String, JValue)> {
+        // Track R15 (#740): core's framing reasoner through the condense op; no answer, or one not understood, is
+        // a skip (the raw framed result goes on).
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("kind", js::s(kind)),
+            ("message", js::s(message)),
+            ("tool", js::s(tool)),
+            ("resultText", js::s(result_text)),
+            ("model", js::s(model)),
+        ]);
+        match self
+            .core("/internal/chat/native/condense", &body, CONDENSE_TIMEOUT)
+            .await
+        {
+            Some((200, v)) => match (v.get("rendered").as_str(), v.get("trace")) {
+                (Some(rendered), trace @ JValue::Obj(_)) => {
+                    Some((rendered.to_string(), trace.clone()))
+                }
+                _ => None,
+            },
+            Some((status, _)) => {
+                eprintln!("chat native: the framing reasoner answered {status}; the prefetched result goes on as read");
+                None
+            }
+            None => None,
+        }
+    }
+
+    async fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64) {
+        // Track R15 (#740): the opt-in trace stays core's (the person's preference and their workspace's file),
+        // written before `done` as chat.cjs writes it; a trace never changes the reply.
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("trace", trace.clone()),
+            ("answerChars", js::n(answer_chars)),
+            ("answerMs", js::n(answer_ms)),
+        ]);
+        match self
+            .core(
+                "/internal/chat/native/reasoner-trace",
+                &body,
+                BRIDGE_TIMEOUT,
+            )
+            .await
+        {
+            Some((204, _)) | None => {}
+            Some((status, _)) => {
+                eprintln!(
+                    "chat native: core answered {status} to the reasoning trace; it is not kept"
+                );
+            }
+        }
+    }
+
+    async fn supervise(&self, round: i32, outputs: &[JValue], goal: &str, wrote: bool) -> String {
+        // Track R15: core's step supervisor (chat.cjs superviseNextStep) through the supervise op; no answer, or one
+        // not understood, is `continue` (the supervisor's own fallback).
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("round", js::n(f64::from(round))),
+            ("goal", js::s(goal)),
+            ("outputs", JValue::Arr(outputs.to_vec())),
+            ("wrote", JValue::Bool(wrote)),
+        ]);
+        let r = self
+            .core("/internal/chat/native/supervise", &body, SUPERVISE_TIMEOUT)
+            .await;
+        match r {
+            Some((200, v)) => match v.get("action").as_str() {
+                Some(a @ ("verify" | "escalate")) => a.to_string(),
+                _ => "continue".to_string(),
+            },
+            Some((status, _)) => {
+                eprintln!("chat native: the step supervisor answered {status}; the turn continues unsupervised for this round");
+                "continue".to_string()
+            }
+            None => "continue".to_string(),
+        }
     }
 
     async fn title_auto_named(&self, list: Option<&str>, chat: &str, first_message: &str) -> bool {

@@ -93,6 +93,10 @@ pub struct App {
     /// Python child may hold it as a lease) before answering 503 BUSY, as Python's forwarder did.
     /// None (Python as the main process): without limit, as before.
     pub write_wait: Option<std::time::Duration>,
+    /// R9 main mode with the embedding owner here (embedding_owner.rs, S4): the embedder a native
+    /// save re-indexes with (S6b), following the owned configuration live as Python's retrievers
+    /// follow SharedEmbedding. Unset: native saves leave their documents dirty for Python.
+    pub save_embedder: std::sync::OnceLock<Arc<diary_answer::embedder::HttpEmbedder>>,
 }
 
 impl App {
@@ -123,6 +127,7 @@ impl App {
             llm_main: cfg.llm.main,
             external_sources: cfg.external_sources,
             write_wait: None,
+            save_embedder: std::sync::OnceLock::new(),
         }
     }
 }
@@ -223,6 +228,9 @@ pub enum Route {
     Files,
     StorageStatus,
     WorkspaceExport,
+    /// R9 main mode: POST /api/file (read a file by the JSON body's path). Only the main process
+    /// serves it (it needs the body); Python as the parent never forwards a read with a body.
+    ReadFile,
     /// D5: PUT /api/file, POST /api/directory, POST /api/entries/append, POST /api/entries/edit.
     PutFile,
     Directory,
@@ -238,6 +246,7 @@ impl Route {
             Route::Files
                 | Route::StorageStatus
                 | Route::WorkspaceExport
+                | Route::ReadFile
                 | Route::PutFile
                 | Route::Directory
         )
@@ -260,6 +269,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/files") => Some(Route::Files),
         ("GET", "/api/storage-status") => Some(Route::StorageStatus),
         ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
+        ("POST", "/api/file") => Some(Route::ReadFile),
         ("PUT", "/api/file") => Some(Route::PutFile),
         ("POST", "/api/directory") => Some(Route::Directory),
         ("POST", "/api/entries/append") => Some(Route::Append),
@@ -363,8 +373,15 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
                 || header(headers, "x-cowork-storage").len() > MAX_STORAGE_HEADER_LEN
             {
                 Plan::Serve(None)
-            } else {
+            } else if app.save_embedder.get().is_none()
+                || header_uid.is_empty()
+                || header(headers, "x-cowork-storage").is_empty()
+            {
                 Plan::Decline
+            } else {
+                // S8 (main mode, the embedding owner here: the live target is this process's):
+                // the detail of a ready managed tenant, planned as a read of it.
+                plan(app, Route::Months, headers, recovered)
             }
         }
         Route::Months
@@ -373,6 +390,7 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::Files
         | Route::StorageStatus
         | Route::WorkspaceExport
+        | Route::ReadFile
         | Route::PutFile
         | Route::Directory
         | Route::Append
@@ -606,8 +624,9 @@ pub(crate) async fn serve_native(
     query: Vec<u8>,
     headers: HeaderMap,
     asserted: bool,
+    body: Option<axum::body::Bytes>,
 ) -> Response<Body> {
-    serve(app, Some(r), false, query, headers, None, asserted).await
+    serve(app, Some(r), false, query, headers, body, asserted).await
 }
 
 /// R9 S3 (front.rs): a writer tenant's write (or the managed backup) for the main process, with
@@ -724,6 +743,15 @@ async fn serve(
     } else {
         None
     };
+    // POST /api/file's `body: dict`, validated by FastAPI before the handler (422: Python's).
+    let read_body = if r == Route::ReadFile {
+        match json_body(&headers, bytes.as_deref().unwrap_or_default()) {
+            Some(j) => Some(j),
+            None => return decline(),
+        }
+    } else {
+        None
+    };
 
     // ---- seam: the routes below read the tenant only from `header_uid` and `asserted` (the
     // trusted forward headers above).
@@ -740,16 +768,52 @@ async fn serve(
             let Some(models) = app.models.as_ref() else {
                 return internal_error();
             };
+            let mut detail_of = None;
             if let Some(uid) = health_tenant(&app, &headers) {
-                // Tenant detail needs Python's per-process state (sqlite-vec, the live embedding
-                // target, recovery): only the refusals that leave it out are answered here.
-                match resolve_tenant(&app, &uid, asserted, &headers, None) {
+                // Tenant detail needs the recovered state and the live embedding target: served
+                // here only for a ready managed tenant while this process owns the embedding
+                // configuration (S8, `tenant` from the plan); otherwise only the refusals that
+                // leave it out are answered here.
+                match resolve_tenant(&app, &uid, asserted, &headers, tenant) {
                     Err(resp) if resp.status().is_client_error() => {}
-                    _ => return decline(),
+                    Ok(t) => detail_of = Some(t),
+                    Err(_) => return decline(),
                 }
             }
+            let detail = match detail_of {
+                None => None,
+                Some(t) => {
+                    let Some(embedder) = app.save_embedder.get().cloned() else {
+                        return decline();
+                    };
+                    match tokio::task::spawn_blocking(move || {
+                        crate::reindex::health_detail(&t.store, embedder)
+                    })
+                    .await
+                    {
+                        Ok(Some(d)) => Some(d),
+                        _ => return decline(),
+                    }
+                }
+            };
             let h = health::health(&app.http, models, !app.auth_token.is_empty()).await;
-            json_response(200, &h)
+            match detail {
+                None => json_response(200, &h),
+                Some(d) => json_response(200, &health::WithTenant { base: h, detail: d }),
+            }
+        }
+        Route::ReadFile => {
+            let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
+                Ok(t) => t,
+                Err(resp) => return *resp,
+            };
+            let json = read_body.unwrap_or_default();
+            let task =
+                tokio::task::spawn_blocking(move || workspace::file_read(&tenant.store, &json));
+            match task.await {
+                Ok(r) => reply(r),
+                Err(_) => internal_error(),
+            }
         }
         Route::Files | Route::StorageStatus | Route::WorkspaceExport => {
             let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
@@ -914,12 +978,28 @@ async fn serve_write(
                     Err(e) if e.is_settlement_refusal() => return Reply::Busy,
                     Err(_) => return writes::internal(),
                 }
-                match &op {
+                let saved = match &op {
                     Op::File => writes::file_write(&ctx, &json),
                     Op::Dir => writes::directory_create(&ctx, &json),
                     Op::Append(req) => writes::append(&ctx, req),
                     Op::Edit(req) => writes::edit(&ctx, req),
+                };
+                // S6b: Python's PUT /api/file and edit run `_reindex_dirty` under the same lock
+                // before they reply (append re-indexes in a background thread: left to Python).
+                if matches!(op, Op::File | Op::Edit(_)) && matches!(saved, Reply::Json(200, _)) {
+                    if let Some(embedder) = app2.save_embedder.get() {
+                        drop(ctx);
+                        // The save is committed: a panic in the re-index must not turn its reply
+                        // into a 500 (the marks stay for the next pass).
+                        let reindexed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            crate::reindex::after_save(&root, &uid, held, embedder.clone());
+                        }));
+                        if reindexed.is_err() {
+                            eprintln!("noevia-diary: edit reindex pending: the re-index failed");
+                        }
+                    }
                 }
+                saved
             })
             .unwrap_or_else(|refused| match refused {
                 crate::write::Refused::Busy => Reply::Busy,
@@ -1303,6 +1383,13 @@ fn control(app: &App, method: &Method, path: &str, headers: &HeaderMap) -> Respo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_file_read_is_a_read_route() {
+        assert_eq!(route(&Method::POST, "/api/file"), Some(Route::ReadFile));
+        assert!(!Route::ReadFile.write());
+        assert_eq!(route(&Method::PUT, "/api/file"), Some(Route::PutFile));
+    }
 
     #[test]
     fn decoded_path_matches_starlette() {

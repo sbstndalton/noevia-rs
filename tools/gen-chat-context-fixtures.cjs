@@ -71,6 +71,10 @@ for (const method of ['GET', 'POST']) {
   add(`${m}-tombstones-object`, { ...plain, tombstones: '{"dead-1":1}' }, method, 'dead-1');
   add(`${m}-lone-surrogate-kept`, ws((p) => { p.projects[0].name = 'A\ud83d'; }), method, 'n5');
   add(`${m}-instruction-skills-array`, ws((p) => { p.projects[0].instructionSkills = []; }), method, 'n6');
+  // noevia#2616: the #352 heal on a project with no instructionSkills key. saveProjects writes
+  // synchronously (flock via spawnSync) before the skills reconcile runs, so projects.json gets
+  // the healed project WITHOUT instructionSkills while the answer carries the reconciled {}.
+  add(`${m}-heal-no-skills`, ws((p) => { delete p.projects[2].instructionSkills; }), method, 'heal');
 }
 // #2026: a brand-new account. Its directory does not exist when the request arrives; Node's
 // workspace load (workspace.cjs get, run for every signed-in request) makes it, mode 0700, before
