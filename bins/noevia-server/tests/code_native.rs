@@ -362,6 +362,10 @@ struct Opts {
     executor: bool,
     pipeline: bool,
     review: bool,
+    /// Track R11: `NOEVIA_RUST_ENGINE_FACTS`.
+    facts: Option<&'static str>,
+    /// The registry puts the Code role on an inference machine.
+    code_machine: bool,
 }
 
 struct Rig {
@@ -421,6 +425,15 @@ async fn rig(o: Opts) -> Rig {
     let data = base.join("data");
     std::fs::create_dir_all(&data).unwrap();
     seed(&data);
+    if o.code_machine {
+        Connection::open(server_store::db_path(&data))
+            .unwrap()
+            .execute(
+                "INSERT OR REPLACE INTO settings(key,value) VALUES('inference:machines',?1)",
+                [r#"{"version":1,"machines":[{"id":"qa-m","name":"QA machine","address":"http://qa-machine.invalid"}],"assignments":{"chatCode":{"machine":"qa-m","port":8080,"model":"qa-code"}}}"#],
+            )
+            .unwrap();
+    }
     let repo = base.join("qa-repo");
     std::fs::create_dir_all(repo.join("src")).unwrap();
     git(&repo, &["init", "-q", "--template=", "-b", "main"]);
@@ -473,6 +486,9 @@ async fn rig(o: Opts) -> Rig {
     }
     if o.review {
         env.insert("NOEVIA_FEATURE_PLANNER_REVIEW", "true".into());
+    }
+    if let Some(mode) = o.facts {
+        env.insert("NOEVIA_RUST_ENGINE_FACTS", mode.into());
     }
     let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     tokio::spawn(serve(
@@ -1118,6 +1134,97 @@ async fn a_reviewed_direct_task_that_is_denied_is_not_accepted() {
         let node_decided = node_journal.iter().rev().find(|j| j["type"] == "approval.decided").unwrap();
         assert_eq!(r.last(&task, "approval.decided"), node_decided["data"], "the decision as Node's");
         r.quiet().await;
+    })
+    .await;
+}
+
+// ── 5. track R11: the engine facts from the front (NOEVIA_RUST_ENGINE_FACTS) ─────────────────
+
+impl Rig {
+    /// Starts a direct task and waits until its turn has run (a card waits, or it ended); then
+    /// cancels what still waits.
+    async fn run_once(&self) -> (u16, Value) {
+        let (status, started) = self
+            .start(json!({"repository": "qa-repo", "prompt": RUN}))
+            .await;
+        let Some(task) = started["taskId"].as_str().map(str::to_string) else {
+            return (status, started);
+        };
+        let ended = |v: &Value| {
+            matches!(
+                v["status"].as_str(),
+                Some("completed" | "failed" | "cancelled" | "interrupted")
+            )
+        };
+        let seen = self
+            .until(&task, "a card or the end", |v| {
+                v["approval"].is_object() || ended(v)
+            })
+            .await;
+        assert_ne!(seen["status"], json!("failed"), "{seen}");
+        if !ended(&seen) {
+            let (s, ok) = self
+                .call(OWNER, "POST", &self.code(&format!("/{task}/cancel")), None)
+                .await;
+            assert_eq!(s, 200, "{ok}");
+            self.ended(&task).await;
+        }
+        (status, started)
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_front_s_engine_facts_ask_core_only_for_the_tune_state() {
+    within(async {
+        // Unset, core's answer decides: its `machine: false` runs the task although the registry
+        // puts the Code role on a machine.
+        let r = rig(Opts {
+            executor: true,
+            code_machine: true,
+            ..Opts::default()
+        })
+        .await;
+        let (status, started) = r.run_once().await;
+        assert_eq!(status, 202, "{started}");
+        assert_eq!(r.engine_asked(), 1);
+
+        // `rust`: the front reads the registry itself and refuses the machine's Code role before
+        // asking core anything.
+        let r = rig(Opts {
+            executor: true,
+            code_machine: true,
+            facts: Some("rust"),
+            ..Opts::default()
+        })
+        .await;
+        let (status, refused) = r.run_once().await;
+        assert_eq!(status, 409, "{refused}");
+        assert!(
+            refused.to_string().contains("inference machine"),
+            "{refused}"
+        );
+        assert_eq!(r.engine_asked(), 0, "no engine facts asked of core");
+
+        // `rust` with the Code role here, and `shadow`: core is asked once (the tune state; the
+        // comparison) and the task runs.
+        for mode in ["rust", "shadow"] {
+            let r = rig(Opts {
+                executor: true,
+                facts: Some(mode),
+                ..Opts::default()
+            })
+            .await;
+            // The account's Code role names the model core's synthetic answer names.
+            std::fs::write(
+                r.data.join("users").join(OWNER).join("auto-roles.json"),
+                r#"{"code":"qa-model"}"#,
+            )
+            .unwrap();
+            let (status, started) = r.run_once().await;
+            assert_eq!(status, 202, "{mode}: {started}");
+            assert_eq!(r.sandbox.lock().unwrap().prompts, 1, "{mode}");
+            assert_eq!(r.engine_asked(), 1, "{mode}");
+        }
     })
     .await;
 }

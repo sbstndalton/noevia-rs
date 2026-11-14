@@ -29,6 +29,7 @@ pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_status_routes;
 pub mod code_egress;
+pub mod code_facts;
 pub mod code_net;
 pub mod code_routes;
 pub mod config;

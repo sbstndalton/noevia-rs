@@ -2308,6 +2308,7 @@ dependencies = [
  "egress-issuer",
  "embedding-worker",
  "engine-admission",
+ "engine-facts",
  "flate2",
  "futures-util",
  "gguf",
