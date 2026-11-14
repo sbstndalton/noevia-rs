@@ -1,0 +1,1297 @@
+{
+ "generator": "crates/server-usage/tests/record_write.cjs",
+ "sources": {
+  "server/usage.cjs": "6b1c8cebbfe69ddced3aae1976ed58b1ddf26ddb11e2d9cf3b27ccf7ec7ed163",
+  "server/workspace.cjs": "3234a0dced9d8929b8f86d2f3847b87d9a7b97978da93c78064c91106b5672b6"
+ },
+ "cases": [
+  {
+   "name": "first-reply",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 5
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 10,\n      \"output\": 5,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 10,\n          \"output\": 5,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "two-models-same-day",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 5
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "qa-other",
+     "usage": {
+      "promptTokens": 3,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 10,\n      \"output\": 5,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 10,\n          \"output\": 5,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 13,\n      \"output\": 5,\n      \"replies\": 2,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 10,\n          \"output\": 5,\n          \"replies\": 1\n        },\n        \"qa-other\": {\n          \"input\": 3,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 2\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 14,\n      \"output\": 6,\n      \"replies\": 3,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 11,\n          \"output\": 6,\n          \"replies\": 2\n        },\n        \"qa-other\": {\n          \"input\": 3,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 3\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "tools",
+   "start": null,
+   "ops": [
+    {
+     "op": "tool",
+     "name": "qa_search",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "qa_search",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "qa_fetch",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 2,
+      "completionTokens": 2
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "qa_search",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"qa_search\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"qa_search\": 2\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"qa_search\": 2,\n        \"qa_fetch\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 2,\n      \"output\": 2,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 2,\n          \"output\": 2,\n          \"replies\": 1\n        }\n      },\n      \"tools\": {\n        \"qa_search\": 2,\n        \"qa_fetch\": 1\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 2,\n      \"output\": 2,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 2,\n          \"output\": 2,\n          \"replies\": 1\n        }\n      },\n      \"tools\": {\n        \"qa_search\": 3,\n        \"qa_fetch\": 1\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "tool-only-day",
+   "start": null,
+   "ops": [
+    {
+     "op": "tool",
+     "name": "qa_search",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"qa_search\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "existing-day",
+   "start": "{\"days\":{\"2026-11-14\":{\"input\":1,\"output\":2,\"replies\":1,\"models\":{\"qa-model\":{\"input\":1,\"output\":2,\"replies\":1}},\"hours\":{\"10\":1}}}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 4,
+      "completionTokens": 4
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "qa_tool",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 5,\n      \"output\": 6,\n      \"replies\": 2,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 5,\n          \"output\": 6,\n          \"replies\": 2\n        }\n      },\n      \"hours\": {\n        \"10\": 2\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 5,\n      \"output\": 6,\n      \"replies\": 2,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 5,\n          \"output\": 6,\n          \"replies\": 2\n        }\n      },\n      \"hours\": {\n        \"10\": 2\n      },\n      \"tools\": {\n        \"qa_tool\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "extra-top-level-kept",
+   "start": "{\"qaNote\":\"keep\",\"days\":{},\"z\":[1]}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"qaNote\": \"keep\",\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 0,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  },\n  \"z\": [\n    1\n  ]\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "days-null-reset",
+   "start": "{\"qaNote\":\"dropped\",\"days\":null}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 0,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "days-number-reset",
+   "start": "{\"days\":5}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 0,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "top-array",
+   "start": "[1,2]",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 0,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "top-null",
+   "start": "null",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 0,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "malformed",
+   "start": "{\"days\":",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 0,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "bom",
+   "start": "﻿{\"days\":{\"2026-11-13\":{\"input\":1}}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 0,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "retention",
+   "start": "{\"days\":{\"2025-11-13\":{\"input\":1},\"2025-11-14\":{\"input\":2},\"2025-11-15\":{\"input\":3},\"abc\":{},\"1\":{},\"2026-01-01\":{}}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2025-11-14\": {\n      \"input\": 2\n    },\n    \"2025-11-15\": {\n      \"input\": 3\n    },\n    \"abc\": {},\n    \"2026-01-01\": {},\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 0,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "retention-not-on-tool",
+   "start": "{\"days\":{\"2020-01-01\":{\"input\":1}}}",
+   "ops": [
+    {
+     "op": "tool",
+     "name": "qa_tool",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2020-01-01\": {\n      \"input\": 1\n    },\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"qa_tool\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "string-tokens",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": "12",
+      "completionTokens": " 3 "
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 12,\n      \"output\": 3,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 12,\n          \"output\": 3,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "hex-and-exp-tokens",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": "0x10",
+      "completionTokens": "1e2"
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 16,\n      \"output\": 100,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 16,\n          \"output\": 100,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "bad-tokens-zero",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": "abc",
+      "completionTokens": null
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": null,
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "negative-tokens",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": -1,
+      "completionTokens": 5
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": null,
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "infinite-tokens",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": "Infinity",
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": null,
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "zero-tokens",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 0,
+      "completionTokens": 0
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": null,
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "bool-tokens",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": true,
+      "completionTokens": false
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 0,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 0,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "fractional-tokens",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1.5,
+      "completionTokens": 0.25
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1.5,\n      \"output\": 0.25,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1.5,\n          \"output\": 0.25,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "no-usage",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": null,
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": null,
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "usage-number",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": 5,
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": null,
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "model-missing",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": null,
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": 0,
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"unknown\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 2,\n      \"output\": 2,\n      \"replies\": 2,\n      \"models\": {\n        \"unknown\": {\n          \"input\": 2,\n          \"output\": 2,\n          \"replies\": 2\n        }\n      },\n      \"hours\": {\n        \"10\": 2\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 3,\n      \"output\": 3,\n      \"replies\": 3,\n      \"models\": {\n        \"unknown\": {\n          \"input\": 3,\n          \"output\": 3,\n          \"replies\": 3\n        }\n      },\n      \"hours\": {\n        \"10\": 3\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "model-number",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": 42,
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"42\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "model-proto",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "__proto__",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "constructor",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "2",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "10",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"__proto__\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 2,\n      \"output\": 2,\n      \"replies\": 2,\n      \"models\": {\n        \"__proto__\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        },\n        \"constructor\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 2\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 3,\n      \"output\": 3,\n      \"replies\": 3,\n      \"models\": {\n        \"2\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        },\n        \"__proto__\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        },\n        \"constructor\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 3\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 4,\n      \"output\": 4,\n      \"replies\": 4,\n      \"models\": {\n        \"2\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        },\n        \"10\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        },\n        \"__proto__\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        },\n        \"constructor\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 4\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "model-unicode",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-mödel-😀",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-mödel-😀\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "model-own-tostring",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": {
+      "toString": 1
+     },
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": null,
+     "warned": true
+    }
+   ]
+  },
+  {
+   "name": "tool-names",
+   "start": null,
+   "ops": [
+    {
+     "op": "tool",
+     "name": 5,
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": null,
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "__proto__",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "7",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"5\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"5\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"5\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"5\": 1,\n        \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"5\": 1,\n        \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\": 1,\n        \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\ud83d\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"5\": 1,\n        \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\": 1,\n        \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\ud83d\": 1,\n        \"__proto__\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 0,\n      \"output\": 0,\n      \"replies\": 0,\n      \"models\": {},\n      \"tools\": {\n        \"5\": 1,\n        \"7\": 1,\n        \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\": 1,\n        \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\ud83d\": 1,\n        \"__proto__\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "hours-ordering",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794686400000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794664800000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794634200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"15\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 2,\n      \"output\": 2,\n      \"replies\": 2,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 2,\n          \"output\": 2,\n          \"replies\": 2\n        }\n      },\n      \"hours\": {\n        \"9\": 1,\n        \"15\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 3,\n      \"output\": 3,\n      \"replies\": 3,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 3,\n          \"output\": 3,\n          \"replies\": 3\n        }\n      },\n      \"hours\": {\n        \"0\": 1,\n        \"9\": 1,\n        \"15\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "hours-odd-values",
+   "start": "{\"days\":{\"2026-11-14\":{\"input\":1,\"output\":2,\"replies\":1,\"models\":{\"qa-model\":{\"input\":1,\"output\":2,\"replies\":1}},\"hours\":{\"9\":\"4\",\"10\":null,\"11\":\"x\"}}}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794668400000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794664800000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794672000000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 2,\n      \"output\": 3,\n      \"replies\": 2,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 2,\n          \"output\": 3,\n          \"replies\": 2\n        }\n      },\n      \"hours\": {\n        \"9\": \"4\",\n        \"10\": 1,\n        \"11\": \"x\"\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 3,\n      \"output\": 4,\n      \"replies\": 3,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 3,\n          \"output\": 4,\n          \"replies\": 3\n        }\n      },\n      \"hours\": {\n        \"9\": 5,\n        \"10\": 1,\n        \"11\": \"x\"\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 4,\n      \"output\": 5,\n      \"replies\": 4,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 4,\n          \"output\": 5,\n          \"replies\": 4\n        }\n      },\n      \"hours\": {\n        \"9\": 5,\n        \"10\": 1,\n        \"11\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "tools-odd-values",
+   "start": "{\"days\":{\"2026-11-14\":{\"input\":1,\"output\":2,\"replies\":1,\"models\":{\"qa-model\":{\"input\":1,\"output\":2,\"replies\":1}},\"hours\":{\"10\":1},\"tools\":{\"a\":\"2\",\"b\":null,\"c\":true}}}}",
+   "ops": [
+    {
+     "op": "tool",
+     "name": "a",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "b",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "tool",
+     "name": "c",
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 2,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 2,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      },\n      \"tools\": {\n        \"a\": 3,\n        \"b\": null,\n        \"c\": true\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 2,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 2,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      },\n      \"tools\": {\n        \"a\": 3,\n        \"b\": 1,\n        \"c\": true\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 2,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 2,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      },\n      \"tools\": {\n        \"a\": 3,\n        \"b\": 1,\n        \"c\": 2\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "local-midnight-new-york",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794717000000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794720600000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"23\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"23\": 1\n      }\n    },\n    \"2026-11-15\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"0\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "kolkata",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794682800000,
+     "tz": "Asia/Kolkata"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-15\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"0\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "utc",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794700799000,
+     "tz": "UTC"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"23\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "dst-spring-forward",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1772955000000,
+     "tz": "America/New_York"
+    },
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1772951400000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-03-08\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"3\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    },
+    {
+     "file": "{\n  \"days\": {\n    \"2026-03-08\": {\n      \"input\": 2,\n      \"output\": 2,\n      \"replies\": 2,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 2,\n          \"output\": 2,\n          \"replies\": 2\n        }\n      },\n      \"hours\": {\n        \"1\": 1,\n        \"3\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "dst-cutoff",
+   "start": null,
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1804566600000,
+     "tz": "America/New_York"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2027-03-08\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"23\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "leap-day-cutoff",
+   "start": "{\"days\":{\"2027-02-28\":{},\"2027-03-01\":{},\"2028-02-28\":{}}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1835438400000,
+     "tz": "UTC"
+    }
+   ],
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2027-03-01\": {},\n    \"2028-02-28\": {},\n    \"2028-02-29\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"12\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "days-list",
+   "start": "{\"days\":[{\"input\":1}]}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "difference": "unusual",
+   "after": [
+    {
+     "file": "{\n  \"days\": [\n    null\n  ]\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "day-string-count",
+   "start": "{\"days\":{\"2026-11-14\":{\"input\":\"5\",\"output\":0,\"replies\":0,\"models\":{}}}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "difference": "unusual",
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": \"51\",\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "day-missing-replies",
+   "start": "{\"days\":{\"2026-11-14\":{\"input\":0,\"output\":0,\"models\":{}}}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "difference": "unusual",
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"replies\": null,\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  },
+  {
+   "name": "day-not-object",
+   "start": "{\"days\":{\"2026-11-14\":\"x\"}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "difference": "unusual",
+   "after": [
+    {
+     "file": "{\"days\":{\"2026-11-14\":\"x\"}}",
+     "warned": true
+    }
+   ]
+  },
+  {
+   "name": "model-entry-not-object",
+   "start": "{\"days\":{\"2026-11-14\":{\"input\":0,\"output\":0,\"replies\":0,\"models\":{\"qa-model\":5}}}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "difference": "unusual",
+   "after": [
+    {
+     "file": "{\"days\":{\"2026-11-14\":{\"input\":0,\"output\":0,\"replies\":0,\"models\":{\"qa-model\":5}}}}",
+     "warned": true
+    }
+   ]
+  },
+  {
+   "name": "huge-number",
+   "start": "{\"days\":{\"2026-11-13\":{\"input\":1e999}}}",
+   "ops": [
+    {
+     "op": "usage",
+     "model": "qa-model",
+     "usage": {
+      "promptTokens": 1,
+      "completionTokens": 1
+     },
+     "now": 1794670200000,
+     "tz": "America/New_York"
+    }
+   ],
+   "difference": "unusual",
+   "after": [
+    {
+     "file": "{\n  \"days\": {\n    \"2026-11-13\": {\n      \"input\": null\n    },\n    \"2026-11-14\": {\n      \"input\": 1,\n      \"output\": 1,\n      \"replies\": 1,\n      \"models\": {\n        \"qa-model\": {\n          \"input\": 1,\n          \"output\": 1,\n          \"replies\": 1\n        }\n      },\n      \"hours\": {\n        \"10\": 1\n      }\n    }\n  }\n}",
+     "warned": false
+    }
+   ]
+  }
+ ]
+}

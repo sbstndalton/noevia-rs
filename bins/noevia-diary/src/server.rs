@@ -89,6 +89,14 @@ pub struct App {
     pub llm_main: health::ClientConfig,
     /// R9: the configured external source paths (None: the route is Python's).
     pub external_sources: Option<Vec<String>>,
+    /// R9 main mode (front.rs): how long a native write waits for the tenant's writer slot (the
+    /// Python child may hold it as a lease) before answering 503 BUSY, as Python's forwarder did.
+    /// None (Python as the main process): without limit, as before.
+    pub write_wait: Option<std::time::Duration>,
+    /// R9 main mode with the embedding owner here (embedding_owner.rs, S4): the embedder a native
+    /// save re-indexes with (S6b), following the owned configuration live as Python's retrievers
+    /// follow SharedEmbedding. Unset: native saves leave their documents dirty for Python.
+    pub save_embedder: std::sync::OnceLock<Arc<diary_answer::embedder::HttpEmbedder>>,
 }
 
 impl App {
@@ -118,6 +126,8 @@ impl App {
             answer: cfg.answer,
             llm_main: cfg.llm.main,
             external_sources: cfg.external_sources,
+            write_wait: None,
+            save_embedder: std::sync::OnceLock::new(),
         }
     }
 }
@@ -177,7 +187,7 @@ fn header(headers: &HeaderMap, name: &str) -> String {
 }
 
 /// Starlette's decoded path: percent-decoding of the raw path, as UTF-8 (errors replaced).
-fn decoded_path(raw: &str) -> String {
+pub(crate) fn decoded_path(raw: &str) -> String {
     let bytes = raw.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -198,7 +208,7 @@ fn decoded_path(raw: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn is_uuid(s: &str) -> bool {
+pub(crate) fn is_uuid(s: &str) -> bool {
     let b = s.as_bytes();
     b.len() == 36
         && b.iter().enumerate().all(|(i, c)| match i {
@@ -218,6 +228,9 @@ pub enum Route {
     Files,
     StorageStatus,
     WorkspaceExport,
+    /// R9 main mode: POST /api/file (read a file by the JSON body's path). Only the main process
+    /// serves it (it needs the body); Python as the parent never forwards a read with a body.
+    ReadFile,
     /// D5: PUT /api/file, POST /api/directory, POST /api/entries/append, POST /api/entries/edit.
     PutFile,
     Directory,
@@ -233,6 +246,7 @@ impl Route {
             Route::Files
                 | Route::StorageStatus
                 | Route::WorkspaceExport
+                | Route::ReadFile
                 | Route::PutFile
                 | Route::Directory
         )
@@ -255,6 +269,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/files") => Some(Route::Files),
         ("GET", "/api/storage-status") => Some(Route::StorageStatus),
         ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
+        ("POST", "/api/file") => Some(Route::ReadFile),
         ("PUT", "/api/file") => Some(Route::PutFile),
         ("POST", "/api/directory") => Some(Route::Directory),
         ("POST", "/api/entries/append") => Some(Route::Append),
@@ -358,8 +373,15 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
                 || header(headers, "x-cowork-storage").len() > MAX_STORAGE_HEADER_LEN
             {
                 Plan::Serve(None)
-            } else {
+            } else if app.save_embedder.get().is_none()
+                || header_uid.is_empty()
+                || header(headers, "x-cowork-storage").is_empty()
+            {
                 Plan::Decline
+            } else {
+                // S8 (main mode, the embedding owner here: the live target is this process's):
+                // the detail of a ready managed tenant, planned as a read of it.
+                plan(app, Route::Months, headers, recovered)
             }
         }
         Route::Months
@@ -368,6 +390,7 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::Files
         | Route::StorageStatus
         | Route::WorkspaceExport
+        | Route::ReadFile
         | Route::PutFile
         | Route::Directory
         | Route::Append
@@ -437,7 +460,7 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
 
 // ---------------------------------------------------------------- handling
 
-fn check_auth(app: &App, headers: &HeaderMap) -> Result<bool, ()> {
+pub(crate) fn check_auth(app: &App, headers: &HeaderMap) -> Result<bool, ()> {
     if app.auth_token.is_empty() {
         return Ok(true);
     }
@@ -488,6 +511,11 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
         }
         if parts.method == Method::POST && path == "/internal/reindex" {
             return crate::reindex::internal(app, &query, &headers, body).await;
+        }
+        if let Some(resp) =
+            crate::lease::internal(&app, &parts.method, &path, &query, &headers).await
+        {
+            return resp;
         }
         return control(&app, &parts.method, &path, &headers);
     }
@@ -551,7 +579,7 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
 /// names a tenant and its assertion is valid and unseen, Ok(false) when nothing is to be verified
 /// (no tenant header, or no tenant key: Python's middleware lets those through unverified), Err
 /// with a log reason otherwise.
-fn verify_assertion(
+pub(crate) fn verify_assertion(
     app: &App,
     headers: &HeaderMap,
     method: &str,
@@ -586,6 +614,33 @@ fn verify_assertion(
             now,
         )
         .map(|()| true)
+}
+
+/// R9 S2a (front.rs): a native read route for the main process, with the request's own headers
+/// (internal ones replaced by the parent's facts) and its verification verdict.
+pub(crate) async fn serve_native(
+    app: Arc<App>,
+    r: Route,
+    query: Vec<u8>,
+    headers: HeaderMap,
+    asserted: bool,
+    body: Option<axum::body::Bytes>,
+) -> Response<Body> {
+    serve(app, Some(r), false, query, headers, body, asserted).await
+}
+
+/// R9 S3 (front.rs): a writer tenant's write (or the managed backup) for the main process, with
+/// the writer header set by the parent and the whole body.
+pub(crate) async fn serve_native_write(
+    app: Arc<App>,
+    r: Option<Route>,
+    backup: bool,
+    query: Vec<u8>,
+    headers: HeaderMap,
+    bytes: axum::body::Bytes,
+    asserted: bool,
+) -> Response<Body> {
+    serve(app, r, backup, query, headers, Some(bytes), asserted).await
 }
 
 async fn serve(
@@ -630,15 +685,23 @@ async fn serve(
         let app2 = app.clone();
         // Dropping the HTTP future detaches this task; its locks remain until all effects settle.
         return tokio::task::spawn_blocking(move || {
-            app2.writers
-                .with_lock(&uid, |_| {
-                    crate::backup::run(
-                        &app2.data_root.join("users").join(&uid),
-                        &uid,
-                        storage.as_ref(),
-                    )
-                })
-                .unwrap_or_else(|| detail(410, "tenant deleted"))
+            match app2.writers.with_lock_as(&uid, None, app2.write_wait, |_| {
+                crate::backup::run(
+                    &app2.data_root.join("users").join(&uid),
+                    &uid,
+                    storage.as_ref(),
+                )
+            }) {
+                Ok(resp) => {
+                    if app2.write_wait.is_some() && resp.status() != StatusCode::MISDIRECTED_REQUEST
+                    {
+                        app2.writers.note_native_write(&uid);
+                    }
+                    resp
+                }
+                Err(crate::write::Refused::Busy) => reply(Reply::Busy),
+                Err(crate::write::Refused::Fenced) => detail(410, "tenant deleted"),
+            }
         })
         .await
         .unwrap_or_else(|_| internal_error());
@@ -680,6 +743,15 @@ async fn serve(
     } else {
         None
     };
+    // POST /api/file's `body: dict`, validated by FastAPI before the handler (422: Python's).
+    let read_body = if r == Route::ReadFile {
+        match json_body(&headers, bytes.as_deref().unwrap_or_default()) {
+            Some(j) => Some(j),
+            None => return decline(),
+        }
+    } else {
+        None
+    };
 
     // ---- seam: the routes below read the tenant only from `header_uid` and `asserted` (the
     // trusted forward headers above).
@@ -696,16 +768,52 @@ async fn serve(
             let Some(models) = app.models.as_ref() else {
                 return internal_error();
             };
+            let mut detail_of = None;
             if let Some(uid) = health_tenant(&app, &headers) {
-                // Tenant detail needs Python's per-process state (sqlite-vec, the live embedding
-                // target, recovery): only the refusals that leave it out are answered here.
-                match resolve_tenant(&app, &uid, asserted, &headers, None) {
+                // Tenant detail needs the recovered state and the live embedding target: served
+                // here only for a ready managed tenant while this process owns the embedding
+                // configuration (S8, `tenant` from the plan); otherwise only the refusals that
+                // leave it out are answered here.
+                match resolve_tenant(&app, &uid, asserted, &headers, tenant) {
                     Err(resp) if resp.status().is_client_error() => {}
-                    _ => return decline(),
+                    Ok(t) => detail_of = Some(t),
+                    Err(_) => return decline(),
                 }
             }
+            let detail = match detail_of {
+                None => None,
+                Some(t) => {
+                    let Some(embedder) = app.save_embedder.get().cloned() else {
+                        return decline();
+                    };
+                    match tokio::task::spawn_blocking(move || {
+                        crate::reindex::health_detail(&t.store, embedder)
+                    })
+                    .await
+                    {
+                        Ok(Some(d)) => Some(d),
+                        _ => return decline(),
+                    }
+                }
+            };
             let h = health::health(&app.http, models, !app.auth_token.is_empty()).await;
-            json_response(200, &h)
+            match detail {
+                None => json_response(200, &h),
+                Some(d) => json_response(200, &health::WithTenant { base: h, detail: d }),
+            }
+        }
+        Route::ReadFile => {
+            let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
+                Ok(t) => t,
+                Err(resp) => return *resp,
+            };
+            let json = read_body.unwrap_or_default();
+            let task =
+                tokio::task::spawn_blocking(move || workspace::file_read(&tenant.store, &json));
+            match task.await {
+                Ok(r) => reply(r),
+                Err(_) => internal_error(),
+            }
         }
         Route::Files | Route::StorageStatus | Route::WorkspaceExport => {
             let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
@@ -829,8 +937,8 @@ async fn serve_write(
     let uid = header_uid.to_ascii_lowercase();
     let app2 = app.clone();
     let task = tokio::task::spawn_blocking(move || {
-        app2.writers
-            .with_lock(&uid, |held| {
+        let reply = app2.writers
+            .with_lock_as(&uid, None, app2.write_wait, |held| {
                 if crate::backup::pending(&app2.data_root.join("users").join(&uid)) {
                     return workspace::Reply::Json(503, b"{\"detail\":\"Diary backup settlement is uncertain. Saving and deletion remain paused.\"}".to_vec());
                 }
@@ -870,14 +978,39 @@ async fn serve_write(
                     Err(e) if e.is_settlement_refusal() => return Reply::Busy,
                     Err(_) => return writes::internal(),
                 }
-                match &op {
+                let saved = match &op {
                     Op::File => writes::file_write(&ctx, &json),
                     Op::Dir => writes::directory_create(&ctx, &json),
                     Op::Append(req) => writes::append(&ctx, req),
                     Op::Edit(req) => writes::edit(&ctx, req),
+                };
+                // S6b: Python's PUT /api/file and edit run `_reindex_dirty` under the same lock
+                // before they reply (append re-indexes in a background thread: left to Python).
+                if matches!(op, Op::File | Op::Edit(_)) && matches!(saved, Reply::Json(200, _)) {
+                    if let Some(embedder) = app2.save_embedder.get() {
+                        drop(ctx);
+                        // The save is committed: a panic in the re-index must not turn its reply
+                        // into a 500 (the marks stay for the next pass).
+                        let reindexed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            crate::reindex::after_save(&root, &uid, held, embedder.clone());
+                        }));
+                        if reindexed.is_err() {
+                            eprintln!("noevia-diary: edit reindex pending: the re-index failed");
+                        }
+                    }
                 }
+                saved
             })
-            .unwrap_or(Reply::Decline)
+            .unwrap_or_else(|refused| match refused {
+                crate::write::Refused::Busy => Reply::Busy,
+                crate::write::Refused::Fenced => Reply::Decline,
+            });
+        // R9 main mode: counted here, in the blocking write, so a caller that went away meanwhile
+        // cannot hide it from the child (front.rs tells it on the tenant's next forward).
+        if app2.write_wait.is_some() && !matches!(reply, Reply::Decline | Reply::Busy) {
+            app2.writers.note_native_write(&uid);
+        }
+        reply
     });
     match task.await {
         Ok(r) => reply(r),
@@ -910,7 +1043,8 @@ async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Bod
             .unwrap_or_default();
     }
     let app2 = app.clone();
-    match tokio::task::spawn_blocking(move || app2.writers.fence(&uid)).await {
+    let lease = crate::lease::lease_of(headers);
+    match tokio::task::spawn_blocking(move || app2.writers.fence_as(&uid, lease)).await {
         Ok(()) => {
             let uid = py::query_get(query, "tenant")
                 .unwrap_or_default()
@@ -1249,6 +1383,13 @@ fn control(app: &App, method: &Method, path: &str, headers: &HeaderMap) -> Respo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_file_read_is_a_read_route() {
+        assert_eq!(route(&Method::POST, "/api/file"), Some(Route::ReadFile));
+        assert!(!Route::ReadFile.write());
+        assert_eq!(route(&Method::PUT, "/api/file"), Some(Route::PutFile));
+    }
 
     #[test]
     fn decoded_path_matches_starlette() {

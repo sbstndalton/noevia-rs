@@ -61,6 +61,23 @@ pub struct Prepared {
     /// save; `onceTools`, present only when there are any; a core that offers one hands the turn off only to a
     /// front naming the `once` capability).
     pub once_tools: Vec<String>,
+    /// #769: the provenance policy is on for this turn (`provenance: true`, present only then; a core that has it
+    /// on hands the turn off only to a front naming the `provenance` capability).
+    pub provenance: bool,
+    /// Roadmap E: what the routed list's `more_tools` widens to, on a turn whose tools routing narrowed (`widen`,
+    /// present only then; a core that narrowed hands the turn off only to a front naming `more-tools`).
+    pub widen: Option<Widen>,
+    /// Step supervision is on (`supervise: true`, present only then; a core that has it on hands the turn off
+    /// only to a front naming `supervise`).
+    pub supervise: bool,
+    /// The tool gate's required tool (features.toolGate, `require` mode; chat.cjs `forcedTool`): `gate: {tool}`,
+    /// present only then (a core whose gate decided hands the turn off only to a front naming `tool-gate`).
+    pub gate_tool: Option<String>,
+    /// A `prefetch` decision's arguments (`gate.prefetch`): the read is run before the model (chat.cjs `prefetchTool`).
+    pub gate_prefetch: Option<JValue>,
+    /// #740: the chat frame's kind when the framing reasoner may condense the gate's prefetch (`reasoner: {kind}`,
+    /// present only then; a core that has one hands the turn off only to a front naming `reasoner`).
+    pub reasoner: Option<String>,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -87,6 +104,19 @@ pub struct Prepared {
     /// The project's instruction skills; `None` without a project (and from an older core, which hands off no
     /// turn whose project has skills).
     pub skills: Option<Skills>,
+}
+
+/// The project's whole tool selection, as chat.cjs resolves it when the model calls `more_tools`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Widen {
+    pub tools: Vec<JValue>,
+    pub routes: Vec<(String, String)>,
+    pub writes: Vec<String>,
+    pub public: Vec<String>,
+    pub edit_tools: Vec<String>,
+    pub once_tools: Vec<String>,
+    /// The policy reads core's resolution made (chat.cjs `blocked`), in order: (name, write, blocked).
+    pub asked: Vec<(String, bool, bool)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,6 +202,51 @@ fn flag(v: &JValue, key: &str) -> bool {
     v.get(key) == &JValue::Bool(true)
 }
 
+/// `[[tool, server]]`: the MCP routes of a tool list.
+fn route_pairs(v: &JValue, key: &str) -> Result<Vec<(String, String)>, Unreadable> {
+    list(v, key)?
+        .iter()
+        .map(|r| match r {
+            JValue::Arr(pair) => match (
+                pair.first().and_then(JValue::as_str),
+                pair.get(1).and_then(JValue::as_str),
+                pair.len(),
+            ) {
+                (Some(a), Some(b), 2) => Ok((a.to_string(), b.to_string())),
+                _ => Err(Unreadable(format!("prepared.{key} holds a bad pair"))),
+            },
+            _ => Err(Unreadable(format!("prepared.{key} holds a bad pair"))),
+        })
+        .collect()
+}
+
+fn widen(v: &JValue) -> Result<Option<Widen>, Unreadable> {
+    match v {
+        JValue::Undefined => Ok(None),
+        JValue::Obj(_) => Ok(Some(Widen {
+            tools: list(v, "tools")?,
+            routes: route_pairs(v, "routes")?,
+            writes: names(v, "writes")?,
+            public: names(v, "public")?,
+            edit_tools: names(v, "editTools")?,
+            once_tools: names(v, "onceTools")?,
+            asked: list(v, "asked")?
+                .iter()
+                .map(|a| match a {
+                    JValue::Arr(t) => match t.as_slice() {
+                        [JValue::Str(n), JValue::Bool(w), JValue::Bool(b)] => {
+                            Ok((n.clone(), *w, *b))
+                        }
+                        _ => Err(Unreadable("prepared.widen.asked holds a bad read".into())),
+                    },
+                    _ => Err(Unreadable("prepared.widen.asked holds a bad read".into())),
+                })
+                .collect::<Result<_, _>>()?,
+        })),
+        _ => Err(Unreadable("prepared.widen is not an object".into())),
+    }
+}
+
 impl Prepared {
     /// Reads a `prepared` frame (the parsed `data:` object).
     pub fn read(frame: &JValue) -> Result<Prepared, Unreadable> {
@@ -184,21 +259,8 @@ impl Prepared {
         let chat = need(frame, "chat")?;
         let turn = need(frame, "turn")?;
         let title = need(chat, "title")?;
-        let routes = list(frame, "routes")?
-            .iter()
-            .map(|r| match r {
-                JValue::Arr(pair) => match (
-                    pair.first().and_then(JValue::as_str),
-                    pair.get(1).and_then(JValue::as_str),
-                    pair.len(),
-                ) {
-                    (Some(a), Some(b), 2) => Ok((a.to_string(), b.to_string())),
-                    _ => Err(Unreadable("prepared.routes holds a bad pair".into())),
-                },
-                _ => Err(Unreadable("prepared.routes holds a bad pair".into())),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(Prepared {
+        let routes = route_pairs(frame, "routes")?;
+        let prepared = Prepared {
             started_at: need(frame, "startedAt")?
                 .as_num()
                 .ok_or_else(|| Unreadable("prepared.startedAt is not a number".into()))?,
@@ -237,6 +299,33 @@ impl Prepared {
                 _ => names(frame, "onceTools")?,
             },
             route_note: opt_text(frame, "routeNote").unwrap_or_default(),
+            // Present only as `true`; any other value refuses the frame (never read as off).
+            provenance: match frame.get("provenance") {
+                JValue::Undefined => false,
+                JValue::Bool(true) => true,
+                _ => return Err(Unreadable("prepared.provenance is not true".into())),
+            },
+            widen: widen(frame.get("widen"))?,
+            gate_prefetch: match frame.get("gate").get("prefetch") {
+                JValue::Undefined => None,
+                a @ JValue::Obj(_) => Some(a.clone()),
+                _ => return Err(Unreadable("prepared.gate.prefetch is not an object".into())),
+            },
+            gate_tool: match frame.get("gate") {
+                JValue::Undefined => None,
+                g @ JValue::Obj(_) => Some(text(g, "tool")?),
+                _ => return Err(Unreadable("prepared.gate is not an object".into())),
+            },
+            reasoner: match frame.get("reasoner") {
+                JValue::Undefined => None,
+                r @ JValue::Obj(_) => Some(text(r, "kind")?),
+                _ => return Err(Unreadable("prepared.reasoner is not an object".into())),
+            },
+            supervise: match frame.get("supervise") {
+                JValue::Undefined => false,
+                JValue::Bool(true) => true,
+                _ => return Err(Unreadable("prepared.supervise is not true".into())),
+            },
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),
             model_lease: flag(frame, "modelLease"),
@@ -266,6 +355,14 @@ impl Prepared {
                     .ok_or_else(|| Unreadable("prepared.turn.sources is not readable".into()))?,
             },
             skills: skills(frame.get("skills"))?,
-        })
+        };
+        // chat.cjs never forces or prefetches a write (`forcedTool` is an offered read): a frame naming one, or the
+        // once-only page save, is refused rather than run without its card (R15 review).
+        if let Some(tool) = &prepared.gate_tool {
+            if prepared.writes.contains(tool) || prepared.once_tools.contains(tool) {
+                return Err(Unreadable("prepared.gate.tool is a write".into()));
+            }
+        }
+        Ok(prepared)
     }
 }

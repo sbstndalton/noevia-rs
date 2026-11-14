@@ -14,6 +14,7 @@ pub mod autotune_resume_routes;
 pub mod autotune_runner;
 pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
+pub mod browser_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
@@ -22,6 +23,7 @@ pub mod chat_edge;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
 pub mod chat_native;
+pub mod chat_prepare_shadow;
 pub mod chat_turn;
 pub mod chat_wire;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -50,6 +52,7 @@ pub mod health_routes;
 pub mod identity;
 pub mod idle_unload_read;
 pub mod inference_machines;
+pub mod kiwix_tools;
 pub mod legacy_proxy;
 #[cfg(feature = "rust-storage-reads")]
 pub mod legacy_webdav;
@@ -81,7 +84,10 @@ pub mod model_assignments;
 pub mod model_downloads_read;
 pub mod model_kind;
 pub mod model_maint;
+pub mod model_manager_routes;
 pub mod model_manager_scan;
+pub mod model_pull_post;
+pub mod model_pull_routes;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
@@ -143,6 +149,8 @@ pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
 pub mod task_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod text_write_op;
 pub mod tool_approval_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod toolbox_picker;
@@ -150,6 +158,7 @@ pub mod toolbox_picker;
 pub mod toolbox_routes;
 pub mod upkeep;
 pub mod usage_routes;
+pub mod usage_writes;
 pub mod web_address_routes;
 
 use axum::body::Body;
@@ -684,6 +693,8 @@ pub struct App {
     pub code_egress: Option<Arc<code_egress::Issuer>>,
     /// Code tasks, when the front runs them (code_routes.rs, NOEVIA_CODE_EXECUTOR=rust).
     pub code_service: std::sync::OnceLock<Arc<code_harness::service::Service>>,
+    /// Browser tasks, when the front runs them (browser_routes.rs, NOEVIA_RUST_BROWSER=1).
+    pub browser_service: std::sync::OnceLock<Arc<browser_task::service::Service>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
     #[cfg(feature = "rust-storage-reads")]
     pub provider_models: provider_models_routes::Lists,
@@ -747,6 +758,8 @@ pub struct App {
     pub extraction: Option<Arc<extraction::HttpEngine>>,
     /// GET /api/plugins/directory: its client and hour-long cache (#2190).
     pub plugin_directory: plugin_directory_routes::Directory,
+    /// Track R11 (S11): GET /api/models/mtp-artifact's process-wide check state.
+    pub mtp_artifact: Arc<model_pull_routes::State>,
 }
 
 impl App {
@@ -817,6 +830,7 @@ impl App {
             mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
             code_egress: code_egress::Issuer::new(&config),
             code_service: std::sync::OnceLock::new(),
+            browser_service: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
             mcp_discovery: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
@@ -866,6 +880,7 @@ impl App {
                 config.plugin_directory.clone(),
             ),
             auto_roles: auto_roles_routes::Writer::default(),
+            mtp_artifact: Arc::new(model_pull_routes::State::new(config.model_pull_hub.clone())),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -977,11 +992,29 @@ async fn handle(
             native = Some(routes::Native::Projects);
         }
     }
-    // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget and idle unload PUTs are
-    // the models routes' too (model_writes_routes.rs); unset, they stay Node's.
+    // Track R5: with NOEVIA_RUST_BROWSER=1 the Browser task actions are the project routes' too
+    // (browser_routes.rs); unset, they stay Node's.
+    if native.is_none() && app.config.browser.executor {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if browser_routes::owns(req.method().as_str(), at) {
+            native = Some(routes::Native::Projects);
+        }
+    }
+    // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget, idle unload and preset
+    // PUTs, GET /api/models/mtp-artifact and POST /api/models/pull are the models routes' too
+    // (model_writes_routes.rs, model_pull_routes.rs, model_pull_post.rs); unset, they stay Node's.
     if native.is_none() && app.config.model_writes.on {
         let at = whatwg.as_deref().unwrap_or(&path);
         if app.config.model_writes.answers(req.method(), at) {
+            native = Some(routes::Native::Models);
+        }
+    }
+    // Track R11 (S9b): with NOEVIA_RUST_MODEL_MANAGER=rust every method under /api/model-manager/
+    // but the exact scan GET is the models routes' too (model_manager_routes.rs, which relays the
+    // sweep start to Node itself); unset, they stay Node's.
+    if app.config.model_manager.on {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if app.config.model_manager.answers(req.method(), at) {
             native = Some(routes::Native::Models);
         }
     }

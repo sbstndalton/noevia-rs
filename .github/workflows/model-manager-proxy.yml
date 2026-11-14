@@ -1,0 +1,36 @@
+name: Recorded model-manager proxy
+on:
+  push:
+    branches: [main]
+    paths: ['crates/model-manager-proxy/**', '.github/workflows/model-manager-proxy.yml']
+  pull_request:
+    paths: ['crates/model-manager-proxy/**', '.github/workflows/model-manager-proxy.yml']
+permissions:
+  contents: read
+jobs:
+  model-manager-proxy-recording:
+    name: Model-manager proxy recorded from core reproduces
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read the recording's core pin
+        id: oracle
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < crates/model-manager-proxy/tests/oracle-core.ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.oracle.outputs.sha }}
+          path: oracle-core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      # No dav-parse.wasm: none of the files the recorder runs loads it.
+      - name: The core's own model-manager proxy reproduces the committed recording
+        # Synthetic QA requests, scans, catalogues, roles and model-manager answers through server/routes/models.cjs
+        # createModelRoutes with stubs of the outside world; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/model-manager-proxy/tests/record_model_manager_proxy.cjs --check crates/model-manager-proxy/tests/fixtures/node-model-manager-proxy.v1.json

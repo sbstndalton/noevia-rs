@@ -527,11 +527,11 @@ pub enum Applied {
     Uncovered,
 }
 
-const UNLOAD_FIRST: &str = "Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.";
-const RELOAD_UNCERTAIN: &str = "Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.";
-const RELOAD_STUCK: &str = "Reload failed or timed out, and the previous preset file could not be restored: models.ini still holds the new settings. Check router and Model Loader health before retrying.";
-const RELOAD_UNCONFIRMED: &str = "Reload failed or timed out, and restoring the previous preset file could not be confirmed. Stop inference and inspect native presets before retrying.";
-const RELOAD_RESTORED: &str = "Reload failed or timed out. Previous preset file restored; check router health before retrying.";
+pub(super) const UNLOAD_FIRST: &str = "Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.";
+pub(super) const RELOAD_UNCERTAIN: &str = "Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.";
+pub(super) const RELOAD_STUCK: &str = "Reload failed or timed out, and the previous preset file could not be restored: models.ini still holds the new settings. Check router and Model Loader health before retrying.";
+pub(super) const RELOAD_UNCONFIRMED: &str = "Reload failed or timed out, and restoring the previous preset file could not be confirmed. Stop inference and inspect native presets before retrying.";
+pub(super) const RELOAD_RESTORED: &str = "Reload failed or timed out. Previous preset file restored; check router health before retrying.";
 
 impl Maint {
     /// `applyUnlocked({ model, baseRevision, options }, { backup })`, under the caller's hold: the

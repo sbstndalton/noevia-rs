@@ -8,6 +8,7 @@
 //!   (request with reasoning effort and thinking cap, stream, fallback, tool rounds), the close and the
 //!   title; [`host`] is what it asks of the process that runs it;
 //! - [`gate`]: one tool call through the per-call permission gate; [`skills`]: the instruction skills' checks;
+//!   [`taint`]: the provenance policy's store and write check (#769);
 //! - [`after`]: what a turn keeps when it ends (the interrupted reply, the partial);
 //! - [`round`], [`sse`], [`cap`], [`effort`]: a model round's stream, its lines, the thinking cap, the
 //!   request's reasoning effort;
@@ -42,6 +43,7 @@ pub mod sink;
 pub mod skills;
 pub mod sources;
 pub mod sse;
+pub mod taint;
 pub mod title;
 
 pub use event::{Event, Phase, TimeToFirstToken};

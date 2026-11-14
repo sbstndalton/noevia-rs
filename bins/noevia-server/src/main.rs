@@ -114,6 +114,48 @@ fn ensure_secrets_key_cli(data_dir: Option<OsString>, err: &mut impl Write) -> E
     }
 }
 
+/// `--ensure-schema`: core's start-up steps on `UI_DATA_DIR/cowork.db` (boot-schema), with core's two
+/// first-run lines when a setup code is made, then the store's own guards (reader and writer) on the
+/// result.
+fn ensure_schema_cli(get: impl Fn(&str) -> Option<String>, err: &mut impl Write) -> ExitCode {
+    use rand_core::{OsRng, RngCore};
+    let Some(dir) = get("UI_DATA_DIR")
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+    else {
+        let _ = writeln!(err, "noevia-server: UI_DATA_DIR is not set");
+        return ExitCode::FAILURE;
+    };
+    let ctx = boot_schema::Context::from_lookup(&get);
+    match boot_schema::ensure(&dir, &ctx, &mut |buf| OsRng.fill_bytes(buf)) {
+        Ok(booted) => {
+            if let Some(code) = booted.setup_code {
+                let _ = writeln!(err, "FIRST-RUN SETUP CODE: {}", code.as_str());
+                let _ = writeln!(
+                    err,
+                    "Setup code file: {} (deleted after setup)",
+                    dir.join("first-run-setup-code").display()
+                );
+            }
+        }
+        Err(e) => {
+            let _ = writeln!(err, "noevia-server: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
+    // The store's own guards judge the result, the reader's and the writer's (as bootstrap.rs does).
+    let opened = server_store::Store::open(&dir).and_then(|_| {
+        server_store::Writer::open(&dir, server_store::RustAuth::owned()).map(|_| ())
+    });
+    match opened {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            let _ = writeln!(err, "noevia-server: cowork.db: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// sbstndalton/noevia#2582: one invitation from the operator's shell (server_account::operator).
 /// Command line only; stdout carries the token and nothing else.
 fn operator_invitation_cli(
@@ -202,6 +244,11 @@ fn main() -> ExitCode {
     // removal release calls it from the web supervisor). Before the runtime and any listener.
     if command.as_deref() == Some(OsStr::new("--ensure-secrets-key")) {
         return ensure_secrets_key_cli(std::env::var_os("UI_DATA_DIR"), &mut io::stderr().lock());
+    }
+    // Track R12: core's boot of cowork.db (crates/boot-schema), for the start-up once Node no longer runs
+    // first (the removal release calls it from the web supervisor). Before the runtime and any listener.
+    if command.as_deref() == Some(OsStr::new("--ensure-schema")) {
+        return ensure_schema_cli(|k| std::env::var(k).ok(), &mut io::stderr().lock());
     }
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -468,6 +515,25 @@ async fn server_main() -> ExitCode {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ensure_schema_makes_a_database_the_store_opens() {
+        let d = tempfile::tempdir().unwrap();
+        let data = d.path().join("ui-data");
+        let env = |k: &str| (k == "UI_DATA_DIR").then(|| data.display().to_string());
+        let mut err = Vec::new();
+        assert_eq!(ensure_schema_cli(env, &mut err), ExitCode::SUCCESS);
+        let said = String::from_utf8(err).unwrap();
+        assert!(said.starts_with("FIRST-RUN SETUP CODE: "), "{said}");
+        assert!(data.join("first-run-setup-code").exists());
+        let mut err = Vec::new();
+        assert_eq!(ensure_schema_cli(env, &mut err), ExitCode::SUCCESS);
+        assert!(err.is_empty());
+        assert_eq!(
+            ensure_schema_cli(|_| None, &mut Vec::new()),
+            ExitCode::FAILURE
+        );
+    }
 
     #[test]
     fn ensure_secrets_key_makes_one_key_and_keeps_it() {

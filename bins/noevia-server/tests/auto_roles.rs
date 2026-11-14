@@ -236,8 +236,9 @@ async fn an_unusable_snapshot_reads_as_an_engine_that_cannot_be_reached() {
         call(addr, "GET", "/api/auto-roles", COOKIE_A).await.text,
         silent
     );
-    // The first request after a start waits for Node (two seconds): the clock is read after it.
-    let now = noevia_server::identity::now_ms();
+    // noevia#2586: each snapshot below is dated from the clock read just before it is written; a
+    // single reading taken here left a loaded runner one second before "29 s old" turned stale.
+    let now = noevia_server::identity::now_ms;
     // The same models, published, are missing.
     let state = r#""catalogue":[{"name":"other","missingFile":false}],"machineRoles":[],"machineModels":[{"model":"m","machine":{"id":"i","name":"n"},"roles":["fast"]}]"#;
     let loud = r#"{"configured":true,"roles":{"fast":"anything","smart":"anything"},"missing":[{"role":"fast","model":"anything"},{"role":"smart","model":"anything"}],"machineModels":[{"model":"m","machine":{"id":"i","name":"n"},"roles":["fast"]}]}"#;
@@ -247,21 +248,22 @@ async fn an_unusable_snapshot_reads_as_an_engine_that_cannot_be_reached() {
         loud
     );
     // Older than two intervals (30 s here), from the future, of another kind or version, or damaged: silent again.
-    publish(dir.path(), state, now - 29_000, 15_000);
+    publish(dir.path(), state, now() - 25_000, 15_000);
     assert_eq!(
         call(addr, "GET", "/api/auto-roles", COOKIE_A).await.text,
         loud
     );
-    publish(dir.path(), state, now - 40_000, 15_000);
+    publish(dir.path(), state, now() - 40_000, 15_000);
     assert_eq!(
         call(addr, "GET", "/api/auto-roles", COOKIE_A).await.text,
         silent
     );
-    publish(dir.path(), state, now + 60_000, 15_000);
+    publish(dir.path(), state, now() + 60_000, 15_000);
     assert_eq!(
         call(addr, "GET", "/api/auto-roles", COOKIE_A).await.text,
         silent
     );
+    let now = now();
     for text in [
         format!(r#"{{"version":1,"kind":"rag-status","writtenAt":{now},"everyMs":15000,{state}}}"#),
         format!(r#"{{"version":3,"kind":"auto-roles","writtenAt":{now},"everyMs":15000,{state}}}"#),
@@ -385,14 +387,15 @@ async fn a_signed_in_read_asks_node_to_publish_and_waits_for_it_only_after_idle(
         .permissions()
         .mode();
     assert_eq!(mode & 0o777, 0o600);
-    // The marker is live and Node is not publishing: answered at once.
+    // The marker is live and Node is not publishing: answered without the two-second wait
+    // (noevia#2586: the bound is the wait itself, not one second a loaded runner can exceed).
     let started = std::time::Instant::now();
     assert_eq!(
         call(addr, "GET", "/api/auto-roles", COOKIE_A).await.text,
         silent
     );
     assert!(
-        started.elapsed() < Duration::from_millis(1000),
+        started.elapsed() < Duration::from_millis(1900),
         "{:?}",
         started.elapsed()
     );
