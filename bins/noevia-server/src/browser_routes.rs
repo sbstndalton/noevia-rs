@@ -37,6 +37,12 @@ pub const ENGINE: &str = "NOEVIA_BROWSER_ENGINE";
 const UNAVAILABLE: &str = "Browser tasks are unavailable right now. Try again shortly.";
 /// core `readJson`'s limit.
 const BODY_LIMIT: usize = 1024 * 1024;
+/// How long a body may take to arrive: Node's default `server.requestTimeout` (300 s), after which
+/// core's request ends unanswered; here the read fails (the route's 500).
+const BODY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(300);
+// Both processes read the engine: core's Browser mode facts need `NOEVIA_BROWSER_ENGINE` in core's
+// environment too (a mismatch refuses safely: front without it 404 "not enabled", core without it
+// 503 for every start).
 
 /// The deployment's Browser configuration.
 #[derive(Debug, Clone, Default)]
@@ -132,7 +138,9 @@ fn failed() -> Response<Body> {
 /// The body as core's `readJson` reads it, parsed only when the route reads it.
 fn parsed(read: &Result<server_account::Body, ()>) -> ReadBody {
     match read {
-        Err(()) => ReadBody::Invalid,
+        // A body that could not be read (the client went, or BODY_DEADLINE): core's readJson rejects
+        // with a plain error, the route's 500.
+        Err(()) => ReadBody::Failed(Fail::plain(None, "the request body could not be read")),
         Ok(r) if r.over => ReadBody::Failed(Fail::public(413, "Request exceeds size limit")),
         Ok(r) if r.bytes.is_empty() => ReadBody::Json(JValue::Obj(Vec::new())),
         Ok(r) => match wtf16::parse(&String::from_utf8_lossy(&r.bytes)) {
@@ -153,7 +161,25 @@ pub async fn serve(
 ) -> Response<Body> {
     let admin = authn.user.role == server_auth::Role::Admin;
     let user = authn.user.id.as_str().to_owned();
-    let enabled = match task_routes::browser_flag(app, &user, admin).await {
+    let Some(target) = browser::parse(&path) else {
+        return failed();
+    };
+    // A cancel of a task this front is running needs no word from core (sbstndalton/noevia#2698): it
+    // started with Browser mode on and owned here, and it must stay stoppable while core is away.
+    // Whose task it is is checked by the service, as for every action.
+    let live_cancel = admin
+        && method == "POST"
+        && target.action.as_deref() == Some("cancel")
+        && target
+            .task
+            .as_deref()
+            .is_some_and(|t| service(app).has_live(t));
+    let facts = if live_cancel {
+        Some(Facts::Front)
+    } else {
+        task_routes::browser_flag(app, &user, admin).await
+    };
+    let enabled = match facts {
         None => return task_routes::unreachable(),
         Some(Facts::Off) => false,
         Some(Facts::Member | Facts::Front) => true,
@@ -162,9 +188,6 @@ pub async fn serve(
         Some(Facts::Admin(_)) => {
             return reply::error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE, true)
         }
-    };
-    let Some(target) = browser::parse(&path) else {
-        return failed();
     };
     // The project, looked up before anything blocks (core's `getProject` after the flag and the role).
     let project = if enabled && admin {
@@ -183,7 +206,12 @@ pub async fn serve(
     } else {
         None
     };
-    let read = crate::account_routes::read_body(body, BODY_LIMIT).await;
+    let read = tokio::time::timeout(
+        BODY_DEADLINE,
+        crate::account_routes::read_body(body, BODY_LIMIT),
+    )
+    .await
+    .unwrap_or(Err(()));
     let Ok(dir) = server_projects::store::user_dir(&data_dir, &user) else {
         return failed();
     };

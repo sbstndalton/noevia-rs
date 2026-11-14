@@ -387,3 +387,54 @@ fn a_card_cannot_be_answered_after_the_cancel() {
     assert!(declined || cancelled, "{answer:?}");
     r.until(&t, "cancelled");
 }
+
+/// sbstndalton/noevia#2698: at most QUEUE_CAP actions wait behind a running one (each waiter holds a
+/// thread here); the next is refused and runs nothing; a finish is still taken; a cancel answers all.
+#[test]
+fn a_full_queue_refuses_more_actions_but_takes_a_finish() {
+    use browser_task::service::QUEUE_CAP;
+    let r = rig(Duration::from_millis(300));
+    let t = r.start();
+    r.knobs.hang_click.store(true, Ordering::SeqCst);
+    let click = obj(r#"{"type":"click","selector":".more"}"#);
+    let spawn = |r: &Rig| {
+        let (service, base, task, click) =
+            (r.service.clone(), r.base.clone(), t.clone(), click.clone());
+        std::thread::spawn(move || service.act(&base, PROJECT, &task, &click))
+    };
+    let first = spawn(&r);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !r.knobs.clicking.load(Ordering::SeqCst) {
+        assert!(Instant::now() < deadline, "the click never started");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let extra = 3;
+    let waiting: Vec<_> = (0..QUEUE_CAP + extra).map(|_| spawn(&r)).collect();
+    // The refused ones answer at once; the queued ones wait for the cancel.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while waiting.iter().filter(|h| h.is_finished()).count() < extra {
+        assert!(Instant::now() < deadline, "no action was refused");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(waiting.iter().filter(|h| h.is_finished()).count(), extra);
+    assert!(r
+        .service
+        .finish(&r.base, PROJECT, &t, &JValue::Null)
+        .is_ok());
+    r.service.cancel(&r.base, PROJECT, &t).unwrap();
+    let mut refused = 0;
+    for h in waiting {
+        match h.join().unwrap() {
+            Err(f) if f.message.starts_with("Too many actions") => {
+                assert_eq!(f.status, Some(409));
+                refused += 1;
+            }
+            Err(f) => assert!(matches!(f.status, Some(409 | 499)), "{f:?}"),
+            Ok(v) => panic!("a queued action ran after the cancel: {v:?}"),
+        }
+    }
+    assert_eq!(refused, extra);
+    assert!(first.join().unwrap().is_err());
+    r.until(&t, "cancelled");
+}
