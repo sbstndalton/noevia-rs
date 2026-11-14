@@ -511,16 +511,16 @@ async function addTurn(name, input) {
   delete process.env.NOEVIA_CONTRACT_FIXED_NOW;
 
   // ── Differences ─────────────────────────────────────────────────────────────────────────
-  // The port reads an asset only by a plain file name; Node reads path.join(assetDir, id) for any text id.
+  // An asset is read only by a plain file name, in Node (#2595) as in the port: a read through any other id is a
+  // recording error, not a difference.
   const lone = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
   const plain = (id) => typeof id === 'string' && id !== '' && id !== '.' && id !== '..' && !/[/\\\u0000]/.test(id) && !lone.test(id);
-  const differences = turns.filter((t) => {
+  for (const t of turns) {
     const assets = t.spec.project && Array.isArray(t.spec.project.assets) ? t.spec.project.assets : [];
-    return assets.some((a) => a && typeof a === 'object' && typeof a.id === 'string' && !plain(a.id));
-  }).map((t) => ({ kind: 'asset_path', name: t.name,
-    // What Node read through such an id (a read by a plain id is the port's too).
-    nodeRead: t.reads.filter(([p, ok]) => ok && !t.spec.project.assets.some((a) => a && plain(a.id) && p === `assets/${a.id}`)).map(([p]) => p),
-    about: 'An asset id that is not a plain file name is a missing image here, without a read; Node reads path.join(assetDir, id).' }))
+    const other = t.reads.filter(([p]) => !assets.some((a) => a && plain(a.id) && p === `assets/${a.id}`));
+    if (other.length) throw new Error(`${t.name}: Node read ${JSON.stringify(other)} through an id that is not a plain file name`);
+  }
+  const differences = []
     // The describe-failed line of a body that is not JSON carries V8's JSON.parse message in Node.
     .concat(turns.filter((t) => t.calls.some((c) => c[0] === 'fetch') && typeof t.spec.describe?.raw === 'string'
         && t.spec.describe.raw.replace(/[ \t\n\r]/g, '') !== '' && (() => { try { JSON.parse(t.spec.describe.raw); return false; } catch { return true; } })())

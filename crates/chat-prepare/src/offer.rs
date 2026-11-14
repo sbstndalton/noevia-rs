@@ -163,12 +163,10 @@ pub fn request_toolboxes(t: &ToolTurn<'_>, added: &[String]) -> Vec<String> {
             }
         }
     }
-    // Known Node behaviour, kept for parity (chat.cjs:536): only the FIRST "diary" is removed, so a
-    // project list naming the Diary twice keeps the second one without the add-on. Being filed.
+    // chat.cjs: without the Diary add-on every "diary" entry goes, however often a stored project
+    // list names it (noevia#2585; before that core removed only the first).
     if !t.diary_enabled {
-        if let Some(k) = selected.iter().position(|s| s == "diary") {
-            selected.remove(k);
-        }
+        selected.retain(|id| id != "diary");
     }
     selected.retain(|id| !t.oauth_ids.contains(id) || (t.account_ready)(id));
     selected
