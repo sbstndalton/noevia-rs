@@ -2887,7 +2887,8 @@
      }
     ]
    },
-   "coreOnly": true
+   "coreOnly": true,
+   "lone": true
   },
   {
    "projectId": "qa-proj-r13",

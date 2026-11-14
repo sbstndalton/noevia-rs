@@ -231,7 +231,7 @@ const { executeToolCall } = req('toolboxes.cjs').createToolboxes({ documentSourc
     // A lone surrogate in the text: core's server sends it as an escape the front's MCP client refuses.
     const lone = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(text);
     inapp.push({ projectId: pid, name, args, status: out.status, result: result ?? null,
-      ...(coreOnly || threw || lone ? { coreOnly: true } : {}), ...(target && typeof target.content !== 'string' ? { contentless: true } : {}) });
+      ...(coreOnly || threw || lone ? { coreOnly: true } : {}), ...(lone ? { lone: true } : {}), ...(target && typeof target.content !== 'string' ? { contentless: true } : {}) });
   }
   fs.rmSync(dataDir, { recursive: true, force: true });
   // The account directory as the port rebuilds it: every text file and stored result, by relative path.

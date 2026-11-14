@@ -181,8 +181,11 @@ pub fn inapp_answer(
     arguments: &JValue,
     active: impl FnOnce(&str) -> bool,
 ) -> Option<JValue> {
+    // core's verifyToken refuses a token over 4 096 characters (a 401): a long id is core's.
     if !matches!(name, "project_list_files" | "project_read_file")
         || uid.is_empty()
+        || uid.len() > 200
+        || pid.is_some_and(|p| p.len() > 2048)
         || !inapp_body_fits(name, arguments)
         || !active(uid)
     {
@@ -397,6 +400,29 @@ mod tests {
             ),
             None
         );
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn inapp_guards_leave_large_calls_to_core() {
+        let small = js_json::wtf16::parse(r#"{"name":"QA-notes.md"}"#).unwrap();
+        assert!(inapp_body_fits("project_read_file", &small));
+        let big = JValue::obj([("pad", JValue::Str("x".repeat(256 * 1024)))]);
+        assert!(!inapp_body_fits("project_read_file", &big));
+        let data = data_dir("guards");
+        let long_pid = "p".repeat(2049);
+        let list = |pid: &str| {
+            inapp_answer(
+                &data,
+                USER,
+                Some(pid),
+                "project_list_files",
+                &JValue::Null,
+                yes,
+            )
+        };
+        assert_eq!(list(&long_pid), None);
+        assert!(list("qa-proj").is_some());
         let _ = std::fs::remove_dir_all(&data);
     }
 

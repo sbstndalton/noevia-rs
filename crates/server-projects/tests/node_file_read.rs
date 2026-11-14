@@ -119,7 +119,16 @@ fn inapp_project_reads_match_cores_server() {
             ]))
             .unwrap_or_default()
         };
-        match inapp_result(&dir, project, name, call.get("args")) {
+        let answer = inapp_result(&dir, project, name, call.get("args"));
+        // core's answer holds a lone surrogate, which the front's MCP client refuses: never answered here.
+        if call.get("lone").truthy() && answer.is_some() {
+            fails.push(format!(
+                "{}: answered, but core's result holds a lone surrogate",
+                shown()
+            ));
+            continue;
+        }
+        match answer {
             Some(got) => {
                 native += 1;
                 let (want, got) = (wtf16::stringify(call.get("result")), wtf16::stringify(&got));
@@ -149,5 +158,9 @@ fn inapp_project_reads_match_cores_server() {
     assert!(
         native > 30,
         "most in-app calls are answered natively ({native})"
+    );
+    assert!(
+        calls.iter().any(|c| c.get("lone").truthy()),
+        "the recording has a lone-surrogate case"
     );
 }

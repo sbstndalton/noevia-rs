@@ -495,7 +495,10 @@ pub fn inapp_result(
         }),
         _ => false,
     };
-    (!lone).then_some(result)
+    // The front's MCP client takes at most 8 MiB of reply (mcp_egress.rs MCP_CAP): a larger answer of
+    // core's ends there as an error, so it is core's (an "Available: ..." list of a huge project).
+    let fits = wtf16::stringify(&result).is_some_and(|r| r.len() < 8 * 1024 * 1024 - 1024);
+    (!lone && fits).then_some(result)
 }
 
 /// Whether a string anywhere in `v` holds a character of U+10F800..=U+10FFFF.
@@ -605,6 +608,45 @@ fn list_files(dir: &Path, project: &JValue) -> Option<String> {
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inapp_reads_decline_plane_16_arguments_and_lone_surrogate_results() {
+        assert!(reserved_in(&JValue::Str("QA-\u{10FFFD}.md".into())));
+        assert!(reserved_in(&JValue::obj([(
+            "name",
+            JValue::Arr(vec![JValue::Str("\u{10F800}".into())])
+        )])));
+        assert!(reserved_in(&JValue::obj([("\u{10F801}", JValue::Null)])));
+        assert!(!reserved_in(&JValue::obj([(
+            "name",
+            JValue::Str("QA-\u{1F600}.md".into())
+        )])));
+        let dir = std::env::temp_dir().join(format!("qa-file-read-lone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // An inline text whose 8 000-unit cut halves an emoji: core's result holds a lone surrogate.
+        let text = format!("{}\u{1F600}", "x".repeat(7999));
+        let project = JValue::obj([
+            ("id", JValue::Str("qa-p".into())),
+            (
+                "files",
+                JValue::Arr(vec![JValue::obj([
+                    ("name", JValue::Str("QA-cut.md".into())),
+                    ("content", JValue::Str(text)),
+                ])]),
+            ),
+        ]);
+        let args = JValue::obj([("name", JValue::Str("QA-cut.md".into()))]);
+        assert_eq!(
+            inapp_result(&dir, Some(&project), "project_read_file", &args),
+            None
+        );
+        let plane = JValue::obj([("name", JValue::Str("QA-\u{10FFFD}.md".into()))]);
+        assert_eq!(
+            inapp_result(&dir, Some(&project), "project_read_file", &plane),
+            None
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A text file core would read through a symlink (or a too-large one) is core's to answer; a
     /// missing one reads as '' here as in core.
