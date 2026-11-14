@@ -2437,6 +2437,7 @@ dependencies = [
  "llamacpp-presets",
  "long-profile",
  "mcp-frame",
+ "mcp-internal",
  "mcp-servers",
  "model-stream",
  "model-writes",

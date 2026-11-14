@@ -805,6 +805,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_in_app_call_token_is_one_the_rust_in_app_server_verifies_with_cores_claims() {
+        let key = b"qa-internal-key-0123456789abcdef";
+        let now = 1_700_000_000_000_i64;
+        // (execute drops the target of a read before minting.)
+        let read = mint_call_token(key, Some("qa-user"), Some("qa-project"), false, None, now, "qa-jti");
+        // The same bytes as the Rust port of core's mintToken (no cid, no discovery, 30 s).
+        let same = mcp_internal::mint(
+            key,
+            &mcp_internal::Mint {
+                uid: Some("qa-user"),
+                pid: Some("qa-project"),
+                ..mcp_internal::Mint::default()
+            },
+            "qa-jti",
+            now as f64,
+        );
+        assert_eq!(read, same);
+        let claims = mcp_internal::verify(key, &read, now as f64).unwrap();
+        assert_eq!(claims.get("w").as_num(), Some(0.0));
+        assert_eq!(claims.get("pid").as_str(), Some("qa-project"));
+        // A write's target reaches the in-app server's tool.
+        let write = mint_call_token(key, Some("qa-user"), None, true, Some("t1"), now, "qa-jti-2");
+        let claims = mcp_internal::verify(key, &write, now as f64).unwrap();
+        assert_eq!((claims.get("w").as_num(), claims.get("t").as_str()), (Some(1.0), Some("t1")));
+        assert_eq!(
+            mcp_internal::verify(key, &write, (now + 30_000) as f64),
+            Err(mcp_internal::Refused::Expired)
+        );
+    }
+
+    #[test]
     fn a_request_is_read_strictly() {
         let body = js_json::parse(r#"{"server":"s","name":"t","user":"u","workspaceUser":null,"arguments":{"q":1},"write":true,"nextcloud":{"Authorization":"Basic x"}}"#).unwrap();
         let r = Request::from_json(&body).unwrap();
