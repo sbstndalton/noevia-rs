@@ -195,7 +195,10 @@ mod tests {
                 }
             }
         }
-        assert!(seen >= 9, "only {seen} reads found: the scan no longer matches the code");
+        assert!(
+            seen >= 9,
+            "only {seen} reads found: the scan no longer matches the code"
+        );
     }
 
     #[test]

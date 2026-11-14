@@ -146,7 +146,14 @@ mod tests {
 
     #[test]
     fn off_unless_exactly_one() {
-        for value in [None, Some(""), Some("0"), Some("true"), Some("yes"), Some(" 1")] {
+        for value in [
+            None,
+            Some(""),
+            Some("0"),
+            Some("true"),
+            Some("yes"),
+            Some(" 1"),
+        ] {
             let env = match value {
                 None => Env::default(),
                 Some(v) => Env::from_pairs([(SWITCH, v)]),
@@ -160,7 +167,11 @@ mod tests {
     fn on_needs_the_capability_line() {
         let env = Env::from_pairs([(SWITCH, "1")]);
         let err = plan(&env, "/bin/front", &features("rust-auth"), Path::new("/d")).unwrap_err();
-        assert!(err.0.contains("does not advertise boot-ensure-v1"), "{}", err.0);
+        assert!(
+            err.0.contains("does not advertise boot-ensure-v1"),
+            "{}",
+            err.0
+        );
         // A whole line only, as every capability.
         let err = plan(
             &env,

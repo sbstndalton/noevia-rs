@@ -177,7 +177,9 @@ pub fn prepare(
         "node" => return Err(Refusal("web-supervisor: NOEVIA_FRONT=node is no longer supported: the Rust front owns sign-in and routes Node no longer has (sbstndalton/noevia#1071); set NOEVIA_FRONT=rust".to_owned())),
         other => return Err(Refusal(format!("web-supervisor: NOEVIA_FRONT must be rust, got '{other}'"))),
     }
-    let bin = env.get_or("NOEVIA_SERVER_BIN", DEFAULT_SERVER_BIN).to_owned();
+    let bin = env
+        .get_or("NOEVIA_SERVER_BIN", DEFAULT_SERVER_BIN)
+        .to_owned();
     if !executable(Path::new(&bin)) {
         return Err(Refusal("web-supervisor: NOEVIA_FRONT=rust but this image has no noevia-server (its NOEVIA_RS_REF predates bins/noevia-server); update the image".to_owned()));
     }
@@ -218,7 +220,11 @@ pub fn describe(launch: &plan::Launch) -> String {
         out.push('\n');
     }
     for step in &launch.ensure {
-        out.push_str(&format!("ensure {} {}\n", step.program, step.args.join(" ")));
+        out.push_str(&format!(
+            "ensure {} {}\n",
+            step.program,
+            step.args.join(" ")
+        ));
     }
     out
 }

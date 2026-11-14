@@ -337,7 +337,9 @@ fn the_children_keep_the_pair_lock_after_the_supervisor_is_killed() {
     let pid = nix::unistd::Pid::from_raw(i32::try_from(child.id()).unwrap_or_default());
     nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL)
         .unwrap_or_else(|e| unreachable!("{e}"));
-    let _ = child.wait_with_output();
+    // wait(), not wait_with_output(): the orphans keep the supervisor's pipes open until they exit.
+    let mut child = child;
+    let _ = child.wait();
     let lock = w.path().join("server/ui-data/embedding-pair.lock");
     let try_lock = || {
         let file = fs::OpenOptions::new()

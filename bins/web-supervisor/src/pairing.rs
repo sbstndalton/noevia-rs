@@ -1090,10 +1090,16 @@ mod tests {
 
     #[test]
     fn a_probe_the_script_bounded_still_reads_invalid_when_cut() {
-        let core = timed_out("rust-source-startup.cjs", Some("server/rust-source-startup.cjs"));
+        let core = timed_out(
+            "rust-source-startup.cjs",
+            Some("server/rust-source-startup.cjs"),
+        );
         assert!(refusal(&core, &features("rust-source-startup-v1"))
             .contains("source startup ownership mismatch"));
-        let core = timed_out("rust-dav-listener.cjs", Some("server/rust-dav-listener.cjs"));
+        let core = timed_out(
+            "rust-dav-listener.cjs",
+            Some("server/rust-dav-listener.cjs"),
+        );
         assert!(refusal(&core, &features("rust-dav-listener-v1"))
             .contains("DAV listener ownership mismatch"));
     }
