@@ -1,0 +1,288 @@
+{
+ "source": {
+  "agent/app.py": "8f8389f75bd7c0972cdb99880cdf7f0333bc478743106b272af41c30be0d56a4",
+  "agent/external_sources.py": "e1b8e730004e3bed84cee3928552bd64ccec0d39205a66868320e352f9dea1d7",
+  "agent/corpus_store.py": "0ff708bd3e0382e25f64d73cc53dc49e42172ef745d61b910f11a0bc1d008082",
+  "agent/corpus.py": "b95b9fc5e6fd9758cfffa8c88f5f9d5cad042a258f193f20c6edfe4928bff2bb"
+ },
+ "python": "3.12.15",
+ "uid": "5a0c3e2f-9d1b-4c7a-8e6f-0b1c2d3e4f50",
+ "token": "qa-service-token-import",
+ "files": {
+  "2026-01-05 garden.md": {
+   "hex": "53796e7468657469632051412067617264656e206e6f7465733a206265616e73206279207468652063616e616c2e0a",
+   "size": 47,
+   "fill": null,
+   "mtime": 1767441600
+  },
+  "notes/2026_01_04-kites.txt": {
+   "hex": "466c657720612073796e746865746963205141206b6974652e0a",
+   "size": 26,
+   "fill": null,
+   "mtime": 1767441600
+  },
+  "undated walk.md": {
+   "hex": "412073796e7468657469632051412077616c6b2c20646174652066726f6d207468652066696c652074696d652e0a",
+   "size": 46,
+   "fill": null,
+   "mtime": 1767441600
+  },
+  "2026-02-30 not a date.md": {
+   "hex": "53796e7468657469632051413a20746865206e616d6527732064617465206973206e6f742061207265616c206461792e0a",
+   "size": 49,
+   "fill": null,
+   "mtime": 1767441600
+  },
+  "empty.md": {
+   "hex": "2020200a",
+   "size": 4,
+   "fill": null,
+   "mtime": 1767441600
+  },
+  "latin1.md": {
+   "hex": "53796e74686574696320514120636166e9",
+   "size": 17,
+   "fill": null,
+   "mtime": 1767441600
+  },
+  "picture.png": {
+   "hex": "89504e472073796e746865746963",
+   "size": 14,
+   "fill": null,
+   "mtime": 1767441600
+  },
+  "big.md": {
+   "hex": null,
+   "size": 2097153,
+   "fill": "Q",
+   "mtime": 1767441600
+  }
+ },
+ "corpus_before": {
+  "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n"
+ },
+ "cases": [
+  {
+   "case": "dated-name",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "2026-01-05 garden.md"
+   },
+   "status": 200,
+   "json": {
+    "imported": true,
+    "xid": "XID-1",
+    "day": "2026-01-05",
+    "date_source": "filename"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n"
+   }
+  },
+  {
+   "case": "nested-underscore-date",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "notes/2026_01_04-kites.txt"
+   },
+   "status": 200,
+   "json": {
+    "imported": true,
+    "xid": "XID-2",
+    "day": "2026-01-03",
+    "date_source": "mtime"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n"
+   }
+  },
+  {
+   "case": "mtime-date",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "undated walk.md"
+   },
+   "status": 200,
+   "json": {
+    "imported": true,
+    "xid": "XID-3",
+    "day": "2026-01-03",
+    "date_source": "mtime"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n"
+   }
+  },
+  {
+   "case": "impossible-name-date",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "2026-02-30 not a date.md"
+   },
+   "status": 200,
+   "json": {
+    "imported": true,
+    "xid": "XID-4",
+    "day": "2026-01-03",
+    "date_source": "mtime"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n"
+   }
+  },
+  {
+   "case": "again",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "2026-01-05 garden.md"
+   },
+   "status": 200,
+   "json": {
+    "imported": true,
+    "xid": "XID-5",
+    "day": "2026-01-05",
+    "date_source": "filename"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-5 -->\n"
+   }
+  },
+  {
+   "case": "not-configured",
+   "request": {
+    "source_path": "SCRATCH",
+    "rel_path": "qa-source/undated walk.md"
+   },
+   "status": 400,
+   "json": {
+    "detail": "source path is not configured"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-5 -->\n"
+   }
+  },
+  {
+   "case": "traversal",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "../config.yaml"
+   },
+   "status": 404,
+   "json": {
+    "detail": "file not found in source"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-5 -->\n"
+   }
+  },
+  {
+   "case": "absolute",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "SCRATCH/qa-source/undated walk.md"
+   },
+   "status": 404,
+   "json": {
+    "detail": "file not found in source"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-5 -->\n"
+   }
+  },
+  {
+   "case": "missing",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "nope.md"
+   },
+   "status": 404,
+   "json": {
+    "detail": "file not found in source"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-5 -->\n"
+   }
+  },
+  {
+   "case": "wrong-extension",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "picture.png"
+   },
+   "status": 404,
+   "json": {
+    "detail": "file not found in source"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-5 -->\n"
+   }
+  },
+  {
+   "case": "empty",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "empty.md"
+   },
+   "status": 400,
+   "json": {
+    "detail": "file is empty"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-5 -->\n"
+   }
+  },
+  {
+   "case": "not-utf8",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "latin1.md"
+   },
+   "status": 400,
+   "json": {
+    "detail": "file unreadable (not UTF-8 text or not accessible)"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-5 -->\n"
+   }
+  },
+  {
+   "case": "too-big",
+   "request": {
+    "source_path": "SCRATCH/qa-source",
+    "rel_path": "big.md"
+   },
+   "status": 413,
+   "json": {
+    "detail": "Source file exceeds 2 MiB"
+   },
+   "corpus": {
+    "Entries/2026/January/January 2, 2026.md": "## Friday, January 2, 2026\n\n### 08:30 — Garden\n\n**Me:** Synthetic QA plan: plant beans.\n",
+    "Entries/2026/January/January 3, 2026.md": "## Saturday, January 3, 2026\n\n### 12:00 — Imported: 2026_01_04-kites.txt\n\n**Me:** Flew a synthetic QA kite.\n\n**Assistant:** \n\n<!-- xid:XID-2 -->\n\n### 12:00 — Imported: undated walk.md\n\n**Me:** A synthetic QA walk, date from the file time.\n\n**Assistant:** \n\n<!-- xid:XID-3 -->\n\n### 12:00 — Imported: 2026-02-30 not a date.md\n\n**Me:** Synthetic QA: the name's date is not a real day.\n\n**Assistant:** \n\n<!-- xid:XID-4 -->\n",
+    "Entries/2026/January/January 5, 2026.md": "## Monday, January 5, 2026\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-1 -->\n\n### 12:00 — Imported: 2026-01-05 garden.md\n\n**Me:** Synthetic QA garden notes: beans by the canal.\n\n**Assistant:** \n\n<!-- xid:XID-5 -->\n"
+   }
+  }
+ ]
+}

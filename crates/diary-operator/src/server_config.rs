@@ -81,6 +81,72 @@ const SETTING_KEYS: &[&str] = &[
 
 /// llm.DEFAULT_MAX_REASONING_TOKENS.
 const DEFAULT_MAX_REASONING_TOKENS: i64 = 4096;
+/// llm.DEFAULT_MAX_ANSWER_TOKENS.
+const DEFAULT_MAX_ANSWER_TOKENS: i64 = 1024;
+
+/// What the native exchange (shift 4, step 6) reads of the configuration, as the child's
+/// AppState and ContextAssembler read it.
+#[derive(Debug, Clone)]
+pub struct ExchangeSettings {
+    /// `{"context": cfg.get("context") or {}, "retrieval": cfg.get("retrieval") or {}}`: the
+    /// subtrees the assembler reads (rust_answer.py sends the same for /internal/answer; a
+    /// tenant's copy differs only in `retrieval.db_path`, which the assembler does not read).
+    pub cfg: Json,
+    /// app.answer_token_cap.
+    pub max_answer_tokens: i64,
+    pub timeout_s: f64,
+    pub max_retries: i64,
+    /// app.reasoning_token_allowance.
+    pub reasoning_tokens: i64,
+}
+
+/// [`ExchangeSettings`] from the loaded configuration.
+pub fn exchange_settings(data: &Value) -> Result<ExchangeSettings> {
+    let section = |key: &str| -> Result<Json> {
+        match get(data, key).filter(Value::truthy) {
+            Some(v) => to_json(&v),
+            None => Ok(Json::Object(Map::new())),
+        }
+    };
+    let timeout_s = py_float(&get(data, "llm.timeout_s").unwrap_or_else(|| int(300)))?;
+    if !timeout_s.is_finite() {
+        return Err("a non-finite float cannot be used here".into());
+    }
+    let max_retries =
+        py_int(&get(data, "llm.max_retries").unwrap_or_else(|| int(3)))?.ok_or_else(too_large)?;
+    Ok(ExchangeSettings {
+        cfg: json!({"context": section("context")?, "retrieval": section("retrieval")?}),
+        max_answer_tokens: answer_token_cap(get(data, "llm.max_answer_tokens"))?,
+        timeout_s,
+        max_retries,
+        reasoning_tokens: reasoning_tokens(get(data, "llm.max_reasoning_tokens"))?,
+    })
+}
+
+/// The pipeline's templates: `yaml.safe_load` of `config/prompts/logging.md` (app.py), a mapping.
+pub fn logging_templates(config_dir: &std::path::Path) -> Result<Map<String, Json>> {
+    let path = config_dir.join("prompts").join("logging.md");
+    let bytes = std::fs::read(&path).map_err(|e| crate::restore::io(e, &path))?;
+    match to_json(&crate::yaml::load(&bytes)?)? {
+        Json::Object(map) => Ok(map),
+        _ => Err("the logging templates are not a mapping".into()),
+    }
+}
+
+/// app.answer_token_cap: int(str(raw).strip()), the default unless that is a positive number.
+fn answer_token_cap(raw: Option<Value>) -> Result<i64> {
+    let literal = match raw.map(|v| v.kind()) {
+        None => Literal::Value(DEFAULT_MAX_ANSWER_TOKENS),
+        Some(Kind::Int(s)) => int_literal(&s),
+        Some(Kind::Str(s)) => int_literal(strip(&s)),
+        Some(_) => Literal::Invalid,
+    };
+    match literal {
+        Literal::Value(v) if v > 0 => Ok(v),
+        Literal::TooLarge => Err(too_large()),
+        _ => Ok(DEFAULT_MAX_ANSWER_TOKENS),
+    }
+}
 /// workspace_export_native.BINARY.
 const EXPORT_BINARY: &str = "/usr/local/bin/diary-workspace-export";
 

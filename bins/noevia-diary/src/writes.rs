@@ -899,6 +899,104 @@ pub fn edit(c: &Ctx<'_>, req: &EditReq) -> Reply {
     )
 }
 
+// ------------------------------------------------------------------ POST /api/external-sources/import
+
+/// The ImportRequest model (pydantic: two `str` fields; other keys are ignored). None: FastAPI's
+/// 422, or a value this side does not read as pydantic does: the child's.
+pub struct ImportReq {
+    source_path: String,
+    rel_path: String,
+}
+
+pub fn import_model(body: &Map<String, Value>) -> Option<ImportReq> {
+    match (body.get("source_path"), body.get("rel_path")) {
+        (Some(Value::String(s)), Some(Value::String(r))) => Some(ImportReq {
+            source_path: s.clone(),
+            rel_path: r.clone(),
+        }),
+        _ => None,
+    }
+}
+
+/// The largest source file Python reads (2 MiB).
+const IMPORT_MAX: usize = 2 * 1024 * 1024;
+const IMPORT_UNREADABLE: &str = "file unreadable (not UTF-8 text or not accessible)";
+
+#[derive(Serialize)]
+struct Imported<'a> {
+    imported: bool,
+    xid: &'a str,
+    day: String,
+    date_source: &'a str,
+}
+
+/// `api_external_sources_import` after `_tenant_state` (the caller holds the writer slot and has
+/// recovered the tenant): the reply, and the document written (for `_reindex_today`). The file
+/// is only read. A target `resolve_import_target` cannot settle (Python's 500) or a name that is
+/// not UTF-8 is the child's (declined).
+pub fn external_import(
+    c: &Ctx<'_>,
+    req: &ImportReq,
+    configured: &[String],
+) -> (Reply, Option<String>) {
+    let detail = |status: u16, text: &str| json_reply(status, &json!({ "detail": text }));
+    if !configured.iter().any(|p| p == &req.source_path) {
+        return (detail(400, "source path is not configured"), None);
+    }
+    let target = match diary_core::external_sources::resolve_import_target(
+        &req.source_path,
+        &req.rel_path,
+    ) {
+        Ok(Some(t)) => t,
+        Ok(None) => return (detail(404, "file not found in source"), None),
+        Err(_) => return (Reply::Decline, None),
+    };
+    let mut raw = Vec::new();
+    let read = std::fs::File::open(&target).and_then(|f| {
+        use std::io::Read;
+        f.take(IMPORT_MAX as u64 + 1).read_to_end(&mut raw)
+    });
+    if read.is_err() {
+        return (detail(400, IMPORT_UNREADABLE), None);
+    }
+    if raw.len() > IMPORT_MAX {
+        return (detail(413, "Source file exceeds 2 MiB"), None);
+    }
+    let Ok(text) = String::from_utf8(raw) else {
+        return (detail(400, IMPORT_UNREADABLE), None);
+    };
+    if py::strip(&text).is_empty() {
+        return (detail(400, "file is empty"), None);
+    }
+    let (file_date, method) = diary_core::external_sources::infer_date(&target);
+    let day = file_date.unwrap_or_else(|| chrono::Local::now().date_naive());
+    let Some(name) = target.file_name().and_then(|n| n.to_str()) else {
+        return (Reply::Decline, None);
+    };
+    // Python saves at noon of the current time (`datetime.now().replace(hour=12, ...)`).
+    let noon = chrono::NaiveTime::from_hms_opt(12, 0, 0).unwrap_or_default();
+    let topic = format!("Imported: {name}");
+    match crate::answer_store::log_exchange(c, day, noon, &topic, &text, "") {
+        Ok(xid) => {
+            let reply = json_reply(
+                200,
+                &Imported {
+                    imported: true,
+                    xid: &xid,
+                    day: day.format("%Y-%m-%d").to_string(),
+                    date_source: if file_date.is_some() { method } else { "today" },
+                },
+            );
+            (reply, Some(corpus::document_path(c.layout, day)))
+        }
+        // Any exception of log_exchange (a pending row included): 502, no re-index.
+        Err(_) => (
+            detail(502, "import failed; check the Diary service log"),
+            None,
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

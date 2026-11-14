@@ -9,6 +9,7 @@ pub mod backup;
 pub mod config;
 pub mod corpus;
 pub mod embedding_owner;
+pub mod exchange;
 pub mod front;
 pub mod health;
 pub mod lease;

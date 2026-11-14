@@ -101,6 +101,11 @@ pub struct App {
     /// save re-indexes with (S6b), following the owned configuration live as Python's retrievers
     /// follow SharedEmbedding. Unset: native saves leave their documents dirty for Python.
     pub save_embedder: std::sync::OnceLock<Arc<diary_answer::embedder::HttpEmbedder>>,
+    /// Shift 4, step 6 (DIARY_RUST_EXCHANGE=on, main mode): this process's reading of what the
+    /// exchange needs of the configuration. Unset: every exchange is the child's.
+    pub exchange: std::sync::OnceLock<Arc<crate::exchange::Setup>>,
+    /// The exchange sessions this process holds (Python `SESSIONS`).
+    pub sessions: Arc<crate::exchange::Sessions>,
 }
 
 impl App {
@@ -132,6 +137,8 @@ impl App {
             external_sources: cfg.external_sources,
             write_wait: None,
             save_embedder: std::sync::OnceLock::new(),
+            exchange: std::sync::OnceLock::new(),
+            sessions: Arc::default(),
         }
     }
 }
@@ -240,6 +247,9 @@ pub enum Route {
     Directory,
     Append,
     Edit,
+    /// Shift 4: POST /api/external-sources/import (a writer tenant's import of one external file,
+    /// main mode: Python as the parent never forwards it).
+    ExternalImport,
 }
 
 impl Route {
@@ -259,7 +269,7 @@ impl Route {
     pub fn write(self) -> bool {
         matches!(
             self,
-            Route::PutFile | Route::Directory | Route::Append | Route::Edit
+            Route::PutFile | Route::Directory | Route::Append | Route::Edit | Route::ExternalImport
         )
     }
 }
@@ -278,7 +288,23 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("POST", "/api/directory") => Some(Route::Directory),
         ("POST", "/api/entries/append") => Some(Route::Append),
         ("POST", "/api/entries/edit") => Some(Route::Edit),
+        ("POST", "/api/external-sources/import") => Some(Route::ExternalImport),
         _ => None,
+    }
+}
+
+/// The `X-Cowork-Storage` header `_tenant_state` accepts without its own answer: absent, or a
+/// descriptor within the size limit that parses as Python reads it and that `_storage_credential`
+/// does not refuse.
+pub(crate) fn storage_header_ok(app: &App, headers: &HeaderMap, header_uid: &str) -> bool {
+    let storage = header(headers, "x-cowork-storage");
+    if storage.len() > MAX_STORAGE_HEADER_LEN {
+        return false;
+    }
+    match strict_descriptor(&storage) {
+        Ok(None) => true,
+        Ok(Some(d)) => descriptor_ok(app, header_uid, &d),
+        Err(()) => false,
     }
 }
 
@@ -398,12 +424,18 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::PutFile
         | Route::Directory
         | Route::Append
-        | Route::Edit => {
+        | Route::Edit
+        | Route::ExternalImport => {
             if r.write() && header_uid.is_empty() {
                 // The legacy (header-less) tenant's writes stay with Python.
                 return Plan::Decline;
             }
-            if matches!(r, Route::Append | Route::Edit) && app.corpus_write_impl != "rust" {
+            if r == Route::ExternalImport && app.external_sources.is_none() {
+                return Plan::Decline;
+            }
+            if matches!(r, Route::Append | Route::Edit | Route::ExternalImport)
+                && app.corpus_write_impl != "rust"
+            {
                 return Plan::Decline;
             }
             if r == Route::WorkspaceExport && export_settings(app, &Settings::new()).is_none() {
@@ -843,7 +875,7 @@ async fn serve(
             let task = tokio::task::spawn_blocking(move || serve_corpus(&app2, r, &query, &tenant));
             task.await.unwrap_or_else(|_| internal_error())
         }
-        Route::PutFile | Route::Directory | Route::Append | Route::Edit => {
+        Route::PutFile | Route::Directory | Route::Append | Route::Edit | Route::ExternalImport => {
             serve_write(app, r, &header_uid, asserted, &headers, tenant, write).await
         }
     }
@@ -885,6 +917,7 @@ fn json_body(headers: &HeaderMap, bytes: &[u8]) -> Option<serde_json::Map<String
 struct WriteBody {
     json: serde_json::Map<String, Value>,
     edit: Option<writes::EditReq>,
+    import: Option<writes::ImportReq>,
 }
 
 fn write_body(r: Route, headers: &HeaderMap, body: &[u8]) -> Option<WriteBody> {
@@ -894,7 +927,13 @@ fn write_body(r: Route, headers: &HeaderMap, body: &[u8]) -> Option<WriteBody> {
     } else {
         None
     };
-    Some(WriteBody { json, edit })
+    // ImportRequest, validated by FastAPI before the handler (422: Python's).
+    let import = if matches!(r, Route::ExternalImport) {
+        Some(writes::import_model(&json)?)
+    } else {
+        None
+    };
+    Some(WriteBody { json, edit, import })
 }
 
 /// The D5 write routes, in app.py's order: FastAPI reads the body first (422 → decline, in
@@ -909,7 +948,7 @@ async fn serve_write(
     tenant: Option<Tenant>,
     write: Option<WriteBody>,
 ) -> Response<Body> {
-    let Some(WriteBody { json, edit }) = write else {
+    let Some(WriteBody { json, edit, import }) = write else {
         return decline();
     };
     enum Op {
@@ -917,6 +956,7 @@ async fn serve_write(
         Dir,
         Append(writes::AppendReq),
         Edit(writes::EditReq),
+        Import(writes::ImportReq),
     }
     let op = match r {
         Route::PutFile => Op::File,
@@ -924,6 +964,10 @@ async fn serve_write(
         Route::Append => match writes::append_validate(&json) {
             Ok(req) => Op::Append(req),
             Err(resp) => return reply(resp),
+        },
+        Route::ExternalImport => match import {
+            Some(req) => Op::Import(req),
+            None => return decline(),
         },
         Route::Edit => {
             let Some(req) = edit else {
@@ -991,6 +1035,12 @@ async fn serve_write(
                     Op::Dir => writes::directory_create(&ctx, &json),
                     Op::Append(req) => writes::append(&ctx, req),
                     Op::Edit(req) => writes::edit(&ctx, req),
+                    Op::Import(req) => {
+                        let configured = app2.external_sources.as_deref().unwrap_or_default();
+                        let (reply, document) = writes::external_import(&ctx, req, configured);
+                        appended = document;
+                        reply
+                    }
                 };
                 if let (Op::Append(_), Reply::Json(200, body)) = (&op, &saved) {
                     appended = serde_json::from_slice::<Value>(body)
@@ -1064,6 +1114,7 @@ async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Bod
     let lease = crate::lease::lease_of(headers);
     match tokio::task::spawn_blocking(move || {
         app2.writers.fence_as(&uid, lease);
+        app2.sessions.forget_tenant(&uid);
         // A tenant created again under this id is recovered again (and swept) by this process.
         app2.recovered
             .lock()
@@ -1144,49 +1195,56 @@ fn resolve_tenant(
         return Err(Box::new(internal_error()));
     };
     if let Some(d) = tenant.descriptor.as_ref() {
-        let remote = matches!(
-            d.get("kind").and_then(Value::as_str),
-            Some("nextcloud" | "webdav" | "s3")
-        );
-        if remote && d.contains_key("secretRef") {
-            let ok_ref = match d.get("secretRef") {
-                Some(Value::String(r)) => {
-                    r.is_empty()
-                        || (r.len() == 32
-                            && r.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
-                }
-                _ => false,
-            };
-            if !ok_ref {
-                return Err(Box::new(detail(400, "invalid storage descriptor")));
-            }
-            let reference = d.get("secretRef").and_then(Value::as_str).unwrap_or("");
-            let secret = d.get("secret").cloned().unwrap_or(Value::Null);
-            let secret_truthy = match &secret {
-                Value::Null => false,
-                Value::Bool(b) => *b,
-                Value::Number(n) => n.as_f64() != Some(0.0),
-                Value::String(s) => !s.is_empty(),
-                Value::Array(a) => !a.is_empty(),
-                Value::Object(o) => !o.is_empty(),
-            };
-            if secret_truthy && !app.tenant_key.is_empty() {
-                let matches = match &secret {
-                    Value::String(s) => tenant_assertion::secret_ref_matches(
-                        &app.tenant_key,
-                        &header_uid.to_ascii_lowercase(),
-                        s,
-                        reference,
-                    ),
-                    _ => false,
-                };
-                if !matches {
-                    return Err(Box::new(detail(400, "invalid storage descriptor")));
-                }
-            }
+        if !descriptor_ok(app, header_uid, d) {
+            return Err(Box::new(detail(400, "invalid storage descriptor")));
         }
     }
     Ok(tenant)
+}
+
+/// `_storage_credential`'s refusals of a descriptor (400 "invalid storage descriptor"): a remote
+/// descriptor's `secretRef` not a string of 32 lowercase hex digits (or empty), or, with a tenant
+/// key, a truthy `secret` that does not match it.
+fn descriptor_ok(app: &App, header_uid: &str, d: &serde_json::Map<String, Value>) -> bool {
+    let remote = matches!(
+        d.get("kind").and_then(Value::as_str),
+        Some("nextcloud" | "webdav" | "s3")
+    );
+    if !(remote && d.contains_key("secretRef")) {
+        return true;
+    }
+    let ok_ref = match d.get("secretRef") {
+        Some(Value::String(r)) => {
+            r.is_empty()
+                || (r.len() == 32 && r.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+        }
+        _ => false,
+    };
+    if !ok_ref {
+        return false;
+    }
+    let reference = d.get("secretRef").and_then(Value::as_str).unwrap_or("");
+    let secret = d.get("secret").cloned().unwrap_or(Value::Null);
+    let secret_truthy = match &secret {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64() != Some(0.0),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
+    };
+    if secret_truthy && !app.tenant_key.is_empty() {
+        return match &secret {
+            Value::String(s) => tenant_assertion::secret_ref_matches(
+                &app.tenant_key,
+                &header_uid.to_ascii_lowercase(),
+                s,
+                reference,
+            ),
+            _ => false,
+        };
+    }
+    true
 }
 
 /// Python `api_external_sources` after `_tenant_state` (which only resolves the tenant): each
