@@ -20,7 +20,7 @@
 //! Nothing calls it yet (inert). The recorded oracle is `tests/record-node-seal.cjs`, which runs
 //! core's own `createWorkspaceStore` against scripted stores; `tests/replay.rs` replays it.
 //!
-//! Differences from core, on purpose (sbstndalton/noevia issues filed for the Node side):
+//! Differences from core, on purpose (both Node sides are sbstndalton/noevia#2814):
 //! - without a sealer core still "changes" every plaintext row (to itself) and writes the file on
 //!   every request; [`plan`] needs a sealer and writes nothing without one ([`Plan::NoSealer`]);
 //! - text nested deeper than js-json follows (128 levels) or holding a character of the lone
@@ -88,7 +88,8 @@ fn is_object_like(v: &JValue) -> bool {
 /// - top level array or primitive, or a falsy `providers`: `false` (no rows);
 /// - `providers` that is not an array (an object, a non-empty string, `true`, a number): `false`
 ///   (the iteration or the first row's assignment throws);
-/// - any row that is `null` or a primitive: `false` (the load throws there);
+/// - any row that is `null` or a primitive: `false` (the load throws there and every private row
+///   is dropped: sbstndalton/noevia#2814 item 1, to be fixed here and in core together);
 /// - else: whether any row's `apiKey` is a plaintext key.
 pub fn needs_key_seal(text: Option<&str>) -> bool {
     let Some(text) = text else {

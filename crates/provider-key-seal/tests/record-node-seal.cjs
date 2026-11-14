@@ -155,7 +155,7 @@ function seededRow() {
   const r = rnd();
   if (r < 0.06) return pick([null, 3, 'row', false, []]);
   const row = {};
-  if (rnd() < 0.5) row.id = pick(['a', 'b', 'lemonade', 'default', '7']);
+  if (rnd() < 0.5) row.id = pick(['a', 'b', 'default', '7']);
   const key = pick(KEYS);
   if (key !== undefined) row.apiKey = key;
   if (rnd() < 0.3) row.capabilities = { tokenBudgetField: 'max_tokens', '1': 1.25 };

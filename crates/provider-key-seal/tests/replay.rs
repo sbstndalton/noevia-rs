@@ -192,7 +192,7 @@ fn replays_cores_recorded_migration() {
         let node_writes: Vec<String> = strings(c.get("writes")).into_iter().flatten().collect();
 
         // The known difference: without secrets core rewrites the file on every migration with
-        // no key changed (noevia issue filed); the crate writes nothing.
+        // no key changed (sbstndalton/noevia#2814 item 2); the crate writes nothing.
         if sealer.is_none() {
             let mut gate = Gate::new();
             let first = migrate(&mut gate, &store, None, 0);
