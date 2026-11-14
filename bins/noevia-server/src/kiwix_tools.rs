@@ -135,28 +135,34 @@ pub async fn internal_op(app: Option<Arc<App>>, raw: &[u8]) -> Response<Body> {
     else {
         return error(503, "unavailable");
     };
+    answer(&base, raw).await
+}
+
+/// One tool call against `base`: the store route's status and JSON text.
+pub async fn run(base: &kiwix_tools::Base, raw: &[u8]) -> (u16, String) {
     // The arguments are the model's text: read losslessly (a lone surrogate is kept).
     let body = match wtf16::parse(&String::from_utf8_lossy(raw)) {
         Ok(b @ JValue::Obj(_)) => b,
-        _ => return error(400, "invalid JSON"),
+        _ => return (400, error_text("invalid JSON")),
     };
     let name = match body.get("name") {
         JValue::Str(n) if !n.is_empty() && n.len() <= 256 => n.clone(),
-        _ => return error(400, "invalid name"),
+        _ => return (400, error_text("invalid name")),
     };
     let cap = match body.get("cap") {
         JValue::Num(n) if n.fract() == 0.0 && (1.0..=1_048_576.0).contains(n) => *n as usize,
         JValue::Undefined => kiwix_tools::DEFAULT_CAP,
-        _ => return error(400, "invalid cap"),
+        _ => return (400, error_text("invalid cap")),
     };
     let args = body.get("arguments").clone();
     let Ok(client) = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
     else {
-        return error(503, "unavailable");
+        return (503, error_text("unavailable"));
     };
     let rt = tokio::runtime::Handle::current();
+    let base = base.clone();
     let run = tokio::task::spawn_blocking(move || {
         let root = base.origin().to_string();
         let mut get = |url: &str| -> Result<String, String> {
@@ -185,10 +191,15 @@ pub async fn internal_op(app: Option<Arc<App>>, raw: &[u8]) -> Response<Body> {
     match run {
         Ok(text) => {
             let v = JValue::obj([("text", text.map_or(JValue::Null, JValue::Str))]);
-            reply(200, wtf16::stringify(&v).unwrap_or_default())
+            (200, wtf16::stringify(&v).unwrap_or_default())
         }
-        Err(_) => error(503, "unavailable"),
+        Err(_) => (503, error_text("unavailable")),
     }
+}
+
+async fn answer(base: &kiwix_tools::Base, raw: &[u8]) -> Response<Body> {
+    let (status, text) = run(base, raw).await;
+    reply(status, text)
 }
 
 #[cfg(test)]
@@ -251,5 +262,122 @@ mod tests {
         assert!(!s(None).tools);
         assert!(!s(Some("true")).tools);
         assert!(s(Some("1")).tools);
+    }
+
+    /// A synthetic kiwix-serve on 127.0.0.1: QA pages, every request path recorded.
+    async fn qa_kiwix() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut c, _)) = listener.accept().await {
+                let log = log.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 4096];
+                    let n = c.read(&mut buf).await.unwrap_or(0);
+                    let head = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let path = head.split(' ').nth(1).unwrap_or("").to_string();
+                    log.lock().unwrap().push(path.clone());
+                    let (status, body) = if path.starts_with("/search?") {
+                        ("200 OK", "<rss><item><title>QA cell</title><link>/content/qa/A/QA_cell</link><description>A QA cell.</description></item></rss>".to_string())
+                    } else if path == "/content/qa/A/QA_cell" {
+                        ("200 OK", "<html><h1>QA cell</h1><p>The QA cell stores synthetic energy.</p></html>".to_string())
+                    } else if path == "/content/qa/A/Moved" {
+                        ("302 Found", String::new())
+                    } else {
+                        ("404 Not Found", String::new())
+                    };
+                    let extra = if status.starts_with("302") {
+                        "location: /content/qa/A/QA_cell\r\n"
+                    } else {
+                        ""
+                    };
+                    let out = format!("HTTP/1.1 {status}\r\n{extra}content-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+                    let _ = c.write_all(out.as_bytes()).await;
+                });
+            }
+        });
+        (format!("http://{addr}"), seen)
+    }
+
+    fn text(answer: &(u16, String)) -> String {
+        assert_eq!(answer.0, 200, "{}", answer.1);
+        js_json::parse(&answer.1)
+            .unwrap()
+            .get("text")
+            .as_str()
+            .unwrap_or("")
+            .to_string()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_route_runs_the_tools_against_kiwix() {
+        let (url, seen) = qa_kiwix().await;
+        let base = kiwix_tools::base(&url).unwrap();
+        let search = text(
+            &run(
+                &base,
+                br#"{"name":"wikipedia_search","arguments":{"query":"QA cell"}}"#,
+            )
+            .await,
+        );
+        assert!(
+            search.contains("QA cell") && search.contains("path: /content/qa/A/QA_cell"),
+            "{search}"
+        );
+        let read = text(&run(&base, br#"{"name":"wikipedia_read","arguments":{"path":"/content/qa/A/QA_cell"},"cap":300}"#).await);
+        assert!(
+            read.contains("The QA cell stores synthetic energy."),
+            "{read}"
+        );
+        // A redirect is a failure, as core's `redirect: 'error'`; a 404 names its status.
+        assert_eq!(
+            text(
+                &run(
+                    &base,
+                    br#"{"name":"wikipedia_read","arguments":{"path":"/content/qa/A/Moved"}}"#
+                )
+                .await
+            ),
+            "ERROR: fetch failed"
+        );
+        assert_eq!(
+            text(
+                &run(
+                    &base,
+                    br#"{"name":"wikipedia_read","arguments":{"path":"/content/qa/A/Missing"}}"#
+                )
+                .await
+            ),
+            "ERROR: offline Wikipedia answered 404"
+        );
+        // The named difference: an encoded `..` that would leave /content/ is never sent.
+        let before = seen.lock().unwrap().len();
+        assert_eq!(
+            text(
+                &run(
+                    &base,
+                    br#"{"name":"wikipedia_read","arguments":{"path":"/content/%2e%2e/catalog"}}"#
+                )
+                .await
+            ),
+            "ERROR: use a path returned by wikipedia_search"
+        );
+        assert_eq!(seen.lock().unwrap().len(), before);
+        // Not one of the tools: `null`, as core's `undefined`.
+        assert_eq!(
+            run(&base, br#"{"name":"wikipedia_other","arguments":{}}"#).await,
+            (200, r#"{"text":null}"#.to_string())
+        );
+        for bad in [
+            &br#"[]"#[..],
+            br#"{"arguments":{}}"#,
+            br#"{"name":"wikipedia_search","cap":0}"#,
+            b"{",
+        ] {
+            assert_eq!(run(&base, bad).await.0, 400);
+        }
     }
 }
