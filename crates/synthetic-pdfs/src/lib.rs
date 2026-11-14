@@ -376,15 +376,21 @@ pub fn build(pages: &[Page], encrypt: Option<Encrypt<'_>>) -> Result<Objects> {
 /// The header both writers start with: version line, then a binary comment.
 pub const PDF_HEADER: &[u8] = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n";
 
-fn xref_and_trailer(offsets: &BTreeMap<u32, usize>, size: u32, trailer: &[u8], xref: usize) -> Result<Vec<u8>> {
+/// The xref table and trailer. `trailer` is the extra trailer entries: `serialise` always puts
+/// them between two spaces (so an empty one leaves `R  >>`), the ballast writer has none at all
+/// (`R >>`), exactly as the reference's two writers differ.
+fn xref_and_trailer(offsets: &BTreeMap<u32, usize>, size: u32, trailer: Option<&[u8]>, xref: usize) -> Result<Vec<u8>> {
     let mut out = format!("xref\n0 {size}\n0000000000 65535 f \n").into_bytes();
     for key in 1..size {
         let offset = offsets.get(&key).ok_or(Error::MissingObject(key))?;
         out.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
     }
     out.extend_from_slice(format!("trailer\n<< /Size {size} /Root 1 0 R ").as_bytes());
-    out.extend_from_slice(trailer);
-    out.extend_from_slice(format!(" >>\nstartxref\n{xref}\n%%EOF\n").as_bytes());
+    if let Some(trailer) = trailer {
+        out.extend_from_slice(trailer);
+        out.push(b' ');
+    }
+    out.extend_from_slice(format!(">>\nstartxref\n{xref}\n%%EOF\n").as_bytes());
     Ok(out)
 }
 
@@ -410,7 +416,7 @@ pub fn serialise(objects: &Objects, trailer: &[u8], padding: usize) -> Result<Ve
     }
     let xref = out.len();
     let size = objects.keys().next_back().map_or(1, |m| m + 1);
-    out.extend_from_slice(&xref_and_trailer(&offsets, size, trailer, xref)?);
+    out.extend_from_slice(&xref_and_trailer(&offsets, size, Some(trailer), xref)?);
     Ok(out)
 }
 
@@ -570,7 +576,7 @@ pub fn write_ballast_pdf(path: &Path, ballast_bytes: usize, chunk: usize) -> Res
     }
     written += put(&mut out, b"\nendstream\nendobj\n")?;
     let xref = written;
-    written += put(&mut out, &xref_and_trailer(&offsets, ballast + 1, b"", xref)?)?;
+    written += put(&mut out, &xref_and_trailer(&offsets, ballast + 1, None, xref)?)?;
     out.flush()?;
     Ok(written as u64)
 }
