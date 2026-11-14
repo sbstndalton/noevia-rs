@@ -1,0 +1,74 @@
+{
+  "folder": {
+    "label": "Folder",
+    "path": "M3 5h7l2 3h9v12H3z"
+  },
+  "book": {
+    "label": "Book",
+    "path": "M4 3h15v18H4zM4 17h15M8 3v14"
+  },
+  "study": {
+    "label": "Study",
+    "path": "m2 9 10-6 10 6-10 6zM6 12v6l6 3 6-3v-6"
+  },
+  "pencil": {
+    "label": "Pencil",
+    "path": "m4 15 12-12 5 5-12 12-6 1zM13 6l5 5"
+  },
+  "code": {
+    "label": "Code",
+    "path": "m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"
+  },
+  "terminal": {
+    "label": "Terminal",
+    "path": "M3 4h18v16H3zM6 8l4 4-4 4m7 0h5"
+  },
+  "music": {
+    "label": "Music",
+    "path": "M9 18V5l11-2v13M9 5v4l11-2M9 18a3 3 0 1 1-3-3h3m11 1a3 3 0 1 1-3-3h3"
+  },
+  "heart": {
+    "label": "Heart",
+    "path": "M12 21 3 12C-2 4 8-1 12 6c4-7 14-2 9 6z"
+  },
+  "plant": {
+    "label": "Plant",
+    "path": "M12 21V10M12 15C3 15 3 9 3 9c9 0 9 6 9 6Zm0-4c0-7 8-8 8-8 0 8-8 8-8 8"
+  },
+  "work": {
+    "label": "Work",
+    "path": "M3 7h18v14H3zM8 7V3h8v4M3 12h18M10 12v3h4v-3"
+  },
+  "chart": {
+    "label": "Chart",
+    "path": "M3 21h18M5 17V9h3v8m3 0V3h3v14m3 0v-6h3v6"
+  },
+  "globe": {
+    "label": "Globe",
+    "path": "M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0M2 12h20M12 2c6 5 6 15 0 20-6-5-6-15 0-20"
+  },
+  "plane": {
+    "label": "Travel",
+    "path": "m22 2-7 20-4-9-9-4zM11 13 22 2"
+  },
+  "flask": {
+    "label": "Science",
+    "path": "M9 2h6m-5 0v7L3 20h18L14 9V2M7 14h10"
+  },
+  "coffee": {
+    "label": "Coffee",
+    "path": "M3 8h14v8a6 6 0 0 1-6 6H9a6 6 0 0 1-6-6zM17 9h2a3 3 0 0 1 0 6h-2M6 2v3m4-3v3m4-3v3"
+  },
+  "home": {
+    "label": "Home",
+    "path": "m2 11 10-9 10 9M5 9v12h14V9M9 21v-8h6v8"
+  },
+  "star": {
+    "label": "Star",
+    "path": "m12 2 3 7 7 1-5 5 1 7-6-4-6 4 1-7-5-5 7-1z"
+  },
+  "spark": {
+    "label": "Ideas",
+    "path": "M9 18h6m-5 3h4M8 15a7 7 0 1 1 8 0l-1 3H9z"
+  }
+}

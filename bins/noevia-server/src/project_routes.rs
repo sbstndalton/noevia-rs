@@ -854,6 +854,17 @@ pub async fn serve(
             | Route::SkillManifests { .. }
             | Route::SkillContent { .. }
     ) || (matches!(route, Route::One { .. }) && method == "DELETE");
+    // Track R14 step 4: where the toolbox catalogue comes from (NOEVIA_RUST_PROJECT_CATALOGUE; unset =
+    // core's published file), settled before the blocking work for the routes that read it.
+    let catalogue_source = match &route {
+        Route::CreateProject | Route::ImportConversations => {
+            crate::project_catalogue::Source::waiting(app, std::time::Duration::from_secs(10)).await
+        }
+        Route::SkillManifests { .. } | Route::SkillContent { .. } => {
+            crate::project_catalogue::Source::get(app).await
+        }
+        _ => crate::project_catalogue::Source::File,
+    };
     let done = tokio::task::spawn_blocking(move || {
         if writes {
             regate(&regate_layer, &regate_creds, &path, now, &data_dir, &user)?;
@@ -866,7 +877,7 @@ pub async fn serve(
         };
         let create_env = create_inputs.map(|(app, authn)| {
             (
-                lifecycle::Catalogue::read_waiting(&data_dir, std::time::Duration::from_secs(10)),
+                catalogue_source.read_waiting(&data_dir, std::time::Duration::from_secs(10)),
                 storage_kind(&app, &authn),
                 lifecycle::project_root_folder(),
                 (app, authn),
@@ -989,11 +1000,11 @@ pub async fn serve(
                 server_projects::skill_routes::select(ctx, &project, &b.bytes, b.over)
             }
             (Route::SkillManifests { project }, _) => {
-                let known = lifecycle::Catalogue::read(&data_dir).and_then(|c| c.known);
+                let known = catalogue_source.read(&data_dir).and_then(|c| c.known);
                 server_projects::skill_routes::manifests(ctx, &project, known.as_deref())
             }
             (Route::SkillContent { project, skill }, _) => {
-                let known = lifecycle::Catalogue::read(&data_dir).and_then(|c| c.known);
+                let known = catalogue_source.read(&data_dir).and_then(|c| c.known);
                 server_projects::skill_routes::content(
                     ctx,
                     &project,

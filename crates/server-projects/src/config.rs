@@ -565,6 +565,16 @@ pub fn post(ctx: Ctx<'_>, raw: &str, body: &[u8], over: bool, env: &Env<'_>) -> 
     post_with(ctx, raw, body, over, env, prune_after)
 }
 
+/// Whether [`post`] reads `env.catalogue` for this body: a patch that names `icon` or a defined
+/// `toolboxes` (a body that is not JSON is refused before). Lets a caller whose catalogue is costly to
+/// settle skip it for every other patch.
+pub fn reads_catalogue(body: &[u8]) -> bool {
+    let Ok(patch) = wtf16::parse(&String::from_utf8_lossy(body)) else {
+        return false;
+    };
+    lifecycle::has_own(&patch, "icon") || is_defined(patch.get("toolboxes"))
+}
+
 /// [`post`] with the pass after the save passed in, so a test can make it fail.
 fn post_with(
     ctx: Ctx<'_>,
@@ -794,6 +804,63 @@ mod tests {
         match r.body {
             crate::Body::Json(t) => (r.status, t),
             crate::Body::Bytes { bytes, .. } => (r.status, String::from_utf8(bytes).unwrap()),
+        }
+    }
+
+    /// Track R14 step 4: a body `reads_catalogue` calls catalogue-free gets the same answer and the
+    /// same saved list with no catalogue as with one; the others read it.
+    #[test]
+    fn reads_catalogue_names_every_patch_that_reads_it() {
+        let known = |p: &str| p == "cloud-1";
+        let chat = |m: &str| !m.contains("embed");
+        let free = [
+            r#"{"name":"QA renamed"}"#,
+            r#"{"color":"blue"}"#,
+            r#"{"color":"nope"}"#,
+            r#"{"goal":"g2","pinned":true,"sampling":null}"#,
+            r#"{"reasoningEffort":"high","modes":["chat","code"]}"#,
+            r#"{"provider":"cloud-1","model":"qa-model"}"#,
+            r#"{"Icon":"folder","Toolboxes":["core"]}"#,
+            "{",
+            "null",
+            "[]",
+            "7",
+        ];
+        for body in free {
+            assert!(!reads_catalogue(body.as_bytes()), "{body}");
+            let with = Fixture::new(BASE);
+            let without = Fixture::new(BASE);
+            let c = catalogue();
+            let a = post(
+                with.ctx(),
+                "p1",
+                body.as_bytes(),
+                false,
+                &env(&c, &known, &chat),
+            );
+            let mut none = env(&c, &known, &chat);
+            none.catalogue = None;
+            let b = post(without.ctx(), "p1", body.as_bytes(), false, &none);
+            assert_eq!(a, b, "{body}");
+            assert_eq!(with.raw(), without.raw(), "{body}");
+        }
+        for body in [
+            r#"{"icon":"folder"}"#,
+            r#"{"icon":null}"#,
+            r#"{"toolboxes":["core"]}"#,
+            r#"{"toolboxes":null}"#,
+            r#"{"toolboxes":"core","name":"x"}"#,
+        ] {
+            assert!(reads_catalogue(body.as_bytes()), "{body}");
+            let f = Fixture::new(BASE);
+            let c = catalogue();
+            let mut none = env(&c, &known, &chat);
+            none.catalogue = None;
+            assert_eq!(
+                post(f.ctx(), "p1", body.as_bytes(), false, &none).status,
+                503,
+                "{body}"
+            );
         }
     }
 
