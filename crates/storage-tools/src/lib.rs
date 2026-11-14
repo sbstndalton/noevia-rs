@@ -430,13 +430,14 @@ pub fn run(
     skip: Option<&str>,
 ) -> Result<String, ToolError> {
     let guard = Guard::new(skip, c.kind);
-    // A write never lands in the Diary folder, even when a host forgets `skip`: without one the
-    // connection's own Diary folder guards it.
-    let write_guard = match skip {
-        Some(_) => Guard::new(skip, c.kind),
-        None if c.corpus_root.trim().is_empty() => Guard::Open,
-        None => Guard::new(Some(&c.corpus_root), c.kind),
+    // A write never lands in the Diary folder, even when a host forgets `skip` or passes another
+    // folder: the connection's own Diary folder guards every write as well as `skip`.
+    let own = if c.corpus_root.trim().is_empty() {
+        Guard::Open
+    } else {
+        Guard::new(Some(&c.corpus_root), c.kind)
     };
+    let write_guards = [&guard, &own];
     match call {
         Call::List { path } => {
             if guard.blocks(path) {
@@ -471,13 +472,13 @@ pub fn run(
             content,
             mode,
         } => {
-            write_allowed(c, &write_guard, path)?;
+            write_allowed(c, &write_guards, path)?;
             write(c, t, path, content, *mode)
         }
         // MKCOL's 405 means something exists at the path: a folder, or a FILE (also answered
         // `existed: true`; nothing was changed either way).
         Call::CreateFolder { path } => {
-            write_allowed(c, &write_guard, path)?;
+            write_allowed(c, &write_guards, path)?;
             let folder = writes::create_folder(c, path, t)?;
             answer([
                 ("path", JValue::from(folder.path)),
@@ -485,7 +486,7 @@ pub fn run(
             ])
         }
         Call::DeleteFile { path } => {
-            write_allowed(c, &write_guard, path)?;
+            write_allowed(c, &write_guards, path)?;
             delete(c, t, path)
         }
     }
@@ -495,46 +496,54 @@ fn answer<const N: usize>(pairs: [(&str, JValue); N]) -> Result<String, ToolErro
     Ok(js_json::stringify(&JValue::obj(pairs)).unwrap_or_default())
 }
 
-/// Every write: only on a WebDAV/Nextcloud connection, never inside the skipped folder.
-fn write_allowed(c: &Connection, guard: &Guard, path: &str) -> Result<(), ToolError> {
+/// Every write: only on a WebDAV/Nextcloud connection, never where any of `guards` blocks.
+fn write_allowed(c: &Connection, guards: &[&Guard], path: &str) -> Result<(), ToolError> {
     if !matches!(c.kind, Kind::WebDav | Kind::Nextcloud) {
         return Err(ToolError::new(WRITE_UNSUPPORTED));
     }
-    if guard.blocks(path) {
+    if guards.iter().any(|guard| guard.blocks(path)) {
         return Err(ToolError::new(PRIVATE_REFUSAL));
     }
     Ok(())
 }
 
-/// `storage_delete_file`: only a file with a version to guard the DELETE (`If-Match`); a file
-/// without one could be replaced between the check and the delete.
+/// `storage_delete_file`: only a file with a version to guard the DELETE (`If-Match`, never
+/// repeated); a file without one could be replaced between the check and the delete. On a space
+/// address the engine reads the version once more before its DELETE.
+///
+/// Like replace, this guards only the window from its own version read to the DELETE, not a
+/// stale approval. TODO(host, wiring slice): pass the version shown at approval.
 fn delete(c: &Connection, t: &mut impl Transport, path: &str) -> Result<String, ToolError> {
     let name = shown(path);
     match writes::file_version(c, path, t) {
-        Ok(Version::Missing) => {
-            return answer([
+        Ok(Version::Missing) => answer([
+            ("path", JValue::from(name)),
+            ("deleted", JValue::from(false)),
+        ]),
+        Ok(Version::Present(etag)) if etag.is_empty() => Err(ToolError::new(format!(
+            "\"{name}\" has no version to guard the delete; nothing was deleted."
+        ))),
+        Ok(Version::Present(etag)) => match writes::discard_written(c, path, &etag, t) {
+            (true, _) => answer([
+                ("path", JValue::from(name)),
+                ("deleted", JValue::from(true)),
+            ]),
+            (false, "missing") => answer([
                 ("path", JValue::from(name)),
                 ("deleted", JValue::from(false)),
-            ]);
-        }
-        Ok(Version::Present(etag)) if etag.is_empty() => {
-            return Err(ToolError::new(format!(
-                "\"{name}\" has no version to guard the delete; nothing was deleted."
-            )));
-        }
-        Ok(Version::Present(_)) => {}
-        Err(error) if error.code == Some("folder") => {
-            return Err(ToolError::new(format!(
-                "\"{name}\" is a folder; nothing was deleted."
-            )));
-        }
-        Err(error) => return Err(error.into()),
+            ]),
+            (false, "changed") => Err(ToolError::new(format!(
+                "\"{name}\" changed in storage meanwhile; nothing was deleted."
+            ))),
+            (false, _) => Err(ToolError::new(format!(
+                "\"{name}\" could not be deleted; nothing was deleted."
+            ))),
+        },
+        Err(error) if error.code == Some("folder") => Err(ToolError::new(format!(
+            "\"{name}\" is a folder; nothing was deleted."
+        ))),
+        Err(error) => Err(error.into()),
     }
-    let missing = writes::delete_file(c, path, t)?;
-    answer([
-        ("path", JValue::from(name)),
-        ("deleted", JValue::from(!missing)),
-    ])
 }
 
 /// What a create answers when the server did not confirm the file was new (200/204, not 201).
@@ -545,10 +554,13 @@ pub const CREATE_UNCONFIRMED: &str =
 /// `If-Match` with the version it has now.
 ///
 /// Replace guards only the window between its own PROPFIND and PUT, not a stale approval: a file
-/// changed after the person approved and before this runs is replaced. TODO(host, wiring slice):
-/// pass the version shown at approval and write under that instead (no API change in this slice).
-/// Create relies on the server honouring `If-None-Match`; one that ignores it answers 200/204,
-/// reported as a success with [`CREATE_UNCONFIRMED`] (the bytes were written).
+/// changed after the person approved and before this runs is replaced (delete has the same gap).
+/// TODO(host, wiring slice): pass the version shown at approval to replace and delete, and guard
+/// with that instead (no API change in this slice).
+/// Create: on a space address the engine checks first (Depth 0 PROPFIND; something at the path
+/// answers "already exists", no PUT). Elsewhere it relies on the server honouring `If-None-Match`;
+/// one that ignores it answers 200/204, reported as a success with [`CREATE_UNCONFIRMED`] (the
+/// bytes were written).
 fn write(
     c: &Connection,
     t: &mut impl Transport,

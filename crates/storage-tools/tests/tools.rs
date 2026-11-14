@@ -23,6 +23,8 @@ use zeroize::Zeroizing;
 /// The connection base, with a raw `$` as some servers' space URLs have.
 const BASE: &str = "https://qa-storage.invalid/dav/spaces/qa$1/";
 const HREF_BASE: &str = "/dav/spaces/qa$1/";
+/// A files address that is not a space: the storage client relies on the server for create-only.
+const PLAIN_BASE: &str = "https://qa-storage.invalid/remote.php/dav/files/qa/";
 const USER: &str = "qa-user-fixture";
 const SECRET: &str = "qa-secret-fixture";
 
@@ -131,7 +133,12 @@ impl Fake {
         self.tree.insert(path.to_owned(), None);
         (201, String::new())
     }
-    fn delete(&mut self, path: &str) -> (u16, String) {
+    fn delete(&mut self, path: &str, headers: &[(String, String)]) -> (u16, String) {
+        if let Some(wanted) = header(headers, "If-Match") {
+            if self.tree.contains_key(path) && (self.stale || wanted != self.etag) {
+                return (412, String::new());
+            }
+        }
         match self.tree.get(path) {
             Some(Some(_)) => {
                 self.tree.remove(path);
@@ -196,6 +203,7 @@ impl Transport for Fake {
         let rel = request
             .url
             .strip_prefix(BASE)
+            .or_else(|| request.url.strip_prefix(PLAIN_BASE))
             .ok_or(TransportFailure::Other)?
             .trim_matches('/')
             .to_owned();
@@ -213,7 +221,7 @@ impl Transport for Fake {
             Method::Get => self.file(&rel),
             Method::Put => self.put(&rel, &headers, &request.body),
             Method::Mkcol => self.mkcol(&rel),
-            Method::Delete => self.delete(&rel),
+            Method::Delete => self.delete(&rel, &headers),
         };
         Ok(Response {
             status,
@@ -994,16 +1002,19 @@ fn write_create_sends_if_none_match_and_refuses_an_existing_file() {
     )
     .unwrap();
     assert_eq!(out, r#"{"path":"Notes/qa-new.md","created":true}"#);
-    assert_eq!(methods(&fake), vec![Method::Put]);
+    // A space address: the storage client checks first (Depth 0), then the create-only PUT.
+    assert_eq!(methods(&fake), vec![Method::Propfind, Method::Put]);
+    assert_eq!(header(&fake.headers[0], "Depth"), Some("0"));
     assert_eq!(fake.requests[0].1, "Notes/qa-new.md");
-    assert_eq!(header(&fake.headers[0], "If-None-Match"), Some("*"));
-    assert_eq!(header(&fake.headers[0], "If-Match"), None);
+    assert_eq!(fake.requests[1].1, "Notes/qa-new.md");
+    assert_eq!(header(&fake.headers[1], "If-None-Match"), Some("*"));
+    assert_eq!(header(&fake.headers[1], "If-Match"), None);
     assert_eq!(
         fake.tree.get("Notes/qa-new.md"),
         Some(&Some("hello".to_owned()))
     );
 
-    // A 412: the file exists; nothing is overwritten and the PUT is not repeated.
+    // The file exists: refused at the check, no PUT, nothing overwritten.
     let mut fake = tree();
     let error = write_run(
         &mut fake,
@@ -1016,7 +1027,7 @@ fn write_create_sends_if_none_match_and_refuses_an_existing_file() {
         error,
         "\"Notes/qa-plan.md\" already exists; nothing was overwritten."
     );
-    assert_eq!(methods(&fake), vec![Method::Put]);
+    assert_eq!(methods(&fake), vec![Method::Propfind]);
     assert_eq!(
         fake.tree.get("Notes/qa-plan.md"),
         Some(&Some("# QA plan\n".to_owned()))
@@ -1170,6 +1181,26 @@ fn delete_file_reads_the_version_first_and_refuses_folders() {
     assert_eq!(methods(&fake), vec![Method::Propfind]);
     assert_eq!(fake.tree.get("Notes"), Some(&None));
 
+    // The DELETE's If-Match fails (412): changed meanwhile, nothing deleted, not repeated.
+    let mut fake = tree();
+    fake.stale = true;
+    let error = write_run(
+        &mut fake,
+        DELETE_FILE,
+        r#"{"path":"Notes/qa-list.txt"}"#,
+        Some("Diary"),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        "\"Notes/qa-list.txt\" changed in storage meanwhile; nothing was deleted."
+    );
+    assert_eq!(
+        methods(&fake),
+        vec![Method::Propfind, Method::Propfind, Method::Delete]
+    );
+    assert!(fake.tree.contains_key("Notes/qa-list.txt"));
+
     // No version to guard the DELETE with: refused, no DELETE sent.
     let mut fake = tree();
     fake.etag = String::new();
@@ -1314,19 +1345,47 @@ fn writes_without_skip_are_guarded_by_the_connections_diary_folder() {
 
 #[test]
 fn create_on_a_server_that_ignores_if_none_match_warns() {
+    let over = r#"{"path":"Notes/qa-plan.md","content":"over","mode":"create"}"#;
+    // A space address: the client checks first, so even a server that ignores If-None-Match
+    // never gets the PUT.
     let mut fake = tree();
     fake.ignores_if_none_match = true;
-    let out = write_run(
-        &mut fake,
-        WRITE_FILE,
-        r#"{"path":"Notes/qa-plan.md","content":"over","mode":"create"}"#,
-        Some("Diary"),
-    )
-    .unwrap();
+    let error = write_run(&mut fake, WRITE_FILE, over, Some("Diary")).unwrap_err();
+    assert_eq!(
+        error,
+        "\"Notes/qa-plan.md\" already exists; nothing was overwritten."
+    );
+    assert_eq!(methods(&fake), vec![Method::Propfind]);
+    assert_eq!(
+        fake.tree.get("Notes/qa-plan.md"),
+        Some(&Some("# QA plan\n".to_owned()))
+    );
+
+    // Not a space address: the PUT alone, relying on the server.
+    let mut plain = connection();
+    plain.base_url = PLAIN_BASE.into();
+    let call = parse(WRITE_FILE, over).unwrap();
+
+    // A server that honours If-None-Match answers 412: already exists.
+    let mut fake = tree();
+    let error = run(&call, &plain, &mut fake, Some("Diary")).unwrap_err();
+    assert_eq!(
+        error.message,
+        "\"Notes/qa-plan.md\" already exists; nothing was overwritten."
+    );
+    assert_eq!(methods(&fake), vec![Method::Put]);
+
+    // One that ignores it answers 204: a success with created:false and the warning.
+    let mut fake = tree();
+    fake.ignores_if_none_match = true;
+    let out = run(&call, &plain, &mut fake, Some("Diary")).unwrap();
+    assert_no_leak(&out);
+    assert!(!out.contains("remote.php"), "{out}");
     let value = js_json::parse(&out).unwrap();
     assert_eq!(value.get("path").as_str(), Some("Notes/qa-plan.md"));
     assert_eq!(value.get("created").as_bool(), Some(false));
     assert_eq!(value.get("warning").as_str(), Some(CREATE_UNCONFIRMED));
+    assert_eq!(methods(&fake), vec![Method::Put]);
     assert_eq!(header(&fake.headers[0], "If-None-Match"), Some("*"));
     // A replace answering 204 is the expected answer: no warning.
     let mut fake = tree();
@@ -1363,6 +1422,30 @@ fn a_non_ascii_diary_folder_fails_closed_for_non_ascii_paths() {
     let mut fake = tree();
     let call = parse(CREATE_FOLDER, r#"{"path":"Tagebu\u0308ch/qa"}"#).unwrap();
     let error = run(&call, &c, &mut fake, None).unwrap_err();
+    assert_eq!(error.message, PRIVATE_REFUSAL);
+    assert!(fake.requests.is_empty());
+}
+
+#[test]
+fn a_write_is_guarded_by_the_connections_diary_folder_even_with_another_skip() {
+    for (tool, args) in [
+        (
+            WRITE_FILE,
+            r#"{"path":"Diary/qa.md","content":"x","mode":"create"}"#,
+        ),
+        (CREATE_FOLDER, r#"{"path":"Diary/qa-sub"}"#),
+        (DELETE_FILE, r#"{"path":"Diary/2026-11.md"}"#),
+    ] {
+        let mut fake = tree();
+        let call = parse(tool, args).unwrap();
+        let error = run(&call, &connection(), &mut fake, Some("Other")).unwrap_err();
+        assert_eq!(error.message, PRIVATE_REFUSAL, "{args}");
+        assert!(fake.requests.is_empty());
+    }
+    // `skip` still guards on its own too.
+    let mut fake = tree();
+    let call = parse(CREATE_FOLDER, r#"{"path":"Other/qa-sub"}"#).unwrap();
+    let error = run(&call, &connection(), &mut fake, Some("Other")).unwrap_err();
     assert_eq!(error.message, PRIVATE_REFUSAL);
     assert!(fake.requests.is_empty());
 }

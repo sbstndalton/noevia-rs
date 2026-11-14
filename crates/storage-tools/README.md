@@ -17,8 +17,9 @@ This crate is **inert**: a leaf crate nothing depends on, no binary, no wiring. 
 * the Diary-folder refusal (`private_refusal`, and `run`'s `skip`): fail closed when the Diary
   folder setting normalises to nothing, or when the connection is not WebDAV/Nextcloud (S3 paths
   all sit under the corpus root). The host passes the Diary folder as `skip` for calls bound for
-  an external provider, and for every write whatever the provider; a write without `skip` is
-  guarded by the connection's own Diary folder (`corpus_root`), so no write lands inside it. There
+  an external provider, and for every write whatever the provider; every write is also guarded
+  by the connection's own Diary folder (`corpus_root`), with or without `skip`, so no write lands
+  inside it. There
   are no Unicode normalisation tables here: a Diary folder with a non-ASCII character blocks every
   path with a non-ASCII character (fail closed; ASCII Diary folders keep the plain rule);
 * reads through `server-storage-reads` (`protocol::execute` over any `Transport`; the owned child
@@ -28,17 +29,20 @@ This crate is **inert**: a leaf crate nothing depends on, no binary, no wiring. 
   about 91 s;
 * writes through `server-storage-reads::writes`, WebDAV/Nextcloud only (S3 and local connections
   refuse every write):
-  * create sends `If-None-Match: *`. Not overwriting an existing file relies on the server
-    honouring it (the storage client checks first on a space address, noevia#2751); a server that
-    answers 200/204 instead of 201 gets a success with `created: false` and a `warning` that an
-    existing file may have been replaced;
+  * create sends `If-None-Match: *`. On a space address (`/dav/spaces/`) the storage client checks
+    first (Depth 0 PROPFIND, noevia#2751): something at the path answers "already exists" and no
+    PUT is sent. On other addresses not overwriting relies on the server honouring
+    `If-None-Match`; one that answers 200/204 instead of 201 gets a success with
+    `created: false` and a `warning` that an existing file may have been replaced;
   * replace reads the file's version first (Depth 0 PROPFIND) and writes under `If-Match` with it,
     refusing a missing file, a folder, or a file with no version. It guards only the window
     between its own PROPFIND and PUT, not a stale approval: the wiring slice must pass the version
     shown at approval (TODO for the host; no API change yet);
   * delete reads the version first: a missing file answers `deleted: false`; a folder or a file
     with no version (nothing to guard the DELETE with) is refused; otherwise it deletes under
-    `If-Match`;
+    `If-Match` with that version, never repeated (on a space address the storage client reads the
+    version once more first); a 412 or a moved version answers "changed in storage meanwhile".
+    Like replace it guards only that window, not a stale approval (same host TODO);
   * create folder answers `existed: true` when anything is at the path already, a file included
     (MKCOL 405); nothing is changed then.
 
