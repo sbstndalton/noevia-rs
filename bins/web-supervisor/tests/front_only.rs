@@ -20,6 +20,7 @@ fn work() -> tempfile::TempDir {
     let d = dir.path();
     let body = format!(
         r#"#!/usr/bin/env bash
+if [ -n "${{STUB_LOCK_PROBE:-}}" ]; then if ! command -v flock >/dev/null; then echo "probe noflock" >> "{log}"; elif flock -n "${{UI_DATA_DIR:-}}/embedding-pair.lock" true 2>/dev/null; then echo "probe ${{1:-serve}} lock free" >> "{log}"; else echo "probe ${{1:-serve}} lock held" >> "{log}"; fi; fi
 case "${{1:-}}" in --ensure-*) echo "front ${{1#--}} UI_DATA_DIR=${{UI_DATA_DIR:-}} ONLY=${{NOEVIA_FRONT_ONLY-unset}}" >> "{log}"; [ "${{1:-}}" = "${{STUB_ENSURE_FAIL:-}}" ] && exit 4; exit 0;; esac
 if [ "${{1:-}}" = --features ]; then printf '%s\n' ${{STUB_FEATURES-rust-auth front-only-v1 boot-ensure-v1}}; exit 0; fi
 echo "front serve DATA=${{UI_DATA_DIR:-}} ONLY=${{NOEVIA_FRONT_ONLY-unset}} UPSTREAM=${{NOEVIA_LEGACY_UPSTREAM:-}} SPORT=${{NOEVIA_PROJECT_STORE_PORT:-}} TOK=${{#NOEVIA_PROJECT_STORE_TOKEN}} START=${{#NOEVIA_START_ID}} KCONF=${{NOEVIA_FRONT_CLIENT_IP-unset}} CLAIM=${{NOEVIA_LEGACY_CLAIM_BIN-unset}}" >> "{log}"
@@ -182,6 +183,41 @@ fn without_ui_data_dir_the_front_and_its_preparation_share_the_fallback() {
         "{log}"
     );
     assert!(fallback.join("embedding-pair.lock").exists());
+}
+
+/// A real in-lock probe (p4-4 CONTINUE 6): each preparation step and the front itself try to take
+/// the pair lock from a fresh open of the file and must find it held.
+#[test]
+fn the_preparation_and_the_front_run_under_the_pair_lock() {
+    let w = work();
+    let data = w.path().join("data");
+    // flock(1) creates the file but not the directory: the probe before the lock needs it.
+    fs::create_dir_all(&data).unwrap_or_else(|e| unreachable!("{e}"));
+    let child = supervisor(w.path())
+        .env("UI_DATA_DIR", &data)
+        .env("STUB_LOCK_PROBE", "1")
+        .spawn()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert!(wait_for(w.path(), "front serve"), "{}", log(w.path()));
+    term(&child);
+    let (code, stderr) = finish(child);
+    assert_eq!(code, Some(0), "{stderr}");
+    let log = log(w.path());
+    if log.contains("probe noflock") {
+        eprintln!("flock(1) is not installed: the in-lock probe was skipped");
+        return;
+    }
+    let probes: Vec<&str> = log.lines().filter(|l| l.starts_with("probe ")).collect();
+    assert_eq!(
+        probes,
+        [
+            "probe --features lock free",
+            "probe --ensure-secrets-key lock held",
+            "probe --ensure-schema lock held",
+            "probe serve lock held",
+        ],
+        "{log}"
+    );
 }
 
 #[test]
