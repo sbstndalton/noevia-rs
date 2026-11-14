@@ -397,8 +397,12 @@ impl Invoke {
     pub fn finish(&self, answered: Result<Option<String>, String>) -> Reply {
         let result = match answered {
             Ok(text) => text_result(text.as_deref().unwrap_or(""), false),
+            // `(err && err.message) || err`: an Error with an empty message reads as `String(err)`.
             Err(message) => text_result(
-                &format!("ERROR: {}", js_json::js_slice(&message, 300)),
+                &format!(
+                    "ERROR: {}",
+                    js_json::js_slice(if message.is_empty() { "Error" } else { &message }, 300)
+                ),
                 true,
             ),
         };
