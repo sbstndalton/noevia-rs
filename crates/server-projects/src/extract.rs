@@ -58,6 +58,8 @@ const PLAIN_TEXT: [&str; 15] = [
     "css", "",
 ];
 pub const NOT_CONFIGURED: &str = "Document extraction is not configured.";
+/// native-machines-client.cjs `unavailable()`: the machine store cannot be read.
+pub const MACHINES_UNAVAILABLE: &str = "Inference machines are unavailable.";
 pub const NO_RANGES: &str =
     "The document extractor does not read page ranges yet; update the docling service.";
 const OCR_LINE: &str = "[OCR transcription — verify numbers against original]\n";
@@ -126,6 +128,13 @@ pub trait Engine {
     fn large_lock_file(&self) -> Option<std::path::PathBuf> {
         None
     }
+    /// Whether the workers' addresses cannot be known now: core's document-workers.cjs throws
+    /// `machinesUnavailable` when the machine store cannot be read, so it reads nothing and changes no
+    /// record (noevia#2614). Then [`extract_document_text`] stores a retryable failure without asking
+    /// any worker and [`complete_document`] returns the record as it is.
+    fn machines_unavailable(&self) -> bool {
+        false
+    }
     /// Optional background lifecycle cancellation; foreground engines keep their existing behavior.
     fn cancelled(&self) -> bool {
         false
@@ -185,6 +194,9 @@ pub struct Budgeted<'a> {
 }
 
 impl Engine for Budgeted<'_> {
+    fn machines_unavailable(&self) -> bool {
+        self.inner.machines_unavailable()
+    }
     fn docling_configured(&self) -> bool {
         self.inner.docling_configured()
     }
@@ -698,6 +710,9 @@ pub fn extract_document_text(
         Ok(h) => h,
         Err(busy) => return Ok(unavailable(&busy)),
     };
+    if engine.machines_unavailable() {
+        return Ok(unavailable(MACHINES_UNAVAILABLE));
+    }
     if !engine.docling_configured() {
         return Ok(unavailable(NOT_CONFIGURED));
     }
@@ -723,6 +738,10 @@ pub fn complete_document(
     limits: &Limits,
     fig_bytes: &mut FigureBytes,
 ) -> JValue {
+    // core: completeUnlocked's defaults throw machinesUnavailable and ingest leaves the record unchanged.
+    if engine.machines_unavailable() {
+        return out;
+    }
     let _held = match large_lock(bytes.len(), engine.large_lock_file().as_deref()) {
         Ok(h) => h,
         // A busy lock leaves the record as it is (no marker), so the job tries again.
@@ -1582,6 +1601,83 @@ pub(crate) mod tests {
         fn busy_waits(&self) -> Vec<Duration> {
             vec![Duration::ZERO, Duration::ZERO]
         }
+    }
+
+    /// A [`Fake`] whose machine store cannot be read (noevia#2614).
+    struct Unreadable<'a>(&'a Fake);
+    impl Engine for Unreadable<'_> {
+        fn machines_unavailable(&self) -> bool {
+            true
+        }
+        fn docling_configured(&self) -> bool {
+            self.0.docling_configured()
+        }
+        fn docling(
+            &self,
+            name: &str,
+            bytes: &[u8],
+            figures: bool,
+            pages: Option<(u32, u32)>,
+        ) -> Result<JValue, EngineError> {
+            self.0.docling(name, bytes, figures, pages)
+        }
+        fn docling_ranges(&self, bytes: usize) -> Option<bool> {
+            self.0.docling_ranges(bytes)
+        }
+        fn ocr_configured(&self) -> bool {
+            self.0.ocr_configured()
+        }
+        fn ocr_pages(
+            &self,
+            bytes: &[u8],
+            pages: &[u32],
+            dpi: Option<u32>,
+            timeout_ms: Option<u64>,
+        ) -> Result<Vec<JValue>, EngineError> {
+            self.0.ocr_pages(bytes, pages, dpi, timeout_ms)
+        }
+        fn ocr_caps(&self) -> Option<OcrCaps> {
+            self.0.ocr_caps()
+        }
+        fn multimodal(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn an_unreadable_machine_store_asks_no_worker_and_changes_no_record() {
+        let fake = Fake {
+            docling: true,
+            ocr: true,
+            ranges: Some(true),
+            replies: RefCell::new(Vec::new()),
+            ocr_replies: RefCell::new(Vec::new()),
+            asked: RefCell::new(Vec::new()),
+            caps: None,
+            on_docling: RefCell::new(None),
+        };
+        let engine = Unreadable(&fake);
+        let limits = Limits::from_env();
+        let mut figures = FigureBytes::new();
+        let out = extract_document_text("qa.pdf", b"%PDF-1.4 qa", &engine, &limits, &mut figures)
+            .unwrap();
+        assert_eq!(out.get("retryable"), &JValue::Bool(true));
+        assert_eq!(out.get("error").as_str(), Some(MACHINES_UNAVAILABLE));
+        let open = js_json::wtf16::parse(
+            r#"{"text":"QA","pages":2,"pageTexts":[{"number":1,"status":"native","text":"QA"},{"number":2,"status":"failed","text":""}],"state":"partial","truncated":false}"#,
+        )
+        .unwrap();
+        let same = complete_document(
+            "qa.pdf",
+            b"%PDF-1.4 qa",
+            open.clone(),
+            &engine,
+            &limits,
+            &mut figures,
+        );
+        assert_eq!(same, open);
+        assert!(fake.asked.borrow().is_empty(), "no worker was asked");
+        assert!(fake.ocr_replies.borrow().is_empty());
     }
 
     /// A [`Fake`] that also answers the OCR worker's `/reduce-pdf` and `/extract-docx` once each.
