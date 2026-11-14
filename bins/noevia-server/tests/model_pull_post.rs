@@ -745,12 +745,22 @@ async fn a_lease_core_refuses_is_an_internal_error_without_tracker_or_router() {
             .any(|s| s.starts_with("router") || s.contains("downloads")),
         "{steps:?}"
     );
+    // The refused ticket goes back from a spawned task, so its DELETE and the closing invalidation
+    // reach the scripted core in either order.
+    assert_eq!(steps.len(), 5, "{steps:?}");
     assert_eq!(
-        steps,
+        steps[..3],
         [
             "node POST /internal/auto-roles/invalidate",
             "node POST /internal/model-manager-scan/clear",
             "node PUT lease",
+        ]
+    );
+    let mut tail = steps[3..].to_vec();
+    tail.sort();
+    assert_eq!(
+        tail,
+        [
             // The authority gives its refused ticket back (engine-admission's guard).
             "node DELETE lease",
             "node POST /internal/auto-roles/invalidate",
