@@ -17,8 +17,9 @@
 //! (`{ ...row, external: true }`, no `getProvider` of its own), and its model is
 //! [`cloud_model`] of the routed role.
 //!
-//! Seams of this part that later slices port: `preRule` (the deterministic secret, IBAN, card and
-//! health rules) and `routerInput` (what the sensitivity check reads) are the caller's;
+//! Seams the caller answers: `preRule` (the deterministic secret, IBAN, card and health rules:
+//! [`crate::pre_rules::pre_rule`]) and the sensitivity check over `routerInput`
+//! ([`crate::router_input::router_input`]; the check itself is a decision call);
 //! [`PreText::Sent`] is the text [`sent_text`] joins. After the log entry and the `[routing]`
 //! line ([`Seam::Line`]) the turn's abort is asked ([`Seam::Aborted`], chat.cjs's
 //! `chatSignal.signal.aborted`), ahead of the cancel refusal and of the remembered choice: an
@@ -28,8 +29,8 @@
 //!
 //! The wire changes once the route is known (the off-box zone of the time part, the brain block
 //! dropped (#815), the history filter, the hybrid route's private-tools move and read-file hints)
-//! are [`crate::offbox`]. Later parts (not here): the route notes, tool results held from the
-//! cloud (`holdForCloud`), the egress and ChatGPT checks.
+//! are [`crate::offbox`]; a cloud route's tool results are held by [`crate::pre_rules::CloudHold`].
+//! Later parts (not here): the egress and ChatGPT checks.
 //!
 //! Recorded in `tests/fixtures/node-modes.v1.json`, written by `tests/record_modes.cjs` (whole
 //! turns through `createChatHandler` with the routingModes seams stubbed); no named differences.
