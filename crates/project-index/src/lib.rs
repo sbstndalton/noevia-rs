@@ -13,12 +13,14 @@
 //!   that decides which runs are superseded and which versions a search must filter by.
 //! - [`indexer`]: the process-level facade with the per-file queue, over a [`indexer::Host`].
 //! - [`embed`]: the batch rules of `embedFramed` (order by `index`, fall back to one text per call).
+//! - [`http_embed`]: `embedOnce`'s `/v1/embeddings` request over the embedding worker's guarded HTTP.
 //!
-//! Nothing here is reachable from a server yet: it ships unused, and the wiring goes behind
-//! `NOEVIA_RUST_RETRIEVAL`.
+//! Nothing here is reachable from a server yet: it ships unused, and the wiring goes behind a switch
+//! of its own (`NOEVIA_RUST_RETRIEVAL` already serves the read side in production).
 
 pub mod chunk;
 pub mod embed;
+pub mod http_embed;
 pub mod index;
 pub mod indexer;
 pub mod slots;

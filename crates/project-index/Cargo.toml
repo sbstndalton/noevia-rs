@@ -11,12 +11,14 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+embedding-worker = { path = "../embedding-worker" }
 prompt-framing = { path = "../prompt-framing" }
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde_json = "1"
 sha2 = "0.10"
+tokio = { version = "1", features = ["rt"] }
 
 [dev-dependencies]
-embedding-worker = { path = "../embedding-worker" }
 sqlite-vec-loader = { path = "../sqlite-vec-loader" }
 tempfile = "3"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "net", "io-util", "macros", "time"] }

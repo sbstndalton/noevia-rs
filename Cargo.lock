@@ -2776,6 +2776,7 @@ dependencies = [
  "sha2",
  "sqlite-vec-loader",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]
