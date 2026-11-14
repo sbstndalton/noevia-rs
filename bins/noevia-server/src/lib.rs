@@ -89,6 +89,7 @@ pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
 pub mod model_writes_routes;
+pub mod native_index_writes;
 pub mod native_retrieval;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
@@ -507,6 +508,9 @@ pub const FEATURES: &[&str] = &[
     "rust-research",
     // Rust port track R4: POST /v1/retrieval/search on the store listener (native_retrieval.rs).
     "rust-retrieval-v1",
+    // Council p6: POST /v1/index/{file,tail,delete} on the store listener (native_index_writes.rs);
+    // every write defers while NOEVIA_RUST_INDEX_WRITES is off.
+    "rust-index-writes-v1",
     "rust-task-reads",
     "rust-tool-approvals",
     // Port contract 2026-11-04 S9: the pending approvals and chat grants are the front's

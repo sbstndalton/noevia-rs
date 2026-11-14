@@ -724,6 +724,30 @@ pub fn router_with_app(
             }
         }),
     );
+    // Council p6: Node's project index writes through the native writer (native_index_writes.rs).
+    for op in ["file", "tail", "delete"] {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            &format!("/v1/index/{op}"),
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move {
+                    if !authorised(&store, &headers) {
+                        return error(StatusCode::UNAUTHORIZED, "unauthorized");
+                    }
+                    let Some(app) = app else {
+                        return reply(StatusCode::OK, &json!({ "defer": "unavailable" }));
+                    };
+                    let (status, body) =
+                        crate::native_index_writes::store_answer(app, op, &raw).await;
+                    reply_text(
+                        StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                        body,
+                    )
+                }
+            }),
+        );
+    }
     // Port contract 2026-11-04 RS-1: the preset reload baseline's authority.
     router = router.merge(preset_baseline_routes(
         store.clone(),

@@ -28,6 +28,8 @@ pub struct Config {
     pub research: std::sync::Arc<crate::research_routes::Research>,
     /// Native project retrieval for research (`NOEVIA_RUST_RETRIEVAL`, off by default; track R4).
     pub retrieval: std::sync::Arc<crate::native_retrieval::Retrieval>,
+    /// Native project index writes (`NOEVIA_RUST_INDEX_WRITES`, off by default; council p6).
+    pub index_writes: std::sync::Arc<crate::native_index_writes::IndexWrites>,
     pub dist: PathBuf,
     pub stamp_version: Option<String>,
     /// COWORK_CODE_NET_ADDR, parsed as core code-net-guard.cjs does (empty: no guard).
@@ -437,6 +439,9 @@ impl Config {
             port,
             trust_proxy: get("TRUST_PROXY").as_deref() == Some("true"),
             retrieval: std::sync::Arc::new(crate::native_retrieval::Retrieval::from_lookup(&get)?),
+            index_writes: std::sync::Arc::new(
+                crate::native_index_writes::IndexWrites::from_lookup(&get)?,
+            ),
             research,
             approval_revocation: crate::approval_revocation::Revoker::new(
                 format!("http://{}", upstream.authority()),

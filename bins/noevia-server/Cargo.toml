@@ -65,6 +65,7 @@ edit-target-lookup = { path = "../../crates/edit-target-lookup" }
 engine-admission = { path = "../../crates/engine-admission" }
 model-stream = { path = "../../crates/model-stream" }
 research-core = { path = "../../crates/research-core" }
+project-index = { path = "../../crates/project-index" }
 project-retrieval = { path = "../../crates/project-retrieval" }
 server-features = { path = "../../crates/server-features" }
 server-diary = { path = "../../crates/server-diary" }

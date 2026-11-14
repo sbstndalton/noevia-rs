@@ -257,6 +257,10 @@ pub struct Background {
     control: Control,
 }
 impl Background {
+    /// The worker's control: a kick asks for a pass (native index writes kick it after an index run).
+    pub fn control(&self) -> Control {
+        self.control.clone()
+    }
     pub async fn shutdown(mut self) {
         self.control.stop();
         let _ = self.stop.send(true);

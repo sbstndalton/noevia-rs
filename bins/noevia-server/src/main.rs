@@ -451,6 +451,10 @@ async fn server_main() -> ExitCode {
                 None
             }
         };
+    // Council p6: the native index writer kicks the embedding migration after an index run.
+    if let Some(worker) = embedding_background.as_ref() {
+        app.config.index_writes.set_kick(worker.control());
+    }
     // `rust-chat-mirror-v1`: the change-journal consumer and the mirror and brain schedules.
     if let Some(mirror) = noevia_server::chat_mirror::ChatMirror::start(
         std::sync::Arc::clone(&app.config.research),
