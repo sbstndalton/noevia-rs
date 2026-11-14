@@ -5,15 +5,18 @@
 //!   synthetic-pdfs oversized PATH             the padded text PDF past 25 MB
 //!   synthetic-pdfs ballast PATH BYTES [CHUNK] the #1867 three-page ballast PDF; prints its size
 //!   synthetic-pdfs skip-reason                the missing-engine skip reason ("" = none missing)
+//!   synthetic-pdfs ocr-front DIR              the OCR front gate's scan.pdf, large.pdf and body.docx
+//!                                             (noevia-core tools/ocr-front/fixtures.py), "path size" lines
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use synthetic_pdfs::{
-    oversized_text_pdf, skip_reason, write_all, write_ballast_pdf, SystemProbe, BALLAST_CHUNK,
+    oversized_text_pdf, skip_reason, write_all, write_ballast_pdf, write_ocr_front, SystemProbe,
+    BALLAST_CHUNK,
 };
 
-const USAGE: &str = "usage: synthetic-pdfs [write-all [DIR] | oversized PATH | ballast PATH BYTES [CHUNK] | skip-reason]";
+const USAGE: &str = "usage: synthetic-pdfs [write-all [DIR] | oversized PATH | ballast PATH BYTES [CHUNK] | skip-reason | ocr-front DIR]";
 
 /// How the reference prints `Path(directory) / name`: "." is dropped, as pathlib does.
 fn shown(directory: &Path, name: &str) -> PathBuf {
@@ -51,6 +54,13 @@ fn run(args: &[String]) -> Result<(), String> {
                 .unwrap_or(BALLAST_CHUNK);
             let size = write_ballast_pdf(Path::new(path), number(bytes)?, chunk).map_err(text)?;
             println!("{size}");
+            Ok(())
+        }
+        [cmd, directory] if cmd == "ocr-front" => {
+            for (_, path) in write_ocr_front(Path::new(directory)).map_err(text)? {
+                let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+                println!("{} {size}", path.display());
+            }
             Ok(())
         }
         [cmd] if cmd == "skip-reason" => {

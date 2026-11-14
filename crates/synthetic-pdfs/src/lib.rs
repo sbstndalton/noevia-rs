@@ -34,6 +34,7 @@
 //! Where the reference raises and this can say so cheaply, it does: an empty object map is
 //! [`Error::NoObjects`] (`max()` of an empty dict), a gap is [`Error::MissingObject`].
 
+pub mod docx;
 mod engines;
 pub mod md5;
 
@@ -861,6 +862,29 @@ fn replace_all(haystack: &[u8], needle: &[u8], with: &[u8]) -> Vec<u8> {
     }
     out.extend_from_slice(rest);
     out
+}
+
+/// The files [`write_ocr_front`] writes, in the order of noevia-core `tools/ocr-front/fixtures.py`.
+pub const OCR_FRONT_FIXTURES: [&str; 3] = ["scan.pdf", "large.pdf", "body.docx"];
+
+/// The OCR front gate's inputs (noevia-core `tools/ocr-front/fixtures.py`, which loads the
+/// reference generator): `scan.pdf` is the [`ROWS`] scan (the `scanned.pdf` fixture),
+/// `large.pdf` the [`oversized_text_pdf`] and `body.docx` the [`docx::body_docx`] document.
+/// Creates `directory` (and its parents) like the reference's `mkdir(parents=True)`.
+pub fn write_ocr_front(directory: &Path) -> Result<Vec<(&'static str, PathBuf)>> {
+    std::fs::create_dir_all(directory)?;
+    let files = [
+        pdf(&[Page::scan(&ROWS)], 0)?,
+        oversized_text_pdf()?,
+        docx::body_docx()?,
+    ];
+    let mut written = Vec::with_capacity(files.len());
+    for (name, bytes) in OCR_FRONT_FIXTURES.into_iter().zip(files) {
+        let path = directory.join(name);
+        std::fs::write(&path, bytes)?;
+        written.push((name, path));
+    }
+    Ok(written)
 }
 
 /// The fixture names [`write_all`] writes, in the reference's order.
