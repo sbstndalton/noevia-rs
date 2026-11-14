@@ -99,6 +99,32 @@ impl Current {
     }
 }
 
+/// Each owed repair's fences, by key: the lease authority's recovery ticket and this process's
+/// admission fence.
+type Owed = Mutex<std::collections::HashMap<String, (String, Option<super::gate::AdmissionFence>)>>;
+
+/// `maintenance.requireRecovery(key, …)`: chat and new maintenance close at once (the authority's
+/// recovery flag and this process's own admission), and the repair worker is asked to run `key`
+/// under a fresh hold. A key already owed is not owed twice.
+fn owe(
+    maint: &Maint,
+    owed: &Owed,
+    recoveries: &tokio::sync::mpsc::UnboundedSender<String>,
+    key: &str,
+) {
+    let Ok(mut owed) = owed.lock() else {
+        return;
+    };
+    if owed.contains_key(key) {
+        return;
+    }
+    let ticket = maint.authority.require_recovery();
+    let fence = super::gate::AdmissionFence::reserve(Arc::clone(&maint.local));
+    owed.insert(key.to_owned(), (ticket, fence));
+    drop(owed);
+    let _ = recoveries.send(key.to_owned());
+}
+
 /// Reads Core's inference budget (0 when it cannot be read) and its sidecars' model names.
 pub type ReadFacts = Arc<
     dyn Fn() -> std::pin::Pin<
@@ -122,7 +148,7 @@ pub struct FrontDeps {
     recoveries: tokio::sync::mpsc::UnboundedSender<String>,
     /// Each owed repair's fences, kept until it has run (Node's gate keeps chat and new maintenance
     /// closed meanwhile): the lease authority's recovery ticket and this process's admission fence.
-    owed: Mutex<std::collections::HashMap<String, (String, Option<super::gate::AdmissionFence>)>>,
+    owed: Arc<Owed>,
     /// The restores owed by writes whose lease was lost under them (applyUnlocked's
     /// `apply:<revision>` recoveries): key → (the write's revision, the text before it).
     apply_restores: Mutex<std::collections::HashMap<String, (String, String)>>,
@@ -152,7 +178,7 @@ impl FrontDeps {
             repaired: tokio::sync::Notify::new(),
             read_facts,
             recoveries,
-            owed: Mutex::new(Default::default()),
+            owed: Arc::new(Mutex::new(Default::default())),
             apply_restores: Mutex::new(Default::default()),
             advisor: super::load_advisor::LoadAdvisor::from_lookup(get),
             env_sidecars: {
@@ -318,12 +344,13 @@ pub struct FrontEngine {
     facts: Arc<Mutex<(f64, Option<std::collections::HashSet<String>>)>>,
 }
 
-/// Ends when `hold` no longer excludes everyone (never without a hold): the lease's loss signal
-/// Node folds into every covered call's fetch signal (`dispatchSignal`).
+/// Ends when `hold` no longer covers even a zero-length step (never without a hold): lost, or its
+/// lease lapsing within the margin, which is when Node's `lose()` aborts the loss signal it folds
+/// into every covered call's fetch signal (`dispatchSignal`). Calls end 15 s before the lease can.
 async fn hold_lost(hold: Option<&Arc<Hold>>) {
     match hold {
         Some(h) => loop {
-            if !h.excluded() {
+            if !h.covers(Duration::ZERO) {
                 return;
             }
             tokio::time::sleep(LOSS_POLL).await;
@@ -332,10 +359,12 @@ async fn hold_lost(hold: Option<&Arc<Hold>>) {
     }
 }
 
-/// `assertCovered(step)` for the hold in `current`.
+/// `assertCovered(step)` for the hold in `current`: Node's rule ([`Hold::covers`]), since every
+/// call it admits ends at the margin ([`hold_lost`]); the stricter whole-step rule refused the
+/// runner's 600 s load and 180 s smoke steps on any Node-lease hold (TTL 180 s).
 fn covered(current: &Current, step: Duration) -> Result<(), Fail> {
     match current.get() {
-        Some(hold) if !hold.may_start(step) => Err(coverage_error()),
+        Some(hold) if !hold.covers(step) => Err(coverage_error()),
         _ => Ok(()),
     }
 }
@@ -534,7 +563,11 @@ impl super::autotune_context::Body for FrontBody {
         if self.abort.aborted() {
             return Err(fetch_failed(Some(&self.abort)));
         }
-        if self.hold.as_ref().is_some_and(|h| !h.excluded()) {
+        if self
+            .hold
+            .as_ref()
+            .is_some_and(|h| !h.covers(Duration::ZERO))
+        {
             return Err(coverage_error());
         }
         tokio::select! {
@@ -665,6 +698,8 @@ impl super::autotune_context::Engine for FrontEngine {
 pub struct FrontRelease {
     hold: Mutex<Option<Arc<Hold>>>,
     current: Arc<Current>,
+    /// Owes the `settle` repair (Node's release of a lost lease: `requireRecovery('settle')`).
+    settle: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl Release for FrontRelease {
@@ -679,6 +714,14 @@ impl Release for FrontRelease {
         let taken = self.hold.lock().ok().and_then(|mut h| h.take());
         self.current.set(None);
         if let Some(hold) = taken {
+            // inference-maintenance.cjs release(): a lost lease (renewal refused or lapsing within
+            // the margin) owes the settle step: every model confirmed idle under a fresh hold, chat
+            // closed until then, whatever the run itself still owes.
+            // `covers(ZERO)` marks a lapse, a passed hard cap or a fenced authority lease nobody
+            // has observed yet.
+            if !hold.covers(Duration::ZERO) || hold.lost() {
+                (self.settle)();
+            }
             // The run holds the only other reference until it is told to let go; dropping the last
             // one gives the hold back (and its Drop does so if the task dies first).
             tokio::spawn(async move {
@@ -747,7 +790,7 @@ impl Deps for FrontDeps {
                 self.require_recovery(&key, APPLY_RECOVERY_REASON);
                 return Err(coverage_error());
             }
-            Ok(_) if !hold.excluded() => return Err(coverage_error()),
+            Ok(_) if !hold.covers(Duration::ZERO) => return Err(coverage_error()),
             Ok(reply) => reply,
         };
         let mut out = JValue::obj([
@@ -892,9 +935,15 @@ impl Deps for FrontDeps {
                 Ok(hold) => {
                     let hold = Arc::new(hold);
                     self.current.set(Some(Arc::clone(&hold)));
+                    let (maint, owed, tx) = (
+                        Arc::clone(&self.maint),
+                        Arc::clone(&self.owed),
+                        self.recoveries.clone(),
+                    );
                     return Ok(FrontRelease {
                         hold: Mutex::new(Some(hold)),
                         current: Arc::clone(&self.current),
+                        settle: Arc::new(move || owe(&maint, &owed, &tx, "settle")),
                     });
                 }
                 // inference-maintenance.cjs remoteBusy: 409, engine_busy or maintenance_held is
@@ -930,7 +979,9 @@ impl Deps for FrontDeps {
     }
 
     fn coverage_lost(&self) -> bool {
-        self.current.get().is_some_and(|h| !h.excluded())
+        self.current
+            .get()
+            .is_some_and(|h| !h.covers(Duration::ZERO))
     }
 
     fn recoverable(&self) -> bool {
@@ -938,19 +989,7 @@ impl Deps for FrontDeps {
     }
 
     fn require_recovery(&self, key: &str, _message: &str) {
-        let Ok(mut owed) = self.owed.lock() else {
-            return;
-        };
-        if owed.contains_key(key) {
-            return;
-        }
-        // Closed at once, before the repair runs: the authority's recovery flag (no new lease) and
-        // this process's own admission (taken again by the repair if the run still had it).
-        let ticket = self.maint.authority.require_recovery();
-        let fence = super::gate::AdmissionFence::reserve(Arc::clone(&self.maint.local));
-        owed.insert(key.to_owned(), (ticket, fence));
-        drop(owed);
-        let _ = self.recoveries.send(key.to_owned());
+        owe(&self.maint, &self.owed, &self.recoveries, key);
     }
 
     /// `maintenance.recoverNow()`: the owed repairs run now (by the repair worker); this waits for
@@ -978,6 +1017,11 @@ impl Deps for FrontDeps {
             let Some(hold) = self.current.get() else {
                 return Err(Fail::new("No maintenance hold covers this reload."));
             };
+            // A re-read the hold can no longer cover is the coverage loss (Node's routerReload
+            // throws coverageLost from its covered request), not the router's refusal.
+            if !hold.may_start(super::reload::RELOAD_LIMIT) {
+                return Err(coverage_error());
+            }
             match self.maint.router_reload_reply(router, &hold).await {
                 Some(r) => Ok(reply_j(&r)),
                 None => Err(Fail::new("fetch failed")),

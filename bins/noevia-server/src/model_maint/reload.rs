@@ -49,7 +49,7 @@ const LEASE_LOST: &str = "The model service stopped confirming that chat is held
 const NEEDS_TOKEN: &str = "An inference gate fronts the engine and INFERENCE_GATE_ADMIN_TOKEN is not set, so a reload that unloads models is refused.";
 /// `POST /models/unload` and `GET /models?reload=1`, as the router client bounds them, plus the rest.
 const UNLOAD_LIMIT: Duration = Duration::from_secs(60);
-const RELOAD_LIMIT: Duration = Duration::from_secs(120);
+pub(super) const RELOAD_LIMIT: Duration = Duration::from_secs(120);
 const PRESETS_BUSY: &str = "Models are busy, so nothing was changed. Try again shortly.";
 const OTHER_STEPS: Duration = Duration::from_secs(60);
 

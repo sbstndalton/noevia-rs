@@ -579,6 +579,51 @@ impl Shared {
             .is_none_or(|(a, g)| a.covers(&g.id, g.generation, step))
     }
 
+    /// inference-maintenance.cjs `assertCovered(step)` (Delta review P2): not lost, the last
+    /// confirmation (and the authority's lease) not lapsing within the margin, and the step plus the
+    /// margin inside the hard limit. A long step is covered by renewal, not by its whole length
+    /// fitting one confirmation. A lapse within the margin or a passed hard limit is the loss itself
+    /// (Node's `c.lose()`): sticky, so the release owes the settle; a step that merely does not fit
+    /// is refused without it (`lose`: whether this check may mark the loss). Always true for the
+    /// gate's hold.
+    fn covers(&self, step: Duration, lose: bool) -> bool {
+        let Some(ttl) = self.lease_ttl else {
+            return true;
+        };
+        if self.lost.load(Ordering::Acquire) {
+            return false;
+        }
+        let now = Instant::now();
+        let alive =
+            self.auth.as_ref().is_none_or(|(a, g)| {
+                a.covers_step(&g.id, g.generation, STEP_MARGIN, Duration::ZERO)
+            }) && self
+                .confirmed
+                .lock()
+                .is_ok_and(|at| now + STEP_MARGIN < *at + ttl)
+                && self.lease_end.is_none_or(|end| now + STEP_MARGIN < end);
+        if !alive {
+            if lose {
+                self.lose_at_margin();
+            }
+            return false;
+        }
+        self.auth
+            .as_ref()
+            .is_none_or(|(a, g)| a.covers_step(&g.id, g.generation, STEP_MARGIN, step))
+            && self
+                .lease_end
+                .is_none_or(|end| now + step + STEP_MARGIN < end)
+    }
+
+    /// Node's `lose()` from a coverage check: only while the hold is not being given back.
+    fn lose_at_margin(&self) {
+        let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
+        if *state == ReleaseState::Idle && !self.lost.swap(true, Ordering::AcqRel) {
+            eprintln!("[models] this front's maintenance lease could not be renewed in time; the work stops before its next step");
+        }
+    }
+
     /// Gives the authority's lease back at once; idempotent, synchronous.
     fn release_authority(&self) {
         if let Some((a, g)) = self.auth.as_ref() {
@@ -853,6 +898,20 @@ impl Hold {
                 .lock()
                 .is_ok_and(|at| covered(*at + ttl))
             && self.shared.lease_end.is_none_or(covered)
+    }
+
+    /// Node's `assertCovered(step)` ([`Shared::covers`]): the rule for a step whose calls end when
+    /// the hold stops covering even a zero-length step (`!covers(ZERO)`: Node's `lose()` at the
+    /// margin), as the native auto-tune runner's calls do. A call that cannot be ended that way
+    /// must use the stricter [`Hold::may_start`] (sbstndalton/noevia#2641).
+    pub fn covers(&self, step: Duration) -> bool {
+        !self.shared.released.load(Ordering::Acquire) && self.shared.covers(step, true)
+    }
+
+    /// Node's rule without marking a loss: for a check whose caller cannot drive the settle a
+    /// lost hold owes (the public calibration worker, until sbstndalton/noevia#2641).
+    pub fn fits(&self, step: Duration) -> bool {
+        !self.shared.released.load(Ordering::Acquire) && self.shared.covers(step, false)
     }
 
     /// Whether the hold still excludes everyone else: not lost, and for Node's lease, Node's last
@@ -1233,6 +1292,80 @@ mod tests {
         );
         shared.node_renewal_refused();
         assert!(shared.lost.load(Ordering::Acquire));
+    }
+
+    /// #2550: Node's `assertCovered(step)` rule. On a Node lease (TTL 180 s, renewed every 10 s)
+    /// the native runner's 600 s load and 180 s smoke steps start, as in Node (the whole-step rule
+    /// of `may_start` never could); a step past the hard cap, a lapse within the 15 s margin and a
+    /// lost hold do not. The gate's own hold always covers.
+    #[test]
+    fn covers_is_nodes_assert_covered_rule() {
+        let s = |end: u64| {
+            let now = Instant::now();
+            Shared::new(
+                Some("qa-lease".into()),
+                now + Duration::from_secs(3600),
+                Some(Duration::from_secs(180)),
+                Some(now + Duration::from_secs(end)),
+                None,
+            )
+        };
+        let hour = s(3600);
+        assert!(hour.covers(Duration::from_secs(600), true));
+        assert!(hour.covers(Duration::from_secs(180), true));
+        let short = s(160);
+        assert!(short.covers(Duration::from_secs(140), true));
+        assert!(
+            !short.covers(Duration::from_secs(150), true),
+            "the step past the hard cap"
+        );
+        assert!(
+            !short.lost.load(Ordering::Acquire),
+            "a step that does not fit is no loss"
+        );
+        let lapsing = s(3600);
+        if let (Ok(mut at), Some(old)) = (
+            lapsing.confirmed.lock(),
+            Instant::now().checked_sub(Duration::from_secs(170)),
+        ) {
+            *at = old;
+        }
+        assert!(
+            !lapsing.covers(Duration::ZERO, true),
+            "a lapse within the margin"
+        );
+        assert!(
+            lapsing.lost.load(Ordering::Acquire),
+            "the lapse is the loss itself (sticky)"
+        );
+        let lost = s(3600);
+        lost.lost.store(true, Ordering::Release);
+        assert!(!lost.covers(Duration::ZERO, true));
+        let ending = s(10);
+        assert!(
+            !ending.covers(Duration::ZERO, false),
+            "the hard cap within the margin"
+        );
+        assert!(
+            !ending.lost.load(Ordering::Acquire),
+            "a check that may not mark it"
+        );
+        assert!(!ending.covers(Duration::ZERO, true));
+        assert!(
+            ending.lost.load(Ordering::Acquire),
+            "the hard cap within the margin is a loss"
+        );
+        let releasing = s(10);
+        if let Ok(mut state) = releasing.release.lock() {
+            *state = ReleaseState::Pending;
+        }
+        assert!(!releasing.covers(Duration::ZERO, true));
+        assert!(
+            !releasing.lost.load(Ordering::Acquire),
+            "no loss once the hold is being given back"
+        );
+        let gate = Shared::new(None, Instant::now(), None, None, None);
+        assert!(gate.covers(Duration::from_secs(86_400), true));
     }
 
     // The same test-only overlay compiles against the published pre-fix source.
