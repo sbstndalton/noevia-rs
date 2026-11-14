@@ -14,7 +14,8 @@
 // TZ=UTC child: every ID in Intl.supportedValuesOf('timeZone'), in chrono-tz's list
 // (tools/chrono-tz-names.txt, checked against the crate by tests/names.rs) and a list of ICU legacy IDs,
 // with what Intl makes of it at three instants of 2026 (the UTC offset, the en-GB short zone name and
-// the en-US long one), and its offset at 00:00 UTC on every day of 2026 and 2027. The commit sha is
+// the en-US long one), its offset at 00:00 UTC on every day of 2026 and 2027, and the instant of each
+// offset change between those days (bisected to the millisecond). The commit sha is
 // passed in (`git -C <noevia-core> rev-parse HEAD`): the builder's copy has no .git. Synthetic inputs only.
 const path = require('node:path');
 const fs = require('node:fs');
@@ -168,12 +169,25 @@ function zoneTable(RealDate) {
     }
     const fmt = new Intl.DateTimeFormat('en-US', { timeZone: id, timeZoneName: 'longOffset' });
     const runs = [];
-    for (const d of days) {
-      const off = minutes(fmt.formatToParts(d).find((p) => p.type === 'timeZoneName').value);
+    const offAt = (t) => minutes(fmt.formatToParts(new RealDate(t)).find((p) => p.type === 'timeZoneName').value);
+    const offs = days.map((d) => offAt(d.getTime()));
+    for (const off of offs) {
       const last = runs[runs.length - 1];
       if (last && last[0] === off) last[1]++; else runs.push([off, 1]);
     }
-    accepted.push({ id, canonical, daily: runs.map(([o, n]) => `${o}*${n}`).join(' '),
+    // Where the offset at 00:00 UTC changes from one day to the next, the first millisecond with the new
+    // offset (bisected): the zone's transitions between the first and the last day.
+    const transitions = [];
+    for (let i = 1; i < days.length; i++) {
+      if (offs[i] === offs[i - 1]) continue;
+      let lo = days[i - 1].getTime(), hi = days[i].getTime();
+      while (hi - lo > 1) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (offAt(mid) === offs[i - 1]) lo = mid; else hi = mid;
+      }
+      transitions.push(hi);
+    }
+    accepted.push({ id, canonical, daily: runs.map(([o, n]) => `${o}*${n}`).join(' '), transitions: transitions.join(' '),
       at: instants.map((d) => [minutes(part('en-US', id, 'longOffset', d)), part('en-GB', id, 'short', d), part('en-US', id, 'long', d)]) });
   }
   return { instants: ZONE_INSTANTS, accepted, rejected, caseExceptions, chrono: names };
@@ -200,7 +214,7 @@ function fixture({ head, runs, sources, versions }) {
   const out = {
     about: 'get_current_time and calendarFacts/factsLine recorded from noevia-core by crates/current-time/tools/gen-fixtures.cjs',
     versions, sources, zoneInstants: z.instants, dailyFrom: '2026-01-01', dailyTo: '2027-12-31',
-    zones: z.accepted.map(({ id, canonical, at, daily }) => ({ id, canonical, offsets: at.map((a) => a[0]), daily })),
+    zones: z.accepted.map(({ id, canonical, at, daily, transitions }) => ({ id, canonical, offsets: at.map((a) => a[0]), daily, transitions })),
     rejected: z.rejected, caseExceptions: z.caseExceptions,
     cases: runs.flatMap((r) => r.cases), facts: head.facts,
   };

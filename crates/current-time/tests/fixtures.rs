@@ -289,3 +289,92 @@ fn zone_table_and_fixture_come_from_the_same_sources() {
     );
     assert!(ZONES_RS.lines().any(|l| l.starts_with(&head)));
 }
+
+/// Zones whose transition instants in 2026-2027 (bisected between the midnights where the offset
+/// changes) are not Node's, beyond the days [`DAILY_DIFFER`] already lists.
+const TRANSITIONS_DIFFER: &[&str] = &[];
+
+/// The first millisecond with the new offset at each change between consecutive midnights, as the
+/// recorder bisects it in Node.
+fn transitions(id: &str, day_ms: impl Fn(i64) -> f64, days: i64) -> Vec<i64> {
+    let off = |t: i64| current_time::utc_offset_minutes(id, t as f64);
+    let mut out = Vec::new();
+    for i in 1..days {
+        let (a, b) = (day_ms(i - 1) as i64, day_ms(i) as i64);
+        let before = off(a);
+        if before == off(b) {
+            continue;
+        }
+        let (mut lo, mut hi) = (a, b);
+        while hi - lo > 1 {
+            let mid = (lo + hi).div_euclid(2);
+            if off(mid) == before {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        out.push(hi);
+    }
+    out
+}
+
+#[test]
+fn transitions_match_node_and_verified_leaves_the_rest_to_node() {
+    let f = fixture();
+    let from = chrono::NaiveDate::parse_from_str(f.get("dailyFrom").as_str().unwrap(), "%Y-%m-%d")
+        .unwrap();
+    let start = from
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp_millis();
+    let day_ms = |i: i64| (start + i * 86_400_000) as f64;
+    let (mut differ, mut checked) = (Vec::new(), 0);
+    for z in arr(f.get("zones")) {
+        let id = z.get("id").as_str().unwrap();
+        if current_time::utc_offset_minutes(id, 0.0).is_none() {
+            continue;
+        }
+        let want: Vec<i64> = z
+            .get("transitions")
+            .as_str()
+            .unwrap()
+            .split(' ')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.parse().unwrap())
+            .collect();
+        checked += want.len();
+        let daily = DAILY_DIFFER.iter().any(|(d, _, _)| *d == id);
+        if transitions(id, day_ms, 730) != want && !daily {
+            differ.push(id.to_string());
+        }
+        // `verified` is true exactly for the zones whose offsets and transitions matched.
+        let divergent = daily || differ.last().is_some_and(|d| d == id);
+        for i in [0, 100, 319, 400, 729] {
+            assert_eq!(
+                current_time::verified(id, day_ms(i)),
+                !divergent,
+                "{id} on day {i}"
+            );
+        }
+    }
+    assert!(checked > 500, "{checked} transitions");
+    assert_eq!(differ, TRANSITIONS_DIFFER, "zones whose transitions differ");
+    let mut ids: Vec<String> = DAILY_DIFFER
+        .iter()
+        .map(|(z, _, _)| z.to_ascii_lowercase())
+        .chain(TRANSITIONS_DIFFER.iter().map(|z| z.to_ascii_lowercase()))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids, current_time::divergent_ids());
+    // Outside the span, and for zones Intl or this port refuses: never verified.
+    assert!(!current_time::verified("UTC", day_ms(-1)));
+    assert!(!current_time::verified("UTC", day_ms(729) + 1.0));
+    assert!(!current_time::verified("UTC", f64::NAN));
+    assert!(!current_time::verified("SystemV/EST5", day_ms(10)));
+    assert!(!current_time::verified("Mars/Olympus", day_ms(10)));
+    assert!(current_time::verified("+05:30", day_ms(10)));
+    assert!(current_time::verified("america/new_york", day_ms(10)));
+}

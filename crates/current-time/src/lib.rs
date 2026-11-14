@@ -145,6 +145,55 @@ pub fn utc_offset_minutes(time_zone: &str, now_ms: f64) -> Option<i64> {
     Some(offset_sec(time_clip(now_ms)?, lookup(time_zone)?)? / 60)
 }
 
+/// Where this port's answer was proven equal to Node's: from 2026-01-01T00:00Z to the last compared
+/// midnight, 2027-12-31T00:00Z (the recording's daily span).
+const VERIFIED_FROM_MS: i64 = 1_767_225_600_000;
+const VERIFIED_TO_MS: i64 = 1_830_211_200_000;
+
+/// Zone IDs (lower-cased, sorted) whose offsets or transition instants in the verified span differ
+/// between chrono-tz and the recorded Node data (tests/fixtures.rs pins this list to the ones the
+/// recording shows; see the crate documentation).
+const DIVERGENT: &[&str] = &[
+    "africa/casablanca",
+    "africa/el_aaiun",
+    "america/edmonton",
+    "america/vancouver",
+    "america/yellowknife",
+    "canada/mountain",
+    "canada/pacific",
+    "europe/chisinau",
+    "europe/tiraspol",
+];
+
+/// Whether [`run`] at `now_ms` with `zone` (a `timezone` argument, or the server zone of a call
+/// without one) gives the text Node gave in the recording, as far as the recording can show: `now_ms`
+/// lies in 2026-01-01T00:00Z..=2027-12-31T00:00Z, and `zone` is a UTC offset or an ID this port knows
+/// whose offsets at every midnight and whose transition instants in that span equal Node's. A caller
+/// that must answer as Node does hands every other call to Node. Not covered: a zone whose offset
+/// changes twice between two midnights and back, and zone-name changes in 2027 (the names are the
+/// ones recorded for 2026, by offset).
+pub fn verified(zone: &str, now_ms: f64) -> bool {
+    let Some(t) = time_clip(now_ms) else {
+        return false;
+    };
+    if !(VERIFIED_FROM_MS..=VERIFIED_TO_MS).contains(&t) {
+        return false;
+    }
+    match lookup(zone) {
+        Some(Zone::Offset(_)) => true,
+        Some(Zone::Named(..)) => DIVERGENT
+            .binary_search(&zone.to_ascii_lowercase().as_str())
+            .is_err(),
+        None => false,
+    }
+}
+
+/// The IDs [`verified`] leaves to Node, for the tests.
+#[doc(hidden)]
+pub fn divergent_ids() -> &'static [&'static str] {
+    DIVERGENT
+}
+
 /// What `calendarFacts` returns (ISO 8601 weeks: Monday to Sunday, week 1 holds the first Thursday).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CalendarFacts {
