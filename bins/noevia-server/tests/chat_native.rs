@@ -646,8 +646,9 @@ async fn core_service(
             // the prepared frame goes out, so the front reads it from the cut on.
             if let JValue::Obj(after) = sc.case.get("input").get("policyAfterCut").clone() {
                 for (tool, mode) in after {
-                    if let Some(mode) = mode.as_str() {
-                        set_policy(&sc.data, &sc.user, &tool, mode);
+                    match mode.as_str() {
+                        Some(mode) => set_policy(&sc.data, &sc.user, &tool, mode),
+                        None => sc.errors.push(format!("policyAfterCut {tool}: not one mode")),
                     }
                 }
             }

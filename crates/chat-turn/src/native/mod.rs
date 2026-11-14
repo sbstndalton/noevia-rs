@@ -830,8 +830,9 @@ impl<H: Host> Turn<'_, H> {
     /// chat.cjs resolves the list at the call, reading the account's policy for each candidate (`blocked`). The
     /// same reads are made here, in core's order, and a tool blocked now is left out. Named differences (the list
     /// is core's from the cut): a tool allowed since the cut, or one the tool cap or the token budget (whose
-    /// prefill measurement this turn's first round may move) would then have room for, is not added. Only ever
-    /// fewer of the project's own tools; nothing the account blocks now is offered.
+    /// prefill measurement this turn's first round may move) would then have room for, is not added; a toolbox that
+    /// went away since the cut (an MCP server disconnected) is still offered, and a call to it fails at core's
+    /// execute bridge. Nothing the account blocks now is offered.
     fn more_tools(
         &self,
         s: &mut Rounds,
