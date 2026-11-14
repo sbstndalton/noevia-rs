@@ -96,7 +96,7 @@ impl DecisionLog {
     ///
     /// Core compares the file's size in bytes with the line's length in UTF-16 units, so a line with
     /// non-ASCII text could take the file past `maxBytes`; this port counts bytes on both sides (the
-    /// documented bound). Issue filed by council p12-2.
+    /// documented bound; sbstndalton/noevia#2776).
     pub fn record(&self, kind: &str, entry: &JValue) {
         if let Some(echo) = &self.echo {
             let json = wtf16::stringify(entry).unwrap_or_else(|| "undefined".into());

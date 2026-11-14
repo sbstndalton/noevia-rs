@@ -38,7 +38,7 @@ fn s(v: &JValue) -> String {
     wtf16::stringify(v).unwrap_or_else(|| "undefined".into())
 }
 
-/// Core throws a TypeError on a line holding `null` (council p12-2 issue); the port skips it.
+/// Core throws a TypeError on a line holding `null` (sbstndalton/noevia#2777); the port skips it.
 fn has_null_line(lines: &[&str]) -> bool {
     lines.iter().any(|l| l.trim() == "null")
 }

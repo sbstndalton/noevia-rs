@@ -127,21 +127,17 @@ pub fn breakdown(messages: &[JValue], tools: &[JValue]) -> Breakdown {
             out.tool_sequence.push(call_name(call));
         }
     }
+    // `out.toolSchemas[name] = (out.toolSchemas[name] || 0) + tokens(tool)` on a plain object.
+    let mut schemas: Vec<(String, JValue)> = Vec::new();
     for tool in tools {
         let Some(name) = prop_key(&call_name(tool)) else { continue };
-        let size = tokens(tool);
-        let mut map: Vec<(String, JValue)> = out
-            .tool_schemas
-            .iter()
-            .map(|(k, n)| (k.clone(), JValue::Num(*n as f64)))
-            .collect();
-        let prev = out.tool_schemas.iter().find(|(k, _)| *k == name).map_or(0, |(_, n)| *n);
-        wtf16::set(&mut map, &name, JValue::Num((prev + size) as f64));
-        out.tool_schemas = map
-            .into_iter()
-            .map(|(k, v)| (k, v.as_num().map_or(0, |n| n as u64)))
-            .collect();
+        let prev = schemas.iter().find(|(k, _)| *k == name).and_then(|(_, v)| v.as_num()).unwrap_or(0.0);
+        wtf16::set(&mut schemas, &name, JValue::Num(prev + tokens(tool) as f64));
     }
+    out.tool_schemas = schemas
+        .into_iter()
+        .map(|(k, v)| (k, v.as_num().map_or(0, |n| n as u64)))
+        .collect();
     out
 }
 

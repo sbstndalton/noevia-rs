@@ -42,7 +42,7 @@ pub(crate) fn prop_key(key: &JValue) -> Option<String> {
 
 /// The value a JSON line parses to, if it is an object Node could read fields from. Core reads
 /// `e.kind` straight away, so a line holding `null` throws a TypeError there and ends the whole
-/// summary (sbstndalton/noevia issue filed by council p12-2); a non-object line is skipped here
+/// summary (sbstndalton/noevia#2777); a non-object line is skipped here
 /// instead, like a line that is not JSON.
 pub(crate) fn parse_line(raw: &str) -> Option<JValue> {
     match wtf16::parse(raw) {
