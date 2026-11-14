@@ -57,7 +57,9 @@ pub fn take_pair_lock(data: &Path) -> Result<(), String> {
 
 fn command(spec: &ChildSpec, env: &Env) -> tokio::process::Command {
     let mut cmd = Command::new(&spec.program);
+    // stdin from /dev/null, as bash gives its background jobs.
     cmd.args(&spec.args)
+        .stdin(std::process::Stdio::null())
         .env_clear()
         .envs(env.vars())
         .envs(spec.set.iter().map(|(k, v)| (k, v)));
@@ -159,6 +161,15 @@ async fn run_pair(env: &Env, launch: &Launch) -> i32 {
     stop(&mut front, &mut node).await;
     let _ = node.wait().await;
     let _ = front.wait().await;
+    // The script's trap still marks a docker stop that lands during a crash's stop sequence, and
+    // then exits 0: a stop signal received by now counts as signalled.
+    let late_signal = tokio::select! {
+        biased;
+        _ = term.recv() => true,
+        _ = int.recv() => true,
+        () = std::future::ready(()) => false,
+    };
+    let first = if late_signal { None } else { first };
     // docker stop: a clean exit. Anything else: non-zero, even when the process that left said 0.
     match first {
         None => 0,
