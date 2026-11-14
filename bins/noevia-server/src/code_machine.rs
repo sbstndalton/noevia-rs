@@ -33,7 +33,11 @@
 //! - the probe cache keeps at most 32 entries and drops the oldest, as Node's; a probe in flight is
 //!   not shared between two callers (each makes its own request);
 //! - a registry row that cannot be read moves nothing (no target), as engine-admission reads it; core's
-//!   native authority there refuses with `machinesUnavailable`.
+//!   native authority there refuses with `machinesUnavailable`;
+//! - a role call on a machine waits at most 300 s for the answer headers, as Node's `fetch`
+//!   (undici's default `headersTimeout`), and then reports Node's timeout reason; once the headers
+//!   are in, there is no 300 s idle limit between body chunks (undici's `bodyTimeout`): the task's
+//!   cancel and the role engine's byte caps bound the stream (noevia#2733 item 3).
 use crate::App;
 use code_engine_relay::{Forward, Machines, Ready, Target, Upstream};
 use engine_admission::machines;
@@ -946,6 +950,13 @@ const TAG_ADDRESS: &str = "machine: not on this network";
 const TAG_REDIRECT: &str = "machine: redirect";
 const TAG_TIMEOUT: &str = "machine: timeout";
 
+/// undici's default `headersTimeout` (Node's `fetch`): a role call waits at most this long for the
+/// machine's answer headers, also when the request names no time limit of its own (the Planner and
+/// review POSTs do not; noevia#2733 item 3). The streamed body after the headers is bounded by the
+/// task's cancel and the role engine's own byte caps, not by undici's 300 s `bodyTimeout` between
+/// chunks (named in the module docs).
+const ROLE_HEADERS_TIMEOUT: Duration = Duration::from_secs(300);
+
 fn role_text(machine: &JValue, k: &str) -> String {
     machine.get(k).as_str().unwrap_or("").to_string()
 }
@@ -988,7 +999,10 @@ impl FrontMachines {
         if let Some(ms) = req.timeout_ms {
             b = b.timeout(Duration::from_millis(ms));
         }
-        let sent = b.send().await.map_err(|e| {
+        let Ok(sent) = tokio::time::timeout(ROLE_HEADERS_TIMEOUT, b.send()).await else {
+            return Err(fail(TAG_TIMEOUT));
+        };
+        let sent = sent.map_err(|e| {
             if model_stream::net::refused_in_chain(&e) {
                 fail(TAG_ADDRESS)
             } else if e.is_redirect() {

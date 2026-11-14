@@ -221,7 +221,7 @@ async fn pin_refusals_are_node_s() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_machine_that_stops_answering_mid_task_is_unreachable_with_the_1840_text() {
+async fn a_machine_nothing_listens_on_refuses_the_pin_with_the_1840_text() {
     // A port nothing listens on: bind, read the port, close.
     let port = {
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

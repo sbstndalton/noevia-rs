@@ -1030,23 +1030,16 @@ async fn the_target_function_runs_off_the_async_tasks() {
         Arc::clone(&fake),
         Arc::new(move |_: &str| {
             *s.lock().unwrap() = Some(std::thread::current().id());
-            std::thread::sleep(std::time::Duration::from_millis(50));
             Some(target())
         }),
         Some("http://egress:8095/v1".into()),
     );
     let relay = Relay::new(o);
-    let ticks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let t = Arc::clone(&ticks);
-    let ticker = tokio::spawn(async move {
-        loop {
-            t.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            tokio::task::yield_now().await;
-        }
-    });
+    // The proof is the thread: the target function ran on the blocking pool, not on this
+    // current-thread runtime's only worker (noevia#2733 item 4: no sleep, no tick count).
     let lease = relay.open_for("qa-a", "blocking-1", None, None).await.unwrap();
-    ticker.abort();
-    assert_ne!(*seen.lock().unwrap(), Some(std::thread::current().id()));
-    assert!(ticks.load(std::sync::atomic::Ordering::SeqCst) > 0);
+    let ran_on = *seen.lock().unwrap();
+    assert!(ran_on.is_some(), "the target function was not called");
+    assert_ne!(ran_on, Some(std::thread::current().id()));
     lease.close();
 }
