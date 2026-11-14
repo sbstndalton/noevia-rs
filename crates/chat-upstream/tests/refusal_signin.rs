@@ -41,23 +41,27 @@ fn every_facts() -> Vec<Facts> {
     out
 }
 
-/// The answer before the lift: the old `with_caps` (the sign-in row held with `providers`).
+/// The answer without the sign-in lift: the same caps with [`SIGNIN_CAP`] dropped.
 fn before_lift(f: &Facts, caps: &[&str]) -> Option<&'static str> {
-    if !caps.contains(&CAP) {
-        return refusal::node_reason(f);
-    }
-    (f.machine || f.sign_in || f.route_target).then_some("provider")
+    let without: Vec<&str> = caps.iter().copied().filter(|c| *c != SIGNIN_CAP).collect();
+    refusal::with_caps(f, &without)
 }
 
-/// The decision table: which caps sets lift what.
+/// The decision table, written out from core's `rust-chat-native.cjs` (`plainProviderRow`,
+/// `signinRow` with its switch on, `frontRow`; noevia#2761): which caps sets lift what.
 fn table(f: &Facts, providers: bool, signin: bool) -> Option<&'static str> {
+    let other = f.provider_id != f.default_provider_id;
+    let plain = other && !f.machine && !f.external && !f.sign_in && !f.route_target;
+    let signin_row = other && !f.machine && f.sign_in && !f.route_target;
     match (providers, signin) {
         // Neither, or the sign-in token alone: Node's own answer.
         (false, _) => refusal::node_reason(f),
-        // Provider rows lifted; machines, the sign-in row and route targets held.
-        (true, false) => (f.machine || f.sign_in || f.route_target).then_some("provider"),
-        // The sign-in row lifted too; machines and route targets still held.
-        (true, true) => (f.machine || f.route_target).then_some("provider"),
+        // Plain provider rows lifted (their key too); every other row as Node answers it.
+        (true, false) if plain => None,
+        (true, false) => refusal::node_reason(f),
+        // The sign-in row lifted too, external as its kind is; machines and route targets held.
+        (true, true) if plain || signin_row => None,
+        (true, true) => refusal::node_reason(f),
     }
 }
 
@@ -104,19 +108,24 @@ fn only_both_tokens_together_change_an_answer() {
             let was = before_lift(f, &caps);
             if now != was {
                 changed += 1;
-                // Only a sign-in row that is neither a machine nor a route target, and only with both.
+                // Only a non-default sign-in row that is neither a machine nor a route target, and
+                // only with both.
                 assert!(providers && signin, "{header:?} {f:?}");
                 assert!(
-                    f.sign_in && !f.machine && !f.route_target,
+                    f.sign_in
+                        && f.provider_id != f.default_provider_id
+                        && !f.machine
+                        && !f.route_target,
                     "{header:?} {f:?}"
                 );
                 assert_eq!((was, now), (Some("provider"), None), "{header:?} {f:?}");
             }
         }
     }
-    // 4 id pairs x (sign_in, !machine, !route_target) x external x authorized = 16 per header,
-    // and three headers name both tokens.
-    assert_eq!(changed, 16 * 3);
+    // 2 non-default id pairs x (sign_in, !machine, !route_target) x external x authorized = 8 per
+    // header, and three headers name both tokens (noevia#2761: the default id's row is never the
+    // sign-in row core lifts).
+    assert_eq!(changed, 8 * 3);
 }
 
 #[test]
@@ -168,7 +177,10 @@ fn the_sign_in_token_alone_keeps_nodes_recorded_answers() {
             // machine or a route target.
             assert_eq!(want, Some("provider"), "{f:?}");
             let both = refusal::with_caps(&facts, &[CAP, SIGNIN_CAP]);
-            let held = facts.machine || facts.route_target;
+            // (noevia#2761: and unless it has the default id, which core's signinRow never lifts.)
+            let held = facts.machine
+                || facts.route_target
+                || facts.provider_id == facts.default_provider_id;
             assert_eq!(both, held.then_some("provider"), "{f:?}");
         }
     }

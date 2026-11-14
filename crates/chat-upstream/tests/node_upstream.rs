@@ -177,10 +177,16 @@ fn every_recorded_refusal() {
             want,
             "{f:?}"
         );
-        // With it, only machines, the sign-in provider and route targets stay refused.
+        // With it, a plain provider row (core plainProviderRow: non-default, no machine, not
+        // external, not the sign-in row, no route target) is lifted, its key too; every other
+        // row keeps Node's answer (noevia#2761: external rows and the default row's key stay).
         let lifted = refusal::with_caps(&facts, &refusal::caps("skills, providers"));
-        let stays = facts.machine || facts.sign_in || facts.route_target;
-        assert_eq!(lifted, stays.then_some("provider"), "{f:?}");
+        let plain = facts.provider_id != facts.default_provider_id
+            && !facts.machine
+            && !facts.external
+            && !facts.sign_in
+            && !facts.route_target;
+        assert_eq!(lifted, if plain { None } else { want }, "{f:?}");
     }
 }
 

@@ -6,7 +6,8 @@
 //! provider and route targets stay refused in this slice: they have their own transports
 //! ([`crate::target::Fetch`]) and their own checks (machine readiness, the broker, the cloud grant).
 //! The sign-in provider is lifted too, but only for a front that also names [`SIGNIN_CAP`] (it runs
-//! the broker's transport itself); machines and route targets stay refused in every case.
+//! the broker's transport itself); machines and route targets stay refused in every case, and so
+//! do external keyed rows and the default row's key (core's `plainProviderRow`, noevia#2761).
 
 /// The caps token a front sends when it runs this call path (not sent by any front yet; core
 /// does not know it yet, so it changes nothing).
@@ -47,20 +48,35 @@ pub fn node_reason(f: &Facts) -> Option<&'static str> {
     None
 }
 
-/// The reason for a front that sends [`CAP`]: a provider row (non-default, external, with or
-/// without a key) runs natively; a machine, the sign-in provider or a route target still answers
-/// `provider`. A front that sends [`SIGNIN_CAP`] as well runs the sign-in provider too; machines
-/// and route targets stay refused. Without [`CAP`], exactly [`node_reason`] ([`SIGNIN_CAP`] alone
-/// lifts nothing).
+/// The reason for a front that sends [`CAP`], as core's `refusal()` answers it with that front's
+/// lift (noevia-core `rust-chat-native.cjs` `frontRow`, council p8-3 + p10-1; noevia#2761):
+/// - a plain provider row (`plainProviderRow`: non-default, no machine, not external, not the
+///   sign-in row, no route target) runs natively, its key included;
+/// - with [`SIGNIN_CAP`] as well, the sign-in row (`signinRow`: non-default, no machine, no route
+///   target; external is its kind's own) runs natively too, as core lifts it with its
+///   `NOEVIA_RUST_SIGNIN_TRANSPORT` switch on (this front cannot see core's switch: with it off
+///   core keeps the row, which only keeps more turns in Node);
+/// - every other row answers as [`node_reason`]: `provider` for a non-default, machine, external,
+///   sign-in or route-target row, else `provider-key` for a turn that sends a key (the default
+///   row's key stays core's).
+///
+/// Without [`CAP`], exactly [`node_reason`] ([`SIGNIN_CAP`] alone lifts nothing).
 pub fn with_caps(f: &Facts, caps: &[&str]) -> Option<&'static str> {
     if !caps.contains(&CAP) {
         return node_reason(f);
     }
-    let sign_in_held = f.sign_in && !caps.contains(&SIGNIN_CAP);
-    if f.machine || sign_in_held || f.route_target {
-        return Some("provider");
+    if front_row(f, caps.contains(&SIGNIN_CAP)) {
+        return None;
     }
-    None
+    node_reason(f)
+}
+
+/// core `frontRow` for a front naming [`CAP`] (`signin`: it names [`SIGNIN_CAP`] too).
+fn front_row(f: &Facts, signin: bool) -> bool {
+    let other_row = f.provider_id != f.default_provider_id && !f.machine && !f.route_target;
+    let plain = other_row && !f.external && !f.sign_in;
+    let signin_row = signin && other_row && f.sign_in;
+    plain || signin_row
 }
 
 /// The caps header's tokens as core reads them (`a,b,c`, trimmed, empty ones dropped); a header
