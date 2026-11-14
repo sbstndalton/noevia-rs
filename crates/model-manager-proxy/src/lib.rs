@@ -33,9 +33,13 @@
 //!   `models/delete` and a section PUT, a non-empty body that does not parse to a JSON object (core
 //!   reads it as `{}` and forwards the raw bytes, which the model manager may read differently:
 //!   `NaN`, a dictionary of `models`), a body the port cannot hold, or an `aliases`/`models` that is
-//!   present but not an array is 400; otherwise the body forwarded is the parsed value written
-//!   again (`wtf16::stringify`; an empty body is `{}`), so the model manager sees exactly what was
-//!   judged. (This also answers core's `null`-body TypeError with that 400.)
+//!   present but not an array is 400; so is one holding anything but strings (`[7]`, `[true]`,
+//!   `[null]`: core's budget checks and sweep count look at strings only, and the model manager
+//!   writes the others as text, `"7"` or `"True"`, which no guard judged; a numeric delete key is
+//!   matched against the scan by strict equality, not as the model manager reads it). Otherwise
+//!   the body forwarded is the parsed value written again (`wtf16::stringify`; an empty body is
+//!   `{}`), so the model manager is sent the same value the guards judged. (This also answers
+//!   core's `null`-body TypeError with that 400.)
 //! - **Methods**: a method Node's HTTP parser does not accept ([`NODE_METHODS`]; hyper accepts any
 //!   token, `delete` included) is 400 `Invalid method`, before anything.
 //! - **A section named `rename`**: `PUT sections/rename` is a section write (core's
@@ -46,7 +50,7 @@
 //! (core scans fresh only when the cache is empty); the sweep guard's start-up `adopt()` is not
 //! part of this contract: the front relays `POST benchmark/sweep` to core, which keeps its guard, but
 //! only after the same [`strict_payload`] check (with `aliases`) and with the parsed body written
-//! again, so core judges and the model manager receives the checked value.
+//! again, so core and the model manager are sent the value that was checked.
 //!
 //! Core's behaviour is kept where it is wrong but harmless; each is in the recording:
 //! - `PATH_OPTION_ALIASES` is a plain object, so a section PUT whose `values` has a non-string
@@ -485,7 +489,7 @@ pub fn autoconfig_search(search: &str, budget: &JValue) -> Result<String, Thrown
 pub const NOT_AN_OBJECT: &str = "The request body must be a JSON object.";
 
 /// A guarded route's body (named difference, fail closed): `{}` when empty, else it must parse
-/// (as the port holds it) to an object whose `field`, when present, is an array.
+/// (as the port holds it) to an object whose `field`, when present, is an array of strings.
 pub fn strict_payload(body: Option<&str>, field: Option<&str>) -> Result<JValue, String> {
     let text = body.unwrap_or("");
     if text.is_empty() {
@@ -496,8 +500,11 @@ pub fn strict_payload(body: Option<&str>, field: Option<&str>) -> Result<JValue,
         _ => return Err(NOT_AN_OBJECT.to_string()),
     };
     if let Some(f) = field {
-        if !matches!(value.get(f), JValue::Undefined | JValue::Arr(_)) {
-            return Err(format!("{f} must be an array."));
+        match value.get(f) {
+            JValue::Undefined => {}
+            JValue::Arr(items) if items.iter().all(|x| matches!(x, JValue::Str(_))) => {}
+            JValue::Arr(_) => return Err(format!("{f} must be an array of model names.")),
+            _ => return Err(format!("{f} must be an array.")),
         }
     }
     Ok(value)

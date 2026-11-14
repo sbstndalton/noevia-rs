@@ -954,3 +954,159 @@ async fn a_body_over_one_mebibyte_is_413() {
     assert_eq!(status, 413);
     assert!(targets(&r.loader).is_empty());
 }
+
+/// A raw request (the head as given, then the body bytes): (status, body).
+async fn raw(addr: std::net::SocketAddr, head: &str, body: &[u8]) -> (u16, String) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut s = tokio::net::TcpStream::connect(addr).await.unwrap();
+    s.write_all(head.as_bytes()).await.unwrap();
+    s.write_all(body).await.unwrap();
+    let mut bytes = Vec::new();
+    tokio::time::timeout(Duration::from_secs(60), s.read_to_end(&mut bytes))
+        .await
+        .unwrap()
+        .unwrap();
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let (h, b) = text.split_once("\r\n\r\n").unwrap();
+    (
+        h.split_whitespace().nth(1).unwrap().parse().unwrap(),
+        b.to_string(),
+    )
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_sweep_refuses_non_string_aliases_and_needs_the_csrf_token() {
+    let r = rig(true, vec![], true).await;
+    for body in [
+        r#"{"aliases":[7]}"#,
+        r#"{"aliases":[true,"qa-a"]}"#,
+        r#"{"aliases":[null]}"#,
+    ] {
+        let (status, _, text) = call(
+            r.addr,
+            "POST",
+            "/api/model-manager/benchmark/sweep",
+            Some(ADMIN),
+            body.as_bytes(),
+        )
+        .await;
+        assert_eq!(
+            (status, j(&text)),
+            (
+                400,
+                json!({"error": "aliases must be an array of model names."})
+            ),
+            "{body}"
+        );
+    }
+    // The same on the start and the delete.
+    for (path, body, field) in [
+        ("benchmark/start", r#"{"aliases":[7]}"#, "aliases"),
+        ("models/delete", r#"{"models":[5]}"#, "models"),
+    ] {
+        let (status, _, text) = call(
+            r.addr,
+            "POST",
+            &format!("/api/model-manager/{path}"),
+            Some(ADMIN),
+            body.as_bytes(),
+        )
+        .await;
+        assert_eq!(
+            (status, j(&text)),
+            (
+                400,
+                json!({"error": format!("{field} must be an array of model names.")})
+            ),
+            "{path}"
+        );
+    }
+    // A session without the CSRF token: refused, nothing relayed.
+    let body = br#"{"aliases":["qa-a"]}"#;
+    let (status, _) = raw(
+        r.addr,
+        &format!(
+            "POST /api/model-manager/benchmark/sweep HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nCookie: {ADMIN}\r\nContent-Length: {}\r\n\r\n",
+            r.addr,
+            body.len()
+        ),
+        body,
+    )
+    .await;
+    assert_eq!(status, 403);
+    assert!(relayed(&r).is_empty(), "{:?}", relayed(&r));
+    assert!(targets(&r.loader).is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn without_a_model_manager_the_sweep_is_relayed_raw() {
+    let r = rig(true, vec![], false).await;
+    let body = br#"{ "aliases" : {"qa-big": 1} }"#;
+    let (status, _, _) = call(
+        r.addr,
+        "POST",
+        "/api/model-manager/benchmark/sweep",
+        Some(ADMIN),
+        body,
+    )
+    .await;
+    assert_eq!(status, 202);
+    let node = r.node.lock().unwrap().clone();
+    assert_eq!(node.len(), 1);
+    assert_eq!(node[0].body.as_bytes(), body);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_chunked_sweep_is_relayed_with_its_length_only() {
+    let r = rig(true, vec![], true).await;
+    let chunks = "a\r\n{\"aliases\"\r\n9\r\n:[\"qa-a\"]\r\n1\r\n}\r\n0\r\n\r\n";
+    let (status, _) = raw(
+        r.addr,
+        &format!(
+            "POST /api/model-manager/benchmark/sweep HTTP/1.1\r\nHost: {0}\r\nConnection: close\r\nCookie: {ADMIN}\r\nOrigin: http://{0}\r\nX-CSRF-Token: csrf\r\nTransfer-Encoding: chunked\r\n\r\n",
+            r.addr
+        ),
+        chunks.as_bytes(),
+    )
+    .await;
+    assert_eq!(status, 202);
+    let node = r.node.lock().unwrap().clone();
+    assert_eq!(node.len(), 1);
+    assert_eq!(node[0].body, r#"{"aliases":["qa-a"]}"#);
+    assert_eq!(
+        node[0].headers.get("content-length").map(String::as_str),
+        Some("20")
+    );
+    assert!(!node[0].headers.contains_key("transfer-encoding"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_held_write_whose_clear_fails_is_not_sent_and_releases_the_hold() {
+    let r = rig(true, vec![], true).await;
+    r.knobs.lock().unwrap().clear_ok = false;
+    let (status, _, body) = call(
+        r.addr,
+        "PUT",
+        "/api/model-manager/models-ini",
+        Some(ADMIN),
+        br#"{"text":""}"#,
+    )
+    .await;
+    assert_eq!(
+        (status, j(&body)),
+        (
+            502,
+            json!({"error": "The model management service is not responding."})
+        )
+    );
+    assert!(targets(&r.loader).is_empty());
+    let engine = targets(&r.engine);
+    assert!(
+        !engine.contains(&"GET /models?reload=1".to_string()),
+        "{engine:?}"
+    );
+    assert!(
+        engine.contains(&format!("DELETE /gate/v1/maintenance/{HOLD}")),
+        "{engine:?}"
+    );
+}
