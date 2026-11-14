@@ -19,7 +19,8 @@
 //! Switch: `NOEVIA_CHAT_EXECUTOR` (config.rs): unset or `node` is today's relay; `native:<user id>,...`
 //! names accounts; `native` is everyone. The turn's cards use this front's approval registry (chat port S9,
 //! [`approvals`]); its chat-wide grants are core's to check, redeem and revoke (the tool bridges, D17).
-//! A Diary space and a Cowork start are never handed off (chat_turn.rs only calls here for a turn).
+//! The Diary space itself (`spaceId: 'diary'`, the companion's own exchange) and a Cowork start are never handed off
+//! (chat_turn.rs only calls here for a turn); Diary extras and Diary project turns are (track R16).
 //!
 //! What the turn needs of this process, and where it comes from:
 //! - the client's stream: NDJSON lines into the response body ([`Wire`]), which chat_wire.rs frames (its
@@ -476,13 +477,16 @@ async fn drive(
         Ok(p) => p,
         Err(e) => {
             eprintln!("chat native: {}", e.0);
+            Journal::fail(&app, &user, journal_handle(&frame));
             return failed(&tx);
         }
     };
     let Some(data_dir) = app.config.data_dir.clone() else {
+        Journal::fail(&app, &user, p.diary_journal.clone());
         return failed(&tx);
     };
     let Ok(user_dir) = server_projects::store::user_dir(&data_dir, &user) else {
+        Journal::fail(&app, &user, p.diary_journal.clone());
         return failed(&tx);
     };
     // Track R8 P7a: the same turn prepared natively beside core's frame, compared and logged only.
@@ -701,7 +705,7 @@ const JOURNAL_PATH: &str = "/internal/chat/native/diary-journal";
 /// The most events one journal call carries (core takes up to 10000; a tool result is at most 8000 units).
 const JOURNAL_BATCH: usize = 256;
 /// How long the turn's end waits for the journal's last call.
-const JOURNAL_FINISH: Duration = Duration::from_secs(10);
+const JOURNAL_FINISH: Duration = Duration::from_secs(3);
 
 enum JournalItem {
     Event(JValue),
@@ -711,7 +715,8 @@ enum JournalItem {
 /// Track R16: a Diary extras preparation's recovery journal (core diary-jobs.cjs), held by core under the frame's
 /// handle (rust-chat-journal.cjs). Every event the turn sends goes to it in order, as chat.cjs `send` feeds it, through
 /// core's diary-journal op: one call at a time, each with what came while the last one ran. The turn's end finishes
-/// it. A call that fails stops the journal (core finishes an idle one: its record reads `uncertain`).
+/// it. A call that fails stops the feeding, and the finish is still sent (without the events since): a record whose
+/// events were lost reads `uncertain` (diary-jobs.cjs finish).
 struct Journal {
     tx: mpsc::UnboundedSender<JournalItem>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
@@ -735,7 +740,10 @@ impl Journal {
                         next = rx.try_recv().ok();
                     }
                 }
-                if live {
+                if !live && finish {
+                    events.clear();
+                }
+                if live || finish {
                     let body = js::obj([
                         ("user", js::s(user.clone())),
                         ("handle", js::s(handle.clone())),
@@ -770,6 +778,32 @@ impl Journal {
         let _ = self.tx.send(JournalItem::Event(event.clone()));
     }
 
+    /// A turn that ends before it runs (the frame unreadable, no account folder): the client got the failure text,
+    /// so the journal gets it too and is finished, as chat.cjs would journal its own error.
+    fn fail(app: &Arc<App>, user: &str, handle: Option<String>) {
+        let Some(handle) = handle else { return };
+        let body = js::obj([
+            ("user", js::s(user)),
+            ("handle", js::s(handle)),
+            (
+                "events",
+                JValue::Arr(vec![js::obj([
+                    ("type", js::s("error")),
+                    ("text", js::s(native::FAILED_TEXT)),
+                ])]),
+            ),
+            ("finish", JValue::Bool(true)),
+        ]);
+        let app = Arc::clone(app);
+        tokio::spawn(async move {
+            let _ = app
+                .config
+                .research
+                .node_call_text(JOURNAL_PATH, js::stringify(&body), BRIDGE_TIMEOUT)
+                .await;
+        });
+    }
+
     /// The turn's end: what is left, then the journal's finish (waited for, at most [`JOURNAL_FINISH`]).
     async fn finish(&self) {
         let _ = self.tx.send(JournalItem::Finish);
@@ -778,6 +812,16 @@ impl Journal {
             let _ = tokio::time::timeout(JOURNAL_FINISH, task).await;
         }
     }
+}
+
+/// The journal handle of a frame [`Prepared::read`] refused, when it names one.
+fn journal_handle(frame: &JValue) -> Option<String> {
+    frame
+        .get("turn")
+        .get("diaryJournal")
+        .as_str()
+        .filter(|h| h.len() == 32 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+        .map(str::to_string)
 }
 
 /// Removes a chat's partial file (chat-partial.cjs's finish without a reply to keep).

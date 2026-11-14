@@ -97,6 +97,10 @@ const SOURCES = {
   'server/rust-approval-registry.cjs': null,
   'server/tool-write-fence.cjs': null,
   'server/dav-parse.lock': null,
+  // Track R16: the frame and its refusals, a Diary extras preparation's journal and its handle.
+  'server/rust-chat-native.cjs': null,
+  'server/diary-jobs.cjs': null,
+  'server/rust-chat-journal.cjs': null,
 };
 for (const rel of Object.keys(SOURCES)) {
   SOURCES[rel] = crypto.createHash('sha256').update(fs.readFileSync(path.join(core, rel))).digest('hex');
@@ -1251,6 +1255,10 @@ const CASES = [
     diaryEnabled: true, project: { id: 'cowork-diary-extras', name: 'QA Diary extras' },
     body: { spaceId: 'diary-extras', extrasEnabled: true, sessionId: 'qa-session-2', recoveryId: 'qa-preparation-0002', entryDay: '2026-11-13' },
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-y4"}'), finish('tool_calls')] }, answer('Prepared from the file.')] },
+  { name: 'diary_extras_preparation_left', about: 'A recoverable Diary extras preparation whose client leaves mid-answer: what its journal got after the cut, then its finish (a record still running reads uncertain).',
+    diaryEnabled: true, project: { id: 'cowork-diary-extras', name: 'QA Diary extras' },
+    body: { spaceId: 'diary-extras', extrasEnabled: true, sessionId: 'qa-session-3', recoveryId: 'qa-preparation-0003', entryDay: '2026-11-13' },
+    rounds: [{ frames: [chunk({ content: 'Partial ' }), chunk({ content: 'preparation' }), { leave: true }, chunk({ content: ' never sent' })] }] },
 ];
 
 (async () => {
