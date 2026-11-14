@@ -135,11 +135,10 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str, flags:
     let read = |name: &str| std::fs::read(user_dir.join(name)).ok();
     let instructions = read("account-instructions.json");
     let memory = read("account-memory.json");
-    // freeChats(): the list as stored; no file is the empty list, an unreadable one no frame (fail open).
+    // freeChats(): the list as stored (read as core reads a JSON file); no file is the empty list,
+    // an unreadable one `None` (the shadow then skips a turn with chat framing on).
     let free_chats = match std::fs::read(user_dir.join(server_projects::chats::FREE_CHATS_FILE)) {
-        Ok(bytes) => std::str::from_utf8(&bytes)
-            .ok()
-            .and_then(|t| wtf16::parse(t).ok()),
+        Ok(bytes) => chat_prepare::js::parse_file(&bytes),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(JValue::Arr(Vec::new())),
         Err(_) => None,
     };
@@ -158,12 +157,14 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str, flags:
 }
 
 /// `serverTimeZone()`: what Node's ICU resolves for the process: `TZ` (an IANA name, or a path
-/// under a `zoneinfo` directory), else the `/etc/localtime` link's target, else `/etc/timezone`,
-/// else `UTC`.
+/// under a `zoneinfo` directory), else where the `/etc/localtime` link finally points, else
+/// `/etc/timezone`, else `UTC`; then V8's canonical name for the UTC and GMT aliases (`UTC`). A
+/// link zone ICU maps to its canonical name (`US/Eastern`) is not mapped here: the shadow then
+/// reports a diff in the system message, which is how such a server shows up.
 pub fn server_time_zone() -> String {
     zone_from(
         std::env::var("TZ").ok().as_deref(),
-        std::fs::read_link("/etc/localtime")
+        std::fs::canonicalize("/etc/localtime")
             .ok()
             .and_then(|p| p.to_str().map(str::to_string))
             .as_deref(),
@@ -171,16 +172,29 @@ pub fn server_time_zone() -> String {
     )
 }
 
+/// The names V8 resolves to `UTC` (ICU's `Etc/UTC` and `Etc/GMT` and their links).
+const UTC_ALIASES: [&str; 16] = [
+    "UTC", "Etc/UTC", "GMT", "Etc/GMT", "UCT", "Etc/UCT", "Universal", "Etc/Universal", "Zulu",
+    "Etc/Zulu", "GMT0", "Etc/GMT0", "GMT+0", "Etc/GMT+0", "GMT-0", "Etc/GMT-0",
+];
+
 fn zone_from(tz: Option<&str>, localtime: Option<&str>, timezone: Option<&str>) -> String {
     let named = |s: &str| {
         let s = s.trim().trim_start_matches(':');
         let s = s.rsplit_once("zoneinfo/").map_or(s, |(_, z)| z);
         (!s.is_empty()).then(|| s.to_string())
     };
-    tz.and_then(named)
-        .or_else(|| localtime.and_then(|l| l.split_once("zoneinfo/").map(|(_, z)| z.to_string())))
+    let zone = tz
+        .and_then(named)
+        .or_else(|| localtime.and_then(|l| l.rsplit_once("zoneinfo/").map(|(_, z)| z.to_string())))
         .or_else(|| timezone.and_then(named))
-        .unwrap_or_else(|| "UTC".into())
+        .unwrap_or_else(|| "UTC".into());
+    let aliases = UTC_ALIASES.iter().chain(&["Greenwich", "Etc/Greenwich"]);
+    if aliases.into_iter().any(|a| a.eq_ignore_ascii_case(&zone)) {
+        "UTC".into()
+    } else {
+        zone
+    }
 }
 
 #[cfg(test)]
@@ -216,10 +230,15 @@ mod tests {
             zone_from(Some("/usr/share/zoneinfo/America/New_York"), None, None),
             "America/New_York"
         );
+        // V8's canonical name for the UTC aliases (the stock Debian image links Etc/UTC).
         assert_eq!(
             zone_from(None, Some("/usr/share/zoneinfo/Etc/UTC"), None),
-            "Etc/UTC"
+            "UTC"
         );
+        for alias in ["Etc/GMT", "GMT", "UCT", "Etc/Universal", "Zulu", "GMT0", "Greenwich", "etc/utc"] {
+            assert_eq!(zone_from(Some(alias), None, None), "UTC", "{alias}");
+        }
+        assert_eq!(zone_from(Some("Etc/GMT+5"), None, None), "Etc/GMT+5");
         assert_eq!(
             zone_from(Some(""), Some("../usr/share/zoneinfo/Europe/Paris"), None),
             "Europe/Paris"

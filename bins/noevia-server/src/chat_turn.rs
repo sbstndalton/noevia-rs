@@ -145,9 +145,11 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
     };
     // Track R8: an account the native executor runs (chat_native.rs; NOEVIA_CHAT_EXECUTOR, off by default).
     let native = target == TURN_PATH && crate::chat_native::wanted(app, &authn.user.id);
-    // Track R8 P7a: the request body again, for the native preparation in shadow (logs only).
+    // Track R8 P7a: the request body again (shared, not copied), for the native preparation in
+    // shadow (logs only).
+    let bytes = bytes::Bytes::from(bytes);
     let shadow = (native && crate::chat_prepare_shadow::wanted(app, &authn.user.id))
-        .then(|| bytes::Bytes::from(bytes.clone()));
+        .then(|| bytes.clone());
     crate::chat_native::strip_client_header(&mut parts.headers);
     parts.headers.remove(header::TRANSFER_ENCODING);
     // The wire is the front's to ask for: a turn gets NDJSON (chat_wire.rs), anything else nothing.
