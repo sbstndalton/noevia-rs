@@ -37,6 +37,11 @@
 //! lookup sentence (`The file this would change could not be looked up`) and audited `edit-target`,
 //! before the card and after it alike; it never revokes the chat's grant (a transport fault is not
 //! a changed file). Only extra refusals: never a run Node would refuse.
+//!
+//! Named difference (noevia#2575): a call that is asked about anyway (an Automatic-only write, a
+//! provenance hit) asks core's grant bridge for no handle; chat.cjs asks the front for a ticket and drops
+//! it. The card, its answer and the run are the same; core's per-account handle cap no longer fills with
+//! handles nothing redeems.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -748,8 +753,13 @@ impl<'a> Tools<'a> {
             };
             // Port contract S9: core's grant bridge answers with a single-use handle for Node's grant (D17).
             // #2446: "Allow for this chat" never covers a once-only tool; its grant is not even asked for.
+            // noevia#2575: nor is it asked for a call that is asked anyway (an Automatic-only write, a
+            // provenance hit): its single-use handle would never be redeemed and would fill core's
+            // per-account cap. Named difference: chat.cjs asks the front for the ticket and drops it.
             let once = self.once_tools.contains(name);
-            let used_grant = if once {
+            // chat.cjs askedPerCall's other two terms: the card is shown whatever the grant says.
+            let asked_anyway = !hits.is_empty() || self.automatic_only_writes.contains(name);
+            let used_grant = if once || asked_anyway {
                 None
             } else {
                 host.chat_wide_approved(
@@ -760,9 +770,7 @@ impl<'a> Tools<'a> {
                 )
                 .await
             };
-            let asked = used_grant.is_none()
-                || !hits.is_empty()
-                || self.automatic_only_writes.contains(name);
+            let asked = used_grant.is_none() || asked_anyway;
             if asked {
                 let id = format!("ap-{}", host.uuid());
                 let now = host.now_ms();

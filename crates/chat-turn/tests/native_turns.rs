@@ -183,6 +183,7 @@ impl Script {
             _ => Vec::new(),
         };
         let (recorded_bridge, recorded_stubs) = (recorded("bridge"), recorded("stubs"));
+        let recorded_stubs = without_asked_anyway_grants(&case, recorded_stubs);
         let (skip, before) = before_cut(&case);
         let earlier = recorded("stores")
             .iter()
@@ -287,6 +288,31 @@ impl Script {
         *self.left.lock().unwrap() = true;
         self.release_lease();
     }
+}
+
+/// noevia#2575, a named difference: the native gate asks no grant for a call it asks about anyway (a
+/// provenance hit, an Automatic-only write), where chat.cjs asks the front for a ticket and drops it.
+/// Those recorded grant checks are not answered here (record_turns.cjs marks each with its tool and, for
+/// a provenance hit, `askedAnyway`).
+fn without_asked_anyway_grants(case: &JValue, stubs: Vec<JValue>) -> Vec<JValue> {
+    let automatic_only: Vec<&str> = match case
+        .get("handoff")
+        .get("prepared")
+        .get("automaticOnlyWrites")
+    {
+        JValue::Arr(names) => names.iter().filter_map(|n| n.as_str()).collect(),
+        _ => Vec::new(),
+    };
+    stubs
+        .into_iter()
+        .filter(|s| {
+            s.get("op").as_str() != Some("chatWideApproved")
+                || !(s.get("askedAnyway") == &JValue::Bool(true)
+                    || s.get("tool")
+                        .as_str()
+                        .is_some_and(|t| automatic_only.contains(&t)))
+        })
+        .collect()
 }
 
 impl Host for Script {

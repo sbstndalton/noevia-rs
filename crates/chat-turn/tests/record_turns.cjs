@@ -310,6 +310,9 @@ async function runTurn(c, { handoff = false } = {}) {
     const log = { requests: [], stores: [], approvals: [], executions: [], bridge: [], stubs: [] };
     const store = (op, args) => log.stores.push({ op, ...args });
     let cut = false;
+    // noevia#2575: the call each grant check is for (chat.cjs reads the tool's policy, then checks provenance, then asks
+    // the grant), and whether Node asks that call on its card anyway (a provenance hit: audited before the check).
+    let policyTool = null, provenanceTool = null;
     const stub = (op, entry) => { if (cut) log.stubs.push({ op, ...entry }); return entry.answer; };
     // Port contract S9: core's own registry client over a scripted front (approval_registry.rs's answers).
     // `openRefused`: the front refuses to open the question; `waitUnavailable`: its wait fails; `leaveOnCard`: the
@@ -483,8 +486,8 @@ async function runTurn(c, { handoff = false } = {}) {
       } }, prefill: { recordSample() {} },
       reduceToolResult: require(path.join(server, 'tool-result-reduce.cjs')).reduceToolResult,
       HISTORY_CAP: 20, DEFAULT_PROVIDER_ID: 'default', DIARY_BASE: 'http://qa-diary.invalid', TOOL_RESULT_CAP: 8000,
-      authService: { audit: (event, actor, subject, details) => store('audit', { event, actor, subject, details }), diaryEnabled: () => false },
-      toolPolicy: { mode: (_user, tool, write) => stub('policy', { name: tool, write, answer: policyFor(tool, write) }) },
+      authService: { audit: (event, actor, subject, details) => { if (event === 'tool.provenance') provenanceTool = details?.tool ?? null; store('audit', { event, actor, subject, details }); }, diaryEnabled: () => false },
+      toolPolicy: { mode: (_user, tool, write) => { policyTool = tool; provenanceTool = null; return stub('policy', { name: tool, write, answer: policyFor(tool, write) }); } },
       modelManager: {
         enabled: true,
         // The inference gate grants at once (llamacpp-manager.cjs acquireLease, inference-gate-client.cjs makeLease).
@@ -562,7 +565,7 @@ async function runTurn(c, { handoff = false } = {}) {
       grantContext: async (raw) => grantFixture.context(raw, { holder: { kind: 'absent' } }),
       chatWideApproved: async (userId, chatId, scope, binding) => {
         const grant = await registry.chatWideApproved(userId, chatId, scope, binding);
-        stub('chatWideApproved', { chatId, scope, answer: !!grant });
+        stub('chatWideApproved', { chatId, scope, tool: policyTool, ...(provenanceTool !== null && provenanceTool === policyTool ? { askedAnyway: true } : {}), answer: !!grant });
         return grant;
       },
       redeemChatGrant: async (userId, chatId, scope, binding, grant) => {

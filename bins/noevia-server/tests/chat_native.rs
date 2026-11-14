@@ -1573,9 +1573,20 @@ async fn run_case(
 ) -> Result<(), String> {
     let input = case.get("input").clone();
     // With the front's registry its cards are the registry's: their recorded stubs are not asked for.
+    // noevia#2575, a named difference: no grant is asked for a call asked about anyway (a provenance hit,
+    // an Automatic-only write); those recorded checks are not answered.
+    let automatic_only = arr(case
+        .get("handoff")
+        .get("prepared")
+        .get("automaticOnlyWrites"));
     let stubs = arr(case.get("stubs"))
         .into_iter()
         .filter(|s| ANSWERED.contains(&s.get("op").as_str().unwrap_or("")))
+        .filter(|s| {
+            s.get("op").as_str() != Some("chatWideApproved")
+                || !(s.get("askedAnyway") == &JValue::Bool(true)
+                    || automatic_only.iter().any(|n| n == s.get("tool")))
+        })
         .filter(|s| {
             decide.is_none()
                 || !matches!(s.get("op").as_str(), Some("openApproval" | "awaitApproval"))
