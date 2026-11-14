@@ -66,8 +66,14 @@
 //!   an Automatic turn, its remembered chat flags, the sensitivity check and the routing question
 //!   (`route_pending`, S9 `openChoice`) as seams, `routeTarget`, `offBoxTurn` and the meta
 //!   `routing`. Recorded in `tests/fixtures/node-modes.v1.json`, written by `tests/record_modes.cjs`
-//!   (whole turns through `createChatHandler`); no named differences. The pre-rules, the router
-//!   input and the wire changes once the route is known are later parts.
+//!   (whole turns through `createChatHandler`); no named differences. The pre-rules and the router
+//!   input are later parts.
+//! - [`offbox`] (slice P5d, part 2): the wire once the route is known: the brain block and the
+//!   time part's zone dropped off the box, the #1646 private-tools move, the off-box replay (#1703),
+//!   the private-data boxes and reader hints taken out of a still-ungranted cloud route and its
+//!   round note. Recorded in `tests/fixtures/node-offbox.v1.json`, written by
+//!   `tests/record_offbox.cjs` (whole free-chat turns through `createChatHandler`); no named
+//!   differences.
 //! - [`retrieval`] (slice P2b): a project turn's knowledge-file retrieval around its two seams (the
 //!   file-job wait and `rag.filesContext`): the project id, whether and how the turn waits, the
 //!   request (the readable files, the question, `attached`, multimodal `images`), and what chat.cjs
@@ -137,6 +143,7 @@ pub mod js;
 pub mod memory;
 pub mod modes;
 pub mod names;
+pub mod offbox;
 pub mod offer;
 pub mod project;
 pub mod reroute;
@@ -214,6 +221,11 @@ impl SystemParts {
         &self.parts
     }
 
+    /// The parts, for the off-box rules ([`offbox`]) that take some out or rewrite one.
+    pub(crate) fn parts_mut(&mut self) -> &mut Vec<(PartKind, String)> {
+        &mut self.parts
+    }
+
     /// The first part of `kind`.
     pub fn get(&self, kind: PartKind) -> Option<&str> {
         self.parts
@@ -262,7 +274,7 @@ pub struct Turn<'a> {
     /// `carryOrphanTool` and `knownTool` (see [`ReplayOptions`]). The replay here is the one
     /// chat.cjs builds before the route is known, so `off_box` is always false: a route that
     /// leaves the box rebuilds it with [`history::replay_history`] and `off_box: true`
-    /// (chat.cjs ~1265), a later slice.
+    /// (chat.cjs ~1265), in [`offbox::OffBox`].
     pub carry_orphan_tool: &'a (dyn Fn(&str) -> bool + Sync),
     pub known_tool: &'a (dyn Fn(&str) -> bool + Sync),
     /// The project, its tasks and what retrieval and the source jobs found (`None`: no project).
