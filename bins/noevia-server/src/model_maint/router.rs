@@ -206,6 +206,28 @@ impl Router {
         extra: &[(HeaderName, HeaderValue)],
         timeout: Duration,
     ) -> Result<RawReply, Fault> {
+        self.send_text(
+            method,
+            path,
+            body.map(Value::to_string),
+            hold,
+            extra,
+            timeout,
+        )
+        .await
+    }
+
+    /// [`Router::send_raw`] with the body as JSON text already written (`JSON.stringify`'s bytes,
+    /// key order and lone surrogates kept).
+    pub async fn send_text(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<String>,
+        hold: Option<&str>,
+        extra: &[(HeaderName, HeaderValue)],
+        timeout: Duration,
+    ) -> Result<RawReply, Fault> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         if let Some(a) = &self.authorization {
@@ -223,7 +245,7 @@ impl Router {
             .headers(headers)
             .timeout(timeout);
         if let Some(b) = body {
-            req = req.body(b.to_string());
+            req = req.body(b);
         }
         let res = req.send().await.map_err(|_| Fault)?;
         let status = res.status().as_u16();

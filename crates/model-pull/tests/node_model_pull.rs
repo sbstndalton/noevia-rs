@@ -208,8 +208,9 @@ impl Host for Stub<'_> {
         self.invalidated += 1.0;
     }
 
-    fn clear_model_scan(&mut self) {
+    fn clear_model_scan(&mut self) -> Result<(), model_pull::Answered> {
         self.scan_cleared += 1.0;
+        Ok(())
     }
 
     fn send(&mut self, request: &Request) -> Result<Reply, Thrown> {
@@ -263,11 +264,12 @@ impl Host for Stub<'_> {
         assert!(self.entered >= 0, "left more often than entered");
     }
 
-    fn downloads_requested(&mut self, checkpoint: &JValue) {
+    fn downloads_requested(&mut self, checkpoint: &JValue) -> Result<(), model_pull::Answered> {
         assert!(self.requested.is_none());
         self.requested = Some(checkpoint.clone());
         self.calls
             .push(JValue::obj([("sse", JValue::from(self.sse.as_str()))]));
+        Ok(())
     }
 
     fn downloads_rejected(&mut self, checkpoint: &JValue) {

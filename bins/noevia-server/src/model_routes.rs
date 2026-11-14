@@ -132,6 +132,11 @@ pub async fn serve(
     if app.config.model_manager.answers(req.method(), &path) {
         return crate::model_manager_routes::serve(app, conn, req, path).await;
     }
+    if path == crate::model_pull_routes::PULL
+        && app.config.model_writes.answers(req.method(), &path)
+    {
+        return crate::model_pull_post::serve(app, conn, req, path).await;
+    }
     if path == crate::model_pull_routes::PATH
         && app.config.model_writes.answers(req.method(), &path)
     {

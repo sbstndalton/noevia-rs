@@ -74,7 +74,9 @@ impl Fetcher for Nested<'_> {
 
 impl Host for Nested<'_> {
     fn invalidate_model_reads(&mut self) {}
-    fn clear_model_scan(&mut self) {}
+    fn clear_model_scan(&mut self) -> Result<(), model_pull::Answered> {
+        Ok(())
+    }
     fn send(&mut self, _: &Request) -> Result<Reply, Thrown> {
         Ok(Reply {
             ok: true,
@@ -92,7 +94,9 @@ impl Host for Nested<'_> {
         Ok(())
     }
     fn leave(&mut self) {}
-    fn downloads_requested(&mut self, _: &JValue) {}
+    fn downloads_requested(&mut self, _: &JValue) -> Result<(), model_pull::Answered> {
+        Ok(())
+    }
     fn downloads_rejected(&mut self, _: &JValue) {}
 }
 
@@ -162,7 +166,9 @@ impl Fetcher for Threaded {
 
 impl Host for Threaded {
     fn invalidate_model_reads(&mut self) {}
-    fn clear_model_scan(&mut self) {}
+    fn clear_model_scan(&mut self) -> Result<(), model_pull::Answered> {
+        Ok(())
+    }
     fn send(&mut self, r: &Request) -> Result<Reply, Thrown> {
         let mut nested = Nested {
             artifacts: &Mutex::new(Artifacts::new()),
@@ -176,7 +182,9 @@ impl Host for Threaded {
         Ok(())
     }
     fn leave(&mut self) {}
-    fn downloads_requested(&mut self, _: &JValue) {}
+    fn downloads_requested(&mut self, _: &JValue) -> Result<(), model_pull::Answered> {
+        Ok(())
+    }
     fn downloads_rejected(&mut self, _: &JValue) {}
 }
 

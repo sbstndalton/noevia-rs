@@ -34,18 +34,8 @@
 //!   fails the fetch (`fetch failed`, so the check answers `unknown`). The variants lookup follows
 //!   no redirect at all, as core's `fetchJson` (`redirect: 'error'`), and is vetted the same way.
 //!
-//! # Not here: `POST /api/models/pull` (next step)
-//!
-//! The pull stays core's under the switch. With llama.cpp it enters core's maintenance gate, tells
-//! core's download tracker (`llamacpp-downloads.cjs`: the state file and the router's
-//! `/models/sse` stream it follows for `download_finished` / `download_failed`), and posts to the
-//! router. The tracker's state is what `GET /api/models/downloads` reads, so a front-answered pull
-//! needs a core bridge:
-//! `POST /internal/models/downloads/{requested,rejected}` (the front's project store token, the
-//! checkpoint as JSON), which core applies to its tracker (`requested` also connects the event
-//! stream). Plus the front's own maintenance admission in place of core's `enter()`. The crate
-//! already has the request shape and host hooks (`Host::enter`, `downloads_requested`,
-//! `downloads_rejected`); the bridge and its recorded replay are the next step.
+//! `POST /api/models/pull` is wired in model_pull_post.rs under the same switch (core's download
+//! tracker told over its `/internal/models/downloads/{requested,rejected}` bridge).
 use crate::{identity, reply, App};
 use axum::body::Body;
 use axum::http::{Request, Response, StatusCode};
@@ -59,6 +49,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub const PATH: &str = "/api/models/mtp-artifact";
+/// `POST /api/models/pull` (model_pull_post.rs), under the same switch.
+pub const PULL: &str = "/api/models/pull";
 /// The public hub every URL of the check and of llama.cpp's variants names.
 const PUBLIC_HUB: &str = "https://huggingface.co";
 /// fetchJson's answer cap (http.cjs `DEFAULT_MAX_RESPONSE_BYTES`).
@@ -390,8 +382,9 @@ impl Fetcher for FrontHub {
 impl model_pull::Host for FrontHub {
     // A GET reaches neither the write prelude nor the scan clear; these are counted, not acted on.
     fn invalidate_model_reads(&mut self) {}
-    fn clear_model_scan(&mut self) {
+    fn clear_model_scan(&mut self) -> Result<(), model_pull::Answered> {
         self.state.scan_clears.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
     fn send(&mut self, request: &manager::Request) -> Result<Reply, Thrown> {
         let state = Arc::clone(&self.state);
@@ -402,7 +395,9 @@ impl model_pull::Host for FrontHub {
         Err(Thrown::internal("the pull is core's"))
     }
     fn leave(&mut self) {}
-    fn downloads_requested(&mut self, _: &JValue) {}
+    fn downloads_requested(&mut self, _: &JValue) -> Result<(), model_pull::Answered> {
+        Ok(())
+    }
     fn downloads_rejected(&mut self, _: &JValue) {}
 }
 

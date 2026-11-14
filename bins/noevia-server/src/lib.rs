@@ -80,6 +80,7 @@ pub mod model_kind;
 pub mod model_maint;
 pub mod model_manager_routes;
 pub mod model_manager_scan;
+pub mod model_pull_post;
 pub mod model_pull_routes;
 pub mod model_routes;
 pub mod model_sizing;
@@ -976,8 +977,8 @@ async fn handle(
         }
     }
     // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget, idle unload and preset
-    // PUTs and GET /api/models/mtp-artifact are the models routes' too (model_writes_routes.rs,
-    // model_pull_routes.rs); unset, they stay Node's.
+    // PUTs, GET /api/models/mtp-artifact and POST /api/models/pull are the models routes' too
+    // (model_writes_routes.rs, model_pull_routes.rs, model_pull_post.rs); unset, they stay Node's.
     if native.is_none() && app.config.model_writes.on {
         let at = whatwg.as_deref().unwrap_or(&path);
         if app.config.model_writes.answers(req.method(), at) {

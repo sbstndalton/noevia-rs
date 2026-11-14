@@ -81,8 +81,10 @@ pub trait Host: Fetcher {
     /// `/api/models/` does, before and after it is handled).
     fn invalidate_model_reads(&mut self);
     /// `modelScanCache.clear()`: drops the cached model folder scan (an administrator's write
-    /// under `/api/models/`, any method but GET, HEAD and OPTIONS).
-    fn clear_model_scan(&mut self);
+    /// under `/api/models/`, any method but GET, HEAD and OPTIONS). Core's in-memory clear cannot
+    /// fail; a host whose clear can answers `Err`, which is the request's answer at once (nothing
+    /// after it runs).
+    fn clear_model_scan(&mut self) -> Result<(), Answered>;
     /// One request to the model manager (or, for llama.cpp's variants, to Hugging Face), as
     /// http.cjs `fetchJson` sends it; `Err` for what `fetchJson` throws (no answer, the deadline,
     /// a redirect) or the llama.cpp manager's coverage loss.
@@ -97,10 +99,31 @@ pub trait Host: Fetcher {
     fn enter(&mut self) -> Result<(), Thrown>;
     fn leave(&mut self);
     /// llama.cpp only: the download tracker records a requested pull (and follows the router's
-    /// `/models/sse` events).
-    fn downloads_requested(&mut self, checkpoint: &JValue);
+    /// `/models/sse` events). Core's cannot fail; a host whose can answers `Err`, which is the
+    /// request's answer: the router is not asked (the gate is left first).
+    fn downloads_requested(&mut self, checkpoint: &JValue) -> Result<(), Answered>;
     /// llama.cpp only: the router refused the pull.
     fn downloads_rejected(&mut self, checkpoint: &JValue);
+}
+
+/// An answer a host gives where core's step cannot fail but the host's can (`{ error: message }`
+/// with `status`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answered {
+    pub status: u16,
+    pub message: String,
+}
+
+/// How the llama.cpp pull ends early.
+enum Exit {
+    Thrown(Thrown),
+    Answered(Answered),
+}
+
+impl From<Thrown> for Exit {
+    fn from(t: Thrown) -> Exit {
+        Exit::Thrown(t)
+    }
 }
 
 /// What the routes answer.
@@ -171,7 +194,12 @@ pub fn handle(
         // routes/models.cjs: any other change under /api/models/ also drops the folder scan.
         if call.path.starts_with("/api/models/") && writes(call.method) && call.method != "OPTIONS"
         {
-            host.clear_model_scan();
+            if let Err(a) = host.clear_model_scan() {
+                if write {
+                    host.invalidate_model_reads();
+                }
+                return error(a.status, &a.message);
+            }
         }
         if call.path == "/api/models/mtp-artifact" && call.method == "GET" {
             match mtp_selection(config, call.query, host) {
@@ -290,7 +318,11 @@ pub fn pull(config: &Config, body: Option<&[u8]>, host: &mut impl Host) -> Outco
         _ => JValue::from("llamacpp"),
     };
     let reply = match config.kind {
-        Kind::Llamacpp => llamacpp_pull(config, checkpoint, host),
+        Kind::Llamacpp => match llamacpp_pull(config, checkpoint, host) {
+            Ok(r) => Ok(r),
+            Err(Exit::Thrown(t)) => Err(t),
+            Err(Exit::Answered(a)) => return error(a.status, &a.message),
+        },
         _ => host.send(&manager::lemonade_pull_request(
             config,
             &model_name,
@@ -332,7 +364,7 @@ fn llamacpp_pull(
     config: &Config,
     checkpoint: &JValue,
     host: &mut impl Host,
-) -> Result<Reply, Thrown> {
+) -> Result<Reply, Exit> {
     host.enter()?;
     let out = llamacpp_pull_entered(config, checkpoint, host);
     host.leave();
@@ -343,7 +375,7 @@ fn llamacpp_pull_entered(
     config: &Config,
     checkpoint: &JValue,
     host: &mut impl Host,
-) -> Result<Reply, Thrown> {
+) -> Result<Reply, Exit> {
     // `/…/.test(checkpoint || '')` reads `String(checkpoint)`.
     let text = js::to_string(checkpoint).ok_or_else(|| Thrown::internal(js::NO_PRIMITIVE))?;
     if !manager::is_llamacpp_checkpoint(&text) {
@@ -353,7 +385,8 @@ fn llamacpp_pull_entered(
             body: JValue::obj([("error", JValue::from(manager::LLAMACPP_CHECKPOINT))]),
         });
     }
-    host.downloads_requested(checkpoint);
+    host.downloads_requested(checkpoint)
+        .map_err(Exit::Answered)?;
     let reply = host.send(&manager::llamacpp_pull_request(config, checkpoint))?;
     if !reply.ok {
         host.downloads_rejected(checkpoint);
