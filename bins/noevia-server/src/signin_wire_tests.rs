@@ -2,7 +2,12 @@
 //! (crates/signin-transport/tests/fixtures/node-transport.v1.json) replayed through the front's
 //! client against a loopback stub backend, plus the texts, the signal, the broker mapping, the
 //! redirect refusal and the abort.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 
 use super::*;
 use crate::chatgpt_oauth_routes::{transport, Settings};
@@ -105,14 +110,22 @@ fn texts_and_header_names_are_cores() {
         source: scrub(&t.source),
     };
     assert_eq!(scrubbed, want.texts);
-    assert_eq!(scrub(&ours.protocol.account_header), want.protocol.account_header);
-    assert_eq!(scrub(&ours.protocol.region_header), want.protocol.region_header);
+    assert_eq!(
+        scrub(&ours.protocol.account_header),
+        want.protocol.account_header
+    );
+    assert_eq!(
+        scrub(&ours.protocol.region_header),
+        want.protocol.region_header
+    );
     // The recorder ran core without a package version ("0"); the front's settings were built so too.
     assert_eq!(scrub(&ours.protocol.user_agent), want.protocol.user_agent);
     assert!(!ours.base_url.ends_with('/'));
     // A loopback QA backend keeps its path, without the trailing slash.
     let qa = Settings::from_lookup(
-        &|k: &str| (k == "NOEVIA_QA_CHATGPT_CODEX_BASE").then(|| "http://127.0.0.1:9/x/".to_owned()),
+        &|k: &str| {
+            (k == "NOEVIA_QA_CHATGPT_CODEX_BASE").then(|| "http://127.0.0.1:9/x/".to_owned())
+        },
         None,
     );
     assert_eq!(transport(&qa).base_url, "http://127.0.0.1:9/x");
@@ -314,7 +327,12 @@ async fn answer(sock: &mut TcpStream, u: &Scripted, stub: &Stub) {
         if c.is_empty() {
             continue;
         }
-        let frame = [format!("{:x}\r\n", c.len()).into_bytes(), c.clone(), b"\r\n".to_vec()].concat();
+        let frame = [
+            format!("{:x}\r\n", c.len()).into_bytes(),
+            c.clone(),
+            b"\r\n".to_vec(),
+        ]
+        .concat();
         if sock.write_all(&frame).await.is_err() {
             return;
         }
@@ -490,7 +508,9 @@ async fn read_reply(answer: Answer<HttpBody>) -> Read {
         }
     }
     let text = String::from_utf8_lossy(&bytes).into_owned();
-    out.text = text.strip_prefix('\u{FEFF}').map_or(text.clone(), str::to_owned);
+    out.text = text
+        .strip_prefix('\u{FEFF}')
+        .map_or(text.clone(), str::to_owned);
     out
 }
 
@@ -606,9 +626,9 @@ async fn recorded_cases_over_real_http_match_core() {
             }
         };
         let failure_case = match input.get("upstream") {
-            JValue::Arr(up) => up
-                .iter()
-                .any(|u| u.get("failAfter").as_num().is_some() || u.get("throws").as_str().is_some()),
+            JValue::Arr(up) => up.iter().any(|u| {
+                u.get("failAfter").as_num().is_some() || u.get("throws").as_str().is_some()
+            }),
             _ => false,
         };
         if let Some(thrown) = want.get("thrown").as_str() {
@@ -662,7 +682,11 @@ async fn recorded_cases_over_real_http_match_core() {
             check(r.body == s(w.get("body")), "body".into());
             if let JValue::Obj(h) = w.get("headers") {
                 for (k, v) in h {
-                    let ours = r.headers.iter().find(|(n, _)| n == k).map(|(_, x)| x.as_str());
+                    let ours = r
+                        .headers
+                        .iter()
+                        .find(|(n, _)| n == k)
+                        .map(|(_, x)| x.as_str());
                     check(ours == v.as_str(), format!("header {k}: {ours:?}"));
                 }
             }
@@ -672,7 +696,11 @@ async fn recorded_cases_over_real_http_match_core() {
                 .iter()
                 .map(|c| match c {
                     JValue::Arr(x) if x.first().and_then(JValue::as_str) == Some("reject") => {
-                        JValue::Arr(vec![x[0].clone(), x[1].clone(), JValue::Str(js_string(&x[2]))])
+                        JValue::Arr(vec![
+                            x[0].clone(),
+                            x[1].clone(),
+                            JValue::Str(js_string(&x[2])),
+                        ])
                     }
                     other => other.clone(),
                 })
@@ -726,7 +754,8 @@ fn qa_accounts(sessions: usize) -> FakeAccounts {
     }
 }
 
-const QA_BODY: &str = r#"{"model":"m-large","messages":[{"role":"user","content":"q"}],"stream":true}"#;
+const QA_BODY: &str =
+    r#"{"model":"m-large","messages":[{"role":"user","content":"q"}],"stream":true}"#;
 
 #[tokio::test]
 async fn a_redirect_is_refused_and_not_followed() {
@@ -751,13 +780,25 @@ async fn a_redirect_is_refused_and_not_followed() {
     let cache = Mutex::new(SessionCache::default());
     let answer = tokio::time::timeout(
         DEADLINE,
-        fetch_for(&mut wire, &cache, &transport, "qa-user", None, "http://x/v1/chat/completions", QA_BODY),
+        fetch_for(
+            &mut wire,
+            &cache,
+            &transport,
+            "qa-user",
+            None,
+            "http://x/v1/chat/completions",
+            QA_BODY,
+        ),
     )
     .await
     .unwrap();
     let read = read_reply(answer).await;
     assert_eq!(read.thrown.as_deref(), Some(SEND_FAILED));
-    assert_eq!(stub.lock().unwrap().received.len(), 1, "the redirect was not followed");
+    assert_eq!(
+        stub.lock().unwrap().received.len(),
+        1,
+        "the redirect was not followed"
+    );
 }
 
 #[tokio::test]
@@ -779,12 +820,25 @@ async fn dropping_the_reply_closes_the_backend_connection() {
         client: client().unwrap(),
     };
     let cache = Mutex::new(SessionCache::default());
-    let answer = fetch_for(&mut wire, &cache, &transport, "qa-user", Some("chat-1"), "http://x/v1/chat/completions", QA_BODY).await;
+    let answer = fetch_for(
+        &mut wire,
+        &cache,
+        &transport,
+        "qa-user",
+        Some("chat-1"),
+        "http://x/v1/chat/completions",
+        QA_BODY,
+    )
+    .await;
     let res = into_response(answer).unwrap();
     assert_eq!(res.status(), 200);
     let mut body = res.into_body();
     // The role chunk and the first part arrive while the backend holds the rest.
-    let first = tokio::time::timeout(DEADLINE, body.frame()).await.unwrap().unwrap().unwrap();
+    let first = tokio::time::timeout(DEADLINE, body.frame())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
     let text = String::from_utf8_lossy(first.data_ref().unwrap()).into_owned();
     assert!(text.contains("\"role\":\"assistant\""), "{text}");
     // The turn is aborted: the reply is dropped, and with it the backend connection.
@@ -821,7 +875,15 @@ async fn the_cache_spans_calls_through_the_wire() {
     for _ in 0..3 {
         let answer = tokio::time::timeout(
             DEADLINE,
-            fetch_for(&mut wire, &cache, &transport, "qa-user", None, "http://x/v1/chat/completions", QA_BODY),
+            fetch_for(
+                &mut wire,
+                &cache,
+                &transport,
+                "qa-user",
+                None,
+                "http://x/v1/chat/completions",
+                QA_BODY,
+            ),
         )
         .await
         .unwrap();

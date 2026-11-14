@@ -94,7 +94,13 @@ pub fn refusal_of(e: &Fail) -> BrokerAnswer {
 }
 
 /// core's store client `chatgptSession` over the broker's session answer.
-pub fn session_of(access: &str, account_id: &str, fed_ramp: bool, expires_at: Option<f64>, raw: &str) -> Session {
+pub fn session_of(
+    access: &str,
+    account_id: &str,
+    fed_ramp: bool,
+    expires_at: Option<f64>,
+    raw: &str,
+) -> Session {
     Session {
         access_token: access.to_owned(),
         account_id: account_id.to_owned(),
@@ -343,7 +349,13 @@ pub async fn fetch_for<A: Accounts>(
 fn hop_by_hop(name: &str) -> bool {
     matches!(
         name,
-        "connection" | "keep-alive" | "transfer-encoding" | "te" | "trailer" | "upgrade" | "content-length"
+        "connection"
+            | "keep-alive"
+            | "transfer-encoding"
+            | "te"
+            | "trailer"
+            | "upgrade"
+            | "content-length"
     )
 }
 
@@ -365,7 +377,9 @@ pub fn into_response(answer: Answer<HttpBody>) -> Result<Response<HttpResponseBo
     match answer {
         Answer::Thrown(m) => Err(m),
         Answer::Error(r) => {
-            let mut res = Response::new(HttpResponseBody::from(signin_transport::reply::error_body(&r)));
+            let mut res = Response::new(HttpResponseBody::from(
+                signin_transport::reply::error_body(&r),
+            ));
             with_status(&mut res, r.status);
             set(&mut res, "content-type", "application/json");
             set(&mut res, "x-noevia-provider-message", "1");
@@ -391,9 +405,10 @@ pub fn into_response(answer: Answer<HttpBody>) -> Result<Response<HttpResponseBo
                 if hop_by_hop(k) {
                     continue;
                 }
-                if let (Ok(name), Ok(value)) =
-                    (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(v))
-                {
+                if let (Ok(name), Ok(value)) = (
+                    HeaderName::from_bytes(k.as_bytes()),
+                    HeaderValue::from_str(v),
+                ) {
                     res.headers_mut().append(name, value);
                 }
             }
