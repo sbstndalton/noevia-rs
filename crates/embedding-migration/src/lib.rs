@@ -19,4 +19,7 @@
 #![forbid(unsafe_code)]
 
 pub mod js;
+pub mod migration;
+pub mod config;
+pub mod served;
 pub mod target;
