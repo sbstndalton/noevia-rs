@@ -84,7 +84,13 @@ embedding.current = () => {
   return service;
 };
 let locked = false;
-req('rerank-settings.cjs').install({ run: (fn) => { locked = true; return fn(); } });
+// withSettings: the snapshot is read first (a failure is its 503 throw, before the handler), then the handler runs on it.
+req('rerank-settings.cjs').install({ run: async (fn) => {
+  locked = true;
+  if (sc.settingsFail) { log.push({ call: 'rerankerSettings', threw: { status: 503, message: 'Reranker settings are unavailable.' } }); throw Object.assign(Error('Reranker settings are unavailable.'), { status: 503, code: 'RERANKER_SETTINGS_UNAVAILABLE' }); }
+  log.push({ call: 'rerankerSettings' });
+  return fn();
+} });
 const sweep = req('benchmark-sweep-guard.cjs');
 const realCreateSweepGuard = sweep.createSweepGuard;
 sweep.createSweepGuard = (options) => {
@@ -350,7 +356,7 @@ add('benchmark/start: null body throws', { method: 'POST', target: T('benchmark/
 add('benchmark/start: array body', { method: 'POST', target: T('benchmark/start'), body: '["qa-embed"]', catalogue: CAT });
 add('benchmark/start: number body', { method: 'POST', target: T('benchmark/start'), body: '5', catalogue: CAT });
 add('benchmark/start: string body', { method: 'POST', target: T('benchmark/start'), body: '"x"', catalogue: CAT });
-add('benchmark/start: number out of range goes to core', { method: 'POST', target: T('benchmark/start'), body: '{"aliases":["qa-embed"],"x":1e999}', catalogue: CAT });
+add('benchmark/start: number out of range', { forceDifference: 'payload', method: 'POST', target: T('benchmark/start'), body: '{"aliases":["qa-embed"],"x":1e999}', catalogue: CAT });
 start('load refusal on the second alias', ['qa-chat', 'qa-big', 'qa-bigger'], { loadRefusals: { 'qa-big': { error: 'qa: does not fit', code: 'budget', needGib: 20 } } });
 start('load refusal rejected is no refusal', ['qa-chat', 'qa-big'], { loadRefusals: { 'qa-big': 'reject' } });
 start('falsy load refusals', ['qa-a', 'qa-b', 'qa-c', 'qa-d'], { loadRefusals: { 'qa-a': 0, 'qa-b': '', 'qa-c': false, 'qa-d': null } });
@@ -415,8 +421,6 @@ del('the system router', ['k-chat', 'k-router']);
 del('a laya section', ['k-laya']);
 del('the embedding sidecar', ['k-chat', 'k-embed']);
 del('the reranker sidecar', ['k-rerank']);
-del('sidecar check throws', ['k-chat'], { sidecarThrows: { status: 503, message: 'Could not confirm reranker model protection' } });
-del('reranker names throw', ['k-rerank'], { rerankThrows: { status: 503, message: 'Could not confirm reranker model protection' } });
 del('embedding protection unknown', ['k-chat'], { embedding: 'unknown' });
 del('embedding service absent', ['k-chat'], { embedding: 'none' });
 del('embedding service without protectionKnown', ['k-chat'], { embedding: 'legacy' });
@@ -474,8 +478,6 @@ for (const method of ['DELETE', 'POST', 'PUT', 'GET', 'PATCH']) {
 }
 sec('DELETE embedding protection unknown', 'DELETE', 'sections/qa-chat', { embedding: 'unknown' });
 sec('DELETE embedding protection unknown, uncached name', 'DELETE', 'sections/qa-new', { embedding: 'unknown' });
-sec('DELETE reranker names throw', 'DELETE', 'sections/qa-direct', { rerankThrows: { status: 503, message: 'Could not confirm reranker model protection' } });
-sec('DELETE sidecar check throws', 'DELETE', 'sections/qa-chat', { sidecarThrows: { status: 503, message: 'Could not confirm reranker model protection' } });
 sec('DELETE a sections string matches by substring', 'DELETE', 'sections/in-a', { sidecars: ['qa-strsec'] });
 sec('DELETE no cache', 'DELETE', 'sections/qa-chat', { scan: undefined });
 sec('DELETE cache with a null entry throws', 'DELETE', 'sections/qa-chat', { scan: { models: [null] } });
@@ -526,7 +528,7 @@ add('sections: PUT values not JSON', { method: 'PUT', path: T('sections/qa-chat'
 add('sections: PUT null body throws with presetRefusal', { method: 'PUT', path: T('sections/qa-chat'), body: 'null', scan: SSCAN });
 add('sections: PUT null body without presetRefusal', { method: 'PUT', path: T('sections/qa-chat'), body: 'null', scan: SSCAN, caps: ALL_CAPS.filter((x) => x !== 'presetRefusal') });
 add('sections: PUT empty body', { method: 'PUT', path: T('sections/qa-chat'), body: '', scan: SSCAN });
-add('sections: PUT number out of range goes to core', { method: 'PUT', path: T('sections/qa-chat'), body: '{"values":{"model":1e400}}', scan: SSCAN });
+add('sections: PUT number out of range', { forceDifference: 'payload', method: 'PUT', path: T('sections/qa-chat'), body: '{"values":{"model":1e400}}', scan: SSCAN });
 add('sections: PUT rename skips the path checks', { method: 'PUT', path: T('sections/qa-chat/rename'), body: '{"values":{"model":5}}', scan: SSCAN });
 const refusalPut = (name, refusal, extra = {}) => sec(`PUT preset refusal: ${name}`, 'PUT', 'sections/qa-chat', { body: '{"values":{"model":"/m/qa.gguf","ctx-size":"8192"}}', presetRefusal: refusal, ...extra });
 refusalPut('none', null);
@@ -652,6 +654,34 @@ add('evidence: an encoded run number', { path: T('benchmark/runs/%31%32'), now: 
 add('evidence: a unicode digit is not a run', { path: T('benchmark/runs/%D9%A1'), now: NOWMS, fetch: [{ ok: true, status: 200, body: RUN() }] });
 add('evidence: HEAD is not recorded', { method: 'HEAD', path: T('benchmark/runs/12'), now: NOWMS, fetch: [{ ok: true, status: 200, body: RUN() }] });
 
+// ── The port's named differences (Node's own answer is recorded beside the port's) ───────
+for (const [method, rest, body] of [['POST', 'models/delete%0A', '{"models":["k-router"]}'], ['POST', 'benchmark/sweep%0A', '{"aliases":["qa-a"]}'],
+  ['POST', 'benchmark/start%0A', '{"aliases":["qa-embed-x"]}'], ['POST', 'sections/qa-router/rename%0A', '{}'], ['GET', 'sections/qa-chat/autoconfig%0A'],
+  ['PUT', 'models-ini%0A', '{}'], ['PUT', 'idle-unload%0A', '{}'], ['GET', 'a%09b'], ['GET', 'a%1Fb'], ['GET', 'a%7Fb'], ['DELETE', 'sections/qa%0D'], ['GET', '%0A']]) {
+  add(`control character: ${method} ${rest}`, { method, path: T(rest), body, scan: SCAN, search: '?budget_gib=99', budget: 4, catalogue: CAT });
+}
+for (const [rest, body] of [['models/delete', '{"models":{"k-router":0}}'], ['models/delete', '{"models":["k-router"],"x":NaN}'], ['models/delete', '{"models":"k-router"}'],
+  ['benchmark/sweep', '{"aliases":["qa-a"],"x":NaN}'], ['benchmark/sweep', '{"aliases":"qa-a"}'], ['benchmark/start', '{"aliases":["qa-embed-x"],"x":Infinity}'],
+  ['benchmark/start', '{"aliases":{"0":"qa-embed-x"}}'], ['models/delete', '[]'], ['models/delete', '"x"'], ['models/delete', 'null'], ['models/delete', '{"models":null}']]) {
+  add(`payload: POST ${rest} ${body}`, { method: 'POST', path: T(rest), body, scan: SCAN, catalogue: CAT });
+}
+add('payload: PUT section NaN', { method: 'PUT', path: T('sections/qa-chat'), body: '{"values":{"model":"/m"},"x":NaN}', scan: SSCAN });
+add('payload: PUT section array', { method: 'PUT', path: T('sections/qa-chat'), body: '[1]', scan: SSCAN });
+add('payload: re-serialised forward', { method: 'POST', path: T('models/delete'), body: '{ "models" : [ "k-chat" ] , "models": ["k-nosec"] }', scan: SCAN });
+add('payload: an empty body forwards {}', { method: 'POST', path: T('benchmark/start'), body: '', catalogue: CAT });
+add('payload: a valid sweep is re-serialised', { method: 'POST', path: T('benchmark/sweep'), body: '{"aliases":[ "qa-a" ],"n":1.50}' });
+add('method: lowercase delete', { method: 'delete', path: T('sections/laya-x') });
+add('method: unknown', { method: 'FOO', path: T('qa') });
+add('method: PROPFIND is Node\'s', { method: 'PROPFIND', path: T('qa'), body: '' });
+add('rename: a section named rename is a section write', { method: 'PUT', path: T('sections/rename'), body: '{"values":{"model":5}}', scan: SSCAN,
+  expectDifference: { status: 400, bodyJson: '{"error":"Not saved: model must be a text path","code":"invalid_path"}' } });
+add('rename: sections/rename/rename is a rename', { method: 'PUT', path: T('sections/rename/rename'), body: '{"values":{"model":5}}', scan: SSCAN });
+add('settings: unreadable on a write', { method: 'POST', path: T('models/delete'), body: '{"models":["k-chat"]}', scan: SCAN, settingsFail: true });
+add('settings: unreadable on a section DELETE', { method: 'DELETE', path: T('sections/qa-chat'), scan: SSCAN, settingsFail: true });
+add('settings: not read on a GET', { path: T('status'), settingsFail: true });
+add('settings: not read on OPTIONS', { method: 'OPTIONS', path: T('status'), body: '', settingsFail: true });
+add('settings: not read for a member', { method: 'POST', path: T('models/delete'), body: '{}', role: 'member', settingsFail: true });
+
 // ── Seeded random requests ──────────────────────────────────────────────────────────────────
 const RAND_SEGMENTS = ['models', 'delete', 'sections', 'qa-chat', 'qa-router', 'qa-embedder', 'rename', 'autoconfig', 'safe-defaults', 'benchmark', 'start', 'sweep',
   'runs', '12', 'models-ini', 'idle-unload', '%2e', '%2F', '%E2%9C%93', '%C3', 'a b', '..', '.', '', '%25', 'Laya-x', 'qa-direct', '%71a-chat', 'é'];
@@ -716,12 +746,46 @@ const evidence = EV.map(({ detail, now }) => {
   try { return { ...clean({ detail: d }), now, out: throughputRecords(d, { now }) }; } catch (err) { return { ...clean({ detail: d }), now, threw: errorResponse(err).status }; }
 });
 
+// Where the port departs from core (lib.rs, named differences): what it answers instead. Computed from the request
+// as core reads it; only reached where core's own earlier answers (access, configuration, the settings snapshot, the
+// size limit) do not come first.
+const http = require('node:http');
+const GUARDED = { 'benchmark/start': 'aliases', 'benchmark/sweep': 'aliases', 'models/delete': 'models' };
+function differenceOf(c, p, expect) {
+  if (!p.startsWith(MM)) return null;
+  const answer = (name, status, body) => ({ name, status, bodyJson: JSON.stringify(body) });
+  if (!http.METHODS.includes(c.method)) return answer('method', 400, { error: 'Invalid method' });
+  const e = c.env === undefined ? DEFAULT_ENV : c.env;
+  if ((c.role ?? 'admin') !== 'admin' || !e.url || (c.settingsFail && !['GET', 'HEAD', 'OPTIONS'].includes(c.method))) return null;
+  const raw = p.slice(MM.length);
+  if (!/^[\w./%:+@-]*$/.test(raw) || raw.includes('..')) return null;
+  let segments;
+  try { segments = raw.split('/').map((s) => decodeURIComponent(s)); } catch { return null; }
+  if (segments.some((s) => s === '.' || s === '..' || s.includes('/') || s.includes('\\'))) return null;
+  if (segments.some((s) => /[\x00-\x1f\x7f]/.test(s))) return answer('control', 400, { error: 'Invalid path' });
+  if (expect.status === 413) return null;
+  const rest = segments.join('/');
+  const sectionPut = c.method === 'PUT' && segments.length === 2 && segments[0] === 'sections' && segments[1] !== '';
+  const field = c.method === 'POST' ? GUARDED[rest] : undefined;
+  if (field === undefined && !sectionPut) return null;
+  if (c.expectDifference) return { name: 'rename', ...c.expectDifference };
+  const body = c.body ?? '';
+  if (c.forceDifference === 'payload') return answer('payload', 400, { error: 'The request body must be a JSON object.' });
+  if (body === '') return null;
+  let v;
+  try { v = JSON.parse(body); } catch { return answer('payload', 400, { error: 'The request body must be a JSON object.' }); }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return answer('payload', 400, { error: 'The request body must be a JSON object.' });
+  if (field && v[field] !== undefined && !Array.isArray(v[field])) return answer('payload', 400, { error: `${field} must be an array.` });
+  return null;
+}
+
 (async () => {
   const cases = [];
   for (const raw of S) {
     const c = viaJson(raw);
     const { p, search, expect } = await runCase(c);
-    cases.push({ ...c, p, search, expect });
+    const difference = differenceOf(c, p, expect);
+    cases.push({ ...c, p, search, expect, ...(difference ? { difference } : {}) });
   }
   fs.rmSync(rolesDir, { recursive: true, force: true });
   const lines = (list) => list.map((x) => JSON.stringify(x)).join(',\n');
