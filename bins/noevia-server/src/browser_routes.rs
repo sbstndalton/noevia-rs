@@ -37,14 +37,14 @@ pub const ENGINE: &str = "NOEVIA_BROWSER_ENGINE";
 const UNAVAILABLE: &str = "Browser tasks are unavailable right now. Try again shortly.";
 /// core `readJson`'s limit.
 const BODY_LIMIT: usize = 1024 * 1024;
-/// How long a body may take to arrive: Node's default `server.requestTimeout` (300 s), after which
-/// core's request ends unanswered; here the read fails (the route's 500).
+/// How long a body may take to arrive here: Node's default `server.requestTimeout` is 300 s too,
+/// counted from the request's start, and answers 408; here the read fails with the route's 500
+/// (a named difference).
 const BODY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(300);
-// Both processes read the engine: core's Browser mode facts need `NOEVIA_BROWSER_ENGINE` in core's
-// environment too (a mismatch refuses safely: front without it 404 "not enabled", core without it
-// 503 for every start).
 
-/// The deployment's Browser configuration.
+/// The deployment's Browser configuration. Both processes read the engine: core's Browser mode
+/// facts need `NOEVIA_BROWSER_ENGINE` in core's environment too (a mismatch refuses safely: the front
+/// without it answers 404 "not enabled", core without it 503 for every start).
 #[derive(Debug, Clone, Default)]
 pub struct Settings {
     pub executor: bool,
@@ -164,20 +164,22 @@ pub async fn serve(
     let Some(target) = browser::parse(&path) else {
         return failed();
     };
-    // A cancel of a task this front is running needs no word from core (sbstndalton/noevia#2698): it
-    // started with Browser mode on and owned here, and it must stay stoppable while core is away.
-    // Whose task it is is checked by the service, as for every action.
-    let live_cancel = admin
-        && method == "POST"
-        && target.action.as_deref() == Some("cancel")
-        && target
-            .task
-            .as_deref()
-            .is_some_and(|t| service(app).has_live(t));
-    let facts = if live_cancel {
-        Some(Facts::Front)
-    } else {
-        task_routes::browser_flag(app, &user, admin).await
+    // `/browser/{task}/cancel` (`/browser/cancel`, without a task, is a start in core's pattern).
+    let cancel =
+        method == "POST" && target.task.is_some() && target.action.as_deref() == Some("cancel");
+    let facts = match task_routes::browser_flag(app, &user, admin).await {
+        // Core cannot be asked: a cancel of a task this front runs for this admin's workspace still
+        // goes ahead (sbstndalton/noevia#2698), so a running browser session stays stoppable while
+        // core is away. Whose task it is is still the service's check; every other answer waits for
+        // core as before.
+        None if admin && cancel => {
+            let live = target.task.as_deref().is_some_and(|t| {
+                server_projects::store::user_dir(&data_dir, &user)
+                    .is_ok_and(|dir| service(app).has_live(&dir, t))
+            });
+            live.then_some(Facts::Front)
+        }
+        facts => facts,
     };
     let enabled = match facts {
         None => return task_routes::unreachable(),
@@ -206,12 +208,17 @@ pub async fn serve(
     } else {
         None
     };
-    let read = tokio::time::timeout(
-        BODY_DEADLINE,
-        crate::account_routes::read_body(body, BODY_LIMIT),
-    )
-    .await
-    .unwrap_or(Err(()));
+    // A cancel reads no body (core answers it before readJson), so a slow body never delays a stop.
+    let read = if cancel {
+        Err(())
+    } else {
+        tokio::time::timeout(
+            BODY_DEADLINE,
+            crate::account_routes::read_body(body, BODY_LIMIT),
+        )
+        .await
+        .unwrap_or(Err(()))
+    };
     let Ok(dir) = server_projects::store::user_dir(&data_dir, &user) else {
         return failed();
     };

@@ -1094,9 +1094,16 @@ impl Service {
         matches!(job.status.as_str(), Some("running" | "waiting_approval"))
     }
 
-    /// Whether this process runs the task now (its thread is live), whoever's it is.
-    pub fn has_live(&self, task_id: &str) -> bool {
-        lock(&self.live).contains_key(task_id)
+    /// Whether this process runs the task now for the workspace at `dir`: its thread is live and its
+    /// journal is that workspace's, whose store this process already opened (so the answer never
+    /// opens or recovers a workspace).
+    pub fn has_live(&self, dir: &Path, task_id: &str) -> bool {
+        let Some(tenant) = lock(&self.stores).get(dir).cloned() else {
+            return false;
+        };
+        lock(&self.live)
+            .get(task_id)
+            .is_some_and(|run| Arc::ptr_eq(&run.store, &tenant.store))
     }
 
     /// The live task's queue, open for actions; core's 409 otherwise. A named difference: at most

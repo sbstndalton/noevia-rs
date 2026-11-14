@@ -859,7 +859,8 @@ pub struct CdpPage {
     changed: Condvar,
     close_hooks: Mutex<Vec<CloseHook>>,
     /// `DOM.enable` was answered (for `DOM.getNodeForLocation`); held while it is asked, so a second
-    /// action waits for the first one's answer.
+    /// action waits for the first one's answer (up to that call's own timeout, past a shorter
+    /// deadline of the waiting action: actions on one page are serialised by the task anyway).
     dom_enabled: Mutex<bool>,
     /// The hit check's isolated world: (main frame, its commit count, execution context), made once
     /// per document and made again when the page navigated or the context is gone.
@@ -1447,25 +1448,39 @@ impl CdpHandle {
                 ("backendNodeId", num(node)),
                 ("executionContextId", num(context)),
             ]);
-            call("DOM.resolveNode", params)
-                .ok()
-                .and_then(|r| r.get("object").get("objectId").as_str().map(str::to_string))
+            // Err(Some(message)) for a protocol refusal, Err(None) for an answer without an object.
+            match call("DOM.resolveNode", params) {
+                Ok(r) => r
+                    .get("object")
+                    .get("objectId")
+                    .as_str()
+                    .map(str::to_string)
+                    .ok_or(None),
+                Err(e) => Err(Some(e.message)),
+            }
         };
-        // The cached world first; a world of a document that is gone (a navigation, or the context
-        // destroyed) is made again once.
+        // The cached world first; a world whose context is gone (a navigation the page state has
+        // not seen yet, or the context destroyed) is made again once. A node that cannot be
+        // resolved for another reason (it went) is a miss, with no new world.
         let mut pair = None;
         for fresh in [false, true] {
             let Some(context) = self.hit_world(call, fresh) else {
                 return false;
             };
             match (resolve(hit, context), resolve(target, context)) {
-                (Some(inner), Some(outer)) => {
+                (Ok(inner), Ok(outer)) => {
                     pair = Some((inner, outer));
                     break;
                 }
                 (inner, outer) => {
+                    let gone = [&inner, &outer]
+                        .iter()
+                        .any(|r| matches!(r, Err(Some(m)) if m.contains("Cannot find context")));
                     for object in [inner, outer].into_iter().flatten() {
                         self.release(&object);
+                    }
+                    if !gone {
+                        break;
                     }
                 }
             }

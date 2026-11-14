@@ -423,6 +423,12 @@ fn a_full_queue_refuses_more_actions_but_takes_a_finish() {
         .finish(&r.base, PROJECT, &t, &JValue::Null)
         .is_ok());
     r.service.cancel(&r.base, PROJECT, &t).unwrap();
+    // Every waiter answers soon after the cancel (a hang fails the test instead of stalling it).
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !(first.is_finished() && waiting.iter().all(std::thread::JoinHandle::is_finished)) {
+        assert!(Instant::now() < deadline, "a waiting action was never answered");
+        std::thread::sleep(Duration::from_millis(10));
+    }
     let mut refused = 0;
     for h in waiting {
         match h.join().unwrap() {
