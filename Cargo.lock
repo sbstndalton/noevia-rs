@@ -3576,6 +3576,7 @@ dependencies = [
 name = "server-routing-default"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "rustix",
  "serde_json",

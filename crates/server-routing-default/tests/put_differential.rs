@@ -91,7 +91,10 @@ fn recorded_node_put_matrix() {
                 assert_eq!(status, 400, "{name}");
                 assert_eq!(
                     reply,
-                    format!("{{\"error\":{}}}", serde_json::to_string(refusal.message()).unwrap()),
+                    format!(
+                        "{{\"error\":{}}}",
+                        serde_json::to_string(refusal.message()).unwrap()
+                    ),
                     "{name}"
                 );
                 // Nothing written.
@@ -136,7 +139,10 @@ fn recorded_node_put_matrix() {
         let mut saved = None;
         if req.apply_to_existing {
             // A list Node cannot parse loads as empty there: nothing is updated or saved.
-            if let Some(mut list) = projects.as_deref().map_or(Some(Vec::new()), stored_projects) {
+            if let Some(mut list) = projects
+                .as_deref()
+                .map_or(Some(Vec::new()), stored_projects)
+            {
                 updated = put::apply(&mut list, req.routing, now).unwrap();
                 if updated > 0 {
                     saved = Some(

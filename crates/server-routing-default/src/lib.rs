@@ -258,8 +258,8 @@ impl Root {
         let users = tenant_dir(&self.fd, "users")?.ok_or(Fault::Unavailable)?;
         let tenant = tenant_dir(&users, user_id)?.ok_or(Fault::Unavailable)?;
         let before = stored(&tenant)?;
-        let text = put::merged_preferences(before.as_deref(), routing)
-            .map_err(|_| Fault::Unavailable)?;
+        let text =
+            put::merged_preferences(before.as_deref(), routing).map_err(|_| Fault::Unavailable)?;
         replace(&tenant, &text)
     }
 }

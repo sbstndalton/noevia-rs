@@ -180,7 +180,7 @@ pub fn answer(routing: Routing, updated: usize) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -202,8 +202,14 @@ mod tests {
         );
         assert_eq!(parse(b"", false), Err(Refusal::InvalidJson));
         assert_eq!(parse(b"null", false), Err(Refusal::BadRouting));
-        assert_eq!(parse(br#"{"routing":"Manual"}"#, false), Err(Refusal::BadRouting));
-        assert_eq!(parse(br#"{"routing":"auto"}"#, true), Err(Refusal::InvalidJson));
+        assert_eq!(
+            parse(br#"{"routing":"Manual"}"#, false),
+            Err(Refusal::BadRouting)
+        );
+        assert_eq!(
+            parse(br#"{"routing":"auto"}"#, true),
+            Err(Refusal::InvalidJson)
+        );
     }
 
     #[test]
