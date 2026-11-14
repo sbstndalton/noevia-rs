@@ -474,7 +474,9 @@ async function runTurn(c, { handoff = false } = {}) {
       // The first line after the hand-off's cut: what the turn asks from here on is the native executor's to ask.
       createToolExchange: (options) => { cut = true; return createToolExchange(options); },
       // `retrieval`: what rag.filesContext placed and injected for the case's project files (#552, #1793), and its block.
-      rag: { filesContext: async (_id, _readable, _question, _user, onPlaced) => {
+      rag: { filesContext: async (_id, _readable, _question, _user, onPlaced, options) => {
+        // `imageHits`: what the multimodal retrieval (#1726) found among the project's images (chat.cjs onImages).
+        if (c.imageHits && options?.onImages) options.onImages({ hits: c.imageHits, indexed: c.imageHits });
         if (!c.retrieval) return null;
         onPlaced(c.retrieval.placed || [], c.retrieval.injected || []);
         return c.retrieval.block || null;
@@ -519,6 +521,8 @@ async function runTurn(c, { handoff = false } = {}) {
         backend: 'legacy', model: null, calibrated: false, latencyMs: null, status: 'fallback', fallbackReason: 'disabled', fallbackCause: null } }), servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
       // `vision`: what the probe says of the answering model's image input (chat.cjs visionProbe).
       visionProbe: async () => c.vision || { supported: false, reason: 'none' }, visionDescriptions: new Map(), skillsIndexFor: () => [],
+      // Multimodal retrieval (#1726, NOEVIA_MULTIMODAL_RAG) is on for the cases that script its hits.
+      multimodalEnabled: () => c.imageHits !== undefined,
       chatSkillRouter: { select: async () => ({ loaded: [] }) },
       // `narrow`: tool routing (features.toolRouter, chat-tool-routing.cjs) keeps only these boxes; narrowed when it dropped any.
       chatToolRouter: { select: async (ids) => (c.narrow ? { ids: ids.filter((id) => c.narrow.includes(id)), routed: true, narrowed: ids.some((id) => !c.narrow.includes(id)) } : { ids, routed: false }) },
@@ -573,7 +577,7 @@ async function runTurn(c, { handoff = false } = {}) {
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
       templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       // The front names the capabilities its executor runs (rust-chat-native.cjs CAPS_HEADER; chat-turn HANDOFF_CAPS).
-      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools']), supervising: () => false } } : {}),
+      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images']), supervising: () => false } } : {}),
       // `provenance`: the provenance policy is on (#769, features.provenancePolicy; index.cjs passes { enabled }).
       ...(c.provenance ? { provenancePolicy: { enabled: () => true } } : {}),
     });
@@ -603,7 +607,7 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
+        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, imageHits: c.imageHits || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
         ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool || c.leaveInGrant ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null, ...(c.leaveInGrant ? { leaveInGrant: true } : {}) } } : {}),
         rounds: c.rounds || [], chunks: log.chunks },
@@ -659,6 +663,9 @@ const APPEND = '{"name":"qa-notes.txt","text":"QA appended line."}';
 // A project image source (#1512): a synthetic 1x1 PNG, attached to the turn's last user message.
 const QA_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4//8/AwAI/AL+p9akwQAAAABJRU5ErkJggg==';
 const QA_IMAGE = { project: { assets: [{ id: 'qa-asset-1', name: 'qa-chart.png', mime: 'image/png' }] }, images: { 'qa-asset-1': QA_PNG } };
+// #1726: the same image as a project file the multimodal retrieval indexes (its hit names the file's attachment).
+const QA_RETRIEVED = { project: { ...QA_IMAGE.project, files: [{ name: 'qa-chart.png', attachment: { id: 'qa-att-1' }, content: 'QA chart: three bars, labelled one to three.' }] } };
+const QA_IMAGE_HIT = { file: 'qa-chart.png', hash: 'img:qa-att-1', score: 0.9, meta: { assetId: 'qa-asset-1' } };
 const SEES = { supported: true };
 // image_context_compacted: a small window and a long history; with the image's IMAGE_TOKENS two exchanges do not fit
 // beside a summary, so all older turns are summarised in one request and the image turn alone is kept.
@@ -1007,6 +1014,13 @@ const CASES = [
     lookups: true, project: { toolboxes: ['core', 'qa-left', 'qa-right'] },
     rounds: [{ frames: [toolCall('more_tools', '{}', 'qa-call-1', 0), toolCall('qa_lookup', '{"term":"QA one"}', 'qa-call-2', 1), finish('tool_calls')] },
       { frames: [toolCall('qa_lookup', '{"term":"QA two"}', 'qa-call-3'), finish('tool_calls')] }, answer('Looked both up.')] },
+  // Track R15: images the multimodal retrieval found (#1726), not attached by the turn (turnImageIds names none).
+  { name: 'retrieved_image_seen', about: 'Retrieval found a project image; the answering model can see: its parts and label ride on the last user message, then a tool round and the answer.',
+    project: QA_RETRIEVED.project, images: QA_IMAGE.images, imageHits: [QA_IMAGE_HIT], vision: { supported: true }, body: { turnImageIds: [] },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-r1"}'), finish('tool_calls')] }, answer('The chart shows three bars.')] },
+  { name: 'retrieved_image_not_seen', about: 'Retrieval found a project image; the answering model cannot see: it gets the image\'s own text and the reply a warning, all before the cut.',
+    project: QA_RETRIEVED.project, images: QA_IMAGE.images, imageHits: [QA_IMAGE_HIT], body: { turnImageIds: [] },
+    rounds: [answer('From the chart text: three bars.')] },
 ];
 
 (async () => {
