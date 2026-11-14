@@ -67,8 +67,8 @@ struct Fake {
     refuse_connect: AtomicBool,
     /// The machine never sends its headers.
     never_answer: AtomicBool,
-    /// Each answer's channel: its first chunk is sent, then the stream stays open until dropped.
     sent: Mutex<Vec<Forward>>,
+    /// Each answer's channel: its first chunk is sent, then the stream stays open until dropped.
     senders: Mutex<Vec<Sender>>,
     dropped: Mutex<Vec<Arc<AtomicBool>>>,
     turns: AtomicUsize,
@@ -199,9 +199,16 @@ async fn a_live_task_token_only_two_paths_only_the_model_forced_and_nothing_afte
     let r = rig();
     let body = r#"{"model":"x","messages":[]}"#;
     let refused = error(401, "No running Code task holds this token.", None);
-    assert_eq!(json(r.relay.handle(req("POST", CHAT, None, body)).await), refused);
     assert_eq!(
-        json(r.relay.handle(req("POST", CHAT, Some("ncr_forged"), body)).await),
+        json(r.relay.handle(req("POST", CHAT, None, body)).await),
+        refused
+    );
+    assert_eq!(
+        json(
+            r.relay
+                .handle(req("POST", CHAT, Some("ncr_forged"), body))
+                .await
+        ),
         refused
     );
     let lease = r.relay.open("relay-1", None, None).await.unwrap();
@@ -216,7 +223,9 @@ async fn a_live_task_token_only_two_paths_only_the_model_forced_and_nothing_afte
         assert_eq!(status, 200, "{path}");
         assert_eq!(
             wtf16::stringify(&list).unwrap(),
-            format!(r#"{{"object":"list","data":[{{"id":"{MODEL}","object":"model","owned_by":"noevia"}}]}}"#)
+            format!(
+                r#"{{"object":"list","data":[{{"id":"{MODEL}","object":"model","owned_by":"noevia"}}]}}"#
+            )
         );
     }
     // Two paths only (Node's test: /embeddings, /../props, /completions, /health; and a GET chat).
@@ -269,12 +278,21 @@ async fn a_live_task_token_only_two_paths_only_the_model_forced_and_nothing_afte
     assert_eq!(s.next().await, Chunk::End, "the machine ended its answer");
     drop(s);
     assert_eq!(r.fake.turns.load(Ordering::SeqCst), 1);
-    assert_eq!(r.fake.released.load(Ordering::SeqCst), 1, "the turn is given back");
+    assert_eq!(
+        r.fake.released.load(Ordering::SeqCst),
+        1,
+        "the turn is given back"
+    );
 
     // No model in the request: it is added at the end. Accept defaults to JSON.
     let Reply::Stream(s) = r
         .relay
-        .handle(req("POST", CHAT, Some(&token), r#"{"messages":[],"1":true}"#))
+        .handle(req(
+            "POST",
+            CHAT,
+            Some(&token),
+            r#"{"messages":[],"1":true}"#,
+        ))
         .await
     else {
         panic!("not relayed");
@@ -292,7 +310,10 @@ async fn a_live_task_token_only_two_paths_only_the_model_forced_and_nothing_afte
     lease.close();
     lease.close();
     assert_eq!(r.relay.active(), 0);
-    assert_eq!(json(r.relay.handle(req("POST", CHAT, Some(&token), body)).await), refused);
+    assert_eq!(
+        json(r.relay.handle(req("POST", CHAT, Some(&token), body)).await),
+        refused
+    );
     let log = events(&r);
     assert_eq!(
         log,
@@ -310,7 +331,11 @@ async fn a_body_over_the_cap_or_not_a_json_object_is_refused_before_anything_is_
     let lease = r.relay.open("relay-2", None, None).await.unwrap();
     let t = Some(lease.token.as_str());
     assert_eq!(
-        json(r.relay.handle(req("POST", CHAT, t, &"x".repeat(1000))).await),
+        json(
+            r.relay
+                .handle(req("POST", CHAT, t, &"x".repeat(1000)))
+                .await
+        ),
         error(413, "The request is too large.", None)
     );
     for text in ["", "{", "x", "{\"a\":1,}"] {
@@ -384,7 +409,11 @@ async fn open_refuses_with_node_s_codes_and_words() {
     let key = code_engine_relay::target_key(Some(&target())).unwrap();
     assert!(r.relay.open("t", None, Some(Some(&key))).await.is_ok());
     // The machine is not ready: its code and text (no code: machineUnreachable).
-    for (code, want) in [(Some("model_mismatch"), "model_mismatch"), (None, "machineUnreachable"), (Some(""), "machineUnreachable")] {
+    for (code, want) in [
+        (Some("model_mismatch"), "model_mismatch"),
+        (None, "machineUnreachable"),
+        (Some(""), "machineUnreachable"),
+    ] {
         *r.fake.ready.lock().unwrap() = Some(Ready {
             ok: false,
             code: code.map(str::to_string),
@@ -427,7 +456,11 @@ async fn every_request_rechecks_the_role_and_the_machine() {
     });
     assert_eq!(
         json(r.relay.handle(req("POST", CHAT, t, body)).await),
-        error(502, "QA machine is not answering.", Some("machineUnreachable"))
+        error(
+            502,
+            "QA machine is not answering.",
+            Some("machineUnreachable")
+        )
     );
     *r.fake.ready.lock().unwrap() = Some(Ready {
         ok: false,
@@ -443,7 +476,11 @@ async fn every_request_rechecks_the_role_and_the_machine() {
     r.fake.refuse_connect.store(true, Ordering::SeqCst);
     assert_eq!(
         json(r.relay.handle(req("POST", CHAT, t, body)).await),
-        error(502, "QA machine could not be reached (ECONNREFUSED).", Some("machineUnreachable"))
+        error(
+            502,
+            "QA machine could not be reached (ECONNREFUSED).",
+            Some("machineUnreachable")
+        )
     );
     r.fake.refuse_connect.store(false, Ordering::SeqCst);
     // The role moved to another model: 409, and nothing sent.
@@ -457,10 +494,16 @@ async fn every_request_rechecks_the_role_and_the_machine() {
         "The Code role moved to another machine or model during this task; one task runs on one model.",
         Some("model_mismatch"),
     );
-    assert_eq!(json(r.relay.handle(req("POST", CHAT, t, body)).await), moved);
+    assert_eq!(
+        json(r.relay.handle(req("POST", CHAT, t, body)).await),
+        moved
+    );
     // Moved back here: the same.
     *r.where_.lock().unwrap() = None;
-    assert_eq!(json(r.relay.handle(req("POST", CHAT, t, body)).await), moved);
+    assert_eq!(
+        json(r.relay.handle(req("POST", CHAT, t, body)).await),
+        moved
+    );
     assert_eq!(r.fake.sent.lock().unwrap().len(), sent);
     // A turn is counted only once the machine is ready, and every one was given back.
     assert_eq!(r.fake.turns.load(Ordering::SeqCst), 1);
@@ -498,7 +541,10 @@ async fn close_cuts_the_lease_s_requests_in_flight() {
         .await
         .expect("not cut within a second");
     assert_eq!(cut, Chunk::Cut);
-    assert!(dropped.load(Ordering::SeqCst), "the machine's request was aborted");
+    assert!(
+        dropped.load(Ordering::SeqCst),
+        "the machine's request was aborted"
+    );
     assert_eq!(s.next().await, Chunk::End);
 
     // A request still waiting for the machine is cut too, without an answer.
@@ -518,7 +564,11 @@ async fn close_cuts_the_lease_s_requests_in_flight() {
     .await
     .expect("not cut");
     assert!(matches!(answer, Reply::Cut), "{answer:?}");
-    assert_eq!(r.fake.released.load(Ordering::SeqCst), 1, "its turn given back");
+    assert_eq!(
+        r.fake.released.load(Ordering::SeqCst),
+        1,
+        "its turn given back"
+    );
 }
 
 #[tokio::test]
@@ -538,7 +588,10 @@ async fn one_task_holds_at_most_its_slots_and_a_stream_dropped_gives_its_slot_ba
     let busy = error(429, "Too many model requests from this task at once.", None);
     assert_eq!(json(r.relay.handle(req("POST", CHAT, t, body)).await), busy);
     // The models list needs no slot; another task has its own.
-    assert_eq!(json(r.relay.handle(req("GET", "/v1/models", t, "")).await).0, 200);
+    assert_eq!(
+        json(r.relay.handle(req("GET", "/v1/models", t, "")).await).0,
+        200
+    );
     assert!(matches!(
         r.relay
             .handle(req("POST", CHAT, Some(&other.token), body))
@@ -557,7 +610,10 @@ async fn one_task_holds_at_most_its_slots_and_a_stream_dropped_gives_its_slot_ba
     ));
     // Token-less requests take no slot at all (#1876 flood).
     for _ in 0..5 {
-        assert_eq!(json(r.relay.handle(req("POST", CHAT, None, body)).await).0, 401);
+        assert_eq!(
+            json(r.relay.handle(req("POST", CHAT, None, body)).await).0,
+            401
+        );
     }
 }
 
@@ -582,7 +638,11 @@ async fn a_request_past_its_time_ends_its_answer_or_never_reaches_the_machine() 
     r.fake.never_answer.store(true, Ordering::SeqCst);
     assert_eq!(
         json(r.relay.handle(req("POST", CHAT, t, "{}")).await),
-        error(502, "QA machine did not answer in time.", Some("machineUnreachable"))
+        error(
+            502,
+            "QA machine did not answer in time.",
+            Some("machineUnreachable")
+        )
     );
 }
 
@@ -603,11 +663,18 @@ fn unset_is_no_relay_set_is_the_code_network_name() {
     assert_eq!(off.bind, Bind::Lookup("egress".into()));
     // A bad host is a start error only with a port.
     assert_eq!(
-        bind::from_env(env(&[("CODE_ENGINE_RELAY_PORT", "8095"), ("CODE_EGRESS_HOST", "bad host")])),
+        bind::from_env(env(&[
+            ("CODE_ENGINE_RELAY_PORT", "8095"),
+            ("CODE_EGRESS_HOST", "bad host")
+        ])),
         Err("CODE_ENGINE_RELAY_HOST should be a host name, not \"bad host\"".into())
     );
     assert!(bind::from_env(env(&[("CODE_EGRESS_HOST", "bad host")])).is_ok());
-    let on = bind::from_env(env(&[("CODE_ENGINE_RELAY_PORT", "18953"), ("CODE_EGRESS_HOST", "egress")])).unwrap();
+    let on = bind::from_env(env(&[
+        ("CODE_ENGINE_RELAY_PORT", "18953"),
+        ("CODE_EGRESS_HOST", "egress"),
+    ]))
+    .unwrap();
     assert_eq!(on.url.as_deref(), Some("http://egress:18953/v1"));
     // `Number(port)`, an integer in 1..=65535.
     for (port, want) in [
@@ -631,15 +698,31 @@ fn unset_is_no_relay_set_is_the_code_network_name() {
     }
     // CODE_ENGINE_RELAY_HOST, else CODE_EGRESS_HOST (an empty one falls through), trimmed.
     let host = |pairs: &[(&str, &str)]| bind::from_env(env(pairs)).unwrap().host;
-    assert_eq!(host(&[("CODE_ENGINE_RELAY_HOST", " relay.qa "), ("CODE_EGRESS_HOST", "egress-qa")]), "relay.qa");
-    assert_eq!(host(&[("CODE_ENGINE_RELAY_HOST", ""), ("CODE_EGRESS_HOST", "egress-qa")]), "egress-qa");
+    assert_eq!(
+        host(&[
+            ("CODE_ENGINE_RELAY_HOST", " relay.qa "),
+            ("CODE_EGRESS_HOST", "egress-qa")
+        ]),
+        "relay.qa"
+    );
+    assert_eq!(
+        host(&[
+            ("CODE_ENGINE_RELAY_HOST", ""),
+            ("CODE_EGRESS_HOST", "egress-qa")
+        ]),
+        "egress-qa"
+    );
     // CODE_ENGINE_RELAY_BIND set (even empty) is explicit, trimmed.
     assert_eq!(
-        bind::from_env(env(&[("CODE_ENGINE_RELAY_BIND", " 127.0.0.1 ")])).unwrap().bind,
+        bind::from_env(env(&[("CODE_ENGINE_RELAY_BIND", " 127.0.0.1 ")]))
+            .unwrap()
+            .bind,
         Bind::Explicit("127.0.0.1".into())
     );
     assert_eq!(
-        bind::from_env(env(&[("CODE_ENGINE_RELAY_BIND", "")])).unwrap().bind,
+        bind::from_env(env(&[("CODE_ENGINE_RELAY_BIND", "")]))
+            .unwrap()
+            .bind,
         Bind::Explicit(String::new())
     );
 }
@@ -680,8 +763,14 @@ fn the_bind_address_must_be_one_of_this_machine_s_own() {
         ("010.9.9.9", "is not an IP address"),
         ("10.9.9", "is not an IP address"),
         ("fe80::1%", "is not an IP address"),
-        ("203.0.113.9", "is not one of this machine's interface addresses"),
-        ("10.9.9.8", "is not one of this machine's interface addresses"),
+        (
+            "203.0.113.9",
+            "is not one of this machine's interface addresses",
+        ),
+        (
+            "10.9.9.8",
+            "is not one of this machine's interface addresses",
+        ),
     ] {
         assert_eq!(bind::bind_problem(bad, &own), Some(why), "{bad:?}");
     }
@@ -694,7 +783,12 @@ fn the_bind_address_must_be_one_of_this_machine_s_own() {
         "no interfaces read: nothing is ours"
     );
     assert_eq!(
-        wtf16::stringify(&bind::rejected(18961, "0.0.0.0", "would listen on every interface")).unwrap(),
+        wtf16::stringify(&bind::rejected(
+            18961,
+            "0.0.0.0",
+            "would listen on every interface"
+        ))
+        .unwrap(),
         r#"{"event":"relay.bind_rejected","port":18961,"bind":"0.0.0.0","reason":"would listen on every interface"}"#
     );
     assert_eq!(bind::SERVER_LIMITS.max_connections, 32);

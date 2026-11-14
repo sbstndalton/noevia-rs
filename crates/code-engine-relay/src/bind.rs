@@ -89,10 +89,7 @@ pub fn bind_problem(address: &str, interfaces: &[String]) -> Option<&'static str
         }
     };
     let me = norm(a);
-    if !interfaces
-        .iter()
-        .any(|x| !x.is_empty() && norm(x) == me)
-    {
+    if !interfaces.iter().any(|x| !x.is_empty() && norm(x) == me) {
         return Some("is not one of this machine's interface addresses");
     }
     None
@@ -172,7 +169,9 @@ fn js_number(text: &str) -> f64 {
         };
     }
     // Rust also reads "inf", "nan" and friends; JS reads only digits, '.', and an exponent.
-    if !body.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
+    if !body
+        .chars()
+        .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
         || !body.starts_with(|c: char| c.is_ascii_digit() || c == '.')
     {
         return f64::NAN;

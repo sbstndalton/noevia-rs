@@ -391,7 +391,11 @@ impl<U: Upstream> Relayed<U> {
 }
 
 /// `jsonError(res, status, message, code)`.
-pub fn json_error(status: u16, message: &str, code: Option<&str>) -> Reply<std::convert::Infallible> {
+pub fn json_error(
+    status: u16,
+    message: &str,
+    code: Option<&str>,
+) -> Reply<std::convert::Infallible> {
     let mut error = vec![
         ("message".to_string(), JValue::Str(message.into())),
         ("type".to_string(), JValue::Str("relay_error".into())),
@@ -619,8 +623,7 @@ impl<M: Machines> Relay<M> {
                 ])),
             };
         }
-        if req.method != "POST" || (path != "/v1/chat/completions" && path != "/chat/completions")
-        {
+        if req.method != "POST" || (path != "/v1/chat/completions" && path != "/chat/completions") {
             return error_reply(404, "Only chat completions are relayed.", None);
         }
         let mut slot = {
