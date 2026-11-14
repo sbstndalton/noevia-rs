@@ -1518,7 +1518,7 @@ impl FrontHost {
                 writes: &self.writes,
             },
         );
-        if planned == Plan::Core {
+        if !matches!(planned, Plan::Call(_)) {
             return None;
         }
         // core's bridge runs it as the user: the account active and the project found (else its 404).
@@ -1532,15 +1532,11 @@ impl FrontHost {
         if !matches!(scoped.await, Ok(true)) {
             return None;
         }
-        let done = match planned {
-            Plan::Core => return None,
-            Plan::Answer(text) => tool_dispatch::finish(text, false),
-            Plan::Call(request) => {
-                let answer =
-                    crate::mcp_call::in_process(&self.app, request, closed(&self.tx)).await?;
-                outcome(answer)
-            }
+        let Plan::Call(request) = planned else {
+            return None;
         };
+        let answer = crate::mcp_call::in_process(&self.app, request, closed(&self.tx)).await?;
+        let done = outcome(answer);
         self.count_tool_use(&run.name, "an MCP tool call").await;
         Some(Ran::Done {
             text: done.text,

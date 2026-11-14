@@ -13,9 +13,12 @@
 //! 3. the tool is not one the turn treats as a write (the prepared frame's `writes`, `onceTools`,
 //!    `automaticOnlyWrites`, `editTools`): a read runs under no approval fence, so nothing about a
 //!    revoked grant or an approved edit target can be skipped here;
-//! 4. `routeMcpTool(name, serverId)`: the server's offer of that name in discovery's snapshot (this
-//!    front's, which core's `mcpState` mirrors), else core's `ERROR: unknown tool "<name>" on MCP server
-//!    "<id>"`;
+//! 4. `routeMcpTool(name, serverId)` and `MCP_SERVER_BY_ID`: the server's offer of that name is in
+//!    discovery's snapshot and the server is configured. Core reads its own copies (`mcpState`, the
+//!    generation it last applied, and `MCP_SERVERS` as of its last directory sync), which can lag this
+//!    front's, so a call either of them does not find here is left to core and core answers it (its
+//!    "unknown tool on MCP server" or "no longer configured" text): nothing is answered here that core
+//!    might have run;
 //! 5. the server is not one whose call needs what core holds: the Nextcloud pass-through (core holds the
 //!    storage credential, `mcpAuthHeaders`) or the in-app server (its capability token carries core's
 //!    call-time `isWriteTool`); those stay core's;
@@ -25,10 +28,10 @@
 //!    `executeToolCall`'s failure rule ([`tool_dispatch::finish`]). Core still counts the call (its bridge
 //!    does, `recordToolUse`): chat_native.rs asks core's `tool-used` op.
 //!
-//! Named differences: the server's offer is read from this front's current snapshot, where core reads
-//! the generation it last applied (core asks for a newer one at most every few seconds); a call the
-//! turn's client leaves during answers core's stopped text at once, as core's native path does, and its
-//! session is still closed by its own task.
+//! Named differences: a server or offer core's lagging copy no longer holds but this front's does is run
+//! here, where core would answer "unknown tool" or "no longer configured" (core asks the front for a newer
+//! generation at most every few seconds); a call the turn's client leaves during answers core's stopped
+//! text at once, as core's native path does, and its session is still closed by its own task.
 use crate::mcp_call::Request;
 use crate::mcp_discovery_actor::{ServerSpec, Snapshot};
 use crate::project_file_read::bridge_takes;
@@ -58,8 +61,6 @@ pub struct Facts<'a> {
 pub enum Plan {
     /// Core's bridge answers it, as before.
     Core,
-    /// Core's answer before any server is asked (an executor text, failed by its `ERROR: ` prefix).
-    Answer(String),
     /// Run here through [`crate::mcp_call::execute`].
     Call(Request),
 }
@@ -81,15 +82,13 @@ pub fn plan(user: &str, run: &ToolRun, facts: &Facts<'_>) -> Plan {
         return Plan::Core;
     }
     if !(facts.offered)(&server, &run.name) {
-        return Plan::Answer(format!(
-            "ERROR: unknown tool \"{}\" on MCP server \"{server}\"",
-            run.name
-        ));
+        return Plan::Core;
     }
-    // `MCP_SERVER_BY_ID`: of two servers with one id the later wins. A server that is gone is
-    // mcp_call's own answer ("no longer configured"), as core's.
-    let spec = facts.servers.iter().rev().find(|s| s.id == server);
-    if spec.is_some_and(|s| CORE_AUTH.contains(&s.auth.as_str())) {
+    // `MCP_SERVER_BY_ID`: of two servers with one id the later wins.
+    let Some(spec) = facts.servers.iter().rev().find(|s| s.id == server) else {
+        return Plan::Core;
+    };
+    if CORE_AUTH.contains(&spec.auth.as_str()) {
         return Plan::Core;
     }
     Plan::Call(Request {
@@ -247,35 +246,16 @@ mod tests {
     }
 
     #[test]
-    fn an_offer_the_snapshot_does_not_hold_is_cores_unknown_tool_text() {
-        // mcp-tool-routing-865.test.cjs: 'ERROR: unknown tool "search_files" on MCP server "gone"'.
-        assert_eq!(
-            with(&[], |f| plan(USER, &run("qa_unlisted", "qa-open", "{}"), f)),
-            Plan::Answer("ERROR: unknown tool \"qa_unlisted\" on MCP server \"qa-open\"".into())
-        );
-        assert_eq!(
-            with(&[], |f| plan(USER, &run("qa_lookup", "qa-gone-offer", "{}"), f)),
-            Plan::Answer(
-                "ERROR: unknown tool \"qa_lookup\" on MCP server \"qa-gone-offer\"".into()
-            )
-        );
-        // Failed, as executeToolCall marks a delegated `ERROR: ` text.
-        let o = finish(
-            "ERROR: unknown tool \"qa_unlisted\" on MCP server \"qa-open\"".into(),
-            false,
-        );
-        assert!(o.failed && !o.not_run);
-    }
-
-    #[test]
-    fn a_server_no_longer_configured_is_left_to_mcp_calls_own_answer() {
-        // The offer still names it, the server list does not: mcp_call::execute answers core's
-        // "no longer configured" text (its own tests and oracle hold it).
-        let Plan::Call(r) = with(&[], |f| plan(USER, &run("qa_lookup", "qa-removed", "{}"), f))
-        else {
-            panic!()
-        };
-        assert_eq!(r.server, "qa-removed");
+    fn an_offer_or_server_this_front_does_not_hold_is_left_to_core() {
+        // Core answers these from its own copies ('ERROR: unknown tool "search_files" on MCP server
+        // "gone"', mcp-tool-routing-865.test.cjs; "no longer configured"), which may still hold them.
+        for r in [
+            run("qa_unlisted", "qa-open", "{}"),
+            run("qa_lookup", "qa-gone-offer", "{}"),
+            run("qa_lookup", "qa-removed", "{}"),
+        ] {
+            assert_eq!(with(&[], |f| plan(USER, &r, f)), Plan::Core, "{r:?}");
+        }
     }
 
     #[test]
