@@ -96,6 +96,30 @@ async fn native_start_refuses_as_node_does_without_asking_node() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_native_start_drops_cores_model_reads_and_scan_as_core_did() {
+    // routes/models.cjs: every non-GET of /api/models/* invalidated the shared model reads first
+    // (members too), then, past the administrator check, cleared the cached folder scan (#2550).
+    let (_d, f, up, _e) = rig(true, None).await;
+    let count = |p: &str| {
+        up.seen()
+            .iter()
+            .filter(|r| r.method == "POST" && r.path == p)
+            .count()
+    };
+    let (invalidate, clear) = (
+        "/internal/auto-roles/invalidate",
+        "/internal/model-manager-scan/clear",
+    );
+    let (s, _) = write(f.addr, "POST", PATH, MEMBER, "{}").await;
+    assert_eq!(s, 403);
+    assert_eq!((count(invalidate), count(clear)), (1, 0));
+    let (s, _) = write(f.addr, "POST", PATH, ADMIN, "{}").await;
+    assert_ne!(s, 202);
+    assert_eq!((count(invalidate), count(clear)), (2, 1));
+    no_bridge(&up);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_status_and_cancel_facts_come_from_the_actor() {
     let (_d, f, up, _e) = rig(true, None).await;
     let (s, h, b) = raw_text(
@@ -157,6 +181,18 @@ async fn with_the_switch_off_the_start_is_nodes() {
         .seen()
         .iter()
         .any(|r| r.method == "POST" && r.path == PATH));
+    // #2550: any spelling of the start's path goes to Node as sent, before the front's own checks
+    // (no sign-in, CSRF or URL refusal of the front's answers it).
+    for path in ["/api/models/x/../autotune", "/api/models/autotune?model=qa"] {
+        let (s, _, _) = raw_text(f.addr, "POST", path, "", "", b"{}").await;
+        assert_eq!(s, 404, "{path}");
+        assert!(
+            up.seen()
+                .iter()
+                .any(|r| r.method == "POST" && r.path == path),
+            "{path} was not forwarded as sent"
+        );
+    }
 }
 
 async fn store_post(

@@ -9,6 +9,11 @@
 //! saves it). Everything else, and every call `file_read` leaves to core
 //! ([`server_projects::file_read::Outcome::Core`]), goes to core's bridge as before.
 //!
+//! The in-app MCP project reads ([`inapp_answer`], NOEVIA_RUST_INAPP_READS) answer for any server the
+//! front's MCP configuration marks `internal`, also where core's listener would not answer (its port
+//! unset or another address, a key that differs): a configuration error, where the front is the more
+//! available side. Named difference, not copied.
+//!
 //! Core keeps counting the call: chat_native.rs asks core's native op `tool-used` (core's
 //! `recordToolUse`, the usage store's single writer), as core's bridge counts a call it runs; the
 //! release assembler pairs that op with core's NATIVE_OPS.
@@ -165,6 +170,64 @@ pub fn answer(
     }
 }
 
+/// `NOEVIA_RUST_INAPP_READS=1`, read once: the in-app MCP server's read-only project tools
+/// (`project_list_files`, `project_read_file`) answered by the front in its MCP call path
+/// (mcp_call.rs) instead of core's loopback server. Off by default.
+pub fn inapp_enabled() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var("NOEVIA_RUST_INAPP_READS").as_deref() == Ok("1"))
+}
+
+/// core's in-app listener reads at most 256 KiB of request body (mcp-internal.cjs MAX_BODY_BYTES, a
+/// 400 past it): a call whose JSON-RPC message would come near that is core's.
+fn inapp_body_fits(name: &str, arguments: &JValue) -> bool {
+    const LISTENER_BYTES: usize = 256 * 1024;
+    const ENVELOPE: usize = 1024;
+    let args = js_json::stringify(arguments).map_or(0, |a| a.len());
+    args.saturating_add(name.len()).saturating_add(ENVELOPE) <= LISTENER_BYTES
+}
+
+/// core's in-app server's JSON-RPC `result` for `name` called as `uid` in project `pid` (the
+/// capability token's claims), or `None` to leave the call to core's server: another tool, an account
+/// core's `runAs` would refuse or that is disabled, a project read that fails, or an answer the port
+/// does not word as core does ([`server_projects::file_read::inapp_result`]).
+pub fn inapp_answer(
+    data_dir: &Path,
+    uid: &str,
+    pid: Option<&str>,
+    name: &str,
+    arguments: &JValue,
+    active: impl FnOnce(&str) -> bool,
+) -> Option<JValue> {
+    // core's verifyToken refuses a token over 4 096 characters (a 401): a long id is core's. The
+    // token carries the id JSON-escaped, so the escaped length is what counts.
+    if !matches!(name, "project_list_files" | "project_read_file")
+        || uid.is_empty()
+        || uid.len() > 200
+        || pid.is_some_and(|p| json_len(p) > 2048)
+        || !inapp_body_fits(name, arguments)
+        || !active(uid)
+    {
+        return None;
+    }
+    let (dir, project) = match pid {
+        Some(id) => {
+            let ctx = server_projects::Ctx {
+                data_dir,
+                user_id: uid,
+                switch: server_store::RustProjects::owned(),
+                now_ms: crate::identity::now_ms(),
+            };
+            server_projects::originals::project(ctx, id).ok()?
+        }
+        None => (server_projects::store::user_dir(data_dir, uid).ok()?, None),
+    };
+    if !dir.is_dir() {
+        return None;
+    }
+    server_projects::file_read::inapp_result(&dir, project.as_ref(), name, arguments)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -265,6 +328,122 @@ mod tests {
         let mut many = run(r#"{"name":"QA-notes.md"}"#);
         many.routes = (0..2001).map(|i| (format!("t{i}"), "s".into())).collect();
         assert_eq!(answer(&data, USER, &many, yes), None);
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn the_inapp_reads_answer_as_cores_server_and_leave_the_rest() {
+        let data = data_dir("inapp");
+        let text = |v: &JValue| match v.get("content") {
+            JValue::Arr(items) => items
+                .first()
+                .and_then(|c| c.get("text").as_str())
+                .map(str::to_string),
+            _ => None,
+        };
+        let list = inapp_answer(
+            &data,
+            USER,
+            Some("qa-proj"),
+            "project_list_files",
+            &JValue::Null,
+            yes,
+        )
+        .unwrap();
+        assert_eq!(
+            text(&list).unwrap(),
+            "Pass a name exactly as shown (or just its file name, when unique) to project_read_file.\nQA-notes.md — text, 13 chars"
+        );
+        assert!(list.get("isError").is_nullish());
+        let read = inapp_answer(
+            &data,
+            USER,
+            Some("qa-proj"),
+            "project_read_file",
+            &js_json::wtf16::parse(r#"{"name":"QA-notes.md"}"#).unwrap(),
+            yes,
+        )
+        .unwrap();
+        assert_eq!(
+            text(&read).unwrap(),
+            "File \"QA-notes.md\" (13 chars):\n\nQA notes text"
+        );
+        let none =
+            inapp_answer(&data, USER, None, "project_read_file", &JValue::Null, yes).unwrap();
+        assert_eq!(
+            text(&none).unwrap(),
+            "ERROR: this chat is not in a project, so there are no project files"
+        );
+        assert_eq!(none.get("isError"), &JValue::Bool(true));
+        let gone = inapp_answer(
+            &data,
+            USER,
+            Some("qa-other"),
+            "project_list_files",
+            &JValue::Null,
+            yes,
+        )
+        .unwrap();
+        assert_eq!(gone.get("isError"), &JValue::Bool(true));
+        // Core's: another tool, a disabled account, no user.
+        assert_eq!(
+            inapp_answer(
+                &data,
+                USER,
+                Some("qa-proj"),
+                "project_search",
+                &JValue::Null,
+                yes
+            ),
+            None
+        );
+        assert_eq!(
+            inapp_answer(
+                &data,
+                USER,
+                Some("qa-proj"),
+                "project_list_files",
+                &JValue::Null,
+                |_| false
+            ),
+            None
+        );
+        assert_eq!(
+            inapp_answer(
+                &data,
+                "",
+                Some("qa-proj"),
+                "project_list_files",
+                &JValue::Null,
+                yes
+            ),
+            None
+        );
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn inapp_guards_leave_large_calls_to_core() {
+        let small = js_json::wtf16::parse(r#"{"name":"QA-notes.md"}"#).unwrap();
+        assert!(inapp_body_fits("project_read_file", &small));
+        let big = JValue::obj([("pad", JValue::Str("x".repeat(256 * 1024)))]);
+        assert!(!inapp_body_fits("project_read_file", &big));
+        let data = data_dir("guards");
+        let long_pid = "p".repeat(2049);
+        let list = |pid: &str| {
+            inapp_answer(
+                &data,
+                USER,
+                Some(pid),
+                "project_list_files",
+                &JValue::Null,
+                yes,
+            )
+        };
+        assert_eq!(list(&long_pid), None);
+        // Short in bytes, too long once JSON-escaped as the token carries it.
+        assert_eq!(list(&"\"".repeat(1100)), None);
+        assert!(list("qa-proj").is_some());
         let _ = std::fs::remove_dir_all(&data);
     }
 

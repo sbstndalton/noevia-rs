@@ -5,6 +5,7 @@
 //! through dav-parse.wasm. Built only when `AUTOTUNE_RUNNER_IMPL=rust`; nothing here runs otherwise.
 
 use super::autotune_context::{Limits, PrivateCalibrator};
+use super::calibration::PRESET_STEP;
 use super::{Hold, Maint};
 use autotune_runner::{Abort, Call, Deps, Fail, Quirks, Release, Spawn, StageHooks};
 use js_json::{wtf16, JValue};
@@ -28,8 +29,6 @@ const IDLE_POLL: Duration = Duration::from_millis(500);
 const FACTS_LIMIT: Duration = Duration::from_secs(3);
 /// How often a call in flight checks that its hold still excludes everyone.
 const LOSS_POLL: Duration = Duration::from_millis(500);
-/// llamacpp-manager.cjs `PRESET_STEP_MS`: a write and its 120 s router reload.
-const PRESET_STEP: Duration = Duration::from_secs(150);
 /// The longest `recoverNow` waits for the owed repairs.
 const RECOVER_NOW_LIMIT: Duration = Duration::from_secs(15 * 60);
 /// A run's lease (Node's maintenance hold has no limit of its own; the authority caps it).
@@ -71,6 +70,10 @@ fn fetch_failed(abort: Option<&Abort>) -> Fail {
 }
 
 /// `assertCovered`'s refusal (inference-maintenance.cjs `coverageError`).
+/// applyUnlocked's recovery message (Node's `requireRecovery` third argument).
+const APPLY_RECOVERY_REASON: &str =
+    "Chat is paused while noevia restores the presets an interrupted change left behind.";
+
 fn coverage_error() -> Fail {
     Fail {
         coverage_lost: true,
@@ -120,12 +123,17 @@ pub struct FrontDeps {
     /// Each owed repair's fences, kept until it has run (Node's gate keeps chat and new maintenance
     /// closed meanwhile): the lease authority's recovery ticket and this process's admission fence.
     owed: Mutex<std::collections::HashMap<String, (String, Option<super::gate::AdmissionFence>)>>,
+    /// The restores owed by writes whose lease was lost under them (applyUnlocked's
+    /// `apply:<revision>` recoveries): key → (the write's revision, the text before it).
+    apply_restores: Mutex<std::collections::HashMap<String, (String, String)>>,
     allow_below_q5: bool,
     /// The private calibrator's free-memory floor (index.cjs:
     /// `Number(LLAMACPP_CALIBRATION_MEMORY_FLOOR_GIB) || 2`).
     memory_floor_gib: f64,
     /// EMBEDDING_MODEL (or EMBED_MODEL), EMBEDDING_NEXT_MODEL and RERANK_MODEL, until Core answers.
     env_sidecars: Vec<String>,
+    /// The load advisor (core load-advisor.cjs), over the deployment's decision service.
+    advisor: super::load_advisor::LoadAdvisor,
 }
 
 impl FrontDeps {
@@ -145,6 +153,8 @@ impl FrontDeps {
             read_facts,
             recoveries,
             owed: Mutex::new(Default::default()),
+            apply_restores: Mutex::new(Default::default()),
+            advisor: super::load_advisor::LoadAdvisor::from_lookup(get),
             env_sidecars: {
                 let embed = get("EMBEDDING_MODEL")
                     .filter(|v| !v.trim().is_empty())
@@ -185,6 +195,46 @@ impl FrontDeps {
         self.facts.lock().is_ok_and(|f| f.1.is_some())
     }
 
+    /// An owed `apply:<revision>` repair (llamacpp-manager.cjs applyUnlocked's loss branch), under
+    /// the recovery hold in `current`: the text before the write goes back while models.ini is
+    /// still at the write's revision (never over a later edit), then the router must re-read the
+    /// file. `None` when `key` owes no such restore (or it has settled); `Some(false)` when the
+    /// restore did not complete.
+    pub(crate) async fn restore_apply(&self, key: &str) -> Option<bool> {
+        let (revision, before) = self.apply_restores.lock().ok()?.get(key).cloned()?;
+        let restored = async {
+            if snapshot_of(&self.maint).1 == revision {
+                let candidate = JValue::obj([
+                    ("baseRevision", JValue::from(revision.as_str())),
+                    ("text", JValue::from(before.as_str())),
+                ]);
+                commit_of(&self.maint, &self.current, &candidate, true)
+                    .await
+                    .ok()?;
+            }
+            let hold = self.current.get()?;
+            let reply = self
+                .maint
+                .router_reload_reply(self.router().ok()?, &hold)
+                .await?;
+            reply.ok.then_some(())
+        }
+        .await
+        .is_some();
+        // The entry stays until the repair has settled (`settle_owed`): a retry runs it again,
+        // which then only re-reads, since the file has left the write's revision.
+        Some(restored)
+    }
+
+    /// Owes the restore of a write whose lease was lost (as [`Deps::apply_unlocked`] does), for
+    /// tests of [`FrontDeps::restore_apply`].
+    #[cfg(test)]
+    pub(crate) fn owe_apply_restore(&self, key: &str, revision: &str, before: &str) {
+        if let Ok(mut owed) = self.apply_restores.lock() {
+            owed.insert(key.to_owned(), (revision.to_owned(), before.to_owned()));
+        }
+    }
+
     /// Core's inference budget in GiB as last read (0: none).
     pub fn inference_budget(&self) -> f64 {
         self.facts.lock().map(|f| f.0).unwrap_or(0.0)
@@ -202,6 +252,9 @@ impl FrontDeps {
 
     /// A repair ran: its fences open again.
     pub(crate) fn settle_owed(&self, key: &str) {
+        if let Ok(mut restores) = self.apply_restores.lock() {
+            restores.remove(key);
+        }
         let entry = self.owed.lock().ok().and_then(|mut o| o.remove(key));
         if let Some((ticket, fence)) = entry {
             self.maint.authority.complete_recovery(&ticket);
@@ -293,7 +346,20 @@ fn presets_of(maint: &Maint) -> Result<crate::model_sizing::Presets, Fail> {
         .ini
         .as_ref()
         .ok_or_else(|| Fail::new("Native preset editing; configure LLAMACPP_PRESET_PATH"))?;
-    ini.read().map_err(|t| Fail::new(t.message))
+    blocking(|| ini.read()).map_err(|t| Fail::new(t.message))
+}
+
+/// Small synchronous file work from a synchronous `Deps` method (the state-file save, a models.ini
+/// or roles-file read; Node's own are synchronous too): on a multi-thread runtime the worker hands
+/// its other tasks to another thread first, so a slow disk stalls none of them (#2550); on a
+/// current-thread runtime it simply runs.
+fn blocking<T>(f: impl FnOnce() -> T) -> T {
+    match tokio::runtime::Handle::try_current() {
+        Ok(h) if h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(f)
+        }
+        _ => f(),
+    }
 }
 
 /// `presets.get(model)`.
@@ -324,7 +390,11 @@ fn presets_get_of(maint: &Maint, model: &str) -> JValue {
 
 /// `presets.snapshot()`: `(text, revision)`.
 fn snapshot_of(maint: &Maint) -> (String, String) {
-    match maint.ini.as_ref().and_then(|ini| ini.snapshot().ok()) {
+    match maint
+        .ini
+        .as_ref()
+        .and_then(|ini| blocking(|| ini.snapshot()).ok())
+    {
         Some(s) => (s.text, s.revision),
         None => (String::new(), String::new()),
     }
@@ -658,15 +728,28 @@ impl Deps for FrontDeps {
         let backup = write_options.get("backup") != &JValue::Bool(false);
         // applyUnlocked: `maintenance.assertCovered(PRESET_STEP_MS)` before the write and its reload.
         self.covered_for(PRESET_STEP)?;
-        let (status, error) = self
+        let reply = self
             .maint
             .apply_unlocked_reply(&hold, &model, &base, &options, backup)
             .await;
-        // A lease lost under the write: nothing more runs on it (the phase's restore becomes the
-        // recovery, as Node's loss branch makes it).
-        if !hold.excluded() {
-            return Err(coverage_error());
-        }
+        // A lease lost under the write: nothing more runs on it. As Node's loss branch does, the
+        // write's own restore is owed to a recovery under a fresh lease (the phase's restore
+        // becomes another), and chat stays closed until it has run.
+        let (status, error) = match reply {
+            // Not written (the hold stopped covering the write after the check above): Node's
+            // coverage error, with nothing of this write to restore.
+            Err(None) => return Err(coverage_error()),
+            Err(Some((revision, before))) => {
+                let key = format!("apply:{revision}");
+                if let Ok(mut owed) = self.apply_restores.lock() {
+                    owed.entry(key.clone()).or_insert((revision, before));
+                }
+                self.require_recovery(&key, APPLY_RECOVERY_REASON);
+                return Err(coverage_error());
+            }
+            Ok(_) if !hold.excluded() => return Err(coverage_error()),
+            Ok(reply) => reply,
+        };
         let mut out = JValue::obj([
             ("ok", JValue::Bool(status == 200)),
             ("status", JValue::Num(f64::from(status))),
@@ -717,7 +800,8 @@ impl Deps for FrontDeps {
     }
 
     fn is_system_model(&self, id: &str, path: Option<&str>) -> bool {
-        let roles = crate::model_kind::roles_beside(self.maint.ini.as_ref().map(|i| i.file()));
+        let roles =
+            blocking(|| crate::model_kind::roles_beside(self.maint.ini.as_ref().map(|i| i.file())));
         crate::model_kind::is_system_model_at(&roles, id, path)
     }
 
@@ -987,9 +1071,8 @@ impl Deps for FrontDeps {
     }
 
     async fn judge(&self, request: JValue) -> Result<JValue, Fail> {
-        // load-advisor.cjs judge: Rust's rules (load-verdict). No decision service is asked from
-        // this front yet, so a rule tie keeps the rule's verdict (`advisor: unavailable`).
-        Ok(autotune_runner::decide::judge(&request))
+        // load-advisor.cjs judge: Rust's rules (load-verdict), then on a tie the decision service.
+        Ok(self.advisor.judge(&request).await)
     }
 
     fn plan(&self, request: &JValue) -> Result<JValue, Fail> {
@@ -1052,7 +1135,7 @@ impl Deps for FrontDeps {
     }
 
     fn save(&self, text: &str) -> Result<(), Fail> {
-        write_atomic(&self.state_file, text).map_err(|e| Fail::new(e.to_string()))
+        blocking(|| write_atomic(&self.state_file, text)).map_err(|e| Fail::new(e.to_string()))
     }
 
     fn log(&self, message: &str) {
