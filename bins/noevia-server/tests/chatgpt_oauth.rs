@@ -1049,8 +1049,11 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
             "200 OK",
             r#"{"authorization_code":"synthetic-code","code_verifier":"synthetic-verifier"}"#,
         ),
+        // noevia#2357: each disconnect or cancel below must land while this exchange is still
+        // running; 2 s (was 700 ms) leaves a stalled runner room, and the disconnect's own bound
+        // (1 s) stays well below it.
         "/oauth/token" => (
-            Duration::from_millis(700),
+            Duration::from_millis(2000),
             reply(
                 "200 OK",
                 &format!(r#"{{"access_token":"synthetic-access-9","refresh_token":"synthetic-refresh-9","id_token":"{id_token}","expires_in":3600}}"#),
@@ -1078,7 +1081,7 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
         200
     );
     assert!(
-        t0.elapsed() < Duration::from_millis(400),
+        t0.elapsed() < Duration::from_millis(1000),
         "the disconnect does not wait for the refresh"
     );
     let (s, got) = refreshing.await.unwrap();
