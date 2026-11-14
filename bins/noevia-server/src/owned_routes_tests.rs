@@ -193,7 +193,10 @@ fn wildcard_rows_are_filled_with_one_segment_and_listed() {
     assert!(!m.contains(&("GET", "/api/mcp-keys/{*}")));
     // Node's wildcard rows stay out.
     assert!(!m.iter().any(|&(_, p)| p == "/api/models/{*}"));
-    for route in ROUTES.iter().filter(|r| r.path.contains("{*}") && !r.catch_all) {
+    for route in ROUTES
+        .iter()
+        .filter(|r| r.path.contains("{*}") && !r.catch_all)
+    {
         let path = fill(route.path, FILLS[0]);
         assert_eq!(
             path.split('/').count(),
@@ -211,7 +214,10 @@ fn handler_forwards_are_left_out() {
         assert!(!why.is_empty());
         assert!(!m.contains(&(method, pattern)), "{method} {pattern}");
         // It is a pair the route table does give a native handler (else the entry is stale).
-        assert!(answers(method, &fill(pattern, FILLS[0])), "{method} {pattern}");
+        assert!(
+            answers(method, &fill(pattern, FILLS[0])),
+            "{method} {pattern}"
+        );
     }
     assert!(m.contains(&("GET", "/api/models/autotune")));
 }
@@ -221,21 +227,45 @@ fn handler_forwards_are_left_out() {
 /// counts as listed). sbstndalton/noevia#2725 item 4.
 const METHOD_GUARDS: &[(&str, &str, &[&str])] = &[
     ("autotune_read_routes.rs", "/api/models/autotune", &["GET"]),
-    ("chatgpt_status_routes.rs", "/api/providers/chatgpt", &["DELETE", "GET"]),
+    (
+        "chatgpt_status_routes.rs",
+        "/api/providers/chatgpt",
+        &["DELETE", "GET"],
+    ),
     ("connector_routes.rs", "/api/connectors", &["GET"]),
     ("export_routes.rs", "/api/export/conversations", &["GET"]),
     ("health_routes.rs", "/api/health", &["GET"]),
     ("idle_unload_read.rs", "/api/models/idle-unload", &["GET"]),
     ("model_assignments.rs", "/api/models/assignments", &["GET"]),
-    ("model_manager_scan.rs", "/api/model-manager/models", &["GET"]),
+    (
+        "model_manager_scan.rs",
+        "/api/model-manager/models",
+        &["GET"],
+    ),
     ("model_routes.rs", "/api/models/capabilities", &["GET"]),
     ("model_routes.rs", "/api/models/hardware", &["GET"]),
-    ("provider_test_routes.rs", "/api/providers/test", &["DELETE", "POST", "PUT"]),
+    (
+        "provider_test_routes.rs",
+        "/api/providers/test",
+        &["DELETE", "POST", "PUT"],
+    ),
     ("public_pages.rs", "/about", &["GET", "HEAD"]),
-    ("routing_default_routes.rs", "/api/routing-default", &["GET"]),
+    (
+        "routing_default_routes.rs",
+        "/api/routing-default",
+        &["GET"],
+    ),
     ("stats_routes.rs", "/api/stats", &["GET"]),
-    ("storage_integration_routes.rs", "/api/integrations/storage", &["GET", "PUT"]),
-    ("tool_approval_routes.rs", "/api/tool-approvals/{approvalId}", &["POST"]),
+    (
+        "storage_integration_routes.rs",
+        "/api/integrations/storage",
+        &["GET", "PUT"],
+    ),
+    (
+        "tool_approval_routes.rs",
+        "/api/tool-approvals/{approvalId}",
+        &["POST"],
+    ),
 ];
 
 #[test]

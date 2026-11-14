@@ -518,7 +518,11 @@ fn every_recorded_pattern_is_still_a_routes_toml_row() {
     for s in &rec().stubs {
         for r in &s.refusals {
             if let Some(p) = &r.pattern {
-                assert!(rows.contains(p.as_str()), "{}: {p} is not in routes.toml", s.file);
+                assert!(
+                    rows.contains(p.as_str()),
+                    "{}: {p} is not in routes.toml",
+                    s.file
+                );
             }
         }
     }
@@ -528,12 +532,20 @@ fn every_recorded_pattern_is_still_a_routes_toml_row() {
 fn uuid_only_stubs_are_recorded_on_uuid_paths() {
     // sbstndalton/noevia#2713 item 1: rust-research.cjs refuses only [0-9a-f-]{36} job ids.
     let r = rec();
-    let research = r.stubs.iter().find(|s| s.file == "server/rust-research.cjs").expect("research stub");
+    let research = r
+        .stubs
+        .iter()
+        .find(|s| s.file == "server/rust-research.cjs")
+        .expect("research stub");
     assert!(research
         .refusals
         .iter()
         .any(|x| x.path.contains(&format!("/research/{UUID}"))));
-    assert!(unrecorded_owned(research).is_empty(), "{:?}", unrecorded_owned(research));
+    assert!(
+        unrecorded_owned(research).is_empty(),
+        "{:?}",
+        unrecorded_owned(research)
+    );
 }
 
 #[test]
@@ -550,9 +562,15 @@ fn pairing_lines_cover_every_script_and_the_stub_s_markers() {
         "deploy/tools/test-residual-fallback-pairing.sh:9",
         "deploy/tools/test-assemble-release.sh:3437",
     ] {
-        assert!(residual.pairing.iter().any(|p| p == want), "{want} missing: {:?}", residual.pairing);
+        assert!(
+            residual.pairing.iter().any(|p| p == want),
+            "{want} missing: {:?}",
+            residual.pairing
+        );
     }
-    assert!(r.stubs.iter().all(|s| s.pairing.iter().all(|p| p.rsplit_once(':').is_some_and(|(_, n)| n.parse::<usize>().is_ok()))));
+    assert!(r.stubs.iter().all(|s| s.pairing.iter().all(|p| p
+        .rsplit_once(':')
+        .is_some_and(|(_, n)| n.parse::<usize>().is_ok()))));
 }
 
 #[test]
@@ -711,7 +729,10 @@ fn every_delete_file_stub_names_the_foreign_tests_that_require_it() {
     );
     // A plain DeleteFile has no foreign test left.
     for s in &r.stubs {
-        if let Some(a) = list.iter().find(|a| a.file == s.file && a.verdict == Verdict::DeleteFile) {
+        if let Some(a) = list
+            .iter()
+            .find(|a| a.file == s.file && a.verdict == Verdict::DeleteFile)
+        {
             assert!(foreign_tests(s).is_empty(), "{}", a.file);
         }
     }
@@ -781,7 +802,10 @@ fn an_owned_route_without_a_recorded_refusal_makes_the_stub_incomplete() {
         .map(|m| refusal(m, "/api/y/qa-1", "/api/y/{id}", BODY))
         .collect();
     assert!(unrecorded_owned(&s).is_empty());
-    assert_eq!(classify(&synthetic(vec![s]), &all)[0].verdict, Verdict::DeleteFile);
+    assert_eq!(
+        classify(&synthetic(vec![s]), &all)[0].verdict,
+        Verdict::DeleteFile
+    );
 }
 
 #[test]
@@ -792,8 +816,17 @@ fn a_core_handler_behind_the_stub_must_go_with_it() {
         vec![refusal("POST", "/api/y", "/api/y", BODY)],
     );
     s.behind = [
-        ("/api/y".to_string(), vec!["server/routes/y.cjs:9".to_string(), "server/index.cjs:3".to_string()]),
-        ("/api/y2".to_string(), vec!["server/routes/y.cjs:9".to_string()]),
+        (
+            "/api/y".to_string(),
+            vec![
+                "server/routes/y.cjs:9".to_string(),
+                "server/index.cjs:3".to_string(),
+            ],
+        ),
+        (
+            "/api/y2".to_string(),
+            vec!["server/routes/y.cjs:9".to_string()],
+        ),
     ]
     .into_iter()
     .collect();
@@ -803,7 +836,10 @@ fn a_core_handler_behind_the_stub_must_go_with_it() {
     assert_eq!(
         list[0].verdict,
         Verdict::GuardsHandler {
-            handlers: vec!["server/index.cjs:3".to_string(), "server/routes/y.cjs:9".to_string()]
+            handlers: vec![
+                "server/index.cjs:3".to_string(),
+                "server/routes/y.cjs:9".to_string()
+            ]
         }
     );
     assert_eq!(totals(&list).with_handler, 1);
@@ -812,7 +848,10 @@ fn a_core_handler_behind_the_stub_must_go_with_it() {
     assert!(md.contains("1 can go only with the core handler they guard"));
     // A leak still wins: the stub is live before anything else.
     let none = |_: &str, _: &str| false;
-    assert!(matches!(classify(&r, &none)[0].verdict, Verdict::Live { .. }));
+    assert!(matches!(
+        classify(&r, &none)[0].verdict,
+        Verdict::Live { .. }
+    ));
 }
 
 #[test]
@@ -843,10 +882,16 @@ fn the_delete_list_names_the_routes_toml_revision() {
 
 #[test]
 fn normalised_is_the_assembler_s_sed() {
-    assert_eq!(normalised("/api/chats/{chatId}/export"), "/api/chats/{}/export");
+    assert_eq!(
+        normalised("/api/chats/{chatId}/export"),
+        "/api/chats/{}/export"
+    );
     assert_eq!(normalised("/api/models/{*}"), "/api/models/{}");
     assert_eq!(normalised("/api/open/{x"), "/api/open/{x");
-    assert_eq!(owned_entry("ALL /api/x/{id}"), Some(("ALL", "/api/x/{}".to_string())));
+    assert_eq!(
+        owned_entry("ALL /api/x/{id}"),
+        Some(("ALL", "/api/x/{}".to_string()))
+    );
     assert_eq!(owned_entry("/api/x"), None);
     assert_eq!(owned_entry("GET api/x"), None);
 }
@@ -868,7 +913,10 @@ fn the_delete_list_golden_is_current() {
         std::fs::write(at, &md).expect("write the golden");
     }
     let want = std::fs::read_to_string(at).unwrap_or_default();
-    assert!(want == md, "fixtures/delete-list.md is stale: ROUTE_PINS_WRITE=1 cargo test -p route-pins");
+    assert!(
+        want == md,
+        "fixtures/delete-list.md is stale: ROUTE_PINS_WRITE=1 cargo test -p route-pins"
+    );
 }
 
 #[test]
@@ -884,7 +932,11 @@ fn a_handler_for_another_method_does_not_guard_the_stub() {
     );
     s.behind = [(
         "/api/z".to_string(),
-        vec!["server/routes/z.cjs:4".to_string(), "server/routes/z.cjs:9".to_string(), "server/x.cjs:1".to_string()],
+        vec![
+            "server/routes/z.cjs:4".to_string(),
+            "server/routes/z.cjs:9".to_string(),
+            "server/x.cjs:1".to_string(),
+        ],
     )]
     .into_iter()
     .collect();
@@ -896,17 +948,26 @@ fn a_handler_for_another_method_does_not_guard_the_stub() {
     .collect();
     assert_eq!(
         handlers_behind(&s),
-        ["server/routes/z.cjs:9".to_string(), "server/x.cjs:1".to_string()]
+        [
+            "server/routes/z.cjs:9".to_string(),
+            "server/x.cjs:1".to_string()
+        ]
     );
     // Only the PUT handler and an unrelated line: the PUT line drops, the unknown one stays.
-    s.behind = [("/api/z".to_string(), vec!["server/routes/z.cjs:4".to_string()])].into_iter().collect();
+    s.behind = [(
+        "/api/z".to_string(),
+        vec!["server/routes/z.cjs:4".to_string()],
+    )]
+    .into_iter()
+    .collect();
     assert!(handlers_behind(&s).is_empty());
     let all = |_: &str, _: &str| true;
     let list = classify(&synthetic(vec![s.clone()]), &all);
     assert_eq!(list[0].verdict, Verdict::DeleteFile);
     // GET covers a HEAD-only refusal.
     s.refusals = vec![refusal("HEAD", "/api/z", "/api/z", BODY)];
-    s.behind_methods.insert("server/routes/z.cjs:4".to_string(), vec!["GET".to_string()]);
+    s.behind_methods
+        .insert("server/routes/z.cjs:4".to_string(), vec!["GET".to_string()]);
     assert_eq!(handlers_behind(&s), ["server/routes/z.cjs:4".to_string()]);
 }
 
