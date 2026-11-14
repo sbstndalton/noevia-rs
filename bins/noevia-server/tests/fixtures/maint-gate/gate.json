@@ -1,0 +1,3018 @@
+{
+ "version": 1,
+ "options": {
+  "coverageMarginMs": 15000,
+  "recoveryRetryMs": 5000,
+  "recoveryMaxDelayMs": 60000
+ },
+ "sourceSha256": {
+  "server/inference-maintenance.cjs": "9fa7e39221ca3e8e5b2c8dd9360a38b9d8411859aff9aa4368a4446333eb265d"
+ },
+ "scenarios": [
+  {
+   "name": "on-time renewals keep a 150 s step covered",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [],
+    "renewDefault": true,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 5000,
+      "do": "assert",
+      "stepMs": 150000
+     },
+     {
+      "at": 95000,
+      "do": "assert",
+      "stepMs": 150000
+     },
+     {
+      "at": 175000,
+      "do": "assert",
+      "stepMs": 150000
+     },
+     {
+      "at": 200000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 200000,
+      "do": "release"
+     },
+     {
+      "at": 201000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 5000,
+     "do": "assert",
+     "stepMs": 150000,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 95000,
+     "do": "assert",
+     "stepMs": 150000,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 175000,
+     "do": "assert",
+     "stepMs": 150000,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 200000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 200000,
+     "do": "release",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 201000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 60000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 70000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 80000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 90000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 100000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 110000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 120000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 130000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 140000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 150000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 160000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 170000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 180000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 190000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 200000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 200000,
+     "call": "release",
+     "token": "qa-lease-1"
+    }
+   ]
+  },
+  {
+   "name": "renewals late inside the margin: the step is still covered",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "defer"
+    ],
+    "renewDefault": true,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 155000,
+      "do": "assert",
+      "stepMs": 150000
+     },
+     {
+      "at": 162000,
+      "do": "assert",
+      "stepMs": 150000
+     },
+     {
+      "at": 163000,
+      "do": "resolve",
+      "value": true
+     },
+     {
+      "at": 175000,
+      "do": "assert",
+      "stepMs": 150000
+     },
+     {
+      "at": 300000,
+      "do": "assert",
+      "stepMs": 150000
+     },
+     {
+      "at": 300000,
+      "do": "release"
+     },
+     {
+      "at": 301000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 155000,
+     "do": "assert",
+     "stepMs": 150000,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 162000,
+     "do": "assert",
+     "stepMs": 150000,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 163000,
+     "do": "resolve",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 175000,
+     "do": "assert",
+     "stepMs": 150000,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 300000,
+     "do": "assert",
+     "stepMs": 150000,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 300000,
+     "do": "release",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 301000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 60000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 70000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 80000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 90000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 100000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 110000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 120000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 130000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 140000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 150000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 160000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 170000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 180000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 190000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 200000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 210000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 220000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 230000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 240000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 250000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 260000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 270000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 280000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 290000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 300000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 300000,
+     "call": "release",
+     "token": "qa-lease-1"
+    }
+   ]
+  },
+  {
+   "name": "a lapse inside the margin found by the renewal tick",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [],
+    "renewDefault": null,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 160000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 165000,
+      "do": "check"
+     },
+     {
+      "at": 171000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 172000,
+      "do": "check"
+     },
+     {
+      "at": 180000,
+      "do": "release"
+     },
+     {
+      "at": 180000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 160000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 165000,
+     "do": "check",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 171000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease could not be renewed, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 172000,
+     "do": "check",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 180000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 180000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 60000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 70000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 80000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 90000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 100000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 110000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 120000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 130000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 140000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 150000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 160000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 170000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 170000,
+     "log": "[models] this process's maintenance lease could not be renewed; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 180000,
+     "call": "acquire",
+     "token": "qa-lease-2",
+     "recovery": true
+    },
+    {
+     "t": 180000,
+     "settle": "ok"
+    },
+    {
+     "t": 180000,
+     "call": "release",
+     "token": "qa-lease-2"
+    },
+    {
+     "t": 180000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "a lapse inside the margin found by assertCovered before the tick",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [],
+    "renewDefault": null,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 166000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 167000,
+      "do": "assert",
+      "stepMs": 150000
+     },
+     {
+      "at": 168000,
+      "do": "release"
+     },
+     {
+      "at": 168000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 166000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease could not be renewed, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 167000,
+     "do": "assert",
+     "stepMs": 150000,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease could not be renewed, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 168000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 168000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 60000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 70000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 80000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 90000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 100000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 110000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 120000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 130000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 140000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 150000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 160000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "log": "[models] this process's maintenance lease could not be renewed; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 168000,
+     "call": "acquire",
+     "token": "qa-lease-2",
+     "recovery": true
+    },
+    {
+     "t": 168000,
+     "settle": "ok"
+    },
+    {
+     "t": 168000,
+     "call": "release",
+     "token": "qa-lease-2"
+    },
+    {
+     "t": 168000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "a deferred renewal answered after the margin point: the late answer is ignored",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     null,
+     "defer"
+    ],
+    "renewDefault": true,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 166000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 167000,
+      "do": "resolve",
+      "value": true
+     },
+     {
+      "at": 168000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 169000,
+      "do": "release"
+     },
+     {
+      "at": 169000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 166000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease could not be renewed, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 167000,
+     "do": "resolve",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 168000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease could not be renewed, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 169000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 169000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 60000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 70000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 80000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 90000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 100000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 110000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 120000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 130000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 140000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 150000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 160000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "log": "[models] this process's maintenance lease could not be renewed; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 169000,
+     "call": "acquire",
+     "token": "qa-lease-2",
+     "recovery": true
+    },
+    {
+     "t": 169000,
+     "settle": "ok"
+    },
+    {
+     "t": 169000,
+     "call": "release",
+     "token": "qa-lease-2"
+    },
+    {
+     "t": 169000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "the hard cap minus the margin",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 60000
+    },
+    "renewals": [],
+    "renewDefault": true,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 10000,
+      "do": "assert",
+      "stepMs": 30000
+     },
+     {
+      "at": 10000,
+      "do": "assert",
+      "stepMs": 40000
+     },
+     {
+      "at": 10000,
+      "do": "check"
+     },
+     {
+      "at": 44000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 46000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 47000,
+      "do": "release"
+     },
+     {
+      "at": 47000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 10000,
+     "do": "assert",
+     "stepMs": 30000,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 10000,
+     "do": "assert",
+     "stepMs": 40000,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease cannot cover the next step, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 10000,
+     "do": "check",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 44000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 46000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease passed its limit, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease passed its limit, so this work stopped before changing anything else."
+    },
+    {
+     "t": 47000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease passed its limit, so this work stopped before changing anything else."
+    },
+    {
+     "t": 47000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease passed its limit, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 46000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 46000,
+     "log": "[models] this process's maintenance lease passed its limit; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 47000,
+     "call": "acquire",
+     "token": "qa-lease-2",
+     "recovery": true
+    },
+    {
+     "t": 47000,
+     "settle": "ok"
+    },
+    {
+     "t": 47000,
+     "call": "release",
+     "token": "qa-lease-2"
+    },
+    {
+     "t": 47000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "the hard cap minus the margin found by the renewal tick",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 60000
+    },
+    "renewals": [],
+    "renewDefault": true,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 41000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 51000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 52000,
+      "do": "release"
+     },
+     {
+      "at": 52000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 41000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 51000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease passed its limit, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease passed its limit, so this work stopped before changing anything else."
+    },
+    {
+     "t": 52000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease passed its limit, so this work stopped before changing anything else."
+    },
+    {
+     "t": 52000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease passed its limit, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "log": "[models] this process's maintenance lease passed its limit; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 52000,
+     "call": "acquire",
+     "token": "qa-lease-2",
+     "recovery": true
+    },
+    {
+     "t": 52000,
+     "settle": "ok"
+    },
+    {
+     "t": 52000,
+     "call": "release",
+     "token": "qa-lease-2"
+    },
+    {
+     "t": 52000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "the authority answers that the lease ended",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [
+     true,
+     true,
+     false
+    ],
+    "renewDefault": true,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 25000,
+      "do": "assert",
+      "stepMs": 150000
+     },
+     {
+      "at": 31000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 40000,
+      "do": "release"
+     },
+     {
+      "at": 40000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 25000,
+     "do": "assert",
+     "stepMs": 150000,
+     "result": {
+      "ok": true
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 31000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease was ended by the lease authority, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease was ended by the lease authority, so this work stopped before changing anything else."
+    },
+    {
+     "t": 40000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease was ended by the lease authority, so this work stopped before changing anything else."
+    },
+    {
+     "t": 40000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease was ended by the lease authority, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "log": "[models] this process's maintenance lease was ended by the lease authority; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 40000,
+     "call": "acquire",
+     "token": "qa-lease-2",
+     "recovery": true
+    },
+    {
+     "t": 40000,
+     "settle": "ok"
+    },
+    {
+     "t": 40000,
+     "call": "release",
+     "token": "qa-lease-2"
+    },
+    {
+     "t": 40000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "a recovery that fails, backs off and then succeeds",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [],
+    "renewDefault": null,
+    "settle": [
+     "fail",
+     "fail",
+     "fail"
+    ],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 166000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 170000,
+      "do": "release"
+     },
+     {
+      "at": 170000,
+      "do": "check"
+     },
+     {
+      "at": 176000,
+      "do": "check"
+     },
+     {
+      "at": 186000,
+      "do": "check"
+     },
+     {
+      "at": 206000,
+      "do": "check"
+     },
+     {
+      "at": 300000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 166000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease could not be renewed, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 170000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 170000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 176000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 186000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 206000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 300000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 60000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 70000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 80000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 90000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 100000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 110000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 120000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 130000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 140000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 150000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 160000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "log": "[models] this process's maintenance lease could not be renewed; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-2",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-2"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-3",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-3"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-4",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-4"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-5",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "ok"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-5"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "the recovery backoff doubles to its cap",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [],
+    "renewDefault": null,
+    "settle": [
+     "fail",
+     "fail",
+     "fail",
+     "fail",
+     "fail",
+     "fail",
+     "fail"
+    ],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 166000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 170000,
+      "do": "release"
+     },
+     {
+      "at": 600000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 166000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease could not be renewed, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 170000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 600000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 60000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 70000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 80000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 90000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 100000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 110000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 120000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 130000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 140000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 150000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 160000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "log": "[models] this process's maintenance lease could not be renewed; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-2",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-2"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-3",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-3"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-4",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-4"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-5",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-5"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-6",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-6"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-7",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-7"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-8",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The model server did not answer.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-8"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-9",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "ok"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-9"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "a recovery whose fresh hold is refused backs off 5 s doubling to 60 s",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [],
+    "renewDefault": null,
+    "settle": [],
+    "grants": [
+     "ok",
+     "refuse",
+     "refuse",
+     "refuse",
+     "refuse",
+     "refuse",
+     "refuse",
+     "ok"
+    ],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 166000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 170000,
+      "do": "release"
+     },
+     {
+      "at": 170000,
+      "do": "check"
+     },
+     {
+      "at": 176000,
+      "do": "check"
+     },
+     {
+      "at": 300000,
+      "do": "check"
+     },
+     {
+      "at": 600000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 166000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease could not be renewed, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 170000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 170000,
+     "do": "check",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 176000,
+     "do": "check",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 300000,
+     "do": "check",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 600000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 60000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 70000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 80000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 90000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 100000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 110000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 120000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 130000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 140000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 150000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 160000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "log": "[models] this process's maintenance lease could not be renewed; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "refused": true,
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The maintenance lease authority is not answering, so nothing was changed. Try again shortly.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 175000,
+     "call": "acquire",
+     "refused": true,
+     "recovery": true
+    },
+    {
+     "t": 175000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The maintenance lease authority is not answering, so nothing was changed. Try again shortly.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 185000,
+     "call": "acquire",
+     "refused": true,
+     "recovery": true
+    },
+    {
+     "t": 185000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The maintenance lease authority is not answering, so nothing was changed. Try again shortly.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 205000,
+     "call": "acquire",
+     "refused": true,
+     "recovery": true
+    },
+    {
+     "t": 205000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The maintenance lease authority is not answering, so nothing was changed. Try again shortly.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 245000,
+     "call": "acquire",
+     "refused": true,
+     "recovery": true
+    },
+    {
+     "t": 245000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The maintenance lease authority is not answering, so nothing was changed. Try again shortly.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 305000,
+     "call": "acquire",
+     "refused": true,
+     "recovery": true
+    },
+    {
+     "t": 305000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The maintenance lease authority is not answering, so nothing was changed. Try again shortly.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 365000,
+     "call": "acquire",
+     "token": "qa-lease-8",
+     "recovery": true
+    },
+    {
+     "t": 365000,
+     "settle": "ok"
+    },
+    {
+     "t": 365000,
+     "call": "release",
+     "token": "qa-lease-8"
+    },
+    {
+     "t": 365000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "a repair registered during a lost hold runs after the settle",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [],
+    "renewDefault": null,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 166000,
+      "do": "assert",
+      "stepMs": 0
+     },
+     {
+      "at": 167000,
+      "do": "require",
+      "key": "qa:repair",
+      "repair": [
+       "fail",
+       "ok"
+      ]
+     },
+     {
+      "at": 167000,
+      "do": "check"
+     },
+     {
+      "at": 170000,
+      "do": "release"
+     },
+     {
+      "at": 170000,
+      "do": "check"
+     },
+     {
+      "at": 200000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 166000,
+     "do": "assert",
+     "stepMs": 0,
+     "result": {
+      "ok": false,
+      "message": "The maintenance lease could not be renewed, so this work stopped before changing anything else.",
+      "code": "maintenanceCoverageLost",
+      "status": 503
+     },
+     "held": true,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 167000,
+     "do": "require",
+     "key": "qa:repair",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 167000,
+     "do": "check",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 170000,
+     "do": "release",
+     "held": true,
+     "recoveryPending": true,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 170000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    },
+    {
+     "t": 200000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": true,
+     "abortReason": "The maintenance lease could not be renewed, so this work stopped before changing anything else."
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 40000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 50000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 60000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 70000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 80000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 90000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 100000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 110000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 120000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 130000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 140000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 150000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 160000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "call": "release",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 166000,
+     "log": "[models] this process's maintenance lease could not be renewed; its work stops before its next step, and chat stays paused until it ends"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-2",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "ok"
+    },
+    {
+     "t": 170000,
+     "repair": "qa:repair",
+     "outcome": "fail"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance did not finish (The qa repair did not finish.); chat stays paused and it is tried again"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-2"
+    },
+    {
+     "t": 170000,
+     "call": "acquire",
+     "token": "qa-lease-3",
+     "recovery": true
+    },
+    {
+     "t": 170000,
+     "settle": "ok"
+    },
+    {
+     "t": 170000,
+     "repair": "qa:repair",
+     "outcome": "ok"
+    },
+    {
+     "t": 170000,
+     "call": "release",
+     "token": "qa-lease-3"
+    },
+    {
+     "t": 170000,
+     "log": "[models] recovery from interrupted model maintenance finished; chat may run again"
+    }
+   ]
+  },
+  {
+   "name": "an intact hold released owes nothing",
+   "input": {
+    "grant": {
+     "ttlMs": 180000,
+     "renewMs": 10000,
+     "hardMs": 3600000
+    },
+    "renewals": [],
+    "renewDefault": true,
+    "settle": [],
+    "grants": [],
+    "steps": [
+     {
+      "at": 0,
+      "do": "hold"
+     },
+     {
+      "at": 30000,
+      "do": "release"
+     },
+     {
+      "at": 30000,
+      "do": "check"
+     },
+     {
+      "at": 60000,
+      "do": "check"
+     }
+    ]
+   },
+   "steps": [
+    {
+     "t": 0,
+     "do": "hold",
+     "held": true,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 30000,
+     "do": "release",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 30000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    },
+    {
+     "t": 60000,
+     "do": "check",
+     "held": false,
+     "recoveryPending": false,
+     "aborted": false,
+     "abortReason": null
+    }
+   ],
+   "events": [
+    {
+     "t": 0,
+     "call": "acquire",
+     "token": "qa-lease-1",
+     "recovery": false
+    },
+    {
+     "t": 10000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 20000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "renew",
+     "token": "qa-lease-1"
+    },
+    {
+     "t": 30000,
+     "call": "release",
+     "token": "qa-lease-1"
+    }
+   ]
+  }
+ ]
+}
