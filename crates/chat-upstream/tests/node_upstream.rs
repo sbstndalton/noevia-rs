@@ -145,7 +145,9 @@ fn every_recorded_target() {
 
 #[test]
 fn every_recorded_bearer() {
-    for h in arr(RECORDED.get("headers")) {
+    let headers = arr(RECORDED.get("headers"));
+    assert_eq!(headers.len(), 9);
+    for h in headers {
         let key = h.get("apiKey");
         let got = target::authorization(key.as_str());
         assert_eq!(got.as_deref(), h.get("authorization").as_str(), "{key:?}");

@@ -25,7 +25,7 @@ const PREFIX: &str = "v1.";
 /// A token longer than this is refused unread (a binding is a few hundred bytes).
 pub const TOKEN_CAP: usize = 16 * 1024;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Binding {
     pub user: String,
     pub provider_id: String,
@@ -35,6 +35,21 @@ pub struct Binding {
     pub chat_key: Option<String>,
     /// Milliseconds since the epoch after which the binding is refused.
     pub expires_ms: f64,
+}
+
+impl std::fmt::Debug for Binding {
+    /// The address prints without userinfo, query or fragment.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Binding")
+            .field("user", &self.user)
+            .field("provider_id", &self.provider_id)
+            .field("url", &crate::target::printable_url(&self.url))
+            .field("fingerprint", &self.fingerprint)
+            .field("model", &self.model)
+            .field("chat_key", &self.chat_key)
+            .field("expires_ms", &self.expires_ms)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,7 +205,7 @@ pub enum Recheck {
 }
 
 /// What the re-check reads, all as of this request.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Now<'a> {
     pub user: &'a str,
     pub user_active: bool,
@@ -199,6 +214,19 @@ pub struct Now<'a> {
     /// `memberOwnProvider` for that row and this user, and `endpointApproved` of the bound URL.
     pub member_own: bool,
     pub origin_approved: bool,
+}
+
+impl std::fmt::Debug for Now<'_> {
+    /// The row prints as its id only (it holds the key).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Now")
+            .field("user", &self.user)
+            .field("user_active", &self.user_active)
+            .field("row", &self.row.and_then(crate::target::row_id))
+            .field("member_own", &self.member_own)
+            .field("origin_approved", &self.origin_approved)
+            .finish()
+    }
 }
 
 /// Re-check a binding before one request: same active user, the row still there with the same

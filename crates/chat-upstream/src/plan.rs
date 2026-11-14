@@ -4,7 +4,7 @@
 //! a streamed round has none (its idle limit is the executor's), the non-streamed fallback of a
 //! round 300 s (~2277), the context summary 180 s (~1911).
 
-use crate::target::{authorization, KeyUse, Target};
+use crate::target::{authorization, printable_url, KeyUse, Target};
 
 /// Which call site a request is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,11 +37,12 @@ pub struct Request {
 }
 
 impl std::fmt::Debug for Request {
-    /// Header values are not printed (one of them may be the key).
+    /// Header values are not printed (one of them may be the key), nor the address's userinfo,
+    /// query or fragment.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let names: Vec<&str> = self.headers.iter().map(|(k, _)| k.as_str()).collect();
         f.debug_struct("Request")
-            .field("url", &self.url)
+            .field("url", &printable_url(&self.url))
             .field("headers", &names)
             .field("deadline_ms", &self.deadline_ms)
             .finish()
