@@ -1,0 +1,6441 @@
+{
+ "about": "noevia-core document extraction (documents.cjs, document-sources.cjs ingest) on scripted Docling/OCR sidecars, synthetic QA documents (crates/server-projects extract.rs, document_ingest.rs)",
+ "sources": {
+  "server/documents.cjs": "825fdeab3f54070f7d1aff56df6e6aa09410e61c2bdb240c7bb305b86ac4794f",
+  "server/document-sources.cjs": "b8aa26c11e25c86248e31becc41df67457ead6813ad8fb3f3f6dc907da06117a",
+  "server/docling.cjs": "d142aad20e8b69fc97985a0bac47e69602ace1300788b692a89bc7a33d2484bf",
+  "server/ocr.cjs": "55dcb43a2f82478ea28c517c0ac6783598b5edbc91cb49f7ed8bb6c63250c4d6",
+  "server/source-limits.cjs": "71e01df8ca285485dfebff6bd95dd556d4afc753748d5151005b80aab86a6179",
+  "server/large-document-lock.cjs": "fe577828157970c4473363494833a0e7cbcd25499bc314581f99c4c8a48b5821",
+  "server/large-document-file-lock.cjs": "0955ebcba59c13d2a79195b82e00ebd2aa92408c9ed2701c27145972c6f1d166",
+  "server/document-workers.cjs": "632148f83e3b23e8936543049252393905646583743a55344cd21979fe160aa3",
+  "server/multimodal-rag.cjs": "32176635fc344ad4031590bf3332b8d89a983a860d3a95aef5949bdb388df377",
+  "server/quoted-name.cjs": "3e5aeb0c25b8d73f71ea7c7fb4f55a6db6cec9d1c6fa7fa03a7d6ea6cf044f86",
+  "contracts/folder-import.json": "eb1ab98abd6fe6f2f881cfe3d09c1609f76af8feb21359ff48bfe7e338e84cb4"
+ },
+ "scenarios": [
+  {
+   "kind": "extract",
+   "name": "pdf-native-ready",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document pdf-native-ready\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 3,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA page one.",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA page two.",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "",
+          "status": "blank",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA page one.\\n\\n[Page 2]\\nQA page two.\\n\\n[Page 3]\\n(blank)\",\"pages\":3,\"pageTexts\":[{\"number\":1,\"text\":\"QA page one.\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA page two.\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":3,\"text\":\"\",\"status\":\"blank\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 50,
+       "sha256": "df5ceff7cfaa8b77d7d2a368c00e8ca995d9922e4663694f22da4bb7783129d7"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "reply-shapes",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document reply-shapes\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": false,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": "3",
+        "pages": [
+         {
+          "number": "1",
+          "text": "QA numbered as text",
+          "status": "native",
+          "method": "pdfium",
+          "reason": "low-text"
+         },
+         {
+          "number": 2,
+          "text": 5,
+          "status": "native",
+          "reason": "Has Caps",
+          "truncated": 1
+         },
+         {
+          "number": 3,
+          "text": ""
+         }
+        ],
+        "truncatedPages": 2
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA numbered as text\\n\\n[Page 2]\\n5\\n\\n[Page 3]\\n(failed)\",\"pages\":3,\"pageTexts\":[{\"number\":1,\"text\":\"QA numbered as text\",\"status\":\"native\",\"method\":\"pdfium\",\"truncated\":false,\"reason\":\"low-text\"},{\"number\":2,\"text\":\"5\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":true},{\"number\":3,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"unavailable\"}}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 46,
+       "sha256": "003561a81748fc7cf787a5c55f64199e9ef3bfd32f4eddc721b9e6318548d53e"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-recovered-400dpi",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-recovered-400dpi\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "dpis": [
+      300,
+      400
+     ]
+    },
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 3,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA page one.",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "QA faint text",
+          "status": "degraded",
+          "method": "docling",
+          "reason": "native-fallback"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2,3@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "  QA page two by OCR  "
+        },
+        {
+         "number": 3,
+         "text": "QA page three by OCR",
+         "truncated": false
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA page one.\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA page two by OCR\\n\\n[Page 3]\\nQA faint text\\n[OCR transcription — verify numbers against original]\\nQA page three by OCR\",\"pages\":3,\"pageTexts\":[{\"number\":1,\"text\":\"QA page one.\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page two by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":3,\"text\":\"QA faint text\\n[OCR transcription — verify numbers against original]\\nQA page three by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"degraded\"}}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 56,
+       "sha256": "4b9c4caf6accc0d8ab7eaf9b88c02e32f4acb04d9fc12c5e9b4bfb6f849f0827"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 56,
+       "sha256": "4b9c4caf6accc0d8ab7eaf9b88c02e32f4acb04d9fc12c5e9b4bfb6f849f0827"
+      },
+      "pages": [
+       2,
+       3
+      ],
+      "dpi": 400,
+      "timeoutMs": 510000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-outcomes-batches",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-outcomes-batches\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 6,
+        "pages": [
+         {
+          "number": 1,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "unreadable",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "",
+          "status": "ocr-needed",
+          "method": "docling"
+         },
+         {
+          "number": 4,
+          "text": "QA degraded four",
+          "status": "degraded",
+          "method": "docling"
+         },
+         {
+          "number": 5,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 6,
+          "text": "QA six",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "1,2,3@400": [
+      {
+       "ok": [
+        {
+         "number": 1,
+         "text": "QA one by OCR"
+        },
+        {
+         "number": 2,
+         "text": "   "
+        },
+        {
+         "number": 3,
+         "error": "QA page could not be rendered"
+        }
+       ]
+      }
+     ],
+     "4,5@400": [
+      {
+       "ok": [
+        {
+         "number": 4,
+         "text": "QA four by OCR",
+         "truncated": true
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\n[OCR transcription — verify numbers against original]\\nQA one by OCR\\n\\n[Page 2]\\n(unreadable)\\n\\n[Page 3]\\n(ocr-needed)\\n\\n[Page 4]\\nQA degraded four\\n[OCR transcription — verify numbers against original]\\nQA four by OCR\\n\\n[Page 5]\\n(failed)\\n\\n[Page 6]\\nQA six\",\"pages\":6,\"pageTexts\":[{\"number\":1,\"text\":\"[OCR transcription — verify numbers against original]\\nQA one by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":2,\"text\":\"\",\"status\":\"unreadable\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":3,\"text\":\"\",\"status\":\"ocr-needed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"QA page could not be rendered\"}},{\"number\":4,\"text\":\"QA degraded four\\n[OCR transcription — verify numbers against original]\\nQA four by OCR\",\"status\":\"truncated\",\"method\":\"docling+ocr\",\"truncated\":true,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"degraded\"}},{\"number\":5,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"OCR returned nothing for this page\"}},{\"number\":6,\"text\":\"QA six\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 56,
+       "sha256": "7a05fed4a29471a5dbe03e269dadd7e5197404e767a4057388b1ad21ce40919a"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 56,
+       "sha256": "7a05fed4a29471a5dbe03e269dadd7e5197404e767a4057388b1ad21ce40919a"
+      },
+      "pages": [
+       1,
+       2,
+       3
+      ],
+      "dpi": 400,
+      "timeoutMs": 610000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 56,
+       "sha256": "7a05fed4a29471a5dbe03e269dadd7e5197404e767a4057388b1ad21ce40919a"
+      },
+      "pages": [
+       4,
+       5
+      ],
+      "dpi": 400,
+      "timeoutMs": 510000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-unavailable-without-ocr",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-unavailable-without-ocr\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": false,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 3,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA kept",
+          "status": "degraded",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "QA fine",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA kept\\n\\n[Page 2]\\n(failed)\\n\\n[Page 3]\\nQA fine\",\"pages\":3,\"pageTexts\":[{\"number\":1,\"text\":\"QA kept\",\"status\":\"degraded\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"unavailable\"}},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"unavailable\"}},{\"number\":3,\"text\":\"QA fine\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 63,
+       "sha256": "8e1b103d2f366c953c8d68eb3fdf486f390150f46324cfc4215b056c9500c79f"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-cap-20-pages",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-cap-20-pages\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "dpis": [
+      300,
+      400
+     ]
+    },
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 24,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA cover page",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 4,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 5,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 6,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 7,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 8,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 9,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 10,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 11,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 12,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 13,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 14,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 15,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 16,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 17,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 18,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 19,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 20,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 21,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 22,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 23,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 24,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2,3,4@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA page 2 by OCR"
+        },
+        {
+         "number": 3,
+         "text": "QA page 3 by OCR"
+        },
+        {
+         "number": 4,
+         "text": "QA page 4 by OCR"
+        }
+       ]
+      }
+     ],
+     "5,6,7@400": [
+      {
+       "ok": [
+        {
+         "number": 5,
+         "text": "QA page 5 by OCR"
+        },
+        {
+         "number": 6,
+         "text": "QA page 6 by OCR"
+        },
+        {
+         "number": 7,
+         "text": "QA page 7 by OCR"
+        }
+       ]
+      }
+     ],
+     "8,9,10@400": [
+      {
+       "ok": [
+        {
+         "number": 8,
+         "text": "QA page 8 by OCR"
+        },
+        {
+         "number": 9,
+         "text": "QA page 9 by OCR"
+        },
+        {
+         "number": 10,
+         "text": "QA page 10 by OCR"
+        }
+       ]
+      }
+     ],
+     "11,12,13@400": [
+      {
+       "ok": [
+        {
+         "number": 11,
+         "text": "QA page 11 by OCR"
+        },
+        {
+         "number": 12,
+         "text": "QA page 12 by OCR"
+        },
+        {
+         "number": 13,
+         "text": "QA page 13 by OCR"
+        }
+       ]
+      }
+     ],
+     "14,15,16@400": [
+      {
+       "ok": [
+        {
+         "number": 14,
+         "text": "QA page 14 by OCR"
+        },
+        {
+         "number": 15,
+         "text": "QA page 15 by OCR"
+        },
+        {
+         "number": 16,
+         "text": "QA page 16 by OCR"
+        }
+       ]
+      }
+     ],
+     "17,18,19@400": [
+      {
+       "ok": [
+        {
+         "number": 17,
+         "text": "QA page 17 by OCR"
+        },
+        {
+         "number": 18,
+         "text": "QA page 18 by OCR"
+        },
+        {
+         "number": 19,
+         "text": "QA page 19 by OCR"
+        }
+       ]
+      }
+     ],
+     "20,21@400": [
+      {
+       "ok": [
+        {
+         "number": 20,
+         "text": "QA page 20 by OCR"
+        },
+        {
+         "number": 21,
+         "text": "QA page 21 by OCR"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA cover page\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA page 2 by OCR\\n\\n[Page 3]\\n[OCR transcription — verify numbers against original]\\nQA page 3 by OCR\\n\\n[Page 4]\\n[OCR transcription — verify numbers against original]\\nQA page 4 by OCR\\n\\n[Page 5]\\n[OCR transcription — verify numbers against original]\\nQA page 5 by OCR\\n\\n[Page 6]\\n[OCR transcription — verify numbers against original]\\nQA page 6 by OCR\\n\\n[Page 7]\\n[OCR transcription — verify numbers against original]\\nQA page 7 by OCR\\n\\n[Page 8]\\n[OCR transcription — verify numbers against original]\\nQA page 8 by OCR\\n\\n[Page 9]\\n[OCR transcription — verify numbers against original]\\nQA page 9 by OCR\\n\\n[Page 10]\\n[OCR transcription — verify numbers against original]\\nQA page 10 by OCR\\n\\n[Page 11]\\n[OCR transcription — verify numbers against original]\\nQA page 11 by OCR\\n\\n[Page 12]\\n[OCR transcription — verify numbers against original]\\nQA page 12 by OCR\\n\\n[Page 13]\\n[OCR transcription — verify numbers against original]\\nQA page 13 by OCR\\n\\n[Page 14]\\n[OCR transcription — verify numbers against original]\\nQA page 14 by OCR\\n\\n[Page 15]\\n[OCR transcription — verify numbers against original]\\nQA page 15 by OCR\\n\\n[Page 16]\\n[OCR transcription — verify numbers against original]\\nQA page 16 by OCR\\n\\n[Page 17]\\n[OCR transcription — verify numbers against original]\\nQA page 17 by OCR\\n\\n[Page 18]\\n[OCR transcription — verify numbers against original]\\nQA page 18 by OCR\\n\\n[Page 19]\\n[OCR transcription — verify numbers against original]\\nQA page 19 by OCR\\n\\n[Page 20]\\n[OCR transcription — verify numbers against original]\\nQA page 20 by OCR\\n\\n[Page 21]\\n[OCR transcription — verify numbers against original]\\nQA page 21 by OCR\\n\\n[Page 22]\\n(failed)\\n\\n[Page 23]\\n(failed)\\n\\n[Page 24]\\n(failed)\",\"pages\":24,\"pageTexts\":[{\"number\":1,\"text\":\"QA cover page\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 2 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":3,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 3 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":4,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 4 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":5,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 5 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":6,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 6 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":7,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 7 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":8,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 8 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":9,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 9 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":10,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 10 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":11,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 11 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":12,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 12 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":13,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 13 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":14,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 14 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":15,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 15 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":16,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 16 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":17,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 17 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":18,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 18 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":19,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 19 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":20,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 20 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":21,\"text\":\"[OCR transcription — verify numbers against original]\\nQA page 21 by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":22,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"skipped\"}},{\"number\":23,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"skipped\"}},{\"number\":24,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"skipped\"}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 52,
+       "sha256": "0b7ef5d0abe2612dc4bbbbf5ed332ccb420220e2a30f7ef6fb9ece10018b8ffb"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 52,
+       "sha256": "0b7ef5d0abe2612dc4bbbbf5ed332ccb420220e2a30f7ef6fb9ece10018b8ffb"
+      },
+      "pages": [
+       2,
+       3,
+       4
+      ],
+      "dpi": 400,
+      "timeoutMs": 610000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 52,
+       "sha256": "0b7ef5d0abe2612dc4bbbbf5ed332ccb420220e2a30f7ef6fb9ece10018b8ffb"
+      },
+      "pages": [
+       5,
+       6,
+       7
+      ],
+      "dpi": 400,
+      "timeoutMs": 610000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 52,
+       "sha256": "0b7ef5d0abe2612dc4bbbbf5ed332ccb420220e2a30f7ef6fb9ece10018b8ffb"
+      },
+      "pages": [
+       8,
+       9,
+       10
+      ],
+      "dpi": 400,
+      "timeoutMs": 610000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 52,
+       "sha256": "0b7ef5d0abe2612dc4bbbbf5ed332ccb420220e2a30f7ef6fb9ece10018b8ffb"
+      },
+      "pages": [
+       11,
+       12,
+       13
+      ],
+      "dpi": 400,
+      "timeoutMs": 610000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 52,
+       "sha256": "0b7ef5d0abe2612dc4bbbbf5ed332ccb420220e2a30f7ef6fb9ece10018b8ffb"
+      },
+      "pages": [
+       14,
+       15,
+       16
+      ],
+      "dpi": 400,
+      "timeoutMs": 610000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 52,
+       "sha256": "0b7ef5d0abe2612dc4bbbbf5ed332ccb420220e2a30f7ef6fb9ece10018b8ffb"
+      },
+      "pages": [
+       17,
+       18,
+       19
+      ],
+      "dpi": 400,
+      "timeoutMs": 610000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 52,
+       "sha256": "0b7ef5d0abe2612dc4bbbbf5ed332ccb420220e2a30f7ef6fb9ece10018b8ffb"
+      },
+      "pages": [
+       20,
+       21
+      ],
+      "dpi": 400,
+      "timeoutMs": 510000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-busy-then-recovered",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-busy-then-recovered\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 2,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2@400": [
+      {
+       "error": {
+        "message": "OCR is busy; refresh to retry.",
+        "status": 503
+       }
+      },
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two after a busy answer"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two after a busy answer\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two after a busy answer\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 59,
+       "sha256": "81a974f1f320c5dba290a93b3345d62d7d7c04bbd83b8937c7030e1070440929"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 59,
+       "sha256": "81a974f1f320c5dba290a93b3345d62d7d7c04bbd83b8937c7030e1070440929"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 59,
+       "sha256": "81a974f1f320c5dba290a93b3345d62d7d7c04bbd83b8937c7030e1070440929"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-busy-exhausted",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-busy-exhausted\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 2,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2@400": [
+      {
+       "error": {
+        "message": "OCR is busy; refresh to retry.",
+        "status": 503
+       }
+      },
+      {
+       "error": {
+        "message": "OCR is busy; refresh to retry.",
+        "status": 503
+       }
+      },
+      {
+       "error": {
+        "message": "OCR is busy; refresh to retry.",
+        "status": 503
+       }
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"OCR is busy; refresh to retry.\",\"attempts\":1,\"again\":true}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 54,
+       "sha256": "2cbcecd7ab3b9e1999078a0356b139b3e364cad9e019e2005d93c887996c3c32"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 54,
+       "sha256": "2cbcecd7ab3b9e1999078a0356b139b3e364cad9e019e2005d93c887996c3c32"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 54,
+       "sha256": "2cbcecd7ab3b9e1999078a0356b139b3e364cad9e019e2005d93c887996c3c32"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 54,
+       "sha256": "2cbcecd7ab3b9e1999078a0356b139b3e364cad9e019e2005d93c887996c3c32"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-timeout",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-timeout\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 2,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "ocr-needed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2@400": [
+      {
+       "error": {
+        "timeout": true
+       }
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(ocr-needed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"\",\"status\":\"ocr-needed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"OCR took too long\",\"attempts\":1,\"again\":true}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 47,
+       "sha256": "0774a9849b22a6dbbee4e22f27ad7e61c1601b4681d4fe9c17a2c2bbfe096c63"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 47,
+       "sha256": "0774a9849b22a6dbbee4e22f27ad7e61c1601b4681d4fe9c17a2c2bbfe096c63"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-final-error",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-final-error\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 2,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2@400": [
+      {
+       "error": {
+        "message": "Invalid OCR response; refresh to retry."
+       }
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"Invalid OCR response; refresh to retry.\",\"attempts\":1}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 51,
+       "sha256": "4f2e48643c15cf94b028ab9e5d2285e6be304971b487905edae9ee12782c80fa"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 51,
+       "sha256": "4f2e48643c15cf94b028ab9e5d2285e6be304971b487905edae9ee12782c80fa"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-http-400-passing",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-http-400-passing\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 2,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2@400": [
+      {
+       "error": {
+        "message": "OCR unavailable (HTTP 400); refresh to retry.",
+        "status": 400
+       }
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"OCR unavailable (HTTP 400); refresh to retry.\",\"attempts\":1,\"again\":true}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 56,
+       "sha256": "fc6c477ffb025b588f13819a51d33cd845eb4dce74a04e95c69e56d03cee79e2"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 56,
+       "sha256": "fc6c477ffb025b588f13819a51d33cd845eb4dce74a04e95c69e56d03cee79e2"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "retry-text-limit",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document retry-text-limit\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_TEXT_LIMIT": "60"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 60,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 3,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA page one holds most of the text allowance here.",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2,3@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA OCR text far longer than what is left"
+        },
+        {
+         "number": 3,
+         "text": "QA three"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA page one holds most of the text allowance here.\\n\\n[Page 2]\\n[OCR trans\\n\\n[Page 3]\\n(failed)\",\"pages\":3,\"pageTexts\":[{\"number\":1,\"text\":\"QA page one holds most of the text allowance here.\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"[OCR trans\",\"status\":\"truncated\",\"method\":\"docling+ocr\",\"truncated\":true,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":3,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"text limit reached\"}}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 50,
+       "sha256": "82194fcb6b5c156895dba1e33b884bd96df9b0c04b903e7e12f40153f6cb8486"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 50,
+       "sha256": "82194fcb6b5c156895dba1e33b884bd96df9b0c04b903e7e12f40153f6cb8486"
+      },
+      "pages": [
+       2,
+       3
+      ],
+      "dpi": 400,
+      "timeoutMs": 510000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "ranges-past-first-window",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ranges-past-first-window\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": {
+     "dpis": [
+      300,
+      400
+     ]
+    },
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 7,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "QA three",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ],
+     "4-5": [
+      {
+       "ok": {
+        "total": 7,
+        "pages": [
+         {
+          "number": 4,
+          "text": "QA four",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 5,
+          "text": "QA five",
+          "status": "native",
+          "method": "pdfium"
+         }
+        ]
+       }
+      }
+     ],
+     "6-7": [
+      {
+       "ok": {
+        "total": 7,
+        "pages": [
+         {
+          "number": 6,
+          "text": "QA six",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "7@400": [
+      {
+       "ok": [
+        {
+         "number": 7,
+         "text": "QA seven by OCR"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\\n\\n[Page 3]\\nQA three\\n\\n[Page 4]\\nQA four\\n\\n[Page 5]\\nQA five\\n\\n[Page 6]\\nQA six\\n\\n[Page 7]\\n[OCR transcription — verify numbers against original]\\nQA seven by OCR\",\"pages\":7,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":4,\"text\":\"QA four\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":5,\"text\":\"QA five\",\"status\":\"native\",\"method\":\"pdfium\",\"truncated\":false},{\"number\":6,\"text\":\"QA six\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":7,\"text\":\"[OCR transcription — verify numbers against original]\\nQA seven by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 58,
+       "sha256": "8e8eabd5557508b0ce6eb17d29b6dec5f40edc7dcc500d39bc1bef23c584a11f"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 58
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 58,
+       "sha256": "8e8eabd5557508b0ce6eb17d29b6dec5f40edc7dcc500d39bc1bef23c584a11f"
+      },
+      "figures": false,
+      "pages": [
+       4,
+       5
+      ]
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 58,
+       "sha256": "8e8eabd5557508b0ce6eb17d29b6dec5f40edc7dcc500d39bc1bef23c584a11f"
+      },
+      "figures": false,
+      "pages": [
+       6,
+       7
+      ]
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 58,
+       "sha256": "8e8eabd5557508b0ce6eb17d29b6dec5f40edc7dcc500d39bc1bef23c584a11f"
+      },
+      "pages": [
+       7
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "page-limit-stop",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document page-limit-stop\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_PAGE_LIMIT": "5",
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 5,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 9,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "QA three",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ],
+     "4-5": [
+      {
+       "ok": {
+        "total": 9,
+        "pages": [
+         {
+          "number": 4,
+          "text": "QA four",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 5,
+          "text": "QA five",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\\n\\n[Page 3]\\nQA three\\n\\n[Page 4]\\nQA four\\n\\n[Page 5]\\nQA five\",\"pages\":9,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":4,\"text\":\"QA four\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":5,\"text\":\"QA five\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"stoppedAt\":{\"page\":5,\"limit\":\"pages\"},\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 49,
+       "sha256": "5e4fe829853ba2d3b4189ddd72088b3defd24577f1e5e0bb61e449a6be9e3122"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 49
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 49,
+       "sha256": "5e4fe829853ba2d3b4189ddd72088b3defd24577f1e5e0bb61e449a6be9e3122"
+      },
+      "figures": false,
+      "pages": [
+       4,
+       5
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "text-limit-stop",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document text-limit-stop\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_TEXT_LIMIT": "40",
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 40,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 6,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA first page text.",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ],
+     "3-4": [
+      {
+       "ok": {
+        "total": 6,
+        "pages": [
+         {
+          "number": 3,
+          "text": "QAx 😀😀😀😀😀😀😀😀😀😀",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 4,
+          "text": "QA four",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA first page text.\\n\\n[Page 2]\\nQA two\\n\\n[Page 3]\\nQAx 😀😀😀😀😀\\ud83d\\n\\n[Page 4]\\n(truncated)\",\"pages\":6,\"pageTexts\":[{\"number\":1,\"text\":\"QA first page text.\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":3,\"text\":\"QAx 😀😀😀😀😀\\ud83d\",\"status\":\"truncated\",\"method\":\"docling\",\"truncated\":true},{\"number\":4,\"text\":\"\",\"status\":\"truncated\",\"method\":\"docling\",\"truncated\":true}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"stoppedAt\":{\"page\":4,\"limit\":\"text\"},\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 49,
+       "sha256": "d7bf191ae5d3c9e83d765b27013b3154949368fad155bb384281706a43e3db80"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 49
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 49,
+       "sha256": "d7bf191ae5d3c9e83d765b27013b3154949368fad155bb384281706a43e3db80"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "ranges-unasked-when-not-needed",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ranges-unasked-when-not-needed\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 2,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 64,
+       "sha256": "a65df70007186c1657613418c74b5fe33c8286eaeb5e13a0609c0ac8d9b41ebd"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "range-busy-stop",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document range-busy-stop\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": false,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 4,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ],
+     "3-4": [
+      {
+       "error": {
+        "message": "Document extraction is busy; refresh to retry.",
+        "status": 503
+       }
+      },
+      {
+       "error": {
+        "message": "Document extraction is busy; refresh to retry.",
+        "status": 503
+       }
+      },
+      {
+       "error": {
+        "message": "Document extraction is busy; refresh to retry.",
+        "status": 503
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"pages\":4,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"stoppedAt\":{\"page\":2,\"limit\":\"error\",\"error\":\"Document extraction is busy; refresh to retry.\"},\"rangeAttempts\":1}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 49,
+       "sha256": "864332a8d144c45f5e8b436483053efd315399213d3288a51b04fc5e027d3161"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 49
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 49,
+       "sha256": "864332a8d144c45f5e8b436483053efd315399213d3288a51b04fc5e027d3161"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 49,
+       "sha256": "864332a8d144c45f5e8b436483053efd315399213d3288a51b04fc5e027d3161"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 49,
+       "sha256": "864332a8d144c45f5e8b436483053efd315399213d3288a51b04fc5e027d3161"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "range-final-error",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document range-final-error\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 4,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ],
+     "3-4": [
+      {
+       "error": {
+        "message": "This document could not be read; the original is stored.",
+        "permanent": true
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"pages\":4,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"stoppedAt\":{\"page\":2,\"limit\":\"error\",\"error\":\"This document could not be read; the original is stored.\"},\"completion\":\"ranges-ocr-retry-v1\",\"rangeAttempts\":1}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 51,
+       "sha256": "ea0e6a5fc7983aacf7b1adb13d63ccf5a9fdaa5a1d835d83ef3f7b18c5c86c53"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 51
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 51,
+       "sha256": "ea0e6a5fc7983aacf7b1adb13d63ccf5a9fdaa5a1d835d83ef3f7b18c5c86c53"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "range-timeout",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document range-timeout\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 4,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ],
+     "3-4": [
+      {
+       "error": {
+        "timeout": true
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"pages\":4,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"stoppedAt\":{\"page\":2,\"limit\":\"error\",\"error\":\"The operation was aborted due to timeout\"},\"completion\":\"ranges-ocr-retry-v1\",\"rangeAttempts\":1}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 47,
+       "sha256": "48bb6fbc02ff3578bc1019778352943a07733164463613b74c970648cd378fd6"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 47
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 47,
+       "sha256": "48bb6fbc02ff3578bc1019778352943a07733164463613b74c970648cd378fd6"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "range-fetch-failed",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document range-fetch-failed\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 4,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ],
+     "3-4": [
+      {
+       "error": {
+        "message": "fetch failed"
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"pages\":4,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"stoppedAt\":{\"page\":2,\"limit\":\"error\",\"error\":\"fetch failed\"},\"rangeAttempts\":1}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 52,
+       "sha256": "4c60b4150b235ba7156189ed1745be2687c5fc59d743fafda811035c874c2177"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 52
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 52,
+       "sha256": "4c60b4150b235ba7156189ed1745be2687c5fc59d743fafda811035c874c2177"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "docling-fetch-failed",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document docling-fetch-failed\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "fetch failed"
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"truncated\":false,\"state\":\"failed\",\"retryable\":true,\"error\":\"fetch failed\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 54,
+       "sha256": "642fc351ee920f309a275de10dd14221b7915bd196ab5e965c34d1c50d3d04c1"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "docling-busy",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document docling-busy\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "Document extraction is busy; refresh to retry.",
+        "status": 503
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"truncated\":false,\"state\":\"failed\",\"retryable\":true,\"error\":\"Document extraction is busy; refresh to retry.\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 46,
+       "sha256": "07091269f5ea928f8069c1e3cb08ba7e3e54a23966c528c26717808c6505c413"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "docling-refused-400",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document docling-refused-400\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "noevia sent this document in a form the extractor refused; it will be read again after the next update."
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"truncated\":false,\"state\":\"failed\",\"retryable\":true,\"error\":\"noevia sent this document in a form the extractor refused; it will be read again after the next update.\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 53,
+       "sha256": "aa4040eda1ed0466441a0bfd748ed66d89fcae53a4ecf0059344fbcc0be48c82"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "docling-http-500",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document docling-http-500\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "Document extraction unavailable (HTTP 500); refresh to retry."
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"truncated\":false,\"state\":\"failed\",\"retryable\":true,\"error\":\"Document extraction unavailable (HTTP 500); refresh to retry.\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 50,
+       "sha256": "ab8501ee1d46d3c6ce5ea23704b226f695d7d3960be6e6e10ce590f12528144f"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "docling-timeout",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document docling-timeout\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "timeout": true
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"truncated\":false,\"state\":\"failed\",\"retryable\":true,\"error\":\"The operation was aborted due to timeout\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 49,
+       "sha256": "ce21dfceeab4104803e2d4b5315599c3ab8f07a9192dd8287964f66cd3783729"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "docling-422-permanent",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document docling-422-permanent\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "This document could not be read; the original is stored.",
+        "permanent": true
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "threw": {
+     "status": 422,
+     "message": "This document could not be read; the original is stored."
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 55,
+       "sha256": "81d4f13c7c75f73c822cff3fe1e973d24e07d5435b5b50f02c93c9357dd99a58"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "docx-415-permanent",
+   "parity": true,
+   "file": {
+    "name": "QA-letter.docx",
+    "bytes": {
+     "text": "PK QA synthetic docx"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "This file type cannot be read yet; the original is stored.",
+        "permanent": true
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "threw": {
+     "status": 422,
+     "message": "This file type cannot be read yet; the original is stored."
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-letter.docx",
+      "bytes": {
+       "length": 20,
+       "sha256": "46563d292bbbb8a92d671c8558173a53408626b5ee6bdec3846a8a0cff8a6409"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "docx-completion-marker-only",
+   "parity": true,
+   "file": {
+    "name": "QA-letter.docx",
+    "bytes": {
+     "text": "PK QA synthetic docx"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": {
+     "dpis": [
+      300,
+      400
+     ]
+    },
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 5,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA letter page one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA letter page one\\n\\n[Page 2]\\n(failed)\",\"pages\":5,\"pageTexts\":[{\"number\":1,\"text\":\"QA letter page one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-letter.docx",
+      "bytes": {
+       "length": 20,
+       "sha256": "46563d292bbbb8a92d671c8558173a53408626b5ee6bdec3846a8a0cff8a6409"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "html-completion-marker-only",
+   "parity": true,
+   "file": {
+    "name": "Folder/QA-page.html",
+    "bytes": {
+     "text": "<html><body>QA page</body></html>"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 1,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA page",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA page\",\"pages\":1,\"pageTexts\":[{\"number\":1,\"text\":\"QA page\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "Folder/QA-page.html",
+      "bytes": {
+       "length": 33,
+       "sha256": "2ec81b066adb1e2942e2a87355c90e73ea49e01ae0013d7b7e1945dce1ab3f5d"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "empty-reply",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document empty-reply\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 0,
+        "pages": []
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"truncated\":false,\"state\":\"ready\",\"retryable\":false}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 45,
+       "sha256": "4260aaa36fd5fbe13adf2df44d8e097fd8e59f257585f8a9d4fe151626c07dcc"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "figures-on",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document figures-on\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": true
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole+figures": [
+      {
+       "ok": {
+        "total": 5,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA scanned two",
+          "status": "native",
+          "method": "docling",
+          "ocr": true
+         },
+         {
+          "number": 3,
+          "text": "QA three",
+          "status": "native",
+          "method": "docling"
+         }
+        ],
+        "figures": [
+         {
+          "page": 1,
+          "index": 0,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgb25l",
+          "caption": "  QA chart caption  ",
+          "text": " QA chart text "
+         },
+         {
+          "page": 3,
+          "index": 1,
+          "mime": "image/jpeg",
+          "data": "/9j/4FFBIGpwZWcgdGhyZWU="
+         },
+         {
+          "page": 3,
+          "index": 2,
+          "mime": "image/webp",
+          "data": "UklGRgkAAABXRUJQUUEgd2VicCB0aHJlZQ==",
+          "caption": "   "
+         },
+         {
+          "page": 3,
+          "index": 3,
+          "mime": "image/png",
+          "data": "/9j/4FFBIGpwZWcgd3JvbmcgbWFnaWM="
+         },
+         {
+          "page": 2,
+          "index": 4,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgc2Nhbm5lZCBwYWdl"
+         },
+         {
+          "page": 9,
+          "index": 5,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgbm8gc3VjaCBwYWdl"
+         },
+         {
+          "page": 1,
+          "index": 1000,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgaW5kZXggdG9vIGJpZw=="
+         },
+         {
+          "page": 1,
+          "index": 6,
+          "mime": "image/gif",
+          "data": "iVBORw0KGgpRQSBwbmcgZ2lm"
+         },
+         {
+          "page": 1,
+          "index": 7,
+          "mime": "image/png",
+          "data": 12
+         },
+         {
+          "page": "1",
+          "index": "8",
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgbnVtYmVycyBhcyB0ZXh0"
+         }
+        ]
+       }
+      }
+     ],
+     "4-5+figures": [
+      {
+       "ok": {
+        "total": 5,
+        "pages": [
+         {
+          "number": 4,
+          "text": "QA four",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 5,
+          "text": "QA five",
+          "status": "native",
+          "method": "docling"
+         }
+        ],
+        "figures": [
+         {
+          "page": 4,
+          "index": 0,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgcmFuZ2UgZm91cg=="
+         },
+         {
+          "page": 2,
+          "index": 1,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgb3V0c2lkZSB0aGlzIHJhbmdl"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA scanned two\\n\\n[Page 3]\\nQA three\\n\\n[Page 4]\\nQA four\\n\\n[Page 5]\\nQA five\",\"pages\":5,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA scanned two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false,\"ocr\":true},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":4,\"text\":\"QA four\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":5,\"text\":\"QA five\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"figures\":[{\"page\":1,\"index\":0,\"mime\":\"image/png\",\"ext\":\"png\",\"caption\":\"QA chart caption\",\"text\":\"QA chart text\"},{\"page\":3,\"index\":1,\"mime\":\"image/jpeg\",\"ext\":\"jpg\"},{\"page\":3,\"index\":2,\"mime\":\"image/webp\",\"ext\":\"webp\"},{\"page\":1,\"index\":8,\"mime\":\"image/png\",\"ext\":\"png\"},{\"page\":4,\"index\":9,\"mime\":\"image/png\",\"ext\":\"png\"}],\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [
+     {
+      "length": 18,
+      "sha256": "95665ad85c0c9b1975b29ba7fc0f31ff9d2c3abf57295d2ed3943a4779ec4c07"
+     },
+     {
+      "length": 17,
+      "sha256": "5ff281eb25356a7fe3de42db72aef3dcdd8009fb8481c3a78e36808625bb1518"
+     },
+     {
+      "length": 25,
+      "sha256": "6e6ba9898132a6a67a9c695552d5e587374a115e991fd0573d9915f568c3b75d"
+     },
+     {
+      "length": 30,
+      "sha256": "b2d0b06364bdbe128cedcae1043cf2831c96d80a9046d54d3260fea2161697da"
+     },
+     {
+      "length": 25,
+      "sha256": "9a7b38f75af8541b052ec9cf0e5784a6b21b5b790f54f69b5b675382957eda99"
+     }
+    ],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 44,
+       "sha256": "623462b0613e9dd619b4a6a0e6841cf3a24b4919655a9925cdbbc373c8c4d0ca"
+      },
+      "figures": true,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 44
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 44,
+       "sha256": "623462b0613e9dd619b4a6a0e6841cf3a24b4919655a9925cdbbc373c8c4d0ca"
+      },
+      "figures": true,
+      "pages": [
+       4,
+       5
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "figures-off",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document figures-off\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 5,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA scanned two",
+          "status": "native",
+          "method": "docling",
+          "ocr": true
+         },
+         {
+          "number": 3,
+          "text": "QA three",
+          "status": "native",
+          "method": "docling"
+         }
+        ],
+        "figures": [
+         {
+          "page": 1,
+          "index": 0,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgb25l",
+          "caption": "  QA chart caption  ",
+          "text": " QA chart text "
+         },
+         {
+          "page": 3,
+          "index": 1,
+          "mime": "image/jpeg",
+          "data": "/9j/4FFBIGpwZWcgdGhyZWU="
+         },
+         {
+          "page": 3,
+          "index": 2,
+          "mime": "image/webp",
+          "data": "UklGRgkAAABXRUJQUUEgd2VicCB0aHJlZQ==",
+          "caption": "   "
+         },
+         {
+          "page": 3,
+          "index": 3,
+          "mime": "image/png",
+          "data": "/9j/4FFBIGpwZWcgd3JvbmcgbWFnaWM="
+         },
+         {
+          "page": 2,
+          "index": 4,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgc2Nhbm5lZCBwYWdl"
+         },
+         {
+          "page": 9,
+          "index": 5,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgbm8gc3VjaCBwYWdl"
+         },
+         {
+          "page": 1,
+          "index": 1000,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgaW5kZXggdG9vIGJpZw=="
+         },
+         {
+          "page": 1,
+          "index": 6,
+          "mime": "image/gif",
+          "data": "iVBORw0KGgpRQSBwbmcgZ2lm"
+         },
+         {
+          "page": 1,
+          "index": 7,
+          "mime": "image/png",
+          "data": 12
+         },
+         {
+          "page": "1",
+          "index": "8",
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgbnVtYmVycyBhcyB0ZXh0"
+         }
+        ]
+       }
+      }
+     ],
+     "4-5": [
+      {
+       "ok": {
+        "total": 5,
+        "pages": [
+         {
+          "number": 4,
+          "text": "QA four",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 5,
+          "text": "QA five",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA scanned two\\n\\n[Page 3]\\nQA three\\n\\n[Page 4]\\nQA four\\n\\n[Page 5]\\nQA five\",\"pages\":5,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA scanned two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":4,\"text\":\"QA four\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":5,\"text\":\"QA five\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 45,
+       "sha256": "9d4f3653c6849c1786888a89ff80946688c10dde084eb7ecfe2f64bb0f2723c5"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 45
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 45,
+       "sha256": "9d4f3653c6849c1786888a89ff80946688c10dde084eb7ecfe2f64bb0f2723c5"
+      },
+      "figures": false,
+      "pages": [
+       4,
+       5
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "large-first-range-ocr-too-small",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document a ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "3"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 3,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": {},
+    "docling": {
+     "1-3": [
+      {
+       "ok": {
+        "total": 5,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "QA three",
+          "status": "native",
+          "method": "docling"
+         }
+        ],
+        "truncatedPages": 2
+       }
+      }
+     ],
+     "4-5": [
+      {
+       "ok": {
+        "total": 5,
+        "pages": [
+         {
+          "number": 4,
+          "text": "QA four",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 5,
+          "text": "QA five",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\\n\\n[Page 3]\\nQA three\\n\\n[Page 4]\\nQA four\\n\\n[Page 5]\\nQA five\",\"pages\":5,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"error\":\"the PDF is larger than the OCR service accepts (25 MB)\"}},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":4,\"text\":\"QA four\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":5,\"text\":\"QA five\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "ranges",
+      "bytes": 26218496
+     },
+     {
+      "fn": "docling",
+      "name": "QA-large.pdf",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "28782bee2c323bf1ea81064baecb8448e0832d3594a1d7353e98644d601c2a45"
+      },
+      "figures": false,
+      "pages": [
+       1,
+       3
+      ]
+     },
+     {
+      "fn": "ranges",
+      "bytes": 26218496
+     },
+     {
+      "fn": "docling",
+      "name": "QA-large.pdf",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "28782bee2c323bf1ea81064baecb8448e0832d3594a1d7353e98644d601c2a45"
+      },
+      "figures": false,
+      "pages": [
+       4,
+       5
+      ]
+     },
+     {
+      "fn": "caps"
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "large-ocr-takes-it",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document b ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "3"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 3,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": {
+     "maxBytes": 67108864,
+     "dpis": [
+      400
+     ]
+    },
+    "docling": {
+     "1-3": [
+      {
+       "ok": {
+        "total": 3,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "QA three",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA large two by OCR"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA large two by OCR\\n\\n[Page 3]\\nQA three\",\"pages\":3,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA large two by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "ranges",
+      "bytes": 26218496
+     },
+     {
+      "fn": "docling",
+      "name": "QA-large.pdf",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "4f12d03152b0409395428d3254253f78ec8011ca17e4ea3e8b64bbddb253876d"
+      },
+      "figures": false,
+      "pages": [
+       1,
+       3
+      ]
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "4f12d03152b0409395428d3254253f78ec8011ca17e4ea3e8b64bbddb253876d"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "ocr-budget-deferred",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ocr-budget-deferred\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": 2,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 3,
+        "pages": [
+         {
+          "number": 1,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "1,2@400": [
+      {
+       "ok": [
+        {
+         "number": 1,
+         "text": "QA one by OCR"
+        },
+        {
+         "number": 2,
+         "text": "QA two by OCR"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\n[OCR transcription — verify numbers against original]\\nQA one by OCR\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two by OCR\\n\\n[Page 3]\\n(failed)\",\"pages\":3,\"pageTexts\":[{\"number\":1,\"text\":\"[OCR transcription — verify numbers against original]\\nQA one by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":3,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 53,
+       "sha256": "bc5dc658536089712614a6898bb76b39c9c4f36c2e012b6e9595a9b58a713107"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 53,
+       "sha256": "bc5dc658536089712614a6898bb76b39c9c4f36c2e012b6e9595a9b58a713107"
+      },
+      "pages": [
+       1,
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 510000
+     }
+    ],
+    "budgetAfter": {
+     "remaining": 0,
+     "deferredPages": 1,
+     "deferredDocuments": 1
+    }
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "ocr-reply-number-as-text",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ocr-reply-number-as-text\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 2,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2@400": [
+      {
+       "ok": [
+        {
+         "number": "2",
+         "text": "QA two keyed by a string"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"OCR returned nothing for this page\"}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 58,
+       "sha256": "33fa53d347eed300c5da35fc50198acf391ae45eb7540ea5ba6b4292a69ed700"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 58,
+       "sha256": "33fa53d347eed300c5da35fc50198acf391ae45eb7540ea5ba6b4292a69ed700"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "extract",
+   "name": "docling-not-configured-pdfjs",
+   "parity": false,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document docling-not-configured-pdfjs\n"
+    }
+   },
+   "flags": {
+    "docling": false,
+    "ocr": false,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {},
+    "ocr": {},
+    "native": {
+     "numPages": 2,
+     "pageTexts": [
+      {
+       "number": 1,
+       "text": "QA native one",
+       "status": "native",
+       "method": "native"
+      },
+      {
+       "number": 2,
+       "text": "QA native two",
+       "status": "native",
+       "method": "native"
+      }
+     ]
+    }
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA native one\\n\\n[Page 2]\\nQA native two\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA native one\",\"status\":\"native\",\"method\":\"native\"},{\"number\":2,\"text\":\"QA native two\",\"status\":\"native\",\"method\":\"native\"}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "readPages",
+      "bytes": {
+       "length": 62,
+       "sha256": "a3966debb691d030d3d6832cd041dc804246789007bad12883c2b763a8e62da0"
+      },
+      "options": {
+       "pageCap": 300,
+       "pageTextCap": 200000,
+       "totalTextCap": 2000000
+      }
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-attempts-exhausted",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-attempts-exhausted\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {},
+    "ocr": {
+     "2@400": [
+      {
+       "error": {
+        "message": "fetch failed"
+       }
+      }
+     ]
+    }
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "failed",
+       "dpi": 400,
+       "error": "fetch failed",
+       "attempts": 2,
+       "again": true
+      }
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"fetch failed\",\"attempts\":3}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 61,
+       "sha256": "a337cfb0ebcb85b91c32ff16dfed12e02dfee3aba56d02f082e8c41b4a192242"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-retry-again-recovered",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-retry-again-recovered\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "dpis": [
+      300,
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "2@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two at last"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "failed",
+       "dpi": 400,
+       "error": "OCR is busy; refresh to retry.",
+       "attempts": 1,
+       "again": true
+      }
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two at last\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two at last\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"},\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 64,
+       "sha256": "e5b13cb0f3dd0fa9aa525a3233f2d2110984526e6a3c24dd724405f9f95f2773"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-cap-counts-earlier-tries",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-cap-counts-earlier-tries\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {},
+    "ocr": {
+     "20,21@400": [
+      {
+       "ok": [
+        {
+         "number": 20,
+         "text": "QA twenty"
+        },
+        {
+         "number": 21,
+         "text": ""
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)\n\n[Page 3]\n(failed)\n\n[Page 4]\n(failed)\n\n[Page 5]\n(failed)\n\n[Page 6]\n(failed)\n\n[Page 7]\n(failed)\n\n[Page 8]\n(failed)\n\n[Page 9]\n(failed)\n\n[Page 10]\n(failed)\n\n[Page 11]\n(failed)\n\n[Page 12]\n(failed)\n\n[Page 13]\n(failed)\n\n[Page 14]\n(failed)\n\n[Page 15]\n(failed)\n\n[Page 16]\n(failed)\n\n[Page 17]\n(failed)\n\n[Page 18]\n(failed)\n\n[Page 19]\n(failed)\n\n[Page 20]\n(failed)\n\n[Page 21]\n(failed)\n\n[Page 22]\n(failed)\n\n[Page 23]\n(failed)",
+    "pages": 23,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 3,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 4,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 5,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 6,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 7,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 8,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 9,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 10,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 11,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 12,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 13,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 14,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 15,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 16,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 17,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 18,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 19,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     },
+     {
+      "number": 20,
+      "text": "",
+      "status": "failed",
+      "method": "docling"
+     },
+     {
+      "number": 21,
+      "text": "",
+      "status": "failed",
+      "method": "docling"
+     },
+     {
+      "number": 22,
+      "text": "",
+      "status": "failed",
+      "method": "docling"
+     },
+     {
+      "number": 23,
+      "text": "",
+      "status": "failed",
+      "method": "docling"
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\\n\\n[Page 3]\\n(failed)\\n\\n[Page 4]\\n(failed)\\n\\n[Page 5]\\n(failed)\\n\\n[Page 6]\\n(failed)\\n\\n[Page 7]\\n(failed)\\n\\n[Page 8]\\n(failed)\\n\\n[Page 9]\\n(failed)\\n\\n[Page 10]\\n(failed)\\n\\n[Page 11]\\n(failed)\\n\\n[Page 12]\\n(failed)\\n\\n[Page 13]\\n(failed)\\n\\n[Page 14]\\n(failed)\\n\\n[Page 15]\\n(failed)\\n\\n[Page 16]\\n(failed)\\n\\n[Page 17]\\n(failed)\\n\\n[Page 18]\\n(failed)\\n\\n[Page 19]\\n(failed)\\n\\n[Page 20]\\n[OCR transcription — verify numbers against original]\\nQA twenty\\n\\n[Page 21]\\n(failed)\\n\\n[Page 22]\\n(failed)\\n\\n[Page 23]\\n(failed)\",\"pages\":23,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":3,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":4,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":5,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":6,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":7,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":8,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":9,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":10,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":11,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":12,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":13,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":14,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":15,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":16,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":17,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":18,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":19,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":20,\"text\":\"[OCR transcription — verify numbers against original]\\nQA twenty\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":21,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}},{\"number\":22,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"skipped\"}},{\"number\":23,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"skipped\"}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 67,
+       "sha256": "dc90613efd8a83aa20d421448db431bb9e1566c1a4bffe24f1f24440c3fd1072"
+      },
+      "pages": [
+       20,
+       21
+      ],
+      "dpi": 400,
+      "timeoutMs": 510000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-range-attempts-exhausted",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-range-attempts-exhausted\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": false,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "3-4": [
+      {
+       "error": {
+        "message": "fetch failed"
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\nQA two",
+    "pages": 4,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "QA two",
+      "status": "native",
+      "method": "docling"
+     }
+    ],
+    "truncated": true,
+    "state": "partial",
+    "retryable": false,
+    "rangeAttempts": 2
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"pages\":4,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\"}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"rangeAttempts\":3,\"stoppedAt\":{\"page\":2,\"limit\":\"error\",\"error\":\"fetch failed\"},\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "ranges",
+      "bytes": 67
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 67,
+       "sha256": "9460b27f4121701d7ab19b9d621d539129e3afb0c6901927ab2cf3c8974aa5a8"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-range-resumed",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-range-resumed\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "3-4": [
+      {
+       "ok": {
+        "total": 4,
+        "pages": [
+         {
+          "number": 3,
+          "text": "QA three",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 4,
+          "text": "QA four",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\nQA two",
+    "pages": 4,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "QA two",
+      "status": "native",
+      "method": "docling"
+     }
+    ],
+    "truncated": true,
+    "state": "partial",
+    "retryable": false,
+    "rangeAttempts": 1,
+    "error": "QA earlier note",
+    "errorId": "qaEarlier"
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\\n\\n[Page 3]\\nQA three\\n\\n[Page 4]\\nQA four\",\"pages\":4,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":4,\"text\":\"QA four\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"rangeAttempts\":1,\"error\":\"QA earlier note\",\"errorId\":\"qaEarlier\",\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "ranges",
+      "bytes": 56
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 56,
+       "sha256": "e2ba7401e64c578df526f4daf9b132e26813823427d323a8aa7df8c08234ca07"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-already-completed",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-already-completed\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {},
+    "ocr": {}
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling"
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false,
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\"}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-retryable-untouched",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-retryable-untouched\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {},
+    "ocr": {}
+   },
+   "input": {
+    "text": "",
+    "pages": 0,
+    "pageTexts": [],
+    "truncated": false,
+    "state": "failed",
+    "retryable": true,
+    "error": "fetch failed"
+   },
+   "node": {
+    "result": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"truncated\":false,\"state\":\"failed\",\"retryable\":true,\"error\":\"fetch failed\"}",
+    "figureBytes": [],
+    "calls": [],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-ocr-sent-not-finer",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-ocr-sent-not-finer\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "dpis": [
+      300
+     ]
+    },
+    "docling": {},
+    "ocr": {}
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(unreadable)\n\n[Page 3]\n(unreadable)",
+    "pages": 3,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "unreadable",
+      "method": "docling",
+      "ocrSent": true
+     },
+     {
+      "number": 3,
+      "text": "",
+      "status": "unreadable",
+      "method": "native"
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(unreadable)\\n\\n[Page 3]\\n(unreadable)\",\"pages\":3,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"\",\"status\":\"unreadable\",\"method\":\"docling\",\"ocrSent\":true},{\"number\":3,\"text\":\"\",\"status\":\"unreadable\",\"method\":\"native\"}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-ocr-sent-finer",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-ocr-sent-finer\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "dpis": [
+      300,
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "2,3@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two finer"
+        },
+        {
+         "number": 3,
+         "text": "QA three finer"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(unreadable)\n\n[Page 3]\n(unreadable)",
+    "pages": 3,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "unreadable",
+      "method": "docling",
+      "ocrSent": true
+     },
+     {
+      "number": 3,
+      "text": "",
+      "status": "unreadable",
+      "method": "native"
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two finer\\n\\n[Page 3]\\n[OCR transcription — verify numbers against original]\\nQA three finer\",\"pages\":3,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two finer\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"ocrSent\":true,\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"unreadable\"}},{\"number\":3,\"text\":\"[OCR transcription — verify numbers against original]\\nQA three finer\",\"status\":\"ocr\",\"method\":\"native+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"unreadable\"}}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 57,
+       "sha256": "b410cb35b82522bbe3dd1c3c3e0955b47b14614999bf91dbfe4e24de7e492081"
+      },
+      "pages": [
+       2,
+       3
+      ],
+      "dpi": 400,
+      "timeoutMs": 510000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-size-blocked-due-again",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document c ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "maxBytes": 67108864,
+     "dpis": [
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "2@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two now the worker takes it"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "failed",
+       "error": "the PDF is larger than the OCR service accepts (25 MB)"
+      }
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two now the worker takes it\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two now the worker takes it\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"},\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "2fdb09934d7d04e5ea25a3405d274de4df1e1080a6038e574e2f47fd15af7493"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-gaps-filled",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-gaps-filled\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {},
+    "ocr": {
+     "2,4@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two"
+        },
+        {
+         "number": 4,
+         "error": "QA render failed"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 3]\nQA three\n\n[Page 5]\n(blank)",
+    "pages": 5,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 3,
+      "text": "QA three",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 5,
+      "text": "",
+      "status": "blank",
+      "method": "docling"
+     }
+    ],
+    "truncated": true,
+    "state": "partial",
+    "retryable": false
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two\\n\\n[Page 3]\\nQA three\\n\\n[Page 4]\\n(failed)\\n\\n[Page 5]\\n(blank)\",\"pages\":5,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":4,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"QA render failed\"}},{\"number\":5,\"text\":\"\",\"status\":\"blank\",\"method\":\"docling\"}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 54,
+       "sha256": "e7af05bc35a4f056a0f859829f1408124d2202dd631ef68cd0cdc08cfd3fe79d"
+      },
+      "pages": [
+       2,
+       4
+      ],
+      "dpi": 400,
+      "timeoutMs": 510000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-new-ready",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-new-ready\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 2,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "ingest": {
+     "version": "40ed2a396f315324914e983ff960c7aadb6ea363b5ea531b10151f7842e5e6aa",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"document\":{\"version\":\"40ed2a396f315324914e983ff960c7aadb6ea363b5ea531b10151f7842e5e6aa\",\"byteHash\":\"9fda6e39ce496d7044ad89d7b8803d76ee01190fc2b6514a450e7bb7d46d2353\",\"bytes\":50,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"ready\",\"stale\":false,\"availableVersion\":\"40ed2a396f315324914e983ff960c7aadb6ea363b5ea531b10151f7842e5e6aa\",\"availableByteHash\":\"9fda6e39ce496d7044ad89d7b8803d76ee01190fc2b6514a450e7bb7d46d2353\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"native\"}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "40ed2a396f315324914e983ff960c7aadb6ea363b5ea531b10151f7842e5e6aa.json",
+       "length": 326,
+       "sha256": "0edee24561f33abfa4e29ee1acd4bd0482a21569c95ab54eeb0ab81cdba1fcec"
+      },
+      {
+       "name": "9fda6e39ce496d7044ad89d7b8803d76ee01190fc2b6514a450e7bb7d46d2353.pdf",
+       "length": 50,
+       "sha256": "9fda6e39ce496d7044ad89d7b8803d76ee01190fc2b6514a450e7bb7d46d2353"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 50,
+       "sha256": "9fda6e39ce496d7044ad89d7b8803d76ee01190fc2b6514a450e7bb7d46d2353"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-new-partial-with-retries",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-new-partial-with-retries\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "dpis": [
+      300,
+      400
+     ]
+    },
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 4,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 3,
+          "text": "QA dim",
+          "status": "degraded",
+          "method": "docling",
+          "reason": "native-fallback"
+         },
+         {
+          "number": 4,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "2,3,4@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two by OCR"
+        },
+        {
+         "number": 4,
+         "error": "QA render failed"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "ingest": {
+     "version": "f4f045a07164908a393810d472767a2e07dc637effc80b17c5856f2ddd2731aa",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two by OCR\\n\\n[Page 3]\\nQA dim\\n\\n[Page 4]\\n(failed)\",\"document\":{\"version\":\"f4f045a07164908a393810d472767a2e07dc637effc80b17c5856f2ddd2731aa\",\"byteHash\":\"f1d7ca0f0ae2683c0690464d4a195afd02b11c98334ae839679a901bfda7a09a\",\"bytes\":65,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"partial\",\"stale\":false,\"availableVersion\":\"f4f045a07164908a393810d472767a2e07dc637effc80b17c5856f2ddd2731aa\",\"availableByteHash\":\"f1d7ca0f0ae2683c0690464d4a195afd02b11c98334ae839679a901bfda7a09a\",\"pages\":4,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"ocr\",\"retry\":{\"outcome\":\"recovered\"}},{\"number\":3,\"status\":\"degraded\",\"reason\":\"native-fallback\",\"retry\":{\"outcome\":\"failed\",\"error\":\"OCR returned nothing for this page\"}},{\"number\":4,\"status\":\"failed\",\"retry\":{\"outcome\":\"failed\",\"error\":\"QA render failed\"}}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two by OCR\\n\\n[Page 3]\\nQA dim\\n\\n[Page 4]\\n(failed)\",\"pages\":4,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":3,\"text\":\"QA dim\",\"status\":\"degraded\",\"method\":\"docling\",\"truncated\":false,\"reason\":\"native-fallback\",\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"OCR returned nothing for this page\"}},{\"number\":4,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false,\"retry\":{\"outcome\":\"failed\",\"dpi\":400,\"error\":\"QA render failed\"}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "f1d7ca0f0ae2683c0690464d4a195afd02b11c98334ae839679a901bfda7a09a.pdf",
+       "length": 65,
+       "sha256": "f1d7ca0f0ae2683c0690464d4a195afd02b11c98334ae839679a901bfda7a09a"
+      },
+      {
+       "name": "f4f045a07164908a393810d472767a2e07dc637effc80b17c5856f2ddd2731aa.json",
+       "length": 898,
+       "sha256": "e48e0f7d581fac56658cb0df4ecff804bd125252f51db05f223b93e4462b114e"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 65,
+       "sha256": "f1d7ca0f0ae2683c0690464d4a195afd02b11c98334ae839679a901bfda7a09a"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 65,
+       "sha256": "f1d7ca0f0ae2683c0690464d4a195afd02b11c98334ae839679a901bfda7a09a"
+      },
+      "pages": [
+       2,
+       3,
+       4
+      ],
+      "dpi": 400,
+      "timeoutMs": 610000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-new-figures",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-new-figures\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": true
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole+figures": [
+      {
+       "ok": {
+        "total": 2,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "QA two",
+          "status": "native",
+          "method": "docling"
+         }
+        ],
+        "figures": [
+         {
+          "page": 1,
+          "index": 0,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgZmlyc3Q=",
+          "caption": "QA first figure"
+         },
+         {
+          "page": 2,
+          "index": 0,
+          "mime": "image/png",
+          "data": "iVBORw0KGgpRQSBwbmcgc2Vjb25kLCBzYW1lIGluZGV4"
+         },
+         {
+          "page": 2,
+          "index": 1,
+          "mime": "image/jpeg",
+          "data": "/9j/4FFBIGpwZWcgdGhpcmQ=",
+          "text": "QA figure text"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "ingest": {
+     "version": "1551ba8d1ebe54946bea770c84185cdb97db99289d01702538d0ee22f874f5b5",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback:figures-v1",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"document\":{\"version\":\"1551ba8d1ebe54946bea770c84185cdb97db99289d01702538d0ee22f874f5b5\",\"byteHash\":\"822d930fb02dcad78290c890e9cd1494069f1bce1d37d289917c38f3298ad0bb\",\"bytes\":52,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback:figures-v1\",\"state\":\"ready\",\"stale\":false,\"availableVersion\":\"1551ba8d1ebe54946bea770c84185cdb97db99289d01702538d0ee22f874f5b5\",\"availableByteHash\":\"822d930fb02dcad78290c890e9cd1494069f1bce1d37d289917c38f3298ad0bb\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"native\"}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\nQA two\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":2,\"text\":\"QA two\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"figures\":[{\"page\":1,\"index\":0,\"file\":\"1551ba8d1ebe54946bea770c84185cdb97db99289d01702538d0ee22f874f5b5.fig0.png\",\"hash\":\"919cf2151d5ef469d1cf008d08779284761de0fe3d4e38592ce2967eea715e8f\",\"caption\":\"QA first figure\"},{\"page\":2,\"index\":0,\"file\":\"1551ba8d1ebe54946bea770c84185cdb97db99289d01702538d0ee22f874f5b5.fig0.png\",\"hash\":\"6f2899f32d3367334b33246db46cae98a93eb15c0b17eac9c57e4a265d10ecaa\"},{\"page\":2,\"index\":1,\"file\":\"1551ba8d1ebe54946bea770c84185cdb97db99289d01702538d0ee22f874f5b5.fig1.jpg\",\"hash\":\"a4145f999629ac6b52660fed8da569373352e2c89546534582732b73a6dd99ee\",\"text\":\"QA figure text\"}],\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "1551ba8d1ebe54946bea770c84185cdb97db99289d01702538d0ee22f874f5b5.fig0.png",
+       "length": 20,
+       "sha256": "919cf2151d5ef469d1cf008d08779284761de0fe3d4e38592ce2967eea715e8f"
+      },
+      {
+       "name": "1551ba8d1ebe54946bea770c84185cdb97db99289d01702538d0ee22f874f5b5.fig1.jpg",
+       "length": 17,
+       "sha256": "a4145f999629ac6b52660fed8da569373352e2c89546534582732b73a6dd99ee"
+      },
+      {
+       "name": "1551ba8d1ebe54946bea770c84185cdb97db99289d01702538d0ee22f874f5b5.json",
+       "length": 924,
+       "sha256": "82fdf8ba73d555f4a278fd9d5cd65704fd2b60f4057e1e4dac9f1afa8d278d5f"
+      },
+      {
+       "name": "822d930fb02dcad78290c890e9cd1494069f1bce1d37d289917c38f3298ad0bb.pdf",
+       "length": 52,
+       "sha256": "822d930fb02dcad78290c890e9cd1494069f1bce1d37d289917c38f3298ad0bb"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 52,
+       "sha256": "822d930fb02dcad78290c890e9cd1494069f1bce1d37d289917c38f3298ad0bb"
+      },
+      "figures": true,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-failed-keeps-stale-text",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-failed-keeps-stale-text\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "fetch failed"
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "previous": {
+    "name": "QA-report.pdf",
+    "content": "QA text of the last readable version",
+    "document": {
+     "version": "7d1705b3647dd831bc1e981f7774c9cdbd74519e5ece4da888ffba694d5260f4",
+     "byteHash": "b9fc33211af2ccb69e16900450c7abe1aca83c4b3a8b58a745d014110310de81",
+     "state": "ready",
+     "availableVersion": "24105f1ab868120e84ea6f032954b0f0aa23c3dc3ecb3d24ee53f3676b2a58be",
+     "availableByteHash": "980a6ec831171d843a963e4d1a47e60fc1022218b9cf6610600ee7616b061404",
+     "indexing": "ready"
+    }
+   },
+   "node": {
+    "ingest": {
+     "version": "7fc0de578025e7e35bb35c72915306ba1cc9f8875c44de13d3f267dbb6d82db7",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"QA text of the last readable version\",\"document\":{\"version\":\"7fc0de578025e7e35bb35c72915306ba1cc9f8875c44de13d3f267dbb6d82db7\",\"byteHash\":\"759901253a62d5349a9e72cfc2474869dd34bf384808dbeee1c6f43b48575cdc\",\"bytes\":64,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"failed\",\"stale\":true,\"availableVersion\":\"24105f1ab868120e84ea6f032954b0f0aa23c3dc3ecb3d24ee53f3676b2a58be\",\"availableByteHash\":\"980a6ec831171d843a963e4d1a47e60fc1022218b9cf6610600ee7616b061404\",\"pages\":0,\"truncated\":false,\"pageStatus\":[],\"error\":\"fetch failed\",\"indexing\":\"ready\"}}",
+     "resultFile": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"truncated\":false,\"state\":\"failed\",\"retryable\":true,\"error\":\"fetch failed\"}",
+     "files": [
+      {
+       "name": "759901253a62d5349a9e72cfc2474869dd34bf384808dbeee1c6f43b48575cdc.pdf",
+       "length": 64,
+       "sha256": "759901253a62d5349a9e72cfc2474869dd34bf384808dbeee1c6f43b48575cdc"
+      },
+      {
+       "name": "7fc0de578025e7e35bb35c72915306ba1cc9f8875c44de13d3f267dbb6d82db7.json",
+       "length": 111,
+       "sha256": "72d73bcf3cb1b0a543a21157690b5851fb265204595ab3f7d65b57e941de0a7d"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 64,
+       "sha256": "759901253a62d5349a9e72cfc2474869dd34bf384808dbeee1c6f43b48575cdc"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-failed-without-previous",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-failed-without-previous\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "fetch failed"
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "ingest": {
+     "version": "aa2a8c7dcac6e96e8e12a6880d23dc8226d1a24e765754b2c5ae3b77eb192448",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"\",\"document\":{\"version\":\"aa2a8c7dcac6e96e8e12a6880d23dc8226d1a24e765754b2c5ae3b77eb192448\",\"byteHash\":\"c7b576a417f07a74203f35fed5f1d2c31ce70d81de18a38e3542abf2ef187c67\",\"bytes\":64,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"failed\",\"stale\":false,\"availableByteHash\":\"c7b576a417f07a74203f35fed5f1d2c31ce70d81de18a38e3542abf2ef187c67\",\"pages\":0,\"truncated\":false,\"pageStatus\":[],\"error\":\"fetch failed\",\"indexing\":\"unavailable\"}}",
+     "resultFile": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"truncated\":false,\"state\":\"failed\",\"retryable\":true,\"error\":\"fetch failed\"}",
+     "files": [
+      {
+       "name": "aa2a8c7dcac6e96e8e12a6880d23dc8226d1a24e765754b2c5ae3b77eb192448.json",
+       "length": 111,
+       "sha256": "72d73bcf3cb1b0a543a21157690b5851fb265204595ab3f7d65b57e941de0a7d"
+      },
+      {
+       "name": "c7b576a417f07a74203f35fed5f1d2c31ce70d81de18a38e3542abf2ef187c67.pdf",
+       "length": 64,
+       "sha256": "c7b576a417f07a74203f35fed5f1d2c31ce70d81de18a38e3542abf2ef187c67"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 64,
+       "sha256": "c7b576a417f07a74203f35fed5f1d2c31ce70d81de18a38e3542abf2ef187c67"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-permanent-no-previous",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-permanent-no-previous\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "This document could not be read; the original is stored.",
+        "permanent": true
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "node": {
+    "ingest": {
+     "version": "e0c4306fbc3f52ef044a5814f92c59c53bcab8a79671fc352e7bd6917c924ad4",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"\",\"document\":{\"version\":\"e0c4306fbc3f52ef044a5814f92c59c53bcab8a79671fc352e7bd6917c924ad4\",\"byteHash\":\"892784490a71109035c692b8906ad1f0e7f5a4f57b7217d186e84bffa3c4b1e5\",\"bytes\":62,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"failed\",\"stale\":false,\"availableByteHash\":\"892784490a71109035c692b8906ad1f0e7f5a4f57b7217d186e84bffa3c4b1e5\",\"pages\":0,\"truncated\":false,\"pageStatus\":[],\"error\":\"This document could not be read; the original is stored.\",\"indexing\":\"unavailable\"}}",
+     "resultFile": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"state\":\"failed\",\"truncated\":false,\"retryable\":false,\"error\":\"This document could not be read; the original is stored.\"}",
+     "files": [
+      {
+       "name": "892784490a71109035c692b8906ad1f0e7f5a4f57b7217d186e84bffa3c4b1e5.pdf",
+       "length": 62,
+       "sha256": "892784490a71109035c692b8906ad1f0e7f5a4f57b7217d186e84bffa3c4b1e5"
+      },
+      {
+       "name": "e0c4306fbc3f52ef044a5814f92c59c53bcab8a79671fc352e7bd6917c924ad4.json",
+       "length": 156,
+       "sha256": "768caf6c00c10a8ba505282cbae01a825837c80e81948a4cc81b2248e2f7f18f"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 62,
+       "sha256": "892784490a71109035c692b8906ad1f0e7f5a4f57b7217d186e84bffa3c4b1e5"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-permanent-with-previous",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-permanent-with-previous\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "error": {
+        "message": "This document could not be read; the original is stored.",
+        "permanent": true
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "previous": {
+    "name": "QA-report.pdf",
+    "content": "QA text of the last readable version",
+    "document": {
+     "version": "7d1705b3647dd831bc1e981f7774c9cdbd74519e5ece4da888ffba694d5260f4",
+     "byteHash": "b9fc33211af2ccb69e16900450c7abe1aca83c4b3a8b58a745d014110310de81",
+     "state": "ready",
+     "availableVersion": "24105f1ab868120e84ea6f032954b0f0aa23c3dc3ecb3d24ee53f3676b2a58be",
+     "availableByteHash": "980a6ec831171d843a963e4d1a47e60fc1022218b9cf6610600ee7616b061404",
+     "indexing": "indexed"
+    }
+   },
+   "node": {
+    "ingest": {
+     "version": "31e4e132a8e8b528f9d85b57c6b6cbf74b8d1603002eef225ae6b357bb6a91c9",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"QA text of the last readable version\",\"document\":{\"version\":\"31e4e132a8e8b528f9d85b57c6b6cbf74b8d1603002eef225ae6b357bb6a91c9\",\"byteHash\":\"3256291869094dacdd7b203660b295111fbff7b7f97cf0c50e13e0afd112b521\",\"bytes\":64,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"failed\",\"stale\":true,\"availableVersion\":\"24105f1ab868120e84ea6f032954b0f0aa23c3dc3ecb3d24ee53f3676b2a58be\",\"availableByteHash\":\"980a6ec831171d843a963e4d1a47e60fc1022218b9cf6610600ee7616b061404\",\"pages\":0,\"truncated\":false,\"pageStatus\":[],\"error\":\"This document could not be read; the original is stored.\",\"indexing\":\"indexed\"}}",
+     "resultFile": "{\"text\":\"\",\"pages\":0,\"pageTexts\":[],\"state\":\"failed\",\"truncated\":false,\"retryable\":false,\"error\":\"This document could not be read; the original is stored.\"}",
+     "files": [
+      {
+       "name": "31e4e132a8e8b528f9d85b57c6b6cbf74b8d1603002eef225ae6b357bb6a91c9.json",
+       "length": 156,
+       "sha256": "768caf6c00c10a8ba505282cbae01a825837c80e81948a4cc81b2248e2f7f18f"
+      },
+      {
+       "name": "3256291869094dacdd7b203660b295111fbff7b7f97cf0c50e13e0afd112b521.pdf",
+       "length": 64,
+       "sha256": "3256291869094dacdd7b203660b295111fbff7b7f97cf0c50e13e0afd112b521"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 64,
+       "sha256": "3256291869094dacdd7b203660b295111fbff7b7f97cf0c50e13e0afd112b521"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-cached-complete-unchanged",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-cached-complete-unchanged\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {},
+    "ocr": {}
+   },
+   "stored": {
+    "text": "[Page 1]\nQA stored one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA stored one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "empty",
+       "dpi": 400
+      }
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false,
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "ingest": {
+     "version": "6553f9d0dbbe7004ae969a4b309d35e8a1b03d2d6775b28183a48ecda32db274",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"[Page 1]\\nQA stored one\\n\\n[Page 2]\\n(failed)\",\"document\":{\"version\":\"6553f9d0dbbe7004ae969a4b309d35e8a1b03d2d6775b28183a48ecda32db274\",\"byteHash\":\"695416d44940448a8f88a400073370f84336507f01103213c503b4aaece854ea\",\"bytes\":66,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"partial\",\"stale\":false,\"availableVersion\":\"6553f9d0dbbe7004ae969a4b309d35e8a1b03d2d6775b28183a48ecda32db274\",\"availableByteHash\":\"695416d44940448a8f88a400073370f84336507f01103213c503b4aaece854ea\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"failed\",\"retry\":{\"outcome\":\"empty\"}}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA stored one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA stored one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "6553f9d0dbbe7004ae969a4b309d35e8a1b03d2d6775b28183a48ecda32db274.json",
+       "length": 340,
+       "sha256": "21d3d81c88c486d1100f207759f90af4fd74d04e685615aa23d2d76442c70e77"
+      },
+      {
+       "name": "695416d44940448a8f88a400073370f84336507f01103213c503b4aaece854ea.pdf",
+       "length": 66,
+       "sha256": "695416d44940448a8f88a400073370f84336507f01103213c503b4aaece854ea"
+      }
+     ],
+     "outcome": "unchanged"
+    },
+    "calls": [],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-cached-completion-pass",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-cached-completion-pass\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "3-4": [
+      {
+       "ok": {
+        "total": 4,
+        "pages": [
+         {
+          "number": 3,
+          "text": "QA three",
+          "status": "native",
+          "method": "docling"
+         },
+         {
+          "number": 4,
+          "text": "QA four",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "previous": {
+    "name": "QA-report.pdf",
+    "content": "QA text of the last readable version",
+    "document": {
+     "version": "7d1705b3647dd831bc1e981f7774c9cdbd74519e5ece4da888ffba694d5260f4",
+     "byteHash": "b9fc33211af2ccb69e16900450c7abe1aca83c4b3a8b58a745d014110310de81",
+     "state": "ready",
+     "availableVersion": "24105f1ab868120e84ea6f032954b0f0aa23c3dc3ecb3d24ee53f3676b2a58be",
+     "availableByteHash": "980a6ec831171d843a963e4d1a47e60fc1022218b9cf6610600ee7616b061404",
+     "indexing": "ready"
+    }
+   },
+   "stored": {
+    "text": "[Page 1]\nQA stored one\n\n[Page 2]\nQA stored two",
+    "pages": 4,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA stored one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "QA stored two",
+      "status": "native",
+      "method": "docling"
+     }
+    ],
+    "truncated": true,
+    "state": "partial",
+    "retryable": false
+   },
+   "node": {
+    "ingest": {
+     "version": "9be91554236c865fc4d5ec4b2ade40246f3ebfd3720508451a53cf0a89995979",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"[Page 1]\\nQA stored one\\n\\n[Page 2]\\nQA stored two\\n\\n[Page 3]\\nQA three\\n\\n[Page 4]\\nQA four\",\"document\":{\"version\":\"9be91554236c865fc4d5ec4b2ade40246f3ebfd3720508451a53cf0a89995979\",\"byteHash\":\"32c190e501d8929398cb97e2bfc907faa2b6a4ad472ed3ac1f69e374d581059e\",\"bytes\":63,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"ready\",\"stale\":false,\"availableVersion\":\"9be91554236c865fc4d5ec4b2ade40246f3ebfd3720508451a53cf0a89995979\",\"availableByteHash\":\"32c190e501d8929398cb97e2bfc907faa2b6a4ad472ed3ac1f69e374d581059e\",\"pages\":4,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"native\"},{\"number\":3,\"status\":\"native\"},{\"number\":4,\"status\":\"native\"}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA stored one\\n\\n[Page 2]\\nQA stored two\\n\\n[Page 3]\\nQA three\\n\\n[Page 4]\\nQA four\",\"pages\":4,\"pageTexts\":[{\"number\":1,\"text\":\"QA stored one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"QA stored two\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false},{\"number\":4,\"text\":\"QA four\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "32c190e501d8929398cb97e2bfc907faa2b6a4ad472ed3ac1f69e374d581059e.pdf",
+       "length": 63,
+       "sha256": "32c190e501d8929398cb97e2bfc907faa2b6a4ad472ed3ac1f69e374d581059e"
+      },
+      {
+       "name": "9be91554236c865fc4d5ec4b2ade40246f3ebfd3720508451a53cf0a89995979.json",
+       "length": 532,
+       "sha256": "57a7def9a1a3c5474caf9f36f0c0517c8ae92eec640a49ccaa6ec3969848e1b1"
+      }
+     ],
+     "outcome": "reopened"
+    },
+    "calls": [
+     {
+      "fn": "ranges",
+      "bytes": 63
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 63,
+       "sha256": "32c190e501d8929398cb97e2bfc907faa2b6a4ad472ed3ac1f69e374d581059e"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       4
+      ]
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-cached-retryable-read-again",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-cached-retryable-read-again\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 1,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA read again",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "stored": {
+    "text": "",
+    "pages": 0,
+    "pageTexts": [],
+    "truncated": false,
+    "state": "failed",
+    "retryable": true,
+    "error": "fetch failed"
+   },
+   "node": {
+    "ingest": {
+     "version": "1616efafe1bc52359f1b84b6bb7bfee9f20354eab1e941a88a3dc711f4f1194a",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"[Page 1]\\nQA read again\",\"document\":{\"version\":\"1616efafe1bc52359f1b84b6bb7bfee9f20354eab1e941a88a3dc711f4f1194a\",\"byteHash\":\"828a51a040f328c05b4b286b3d4938e87eedb5f92777031402507d94defd5cb9\",\"bytes\":68,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"ready\",\"stale\":false,\"availableVersion\":\"1616efafe1bc52359f1b84b6bb7bfee9f20354eab1e941a88a3dc711f4f1194a\",\"availableByteHash\":\"828a51a040f328c05b4b286b3d4938e87eedb5f92777031402507d94defd5cb9\",\"pages\":1,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA read again\",\"pages\":1,\"pageTexts\":[{\"number\":1,\"text\":\"QA read again\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "1616efafe1bc52359f1b84b6bb7bfee9f20354eab1e941a88a3dc711f4f1194a.json",
+       "length": 236,
+       "sha256": "6fd81175c209c0bcb1fc053b9f2aca1c6140d310ecacb2fcad918dfc08e2e820"
+      },
+      {
+       "name": "828a51a040f328c05b4b286b3d4938e87eedb5f92777031402507d94defd5cb9.pdf",
+       "length": 68,
+       "sha256": "828a51a040f328c05b4b286b3d4938e87eedb5f92777031402507d94defd5cb9"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 68,
+       "sha256": "828a51a040f328c05b4b286b3d4938e87eedb5f92777031402507d94defd5cb9"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-same-available-version",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-same-available-version\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 1,
+        "pages": [
+         {
+          "number": 1,
+          "text": "QA one",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {}
+   },
+   "previous": {
+    "name": "QA-report.pdf",
+    "content": "QA earlier text",
+    "document": {
+     "version": "f224a41e60ffd4a32bc13c24d9e80e033cc8ee10ce2112187e4e4a2c7db376a0",
+     "byteHash": "c20914589654a7131c30e3fe86123d2af76c6c07da2aee4cec9b2ec1be529264",
+     "state": "ready",
+     "availableVersion": "f224a41e60ffd4a32bc13c24d9e80e033cc8ee10ce2112187e4e4a2c7db376a0",
+     "availableByteHash": "c20914589654a7131c30e3fe86123d2af76c6c07da2aee4cec9b2ec1be529264",
+     "indexing": "indexed"
+    }
+   },
+   "node": {
+    "ingest": {
+     "version": "f224a41e60ffd4a32bc13c24d9e80e033cc8ee10ce2112187e4e4a2c7db376a0",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"[Page 1]\\nQA one\",\"document\":{\"version\":\"f224a41e60ffd4a32bc13c24d9e80e033cc8ee10ce2112187e4e4a2c7db376a0\",\"byteHash\":\"c20914589654a7131c30e3fe86123d2af76c6c07da2aee4cec9b2ec1be529264\",\"bytes\":63,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"ready\",\"stale\":false,\"availableVersion\":\"f224a41e60ffd4a32bc13c24d9e80e033cc8ee10ce2112187e4e4a2c7db376a0\",\"availableByteHash\":\"c20914589654a7131c30e3fe86123d2af76c6c07da2aee4cec9b2ec1be529264\",\"pages\":1,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"}],\"indexing\":\"indexed\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA one\",\"pages\":1,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "c20914589654a7131c30e3fe86123d2af76c6c07da2aee4cec9b2ec1be529264.pdf",
+       "length": 63,
+       "sha256": "c20914589654a7131c30e3fe86123d2af76c6c07da2aee4cec9b2ec1be529264"
+      },
+      {
+       "name": "f224a41e60ffd4a32bc13c24d9e80e033cc8ee10ce2112187e4e4a2c7db376a0.json",
+       "length": 222,
+       "sha256": "63bf8d69d713e126aaa168e36de2247d84944ac79215ea818165953bcbe3f0ac"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 63,
+       "sha256": "c20914589654a7131c30e3fe86123d2af76c6c07da2aee4cec9b2ec1be529264"
+      },
+      "figures": false,
+      "pages": null
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-range-stop-and-budget",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-range-stop-and-budget\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {
+    "PROJECT_DOCUMENT_RANGE_PAGES": "2",
+    "PROJECT_DOCUMENT_PAGE_LIMIT": "3"
+   },
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 3,
+    "text": 8000000,
+    "rangePages": 2,
+    "syncOcrPages": 40
+   },
+   "budget": 1,
+   "script": {
+    "ranges": true,
+    "caps": null,
+    "docling": {
+     "whole": [
+      {
+       "ok": {
+        "total": 5,
+        "pages": [
+         {
+          "number": 1,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         },
+         {
+          "number": 2,
+          "text": "",
+          "status": "failed",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ],
+     "3-3": [
+      {
+       "ok": {
+        "total": 5,
+        "pages": [
+         {
+          "number": 3,
+          "text": "QA three",
+          "status": "native",
+          "method": "docling"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "ocr": {
+     "1@400": [
+      {
+       "ok": [
+        {
+         "number": 1,
+         "text": "QA one by OCR"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "node": {
+    "ingest": {
+     "version": "f38af58a7735a6773a1771ff4f20a6450a5b63f87669aba98fb3827303e93e73",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"[Page 1]\\n[OCR transcription — verify numbers against original]\\nQA one by OCR\\n\\n[Page 2]\\n(failed)\\n\\n[Page 3]\\nQA three\",\"document\":{\"version\":\"f38af58a7735a6773a1771ff4f20a6450a5b63f87669aba98fb3827303e93e73\",\"byteHash\":\"42d05f20f29b83c20e9603a147cb4565eab557a6193002d457d6d170a6fbd50e\",\"bytes\":62,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"partial\",\"stale\":false,\"availableVersion\":\"f38af58a7735a6773a1771ff4f20a6450a5b63f87669aba98fb3827303e93e73\",\"availableByteHash\":\"42d05f20f29b83c20e9603a147cb4565eab557a6193002d457d6d170a6fbd50e\",\"pages\":5,\"truncated\":true,\"pageStatus\":[{\"number\":1,\"status\":\"ocr\",\"retry\":{\"outcome\":\"recovered\"}},{\"number\":2,\"status\":\"failed\"},{\"number\":3,\"status\":\"native\"}],\"stoppedAt\":{\"page\":3,\"limit\":\"pages\"},\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\n[OCR transcription — verify numbers against original]\\nQA one by OCR\\n\\n[Page 2]\\n(failed)\\n\\n[Page 3]\\nQA three\",\"pages\":5,\"pageTexts\":[{\"number\":1,\"text\":\"[OCR transcription — verify numbers against original]\\nQA one by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"}},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"truncated\":false},{\"number\":3,\"text\":\"QA three\",\"status\":\"native\",\"method\":\"docling\",\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"stoppedAt\":{\"page\":3,\"limit\":\"pages\"}}",
+     "files": [
+      {
+       "name": "42d05f20f29b83c20e9603a147cb4565eab557a6193002d457d6d170a6fbd50e.pdf",
+       "length": 62,
+       "sha256": "42d05f20f29b83c20e9603a147cb4565eab557a6193002d457d6d170a6fbd50e"
+      },
+      {
+       "name": "f38af58a7735a6773a1771ff4f20a6450a5b63f87669aba98fb3827303e93e73.json",
+       "length": 622,
+       "sha256": "396e27db129aadf32c756ec6714869da57cab8b26afe0d8f0de0e44fbf6c0c41"
+      }
+     ],
+     "outcome": "extracted"
+    },
+    "calls": [
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 62,
+       "sha256": "42d05f20f29b83c20e9603a147cb4565eab557a6193002d457d6d170a6fbd50e"
+      },
+      "figures": false,
+      "pages": null
+     },
+     {
+      "fn": "ranges",
+      "bytes": 62
+     },
+     {
+      "fn": "docling",
+      "name": "QA-report.pdf",
+      "bytes": {
+       "length": 62,
+       "sha256": "42d05f20f29b83c20e9603a147cb4565eab557a6193002d457d6d170a6fbd50e"
+      },
+      "figures": false,
+      "pages": [
+       3,
+       3
+      ]
+     },
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 62,
+       "sha256": "42d05f20f29b83c20e9603a147cb4565eab557a6193002d457d6d170a6fbd50e"
+      },
+      "pages": [
+       1
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": {
+     "remaining": 0,
+     "deferredPages": 1,
+     "deferredDocuments": 1
+    }
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-size-blocked-reopened",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document d ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "maxBytes": 67108864,
+     "dpis": [
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "2@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two now the worker takes it"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "stored": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "failed",
+       "error": "the PDF is larger than the OCR service accepts (25 MB)"
+      }
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false,
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "ingest": {
+     "version": "b86c353403bb4826122e862457e4876a909c7e5bfe890aed0143f501dcbfb2cd",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-large.pdf\",\"content\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two now the worker takes it\",\"document\":{\"version\":\"b86c353403bb4826122e862457e4876a909c7e5bfe890aed0143f501dcbfb2cd\",\"byteHash\":\"6702571ef28864c411d5f7ae584c88961334681d615d3181b12dac9a37e3158e\",\"bytes\":26218496,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"ready\",\"stale\":false,\"availableVersion\":\"b86c353403bb4826122e862457e4876a909c7e5bfe890aed0143f501dcbfb2cd\",\"availableByteHash\":\"6702571ef28864c411d5f7ae584c88961334681d615d3181b12dac9a37e3158e\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"ocr\",\"retry\":{\"outcome\":\"recovered\"}}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two now the worker takes it\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two now the worker takes it\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"},\"truncated\":false}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "6702571ef28864c411d5f7ae584c88961334681d615d3181b12dac9a37e3158e.pdf",
+       "length": 26218496,
+       "sha256": "6702571ef28864c411d5f7ae584c88961334681d615d3181b12dac9a37e3158e"
+      },
+      {
+       "name": "b86c353403bb4826122e862457e4876a909c7e5bfe890aed0143f501dcbfb2cd.json",
+       "length": 529,
+       "sha256": "50b1a5184739e3ea1144a3c8849ea2f9bfac8c94e063dc7291a982c413a89455"
+      }
+     ],
+     "outcome": "reopened"
+    },
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "6702571ef28864c411d5f7ae584c88961334681d615d3181b12dac9a37e3158e"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  }
+ ]
+}
