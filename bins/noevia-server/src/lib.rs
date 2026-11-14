@@ -1485,9 +1485,6 @@ pub fn router(app: Arc<App>) -> Router {
 }
 
 mod machine_json;
-// Council p2: core's recorded refusal stubs against this front's dispatch (test-only).
-#[cfg(test)]
-mod route_pins_check;
 pub mod source_startup;
 
 pub mod dav;
