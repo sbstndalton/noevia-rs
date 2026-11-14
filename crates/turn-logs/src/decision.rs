@@ -41,7 +41,7 @@ impl DecisionLog {
             file: dir.join(FILE_NAME),
             max_bytes: MAX_BYTES,
             now: Box::new(|| iso_millis(SystemTime::now())),
-            echo: Some(Box::new(|kind, json| {
+            echo: Some(Box::new(|kind: &str, json: &str| {
                 let _ = writeln!(std::io::stdout().lock(), "[system-one] {kind} {json}");
             })),
         }
@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn line_spreads_entry_after_at_and_kind() {
         let dir = Path::new("/nonexistent");
-        let log = DecisionLog::new(dir).with_clock(Box::new(|| "T".into())).with_echo(None);
+        let log = DecisionLog::new(dir).with_clock(Box::new(|| "T".to_owned())).with_echo(None);
         let entry = wtf16::parse(r#"{"kind":"other","b":1,"2":true,"at":"x","1":null}"#).unwrap();
         // JS: { at:'T', kind:'route', ...entry } keeps at/kind in place, index keys first ascending.
         assert_eq!(log.line("route", &entry), "{\"1\":null,\"2\":true,\"at\":\"x\",\"kind\":\"other\",\"b\":1}\n");

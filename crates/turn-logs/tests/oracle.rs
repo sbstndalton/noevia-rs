@@ -108,7 +108,7 @@ fn written_lines_match_core() {
     let writes = arr(f.get("writes"));
     assert!(writes.len() >= 6);
     for (i, w) in writes.iter().enumerate() {
-        let log = DecisionLog::new(tmp.path()).with_clock(Box::new(|| "2026-09-22T08:00:00.000Z".into())).with_echo(None);
+        let log = DecisionLog::new(tmp.path()).with_clock(Box::new(|| "2026-09-22T08:00:00.000Z".to_owned())).with_echo(None);
         let kind = w.get("kind").as_str().unwrap();
         assert_eq!(log.line(kind, w.get("entry")), w.get("written").as_str().unwrap(), "write {i}");
     }
@@ -117,7 +117,7 @@ fn written_lines_match_core() {
     let dir = tmp.path().join("rot");
     std::fs::create_dir(&dir).unwrap();
     let max = rot.get("maxBytes").as_num().unwrap() as u64;
-    let log = DecisionLog::new(&dir).with_max_bytes(max).with_clock(Box::new(|| "2026-09-22T08:00:00.000Z".into())).with_echo(None);
+    let log = DecisionLog::new(&dir).with_max_bytes(max).with_clock(Box::new(|| "2026-09-22T08:00:00.000Z".to_owned())).with_echo(None);
     let rounds = rot.get("rounds").as_num().unwrap() as usize;
     for i in 0..rounds {
         let entry = wtf16::parse(&format!(r#"{{"selected":"smart","options":3,"margin":0.3,"ms":500,"fellBack":null,"i":{i}}}"#)).unwrap();

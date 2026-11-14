@@ -18,7 +18,7 @@ fn s(v: &JValue) -> String {
 fn fixed_log(dir: &std::path::Path, max: u64) -> DecisionLog {
     DecisionLog::new(dir)
         .with_max_bytes(max)
-        .with_clock(Box::new(|| "2026-09-22T08:00:00.000Z".into()))
+        .with_clock(Box::new(|| "2026-09-22T08:00:00.000Z".to_owned()))
         .with_echo(None)
 }
 
@@ -123,7 +123,7 @@ fn decision_echo_gets_kind_and_entry_json() {
     let tmp = tempfile::tempdir().unwrap();
     let seen = Arc::new(Mutex::new(Vec::new()));
     let sink = seen.clone();
-    let log = fixed_log(tmp.path(), 1000).with_echo(Some(Box::new(move |kind, json| {
+    let log = fixed_log(tmp.path(), 1000).with_echo(Some(Box::new(move |kind: &str, json: &str| {
         sink.lock().unwrap().push(format!("{kind} {json}"));
     })));
     log.record("supervise", &j(r#"{"action":"verify"}"#));
