@@ -132,7 +132,8 @@ const MCP_TOOLS = new Map([['web_search', { readOnly: true, serverId: 'qa-search
   ['qa_docs_read', { readOnly: false, serverId: 'qa-docs' }]]);
 const EDIT_TOOLS = serverRequire('project-edit-target.cjs').EDIT_TOOLS;
 const driveTools = createDriveTools({ accounts: { forUser: () => ({ drive: { state: () => ({ state: 'none' }) } }) }, cap: 8000 });
-const TB = toolboxesLib.createToolboxes({ boxes: [driveTools.box], kiwixTools: null, driveTools, mcpBoxes: () => MCP, mcpTools: () => MCP_TOOLS, offered: () => true,
+// A coworker conversation's page save (specialist-page-save.cjs): offered by a `specialist-` project, asked about every time.
+const TB = toolboxesLib.createToolboxes({ boxes: [driveTools.box], kiwixTools: null, driveTools, specialistTools: serverRequire('specialist-page-save.cjs').createPageSave({ store: {} }), mcpBoxes: () => MCP, mcpTools: () => MCP_TOOLS, offered: () => true,
   prefill: { budgetFor: () => null, rateFor: () => 0.5 } });
 // Each box's ids and tool names, and (P7f) the ones chat.cjs's isWriteTool calls writes.
 const TOOLBOXES = TB.allToolboxes().map((b) => {
@@ -533,6 +534,8 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
   await addTurn('tools_project_docs', { projects: [project({ toolboxes: ['core', 'project-docs'] })], body: preq() });
   await addTurn('tools_project_docs_two_boxes', { projects: [project({ toolboxes: ['project-docs', 'qa-docs'] })], body: preq() });
   await addTurn('tools_project_docs_outside_holder', { holders: { project_append_file: 'qa-docs' }, projects: [project({ toolboxes: ['project-docs', 'qa-docs'] })], body: preq() });
+  // The once card (#2446): a coworker project's page save, named in onceTools (the front says it runs that card).
+  await addTurn('tools_coworker_page_save', { projects: [project({ id: 'specialist-qa-writer', name: 'QA Writer' })], body: preq({ projectId: 'specialist-qa-writer' }) });
   await addTurn('project_own_model_context_low', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b', contextProfile: 'low' })], body: preq() });
   await addTurn('project_context_high_skipped', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b', contextProfile: 'high' })], body: preq() });
   // Not covered yet (the shadow skips them): knowledge files, a project sharing into Chat, attached images.

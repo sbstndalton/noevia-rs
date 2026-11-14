@@ -636,10 +636,59 @@ fn the_tool_facts_are_core_s() {
         .map(|t| t.get("prepared"))
         .filter(|p| p.is_object())
         .collect();
-    assert!(frames.iter().any(|p| !items(p, "writes").is_empty()));
-    assert!(frames.iter().any(|p| !items(p, "public").is_empty()));
+    for field in ["writes", "public", "editTools", "onceTools"] {
+        assert!(
+            frames.iter().any(|p| !items(p, field).is_empty()),
+            "{field}"
+        );
+    }
     let r = replay(&f);
     assert!(r
         .iter()
         .any(|r| r.without_catalogue == Verdict::Skip("catalogue")));
+    // A fact that is not core's is named by its field: the outside holder's append tool counted as an
+    // edit tool, and the page save's once card dropped.
+    for (turn, field, value) in [
+        (
+            "tools_project_docs_outside_holder",
+            "editTools",
+            JValue::Arr(vec![
+                JValue::from("project_append_file"),
+                JValue::from("project_replace_text"),
+            ]),
+        ),
+        ("tools_coworker_page_save", "onceTools", JValue::Undefined),
+    ] {
+        let mut changed = f.clone();
+        let JValue::Obj(top) = &mut changed else {
+            panic!("fixture")
+        };
+        let (_, JValue::Arr(turns)) = top.iter_mut().find(|(k, _)| k == "turns").unwrap() else {
+            panic!("turns")
+        };
+        let t = turns
+            .iter_mut()
+            .find(|t| t.get("name").as_str() == Some(turn))
+            .unwrap();
+        let JValue::Obj(t) = t else { panic!("turn") };
+        let (_, JValue::Obj(frame)) = t.iter_mut().find(|(k, _)| k == "prepared").unwrap() else {
+            panic!("frame")
+        };
+        match frame.iter_mut().find(|(k, _)| k == field) {
+            Some((_, v)) => *v = value,
+            None => frame.push((field.to_string(), value)),
+        }
+        let r = replay(&changed);
+        let got = r.iter().find(|r| r.name == turn).unwrap();
+        assert!(
+            matches!(got.verdict, Verdict::Diff(d) if d.field == field),
+            "{turn}: {}",
+            got.verdict.line()
+        );
+        let same = replay(&f);
+        assert!(matches!(
+            same.iter().find(|r| r.name == turn).unwrap().verdict,
+            Verdict::Match | Verdict::Skip("manual-default")
+        ));
+    }
 }

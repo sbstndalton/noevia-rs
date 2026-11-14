@@ -68,12 +68,12 @@ const BLOCKS: [(&str, &str, [f64; 2]); 10] = [
     (
         "names",
         "127722f1f10a0356f3aef18a9e51db2a86dcec688dae613228c174daa54ecce7",
-        [1718.0, 1718.0],
+        [1719.0, 1719.0],
     ),
     (
         "frame",
-        "972bd05fb0e465d3610be6f964c0172c89f897a4ccff30e4e3c666ca3bc6956e",
-        [1726.0, 1729.0],
+        "40b4dc2d1d28554d2626927af19fd2ff8e0bf0382a5c2ea5ef527ed170cfdba8",
+        [1727.0, 1730.0],
     ),
 ];
 /// The modules the port follows, pinned: a change must be reviewed against the port.
@@ -92,7 +92,7 @@ const PINNED: [(&str, &str); 7] = [
     ),
     (
         "server/specialist-page-save.cjs",
-        "e75cc3b07fab2e104bc6fb5628a603db73580794d8aad7cc918a1c58741bd79e",
+        "e13bee695d3233a7016ac09db4ad31a24b1551a10fd6411c96f4311852039980",
     ),
     (
         "server/toolbox-flags.cjs",

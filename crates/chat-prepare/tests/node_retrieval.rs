@@ -34,7 +34,7 @@ const PINNED: [(&str, &str); 6] = [
     ),
     (
         "server/rust-chat-native.cjs",
-        "3fe49c59618204feee6ab56ecd50d5eed5c4bf3d1b3fa9bed7b3a22f31215435",
+        "dec3f3498a3c4b7b96b8d038219d468aaa3dbd78bf236067884e78f2cde1ae50",
     ),
     (
         "server/multimodal-rag.cjs",
@@ -75,12 +75,12 @@ const BLOCKS: [(&str, &str, [f64; 2]); 6] = [
     (
         "frameSources",
         "36ac814c9047a4111be35bf147c7ef4d1076f02510e40389e943d2b32a0e333a",
-        [1736.0, 1736.0],
+        [1737.0, 1737.0],
     ),
     (
         "coverageWarning",
         "e0fcdb20e9e39c3c932774b11717db668d9f9230c1c6095b378c5478cc4f6c76",
-        [1740.0, 1740.0],
+        [1742.0, 1742.0],
     ),
 ];
 

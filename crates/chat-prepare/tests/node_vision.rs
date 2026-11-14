@@ -56,7 +56,7 @@ const BLOCKS: [(&str, &str, [f64; 2]); 6] = [
     (
         "frameImageWarning",
         "b99f06cb0cacff7c4f34d1c116444e5155878ab94f5b91e397924de0874420ae",
-        [1738.0, 1740.0],
+        [1740.0, 1742.0],
     ),
 ];
 const DEFAULT: &str = "default";

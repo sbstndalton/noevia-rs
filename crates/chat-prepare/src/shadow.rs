@@ -552,9 +552,6 @@ fn model_field(t: &ShadowTurn<'_>, project: Option<&JValue>) -> Result<JValue, &
     }
 }
 
-/// specialist-page-save.cjs `NEVER_STANDING`: asked about on every call, never under a grant.
-const NEVER_STANDING: [&str; 1] = ["space_page_save"];
-
 /// The frame's per-tool facts for the tools core offered (`tools`, in its order; P7f): `writes`
 /// (`isWriteTool`), `public` (`isPublicTool`), `editTools` (index.cjs `projectEditTool`:
 /// project-edit-target.cjs `EDIT_TOOLS` held by the in-process MCP server) and `onceTools` (present only when some tool is never standing). The tool list itself is core's
@@ -576,7 +573,7 @@ fn tool_facts(frame: &JValue, c: &Catalogue<'_>) -> Vec<(&'static str, JValue)> 
                 .collect(),
         )
     };
-    let once = pick(&|n| NEVER_STANDING.contains(&n));
+    let once = pick(&|n| crate::toolboxes::never_standing(n));
     vec![
         ("writes", pick(&|n| (c.is_write)(n))),
         (

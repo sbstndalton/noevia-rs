@@ -553,6 +553,19 @@ impl Offer {
             ("public", texts(&self.public)),
             ("automaticOnlyWrites", texts(&self.automatic_only_writes)),
             ("editTools", texts(&self.edit_tools)),
+            // chat.cjs: `names.filter((n) => specialistPageSave.neverStanding(n))`, always present
+            // here (rust-chat-native.cjs preparedTurn keeps it only when non-empty).
+            (
+                "onceTools",
+                JValue::Arr(
+                    self.active_tools
+                        .iter()
+                        .filter_map(|t| t.get("function").get("name").as_str())
+                        .filter(|n| crate::toolboxes::never_standing(n))
+                        .map(JValue::from)
+                        .collect(),
+                ),
+            ),
             ("routeNote", JValue::from(route_note)),
             ("templateGate", JValue::Bool(self.template_gate)),
         ]
