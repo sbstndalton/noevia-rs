@@ -231,6 +231,33 @@ pub struct Health {
     pub model_warnings: Vec<String>,
 }
 
+/// S8: `api_health` with tenant detail (`journal_pending`, `journal_quarantined`, `retrieval`),
+/// in Python's key order.
+#[derive(Serialize)]
+pub struct WithTenant {
+    #[serde(flatten)]
+    pub base: Health,
+    #[serde(flatten)]
+    pub detail: TenantDetail,
+}
+
+#[derive(Serialize)]
+pub struct TenantDetail {
+    pub journal_pending: i64,
+    pub journal_quarantined: i64,
+    pub retrieval: RetrievalStats,
+}
+
+/// `Retriever.stats()`.
+#[derive(Serialize)]
+pub struct RetrievalStats {
+    pub chunks: i64,
+    pub vec_available: bool,
+    pub dim: Option<usize>,
+    pub model: String,
+    pub profile: String,
+}
+
 pub struct Models {
     pub main: Client,
     pub aux: Client,
