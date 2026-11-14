@@ -31,6 +31,11 @@ const MAX_ITEMS: usize = 50;
 const MAX_ITEM_CHARS: usize = 300;
 const NOTIFICATION_EVENTS: &[&str] = &["replyFinished", "approvalNeeded"];
 const SEND_KEYS: &[&str] = &["enter", "mod-enter"];
+/// The setup wizard's optional steps an account has passed (sbstndalton/noevia#2478), so a resumed
+/// wizard opens at the first one not done. Not Node's (account-preferences.cjs never had it): the
+/// record carries `setupDone` only once a step is recorded, so an account without one reads exactly
+/// as before.
+const SETUP_STEPS: &[&str] = &["provider", "diary", "backup", "prefs", "passkey"];
 const LOCALES: &[&str] = &[
     "system", "en-GB", "en-US", "de-DE", "es-ES", "fr-FR", "it-IT", "nb-NO", "nl-NL", "pt-BR",
     "sv-SE",
@@ -379,6 +384,8 @@ struct Prefs {
     notifications: Vec<(String, bool)>,
     send_key: String,
     locale: String,
+    /// [`SETUP_STEPS`] in their own order, each once.
+    setup_done: Vec<&'static str>,
     updated_at: JValue,
 }
 
@@ -391,23 +398,28 @@ impl Prefs {
                 .collect(),
             send_key: "enter".into(),
             locale: "system".into(),
+            setup_done: Vec::new(),
             updated_at: JValue::Null,
         }
     }
     fn json(&self) -> JValue {
-        JValue::obj([
+        let mut items = vec![
             (
-                "notifications",
+                "notifications".to_string(),
                 JValue::obj(
                     self.notifications
                         .iter()
                         .map(|(k, v)| (k.clone(), JValue::from(*v))),
                 ),
             ),
-            ("sendKey", JValue::from(self.send_key.as_str())),
-            ("locale", JValue::from(self.locale.as_str())),
-            ("updatedAt", self.updated_at.clone()),
-        ])
+            ("sendKey".to_string(), JValue::from(self.send_key.as_str())),
+            ("locale".to_string(), JValue::from(self.locale.as_str())),
+        ];
+        if !self.setup_done.is_empty() {
+            items.push(("setupDone".to_string(), strs(&self.setup_done)));
+        }
+        items.push(("updatedAt".to_string(), self.updated_at.clone()));
+        JValue::Obj(items)
     }
     fn set(&mut self, event: &str, on: bool) {
         if let Some(slot) = self.notifications.iter_mut().find(|(k, _)| k == event) {
@@ -436,8 +448,21 @@ fn prefs_read(dir: &Path) -> Prefs {
     if let Some(l) = d.get("locale").as_str().filter(|l| LOCALES.contains(l)) {
         out.locale = l.to_string();
     }
+    if let JValue::Arr(items) = d.get("setupDone") {
+        out.setup_done = setup_steps(items.iter().filter_map(JValue::as_str));
+    }
     out.updated_at = finite(d.get("updatedAt"));
     out
+}
+
+/// The known steps among `names`, in [`SETUP_STEPS`] order, each once.
+fn setup_steps<'a>(names: impl Iterator<Item = &'a str>) -> Vec<&'static str> {
+    let names: Vec<&str> = names.collect();
+    SETUP_STEPS
+        .iter()
+        .copied()
+        .filter(|s| names.contains(s))
+        .collect()
 }
 
 /// account-preferences.cjs `write(dir, patch, now)`.
@@ -474,6 +499,23 @@ fn prefs_write(acct: &Account, dir: &Path, patch: &JValue, now: i64) -> Result<J
             return Err(readable("That format is not available."));
         };
         next.locale = l.to_string();
+    }
+    // #2478: the whole list each time (the wizard sends every step it has passed).
+    let steps = patch.get("setupDone");
+    if !matches!(steps, JValue::Undefined) {
+        let JValue::Arr(items) = steps else {
+            return Err(readable("Send setup steps as a list."));
+        };
+        if items.len() > SETUP_STEPS.len() * 2 {
+            return Err(readable("Send setup steps as a list."));
+        }
+        for item in items {
+            match item.as_str() {
+                Some(step) if SETUP_STEPS.contains(&step) => {}
+                _ => return Err(readable("Unknown setup step.")),
+            }
+        }
+        next.setup_done = setup_steps(items.iter().filter_map(JValue::as_str));
     }
     next.updated_at = JValue::from(now);
     let record = next.json();

@@ -1084,6 +1084,14 @@ path = "/api/stats"
 owner = "rust"
 methods = ["GET"]
 
+# sbstndalton/noevia#2580: GET ?chat=<chatId>, the signed-in account's own open approval
+# questions in that chat (ids, kinds, expiry; no card content), from the front's registry
+# (bins/noevia-server tool_approval_routes.rs). New with the front; other methods stay Node's (404).
+[[route]]
+path = "/api/tool-approvals"
+owner = "rust"
+methods = ["GET"]
+
 [[route]]
 path = "/api/tool-approvals/{approvalId}"
 owner = "rust"

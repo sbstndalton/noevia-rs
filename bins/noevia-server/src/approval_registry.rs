@@ -364,6 +364,15 @@ pub struct Question {
     pub once: bool,
 }
 
+/// One open question, as [`Registry::open_in`] lists it for its owner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenQuestion {
+    pub id: String,
+    pub kind: Kind,
+    pub once: bool,
+    pub expires_in: Duration,
+}
+
 /// Removes the question when Node's wait ends without an answer (its request was dropped).
 struct Waiting<'a> {
     registry: &'a Registry,
@@ -462,6 +471,33 @@ impl Registry {
             .get(id)
             .filter(|p| p.user == user && p.expires > now && p.sender.is_some())
             .map(|p| p.kind))
+    }
+
+    /// The questions still waiting for an answer that `user`'s own turns asked in `chat`, soonest
+    /// expiry first (#2580: another tab of the chat, while the turn still runs, learns that a card
+    /// is open). Another account's questions are never listed, whatever the chat; an
+    /// answered, timed-out or withdrawn question is gone.
+    pub fn open_in(&self, user: &str, chat: &str) -> Result<Vec<OpenQuestion>, DecideError> {
+        let s = self.state.lock().map_err(|_| DecideError::Unavailable)?;
+        let now = Instant::now();
+        let mut open: Vec<OpenQuestion> = s
+            .pending
+            .iter()
+            .filter(|(_, p)| {
+                p.user == user
+                    && p.chat.as_deref() == Some(chat)
+                    && p.expires > now
+                    && p.sender.is_some()
+            })
+            .map(|(id, p)| OpenQuestion {
+                id: id.clone(),
+                kind: p.kind,
+                once: p.once,
+                expires_in: p.expires.saturating_duration_since(now),
+            })
+            .collect();
+        open.sort_by(|a, b| a.expires_in.cmp(&b.expires_in).then(a.id.cmp(&b.id)));
+        Ok(open)
     }
 
     /// The live context an `approve_all` on this question would be granted for, read outside
@@ -1077,6 +1113,62 @@ mod tests {
             r.decide(OWNER, "y", "cloud", false, None),
             Err(DecideError::Missing)
         );
+    }
+
+    /// #2580: the owner's read lists only their own unanswered questions in that chat.
+    #[tokio::test]
+    async fn open_in_lists_the_owners_unanswered_questions_in_that_chat_only() {
+        let r = Registry::with_times(None, Duration::from_secs(2), GRANT_TTL);
+        r.open(write_q("w1", OWNER, Some("c1"), Some("space:free"), None))
+            .unwrap();
+        r.open(route_q("r1", OWNER)).unwrap();
+        r.open(write_q("w2", OWNER, Some("c2"), None, None))
+            .unwrap();
+        r.open(write_q("w3", OWNER, None, None, None)).unwrap();
+        r.open(write_q("theirs", OTHER, Some("c1"), None, None))
+            .unwrap();
+        let ids = |user: &str, chat: &str| -> Vec<String> {
+            r.open_in(user, chat)
+                .unwrap()
+                .into_iter()
+                .map(|q| q.id)
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        };
+        assert_eq!(ids(OWNER, "c1"), ["r1", "w1"]);
+        assert_eq!(ids(OTHER, "c1"), ["theirs"]);
+        assert_eq!(ids(OWNER, "c2"), ["w2"]);
+        assert!(
+            ids(OWNER, "").is_empty(),
+            "a question without a chat is in no chat"
+        );
+        assert!(ids(OTHER, "c2").is_empty());
+        let listed = r.open_in(OWNER, "c1").unwrap();
+        let kind = |id: &str| listed.iter().find(|q| q.id == id).map(|q| q.kind);
+        assert_eq!(
+            (kind("w1"), kind("r1")),
+            (Some(Kind::Write), Some(Kind::Route))
+        );
+        assert!(listed
+            .iter()
+            .all(|q| !q.once && q.expires_in <= Duration::from_secs(2)));
+        assert!(
+            listed
+                .iter()
+                .zip(listed.iter().skip(1))
+                .all(|(a, b)| a.expires_in <= b.expires_in),
+            "soonest expiry first"
+        );
+        // Answered (here before Node's wait attached) or withdrawn: no longer listed.
+        r.decide(OWNER, "r1", "local", false, None).unwrap();
+        assert_eq!(ids(OWNER, "c1"), ["w1"]);
+        assert!(r.cancel(OWNER, "w1"));
+        assert!(ids(OWNER, "c1").is_empty());
+        // Timed out: no longer listed.
+        tokio::time::sleep(Duration::from_millis(2100)).await;
+        assert!(ids(OWNER, "c2").is_empty());
+        assert!(ids(OTHER, "c1").is_empty());
     }
 
     /// #679: the turn stopped while the card was open (Node dropped its wait). The question is

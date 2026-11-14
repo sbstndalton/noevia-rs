@@ -790,6 +790,65 @@ fn app_passwords_appearance_and_records() {
         (s, v["error"].clone()),
         (400, "That format is not available.".into())
     );
+    // #2478: the setup steps passed, in their own order, each once; absent until one is recorded.
+    for (body, error) in [
+        (r#"{"setupDone":"diary"}"#, "Send setup steps as a list."),
+        (
+            r#"{"setupDone":["diary","account"]}"#,
+            "Unknown setup step.",
+        ),
+        (r#"{"setupDone":["diary",1]}"#, "Unknown setup step."),
+        (
+            r#"{"setupDone":["diary","diary","diary","diary","diary","diary","diary","diary","diary","diary","diary"]}"#,
+            "Send setup steps as a list.",
+        ),
+    ] {
+        let (s, v, _) = call(
+            &w,
+            &mut owner,
+            "PUT",
+            "/api/account/preferences",
+            body,
+            T0 + 2,
+        );
+        assert_eq!((s, v["error"].clone()), (400, error.into()), "{body}");
+    }
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "PUT",
+        "/api/account/preferences",
+        r#"{"setupDone":["prefs","diary","diary"]}"#,
+        T0 + 2,
+    );
+    assert_eq!(s, 200);
+    assert_eq!(v["setupDone"], serde_json::json!(["diary", "prefs"]));
+    assert_eq!(v["sendKey"], "mod-enter", "the other choices are kept");
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "GET",
+        "/api/account/preferences",
+        "",
+        T0 + 2,
+    );
+    assert_eq!(
+        (s, v["setupDone"].clone()),
+        (200, serde_json::json!(["diary", "prefs"]))
+    );
+    let (s, v, _) = call(
+        &w,
+        &mut owner,
+        "PUT",
+        "/api/account/preferences",
+        r#"{"setupDone":[]}"#,
+        T0 + 2,
+    );
+    assert_eq!(s, 200);
+    assert!(
+        v.get("setupDone").is_none(),
+        "an empty list reads as before"
+    );
     let (s, v, _) = call(
         &w,
         &mut owner,
