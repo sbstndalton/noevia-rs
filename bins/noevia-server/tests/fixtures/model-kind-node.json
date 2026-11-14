@@ -1,0 +1,5514 @@
+{
+ "core": "619f1e98ad310f7602db1f093c5aef8ad11b6a73",
+ "node": "v22",
+ "cases": [
+  {
+   "roles": null,
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67efbbbf227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a222053595354454d2d524f5554494e47c285227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e380804c617961c2a0227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a225c7564383030227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a2273797374656d2d726f7574696e67222c2278223a22ffc3227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d726f75746572223a226c617961222c2271612d626164ff223a2263686174222c22e282223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b225c7564383030223a2263686174222c2271612d726f75746572223a226c617961227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b226c617961223a2263686174222c2271612d737973223a352c2271612d63686174223a2263686174227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "efbbbf7b2271612d726f75746572223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2273797374656d2d726f7574696e67222c2271612d737973223a377d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a2263686174222c2271612d737973223a2273797374656d2d726f7574696e67227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b222a223a2273797374656d2d726f7574696e67222c2271612d6e6573746564223a7b22726f6c65223a2273797374656d2d726f7574696e67227d7d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "7b2271612d737973223a22e284aa656c76696e227d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "5b315d",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "5b315d",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "5b315d",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "5b315d",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "5b315d",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "5b315d",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "5b315d",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "gemma-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "Laya_v2",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": " laya-1 ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "layaway",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "﻿laya",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "　laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "laya ",
+   "labels": [],
+   "path": null,
+   "system": true,
+   "chat": false
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-EMBED",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-İrerank",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys﻿",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": " qa-sys",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-router",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-chat",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-bad�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "�",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-nested",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "x",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "*",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": true
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "",
+   "labels": [],
+   "path": null,
+   "system": false,
+   "chat": false
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-model",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-model",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-model",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/Laya-1.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/models/qa.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "C:\\m\\LAYA.GGUF",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/﻿laya.gguf",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/laya.gguf",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "/m/qa-sys/laya_x",
+   "system": true,
+   "chat": null
+  },
+  {
+   "roles": "6e6f74206a736f6e",
+   "name": "qa-sys",
+   "labels": [],
+   "path": "",
+   "system": false,
+   "chat": null
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [],
+   "path": null,
+   "system": null,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [
+    "embeddings"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [
+    "EMBEDDING"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [
+    "reranK"
+   ],
+   "path": null,
+   "system": null,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [
+    "reranker﻿"
+   ],
+   "path": null,
+   "system": null,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [
+    "vision"
+   ],
+   "path": null,
+   "system": null,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-model",
+   "labels": [
+    "Reranking"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "laya",
+   "labels": [],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "laya",
+   "labels": [
+    "embeddings"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "laya",
+   "labels": [
+    "EMBEDDING"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "laya",
+   "labels": [
+    "reranK"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "laya",
+   "labels": [
+    "reranker﻿"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "laya",
+   "labels": [
+    "vision"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "laya",
+   "labels": [
+    "Reranking"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "qa-reranK",
+   "labels": [],
+   "path": null,
+   "system": null,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-reranK",
+   "labels": [
+    "embeddings"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "qa-reranK",
+   "labels": [
+    "EMBEDDING"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  },
+  {
+   "roles": null,
+   "name": "qa-reranK",
+   "labels": [
+    "reranK"
+   ],
+   "path": null,
+   "system": null,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-reranK",
+   "labels": [
+    "reranker﻿"
+   ],
+   "path": null,
+   "system": null,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-reranK",
+   "labels": [
+    "vision"
+   ],
+   "path": null,
+   "system": null,
+   "chat": true
+  },
+  {
+   "roles": null,
+   "name": "qa-reranK",
+   "labels": [
+    "Reranking"
+   ],
+   "path": null,
+   "system": null,
+   "chat": false
+  }
+ ]
+}

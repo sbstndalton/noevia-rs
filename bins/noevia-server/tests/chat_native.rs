@@ -18,7 +18,8 @@
 //!   this case's run reads as the recording's fixed instant;
 //! - a number under `timeToFirstToken` or `elapsedMs` below a minute reads as 0;
 //! - the signed-in user's id reads as `qa-user`;
-//! - a uuid v4 string, bare or after `ap-`, reads as `<uuid>` (on both sides).
+//! - a uuid v4 string, bare or after `ap-` or `gate-`, reads as `<uuid>` (on both sides), and a `gate-` uuid
+//!   inside an engine request body is numbered by first appearance (`gate-<1>`).
 //!
 //! Synthetic data only; local ports only; no model runs.
 #![allow(
@@ -181,6 +182,12 @@ struct Script {
     revokes: Vec<String>,
     /// Set: core's revoke bridge fails, so the front revokes at its own registry instead.
     revoke_fails: bool,
+    /// Set: core's condense op answers 500, so the front hands on the raw result (#740).
+    condense_fails: bool,
+    /// The traces of the packets core's condense op handed on, not yet sent back by reasoner-trace.
+    condensed: Vec<JValue>,
+    /// The reasoner-trace calls (#740).
+    traced: usize,
 }
 
 impl Default for Script {
@@ -208,6 +215,9 @@ impl Default for Script {
             leaving: Arc::default(),
             revokes: Vec::new(),
             revoke_fails: false,
+            condense_fails: false,
+            condensed: Vec::new(),
+            traced: 0,
         }
     }
 }
@@ -263,6 +273,9 @@ const REGISTRY_CASES: &[(&str, &str)] = &[
 /// Recorded cases also run with core's revoke bridge failing.
 const REVOKE_FAILS: &[&str] = &["grant_redeem_refused"];
 
+/// Recorded cases whose reasoner skipped, also run with core's condense op failing (500): the raw result goes on.
+const CONDENSE_FAILS: &[&str] = &["reasoner_bad_packet"];
+
 /// The stubs this test's fakes answer.
 const ANSWERED: &[&str] = &[
     "chatWideApproved",
@@ -271,6 +284,8 @@ const ANSWERED: &[&str] = &[
     "redeemChatGrant",
     "allowsTools",
     "inferenceBusy",
+    "supervise",
+    "condense",
 ];
 
 impl Script {
@@ -642,6 +657,18 @@ async fn core_service(
                     headers.get("x-noevia-chat-wire")
                 ));
             }
+            // A policy the account changed once core's preparation ended (`input.policyAfterCut`, R15): stored as
+            // the prepared frame goes out, so the front reads it from the cut on.
+            if let JValue::Obj(after) = sc.case.get("input").get("policyAfterCut").clone() {
+                for (tool, mode) in after {
+                    match mode.as_str() {
+                        Some(mode) => set_policy(&sc.data, &sc.user, &tool, mode),
+                        None => sc
+                            .errors
+                            .push(format!("policyAfterCut {tool}: not one mode")),
+                    }
+                }
+            }
             Ok(handoff(&sc))
         }
         "/internal/chat/native/health" => ok(health(&sc)),
@@ -658,6 +685,85 @@ async fn core_service(
                 .stub("allowsTools")
                 .is_none_or(|s| s.get("answer") != &JValue::Bool(false));
             ok(js::obj([("allowed", JValue::Bool(allowed))]))
+        }
+        // Track R15: core's step supervisor, answered from the recorded decide (its question checked).
+        // Track R15 (#740): core's framing reasoner, answered from the recorded condense (its question checked).
+        "/internal/chat/native/condense" => {
+            let Some(rec) = sc.stub("condense") else {
+                sc.errors.push("condense: not asked in Node".into());
+                return ok(js::obj([("rendered", JValue::Null)]));
+            };
+            if sc.condense_fails {
+                return Ok(json(
+                    500,
+                    &js::obj([("error", js::s("QA condense failed"))]),
+                ));
+            }
+            for k in ["kind", "message", "tool", "resultText", "model"] {
+                if js::stringify(sent.get(k)) != js::stringify(rec.get(k)) {
+                    sc.errors.push(format!(
+                        "condense: {k} {} (Node {})",
+                        js::stringify(sent.get(k)),
+                        js::stringify(rec.get(k))
+                    ));
+                }
+            }
+            match rec.get("answer") {
+                a @ JValue::Obj(_) => {
+                    sc.condensed.push(a.get("trace").clone());
+                    ok(a.clone())
+                }
+                _ => ok(js::obj([("rendered", JValue::Null)])),
+            }
+        }
+        // #740: the trace sent back is the one condense handed on, with the answer's length as Node counts it.
+        "/internal/chat/native/reasoner-trace" => {
+            sc.traced += 1;
+            if sc.condensed.is_empty() {
+                sc.errors
+                    .push("reasoner-trace: no packet was handed on".into());
+            } else {
+                let want = sc.condensed.remove(0);
+                if js::stringify(sent.get("trace")) != js::stringify(&want) {
+                    sc.errors.push(format!(
+                        "reasoner-trace: trace {} (condense {})",
+                        js::stringify(sent.get("trace")),
+                        js::stringify(&want)
+                    ));
+                }
+            }
+            let chars = sent.get("answerChars").as_num();
+            let recorded = arr(sc.case.get("stores"))
+                .into_iter()
+                .find(|s| s.get("op").as_str() == Some("reasoningTraces.append"))
+                .map(|s| s.get("entry").get("answerChars").clone());
+            if chars.is_none_or(|c| c < 0.0 || c.fract() != 0.0)
+                || recorded.is_some_and(|r| r.as_num() != chars)
+                || !sent.get("answerMs").as_num().is_some_and(|m| m >= 0.0)
+            {
+                sc.errors.push(format!(
+                    "reasoner-trace: answerChars {} answerMs {}",
+                    js::stringify(sent.get("answerChars")),
+                    js::stringify(sent.get("answerMs"))
+                ));
+            }
+            Ok(empty(204))
+        }
+        "/internal/chat/native/supervise" => {
+            let Some(rec) = sc.stub("supervise") else {
+                sc.errors.push("supervise: not asked in Node".into());
+                return ok(js::obj([("action", js::s("continue"))]));
+            };
+            for k in ["round", "goal", "wrote", "outputs"] {
+                if js::stringify(sent.get(k)) != js::stringify(rec.get(k)) {
+                    sc.errors.push(format!(
+                        "supervise: {k} {} (Node {})",
+                        js::stringify(sent.get(k)),
+                        js::stringify(rec.get(k))
+                    ));
+                }
+            }
+            ok(js::obj([("action", rec.get("answer").clone())]))
         }
         "/internal/chat/native/busy" => {
             // At the title the turn holds the route's admission lease and the model's: two counts.
@@ -835,7 +941,8 @@ async fn core_service(
         "/internal/chat/usage"
         | "/internal/chat/prefill"
         | "/internal/chat/native/title-save"
-        | "/internal/chat/native/tools-unsupported" => Ok(empty(204)),
+        | "/internal/chat/native/tools-unsupported"
+        | "/internal/chat/native/gate-record" => Ok(empty(204)),
         _ => Ok(json(404, &js::obj([("error", js::s("not found"))]))),
     }
 }
@@ -1205,6 +1312,35 @@ fn is_uuid_v4(s: &str) -> bool {
         && s.bytes().all(|c| c == b'-' || c.is_ascii_hexdigit())
 }
 
+/// The tool gate's prefetched call ids (`gate-` and a uuid v4) numbered by first appearance (`gate-<1>`, …) wherever
+/// they sit in a request body's text, so the call and its tool message must still name the same id, and two calls
+/// two ids.
+fn gate_ids(text: &str) -> String {
+    let mut seen: Vec<&str> = Vec::new();
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("gate-") {
+        let (head, tail) = rest.split_at(at + 5);
+        out.push_str(head);
+        match tail.get(..36).filter(|u| is_uuid_v4(u)) {
+            Some(id) => {
+                let n = match seen.iter().position(|s| *s == id) {
+                    Some(n) => n,
+                    None => {
+                        seen.push(id);
+                        seen.len() - 1
+                    }
+                };
+                out.push_str(&format!("<{}>", n + 1));
+                rest = tail.get(36..).unwrap_or_default();
+            }
+            None => rest = tail,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// The rewrite the module doc lists. `user` empty: the recorded side (uuids only).
 fn settle(v: &mut JValue, user: &str, window: (f64, f64)) {
     match v {
@@ -1238,6 +1374,9 @@ fn settle(v: &mut JValue, user: &str, window: (f64, f64)) {
                 *s = "<uuid>".into();
             } else if s.strip_prefix("ap-").is_some_and(is_uuid_v4) {
                 *s = "ap-<uuid>".into();
+            } else if s.strip_prefix("gate-").is_some_and(is_uuid_v4) {
+                // The tool gate's prefetched call (chat.cjs prefetchTool `gate-${randomUUID()}`, R15).
+                *s = "gate-<uuid>".into();
             }
         }
         _ => {}
@@ -1324,7 +1463,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
         if SKIPPED.iter().any(|(n, _)| *n == name) || only.as_ref().is_some_and(|o| *o != name) {
             continue;
         }
-        match run_case(&fixture, case, &current, None, false).await {
+        match run_case(&fixture, case, &current, None, false, false).await {
             Ok(()) => ran.push(name),
             Err(e) => {
                 eprintln!("DIFFERS {name}: {e}");
@@ -1343,7 +1482,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
             .iter()
             .find(|c| c.get("name").as_str() == Some(name))
             .unwrap();
-        match run_case(&fixture, case, &current, Some(decision), false).await {
+        match run_case(&fixture, case, &current, Some(decision), false, false).await {
             Ok(()) => ran.push(format!("{name} (front registry)")),
             Err(e) => {
                 eprintln!("DIFFERS {name} (front registry): {e}");
@@ -1361,11 +1500,28 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
             .iter()
             .find(|c| c.get("name").as_str() == Some(name))
             .unwrap();
-        match run_case(&fixture, case, &current, None, true).await {
+        match run_case(&fixture, case, &current, None, true, false).await {
             Ok(()) => ran.push(format!("{name} (revoke bridge fails)")),
             Err(e) => {
                 eprintln!("DIFFERS {name} (revoke bridge fails): {e}");
                 failures.push(format!("{name} (revoke bridge fails): {e}"));
+            }
+        }
+    }
+    // Core's condense op failing (#740): the front hands on the raw result, as the recorded skip.
+    for name in CONDENSE_FAILS {
+        if only.as_ref().is_some_and(|o| o != name) {
+            continue;
+        }
+        let case = cases
+            .iter()
+            .find(|c| c.get("name").as_str() == Some(name))
+            .unwrap();
+        match run_case(&fixture, case, &current, None, false, true).await {
+            Ok(()) => ran.push(format!("{name} (condense fails)")),
+            Err(e) => {
+                eprintln!("DIFFERS {name} (condense fails): {e}");
+                failures.push(format!("{name} (condense fails): {e}"));
             }
         }
     }
@@ -1384,7 +1540,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
     if only.is_none() {
         assert_eq!(
             ran.len() + SKIPPED.len(),
-            cases.len() + REGISTRY_CASES.len() + REVOKE_FAILS.len()
+            cases.len() + REGISTRY_CASES.len() + REVOKE_FAILS.len() + CONDENSE_FAILS.len()
         );
     }
 }
@@ -1395,6 +1551,7 @@ async fn run_case(
     current: &Arc<Mutex<Option<Shared>>>,
     decide: Option<&str>,
     revoke_fails: bool,
+    condense_fails: bool,
 ) -> Result<(), String> {
     let input = case.get("input").clone();
     // With the front's registry its cards are the registry's: their recorded stubs are not asked for.
@@ -1414,6 +1571,7 @@ async fn run_case(
         // The engine requests core made before the cut (a Vision role's description) are core's own.
         round: pre_cut_requests(case),
         revoke_fails,
+        condense_fails,
         ..Script::default()
     }));
     *current.lock().unwrap() = Some(Arc::clone(&script));
@@ -1621,8 +1779,9 @@ async fn run_case(
             let tools = fixture.get("tools").get(key).clone();
             js::set(&mut want, "tools", tools);
         }
-        let want = js::stringify(&want);
-        if *sent != want {
+        let want = gate_ids(&js::stringify(&want));
+        let sent = gate_ids(sent);
+        if sent != want {
             return Err(format!(
                 "engine request {i} body:\n front: {sent}\n node:  {want}"
             ));
@@ -1645,6 +1804,17 @@ async fn run_case(
         .filter(|s| s.get("op").as_str() == Some("revokeChatGrant"))
         .map(|s| s.get("chatId").as_str().unwrap_or("").to_string())
         .collect();
+    // #740: every trace Node appended was sent back once (a person without traces: the op still asked).
+    let appends = arr(case.get("stores"))
+        .iter()
+        .filter(|s| s.get("op").as_str() == Some("reasoningTraces.append"))
+        .count();
+    if appends > 0 && sc.traced != appends {
+        return Err(format!(
+            "reasoner traces: front {} node {appends}",
+            sc.traced
+        ));
+    }
     if sc.revokes != want_revokes {
         return Err(format!(
             "grant revokes: front {:?} node {want_revokes:?}",

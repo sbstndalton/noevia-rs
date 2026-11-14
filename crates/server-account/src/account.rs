@@ -522,7 +522,9 @@ fn admin(
             "member"
         };
         let token = util::random_token(32);
-        let detail = JValue::obj([("role", role.clone())]);
+        // The audit names the role the invitation grants, not the raw request value
+        // (noevia-rs#517): a junk role creates a member invitation and is logged as one.
+        let detail = JValue::obj([("role", JValue::from(stored))]);
         let expires = acct
             .writer
             .write(|tx| insert_invitation(tx, &token, actor, Some(actor), stored, &detail, now))?;
