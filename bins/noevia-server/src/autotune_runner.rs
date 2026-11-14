@@ -118,9 +118,22 @@ impl Native {
                 self.runner.deps().cover_with(Some(Arc::clone(&hold)));
                 let mut done = self.settle(&hold).await;
                 if done {
-                    if let Err(e) = self.runner.recover_trial().await {
-                        eprintln!("[autotune] recovery {key} failed: {}", e.message);
-                        done = false;
+                    // An `apply:<revision>` key is a write's own restore (applyUnlocked's loss
+                    // branch); any other is the run's trial recovery.
+                    match self.runner.deps().restore_apply(key).await {
+                        Some(true) => {}
+                        Some(false) => {
+                            eprintln!(
+                                "[autotune] recovery {key} failed: the restore did not complete"
+                            );
+                            done = false;
+                        }
+                        None => {
+                            if let Err(e) = self.runner.recover_trial().await {
+                                eprintln!("[autotune] recovery {key} failed: {}", e.message);
+                                done = false;
+                            }
+                        }
                     }
                 }
                 self.runner.deps().cover_with(None);
@@ -383,6 +396,10 @@ pub async fn call(
     };
     let ask = wtf16::parse(&body.to_string()).unwrap_or(JValue::Null);
     let (status, answer) = native.bridge(path, &ask).await;
+    // Node's resume bridge cleared Core's cached folder scan after a commit that applied (#2550).
+    if path == "/internal/autotune-resume/commit" && answer.get("applied") == &JValue::Bool(true) {
+        crate::model_manager_scan::clear(app).await;
+    }
     Some((
         status,
         wtf16::stringify(&answer).unwrap_or_default().into_bytes(),

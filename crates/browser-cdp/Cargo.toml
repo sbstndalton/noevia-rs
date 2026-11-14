@@ -1,0 +1,22 @@
+[package]
+name = "browser-cdp"
+version = "0.1.0"
+description = "Browser mode's production engine: crate browser-task's engine traits over the Chrome DevTools Protocol, talking to an external headless Chromium on the deployment's private network (a std-only WebSocket client, one connection per launch)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22"
+sha1 = "=0.10.7"
+getrandom = "0.3"
+url = "2"
+js-json = { path = "../js-json" }
+browser-task = { path = "../browser-task" }
+
+[dev-dependencies]
+tempfile = "3"
