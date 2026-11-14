@@ -493,3 +493,32 @@ fn a_failed_write_changes_nothing_and_releases_the_lock() {
     assert_eq!(left, 1);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+/// `nextChanged` needs a change between the checks and the hold, which one request at a time never
+/// gives the recording: the transition refuses a switch to anything but the checked next.
+#[test]
+fn a_switch_to_another_next_is_refused() {
+    let t = |model: &str| Target {
+        base_url: None,
+        model: model.into(),
+        profile: "nomic-v1".into(),
+    };
+    let state = embedding_migration::State {
+        active: t("qa-embed-a"),
+        next: Some(t("qa-embed-b")),
+        previous: None,
+    };
+    let mut config = Config::new(state, None, false);
+    let refused = config.switch_to_next(Some(&t("qa-embed-c"))).unwrap_err();
+    assert_eq!(
+        (refused.status, refused.code),
+        (Some(409), Some("nextChanged"))
+    );
+    assert_eq!(config.next().map(|n| n.model.as_str()), Some("qa-embed-b"));
+    config.switch_to_next(Some(&t("qa-embed-b"))).unwrap();
+    assert_eq!(config.active().model, "qa-embed-b");
+    assert_eq!(
+        config.previous().map(|p| p.model.as_str()),
+        Some("qa-embed-a")
+    );
+}
