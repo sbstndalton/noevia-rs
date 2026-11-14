@@ -312,3 +312,66 @@ fn no_token_in_debug_output() {
     assert!(!shown.contains("secret-tok"), "{shown}");
     assert!(shown.contains("authorization"), "{shown}");
 }
+
+/// A failing body for the stream tests: the text stream's first chunk, then a failed read.
+struct Failing(u8);
+
+impl Body for Failing {
+    async fn chunk(&mut self) -> Option<Result<Vec<u8>, String>> {
+        self.0 += 1;
+        match self.0 {
+            1 => Some(Ok(TEXT_STREAM[0].as_bytes().to_vec())),
+            _ => Some(Err("reset".into())),
+        }
+    }
+}
+
+struct FailingWire;
+
+impl Wire for FailingWire {
+    type Body = Failing;
+    fn signal(&self) -> Option<String> {
+        None
+    }
+    async fn catalogue(&mut self, _user: &str) -> Option<JValue> {
+        None
+    }
+    async fn session(&mut self, _user: &str, _rejected: Option<&str>) -> BrokerAnswer {
+        BrokerAnswer::Ok(session("tok-1", 1.0))
+    }
+    async fn reject(&mut self, _user: &str, _generation: &JValue) {}
+    async fn send(&mut self, _request: Outgoing<'_>) -> Result<Upstream<Failing>, String> {
+        Ok(Upstream {
+            status: 200,
+            labelled: false,
+            body: Some(Failing(0)),
+        })
+    }
+}
+
+#[test]
+fn a_failed_stream_stays_failed() {
+    let (t, p) = (texts(), protocol());
+    let cache = Mutex::new(SessionCache::default());
+    let mut wire = FailingWire;
+    let a = block_on(fetch::fetch(
+        &mut wire,
+        &cache,
+        &call(&t, &p, "u1", STREAM_BODY, NOW),
+    ));
+    let Answer::Stream(mut st) = a else { panic!() };
+    assert_eq!(block_on(st.next()).unwrap().unwrap().len(), 2, "role + Hel");
+    assert_eq!(block_on(st.next()).unwrap().unwrap_err(), "reset");
+    assert!(block_on(st.next()).is_none(), "no [DONE] after a failed read");
+}
+
+#[test]
+fn the_fetch_future_is_send() {
+    fn assert_send<T: Send>(_: &T) {}
+    let (t, p) = (texts(), protocol());
+    let cache = Mutex::new(SessionCache::default());
+    let mut wire = Fake::new(Some("sig"), vec![], vec![]);
+    let c = call(&t, &p, "u1", BODY, NOW);
+    let f = fetch::fetch(&mut wire, &cache, &c);
+    assert_send(&f);
+}

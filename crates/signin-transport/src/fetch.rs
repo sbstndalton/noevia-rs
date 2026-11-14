@@ -192,6 +192,8 @@ pub struct Streaming<B> {
     head: Vec<String>,
     stream: ChatStream,
     reader: PartReader<B>,
+    /// A read failed: the stream is errored, nothing follows.
+    failed: bool,
 }
 
 impl<B> std::fmt::Debug for Streaming<B> {
@@ -214,9 +216,15 @@ impl<B: Body> Streaming<B> {
         if !self.head.is_empty() {
             return Some(Ok(self.take_head()));
         }
+        if self.failed {
+            return None;
+        }
         let part = match self.reader.next().await {
             Ok(p) => p,
-            Err(e) => return Some(Err(e)),
+            Err(e) => {
+                self.failed = true;
+                return Some(Err(e));
+            }
         };
         let frames = self.stream.frames(part.as_ref());
         (!frames.is_empty()).then_some(Ok(frames))
@@ -387,6 +395,7 @@ pub async fn fetch<W: Wire>(
                 head,
                 stream,
                 reader,
+                failed: false,
             })),
             (Start::Stream(_), None) => Answer::Error(Refusal::new(502, t.could_not_finish())),
         };
