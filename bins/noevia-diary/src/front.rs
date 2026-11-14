@@ -209,7 +209,9 @@ impl Front {
                     let _ = self.owner.set(owner);
                 }
                 Err(err) => {
-                    eprintln!("noevia-diary: the embedding configuration cannot be owned here: {err}");
+                    eprintln!(
+                        "noevia-diary: the embedding configuration cannot be owned here: {err}"
+                    );
                     return Err("embedding owner not started");
                 }
             }
@@ -426,7 +428,9 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
                 },
                 (None, None) => axum::body::Bytes::new(),
             };
-            return owner.route(&app, &parts.method, &parts.headers, &bytes).await;
+            return owner
+                .route(&app, &parts.method, &parts.headers, &bytes)
+                .await;
         }
     }
     // A native read: no body, a read route, served here unless it declines.
