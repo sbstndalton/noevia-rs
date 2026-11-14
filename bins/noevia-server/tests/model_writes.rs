@@ -291,13 +291,27 @@ async fn the_front_saves_the_budget_row_and_its_audit() {
         audits(&db, "inference.budget"),
         vec![(A.to_owned(), r#"{"budgetGib":2}"#.to_owned())]
     );
-    // Core was asked which figure it enforces (it said 2); nothing was relayed.
-    let seen = seen.lock().unwrap().clone();
-    assert_eq!(seen.len(), 1, "{seen:?}");
-    assert!(seen[0].starts_with("POST /internal/models/facts "));
-    assert!(seen[0].contains(r#""want":"budget""#));
+    // Core was asked to drop its shared model reads before each write (as its prelude does) and,
+    // after the save, which figure it enforces (it said 2; asked in the background); nothing relayed.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while !seen
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.starts_with("POST /internal/models/facts "))
+    {
+        assert!(tokio::time::Instant::now() < deadline, "core was never asked its figure");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let asked = seen.lock().unwrap().clone();
+    let kind = |p: &str| asked.iter().filter(|r| r.starts_with(p)).count();
+    assert_eq!(kind("POST /internal/auto-roles/invalidate "), 3, "{asked:?}");
+    assert_eq!(kind("POST /internal/models/facts "), 1, "{asked:?}");
+    assert!(asked.iter().any(|r| r.contains(r#""want":"budget""#)));
+    assert_eq!(asked.len(), 4, "{asked:?}");
 
-    // A body JSON.parse reads but the port cannot hold goes to core unchanged.
+    // A body JSON.parse reads but the port cannot hold goes to core unchanged: the same bytes, its
+    // length and the session.
     let (status, body) = put(
         addr,
         "/api/models/inference-budget",
@@ -306,6 +320,30 @@ async fn the_front_saves_the_budget_row_and_its_audit() {
     )
     .await;
     assert_eq!((status, body), (202, json!({"relayed": true})));
+    let relayed = seen.lock().unwrap().last().cloned().unwrap();
+    assert!(relayed.starts_with("PUT /api/models/inference-budget "), "{relayed}");
+    let lower = relayed.to_ascii_lowercase();
+    assert!(lower.contains("content-length: 19\r\n"), "{relayed}");
+    assert!(lower.contains("cowork_session=admin-token"), "{relayed}");
+    assert!(relayed.ends_with(r#"{"budgetGib":1e400}"#), "{relayed}");
+
+    // Over 1 MiB: core's own 400, answered here, nothing relayed.
+    let before = seen.lock().unwrap().len();
+    let big = format!(r#"{{"budgetGib":2,"pad":"{}"}}"#, "x".repeat(1024 * 1024));
+    let (status, body) = put(addr, "/api/models/inference-budget", ADMIN, &big).await;
+    assert_eq!((status, body), (400, json!({"error": "invalid JSON"})));
+    let after: Vec<String> = seen.lock().unwrap()[before..].to_vec();
+    assert!(after.iter().all(|r| r.starts_with("POST /internal/auto-roles/invalidate ")), "{after:?}");
+
+    // Without the CSRF header: the session check refuses before anything is written.
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    let raw = format!("PUT /api/models/inference-budget HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n{ADMIN}Content-Type: application/json\r\nContent-Length: 15\r\n\r\n{{\"budgetGib\":3}}");
+    s.write_all(raw.as_bytes()).await.unwrap();
+    let mut bytes = Vec::new();
+    s.read_to_end(&mut bytes).await.unwrap();
+    let text = String::from_utf8(bytes).unwrap();
+    assert!(text.starts_with("HTTP/1.1 403"), "{text}");
+    assert_eq!(row(&db).as_deref(), Some(r#"{"budgetGib":2}"#));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -333,7 +371,8 @@ async fn the_idle_unload_time_without_a_model_manager_is_unavailable() {
             json!({"error": "The idle unload setting is unavailable", "errorId": "idleUnloadUnavailable"})
         )
     );
-    assert!(seen.lock().unwrap().is_empty());
+    let asked = seen.lock().unwrap().clone();
+    assert!(asked.iter().all(|r| r.starts_with("POST /internal/auto-roles/invalidate ")), "{asked:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -386,5 +425,6 @@ async fn the_idle_unload_time_is_written_through_the_model_manager() {
             r#"{"seconds":600,"source":"setting","previous":1800}"#.to_owned()
         )]
     );
-    assert!(node_seen.lock().unwrap().is_empty(), "nothing relayed");
+    let asked = node_seen.lock().unwrap().clone();
+    assert!(asked.iter().all(|r| r.starts_with("POST /internal/auto-roles/invalidate ")), "nothing relayed: {asked:?}");
 }

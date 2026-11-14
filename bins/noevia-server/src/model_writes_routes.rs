@@ -15,9 +15,13 @@
 //!   the router's presets read through the front's own reload baseline, and the
 //!   `models.idle_unload` audit record.
 //!
-//! Named differences: a request body core's `JSON.parse` reads but the port cannot hold is passed
-//! to core unchanged (and so refused by it under the switch: 503); core drops its shared model reads
-//! before any models write (`invalidateModelReads`), which neither answer reads.
+//! Core's write prelude drops its shared model reads (`invalidateModelReads`, which also republishes
+//! the auto-roles snapshot) before any models write; the front asks core to do the same over the
+//! auto-roles bridge (`/internal/auto-roles/invalidate`) right after the session check, as its own
+//! auto-roles write does.
+//!
+//! Named difference: a request body core's `JSON.parse` reads but the port cannot hold is passed to
+//! core unchanged (and so refused by it under the switch: 503).
 use crate::{identity, reply, App};
 use axum::body::Body;
 use axum::http::{Method, Request, Response, StatusCode};
@@ -123,6 +127,16 @@ pub async fn serve(
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
     let admin = id.user.role == server_auth::Role::Admin;
+    // routes/models.cjs's prelude, before the administrator check and whatever the outcome.
+    let _ = app
+        .config
+        .research
+        .node_call(
+            "/internal/auto-roles/invalidate",
+            &serde_json::json!({}),
+            Duration::from_secs(2),
+        )
+        .await;
     // readBody's limit, one byte over to tell "too large" apart.
     let bytes = axum::body::to_bytes(body, model_writes::body::LIMIT + 1)
         .await
@@ -167,7 +181,9 @@ pub async fn serve(
                     &JValue::obj([("error", JValue::from("Could not save the budget"))]),
                 );
             }
-            core_sees(app, n).await;
+            // Only logs: the answer does not wait for it.
+            let app = Arc::clone(app);
+            tokio::spawn(async move { core_sees(&app, n).await });
         }
         return answer(put.status, &put.body);
     }
@@ -198,7 +214,14 @@ pub async fn serve(
     match work {
         Ok(Some(put)) => answer(put.status, &put.body),
         Ok(None) => forward(bytes).await,
-        Err(_) => identity::Rejection::Unavailable.into_response(),
+        // A panic in the flow (its hold released as the host drops): core's answer to a throw.
+        Err(_) => answer(
+            500,
+            &JValue::obj([(
+                "error",
+                JValue::from("Could not change the idle unload time"),
+            )]),
+        ),
     }
 }
 
