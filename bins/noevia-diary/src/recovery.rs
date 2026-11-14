@@ -60,6 +60,10 @@ fn apply(c: &Ctx<'_>, e: &Entry, p: &Value) -> Result<(), WriteFailure> {
             let header = field(p, "sub_header")?;
             let body = field(p, "body")?;
             let path = crate::corpus::document_path(c.layout, day);
+            // S6b (named difference: Python's replay marks nothing and relies on its sweep, which
+            // runs once here): the replayed document is marked before it is written, as every
+            // native write marks its own.
+            c.journal.mark_dirty(&path).map_err(WriteFailure::Infra)?;
             c.store.guarded_write(&path, |current| {
                 if let Some(t) = current.filter(|t| cw::has_marker(t, xid)) {
                     return Ok((t.into(), false));
@@ -109,6 +113,7 @@ fn apply(c: &Ctx<'_>, e: &Entry, p: &Value) -> Result<(), WriteFailure> {
         }
         "index_month" | "index_update" => {
             let path = crate::corpus::join(&[&c.layout.monthly_prefix, &c.layout.index_file]);
+            c.journal.mark_dirty(&path).map_err(WriteFailure::Infra)?;
             c.store.guarded_write(&path, |current| {
                 let mut idx = ix::parse_index(current).map_err(|e| e.to_string())?;
                 let changed = if e.kind == "index_month" {
@@ -235,9 +240,10 @@ pub fn drain_index_outbox(c: &Ctx<'_>) -> Result<(), write::Error> {
 /// Every Markdown document is marked dirty once per process and tenant, as Python's
 /// `_recover_state` does once per tenant state (`dirty_on_recover`): what an earlier process
 /// may have written without re-indexing is unknown. Later native writes need no such sweep,
-/// because each marks its own document dirty before it writes anything (writes.rs), so a
-/// write lost at any point still leaves its invalidation behind. Replay and the outbox drain
-/// run every time.
+/// because each marks the documents it may write before it writes anything (writes.rs, and
+/// the replay in `apply`: Python's replay always runs before a sweep), so a write lost at any
+/// point still leaves its invalidation behind. Replay and the outbox drain run every time.
+/// As in Python, the READMEs a scaffold seeds are left to the next sweep.
 pub fn recover(c: &Ctx<'_>) -> Result<(), write::Error> {
     let swept = c
         .recovery

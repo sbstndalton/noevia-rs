@@ -429,7 +429,42 @@ async fn every_document_is_swept_dirty_once_per_process_then_only_what_is_writte
     .await;
     assert_eq!(s, 200, "{body}");
     assert_eq!(dirty(dir.path()), ["b.md"]);
-    // A new process sweeps again.
+    // A journal row replayed by a later write marks the document it writes (no sweep covers it).
+    index(dir.path())
+        .execute("DELETE FROM dirty_documents", [])
+        .unwrap();
+    let row = serde_json::json!({"day": "2030-01-06", "xid": "abcdef78", "sub_header": "09:15 | Synthetic",
+        "body": diary_corpus_write::render_exchange("QA synthetic walk.", "", "abcdef78")});
+    index(dir.path())
+        .execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES ('qa-row','2030',?,?)",
+            rusqlite::params!["exchange", row.to_string()],
+        )
+        .unwrap();
+    let (s, _, body) = send(
+        addr,
+        "PUT",
+        "/api/file",
+        &writer(),
+        &put("a.md", "a3", &sha256(b"a2")),
+    )
+    .await;
+    assert_eq!(s, 200, "{body}");
+    let marked = dirty(dir.path());
+    assert_eq!(marked.len(), 2, "{marked:?}");
+    assert!(marked.contains(&"a.md".to_string()), "{marked:?}");
+    let replayed = marked.iter().find(|d| d.as_str() != "a.md").unwrap();
+    assert!(
+        replayed.starts_with("Entries/") && file_row(dir.path(), replayed).is_some(),
+        "{marked:?}"
+    );
+    let applied: i64 = index(dir.path())
+        .query_row("SELECT applied FROM journal WHERE id='qa-row'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(applied, 1);
+    // A new process sweeps again (now three Markdown documents).
     index(dir.path())
         .execute("DELETE FROM dirty_documents", [])
         .unwrap();
@@ -443,7 +478,12 @@ async fn every_document_is_swept_dirty_once_per_process_then_only_what_is_writte
     )
     .await;
     assert_eq!(s, 200, "{body}");
-    assert_eq!(dirty(dir.path()), ["a.md", "b.md"]);
+    let swept = dirty(dir.path());
+    assert_eq!(swept.len(), 3, "{swept:?}");
+    assert!(
+        swept.contains(&"a.md".to_string()) && swept.contains(&"b.md".to_string()),
+        "{swept:?}"
+    );
 }
 
 #[tokio::test]
@@ -1201,7 +1241,11 @@ async fn a_pending_backup_intent_stops_recovery_before_any_effect() {
     assert_eq!(s, 200, "{body}");
     assert!(outbox(dir.path()).is_empty());
     assert_eq!(journal_rows(dir.path()), [("m".to_string(), 1, 0)]);
-    assert_eq!(dirty(dir.path()), ["Imports/x.md", "Imports/y.md", "a.md"]);
+    // S6b (named difference): the replay marks INDEX.md, which Python's replay leaves to a sweep.
+    assert_eq!(
+        dirty(dir.path()),
+        ["INDEX.md", "Imports/x.md", "Imports/y.md", "a.md"]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

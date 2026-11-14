@@ -361,3 +361,54 @@ fn plan_json(document: &str, plan: &diary_retrieval::index::ReindexPlan) -> Valu
         "error": Value::Null,
     })
 }
+
+/// S8: `api_health`'s tenant detail for a ready managed tenant (`store`), read without a lock:
+/// the journal counts (`Journal.pending_count`, `quarantined_count`) and `Retriever.stats()`
+/// with the live target of the configuration this process owns. None: Python's to answer (no
+/// index, no vector extension, an index still to adopt, a read error).
+pub(crate) fn health_detail(
+    store: &managed::Managed,
+    embedder: Arc<HttpEmbedder>,
+) -> Option<crate::health::TenantDetail> {
+    let index_path = store.db_path().parent()?.join("managed-index.db");
+    if !index_path.is_file() {
+        return None;
+    }
+    let retriever = Retriever::open_existing(
+        &index_path,
+        Shared(embedder.clone()),
+        crate::answer::ReadOnly,
+        Options {
+            adopt_on_read: false,
+            ..Options::default()
+        },
+    )
+    .ok()?;
+    if !retriever.vec_available()
+        || diary_retrieval::slots::needs_legacy_adoption(
+            retriever.connection(),
+            Some(&embedder.active()),
+        )
+        .unwrap_or(true)
+    {
+        return None;
+    }
+    let count =
+        |sql: &str| -> Option<i64> { retriever.connection().query_row(sql, [], |r| r.get(0)).ok() };
+    let journal_pending = count("SELECT COUNT(*) FROM journal WHERE applied = 0")?;
+    let journal_quarantined = count(
+        "SELECT COUNT(*) FROM journal WHERE applied = 1 AND last_error LIKE 'quarantined:%'",
+    )?;
+    let stats = retriever.stats().ok()?;
+    Some(crate::health::TenantDetail {
+        journal_pending,
+        journal_quarantined,
+        retrieval: crate::health::RetrievalStats {
+            chunks: stats.chunks,
+            vec_available: stats.vec_available,
+            dim: stats.dim,
+            model: stats.model,
+            profile: stats.profile,
+        },
+    })
+}

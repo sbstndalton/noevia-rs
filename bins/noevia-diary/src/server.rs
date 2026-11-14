@@ -373,8 +373,15 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
                 || header(headers, "x-cowork-storage").len() > MAX_STORAGE_HEADER_LEN
             {
                 Plan::Serve(None)
-            } else {
+            } else if app.save_embedder.get().is_none()
+                || header_uid.is_empty()
+                || header(headers, "x-cowork-storage").is_empty()
+            {
                 Plan::Decline
+            } else {
+                // S8 (main mode, the embedding owner here: the live target is this process's):
+                // the detail of a ready managed tenant, planned as a read of it.
+                plan(app, Route::Months, headers, recovered)
             }
         }
         Route::Months
@@ -761,16 +768,39 @@ async fn serve(
             let Some(models) = app.models.as_ref() else {
                 return internal_error();
             };
+            let mut detail_of = None;
             if let Some(uid) = health_tenant(&app, &headers) {
-                // Tenant detail needs Python's per-process state (sqlite-vec, the live embedding
-                // target, recovery): only the refusals that leave it out are answered here.
-                match resolve_tenant(&app, &uid, asserted, &headers, None) {
+                // Tenant detail needs the recovered state and the live embedding target: served
+                // here only for a ready managed tenant while this process owns the embedding
+                // configuration (S8, `tenant` from the plan); otherwise only the refusals that
+                // leave it out are answered here.
+                match resolve_tenant(&app, &uid, asserted, &headers, tenant) {
                     Err(resp) if resp.status().is_client_error() => {}
-                    _ => return decline(),
+                    Ok(t) => detail_of = Some(t),
+                    Err(_) => return decline(),
                 }
             }
+            let detail = match detail_of {
+                None => None,
+                Some(t) => {
+                    let Some(embedder) = app.save_embedder.get().cloned() else {
+                        return decline();
+                    };
+                    match tokio::task::spawn_blocking(move || {
+                        crate::reindex::health_detail(&t.store, embedder)
+                    })
+                    .await
+                    {
+                        Ok(Some(d)) => Some(d),
+                        _ => return decline(),
+                    }
+                }
+            };
             let h = health::health(&app.http, models, !app.auth_token.is_empty()).await;
-            json_response(200, &h)
+            match detail {
+                None => json_response(200, &h),
+                Some(d) => json_response(200, &health::WithTenant { base: h, detail: d }),
+            }
         }
         Route::ReadFile => {
             let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
@@ -959,7 +989,14 @@ async fn serve_write(
                 if matches!(op, Op::File | Op::Edit(_)) && matches!(saved, Reply::Json(200, _)) {
                     if let Some(embedder) = app2.save_embedder.get() {
                         drop(ctx);
-                        crate::reindex::after_save(&root, &uid, held, embedder.clone());
+                        // The save is committed: a panic in the re-index must not turn its reply
+                        // into a 500 (the marks stay for the next pass).
+                        let reindexed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            crate::reindex::after_save(&root, &uid, held, embedder.clone());
+                        }));
+                        if reindexed.is_err() {
+                            eprintln!("noevia-diary: edit reindex pending: the re-index failed");
+                        }
                     }
                 }
                 saved
