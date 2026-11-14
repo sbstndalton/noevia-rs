@@ -34,7 +34,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -191,8 +191,15 @@ impl Table {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| log(entry)));
     }
 
+    /// The lease map. A panic elsewhere while it was held does not leave it half-changed (each
+    /// use is one insert, remove or read), so a poisoned lock is taken as it is: otherwise `open`
+    /// would hand out a token that never authenticates and `close` would not revoke (noevia#2676).
+    fn leases(&self) -> MutexGuard<'_, HashMap<String, Arc<Lease>>> {
+        self.leases.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     fn get(&self, key: &str) -> Option<Arc<Lease>> {
-        self.leases.lock().ok()?.get(key).cloned()
+        self.leases().get(key).cloned()
     }
 }
 
@@ -249,12 +256,7 @@ impl Opened {
         if self.closed.swap(true, Ordering::SeqCst) {
             return;
         }
-        let lease = self
-            .table
-            .leases
-            .lock()
-            .ok()
-            .and_then(|mut m| m.remove(&self.key));
+        let lease = self.table.leases().remove(&self.key);
         if let Some(lease) = lease {
             lease.cancel.cancel();
         }
@@ -512,7 +514,7 @@ impl<M: Machines> Relay<M> {
 
     /// Open leases.
     pub fn active(&self) -> usize {
-        self.table.leases.lock().map(|m| m.len()).unwrap_or(0)
+        self.table.leases().len()
     }
 
     /// Open the relay for one Executor run. `model` is the model the task names (`None` or empty:
@@ -584,9 +586,7 @@ impl<M: Machines> Relay<M> {
             active: Mutex::new(0),
             cancel: CancellationToken::new(),
         });
-        if let Ok(mut m) = self.table.leases.lock() {
-            m.insert(hashed.clone(), lease);
-        }
+        self.table.leases().insert(hashed.clone(), lease);
         let mut opened = event("relay.opened", task_id);
         opened.push(("machine".into(), JValue::Str(t.machine_id.clone())));
         self.table.record(JValue::Obj(opened));
@@ -736,9 +736,89 @@ impl<M: Machines> Relay<M> {
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing)]
+#[allow(
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic
+)]
 mod tests {
     use super::*;
+
+    struct NoUpstream;
+
+    impl Upstream for NoUpstream {
+        fn status(&self) -> u16 {
+            200
+        }
+        fn content_type(&self) -> Option<String> {
+            None
+        }
+        async fn next(&mut self) -> Option<Result<Vec<u8>, ()>> {
+            None
+        }
+    }
+
+    /// A machine that is always ready and never reached (only the model list is asked).
+    struct QaMachine;
+
+    impl Machines for QaMachine {
+        type Upstream = NoUpstream;
+        type Error = ();
+        async fn ready(&self, _target: &Target) -> Ready {
+            Ready::ok()
+        }
+        async fn fetch(&self, _request: Forward) -> Result<NoUpstream, ()> {
+            Err(())
+        }
+        fn connect_error(&self, _target: &Target, _error: Option<&()>) -> String {
+            String::new()
+        }
+    }
+
+    fn models(token: &str) -> Request<Vec<u8>> {
+        Request {
+            method: "GET".into(),
+            url: "/v1/models".into(),
+            authorization: Some(format!("Bearer {token}")),
+            accept: None,
+            body: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_poisoned_lease_table_still_opens_authenticates_and_revokes() {
+        let t = Target {
+            machine_id: "qa-m".into(),
+            machine_name: "QA machine".into(),
+            base_url: "http://qa-machine.invalid:8080".into(),
+            model: "synthetic-coder".into(),
+        };
+        let relay = Relay::new(Options::new(
+            Arc::new(QaMachine),
+            Arc::new(move || Some(t.clone())),
+            Some("http://qa-relay.invalid:8095/v1".into()),
+        ));
+        let table = Arc::clone(&relay.table);
+        let _ = std::thread::spawn(move || {
+            let _held = table.leases.lock().unwrap();
+            panic!("QA: poison the lease table");
+        })
+        .join();
+        assert!(relay.table.leases.is_poisoned());
+        let lease = relay.open("qa-poison", None, None).await.unwrap();
+        assert_eq!(relay.active(), 1);
+        assert!(matches!(
+            relay.handle(models(&lease.token)).await,
+            Reply::Json { status: 200, .. }
+        ));
+        lease.close();
+        assert_eq!(relay.active(), 0);
+        assert!(matches!(
+            relay.handle(models(&lease.token)).await,
+            Reply::Json { status: 401, .. }
+        ));
+    }
 
     #[test]
     fn bearer_is_node_s_pattern() {
