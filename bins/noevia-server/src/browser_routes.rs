@@ -6,8 +6,8 @@
 //! answer for answer with core routes/browser.cjs, over crates/browser-task (browser-service.cjs,
 //! browser-executor.cjs, the policy host of browser-policy.cjs), server-projects' task store and the
 //! front's own egress issuer (code_egress.rs, the proxy Code and Browser tasks share). The browser
-//! engine is `NOEVIA_BROWSER_ENGINE`'s; without one Browser mode is unavailable, as it is in Node
-//! without Playwright. Core, told the same switch (rust-browser-executor.cjs), refuses these
+//! engine is the external Chromium at `NOEVIA_BROWSER_ENGINE` (crates/browser-cdp, the DevTools
+//! protocol); without one Browser mode is unavailable, as it is in Node without Playwright. Core, told the same switch (rust-browser-executor.cjs), refuses these
 //! requests, recovers no browser journal, answers the task facts bridge with the flag only and says
 //! Browser mode is available exactly when `NOEVIA_BROWSER_ENGINE` is set.
 //!
@@ -90,15 +90,13 @@ impl Egress for FrontEgress {
     }
 }
 
-/// No engine yet: every launch is refused (Browser mode is unavailable without one anyway).
+/// No engine configured: every launch is refused (Browser mode is unavailable without one anyway:
+/// core's availability probe says so while `NOEVIA_BROWSER_ENGINE` is unset).
 struct NoEngine;
 
 impl browser_task::engine::Launch for NoEngine {
     fn launch(&self) -> Result<Arc<dyn browser_task::engine::Browser>, Fail> {
-        Err(Fail::public(
-            503,
-            "Browser mode needs a browser engine on this server.",
-        ))
+        Err(Fail::public(503, "Browser mode needs a browser engine on this server."))
     }
 }
 
