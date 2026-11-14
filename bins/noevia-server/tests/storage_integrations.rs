@@ -1774,3 +1774,66 @@ async fn provider_test_probes_with_node_rules() {
     assert!(started.elapsed() < Duration::from_secs(9));
     f.stop().await;
 }
+
+// Track S1 (sbstndalton/noevia#2751): a files address on a server whose login check names the space
+// it is in (`<oc:spaceid>`) is saved as that space's address, where the storage client checks first;
+// an address on a server that names none is saved as typed.
+#[tokio::test]
+async fn put_connection_saves_a_files_address_as_the_space_the_server_names() {
+    let d = tempfile::tempdir().unwrap();
+    let db = seed(d.path());
+    let dav = upstream(false).await;
+    let base = dav.base("http");
+    let f = front(d.path()).await;
+    let addr = f.addr;
+    let body = |path: &str| {
+        format!(
+            r#"{{"kind":"webdav","baseUrl":"{base}{path}","username":"qa-user","secret":"qa-token","corpusRoot":"Notes"}}"#
+        )
+    };
+    let named = r#"<d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:response><d:href>/remote.php/dav/files/qa-user/</d:href><d:propstat><d:prop><oc:spaceid>qa-storage$qa-space</oc:spaceid><d:getetag>"e1"</d:getetag></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#;
+    dav.set(move |_: &Seen| {
+        now(reply(
+            "207 Multi-Status",
+            "Content-Type: application/xml\r\n",
+            named,
+        ))
+    });
+    for (typed, saved) in [
+        (
+            "/remote.php/dav/files/qa-user",
+            "/dav/spaces/qa-storage$qa-space",
+        ),
+        (
+            "/remote.php/dav/files/qa-user/Sub%20dir/",
+            "/dav/spaces/qa-storage$qa-space/Sub%20dir",
+        ),
+        ("/remote.php/webdav", "/dav/spaces/qa-storage$qa-space"),
+        (
+            "/dav/spaces/qa-storage$qa-space",
+            "/dav/spaces/qa-storage$qa-space",
+        ),
+        ("/other", "/other"),
+    ] {
+        let (status, out) = put(addr, ADMIN, &body(typed)).await;
+        assert_eq!(status, 200, "{typed}: {out}");
+        assert_eq!(out["baseUrl"], format!("{base}{saved}"), "{typed}");
+        assert_eq!(row(&db, A).unwrap().1, format!("{base}{saved}"), "{typed}");
+    }
+    // The proof of the accepted login is written for the address that was saved.
+    assert!(proofs(d.path()).unwrap()["proofs"][A].is_number());
+    // A server that names no space: saved as typed.
+    dav.set(|_: &Seen| {
+        now(reply(
+            "207 Multi-Status",
+            "",
+            r#"<d:multistatus xmlns:d="DAV:"/>"#,
+        ))
+    });
+    let (status, out) = put(addr, ADMIN, &body("/remote.php/dav/files/qa-user")).await;
+    assert_eq!(status, 200, "{out}");
+    assert_eq!(
+        out["baseUrl"],
+        format!("{base}/remote.php/dav/files/qa-user")
+    );
+}
