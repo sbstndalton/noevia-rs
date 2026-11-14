@@ -38,7 +38,8 @@
 //! - The vector slots a change drops run before the worker is kicked (a drop that fails is tried
 //!   once more), so the worker the kick wakes does not take the config lock first.
 //! - The start-up address guard's verdict for a seeded address is kept for [`VERDICT_TTL`] (the
-//!   check may ask DNS); the active and next addresses are checked together.
+//!   check may ask DNS), a transient one (the name does not resolve yet) for [`TRANSIENT_TTL`]
+//!   only; the active and next addresses are checked together.
 //! - Around every model manager PUT the front writes the service intent file
 //!   (`embedding-service-intent.json`, protocol `rust-embedding-service-intent-v1`): the models
 //!   asked for, `done: false` before the PUT, `done: true` once it returned, whatever it answered.
@@ -92,6 +93,18 @@ const NOT_RECORDED: &str =
     "The embedding service could not be changed: the change could not be recorded.";
 /// How long the start-up address guard's verdict on a seeded address is kept.
 pub const VERDICT_TTL: Duration = Duration::from_secs(60);
+/// How long a transient refusal (the name did not resolve yet) is kept: Node's start-up guard asks again within
+/// seconds (1, 2, 4, 8, 15 s), so a name that comes up just after the start is usable as soon there.
+pub const TRANSIENT_TTL: Duration = Duration::from_secs(5);
+
+/// How long `v` is kept: a transient refusal briefly, anything else for the minute.
+fn kept_for(v: &Verdict) -> Duration {
+    if matches!(v, Err((_, true))) {
+        TRANSIENT_TTL
+    } else {
+        VERDICT_TTL
+    }
+}
 
 /// The environment the answers read (core reads `process.env`).
 const ENV: [&str; 17] = [
@@ -220,16 +233,22 @@ impl Verdicts {
         F: FnOnce(String) -> Fut,
         Fut: Future<Output = Verdict>,
     {
-        let fresh = |when: &Instant| at.saturating_duration_since(*when) < VERDICT_TTL;
-        if let Some((_, v)) = self.map().get(url).filter(|(when, _)| fresh(when)) {
+        let fresh = |when: &Instant, v: &Verdict| at.saturating_duration_since(*when) < kept_for(v);
+        if let Some((_, v)) = self.map().get(url).filter(|(when, v)| fresh(when, v)) {
             return v.clone();
         }
         let v = check(url.to_string()).await;
         let mut map = self.map();
-        map.retain(|_, (when, _)| fresh(when));
+        map.retain(|_, (when, v)| fresh(when, v));
         map.insert(url.to_string(), (at, v.clone()));
         v
     }
+}
+
+/// Whether a kick waits for the hold to end and its queued drops to run (the worker kicked first could publish
+/// into a slot that is about to be dropped, or hold the configuration lock a drop needs).
+fn defer_kick(held: bool, queued_drops: usize) -> bool {
+    held || queued_drops > 0
 }
 
 /// The refusal of a seeded address, `(url, (reason, transient))`, or `None` when it may be used.
@@ -594,7 +613,7 @@ impl Host for Front {
 
     /// `nativeOwner.kick()`; inside a hold it is sent once the hold's drops have run.
     fn kick(&mut self) {
-        if self.held.is_some() || !self.deferred.drops.is_empty() {
+        if defer_kick(self.held.is_some(), self.deferred.drops.len()) {
             self.deferred.kick = true;
         } else {
             self.send_kick();
@@ -1154,7 +1173,7 @@ mod tests {
             }
         };
         let (url, at) = ("http://qa-embed.invalid:8080", Instant::now());
-        let refused: Verdict = Err(("the name does not resolve (ENOTFOUND)".into(), true));
+        let refused: Verdict = Err(("the address is public".into(), false));
         assert_eq!(
             rt.block_on(v.verdict(url, at, check(refused.clone()))),
             refused
@@ -1171,6 +1190,14 @@ mod tests {
         let expired = at + VERDICT_TTL;
         assert_eq!(rt.block_on(v.verdict(url, expired, check(Ok(())))), Ok(()));
         assert_eq!(calls.load(Ordering::SeqCst), 3);
+        // A transient refusal (the name does not resolve yet) is asked again after a few seconds.
+        let pending = "http://qa-embed-late.invalid:8080";
+        let not_yet: Verdict = Err(("the name does not resolve (ENOTFOUND)".into(), true));
+        assert_eq!(rt.block_on(v.verdict(pending, at, check(not_yet.clone()))), not_yet);
+        assert_eq!(rt.block_on(v.verdict(pending, at + Duration::from_secs(4), check(Ok(())))), not_yet);
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+        assert_eq!(rt.block_on(v.verdict(pending, at + Duration::from_secs(6), check(Ok(())))), Ok(()));
+        assert_eq!(calls.load(Ordering::SeqCst), 5);
         // Two checks are not run one after the other (no lock is held while one waits).
         let slow = |_url: String| async {
             tokio::time::sleep(Duration::from_millis(400)).await;
@@ -1291,5 +1318,13 @@ mod tests {
             "http://[2606:4700::1]",
             "2606:4700::1 is not on this network (2606:4700::1 is a public address)",
         );
+    }
+
+    #[test]
+    fn a_kick_waits_for_the_hold_and_its_queued_drops() {
+        assert!(defer_kick(true, 0));
+        assert!(defer_kick(false, 1));
+        assert!(defer_kick(true, 2));
+        assert!(!defer_kick(false, 0));
     }
 }
