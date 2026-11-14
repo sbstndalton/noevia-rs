@@ -97,6 +97,11 @@ const streams = {
   errorPlan: [ev({ type: 'error', error: { type: 'usage_limit_reached', plan_type: 'bad plan', resets_at: [1_800_000_100] } })],
   earlyEnd: [ev({ type: 'response.output_text.delta', item_id: 'm', delta: 'half' })],
   empty: [],
+  // noevia#2699 item 1: TextDecoder drops a byte-order mark at the very start only, also split over chunks.
+  bom: [Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(ev({ type: 'response.output_text.delta', delta: 'b' }))]), ev({ type: 'response.completed', response: {} })],
+  bomSplit: [Buffer.from([0xef]), Buffer.from([0xbb]), Buffer.concat([Buffer.from([0xbf]), Buffer.from(ev({ type: 'response.output_text.delta', delta: 's' }))]), ev({ type: 'response.completed', response: {} })],
+  bomLater: [ev({ type: 'response.output_text.delta', delta: 'a' }), Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(ev({ type: 'response.output_text.delta', delta: 'kept' }))]),
+    ev({ type: 'response.completed', response: {} })],
   doneOnly: ['data: [DONE]\n\n'],
   junk: [': comment\n\n', 'event: x\ndata: not json\n\n', 'data: null\n\n', 'data: 5\n\n', 'data:   {"type":"response.output_text.delta","delta":"sp"}\r\n\r\n',
     'data: {"type":"response.output_text.delta",\ndata: "delta":"multi"}\n\n', 'data: {"type":"response.completed","response":{}}'],
@@ -116,7 +121,20 @@ async function partsOf(chunks) {
 // ── the full fetch path ─────────────────────────────────────────────────────
 const catalogue = [{ slug: 'm-large', effort: 'medium', summary: 'detailed', summaryParam: true, levels: ['low', 'medium', 'high', 'xhigh'] },
   { slug: 'm-small', summaryParam: false }, { slug: 'm-none', summary: 'none', summaryParam: true, levels: [] }, { slug: 'm-auto', summaryParam: true, effort: '' }];
-const sseResponse = (chunks, status = 200) => new Response(new ReadableStream({ start(c) { for (const x of chunks) c.enqueue(typeof x === 'string' ? Buffer.from(x) : x); c.close(); } }), { status, headers: { 'content-type': 'text/event-stream' } });
+// One fake backend answer: chunks (or one text), optionally labelled as a provider message, without a
+// body, failing after `failAfter` chunks with `failMessage`, or a send that rejects (`throws`).
+function upstreamResponse(u) {
+  if (u.throws) throw new Error(u.throws);
+  const headers = { 'content-type': 'text/event-stream', ...(u.labelled ? { 'x-noevia-provider-message': '1' } : {}) };
+  if (u.nobody) return new Response(null, { status: u.status, headers });
+  const chunks = (u.chunks || [u.text || '']).map((x) => (typeof x === 'string' ? Buffer.from(x) : x));
+  let i = 0;
+  return new Response(new ReadableStream({ pull(c) {
+    if (u.failAfter !== undefined && i === u.failAfter) { c.error(new Error(u.failMessage || 'reset')); return; }
+    if (i < chunks.length) { c.enqueue(chunks[i++]); return; }
+    c.close();
+  } }), { status: u.status, headers });
+}
 
 async function runFetch(c) {
   const sent = [];
@@ -129,10 +147,19 @@ async function runFetch(c) {
   };
   const db = { exec() {}, prepare() { return { get() { return null; } }; } };
   const t = mod.createChatGptOAuth({ db, broker, signal: () => 'sig-1', now: () => NOW, config: { codexBaseUrl: 'https://backend.invalid/api/' },
-    fetchImpl: async (url, init) => { sent.push({ url, headers: init.headers, body: init.body, redirect: init.redirect }); const u = c.upstream.shift() || { status: 200, chunks: streams.text }; return sseResponse(u.chunks || [u.text || ''], u.status); } });
+    fetchImpl: async (url, init) => { sent.push({ url, headers: init.headers, body: init.body, redirect: init.redirect }); const u = c.upstream.shift() || { status: 200, chunks: streams.text }; return upstreamResponse(u); } });
   let r;
   try { r = await t.fetchFor('qa-user', { conversation: c.conversation ?? null })(c.url || 'http://x/v1/chat/completions', { body: c.body }); } catch (e) { return { thrown: String(e && e.message), sent, brokerCalls }; }
-  return { status: r.status, contentType: r.headers.get('content-type'), providerMessage: r.headers.get('x-noevia-provider-message'), text: await r.text(), sent, brokerCalls };
+  // The body as the chat loop reads it; a failed read keeps what came before it (readError).
+  let text = '';
+  let readError;
+  if (r.body) {
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    try { for (;;) { const { done, value } = await reader.read(); if (done) break; text += dec.decode(value, { stream: true }); } text += dec.decode(); } catch (e) { readError = String(e && e.message); }
+  }
+  return { status: r.status, contentType: r.headers.get('content-type'), providerMessage: r.headers.get('x-noevia-provider-message'), text,
+    ...(readError === undefined ? {} : { readError }), sent, brokerCalls };
 }
 const ok = (extra = {}) => ({ ok: true, session: { accessToken: 'tok-1', accountId: 'acct-1', fedRamp: false, expiresAt: NOW + 3_600_000, generation: 4, ...extra } });
 const okSession = () => [ok()];
@@ -180,6 +207,53 @@ const upstreamErrors = [[500, ''], [500, '{"error":{"message":"internal"}}'], [4
   [400, '{"error":{"type":"usage_not_included"}}'], [402, '{"error":{"code":"credit_balance_exhausted"}}'], [503, '{"message":"' + 'x'.repeat(400) + '"}'],
   [429, '{"error":{"type":"usage_limit_reached","plan_type":"team","resets_at":1800007200}}'], [404, '"just a string"'], [418, '{"error":"flat","detail":"d"}'], [502, '[1,2]']];
 for (const [status, text] of upstreamErrors) fetchCases.push({ name: `upstream-${status}-${text.slice(0, 20)}`, body: body({}), sessions: okSession(), upstream: [{ status, text }] });
+// The edges fetchFor handles inline (noevia#2699 item 3): labelled pass-through, body-less answers, the
+// 64 KiB cap on a failed answer, failed reads at every stage, a send that rejects, odd catalogues.
+const pad = (head, tail, size) => head + ' '.repeat(size - Buffer.byteLength(head) - Buffer.byteLength(tail)) + tail;
+const capJson = (size) => pad('{"error":{"message":"m"}', '}', size);
+const edgeCases = [
+  { name: 'labelledError', upstream: [{ status: 409, text: '{"error":{"message":"held"}}', labelled: true }] },
+  { name: 'labelledOk', upstream: [{ status: 200, chunks: streams.text, labelled: true }] },
+  { name: 'labelledAfter401', sessions: [ok(), ok({ accessToken: 'tok-2' })], upstream: [{ status: 401, text: '' }, { status: 503, text: 'busy', labelled: true }] },
+  { name: 'noBody200', upstream: [{ status: 200, nobody: true }] },
+  { name: 'noBody200Stream', stream: true, upstream: [{ status: 200, nobody: true }] },
+  { name: 'noBody500', upstream: [{ status: 500, nobody: true }] },
+  { name: 'noBody429', upstream: [{ status: 429, nobody: true }] },
+  { name: 'noBody204', upstream: [{ status: 204, nobody: true }] },
+  { name: 'noBody304', upstream: [{ status: 304, nobody: true }] },
+  { name: 'capExact', upstream: [{ status: 500, text: capJson(65536) }] },
+  { name: 'capOver', upstream: [{ status: 500, text: capJson(65537) }] },
+  { name: 'capOverChunks', upstream: [{ status: 500, chunks: [capJson(65537).slice(0, 30000), capJson(65537).slice(30000, 60000), capJson(65537).slice(60000)] }] },
+  { name: 'capExactThenMore', upstream: [{ status: 500, chunks: [capJson(65536), ' '] }] },
+  { name: 'capExactThenEmpty', upstream: [{ status: 500, chunks: [capJson(65536), ''] }] },
+  { name: 'capLimitInside', upstream: [{ status: 403, text: 'x'.repeat(65000) + 'usage limit' }] },
+  { name: 'capLimitCut', upstream: [{ status: 403, text: 'x'.repeat(65530) + 'usage limit' }] },
+  { name: 'capMultibyte', upstream: [{ status: 418, text: pad('{"detail":"d"', '}', 65535) + 'é' }] },
+  { name: 'errorBodyFails', upstream: [{ status: 500, chunks: ['{"error":{"message":"m"}}'], failAfter: 1, failMessage: 'reset' }] },
+  { name: 'errorBodyFailsAtOnce', upstream: [{ status: 429, chunks: [], failAfter: 0 }] },
+  { name: 'streamFailFirst', stream: true, upstream: [{ status: 200, chunks: streams.text, failAfter: 0, failMessage: 'socket hang up ' + 'z'.repeat(300) }] },
+  { name: 'streamFailMidEvent', stream: true, upstream: [{ status: 200, chunks: ['data: {"type":"response.output_text.delta",'], failAfter: 1, failMessage: 'reset' }] },
+  { name: 'streamFailLater', stream: true, upstream: [{ status: 200, chunks: streams.text, failAfter: 1, failMessage: 'reset' }] },
+  { name: 'streamFailAfterFinish', stream: true, upstream: [{ status: 200, chunks: streams.text, failAfter: streams.text.length, failMessage: 'reset' }] },
+  { name: 'completeFailLater', upstream: [{ status: 200, chunks: streams.text, failAfter: 1, failMessage: 'reset' }] },
+  { name: 'completeFailFirst', upstream: [{ status: 200, chunks: [], failAfter: 0, failMessage: 'gone' }] },
+  { name: 'completeFailAfterError', upstream: [{ status: 200, chunks: streams.failed, failAfter: streams.failed.length, failMessage: 'late' }] },
+  { name: 'sendThrows', upstream: [{ throws: 'connect refused' }] },
+  { name: 'retryThenThrows', sessions: [ok(), ok({ accessToken: 'tok-2' })], upstream: [{ status: 401, text: '' }, { throws: 'second refused' }] },
+  { name: 'bomStream', stream: true, upstream: [{ status: 200, chunks: streams.bom }] },
+  { name: 'bomComplete', upstream: [{ status: 200, chunks: streams.bomSplit }] },
+  { name: 'bomErrorBody', upstream: [{ status: 500, text: '\ufeff{"error":{"message":"m"}}' }] },
+  { name: 'catalogueObject', catalogue: { ok: true, models: {} } },
+  { name: 'catalogueString', catalogue: { ok: true, models: 'm-large' }, effort: 'xhigh' },
+  { name: 'catalogueNumber', catalogue: { ok: true, models: 0 } },
+  { name: 'catalogueMissing', catalogue: { ok: true }, effort: 'ultra' },
+  { name: 'catalogueNull', catalogue: { ok: true, models: null } },
+  { name: 'catalogueNonArrayNoBody', catalogue: { ok: true, models: {} }, model: 'm-other', effort: 'low' },
+];
+for (const e of edgeCases) {
+  fetchCases.push({ name: e.name, body: body({ ...(e.stream ? { stream: true } : {}), ...(e.effort ? { reasoning_effort: e.effort } : {}), ...(e.model ? { model: e.model } : {}) }),
+    ...(e.catalogue ? { catalogue: e.catalogue } : {}), sessions: e.sessions || okSession(), upstream: e.upstream || [] });
+}
 
 // The lines core keeps as constants, cut from its source by exact patterns (fails if the shape moves).
 function coreTexts() {
@@ -197,7 +271,9 @@ function coreTexts() {
   for (const [name, chunks] of Object.entries(streams)) streamOut[name] = { chunks: chunks.map((c) => Buffer.from(c).toString('base64')), parts: await partsOf(chunks) };
   const fetchOut = [];
   for (const c of fetchCases) {
-    const input = JSON.parse(JSON.stringify({ ...c, sessions: c.sessions, upstream: c.upstream.map((u) => ({ status: u.status, chunks: (u.chunks || [u.text || '']).map((x) => Buffer.from(x).toString('base64')) })) }));
+    const input = JSON.parse(JSON.stringify({ ...c, sessions: c.sessions, upstream: c.upstream.map((u) => ({ status: u.status, chunks: (u.chunks || [u.text || '']).map((x) => Buffer.from(x).toString('base64')),
+      ...(u.labelled ? { labelled: true } : {}), ...(u.nobody ? { nobody: true } : {}), ...(u.failAfter === undefined ? {} : { failAfter: u.failAfter, failMessage: u.failMessage || 'reset' }),
+      ...(u.throws ? { throws: u.throws } : {}) })) }));
     fetchOut.push({ input, output: await runFetch(c) });
   }
   const fixture = scrubDeep({

@@ -124,7 +124,7 @@ pub enum Answer<B> {
     /// 200 `application/json`: one completion.
     Completion(String),
     /// 200 `text/event-stream`.
-    Stream(Streaming<B>),
+    Stream(Box<Streaming<B>>),
     /// Core's fetch rejected with this message: the chat loop treats it as a failed fetch.
     Thrown(String),
 }
@@ -383,11 +383,11 @@ pub async fn fetch<W: Wire>(
         };
         return match ChatStream::start(t, reply, first.as_ref()) {
             (Start::Refuse(r), _) => Answer::Error(r),
-            (Start::Stream(head), Some(stream)) => Answer::Stream(Streaming {
+            (Start::Stream(head), Some(stream)) => Answer::Stream(Box::new(Streaming {
                 head,
                 stream,
                 reader,
-            }),
+            })),
             (Start::Stream(_), None) => Answer::Error(Refusal::new(502, t.could_not_finish())),
         };
     }
