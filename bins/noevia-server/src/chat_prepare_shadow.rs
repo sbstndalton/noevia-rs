@@ -276,7 +276,9 @@ pub fn run(
             .flatten()
     });
     let project = match (project_id, projects.as_ref().map(|p| p.get("projects"))) {
-        (Some(id), Some(JValue::Arr(list))) => list.iter().find(|p| p.get("id").as_str() == Some(id)),
+        (Some(id), Some(JValue::Arr(list))) => {
+            list.iter().find(|p| p.get("id").as_str() == Some(id))
+        }
         _ => None,
     };
     compare(&ShadowTurn {

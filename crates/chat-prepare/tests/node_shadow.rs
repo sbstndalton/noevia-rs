@@ -158,8 +158,10 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     let wrong: Vec<String> = replayed
         .iter()
         .filter(|r| {
-            matches!(r.verdict, Verdict::Diff(_) | Verdict::Failed(_) | Verdict::Skip("project-store"))
-                || matches!(r.without_catalogue, Verdict::Diff(_) | Verdict::Failed(_))
+            matches!(
+                r.verdict,
+                Verdict::Diff(_) | Verdict::Failed(_) | Verdict::Skip("project-store")
+            ) || matches!(r.without_catalogue, Verdict::Diff(_) | Verdict::Failed(_))
         })
         .map(|r| {
             format!(
