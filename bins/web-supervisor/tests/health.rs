@@ -386,3 +386,16 @@ fn node_probe_agrees() {
     assert_eq!(node, 1);
     assert!(took >= Duration::from_millis(4900) && took < Duration::from_millis(7000), "{took:?}");
 }
+
+/// With `WEB_DOCKERFILE` naming noevia's build/web.Dockerfile, its HEALTHCHECK must still run exactly
+/// `NODE_PROBE`, so this stays the port of what the image runs (checked at noevia c65b55b7).
+#[test]
+fn node_probe_is_the_image_healthcheck() {
+    let Ok(path) = std::env::var("WEB_DOCKERFILE") else {
+        eprintln!("node_probe_is_the_image_healthcheck: skipped (WEB_DOCKERFILE unset)");
+        return;
+    };
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| unreachable!("{path}: {e}"));
+    let line = text.lines().find(|l| l.starts_with("HEALTHCHECK")).unwrap_or_default();
+    assert!(line.contains(&format!("CMD node -e \"{NODE_PROBE}\"")), "{path}: {line}");
+}
