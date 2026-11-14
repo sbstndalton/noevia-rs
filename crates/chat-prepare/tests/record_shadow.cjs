@@ -12,8 +12,9 @@
 // seeded PRNG), passed through JSON first so Node reads exactly what is recorded. Each case is one whole FREE-CHAT
 // turn (no project) through chat.cjs createChatHandler().handleChat with the front's native hand-off requested
 // (nativeHandoff: requested, capabilities {skills, once}, not supervising), as crates/chat-turn's record_turns.cjs
-// asks for it. The turn is Manual on the local default provider: no Auto roles (autoRoles() is null), so no routing
-// modes, no cloud route, no classification; the model is the loaded one (lastLoadedModel). No external provider, no
+// asks for it. The turn is on the local default provider with no routing modes and no cloud route: Manual (no Auto
+// roles, autoRoles() is null, the model the loaded one, lastLoadedModel) unless a case names `roles` and the
+// classifier's `pick` (an Automatic turn). No external provider, no
 // Inference machine, no tool gate, no framing reasoner, no brain context (its flag off), no provenance policy, no step
 // supervision, the stream guard off (provider-egress.cjs default), no chat-wide grant, no tombstones. Such a turn ends
 // after its preparation with a `prepared` frame (rust-chat-native.cjs preparedTurn), the last event of the stream;

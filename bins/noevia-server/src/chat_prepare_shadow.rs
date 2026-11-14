@@ -137,8 +137,8 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
 /// The toolbox catalogue as it stands, read without the side effects of
 /// [`crate::mcp_discovery::read`]: no touch of the demand marker (which wakes core's publishers),
 /// no discovery refresh and no wait. The facts file as published (a stale one is refused), then
-/// discovery's current snapshot. `None` when either is not current: a history that needs the
-/// catalogue is then skipped.
+/// discovery's current snapshot (no older than its refresh age). `None` when either is not current:
+/// a history that needs the catalogue is then skipped.
 fn quiet_catalogue(app: &Arc<App>) -> Option<crate::mcp_discovery::Catalogue> {
     let dir = app.config.data_dir.clone()?;
     let file = dir.join(crate::mcp_discovery::FACTS_FILE);
@@ -151,7 +151,12 @@ fn quiet_catalogue(app: &Arc<App>) -> Option<crate::mcp_discovery::Catalogue> {
     let facts = wtf16::parse(std::str::from_utf8(&snap.raw).ok()?).ok()?;
     let handle = crate::mcp_discovery_backend::handle(app)?;
     let discovered = handle.source.current();
-    if discovered.generation == 0 {
+    // Never answered, or (with MCP servers to ask) older than `read` would use without a refresh.
+    let now = crate::identity::now_ms();
+    if discovered.generation == 0
+        || (discovered.enabled
+            && now.saturating_sub(discovered.discovered_at) >= crate::mcp_discovery_actor::TTL_MS)
+    {
         return None;
     }
     crate::mcp_discovery::compose(
