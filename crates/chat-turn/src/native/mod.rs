@@ -1023,7 +1023,9 @@ impl<H: Host> Turn<'_, H> {
             || gate.once_tools.contains(tool)
             || gate.writes.contains(tool)
             || host.left()
-            || host.tool_policy(tool, gate.writes.contains(tool)) != "allow"
+            // chat.cjs `policyMode(userId, tool)` with isWriteTool(tool): never a write here (refused above, as core
+            // never prefetches one).
+            || host.tool_policy(tool, false) != "allow"
         {
             return false;
         }

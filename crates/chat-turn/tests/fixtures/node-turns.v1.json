@@ -119890,7 +119890,7 @@
   },
   {
    "name": "gate_prefetch_throws",
-   "about": "The prefetched read throws: failed without ERROR text, so prefetch.failed and the read is required; the model calls it and it throws again.",
+   "about": "The prefetched read throws (ERROR text, failed): prefetch.failed and the read is required; the model's identical call gets the same error from the turn without running again.",
    "input": {
     "body": {
      "message": "QA hello",
@@ -121665,7 +121665,7 @@
   },
   {
    "name": "gate_prefetch_free_chat",
-   "about": "A prefetch in a chat outside any project: where the fetched-for-you note goes when the turn has its own system message or none.",
+   "about": "A prefetch in a chat outside any project: the fetched-for-you note joins the free chat's own system message.",
    "input": {
     "body": {
      "message": "QA hello",
