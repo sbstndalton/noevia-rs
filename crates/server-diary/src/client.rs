@@ -253,18 +253,20 @@ impl Sidecar {
             return Err(CallError::Redirect);
         }
         let (status, ok) = (response.status().as_u16(), response.status().is_success());
-        Ok(match read_capped(&mut response, JSON_REPLY_CAP, deadline).await? {
-            Capped::Overflow => JsonReply {
-                ok: false,
-                status,
-                body: None,
+        Ok(
+            match read_capped(&mut response, JSON_REPLY_CAP, deadline).await? {
+                Capped::Overflow => JsonReply {
+                    ok: false,
+                    status,
+                    body: None,
+                },
+                Capped::Bytes(bytes) => JsonReply {
+                    ok,
+                    status,
+                    body: Some(parse_or_text(&bytes)?),
+                },
             },
-            Capped::Bytes(bytes) => JsonReply {
-                ok,
-                status,
-                body: Some(parse_or_text(&bytes)?),
-            },
-        })
+        )
     }
 
     /// `fetchJson` with the tenant headers and the 428 retry (`diaryFetchJson`).

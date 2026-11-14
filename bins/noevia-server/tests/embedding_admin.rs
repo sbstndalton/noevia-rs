@@ -155,7 +155,10 @@ fn body_of(request: &str) -> Value {
 async fn embeddings(vector: Value) -> (String, Seen) {
     stub(move |req| {
         if req.starts_with("GET /v1/models ") {
-            return (200, json!({"data": [{"id": "qa-embed-a"}, {"id": "qa-embed-b"}]}).to_string());
+            return (
+                200,
+                json!({"data": [{"id": "qa-embed-a"}, {"id": "qa-embed-b"}]}).to_string(),
+            );
         }
         if req.starts_with("POST /v1/embeddings ") {
             let n = body_of(req)["input"].as_array().unwrap().len();
@@ -253,7 +256,10 @@ async fn world(on: bool, extra: &[(&str, String)]) -> World {
         ("EMBEDDING_BASE_URL", embed.clone()),
         ("DIARY_BASE_URL", "http://127.0.0.1:9".to_owned()),
         ("DIARY_AUTH_TOKEN", DIARY_TOKEN.to_owned()),
-        ("DIARY_TENANT_KEY", "qa-tenant-key-0123456789abcdef0123456789".to_owned()),
+        (
+            "DIARY_TENANT_KEY",
+            "qa-tenant-key-0123456789abcdef0123456789".to_owned(),
+        ),
         ("MODEL_LOADER_TOKEN", LOADER_TOKEN.to_owned()),
     ]
     .into_iter()
@@ -301,9 +307,10 @@ impl World {
         std::fs::write(self.path("embedding-config.json"), state.to_string()).unwrap();
     }
     fn kicked(&self) -> Option<u64> {
-        let v: Value =
-            serde_json::from_slice(&std::fs::read(self.path("embedding-worker-request.json")).ok()?)
-                .unwrap();
+        let v: Value = serde_json::from_slice(
+            &std::fs::read(self.path("embedding-worker-request.json")).ok()?,
+        )
+        .unwrap();
         assert_eq!(v["start"], START);
         v["sequence"].as_u64()
     }
@@ -377,7 +384,14 @@ impl World {
             .unwrap();
         let vectors = vec![vec![1.0, 0.0]; rows.len()];
         store
-            .publish(&index, &target, &rows, &vectors, version, &Control::default())
+            .publish(
+                &index,
+                &target,
+                &rows,
+                &vectors,
+                version,
+                &Control::default(),
+            )
             .unwrap();
         index
     }
@@ -391,7 +405,9 @@ impl World {
         let db = embedding_worker::sqlite::open_vec_required(&path).unwrap();
         let key = format!("slot:{}", embedding_worker::sqlite::slot_id(&target));
         let found: Option<String> = db
-            .query_row("SELECT value FROM vec_meta WHERE key=?", [key], |r| r.get(0))
+            .query_row("SELECT value FROM vec_meta WHERE key=?", [key], |r| {
+                r.get(0)
+            })
             .ok();
         found.map(|_| self.store().coverage(index, &target).unwrap())
     }
@@ -405,8 +421,19 @@ fn admin(w: &World) -> (&'static str, SocketAddr) {
 async fn switch_unset_every_method_is_node_s() {
     let w = world(false, &[]).await;
     for method in ["GET", "POST", "PUT", "DELETE"] {
-        let a = call(w.addr, method, "/api/embedding", ADMIN, r#"{"action":"finish"}"#).await;
-        assert_eq!((a.status, a.body), (202, json!({"relayed": true})), "{method}");
+        let a = call(
+            w.addr,
+            method,
+            "/api/embedding",
+            ADMIN,
+            r#"{"action":"finish"}"#,
+        )
+        .await;
+        assert_eq!(
+            (a.status, a.body),
+            (202, json!({"relayed": true})),
+            "{method}"
+        );
     }
     assert_eq!(w.node.lock().unwrap().len(), 4);
     assert_eq!(w.saved(), None);
@@ -418,26 +445,49 @@ async fn under_the_switch_every_method_is_the_front_s() {
     let w = world(true, &[]).await;
     let anonymous = call(w.addr, "GET", "/api/embedding", "", "").await;
     // core's gate refuses before the route (whose own `Sign in required` is never reached).
-    assert_eq!((anonymous.status, anonymous.body), (401, json!({"error": "unauthorized"})));
+    assert_eq!(
+        (anonymous.status, anonymous.body),
+        (401, json!({"error": "unauthorized"}))
+    );
     for method in ["GET", "POST", "DELETE"] {
         let a = call(w.addr, method, "/api/embedding", MEMBER, "{}").await;
-        assert_eq!((a.status, &a.body), (403, &json!({"error": "Administrator required"})), "{method}");
+        assert_eq!(
+            (a.status, &a.body),
+            (403, &json!({"error": "Administrator required"})),
+            "{method}"
+        );
         assert!(a.head.contains("cache-control: no-store"));
     }
     let (who, addr) = admin(&w);
     for method in ["PUT", "DELETE", "PATCH", "OPTIONS"] {
         let a = call(addr, method, "/api/embedding", who, "{}").await;
-        assert_eq!((a.status, &a.body), (405, &json!({"error": "Method not allowed"})), "{method}");
+        assert_eq!(
+            (a.status, &a.body),
+            (405, &json!({"error": "Method not allowed"})),
+            "{method}"
+        );
         assert!(a.head.contains("cache-control: no-store"));
     }
     let bad = call(addr, "POST", "/api/embedding", who, "{not json").await;
-    assert_eq!((bad.status, bad.body), (400, json!({"error": "invalid JSON"})));
-    let big = format!("{{\"action\":\"finish\",\"pad\":\"{}\"}}", "q".repeat(1024 * 1024));
+    assert_eq!(
+        (bad.status, bad.body),
+        (400, json!({"error": "invalid JSON"}))
+    );
+    let big = format!(
+        "{{\"action\":\"finish\",\"pad\":\"{}\"}}",
+        "q".repeat(1024 * 1024)
+    );
     let bad = call(addr, "POST", "/api/embedding", who, &big).await;
-    assert_eq!((bad.status, bad.body), (400, json!({"error": "invalid JSON"})));
+    assert_eq!(
+        (bad.status, bad.body),
+        (400, json!({"error": "invalid JSON"}))
+    );
     let unknown = post(addr, json!({"action": "qa-unknown"})).await;
     assert_eq!(unknown.status, 400);
-    assert!(unknown.body["error"].as_str().unwrap().starts_with("action must be one of"));
+    assert!(unknown.body["error"]
+        .as_str()
+        .unwrap()
+        .starts_with("action must be one of"));
     // The WHATWG pathname is the route's too.
     let dotted = call(addr, "GET", "/api/x/../embedding", MEMBER, "").await;
     assert_eq!(dotted.status, 403);
@@ -461,12 +511,18 @@ async fn get_reports_the_projects_the_diary_and_the_service() {
     assert!(a.head.contains("cache-control: no-store"));
     let p = &a.body["projects"];
     assert_eq!(p["active"], w.target("qa-embed-a"));
-    assert_eq!((&p["next"], &p["previous"], &p["source"]), (&Value::Null, &Value::Null, &json!("environment")));
+    assert_eq!(
+        (&p["next"], &p["previous"], &p["source"]),
+        (&Value::Null, &Value::Null, &json!("environment"))
+    );
     assert_eq!(
         p["coverage"]["active"],
         json!({"indexes": 1, "chunks": 2, "vectors": 2, "unavailable": 0, "complete": true, "ready": true})
     );
-    assert_eq!((&p["stale"], &p["configValid"], &p["running"]), (&json!(false), &json!(true), &json!(false)));
+    assert_eq!(
+        (&p["stale"], &p["configValid"], &p["running"]),
+        (&json!(false), &json!(true), &json!(false))
+    );
     assert_eq!((&p["duty"], &p["batch"]), (&json!(0.5), &json!(4)));
     assert_eq!(a.body["diary"]["active"]["model"], "qa-embed-a");
     let mut shown = service.clone();
@@ -480,7 +536,11 @@ async fn get_reports_the_projects_the_diary_and_the_service() {
     // A worker status of another start is not current: stale, and no service.
     std::fs::write(w.path("embedding-worker-status.json"), json!({"protocol": "rust-embedding-worker-v1", "start": "ffffffffffffffffffffffffffffffff", "at": now()}).to_string()).unwrap();
     let w2 = world(true, &[]).await;
-    std::fs::copy(w.path("embedding-worker-status.json"), w2.path("embedding-worker-status.json")).unwrap();
+    std::fs::copy(
+        w.path("embedding-worker-status.json"),
+        w2.path("embedding-worker-status.json"),
+    )
+    .unwrap();
     let b = call(w2.addr, "GET", "/api/embedding", ADMIN, "").await;
     assert_eq!(b.body["projects"]["stale"], true);
     assert!(b.body.get("service").is_none());
@@ -503,13 +563,20 @@ async fn set_next_switch_rollback_and_finish_save_the_file_kick_and_audit() {
     let text = std::fs::read_to_string(w.path("embedding-config.json")).unwrap();
     assert!(text.starts_with("{\n  \"version\": 1,"));
     use std::os::unix::fs::PermissionsExt;
-    let mode = std::fs::metadata(w.path("embedding-config.json")).unwrap().permissions().mode();
+    let mode = std::fs::metadata(w.path("embedding-config.json"))
+        .unwrap()
+        .permissions()
+        .mode();
     assert_eq!(mode & 0o777, 0o600);
     let first = w.kicked().unwrap();
     assert!(first >= now() - 60_000);
     assert_eq!(
         w.audits("embedding.set-next"),
-        vec![(A.to_string(), None, json!({"scope": "projects", "model": "qa-embed-b", "profile": null, "force": false, "projects": "ok", "diary": "skipped"}))]
+        vec![(
+            A.to_string(),
+            None,
+            json!({"scope": "projects", "model": "qa-embed-b", "profile": null, "force": false, "projects": "ok", "diary": "skipped"})
+        )]
     );
     assert!(w.lock_free());
 
@@ -553,8 +620,16 @@ async fn clear_next_and_rollback_drop_the_abandoned_vectors_after_the_hold() {
     let cleared = post(w.addr, json!({"action": "clear-next", "scope": "projects"})).await;
     assert_eq!(cleared.status, 200, "{}", cleared.body);
     assert_eq!(cleared.body["projects"]["next"], Value::Null);
-    assert_eq!(w.slot(&index, "qa-embed-c"), None, "the abandoned next's slot is dropped");
-    assert_eq!(w.slot(&kept, "qa-embed-a"), Some((2, 2)), "the active slot stays");
+    assert_eq!(
+        w.slot(&index, "qa-embed-c"),
+        None,
+        "the abandoned next's slot is dropped"
+    );
+    assert_eq!(
+        w.slot(&kept, "qa-embed-a"),
+        Some((2, 2)),
+        "the active slot stays"
+    );
     assert!(w.lock_free());
 
     // A rollback drops the next it abandons too, and keeps both the targets it swaps.
@@ -584,10 +659,16 @@ async fn refusals_change_nothing_and_release_the_lock() {
     let addr = w.addr;
     let public = post(addr, json!({"action": "set-next", "target": {"baseUrl": "http://8.8.8.8:8080", "model": "qa-embed-b"}})).await;
     assert_eq!(public.status, 400);
-    assert_eq!(public.body, json!({"error": "The embeddings server must be on this network: it receives the text of every project and the Diary (8.8.8.8 is not on this network (8.8.8.8 is a public address)).", "code": "publicEndpoint"}));
+    assert_eq!(
+        public.body,
+        json!({"error": "The embeddings server must be on this network: it receives the text of every project and the Diary (8.8.8.8 is not on this network (8.8.8.8 is a public address)).", "code": "publicEndpoint"})
+    );
     let unserved = post(addr, json!({"action": "set-next", "scope": "projects", "target": {"baseUrl": w.embed, "model": "qa-embed-z"}})).await;
     assert_eq!(unserved.status, 409);
-    assert_eq!(unserved.body, json!({"error": "The embeddings server does not serve qa-embed-z.", "code": "modelNotServed", "served": ["qa-embed-a", "qa-embed-b"]}));
+    assert_eq!(
+        unserved.body,
+        json!({"error": "The embeddings server does not serve qa-embed-z.", "code": "modelNotServed", "served": ["qa-embed-a", "qa-embed-b"]})
+    );
     let none = post(addr, json!({"action": "switch", "scope": "projects"})).await;
     assert_eq!(none.status, 409);
     assert_eq!(none.body["projects"]["code"], "noNext");
@@ -600,7 +681,10 @@ async fn refusals_change_nothing_and_release_the_lock() {
     let held = server_projects::lock::acquire(&w.path("embedding-config.json")).unwrap();
     let busy = post(addr, json!({"action": "set-next", "scope": "projects", "target": {"baseUrl": w.embed, "model": "qa-embed-b"}})).await;
     assert_eq!(busy.status, 500);
-    assert_eq!(busy.body["projects"], json!({"error": "Embedding config lock unavailable", "status": 500}));
+    assert_eq!(
+        busy.body["projects"],
+        json!({"error": "Embedding config lock unavailable", "status": 500})
+    );
     assert_eq!(w.saved(), None);
     drop(held);
     let ok = post(addr, json!({"action": "set-next", "scope": "projects", "target": {"baseUrl": w.embed, "model": "qa-embed-b"}})).await;
@@ -614,21 +698,34 @@ async fn refusals_change_nothing_and_release_the_lock() {
     assert_eq!(damaged.body["projects"]["code"], "badState");
     let status = call(addr, "GET", "/api/embedding", ADMIN, "").await;
     assert_eq!(status.body["projects"]["active"]["profile"], "unavailable");
-    assert!(status.body["projects"]["damaged"].as_str().unwrap().contains("cannot be read (not valid JSON)"));
-    assert_eq!(std::fs::read_to_string(w.path("embedding-config.json")).unwrap(), "{qa damaged");
+    assert!(status.body["projects"]["damaged"]
+        .as_str()
+        .unwrap()
+        .contains("cannot be read (not valid JSON)"));
+    assert_eq!(
+        std::fs::read_to_string(w.path("embedding-config.json")).unwrap(),
+        "{qa damaged"
+    );
     assert!(w.lock_free());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_seeded_public_address_is_refused_as_at_start_up() {
-    let w = world(true, &[("EMBEDDING_BASE_URL", "http://8.8.4.4:8080".into())]).await;
+    let w = world(
+        true,
+        &[("EMBEDDING_BASE_URL", "http://8.8.4.4:8080".into())],
+    )
+    .await;
     let a = call(w.addr, "GET", "/api/embedding", ADMIN, "").await;
     assert_eq!(a.body["projects"]["active"]["profile"], "unavailable");
     assert_eq!(a.body["projects"]["damaged"], "EMBEDDING_BASE_URL http://8.8.4.4:8080 refused: 8.8.4.4 is not on this network (8.8.4.4 is a public address)");
     // core's own answer here: its setNext reaches the configuration outside the hold.
     let set = post(w.addr, json!({"action": "set-next", "scope": "projects", "target": {"baseUrl": w.embed, "model": "qa-embed-b"}})).await;
     assert_eq!(set.status, 500);
-    assert_eq!(set.body["projects"], json!({"error": "Embedding configuration requires the publication lock", "status": 500}));
+    assert_eq!(
+        set.body["projects"],
+        json!({"error": "Embedding configuration requires the publication lock", "status": 500})
+    );
     assert_eq!(w.saved(), None);
     assert!(w.lock_free());
 }
@@ -638,10 +735,16 @@ async fn the_diary_half_goes_to_the_sidecar_and_an_unreachable_diary_is_a_207() 
     let w = world(true, &[]).await;
     // DIARY_BASE_URL is a closed loopback port.
     let get = call(w.addr, "GET", "/api/embedding", ADMIN, "").await;
-    assert_eq!(get.body["diary"], json!({"error": "The Diary could not be reached (fetch failed)."}));
+    assert_eq!(
+        get.body["diary"],
+        json!({"error": "The Diary could not be reached (fetch failed)."})
+    );
     let set = post(w.addr, json!({"action": "set-next", "target": {"baseUrl": w.embed, "diaryBaseUrl": w.embed, "model": "qa-embed-b"}})).await;
     assert_eq!(set.status, 207, "{}", set.body);
-    assert_eq!(set.body["diary"], json!({"error": "The Diary could not be reached (fetch failed)."}));
+    assert_eq!(
+        set.body["diary"],
+        json!({"error": "The Diary could not be reached (fetch failed)."})
+    );
     assert_eq!(set.body["projects"]["next"]["model"], "qa-embed-b");
     assert_eq!(w.audits("embedding.set-next")[0].2["diary"], "refused");
 
@@ -649,12 +752,22 @@ async fn the_diary_half_goes_to_the_sidecar_and_an_unreachable_diary_is_a_207() 
     let w = world(true, &[("DIARY_BASE_URL", diary_base)]).await;
     let set = post(w.addr, json!({"action": "set-next", "scope": "diary", "force": true, "target": {"diaryBaseUrl": w.embed, "model": "qa-embed-b", "profile": "nomic-v1"}})).await;
     assert_eq!(set.status, 200, "{}", set.body);
-    assert_eq!(set.body, json!({"diary": {"ok": true, "action": "set-next"}}));
+    assert_eq!(
+        set.body,
+        json!({"diary": {"ok": true, "action": "set-next"}})
+    );
     let sent = diary_seen.lock().unwrap().last().cloned().unwrap();
     assert!(sent.starts_with("POST /api/internal/embedding "));
     assert!(!sent.to_ascii_lowercase().contains("x-cowork-"));
-    assert_eq!(body_of(&sent), json!({"action": "set-next", "target": {"model": "qa-embed-b", "profile": "nomic-v1", "base_url": w.embed}, "force": true}));
-    assert_eq!(w.saved(), None, "a Diary-only change leaves the projects' file alone");
+    assert_eq!(
+        body_of(&sent),
+        json!({"action": "set-next", "target": {"model": "qa-embed-b", "profile": "nomic-v1", "base_url": w.embed}, "force": true})
+    );
+    assert_eq!(
+        w.saved(),
+        None,
+        "a Diary-only change leaves the projects' file alone"
+    );
 }
 
 /// A world whose active model is on the embedding service the model manager runs.
@@ -681,7 +794,9 @@ fn puts(seen: &Seen) -> Vec<Value> {
         .iter()
         .filter(|r| r.starts_with("PUT /api/v1/embedding-service "))
         .map(|r| {
-            assert!(r.to_ascii_lowercase().contains(&format!("x-model-loader-token: {LOADER_TOKEN}")));
+            assert!(r
+                .to_ascii_lowercase()
+                .contains(&format!("x-model-loader-token: {LOADER_TOKEN}")));
             body_of(r)
         })
         .collect()
@@ -690,15 +805,24 @@ fn puts(seen: &Seen) -> Vec<Value> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn service_switch_loads_the_model_then_sets_next_everywhere_and_a_cancel_shrinks_it() {
     let (w, loader_seen) = service_world(true, true).await;
-    let a = post(w.addr, json!({"action": "service-switch", "model": "qa-embed-b"})).await;
+    let a = post(
+        w.addr,
+        json!({"action": "service-switch", "model": "qa-embed-b"}),
+    )
+    .await;
     assert_eq!(a.status, 200, "{}", a.body);
     assert_eq!(
         puts(&loader_seen),
-        vec![json!({"models": [{"model": "qa-embed-a", "file": file("qa-embed-a")}, {"model": "qa-embed-b", "file": file("qa-embed-b")}]})]
+        vec![
+            json!({"models": [{"model": "qa-embed-a", "file": file("qa-embed-a")}, {"model": "qa-embed-b", "file": file("qa-embed-b")}]})
+        ]
     );
     assert_eq!(a.body["projects"]["next"], w.target("qa-embed-b"));
     assert_eq!(a.body["diary"], json!({"ok": true, "action": "set-next"}));
-    assert_eq!(a.body["service"]["running"]["loaded"], json!(["qa-embed-a", "qa-embed-b"]));
+    assert_eq!(
+        a.body["service"]["running"]["loaded"],
+        json!(["qa-embed-a", "qa-embed-b"])
+    );
     assert_eq!(w.saved().unwrap()["next"], w.target("qa-embed-b"));
     assert_eq!(w.audits("embedding.set-next")[0].2["projects"], "ok");
     assert!(w.kicked().is_some());
@@ -710,19 +834,40 @@ async fn service_switch_loads_the_model_then_sets_next_everywhere_and_a_cancel_s
         &json!({"models": [{"model": "qa-embed-a", "file": file("qa-embed-a")}]})
     );
     // A model the manager does not list, one whose file is not a GGUF, none at all.
-    let same = post(w.addr, json!({"action": "service-switch", "model": "qa-embed-a"})).await;
-    assert_eq!((same.status, &same.body["code"]), (404, &json!("modelNotInstalled")));
-    let other = post(w.addr, json!({"action": "service-switch", "model": "qa-embed-c"})).await;
-    assert_eq!((other.status, &other.body["code"]), (404, &json!("modelNotInstalled")));
+    let same = post(
+        w.addr,
+        json!({"action": "service-switch", "model": "qa-embed-a"}),
+    )
+    .await;
+    assert_eq!(
+        (same.status, &same.body["code"]),
+        (404, &json!("modelNotInstalled"))
+    );
+    let other = post(
+        w.addr,
+        json!({"action": "service-switch", "model": "qa-embed-c"}),
+    )
+    .await;
+    assert_eq!(
+        (other.status, &other.body["code"]),
+        (404, &json!("modelNotInstalled"))
+    );
     let empty = post(w.addr, json!({"action": "service-switch"})).await;
-    assert_eq!((empty.status, empty.body), (400, json!({"error": "service-switch needs a model"})));
+    assert_eq!(
+        (empty.status, empty.body),
+        (400, json!({"error": "service-switch needs a model"}))
+    );
     assert!(w.lock_free());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_model_that_does_not_load_in_time_is_rolled_back_and_nothing_is_set() {
     let (w, loader_seen) = service_world(false, true).await;
-    let a = post(w.addr, json!({"action": "service-switch", "model": "qa-embed-b"})).await;
+    let a = post(
+        w.addr,
+        json!({"action": "service-switch", "model": "qa-embed-b"}),
+    )
+    .await;
     assert_eq!(a.status, 504, "{}", a.body);
     assert_eq!(a.body["code"], "serviceNotLoaded");
     assert_eq!(a.body["error"], "The embedding service did not load qa-embed-b in time. Nothing was re-indexed; try again or pick another model.");
@@ -743,14 +888,20 @@ async fn service_off_stops_the_service_and_refuses_what_core_refuses() {
     let (w, loader_seen) = service_world(true, true).await;
     w.save("qa-embed-a", Some("qa-embed-b"), None);
     let busy = post(w.addr, json!({"action": "service-off"})).await;
-    assert_eq!((busy.status, &busy.body["code"]), (409, &json!("reindexUnderway")));
+    assert_eq!(
+        (busy.status, &busy.body["code"]),
+        (409, &json!("reindexUnderway"))
+    );
     assert!(puts(&loader_seen).is_empty());
     std::fs::remove_file(w.path("embedding-config.json")).unwrap();
     let off = post(w.addr, json!({"action": "service-off"})).await;
     assert_eq!(off.status, 200, "{}", off.body);
     assert_eq!(puts(&loader_seen), vec![json!({"models": []})]);
     assert_eq!(off.body["service"]["enabled"], false);
-    assert_eq!(w.audits("embedding.service-off"), vec![(A.to_string(), None, json!({}))]);
+    assert_eq!(
+        w.audits("embedding.service-off"),
+        vec![(A.to_string(), None, json!({}))]
+    );
 
     // Without a worker view of the service, noevia does not manage it.
     let (w, _) = service_world(true, false).await;

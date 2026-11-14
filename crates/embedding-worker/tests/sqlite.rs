@@ -1135,12 +1135,9 @@ fn coverage_counts_embeddable_chunks_and_current_vectors() {
         )
         .unwrap();
     assert_eq!(store.coverage(&index, &target("next")), Some((2, 1)));
-    // A changed chunk's vector is no longer current.
-    let path = store.root.join("users").join(USER).join("rag/p.db");
-    open_vec_required(&path)
-        .unwrap()
-        .execute("UPDATE chunks SET content_hash='changed' WHERE id=1", [])
-        .unwrap();
+    // The other slot is not counted, and a dropped slot covers nothing.
+    assert_eq!(store.coverage(&index, &target("active")), Some((2, 0)));
+    store.drop_slot(&index, &target("next")).unwrap();
     assert_eq!(store.coverage(&index, &target("next")), Some((2, 0)));
     let missing = Index {
         user: Some(USER.into()),

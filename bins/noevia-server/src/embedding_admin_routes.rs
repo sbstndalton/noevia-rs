@@ -70,7 +70,8 @@ const SERVICE_PATH: &str = "/api/v1/embedding-service";
 const ABORTED: &str = "This operation was aborted";
 const FETCH_FAILED: &str = "fetch failed";
 const LOCK_UNAVAILABLE: &str = "Embedding config lock unavailable";
-const CHANGED: &str = "The embedding configuration changed while this change was being checked. Nothing was changed.";
+const CHANGED: &str =
+    "The embedding configuration changed while this change was being checked. Nothing was changed.";
 
 /// The environment the answers read (core reads `process.env`).
 const ENV: [&str; 17] = [
@@ -215,6 +216,11 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>, path: String) -> Response
         Ok(Err(rejection)) => return rejection.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    let admin = id.user.role == server_auth::Role::Admin;
+    if !admin {
+        // The route's own answer, before any file, server or turn is touched.
+        return error(403, "Administrator required");
+    }
     let post = parts.method == Method::POST;
     // `readJson(req)`: empty is `{}`, too large or not JSON is the route's 400 `invalid JSON`.
     let parsed: Result<JValue, ()> = if post {
@@ -238,13 +244,18 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>, path: String) -> Response
     };
     let (app, rt) = (Arc::clone(app), tokio::runtime::Handle::current());
     let method = parts.method.as_str().to_string();
-    let (user, admin) = (id.user.id.clone(), id.user.role == server_auth::Role::Admin);
+    let user = id.user.id.clone();
     let work = tokio::task::spawn_blocking(move || {
         let _turn = turn;
         let mut front = Front::new(app, rt, root);
         let mut embedding = front.embedding();
         let user = User { id: &user, admin };
-        let reply = embedding.handle(&mut front, &method, Some(user), parsed.as_ref().map_err(|_| ()));
+        let reply = embedding.handle(
+            &mut front,
+            &method,
+            Some(user),
+            parsed.as_ref().map_err(|_| ()),
+        );
         // Every path releases the hold and runs what it dropped; this is the backstop.
         front.unlock();
         reply
@@ -283,7 +294,10 @@ impl Front {
         let get = |k: &str| s.get(k);
         // The worker's own seed and endpoints (embedding_background.rs).
         let store = SqlStore {
-            rag_dir: s.get("RAG_DIR").filter(|v| !v.is_empty()).map(PathBuf::from),
+            rag_dir: s
+                .get("RAG_DIR")
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from),
             root: root.clone(),
             seed: runtime::seed(get).unwrap_or_else(|_| runtime::invalid_seed()),
             open_vec: embedding_worker::sqlite::open_vec_required,
@@ -443,12 +457,9 @@ impl Host for Front {
         let start = self.app.config.start_id.clone().unwrap_or_default();
         let clock = now() as u64;
         let sequence = &self.app.embedding_admin.sequence;
-        let prev = sequence
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |p| {
-                Some(p.saturating_add(1).max(clock))
-            })
-            .unwrap_or(0);
-        let n = prev.saturating_add(1).max(clock);
+        // From the clock and rising: never a sequence core's counter (from 1) wrote before.
+        sequence.fetch_max(clock, Ordering::AcqRel);
+        let n = sequence.fetch_add(1, Ordering::AcqRel).saturating_add(1);
         let text = serde_json::json!({"start": start, "sequence": n}).to_string();
         let _ = write_atomic(
             &self.root.join("embedding-worker-request.json"),
@@ -748,7 +759,12 @@ async fn loader(
     timeout_ms: u64,
 ) -> Result<HttpReply, String> {
     let failed = |e: reqwest::Error| {
-        if e.is_timeout() { ABORTED } else { FETCH_FAILED }.to_string()
+        let text = if e.is_timeout() {
+            ABORTED
+        } else {
+            FETCH_FAILED
+        };
+        text.to_string()
     };
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -830,7 +846,9 @@ fn local_v4([a, b, ..]: [u8; 4]) -> bool {
 pub fn why_not_local(ip: IpAddr) -> Option<&'static str> {
     let public = Some("a public address");
     let h = match ip {
-        IpAddr::V4(v4) => return denied_v4(v4.octets()).or(public.filter(|_| !local_v4(v4.octets()))),
+        IpAddr::V4(v4) => {
+            return denied_v4(v4.octets()).or(public.filter(|_| !local_v4(v4.octets())))
+        }
         IpAddr::V6(v6) => v6.segments(),
     };
     if h == [0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254] {
@@ -882,7 +900,10 @@ pub async fn check_address(raw: &str) -> Result<(), (String, bool)> {
         return refuse("a query string or fragment in the URL");
     }
     let host = url.host_str().unwrap_or_default();
-    let host = host.trim_start_matches('[').trim_end_matches(']').to_string();
+    let host = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_string();
     if host.is_empty() {
         return refuse("no host");
     }
@@ -944,7 +965,10 @@ mod tests {
         });
         let shown = format!("{s:?}");
         assert!(!shown.contains("qa-secret") && !shown.contains("qa-embed.invalid"));
-        assert_eq!(s.service_base().as_deref(), Some("http://qa-embed.invalid:8080"));
+        assert_eq!(
+            s.service_base().as_deref(),
+            Some("http://qa-embed.invalid:8080")
+        );
     }
 
     #[test]
@@ -970,8 +994,14 @@ mod tests {
         refused("ftp://127.0.0.1", "not an http(s) URL");
         refused("nonsense", "not a URL");
         refused("http://qa:pw@127.0.0.1", "credentials in the URL");
-        refused("http://127.0.0.1/?x", "a query string or fragment in the URL");
-        refused("http://127.0.0.1/#", "a query string or fragment in the URL");
+        refused(
+            "http://127.0.0.1/?x",
+            "a query string or fragment in the URL",
+        );
+        refused(
+            "http://127.0.0.1/#",
+            "a query string or fragment in the URL",
+        );
         refused(
             "http://8.8.8.8",
             "8.8.8.8 is not on this network (8.8.8.8 is a public address)",
