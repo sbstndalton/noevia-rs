@@ -1625,6 +1625,11 @@ impl FrontHost {
                 servers: &servers,
                 writes: &self.writes,
                 server_says_write: &says,
+                inapp_token: self
+                    .app
+                    .mcp
+                    .as_ref()
+                    .is_some_and(|m| crate::mcp_discovery_backend::internal_token_key(m).is_some()),
             },
         );
         if !matches!(planned, Plan::Call(_)) {

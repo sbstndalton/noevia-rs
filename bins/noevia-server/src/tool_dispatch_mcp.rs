@@ -24,8 +24,13 @@
 //!    "unknown tool on MCP server" or "no longer configured" text): nothing is answered here that core
 //!    might have run;
 //! 5. the server is not one whose call needs what core holds: the Nextcloud pass-through (core holds the
-//!    storage credential, `mcpAuthHeaders`) or the in-app server (its capability token carries core's
-//!    call-time `isWriteTool`); those stay core's;
+//!    storage credential, `mcpAuthHeaders`) stays core's. The in-app server (`internal`) runs here when
+//!    this front can mint its capability token (the key derived from the shared secret, as
+//!    `mcp_call::execute` does for core's native calls): core's `mcpInternalAuth` mints `uid` = the
+//!    workspace user, `pid` = the call's project, `w` = call-time `isWriteTool(name)` and `t` only for
+//!    a write, and after steps 3 and 3b that `w` is 0 here; where core's lagging toolboxes would now call
+//!    the tool a write (a box that declared it read dropped since the frame), the front's `w: 0` token
+//!    makes the in-app server refuse the write instead of running it (the safe side);
 //! 6. [`crate::mcp_call::execute`] with core's native payload (`user` and `workspaceUser` the bridge's
 //!    `asUser` account, `project`, `write: false`, no pass-through), then core's
 //!    `reduceToolResult(text, { maxChars: resultCap })` when the answer asks for it, then
@@ -48,7 +53,10 @@ use tool_dispatch::{finish, Decision, Outcome, Route};
 pub const RESULT_CAP: usize = 8000;
 
 /// Server modes whose call stays core's (step 5 of the module docs).
-const CORE_AUTH: [&str; 2] = ["nextcloud", "internal"];
+const CORE_AUTH: [&str; 1] = ["nextcloud"];
+
+/// The in-app server's mode: run here only with [`Facts::inapp_token`].
+const INAPP: &str = "internal";
 
 /// What the front knows when it plans one call.
 pub struct Facts<'a> {
@@ -60,6 +68,8 @@ pub struct Facts<'a> {
     pub writes: &'a HashSet<String>,
     /// Whether discovery now has a server saying `name` writes (`readOnlyHint: false`), step 3b.
     pub server_says_write: &'a dyn Fn(&str) -> bool,
+    /// Whether this front can mint the in-app server's call token (step 5).
+    pub inapp_token: bool,
 }
 
 /// One call's plan.
@@ -94,7 +104,7 @@ pub fn plan(user: &str, run: &ToolRun, facts: &Facts<'_>) -> Plan {
     let Some(spec) = facts.servers.iter().rev().find(|s| s.id == server) else {
         return Plan::Core;
     };
-    if CORE_AUTH.contains(&spec.auth.as_str()) {
+    if CORE_AUTH.contains(&spec.auth.as_str()) || (spec.auth == INAPP && !facts.inapp_token) {
         return Plan::Core;
     }
     Plan::Call(Request {
@@ -209,6 +219,10 @@ mod tests {
     }
 
     fn with<T>(writes: &[&str], f: impl FnOnce(&Facts<'_>) -> T) -> T {
+        with_token(writes, true, f)
+    }
+
+    fn with_token<T>(writes: &[&str], inapp_token: bool, f: impl FnOnce(&Facts<'_>) -> T) -> T {
         let offered = |server: &str, name: &str| server != "qa-gone-offer" && name != "qa_unlisted";
         let servers = servers();
         let writes = writes.iter().map(|w| w.to_string()).collect();
@@ -218,6 +232,7 @@ mod tests {
             servers: &servers,
             writes: &writes,
             server_says_write: &says,
+            inapp_token,
         })
     }
 
@@ -245,14 +260,53 @@ mod tests {
     }
 
     #[test]
-    fn a_server_core_holds_the_credential_or_the_write_flag_of_stays_cores() {
-        for server in ["qa-nc", "qa-inapp"] {
+    fn a_server_core_holds_the_credential_of_stays_cores() {
+        for token in [true, false] {
             assert_eq!(
-                with(&[], |f| plan(USER, &run("qa_lookup", server, "{}"), f)),
-                Plan::Core,
-                "{server}"
+                with_token(&[], token, |f| plan(USER, &run("qa_lookup", "qa-nc", "{}"), f)),
+                Plan::Core
             );
         }
+    }
+
+    #[test]
+    fn an_inapp_read_runs_here_only_when_the_front_can_mint_its_token() {
+        let Plan::Call(r) = with_token(&[], true, |f| {
+            plan(USER, &run("qa_lookup", "qa-inapp", r#"{"q":1}"#), f)
+        }) else {
+            panic!()
+        };
+        // mcpInternalAuth: uid the workspace user, pid the project, w 0 for a read, no target.
+        assert_eq!(r.server, "qa-inapp");
+        assert_eq!(r.workspace_user.as_deref(), Some(USER));
+        assert_eq!(r.project.as_deref(), Some("qa-project"));
+        assert!(!r.write);
+        assert_eq!(r.edit_target, None);
+        // No project: core's pid is null, and so is this one.
+        let mut no_project = run("qa_lookup", "qa-inapp", "{}");
+        no_project.project_id = None;
+        let Plan::Call(r) = with_token(&[], true, |f| plan(USER, &no_project, f)) else {
+            panic!()
+        };
+        assert_eq!(r.project, None);
+        // Without the key, core mints it.
+        assert_eq!(
+            with_token(&[], false, |f| plan(USER, &run("qa_lookup", "qa-inapp", "{}"), f)),
+            Plan::Core
+        );
+        // An in-app write (the frame's or the server's) stays core's whatever the token.
+        assert_eq!(
+            with_token(&["qa_lookup"], true, |f| plan(
+                USER,
+                &run("qa_lookup", "qa-inapp", "{}"),
+                f
+            )),
+            Plan::Core
+        );
+        assert_eq!(
+            with_token(&[], true, |f| plan(USER, &run("qa_now_writes", "qa-inapp", "{}"), f)),
+            Plan::Core
+        );
     }
 
     #[test]
