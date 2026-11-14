@@ -919,7 +919,7 @@ impl Methods<'_> {
         let want: &str = match self {
             Methods::All => return methods == b"-",
             Methods::OnlyGet => "GET",
-            Methods::Each(sets) => match sets.get(index) {
+            Methods::Each(sets) => match sets.get(index).copied() {
                 Some(w) => w,
                 None => return false,
             },
