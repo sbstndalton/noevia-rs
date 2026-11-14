@@ -67,7 +67,7 @@ fn a_refusal_in_a_sync_with_an_old_request_time_still_holds_the_next_automatic_c
     let (reply, _) = rig.sync();
     assert_eq!(reply.status, 200);
     let hold =
-        storage_latch::blocked(rig.root.path(), USER, &rig.storage.fingerprint(), wall()).unwrap();
+        storage_latch::blocked(rig.root.path(), rig.user, &rig.storage.fingerprint(), wall()).unwrap();
     assert_eq!(hold.map(|h| h.kind), Some("login"));
 }
 
@@ -125,7 +125,7 @@ fn a_subfolder_refused_the_login_leaves_the_latch_set_and_each_reason_is_its_own
         Some("storageLoginRejected")
     );
     let hold =
-        storage_latch::blocked(rig.root.path(), USER, &rig.storage.fingerprint(), wall()).unwrap();
+        storage_latch::blocked(rig.root.path(), rig.user, &rig.storage.fingerprint(), wall()).unwrap();
     assert_eq!(
         hold.map(|h| h.kind),
         Some("login"),
@@ -280,7 +280,7 @@ fn the_folder_allocated_for_loose_images_is_saved_even_when_every_move_fails() {
 fn a_sync_waits_a_bounded_time_for_the_project_lock_and_then_says_429() {
     let rig = Rig::new(PROJECT);
     rig.storage.put("docs/a.md", b"a");
-    let lock = project_documents::source_lock(USER, "proj-a");
+    let lock = project_documents::source_lock(rig.user, "proj-a");
     let held = lock.lock().unwrap();
     let progress = |_: &str| {};
     let started = Instant::now();
@@ -338,7 +338,7 @@ fn a_sync_that_waited_for_the_project_lock_dates_its_records_by_when_it_ran() {
     let rig = Rig::new(PROJECT);
     rig.storage.put("docs/a.md", b"a");
     let before = wall();
-    let holder = hold_lock_for(USER, "proj-a", 150);
+    let holder = hold_lock_for(rig.user, "proj-a", 150);
     let (reply, _) = rig.sync();
     assert_eq!(reply.status, 200);
     holder.join().unwrap();

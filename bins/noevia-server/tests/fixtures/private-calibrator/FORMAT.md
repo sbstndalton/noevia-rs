@@ -13,7 +13,9 @@ engine (QA-named models, a temp `models.ini`), takes the manager's own `contextF
 preload's recording factory) and drives it as the runner does, for the branches core's tests barely
 reach: probe evidence and causes, `cancelProbe`, foreign clients (`foreignWait`/`foreignHeld`),
 aborts during start and during a run, stale starts, refused writes and restores, the memory floor
-(per-call `readMemory`), and engine failures. Whatever Node does is the oracle; each scenario only
+(per-call `readMemory`), engine failures, and (R6 shift 3) a rejected long prompt's error body (cut
+by its 2 s deadline, cut at the byte cap, ended normally) and the long prompt's 1.5x wall-clock stop
+(paced chunks past it, exactly at it with and without engine timings). Whatever Node does is the oracle; each scenario only
 asserts that it reached the branch it is about. Every scenario has a 15 s node:test timeout (a
 scenario that never settles fails alone). That timeout cannot stop a loop that never yields to the
 event loop: without the recorder's clock the calibrator's time is real and the scenarios' sleeps
@@ -58,8 +60,11 @@ for `S*`).
 
 ## Determinism (by the preload)
 - The calibrator's `now()` is a fake clock: `1700000000000` plus `max(1, ms)` for every calibrator
-  `sleep(ms)` once it resolves. Nothing else advances it (a calibrator given its own `now` would be
-  `replayable: false`; none is).
+  `sleep(ms)` once it resolves, plus every `clock` event's `ms`. Nothing else advances it (a calibrator
+  given its own `now` would be `replayable: false`; none is: a scenario that paces a stream hands the
+  calibrator its own `now` only in the baseline run, where nothing is recorded).
+- The error-body deadline is a real 2 s timer: a scenario body that stalls makes the scenario wait
+  for it. Its other timers (the memory watch's interval) are not recorded.
 - `crypto.randomInt(min, max)` from llamacpp-calibration.cjs (the recall marker) returns
   `min + ((n * 7919) % (max - min))`, n counting from 1 per trace; `crypto.randomUUID()` (the job id)
   returns `00000000-0000-4000-a000-` + 12-digit counter per trace. Both are recorded as events.
@@ -92,6 +97,8 @@ Each is `{ "dep": ..., <args>, "result" | "throws", "during"? }`. `throws` is
 | `held` | `result` | the manager's `maintenance.held()` inside the contextFactory's `current()`; sync |
 | `readMemory` | `result` (GiB or null) | only when `config.readMemory` is `"calls"`; sync |
 | `sleep` | `ms` | |
+| `tick` | `ms` | the error-body deadline (`errorBody`, ERROR_BODY_MS) fired; sync. Recorded only when it fires, so it sits in the `during` of the `stream.read` it cut, and that read's result is what the cancel gave (`{ "done": true }`). A replay must not answer that read: its own deadline (set with the same `ms`) has to end it |
+| `clock` | `ms` | scenario traces only: `ms` of wall time passed while the engine produced a stream chunk (the scenario's paced body); sync, in the `during` of that read. The fake clock moves on by `ms` before the read answers |
 | `randomInt` | `min`, `max`, `result` | sync |
 | `randomUUID` | `result` | sync |
 | `hook` | `name`, `arg` (not for `contextCurrent`), `result`/`throws` | `contextCurrent`, `onWrite` (arg revision), `onUpdate` (arg: the job or null; result null) are sync; `applyUnlocked` (arg body), `foreignHeld` (arg rows), `foreignWait` (arg: the error as `{ message, flags }`) are async |

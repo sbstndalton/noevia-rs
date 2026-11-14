@@ -282,9 +282,18 @@ fn text_of(v: &JValue) -> String {
 
 /// The egress controller, over the front's own issuer (code_egress.rs), as core's
 /// code-egress-client.cjs answers it: a revoke that is not confirmed and final is the uncertain report.
-struct FrontEgress {
+pub(crate) struct FrontEgress {
     issuer: Arc<Issuer>,
     rt: tokio::runtime::Handle,
+}
+
+/// The egress controller over the front's issuer, for Browser tasks too (browser_routes.rs): one
+/// proxy per deployment, each task scoped by its own grant.
+pub(crate) fn front_egress(app: &App) -> Option<Arc<FrontEgress>> {
+    let rt = tokio::runtime::Handle::current();
+    app.code_egress
+        .clone()
+        .map(|issuer| Arc::new(FrontEgress { issuer, rt }))
 }
 
 /// code-egress-client.cjs `EgressUnavailableError`.
