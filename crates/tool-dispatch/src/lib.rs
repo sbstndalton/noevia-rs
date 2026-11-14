@@ -38,7 +38,9 @@ use js_json::JValue;
 use std::collections::HashSet;
 
 mod execute;
+mod partial;
 pub use execute::{counted_by_core, execute, Executors, Ran};
+pub use partial::{decide, Decision, Knowledge};
 
 /// `TOOL_RESULT_CAP`: the characters of a file a built-in read returns at most.
 pub const TOOL_RESULT_CAP: usize = 8000;
@@ -110,33 +112,10 @@ pub struct Outcome {
 
 /// `runToolCall`'s choice of executor for `name` with `raw_args` (see the crate docs for the order).
 pub fn route(name: &str, raw_args: &str, offer: &Offer<'_>) -> Route {
-    if let Some(allowed) = offer.allowed {
-        if !allowed.contains(name) {
-            return Route::Refused(format!(
-                "ERROR: tool \"{name}\" is not enabled for this project"
-            ));
-        }
-    }
-    let args = if raw_args.is_empty() {
-        JValue::Obj(Vec::new())
-    } else {
-        match wtf16::parse(raw_args) {
-            Ok(v) => v,
-            Err(wtf16::Refusal::Invalid) => {
-                return Route::Refused(format!(
-                    "ERROR: tool arguments were not valid JSON: {}",
-                    wtf16::slice(raw_args, ARGS_QUOTE)
-                ))
-            }
-            Err(wtf16::Refusal::Unsupported) => return Route::NotPorted,
-        }
+    let args = match checked(name, raw_args, offer.allowed) {
+        Ok(args) => args,
+        Err(refused) => return refused,
     };
-    if !matches!(args, JValue::Obj(_)) {
-        return Route::Refused(format!(
-            "ERROR: tool arguments must be a JSON object: {}",
-            wtf16::slice(raw_args, ARGS_QUOTE)
-        ));
-    }
     let routed = route_of(offer.routes, name);
     if offer.specialist == Some(name) && routed.is_none() {
         return Route::Specialist(args);
@@ -169,10 +148,47 @@ pub fn route(name: &str, raw_args: &str, offer: &Offer<'_>) -> Route {
     Route::Refused(format!("ERROR: unknown tool \"{name}\""))
 }
 
+/// Checks 1 and 2 (the offer, then the arguments): the parsed arguments, a plain object, or the route
+/// that ends the call there ([`Route::Refused`] or [`Route::NotPorted`]).
+pub(crate) fn checked(
+    name: &str,
+    raw_args: &str,
+    allowed: Option<&HashSet<String>>,
+) -> Result<JValue, Route> {
+    if let Some(allowed) = allowed {
+        if !allowed.contains(name) {
+            return Err(Route::Refused(format!(
+                "ERROR: tool \"{name}\" is not enabled for this project"
+            )));
+        }
+    }
+    let args = if raw_args.is_empty() {
+        JValue::Obj(Vec::new())
+    } else {
+        match wtf16::parse(raw_args) {
+            Ok(v) => v,
+            Err(wtf16::Refusal::Invalid) => {
+                return Err(Route::Refused(format!(
+                    "ERROR: tool arguments were not valid JSON: {}",
+                    wtf16::slice(raw_args, ARGS_QUOTE)
+                )))
+            }
+            Err(wtf16::Refusal::Unsupported) => return Err(Route::NotPorted),
+        }
+    };
+    if !matches!(args, JValue::Obj(_)) {
+        return Err(Route::Refused(format!(
+            "ERROR: tool arguments must be a JSON object: {}",
+            wtf16::slice(raw_args, ARGS_QUOTE)
+        )));
+    }
+    Ok(args)
+}
+
 /// The route for `name` in `routes`, as `routes.get(name)` then `typeof route === 'string' && route`:
 /// `None` = the map does not hold the name, `Some(None)` = it holds an empty server id (no route, but the
 /// name still counts as held for the coworker check), `Some(Some(id))` = routed.
-fn route_of<'a>(routes: Option<&'a [(String, String)]>, name: &str) -> Option<Option<&'a str>> {
+pub(crate) fn route_of<'a>(routes: Option<&'a [(String, String)]>, name: &str) -> Option<Option<&'a str>> {
     let (_, server) = routes?.iter().rev().find(|(n, _)| n == name)?;
     Some(if server.is_empty() {
         None
