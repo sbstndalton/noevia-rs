@@ -118,7 +118,7 @@ fn streams_match_core_whole_and_cut_everywhere() {
     let JValue::Obj(streams) = f.get("streams") else {
         panic!()
     };
-    assert_eq!(streams.len(), 32, "recorded streams");
+    assert_eq!(streams.len(), 33, "recorded streams");
     let mut differences = 0;
     for (name, st) in streams {
         let chunks = chunks_of(st.get("chunks"));

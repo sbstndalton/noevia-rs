@@ -58,7 +58,10 @@ impl SessionCache {
         None
     }
 
-    /// Keeps the broker's fresh session (core: after a successful ask).
+    /// Keeps the broker's fresh session (core: after a successful ask). `signal` must be the
+    /// reading taken before the ask, the one [`SessionCache::lookup`] was given, never a fresh one:
+    /// core stores under that reading, so a disconnect or rotation during the ask leaves the stored
+    /// entry stale at once and the next lookup drops it.
     pub fn store(&mut self, user: &str, session: &Session, signal: Option<&str>, now: f64) {
         let margin_end = match session.expires_at {
             Some(at) if at.is_finite() && at > 0.0 => at - REFRESH_MARGIN_MS,
@@ -140,8 +143,7 @@ pub fn broker_refusal(texts: &Texts, answer: &BrokerAnswer) -> Option<Refusal> {
     }
 }
 
-/// One step of `authorised(userId, send)`. Debug is written by hand: `AskBroker` holds the token
-/// the backend refused, which never appears in any output.
+/// One step of `authorised(userId, send)`. Debug output names a rejected token only as present.
 #[derive(Clone, PartialEq)]
 pub enum Step {
     /// Ask the broker for a session (with the rejected access token on the second ask).
