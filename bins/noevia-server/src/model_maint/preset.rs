@@ -21,9 +21,9 @@
 //! The router's answers are read from their bytes as `fetchJson` does (`JSON.parse`, or the text),
 //! so a passed-on body keeps the router's key order and number text.
 //!
-//! A hold that cannot cover the write and its re-read (Node's lease of the front's authority near its
-//! end) refuses before the commit, as Node's `assertCovered` does: 503 `Internal error`, nothing
-//! written (tests/model_preset.rs `a_lease_that_cannot_cover_the_write_changes_nothing`).
+//! A hold that cannot cover the write and its re-read refuses before the commit (503 `Internal
+//! error`, nothing written), where Node's `assertCovered(PRESET_STEP_MS)` refuses too (see the
+//! named difference on how much cover is asked for).
 //!
 //! Named differences (tests/model_preset.rs):
 //! - **No budget.** With a models mount the budget is Core's figure over the facts bridge; when the
@@ -36,13 +36,20 @@
 //! - **A router answer the port's JSON reader cannot hold** (nested past its depth, a number
 //!   outside `f64`) is read as text, so a passed-on one is answered as a JSON string. Tested:
 //!   `a_router_answer_too_deep_to_hold_is_passed_on_as_text`.
-//! - **A lease lost after the write, before the re-read.** Core registers a recovery (chat paused
-//!   until it restores under a fresh lease) and throws (503 `Internal error`). The front's lease
-//!   cannot end under a call in flight, so a lost lease is only ever found before the router is
-//!   asked: the router never saw the new text, and the front puts its own previous text back at
-//!   once (compare-and-swap, no re-read) and answers the same 503. Not tested: the coverage check
-//!   right before the commit asks for more than the re-read's, so only a lease the authority ends
-//!   between the two reaches it, which no test can time.
+//! - **Stricter cover.** The check before the commit is the hold's `may_start(PRESET_STEP)`: for a
+//!   lease of Node's gate, Node's last confirmation plus the TTL and the lease's hard end must both
+//!   outlast the 150 s step plus a margin. Node's `assertCovered` asks the TTL only to outlast its
+//!   margin (and the hard end the step), so a lease with a short TTL that Node would let write is
+//!   refused here (fail closed). Likewise a lease that is still held but cannot cover the 120 s
+//!   re-read is not asked to re-read: the write is put back under the hold (503 with the reload's
+//!   restore text) where Node would re-read and answer 200. Tested:
+//!   `a_lease_that_cannot_cover_the_write_changes_nothing`.
+//! - **A hold lost after the write, before the re-read.** Both keep chat paused and recover under a
+//!   fresh hold: settle the engine, put this write's previous text back if the file still holds it
+//!   (compare-and-swap), have the router re-read; retried until done. Node answers its thrown 503
+//!   `Internal error` at once; the front answers 503 with the reload's text for the first attempt's
+//!   outcome (restored, the file changed again, still the new text, unconfirmed), each attempt
+//!   logged. Tested: `a_lease_lost_during_the_commit_is_recovered_before_chat_resumes`.
 
 use super::{Hold, HoldError, Maint};
 use crate::model_sizing::{parse_presets, read_presets, strict, Presets};
@@ -74,6 +81,51 @@ const HOLD_LIMIT: Duration = Duration::from_secs(420);
 /// llamacpp-presets.cjs `DEFAULT_BATCH_SIZE`.
 const DEFAULT_BATCH: &str = "2048";
 static UNDEFINED: JValue = JValue::Undefined;
+/// The recovery's hold (calibration's) and reason, its settle step's limit and poll, and how long
+/// the answer waits for its first attempt.
+const RECOVERY_LEASE: Duration = Duration::from_secs(15 * 60);
+const RECOVERY_REASON: &str =
+    "Chat is paused while noevia restores the presets an interrupted change left behind.";
+const SETTLE_LIMIT: Duration = Duration::from_secs(120);
+const SETTLE_POLL: Duration = Duration::from_millis(500);
+const RECOVERY_ANSWER: Duration = Duration::from_secs(150);
+
+/// How one recovery attempt after a lost hold ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Recovered {
+    /// The previous text is back and the router re-read it.
+    Restored,
+    /// The file had changed again (not this write's text): left as it is, the router re-read it.
+    NotOurs,
+    /// Not finished, and models.ini still holds this write's text.
+    Stuck,
+    /// Not finished; whether the previous text is back is not confirmed.
+    Unconfirmed,
+}
+
+impl Recovered {
+    fn message(self) -> &'static str {
+        match self {
+            Recovered::Restored => super::calibration::RELOAD_RESTORED,
+            Recovered::NotOurs => super::calibration::RELOAD_UNCERTAIN,
+            Recovered::Stuck => super::calibration::RELOAD_STUCK,
+            Recovered::Unconfirmed => super::calibration::RELOAD_UNCONFIRMED,
+        }
+    }
+}
+
+fn log_recovery(outcome: Recovered) {
+    let entry = JValue::obj([
+        ("event", JValue::from("preset.recovery")),
+        (
+            "outcome",
+            JValue::from(format!("{outcome:?}").to_lowercase()),
+        ),
+        ("error", JValue::from(outcome.message())),
+    ]);
+    println!("[models] {}", text(&entry));
+}
+
 /// `Number.MAX_SAFE_INTEGER`.
 const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
 
@@ -327,7 +379,7 @@ impl Maint {
     /// `applyPreset(body)`: the whole save, run to its end whatever happens to the client (the
     /// caller spawns it). `budget` reads Core's inference memory budget, asked only when an estimate
     /// is due.
-    pub async fn apply_preset<F, Fut>(&self, body: &JValue, budget: F) -> Answer
+    pub async fn apply_preset<F, Fut>(self: &Arc<Self>, body: &JValue, budget: F) -> Answer
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Option<f64>>,
@@ -346,12 +398,175 @@ impl Maint {
                 return error(503, super::reload::NO_ARBITER)
             }
         };
-        let answer = self.apply_held(&hold, body, budget).await;
-        hold.release().await;
-        answer
+        let mut lost = None;
+        let answer = self.apply_held(&hold, body, budget, &mut lost).await;
+        match lost {
+            Some(restore) => self.recover_after_loss(hold, restore).await,
+            None => {
+                hold.release().await;
+                answer
+            }
+        }
     }
 
-    async fn apply_held<F, Fut>(&self, hold: &Hold, body: &JValue, budget: F) -> Answer
+    /// The hold was lost after the write, before the router was asked to re-read it: local
+    /// admission stays closed (and the authority's recovery, which the lost lease's release requires,
+    /// keeps chat paused) until a recovery under a fresh hold has settled the engine, put this write's
+    /// previous text back if the file still holds it, and had the router re-read the file. Retried
+    /// with backoff until it completes; the answer is its first attempt's outcome.
+    async fn recover_after_loss(
+        self: &Arc<Self>,
+        mut hold: Hold,
+        restore: super::ini::Candidate,
+    ) -> Answer {
+        let fence = hold.defer_local_release();
+        hold.release().await;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let me = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut tx = Some(tx);
+            let mut wait = Duration::from_secs(1);
+            loop {
+                let outcome = me.recover_once(&restore).await;
+                log_recovery(outcome);
+                if let Some(t) = tx.take() {
+                    let _ = t.send(outcome);
+                }
+                if matches!(outcome, Recovered::Restored | Recovered::NotOurs) {
+                    break;
+                }
+                tokio::time::sleep(wait).await;
+                wait = (wait * 2).min(Duration::from_secs(60));
+            }
+            fence.release();
+        });
+        match tokio::time::timeout(RECOVERY_ANSWER, rx).await {
+            Ok(Ok(outcome)) => error(503, outcome.message()),
+            _ => error(503, super::calibration::RELOAD_UNCONFIRMED),
+        }
+    }
+
+    /// The file still holds the text `restore` replaces (this write's).
+    async fn still_ours(&self, restore: &super::ini::Candidate) -> bool {
+        let Some(ini) = self.ini.clone() else {
+            return false;
+        };
+        let base = restore.base_revision.clone();
+        blocking(move || ini.snapshot().is_ok_and(|s| s.revision == base))
+            .await
+            .unwrap_or(false)
+    }
+
+    /// One attempt of the recovery (inference-maintenance.cjs `runRecovery` with the manager's
+    /// settle step and `applyUnlocked`'s repair).
+    async fn recover_once(&self, restore: &super::ini::Candidate) -> Recovered {
+        let (Some(router), Some(ini)) = (self.router.as_ref(), self.ini.clone()) else {
+            return Recovered::Unconfirmed;
+        };
+        let ticket = self.authority.recovery_ticket();
+        let Ok(hold) = self.acquire_recovery(RECOVERY_REASON, RECOVERY_LEASE).await else {
+            return if self.still_ours(restore).await {
+                Recovered::Stuck
+            } else {
+                Recovered::Unconfirmed
+            };
+        };
+        let token = hold.token();
+        let mut done = self.settle_engine(&hold, token.as_deref()).await;
+        let mut not_ours = false;
+        if done {
+            if self.still_ours(restore).await {
+                done = ini
+                    .settle_restore(restore, Duration::from_secs(1), hold.write_fence())
+                    .await;
+            } else {
+                not_ours = true;
+            }
+        }
+        if done {
+            done = matches!(self.router_reload(router, &hold, None).await, Ok(Ok(r)) if r.ok)
+                && hold.excluded();
+        }
+        if done {
+            if let Some(t) = ticket.as_deref() {
+                done = (hold.gated_now()
+                    || match hold.recovery_proof() {
+                        Some((id, generation)) => {
+                            self.node.complete_recovery(t, id, generation).await
+                        }
+                        None => false,
+                    })
+                    && hold.excluded()
+                    && self.authority.complete_recovery(t);
+            }
+        }
+        if !done {
+            let t = self.authority.require_recovery();
+            if !hold.gated_now() {
+                let _ = self.node.recovery_barrier(true, &t).await;
+            }
+        }
+        hold.release().await;
+        match (done, not_ours) {
+            (true, false) => Recovered::Restored,
+            (true, true) => Recovered::NotOurs,
+            (false, _) if self.still_ours(restore).await => Recovered::Stuck,
+            (false, _) => Recovered::Unconfirmed,
+        }
+    }
+
+    /// The recovery's settle step (llamacpp-manager.cjs `setRecoverySettle`): every model the router
+    /// lists as running is asked to unload, until it lists none, within [`SETTLE_LIMIT`].
+    async fn settle_engine(&self, hold: &Hold, token: Option<&str>) -> bool {
+        let Some(router) = self.router.as_ref() else {
+            return false;
+        };
+        let deadline = tokio::time::Instant::now() + SETTLE_LIMIT;
+        loop {
+            if !hold.excluded() {
+                return false;
+            }
+            let rows = match router.models(token).await {
+                Ok(r) if r.ok => super::router::rows(&r.body).cloned(),
+                _ => None,
+            };
+            let Some(rows) = rows else {
+                return false;
+            };
+            let live: Vec<(String, String)> = rows
+                .iter()
+                .filter_map(|m| {
+                    let id = m.get("id")?.as_str()?.to_owned();
+                    let status = m.get("status")?.get("value")?.as_str()?.to_owned();
+                    matches!(
+                        status.as_str(),
+                        "loaded" | "loading" | "sleeping" | "unloading"
+                    )
+                    .then_some((id, status))
+                })
+                .collect();
+            if live.is_empty() {
+                return true;
+            }
+            for (id, status) in &live {
+                if matches!(status.as_str(), "loaded" | "sleeping") {
+                    let _ = router.unload(id, token).await;
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(SETTLE_POLL).await;
+        }
+    }
+
+    async fn apply_held<F, Fut>(
+        &self,
+        hold: &Hold,
+        body: &JValue,
+        budget: F,
+        lost: &mut Option<super::ini::Candidate>,
+    ) -> Answer
     where
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Option<f64>>,
@@ -471,8 +686,9 @@ impl Maint {
             return thrown(Some(503), "");
         }
         if let Err(e) = ini.commit_reconciled(&candidate, true).await {
-            // A settled Model Loader outcome carries its own message; nothing was reloaded.
-            if e.status >= 500 {
+            // A settled Model Loader outcome carries its own message (Node's `publicMessage`);
+            // nothing was reloaded. Any other failure is answered as Node's thrown error.
+            if e.status >= 500 && e.public() {
                 let mut out = vec![("error".to_owned(), JValue::Str(e.message))];
                 if e.retryable {
                     out.push(("retryable".to_owned(), JValue::Bool(true)));
@@ -499,9 +715,11 @@ impl Maint {
                 }
                 // `presets.get` threw inside the JS's try: its catch restores, as below.
             }
-            // The lease ended before the router was asked (see the module documentation).
-            Ok(Err(_)) => {
-                let _ = ini.commit_reconciled(&restore, true).await;
+            // The router was not asked: the hold can no longer cover the re-read. Lost (it excludes
+            // no one now): the recovery (see the module documentation). Still held: the restore
+            // below, under the hold.
+            Ok(Err(_)) if !hold.excluded() => {
+                *lost = Some(restore);
                 return thrown(Some(503), "");
             }
             _ => {}
@@ -700,6 +918,25 @@ mod tests {
                 .as_str()
             )
         );
+    }
+
+    #[test]
+    fn only_a_settled_loader_outcome_is_shown_on_a_5xx() {
+        let e = |status: u16, message: &str| super::super::ini::IniError {
+            status,
+            message: message.to_owned(),
+            uncertain: false,
+            retryable: false,
+        };
+        // A read error of the file inside the commit (the OS text): Node's bare fs error.
+        assert!(!e(500, "No such file or directory (os error 2)").public());
+        assert!(!e(500, "Internal error").public());
+        assert!(e(
+            503,
+            "Model Loader rejected the token; check MODEL_LOADER_TOKEN. Nothing was changed."
+        )
+        .public());
+        assert!(e(400, "Model Loader rejected the preset file: x").public());
     }
 
     #[test]

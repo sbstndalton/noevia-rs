@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 server-routing-mode = { path = "../server-routing-mode" }
+js-json = { path = "../js-json" }
 rustix = { version = "1", features = ["fs", "process"] }
 
 [dev-dependencies]

@@ -23,13 +23,35 @@ use std::sync::Arc;
 const CASES: &str = include_str!("fixtures/model-maint/preset-cases.json");
 const TOKEN: &str = "0123456789abcdef0123456789abcdef";
 const PATH: &str = "/api/models/preset";
+/// The model-loader's compare-and-swap endpoint (on the scripted engine's port).
+const LOADER: &str = "/api/v1/models-ini";
 
 /// The scripted engine of record-preset.cjs.
 fn scripted(case: &Value, ini: PathBuf, calls: Arc<AtomicUsize>) -> Handler {
     let case = case.clone();
+    let writes = Arc::new(AtomicUsize::new(0));
     Arc::new(move |req: &Req| {
         let router = &case["router"];
         let t = req.target.as_str();
+        if req.method == "PUT" && t == LOADER {
+            let answers = case["loader"].as_array().unwrap();
+            let l = &answers[writes.fetch_add(1, Ordering::SeqCst).min(answers.len() - 1)];
+            if l["write"] == "body" {
+                let sent: Value = serde_json::from_str(&req.body).unwrap();
+                std::fs::write(&ini, sent["text"].as_str().unwrap()).unwrap();
+            }
+            if l["write"] == "other" {
+                let text = format!("{}; written elsewhere\n", case["ini"].as_str().unwrap());
+                std::fs::write(&ini, text).unwrap();
+            }
+            if l["drop"] == true {
+                return Answer::Drop;
+            }
+            return Answer::Reply(
+                l["status"].as_u64().unwrap() as u16,
+                l["text"].as_str().unwrap().to_owned(),
+            );
+        }
         if t.starts_with("/gate/v1/") {
             if req.method == "POST" && t == "/gate/v1/maintenance" {
                 if case["gate"] == "drop" {
@@ -100,6 +122,8 @@ fn lines(seen: &[Req]) -> (Vec<String>, Vec<String>) {
                 norm = format!("{norm} {}", r.body);
             }
             gate.push(format!("{} {norm}", r.method));
+        } else if r.target == LOADER {
+            router.push(format!("{} {} {}", r.method, r.target, r.body));
         } else {
             let hold = if r.headers.contains_key("x-noevia-maintenance") {
                 "hold"
@@ -203,6 +227,13 @@ async fn front_with(case: &Value, dir: &Path, switch: bool, ttl_ms: u64) -> Fron
     }
     if case["mount"].is_object() {
         env.push(("LLAMACPP_MODELS_PATH".into(), models.display().to_string()));
+    }
+    if case["loader"].is_array() {
+        env.push(("MODELS_INI_WRITER".into(), "model-loader".into()));
+        env.push((
+            "MODEL_LOADER_URL".into(),
+            format!("http://127.0.0.1:{port}"),
+        ));
     }
     if switch {
         env.push(("NOEVIA_RUST_MODEL_WRITES".into(), "rust".into()));
@@ -484,4 +515,152 @@ async fn a_router_answer_too_deep_to_hold_is_passed_on_as_text() {
         std::fs::read_to_string(&f.ini).unwrap(),
         case["ini"].as_str().unwrap()
     );
+}
+
+/// Item of the recovery after a lost hold: the scripted Node ends the front's first lease (its
+/// renewals answer 404) as soon as the model-loader has the save's PUT, which it holds 300 ms, so
+/// the lease is lost during the commit. The router is never asked to re-read the new text; a
+/// recovery under a fresh lease (Node's recovery barrier first) puts the previous text back through
+/// the loader, has the router re-read it and completes Node's recovery before admission reopens.
+#[tokio::test]
+async fn a_lease_lost_during_the_commit_is_recovered_before_chat_resumes() {
+    const SECOND: &str = "fedcba9876543210fedcba9876543210";
+    let case = case_named("no admin token: this process holds alone");
+    let original = case["ini"].as_str().unwrap().to_owned();
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed_database(d.path());
+    let ini = d.path().join("models.ini");
+    std::fs::write(&ini, &original).unwrap();
+    let put_seen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let router = scripted(&case, ini.clone(), calls);
+    let (seen_flag, file) = (Arc::clone(&put_seen), ini.clone());
+    let (port, seen) = engine(Arc::new(move |req: &Req| {
+        if req.method == "PUT" && req.target == LOADER {
+            seen_flag.store(true, Ordering::SeqCst);
+            let sent: Value = serde_json::from_str(&req.body).unwrap();
+            std::fs::write(&file, sent["text"].as_str().unwrap()).unwrap();
+            return Answer::After(
+                std::time::Duration::from_millis(300),
+                200,
+                r#"{"ok":true}"#.into(),
+            );
+        }
+        router(req)
+    }))
+    .await;
+    let leases = Arc::new(AtomicUsize::new(0));
+    let (lease_flag, granted) = (Arc::clone(&put_seen), Arc::clone(&leases));
+    let (node_port, node_seen) = engine(Arc::new(move |req: &Req| {
+        let t = req.target.as_str();
+        if req.method == "POST" && t == "/internal/model-maintenance/lease" {
+            let id = if granted.fetch_add(1, Ordering::SeqCst) == 0 {
+                TOKEN
+            } else {
+                SECOND
+            };
+            return Answer::Reply(
+                201,
+                json!({"lease": id, "ttlMs": 600_000, "renewMs": 50, "hardMs": 3_600_000})
+                    .to_string(),
+            );
+        }
+        if req.method == "POST" && t == format!("/internal/model-maintenance/lease/{TOKEN}/renew") {
+            if lease_flag.load(Ordering::SeqCst) {
+                return Answer::Reply(404, "{}".into());
+            }
+            return Answer::Reply(200, "{}".into());
+        }
+        Answer::Reply(if t.ends_with("/renew") { 200 } else { 204 }, String::new())
+    }))
+    .await;
+    let (addr, stop) = start(
+        d.path(),
+        &[
+            ("NOEVIA_RUST_MODEL_WRITES".into(), "rust".into()),
+            ("MODEL_MANAGER_KIND".into(), "llamacpp".into()),
+            (
+                "MODEL_MANAGER_BASE_URL".into(),
+                format!("http://127.0.0.1:{port}/v1"),
+            ),
+            ("LLAMACPP_PRESET_PATH".into(), ini.display().to_string()),
+            ("MODELS_INI_WRITER".into(), "model-loader".into()),
+            (
+                "MODEL_LOADER_URL".into(),
+                format!("http://127.0.0.1:{port}"),
+            ),
+            (
+                "NOEVIA_LEGACY_UPSTREAM".into(),
+                format!("http://127.0.0.1:{node_port}"),
+            ),
+            (
+                "NOEVIA_PROJECT_STORE_TOKEN".into(),
+                "synthetic-store-token-0123456789abcdef".into(),
+            ),
+        ],
+    )
+    .await;
+    let (status, _, body) = call(addr, "PUT", PATH, Some(ADMIN), &request_body(&case)).await;
+    assert_eq!(
+        (status, body.as_str()),
+        (
+            503,
+            r#"{"error":"Reload failed or timed out. Previous preset file restored; check router health before retrying."}"#
+        )
+    );
+    assert_eq!(std::fs::read_to_string(&ini).unwrap(), original, "restored");
+    let (router_lines, _) = lines(&seen.lock().unwrap());
+    let puts: Vec<&String> = router_lines
+        .iter()
+        .filter(|l| l.starts_with("PUT "))
+        .collect();
+    assert_eq!(puts.len(), 2, "the write and its restore: {router_lines:?}");
+    let reloads: Vec<usize> = router_lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| l.starts_with("GET /models?reload=1"))
+        .map(|(i, _)| i)
+        .collect();
+    let restore_at = router_lines
+        .iter()
+        .rposition(|l| l.starts_with("PUT "))
+        .unwrap();
+    assert_eq!(
+        reloads.len(),
+        1,
+        "only the restored text is re-read: {router_lines:?}"
+    );
+    assert!(reloads[0] > restore_at, "{router_lines:?}");
+    let node_lines: Vec<String> = node_seen
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|r| format!("{} {}", r.method, r.target))
+        .collect();
+    let barrier = node_lines
+        .iter()
+        .position(|l| l.starts_with("POST /internal/model-maintenance/lease/recovery/"))
+        .expect("Node's recovery barrier");
+    let second = node_lines
+        .iter()
+        .rposition(|l| l == "POST /internal/model-maintenance/lease")
+        .unwrap();
+    assert!(
+        barrier < second,
+        "the barrier before the fresh lease: {node_lines:?}"
+    );
+    assert!(
+        node_lines
+            .iter()
+            .any(|l| l.starts_with("DELETE /internal/model-maintenance/lease/recovery/")),
+        "Node's recovery completed: {node_lines:?}"
+    );
+    assert_eq!(leases.load(Ordering::SeqCst), 2);
+    // Admission reopened: the next save runs (and, the lease no longer ended, is applied).
+    put_seen.store(false, Ordering::SeqCst);
+    let mut again = case.clone();
+    again["ini"] = Value::String(original.clone());
+    let (status, _, body) = call(addr, "PUT", PATH, Some(ADMIN), &request_body(&again)).await;
+    let _ = stop.send(());
+    assert_eq!(status, 200, "admission reopened: {body}");
 }
