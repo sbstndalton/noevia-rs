@@ -10,8 +10,9 @@
 //! framing is on ([`crate::frame::frame_part`]). Everything else is a [`Verdict::Skip`] with its
 //! reason, read from core's frame and the request, before anything is built: a project turn
 //! (`turn.projectId`, which is also a free chat's attachments project), a compaction, instruction
-//! skills, a stored frame when the flags are unknown or the brain context may be on (its block is
-//! not ported).
+//! skills, a turn routed to the Code role (its route note), a stored frame when the flags are
+//! unknown or the brain context may be on (its block is not ported), a free list that could not
+//! be read.
 //!
 //! The clock is core's `startedAt` (the time part states only the day, so the two differ only for a
 //! turn that started within milliseconds of midnight in the zone); the zone is the caller's
@@ -37,8 +38,8 @@ pub struct ShadowTurn<'a> {
     /// no file).
     pub instructions: Option<&'a [u8]>,
     pub memory: Option<&'a [u8]>,
-    /// The account's free chat list (`free-chats.json`); `None` when it could not be read (Node
-    /// fails open: no frame).
+    /// The account's free chat list (`free-chats.json`); `None` when it could not be read (the
+    /// turn is skipped unless chat framing is off: Node's copy in memory may hold a frame).
     pub free_chats: Option<&'a JValue>,
     /// `serverTimeZone()`.
     pub time_zone: &'a str,
@@ -119,6 +120,10 @@ fn covered(t: &ShadowTurn<'_>) -> Result<Option<(PartKind, String)>, &'static st
     if !frame.get("skills").is_nullish() {
         return Err("skills");
     }
+    // An Automatic turn routed to the Code role carries chat.cjs's CODE_ROUTE_NOTE (not built here).
+    if frame.get("role").as_str() == Some("code") {
+        return Err("code-route");
+    }
     let space = body.get("spaceId");
     if space.as_str().is_some_and(|s| s.starts_with("diary")) {
         return Err("diary");
@@ -132,6 +137,10 @@ fn covered(t: &ShadowTurn<'_>) -> Result<Option<(PartKind, String)>, &'static st
     // chat.cjs reads the stored frame only with chat framing on; a confirmed one gives the frame
     // block, and the brain block when brainContext is on too (not built here).
     let chat_id = body.get("chatId").as_str();
+    // Node reads its list from memory; a list the caller could not read may hold a frame.
+    if t.free_chats.is_none() && t.chat_framing != Some(false) {
+        return Err("free-list");
+    }
     let stored = frame::chat_frame(&FrameTurn {
         compact_only: false,
         diary_space: space.as_str() == Some("diary"),
