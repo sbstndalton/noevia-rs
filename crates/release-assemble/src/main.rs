@@ -14,19 +14,21 @@
 //! release-assemble move-capability FILE NAME VALUE KIND
 //!                                                 exit 0 when the marker is declared (move_capability)
 //! release-assemble project-routes-core FILE [NAME] a Core module's OWNED_ROUTES (project_routes_core)
-//! release-assemble pairing feature|model-reads TREE
-//!                                                 one namespace ownership pairing over an assembled tree
+//! release-assemble pairing NAME TREE              one ownership pairing over an assembled tree; NAME is
+//!                                                 feature, model-reads, project-reads, project-lifecycle,
+//!                                                 project-files, project-config, code-egress,
+//!                                                 calibration-cancel or calibration-routes
 //! ```
 //! Refusals print `assemble-release: <reason>` on stderr and exit 1; bad usage exits 2.
 
 use release_assemble::guard::{self, MoveKind};
 use release_assemble::lock::Lock;
 use release_assemble::plan::{self, Component, Resolution, Resolved};
-use release_assemble::{digest, tar, tree};
+use release_assemble::{bridged, digest, tar, tree};
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | pairing feature|model-reads TREE";
+const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | pairing NAME TREE";
 
 fn write_out(bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
@@ -181,12 +183,29 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             Ok(ExitCode::SUCCESS)
         }
         ["pairing", which, tree_dir] => {
-            let p = match *which {
-                "feature" => &guard::FEATURE_OWNERSHIP,
-                "model-reads" => &guard::MODEL_READ_OWNERSHIP,
+            let t = Path::new(tree_dir);
+            match *which {
+                "feature" => guard::namespace_pairing(t, &guard::FEATURE_OWNERSHIP)?,
+                "model-reads" => guard::namespace_pairing(t, &guard::MODEL_READ_OWNERSHIP)?,
+                "project-reads" => guard::namespace_pairing(t, &guard::PROJECT_READ_OWNERSHIP)?,
+                "project-lifecycle" => {
+                    guard::namespace_pairing(t, &guard::PROJECT_LIFECYCLE_OWNERSHIP)?
+                }
+                // The storage pair runs first in the script (Core and the front agree by then), so its
+                // front half is its verdict.
+                "project-files" => {
+                    guard::project_files_pairing(t, guard::project_storage_rs_owner(t))?
+                }
+                "project-config" => guard::project_config_pairing(t)?,
+                "code-egress" => bridged::code_egress_pairing(t)?,
+                "calibration-cancel" => {
+                    bridged::calibration_pairing(t, &bridged::CALIBRATION_CANCEL)?
+                }
+                "calibration-routes" => {
+                    bridged::calibration_pairing(t, &bridged::CALIBRATION_ROUTES)?
+                }
                 _ => return Ok(usage()),
-            };
-            guard::namespace_pairing(Path::new(tree_dir), p)?;
+            }
             Ok(ExitCode::SUCCESS)
         }
         _ => Ok(usage()),

@@ -156,4 +156,32 @@ fn guard_subcommands() {
         "assemble-release: model read ownership pairing: Core and Rust must move together\n"
     );
     assert_eq!(bin(&["pairing", "diary", &tree_s]).status.code(), Some(2));
+
+    // Council p8 pairings: an old/old tree passes each; a Core that moved alone is refused.
+    let empty = d.path().join("empty");
+    fs::create_dir_all(empty.join("core/server")).ok();
+    let empty_s = empty.to_string_lossy().into_owned();
+    for name in [
+        "project-reads",
+        "project-lifecycle",
+        "project-files",
+        "project-config",
+        "code-egress",
+        "calibration-cancel",
+        "calibration-routes",
+    ] {
+        let out = bin(&["pairing", name, &empty_s]);
+        assert_eq!(out.status.code(), Some(0), "{name}: {}", text(&out.stderr));
+    }
+    fs::write(
+        empty.join("core/server/index.cjs"),
+        "require('./rust-calibration-cancel.cjs');\n",
+    )
+    .ok();
+    let out = bin(&["pairing", "calibration-cancel", &empty_s]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        text(&out.stderr),
+        "assemble-release: calibration cancellation ownership pairing: Core and Rust must move together\n"
+    );
 }
