@@ -3,7 +3,8 @@
 //! Every case archive is checked by the native `inspect` and compared with the reference's verdict: the
 //! digest it prints, or `refused`. The verdicts are committed in `tests/fixtures/oracle-verdicts.tsv`.
 //! With `REVIEWED_SOURCE_ORACLE=<path to verify-native-source.py>` the reference is run live (python3) on
-//! every case as well, and `REVIEWED_SOURCE_RECORD=1` rewrites the fixture from it.
+//! every case as well, and `REVIEWED_SOURCE_RECORD=1` rewrites the fixture from it. The committed verdicts
+//! are the reference's at the noevia-core commit in `tests/fixtures/core-ref`.
 //! `STRICTER` lists the cases where the native reader refuses and the reference accepts by silently ending
 //! the archive at a malformed header after the first member (see the `tar` module documentation).
 #![allow(
@@ -588,6 +589,8 @@ fn agrees(name: &str, reference: &str, ours: &str) -> bool {
 #[test]
 fn every_case_matches_the_reference_verdict() {
     let cases = cases();
+    // noevia#2709: the case list is pinned (43 accepted, 35 refused by the reference).
+    assert_eq!(cases.len(), 78, "the pinned case count");
     let mut seen = std::collections::BTreeSet::new();
     for (name, _) in &cases {
         assert!(seen.insert(*name), "duplicate case {name}");
