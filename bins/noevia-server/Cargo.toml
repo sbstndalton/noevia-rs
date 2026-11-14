@@ -66,6 +66,8 @@ engine-admission = { path = "../../crates/engine-admission" }
 model-stream = { path = "../../crates/model-stream" }
 research-core = { path = "../../crates/research-core" }
 project-retrieval = { path = "../../crates/project-retrieval" }
+# Council p9 (native_files_context.rs): document-sources.cjs `notice` for the files context.
+document-read = { path = "../../crates/document-read" }
 server-features = { path = "../../crates/server-features" }
 server-diary = { path = "../../crates/server-diary" }
 server-storage-reads = { path = "../../crates/server-storage-reads", optional = true }

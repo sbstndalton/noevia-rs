@@ -2408,6 +2408,7 @@ dependencies = [
  "code-verify",
  "context-fit",
  "dav-parse",
+ "document-read",
  "drive-tools",
  "edit-target-lookup",
  "egress",
