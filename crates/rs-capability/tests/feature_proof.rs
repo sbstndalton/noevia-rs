@@ -474,5 +474,6 @@ fn shipped_binary_feature_proof() {
         f.len(),
         f.join("\n")
     );
+    assert_eq!(n + 2, 76, "the 76 probes");
     println!("Shipped binary feature proof: {} passed", n + 2);
 }

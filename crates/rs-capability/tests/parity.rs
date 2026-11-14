@@ -111,6 +111,8 @@ fn recorded_cases_and_branch_matrix() {
         all.len(),
         failures.join("\n")
     );
+    // noevia#2712: the whole matrix, not only the recorded cases.
+    assert_eq!(all.len(), 4244, "448 recorded + 3,796 matrix cases");
     println!(
         "Rust capability fixtures: {} passed ({recorded} recorded, {} matrix)",
         all.len(),
@@ -275,5 +277,6 @@ fn production_feature_derivation() {
         .map(|(n, _)| n)
         .collect();
     assert!(failed.is_empty(), "feature derivation: {failed:?}");
+    assert_eq!(checks.len() + 4, 22, "the 22 derivation cases");
     println!("Production feature derivation: {} passed", checks.len() + 4);
 }
