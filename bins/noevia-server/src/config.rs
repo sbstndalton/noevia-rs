@@ -133,6 +133,11 @@ pub struct Config {
     /// store is configured, which the supervisor always does and Node needs): a front that could
     /// not tell a running reply from an interrupted one never starts there.
     pub start_id: Option<String>,
+    /// `NOEVIA_FRONT_ONLY=1` (only that value): the web supervisor started this front without Node
+    /// (its NOEVIA_SUPERVISOR_FRONT_ONLY mode, which prepared the key and the schema first). The
+    /// front then answers `/api/ready` from its own state and refuses what is still Node's instead
+    /// of proxying it into a port nobody listens on (legacy_proxy.rs `detached`). Unset: as before.
+    pub front_only: bool,
     /// Track R8: which accounts' chat turns the native executor runs (`NOEVIA_CHAT_EXECUTOR`, chat_native.rs);
     /// default: none (every turn relayed to core as before). A value it cannot read refuses startup.
     pub chat_executor: crate::chat_native::Switch,
@@ -511,6 +516,7 @@ impl Config {
             reasoning_defaults: server_reasoning_settings::read::Defaults::from_lookup(&get),
             secrets_rotate: get("NOEVIA_RUST_SECRETS_ROTATE").as_deref() == Some("1"),
             start_id,
+            front_only: get(FRONT_ONLY).as_deref() == Some("1"),
             rust_chatgpt_status,
             #[cfg(feature = "rust-chatgpt-status")]
             chatgpt_oauth: Some(crate::chatgpt_oauth_routes::Settings::from_lookup(
@@ -552,6 +558,9 @@ pub const RETIRED_SWITCHES: &[&str] = &[
 
 /// The cargo features the permanent front routes need, and whether this build has each. The
 /// web supervisor checks the same names in `--features` before starting either process.
+/// Set by the web supervisor on a front it starts without Node (see [`Config::front_only`]).
+pub const FRONT_ONLY: &str = "NOEVIA_FRONT_ONLY";
+
 pub const FRONT_ROUTE_FEATURES: &[(&str, bool)] = &[
     ("rust-project-writes", cfg!(feature = "rust-project-writes")),
     ("rust-chatgpt-status", cfg!(feature = "rust-chatgpt-status")),
@@ -956,6 +965,18 @@ mod export_tests {
             // Without the store (a front run alone, as the replay tools do) it may be absent.
             assert_eq!(lookup(&[UP, DATA]).unwrap().start_id, None);
         }
+    }
+
+    #[test]
+    fn front_only_is_on_for_exactly_one() {
+        assert!(!lookup(&[UP, DATA]).unwrap().front_only);
+        for off in ["", "0", "true", " 1", "1 ", "yes"] {
+            assert!(
+                !lookup(&[UP, DATA, (FRONT_ONLY, off)]).unwrap().front_only,
+                "{off:?}"
+            );
+        }
+        assert!(lookup(&[UP, DATA, (FRONT_ONLY, "1")]).unwrap().front_only);
     }
 
     #[test]

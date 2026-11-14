@@ -488,6 +488,12 @@ use std::sync::Arc;
 /// (NOEVIA_FRONT_CLIENT_IP=1), and Node believes that header only then, so a core release paired
 /// with a front that predates the strip cannot be handed a client-chosen address (#1578).
 pub const FEATURES: &[&str] = &[
+    // The web supervisor's pre-launch steps (bins/web-supervisor ensure.rs): this front prepares
+    // the data directory from the command line (`--ensure-secrets-key`, `--ensure-schema`).
+    "boot-ensure-v1",
+    // The web supervisor's front-only start: told NOEVIA_FRONT_ONLY=1, this front answers
+    // /api/ready itself and refuses Node's routes without connecting (config.rs front_only).
+    "front-only-v1",
     "rust-residual-fallbacks-v1",
     "rust-source-startup-v1",
     "rust-dav-listener-v1",
@@ -875,7 +881,11 @@ impl App {
                 config.plugin_directory.clone(),
             ),
             auto_roles: auto_roles_routes::Writer::default(),
-            proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
+            proxy: if config.front_only {
+                legacy_proxy::LegacyProxy::detached(config.upstream.clone(), config.trust_proxy)
+            } else {
+                legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy)
+            },
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
             code_net,
@@ -1489,6 +1499,8 @@ async fn handle(
         Some(routes::Native::Ready) => {
             if app.proxy.is_in_process() {
                 app.proxy.forward(conn.peer, req).await
+            } else if app.proxy.is_detached() {
+                health::ready_alone(app.version.as_deref())
             } else {
                 health::ready(&app.config.upstream, app.version.as_deref()).await
             }

@@ -138,6 +138,19 @@ async fn probe(upstream: &Upstream) -> Option<(bool, Option<String>)> {
     outcome.ok().flatten()
 }
 
+/// The answer of a front started without Node (`NOEVIA_FRONT_ONLY=1`, config.rs): ready, since it
+/// is listening and the supervisor prepared the key and the schema before it started (Node too
+/// answered only once listening, always `ready: true`); `version` is the local one or "unknown"
+/// (there is no Node package to fall back to).
+pub fn ready_alone(local: Option<&str>) -> Response<Body> {
+    let version = local.unwrap_or("unknown");
+    reply::json(
+        StatusCode::OK,
+        &json!({ "ready": true, "version": version }),
+        true,
+    )
+}
+
 pub async fn ready(upstream: &Upstream, local: Option<&str>) -> Response<Body> {
     let (ready, upstream_version) = probe(upstream).await.unwrap_or((false, None));
     let version = local
@@ -160,6 +173,24 @@ pub async fn ready(upstream: &Upstream, local: Option<&str>) -> Response<Body> {
 mod tests {
     use super::*;
     use std::io::{Read, Write};
+
+    #[tokio::test]
+    async fn a_front_alone_is_ready_with_its_own_version() {
+        use http_body_util::BodyExt;
+        for (local, want) in [(Some("abc"), "abc"), (None, "unknown")] {
+            let res = ready_alone(local);
+            assert_eq!(res.status(), StatusCode::OK);
+            assert_eq!(
+                res.headers()
+                    .get("cache-control")
+                    .and_then(|v| v.to_str().ok()),
+                Some("no-store")
+            );
+            let body = res.into_body().collect().await.unwrap().to_bytes();
+            let v: Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(v, json!({ "ready": true, "version": want }));
+        }
+    }
 
     #[test]
     fn version_order() {

@@ -191,7 +191,12 @@ pub struct LegacyProxy {
     upstream: Upstream,
     trust_proxy: bool,
     native: Option<NativeExecutor>,
+    /// No Node beside this front (config.rs `front_only`): nothing is ever sent to the upstream.
+    detached: bool,
 }
+
+/// What a front without Node answers for a request only Node serves.
+pub const DETACHED_MESSAGE: &str = "This part of the server is not available yet";
 
 impl LegacyProxy {
     pub fn new(upstream: Upstream, trust_proxy: bool) -> Self {
@@ -199,7 +204,25 @@ impl LegacyProxy {
             upstream,
             trust_proxy,
             native: None,
+            detached: false,
         }
+    }
+
+    /// A front started without Node (`NOEVIA_FRONT_ONLY=1`): every delegation site refuses at once
+    /// (`forward` with 501 and [`DETACHED_MESSAGE`], `relay` with `None`, as if Node were down)
+    /// and no connection to the configured upstream is ever made, so a stray process on the
+    /// reserved port can never be taken for Node.
+    pub fn detached(upstream: Upstream, trust_proxy: bool) -> Self {
+        LegacyProxy {
+            upstream,
+            trust_proxy,
+            native: None,
+            detached: true,
+        }
+    }
+
+    pub fn is_detached(&self) -> bool {
+        self.detached
     }
 
     /// Replaces every legacy delegation site with the same owned native executor.
@@ -209,6 +232,7 @@ impl LegacyProxy {
             upstream,
             trust_proxy,
             native: Some(native),
+            detached: false,
         }
     }
     pub fn is_in_process(&self) -> bool {
@@ -238,6 +262,10 @@ impl LegacyProxy {
             return native(SocketAddr::new(address, peer.port()), req).await;
         }
         let api = req.uri().path().starts_with("/api/");
+        if self.detached {
+            // Not "retry": nothing will start answering here; the route is not native yet.
+            return reply::error(StatusCode::NOT_IMPLEMENTED, DETACHED_MESSAGE, api);
+        }
         let too_large = || {
             reply::error(
                 StatusCode::PAYLOAD_TOO_LARGE,
@@ -311,6 +339,9 @@ impl LegacyProxy {
     where
         B: HttpBody<Data = Bytes, Error = BoxError> + Send + 'static,
     {
+        if self.detached {
+            return Err(());
+        }
         let Ok(stream) =
             tokio::net::TcpStream::connect((self.upstream.ip, self.upstream.port)).await
         else {
@@ -487,6 +518,68 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn a_detached_proxy_refuses_and_never_contacts_the_upstream() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let service = LegacyProxy::detached(
+            Upstream {
+                ip: address.ip(),
+                port: address.port(),
+            },
+            false,
+        );
+        assert!(service.is_detached() && !service.is_in_process());
+        for (path, api) in [("/api/chat", true), ("/dav/x", false)] {
+            let request = Request::post(path)
+                .header("content-length", "2")
+                .body(Body::from("{}"))
+                .unwrap();
+            let reply = service.forward(address, request).await;
+            assert_eq!(reply.status(), StatusCode::NOT_IMPLEMENTED, "{path}");
+            assert_eq!(
+                reply.headers().get("x-noevia-api").is_some(),
+                api,
+                "{path}"
+            );
+            let body = http_body_util::BodyExt::collect(reply.into_body())
+                .await
+                .unwrap()
+                .to_bytes();
+            let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(
+                v.get("error").and_then(serde_json::Value::as_str),
+                Some(DETACHED_MESSAGE),
+                "{path}"
+            );
+        }
+        let relayed = service
+            .relay(
+                address,
+                Request::post("/api/chat").body(Body::empty()).unwrap(),
+                "/internal/chat/turn",
+                &[],
+                1024,
+            )
+            .await;
+        assert!(relayed.is_none(), "a relay reads as Node being down");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(30), listener.accept())
+                .await
+                .is_err(),
+            "nothing connected to the reserved port"
+        );
+        // The plain proxy still reaches the same upstream (the test listener is real).
+        let plain = LegacyProxy::new(
+            Upstream {
+                ip: address.ip(),
+                port: address.port(),
+            },
+            false,
+        );
+        assert!(!plain.is_detached());
     }
 
     fn xff(values: &[&str]) -> HeaderMap {

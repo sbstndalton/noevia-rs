@@ -295,12 +295,14 @@ async fn server_main() -> ExitCode {
             config.dist.display()
         );
     }
+    let legacy = if config.front_only {
+        "none: front only".to_owned()
+    } else {
+        config.upstream.authority()
+    };
     println!(
         "noevia-server listening on http://{}:{} (legacy upstream {}, trust proxy {})",
-        config.host,
-        config.port,
-        config.upstream.authority(),
-        config.trust_proxy
+        config.host, config.port, legacy, config.trust_proxy
     );
     let app = App::new(config);
     noevia_server::extraction::spawn(&app);
