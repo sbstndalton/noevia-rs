@@ -14,6 +14,8 @@ workspace = true
 js-json = { path = "../js-json" }
 # providers.cjs getProvider/providerHeaders and isExternalProvider, already ported there.
 engine-facts = { path = "../engine-facts" }
+# The native turn's Host trait, which [`host`] implements around the front's.
+chat-turn = { path = "../chat-turn" }
 # WHATWG URL parsing (origin, userinfo). MIT OR Apache-2.0; already in Cargo.lock.
 url = "2"
 # The binding's MAC and the key fingerprint. MIT OR Apache-2.0; both already in Cargo.lock.
