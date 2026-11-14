@@ -552,8 +552,13 @@ name = "code-engine-relay"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "bytes",
+ "futures-util",
  "getrandom 0.3.4",
  "hex",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "js-json",
  "sha2",
  "tokio",

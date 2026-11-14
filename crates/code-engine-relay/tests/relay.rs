@@ -19,6 +19,8 @@ use js_json::{wtf16, JValue};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
 const MODEL: &str = "synthetic-coder-1853";
@@ -793,4 +795,146 @@ fn the_bind_address_must_be_one_of_this_machine_s_own() {
     );
     assert_eq!(bind::SERVER_LIMITS.max_connections, 32);
     assert_eq!(bind::SERVER_LIMITS.headers_timeout, Duration::from_secs(10));
+}
+
+// ── listener.rs: the server and its #1876 limits ─────────────────────────────────────────────
+
+async fn listening(
+    r: Rig,
+    limits: bind::Limits,
+) -> (std::net::SocketAddr, Arc<Relay<Fake>>, Arc<Fake>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let relay = Arc::new(r.relay);
+    tokio::spawn(code_engine_relay::listener::serve(
+        listener,
+        Arc::clone(&relay),
+        limits,
+        std::future::pending(),
+    ));
+    (addr, relay, r.fake)
+}
+
+/// One request, read until the server closes (or `within`): the raw answer.
+async fn raw(addr: std::net::SocketAddr, text: &str, within: Duration) -> String {
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    s.write_all(text.as_bytes()).await.unwrap();
+    let mut out = Vec::new();
+    let _ = tokio::time::timeout(within, s.read_to_end(&mut out)).await;
+    String::from_utf8_lossy(&out).to_string()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_listener_answers_with_no_store_and_relays_the_stream() {
+    let (addr, relay, fake) = listening(rig(), bind::SERVER_LIMITS).await;
+    let refused = raw(
+        addr,
+        "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nConnection: close\r\nContent-Length: 2\r\n\r\n{}",
+        Duration::from_secs(5),
+    )
+    .await
+    .to_ascii_lowercase();
+    assert!(refused.starts_with("http/1.1 401"), "{refused}");
+    assert!(refused.contains("cache-control: no-store"), "{refused}");
+    assert!(
+        refused.contains("content-type: application/json"),
+        "{refused}"
+    );
+    assert!(
+        refused.ends_with(
+            r#"{"error":{"message":"no running code task holds this token.","type":"relay_error"}}"#
+        ),
+        "{refused}"
+    );
+
+    let lease = relay.open("listen-1", None, None).await.unwrap();
+    let body = r#"{"model":"x","stream":true}"#;
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    s.write_all(
+        format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {}\r\nAccept: text/event-stream\r\nContent-Length: {}\r\n\r\n{body}",
+            lease.token,
+            body.len()
+        )
+        .as_bytes(),
+    )
+    .await
+    .unwrap();
+    let mut got = Vec::new();
+    let mut buf = [0u8; 4096];
+    while !String::from_utf8_lossy(&got).contains("data: ") {
+        let n = tokio::time::timeout(Duration::from_secs(5), s.read(&mut buf))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(n > 0, "closed early: {}", String::from_utf8_lossy(&got));
+        got.extend_from_slice(&buf[..n]);
+    }
+    let head = String::from_utf8_lossy(&got).to_ascii_lowercase();
+    assert!(head.starts_with("http/1.1 200"), "{head}");
+    assert!(head.contains("content-type: text/event-stream"), "{head}");
+    assert!(head.contains("cache-control: no-store"), "{head}");
+    assert_eq!(
+        fake.sent.lock().unwrap()[0].body,
+        format!(r#"{{"model":"{MODEL}","stream":true}}"#)
+    );
+    // The lease closes mid-answer: the connection is cut, not ended.
+    lease.close();
+    let mut rest = Vec::new();
+    let end = tokio::time::timeout(Duration::from_secs(2), s.read_to_end(&mut rest)).await;
+    assert!(end.is_ok(), "the connection was not cut");
+    assert!(
+        !String::from_utf8_lossy(&rest).contains("0\r\n\r\n"),
+        "a cut answer has no final chunk: {}",
+        String::from_utf8_lossy(&rest)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_slow_head_is_dropped_and_connections_are_capped() {
+    let limits = bind::Limits {
+        headers_timeout: Duration::from_millis(300),
+        request_timeout: Duration::from_millis(500),
+        max_connections: 2,
+        ..bind::SERVER_LIMITS
+    };
+    let (addr, relay, _fake) = listening(rig(), limits).await;
+    // A head that never ends is dropped after the head timeout.
+    let mut slow = TcpStream::connect(addr).await.unwrap();
+    slow.write_all(b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n")
+        .await
+        .unwrap();
+    let mut out = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), slow.read_to_end(&mut out)).await;
+    assert!(closed.is_ok(), "slowloris kept");
+
+    // A body that never completes, with a live token: dropped after the request timeout, no answer.
+    let lease = relay.open("slow-body", None, None).await.unwrap();
+    let mut stalled = TcpStream::connect(addr).await.unwrap();
+    stalled
+        .write_all(
+            format!(
+                "POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {}\r\nContent-Length: 100\r\n\r\n{{",
+                lease.token
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let mut out = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(3), stalled.read_to_end(&mut out)).await;
+    assert!(closed.is_ok(), "a stalled body kept its connection");
+    assert!(out.is_empty(), "{}", String::from_utf8_lossy(&out));
+
+    // Two connections open: a third is closed at once.
+    let _a = TcpStream::connect(addr).await.unwrap();
+    let _b = TcpStream::connect(addr).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let over = raw(
+        addr,
+        "GET /v1/models HTTP/1.1\r\nHost: x\r\n\r\n",
+        Duration::from_secs(2),
+    )
+    .await;
+    assert_eq!(over, "", "the connection over the limit got an answer");
 }

@@ -15,14 +15,18 @@
 //!
 //! What this crate is: the lease authority, the request handler with Node's answers (statuses,
 //! `relay_error` bodies, log events) and, in [`bind`], the listener's address rules and the
-//! environment it is read from. What it is not: the HTTP listener and the machine client. The
-//! caller turns a request into a [`Request`], writes a [`Reply`] (`Cache-Control: no-store` on
-//! every answer) and supplies [`Machines`] (in core: chat-machines.cjs `ready`, `fetch` =
+//! environment it is read from, and in [`listener`] the HTTP/1.1 server with the #1876 limits
+//! (or the caller's own: it turns a request into a [`Request`] and writes the [`Reply`],
+//! `Cache-Control: no-store` on every answer). What it is not: the machine client; the caller
+//! supplies [`Machines`] (in core: chat-machines.cjs `ready`, `fetch` =
 //! serviceFetch with its on-this-network rules, `connectError`, `contextTokens`, `beginTurn`).
 //!
 //! Named differences from Node (each a refusal or a cleanup, never a different success):
 //! - an [`Opened`] lease that is dropped without [`Opened::close`] is closed (Node's lease outlived
 //!   a caller that forgot to close it);
+//! - a request whose body does not arrive within `requestTimeout` is dropped without an answer
+//!   (Node's server answers 408 and closes); an idle keep-alive connection lasts up to the head
+//!   timeout (10 s) rather than `keepAliveTimeout` (5 s);
 //! - the `Accept` header forwarded is cut at 200 UTF-16 units of its text as the caller decoded it
 //!   (Node slices the Latin-1 string it read).
 use js_json::{wtf16, JValue};
@@ -36,6 +40,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 pub mod bind;
+pub mod listener;
 
 /// code-machine.cjs `BODY_CAP`: the largest request body the relay reads.
 pub const BODY_CAP: usize = 16 * 1024 * 1024;
@@ -279,6 +284,8 @@ pub enum BodyFail {
     TooLarge,
     /// The connection failed while reading.
     Failed,
+    /// The whole request did not arrive in time (`requestTimeout`): the connection is dropped.
+    TimedOut,
 }
 
 /// The request body, read only once the token and the path passed (Node `req.resume()`s the
@@ -654,6 +661,7 @@ impl<M: Machines> Relay<M> {
             Ok(raw) => raw,
             Err(BodyFail::TooLarge) => return error_reply(413, "The request is too large.", None),
             Err(BodyFail::Failed) => return error_reply(400, "The request is not JSON.", None),
+            Err(BodyFail::TimedOut) => return Reply::Cut,
         };
         let Ok(payload) = wtf16::parse(&String::from_utf8_lossy(&raw)) else {
             return error_reply(400, "The request is not JSON.", None);
