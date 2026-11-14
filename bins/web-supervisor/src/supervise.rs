@@ -91,8 +91,13 @@ async fn stop(front: &mut Child, node: &mut Child) {
 
 /// Starts Node, then the front, and supervises both. Returns the container's exit code: 0 after
 /// SIGTERM/SIGINT, otherwise the first exit's code (1 when that was 0).
-pub fn supervise(env: &Env, data: &Path, launch: &Launch) -> i32 {
+pub fn supervise(env: &Env, data: &Path, cwd: &Path, launch: &Launch) -> i32 {
     if let Err(msg) = take_pair_lock(data) {
+        eprintln!("{msg}");
+        return 2;
+    }
+    // Under the lock, before either child: the front's start-up preparation (off by default).
+    if let Err(msg) = crate::ensure::run(&launch.ensure, env, cwd, crate::ensure::STEP_TIMEOUT) {
         eprintln!("{msg}");
         return 2;
     }

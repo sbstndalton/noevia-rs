@@ -10,6 +10,7 @@
 //! Behaviour oracle: tests/parity/test-web-supervisor.sh (the script's own suite, copied with the
 //! script at noevia 11bf2da7) runs against this binary in tests/parity.rs.
 
+pub mod ensure;
 pub mod env;
 pub mod pairing;
 pub mod plan;
@@ -144,6 +145,16 @@ fn random(n: usize) -> Vec<u8> {
     }
 }
 
+const DEFAULT_SERVER_BIN: &str = "/usr/local/bin/noevia-server";
+
+/// The data directory both children use: UI_DATA_DIR, or Core's own `server/ui-data`.
+pub fn data_dir(env: &Env, cwd: &Path) -> PathBuf {
+    match env.get("UI_DATA_DIR") {
+        "" => cwd.join("server/ui-data"),
+        dir => PathBuf::from(dir),
+    }
+}
+
 /// Everything before the launch: the refusal (exit 2) or the plan.
 pub fn prepare(
     env: &mut Env,
@@ -154,15 +165,19 @@ pub fn prepare(
         warn(w);
     }
     let env: &Env = env;
+    // noevia#2702 item 2: the script compared these bytes; a value read as empty here would not.
+    if let Some(name) = env.non_utf8_read() {
+        return Err(Refusal(format!(
+            "web-supervisor: {name} is not valid UTF-8; set it to a plain value"
+        )));
+    }
     // Rust is the only front (#1071, #2094): unset or empty means rust.
     match env.get_or("NOEVIA_FRONT", "rust") {
         "rust" => {}
         "node" => return Err(Refusal("web-supervisor: NOEVIA_FRONT=node is no longer supported: the Rust front owns sign-in and routes Node no longer has (sbstndalton/noevia#1071); set NOEVIA_FRONT=rust".to_owned())),
         other => return Err(Refusal(format!("web-supervisor: NOEVIA_FRONT must be rust, got '{other}'"))),
     }
-    let bin = env
-        .get_or("NOEVIA_SERVER_BIN", "/usr/local/bin/noevia-server")
-        .to_owned();
+    let bin = env.get_or("NOEVIA_SERVER_BIN", DEFAULT_SERVER_BIN).to_owned();
     if !executable(Path::new(&bin)) {
         return Err(Refusal("web-supervisor: NOEVIA_FRONT=rust but this image has no noevia-server (its NOEVIA_RS_REF predates bins/noevia-server); update the image".to_owned()));
     }
@@ -178,7 +193,8 @@ pub fn prepare(
         env,
     };
     let paired = pairing::check(env, &bin, &features, &core, warn)?;
-    let launch = plan::plan(env, &bin, &paired, &random(32), &random(16))?;
+    let mut launch = plan::plan(env, &bin, &paired, &random(32), &random(16))?;
+    launch.ensure = ensure::plan(env, &bin, &features, &data_dir(env, cwd))?;
     for w in &launch.warnings {
         warn(w.clone());
     }
@@ -200,6 +216,9 @@ pub fn describe(launch: &plan::Launch) -> String {
             out.push_str(&format!(" {k}={v}"));
         }
         out.push('\n');
+    }
+    for step in &launch.ensure {
+        out.push_str(&format!("ensure {} {}\n", step.program, step.args.join(" ")));
     }
     out
 }
@@ -226,9 +245,5 @@ pub fn run() -> i32 {
         print!("{}", describe(&launch));
         return 0;
     }
-    let data = match env.get("UI_DATA_DIR") {
-        "" => cwd.join("server/ui-data"),
-        dir => PathBuf::from(dir),
-    };
-    supervise::supervise(&env, &data, &launch)
+    supervise::supervise(&env, &data_dir(&env, &cwd), &cwd, &launch)
 }

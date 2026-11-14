@@ -47,6 +47,22 @@ pub const RETIRED: &[&str] = &[
     "NOEVIA_RUST_PROJECT_WRITES",
 ];
 
+/// Every name the checks and the plan read (noevia#2702 item 2): a value that is not UTF-8 would read
+/// as empty there (skipping the code-net guard's refusal, or taking a garbled NOEVIA_FRONT as rust),
+/// where the script compared the bytes and refused. Such a value refuses the start. Kept honest by
+/// `every_name_the_code_reads_is_listed`.
+pub const READ: &[&str] = &[
+    "COWORK_CODE_NET_ADDR",
+    "COWORK_DAV_PORT",
+    "NOEVIA_FRONT",
+    "NOEVIA_SERVER_BIN",
+    "NOEVIA_SUPERVISOR_ENSURE",
+    "PATH",
+    "UI_DATA_DIR",
+    "UI_HOST",
+    "UI_PORT",
+];
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Env {
     vars: BTreeMap<OsString, OsString>,
@@ -91,6 +107,15 @@ impl Env {
         }
     }
 
+    /// The first name of [`READ`] whose value is set but not valid UTF-8.
+    pub fn non_utf8_read(&self) -> Option<&'static str> {
+        READ.iter().copied().find(|name| {
+            self.vars
+                .get(OsStr::new(name))
+                .is_some_and(|v| v.to_str().is_none())
+        })
+    }
+
     pub fn remove(&mut self, name: &str) {
         self.vars.remove(OsStr::new(name));
     }
@@ -131,6 +156,46 @@ mod tests {
         assert_eq!(env.get_or("A", "d"), "d");
         assert_eq!(env.get_or("C", "d"), "d");
         assert_eq!(env.get_or("B", "d"), "x");
+    }
+
+    #[test]
+    fn a_non_utf8_value_of_a_read_name_is_found_and_others_are_not() {
+        use std::os::unix::ffi::OsStringExt;
+        let bad = || OsString::from_vec(vec![b'1', 0xff, b'2']);
+        let env = Env::from_pairs([(OsString::from("OTHER"), bad())]);
+        assert_eq!(env.non_utf8_read(), None);
+        let env = Env::from_pairs([
+            (OsString::from("UI_PORT"), OsString::from("8021")),
+            (OsString::from("COWORK_CODE_NET_ADDR"), bad()),
+        ]);
+        assert_eq!(env.non_utf8_read(), Some("COWORK_CODE_NET_ADDR"));
+        assert_eq!(env.get("COWORK_CODE_NET_ADDR"), "");
+    }
+
+    /// Every `get("…")`, `get_or("…"` and `is_set("…")` name in the crate's non-test code is in
+    /// READ (or is only removed: SCRUBBED and RETIRED never reach a check).
+    #[test]
+    fn every_name_the_code_reads_is_listed() {
+        let sources = [
+            include_str!("lib.rs"),
+            include_str!("pairing.rs"),
+            include_str!("plan.rs"),
+            include_str!("supervise.rs"),
+            include_str!("ensure.rs"),
+        ];
+        let mut seen = 0;
+        for src in sources {
+            let code = src.split("#[cfg(test)]").next().unwrap();
+            for call in ["env.get(\"", "env.get_or(\"", "env.is_set(\""] {
+                for (at, _) in code.match_indices(call) {
+                    let rest = &code[at + call.len()..];
+                    let name = &rest[..rest.find('"').unwrap()];
+                    assert!(READ.contains(&name), "{name} is read but not in READ");
+                    seen += 1;
+                }
+            }
+        }
+        assert!(seen >= 9, "only {seen} reads found: the scan no longer matches the code");
     }
 
     #[test]

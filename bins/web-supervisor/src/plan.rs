@@ -20,6 +20,9 @@ pub struct Launch {
     pub store_port: u32,
     /// Notes printed before the launch (stderr).
     pub warnings: Vec<String>,
+    /// The front's start-up preparation, run in order under the pair lock before either child
+    /// (empty unless NOEVIA_SUPERVISOR_ENSURE=1; ensure.rs).
+    pub ensure: Vec<ChildSpec>,
 }
 
 /// `UI_PORT` as the script reads it: digits only, 1..=64535 so UI_PORT+1000 fits. Leading zeros
@@ -135,6 +138,7 @@ pub fn plan(
         },
         legacy_port: legacy,
         store_port,
+        ensure: Vec::new(),
         warnings,
     })
 }
