@@ -1045,6 +1045,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-read"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "libc",
+ "sha2",
+]
+
+[[package]]
 name = "docx-text"
 version = "0.1.0"
 dependencies = [
@@ -1213,6 +1222,18 @@ dependencies = [
  "reqwest",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "engine-facts"
+version = "0.1.0"
+dependencies = [
+ "chat-turn",
+ "js-json",
+ "prompt-framing",
+ "provider-egress",
+ "serde_json",
+ "url",
 ]
 
 [[package]]
@@ -3566,16 +3587,19 @@ dependencies = [
 name = "server-reasoning-settings"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "serde_json",
  "server-store",
  "tempfile",
+ "url",
 ]
 
 [[package]]
 name = "server-routing-default"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "rustix",
  "serde_json",

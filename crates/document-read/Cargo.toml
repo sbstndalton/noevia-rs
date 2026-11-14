@@ -1,0 +1,19 @@
+[package]
+name = "document-read"
+version = "0.1.0"
+description = "What a stored project document says about itself and its pages (notice, problem, notes, readPages), matching noevia-core's server/document-sources.cjs"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+# The stored results' directory (document-sources.cjs `directory`: sha256 of the project id). MIT OR Apache-2.0;
+# already in Cargo.lock.
+sha2 = "=0.10.9"
+# O_NOFOLLOW for the stored result's open. MIT OR Apache-2.0; already in Cargo.lock.
+libc = "=0.2.190"
+
+[lints]
+workspace = true
