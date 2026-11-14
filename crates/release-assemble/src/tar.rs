@@ -54,7 +54,10 @@ fn number(b: &[u8]) -> io::Result<u64> {
         if first & 0x80 != 0 {
             let mut v: u64 = u64::from(first & 0x7f);
             for c in b.get(1..).unwrap_or_default() {
-                v = v.checked_mul(256).and_then(|v| v.checked_add(u64::from(*c))).ok_or_else(|| bad("tar: number overflow"))?;
+                v = v
+                    .checked_mul(256)
+                    .and_then(|v| v.checked_add(u64::from(*c)))
+                    .ok_or_else(|| bad("tar: number overflow"))?;
             }
             return Ok(v);
         }
@@ -69,7 +72,10 @@ fn number(b: &[u8]) -> io::Result<u64> {
         if !(b'0'..=b'7').contains(&c) {
             return Err(bad("tar: bad octal field"));
         }
-        v = v.checked_mul(8).and_then(|v| v.checked_add(u64::from(c - b'0'))).ok_or_else(|| bad("tar: number overflow"))?;
+        v = v
+            .checked_mul(8)
+            .and_then(|v| v.checked_add(u64::from(c - b'0')))
+            .ok_or_else(|| bad("tar: number overflow"))?;
     }
     Ok(v)
 }
@@ -104,10 +110,12 @@ fn read_block(r: &mut dyn Read, buf: &mut [u8; BLOCK]) -> io::Result<bool> {
 fn read_data(r: &mut dyn Read, size: u64) -> io::Result<Vec<u8>> {
     let len = usize::try_from(size).map_err(|_| bad("tar: member too large"))?;
     let mut data = vec![0u8; len];
-    r.read_exact(&mut data).map_err(|_| bad("tar: truncated member"))?;
+    r.read_exact(&mut data)
+        .map_err(|_| bad("tar: truncated member"))?;
     let pad = (BLOCK - len % BLOCK) % BLOCK;
     let mut skip = vec![0u8; pad];
-    r.read_exact(&mut skip).map_err(|_| bad("tar: truncated member"))?;
+    r.read_exact(&mut skip)
+        .map_err(|_| bad("tar: truncated member"))?;
     Ok(data)
 }
 
@@ -116,7 +124,10 @@ fn pax(data: &[u8]) -> io::Result<BTreeMap<String, Vec<u8>>> {
     let mut out = BTreeMap::new();
     let mut rest = data;
     while !rest.is_empty() {
-        let sp = rest.iter().position(|c| *c == b' ').ok_or_else(|| bad("tar: bad pax record"))?;
+        let sp = rest
+            .iter()
+            .position(|c| *c == b' ')
+            .ok_or_else(|| bad("tar: bad pax record"))?;
         let len: usize = std::str::from_utf8(rest.get(..sp).unwrap_or_default())
             .ok()
             .and_then(|s| s.parse().ok())
@@ -126,7 +137,10 @@ fn pax(data: &[u8]) -> io::Result<BTreeMap<String, Vec<u8>>> {
             return Err(bad("tar: bad pax record"));
         }
         let body = rec.get(sp + 1..len - 1).unwrap_or_default();
-        let eq = body.iter().position(|c| *c == b'=').ok_or_else(|| bad("tar: bad pax record"))?;
+        let eq = body
+            .iter()
+            .position(|c| *c == b'=')
+            .ok_or_else(|| bad("tar: bad pax record"))?;
         let key = String::from_utf8_lossy(body.get(..eq).unwrap_or_default()).into_owned();
         out.insert(key, body.get(eq + 1..).unwrap_or_default().to_vec());
         rest = rest.get(len..).unwrap_or_default();
@@ -154,7 +168,9 @@ pub fn read_all(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
         let typeflag = h.get(156).copied().unwrap_or(0);
         let pax_size = local.get("size").or_else(|| global.get("size")).cloned();
         let size = match pax_size {
-            Some(v) => String::from_utf8_lossy(&v).parse::<u64>().map_err(|_| bad("tar: bad pax size"))?,
+            Some(v) => String::from_utf8_lossy(&v)
+                .parse::<u64>()
+                .map_err(|_| bad("tar: bad pax size"))?,
             None => number(field(&h, 124, 12))?,
         };
         match typeflag {
@@ -205,7 +221,10 @@ pub fn read_all(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
         local.clear();
         let mode = number(field(&h, 100, 8))?;
         let kind = match typeflag {
-            b'0' | 0 | b'7' => Kind::File { executable: mode & 0o111 != 0, data: read_data(r, size)? },
+            b'0' | 0 | b'7' => Kind::File {
+                executable: mode & 0o111 != 0,
+                data: read_data(r, size)?,
+            },
             b'5' => {
                 read_data(r, size)?;
                 Kind::Dir
@@ -215,7 +234,12 @@ pub fn read_all(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
                 Kind::Symlink { target: link }
             }
             b'1' => return Err(bad("tar: hardlink members are refused")),
-            other => return Err(bad(format!("tar: member type {:?} is refused", char::from(other)))),
+            other => {
+                return Err(bad(format!(
+                    "tar: member type {:?} is refused",
+                    char::from(other)
+                )))
+            }
         };
         while name.last() == Some(&b'/') {
             name.pop();
@@ -238,11 +262,20 @@ pub fn read_gz(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
 /// Member name components, refused when absolute, empty or with `..` (GNU tar strips or skips those).
 fn components(name: &[u8]) -> io::Result<Vec<&[u8]>> {
     if name.first() == Some(&b'/') {
-        return Err(bad(format!("tar: absolute member {}", String::from_utf8_lossy(name))));
+        return Err(bad(format!(
+            "tar: absolute member {}",
+            String::from_utf8_lossy(name)
+        )));
     }
-    let parts: Vec<&[u8]> = name.split(|c| *c == b'/').filter(|p| !p.is_empty() && *p != b".").collect();
+    let parts: Vec<&[u8]> = name
+        .split(|c| *c == b'/')
+        .filter(|p| !p.is_empty() && *p != b".")
+        .collect();
     if parts.iter().any(|p| *p == b"..") {
-        return Err(bad(format!("tar: member with '..': {}", String::from_utf8_lossy(name))));
+        return Err(bad(format!(
+            "tar: member with '..': {}",
+            String::from_utf8_lossy(name)
+        )));
     }
     Ok(parts)
 }
@@ -260,7 +293,10 @@ fn os_path(parts: &[&[u8]]) -> PathBuf {
 /// Make every parent of `rel` under `dest` a real directory (never through a symlink).
 fn real_parents(dest: &Path, rel: &Path) -> io::Result<()> {
     let mut at = dest.to_path_buf();
-    let parents: Vec<Component> = rel.parent().map(|p| p.components().collect()).unwrap_or_default();
+    let parents: Vec<Component> = rel
+        .parent()
+        .map(|p| p.components().collect())
+        .unwrap_or_default();
     for c in parents {
         at.push(c);
         match fs::symlink_metadata(&at) {
@@ -287,7 +323,9 @@ pub fn extract(entries: &[Entry], strip: usize, dest: &Path) -> io::Result<usize
     let mut written = 0;
     for e in entries {
         let parts = components(&e.name)?;
-        let Some(kept) = parts.get(strip..) else { continue };
+        let Some(kept) = parts.get(strip..) else {
+            continue;
+        };
         if kept.is_empty() {
             continue;
         }
@@ -298,7 +336,12 @@ pub fn extract(entries: &[Entry], strip: usize, dest: &Path) -> io::Result<usize
         match &e.kind {
             Kind::Dir => match existing {
                 Some(m) if m.file_type().is_dir() => {}
-                Some(_) => return Err(bad(format!("tar: {} exists and is not a directory", path.display()))),
+                Some(_) => {
+                    return Err(bad(format!(
+                        "tar: {} exists and is not a directory",
+                        path.display()
+                    )))
+                }
                 None => fs::create_dir(&path)?,
             },
             Kind::File { executable, data } => {
@@ -353,7 +396,10 @@ fn put(h: &mut [u8; BLOCK], start: usize, bytes: &[u8]) {
 }
 
 fn fits_octal(v: u64, width: usize) -> bool {
-    u32::try_from(3 * width).ok().and_then(|bits| 1u64.checked_shl(bits)).is_none_or(|limit| v < limit)
+    u32::try_from(3 * width)
+        .ok()
+        .and_then(|bits| 1u64.checked_shl(bits))
+        .is_none_or(|limit| v < limit)
 }
 
 impl<W: Write> Writer<W> {
@@ -361,19 +407,44 @@ impl<W: Write> Writer<W> {
         Writer { out, mtime }
     }
 
-    fn header(&mut self, name: &[u8], typeflag: u8, mode: u64, size: u64, link: &[u8]) -> io::Result<()> {
+    fn header(
+        &mut self,
+        name: &[u8],
+        typeflag: u8,
+        mode: u64,
+        size: u64,
+        link: &[u8],
+    ) -> io::Result<()> {
         let mut h = [0u8; BLOCK];
-        put(&mut h, 0, name.get(..name.len().min(100)).unwrap_or_default());
+        put(
+            &mut h,
+            0,
+            name.get(..name.len().min(100)).unwrap_or_default(),
+        );
         octal(h.get_mut(100..108).unwrap_or_default(), mode);
         octal(h.get_mut(108..116).unwrap_or_default(), 0);
         octal(h.get_mut(116..124).unwrap_or_default(), 0);
-        octal(h.get_mut(124..136).unwrap_or_default(), if fits_octal(size, 11) { size } else { 0 });
-        octal(h.get_mut(136..148).unwrap_or_default(), if fits_octal(self.mtime, 11) { self.mtime } else { 0 });
+        octal(
+            h.get_mut(124..136).unwrap_or_default(),
+            if fits_octal(size, 11) { size } else { 0 },
+        );
+        octal(
+            h.get_mut(136..148).unwrap_or_default(),
+            if fits_octal(self.mtime, 11) {
+                self.mtime
+            } else {
+                0
+            },
+        );
         put(&mut h, 148, b"        ");
         if let Some(t) = h.get_mut(156) {
             *t = typeflag;
         }
-        put(&mut h, 157, link.get(..link.len().min(100)).unwrap_or_default());
+        put(
+            &mut h,
+            157,
+            link.get(..link.len().min(100)).unwrap_or_default(),
+        );
         put(&mut h, 257, b"ustar\x0000");
         octal(h.get_mut(329..337).unwrap_or_default(), 0);
         octal(h.get_mut(337..345).unwrap_or_default(), 0);
@@ -426,7 +497,13 @@ impl<W: Write> Writer<W> {
     pub fn file(&mut self, name: &[u8], executable: bool, data: &[u8]) -> io::Result<()> {
         let size = data.len() as u64;
         self.pax_if_needed(name, b"", size)?;
-        self.header(name, b'0', if executable { 0o755 } else { 0o644 }, size, b"")?;
+        self.header(
+            name,
+            b'0',
+            if executable { 0o755 } else { 0o644 },
+            size,
+            b"",
+        )?;
         self.out.write_all(data)?;
         self.pad(size)
     }
@@ -458,8 +535,9 @@ impl<W: Write> Writer<W> {
             self.symlink(rel, &target)
         } else if ft.is_dir() {
             self.dir(rel)?;
-            let mut names: Vec<Vec<u8>> =
-                fs::read_dir(&path)?.map(|d| d.map(|d| d.file_name().into_vec())).collect::<io::Result<_>>()?;
+            let mut names: Vec<Vec<u8>> = fs::read_dir(&path)?
+                .map(|d| d.map(|d| d.file_name().into_vec()))
+                .collect::<io::Result<_>>()?;
             names.sort();
             for n in names {
                 let mut child = rel.to_vec();
@@ -472,7 +550,10 @@ impl<W: Write> Writer<W> {
             let data = fs::read(&path)?;
             self.file(rel, meta.permissions().mode() & 0o111 != 0, &data)
         } else {
-            Err(bad(format!("tar: {} is not a file, directory or symlink", path.display())))
+            Err(bad(format!(
+                "tar: {} is not a file, directory or symlink",
+                path.display()
+            )))
         }
     }
 
@@ -489,7 +570,9 @@ mod tests {
 
     #[test]
     fn round_trip_long_names() {
-        let long: Vec<u8> = std::iter::repeat_n(b'a', 150).chain(b"/b".iter().copied()).collect();
+        let long: Vec<u8> = std::iter::repeat_n(b'a', 150)
+            .chain(b"/b".iter().copied())
+            .collect();
         let mut w = Writer::new(Vec::new(), 0);
         w.dir(b"top").ok();
         w.file(&long, true, b"x").ok();
@@ -498,13 +581,21 @@ mod tests {
         let entries = read_all(&mut bytes.as_slice()).unwrap_or_default();
         assert_eq!(entries.len(), 3);
         assert_eq!(entries.get(1).map(|e| e.name.clone()), Some(long));
-        assert_eq!(entries.get(2).map(|e| e.kind.clone()), Some(Kind::Symlink { target: vec![b'c'; 120] }));
+        assert_eq!(
+            entries.get(2).map(|e| e.kind.clone()),
+            Some(Kind::Symlink {
+                target: vec![b'c'; 120]
+            })
+        );
     }
 
     #[test]
     fn refuses_dotdot_and_absolute() {
         assert!(components(b"a/../b").is_err());
         assert!(components(b"/etc/x").is_err());
-        assert_eq!(components(b"./a//b/").ok(), Some(vec![&b"a"[..], &b"b"[..]]));
+        assert_eq!(
+            components(b"./a//b/").ok(),
+            Some(vec![&b"a"[..], &b"b"[..]])
+        );
     }
 }

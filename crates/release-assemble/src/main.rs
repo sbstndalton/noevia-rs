@@ -31,7 +31,9 @@ fn usage() -> ExitCode {
 }
 
 fn read_lock(path: &str) -> Result<Lock, String> {
-    std::fs::read(path).map(|b| Lock::from_bytes(&b)).map_err(|_| format!("--lock file not found: {path}"))
+    std::fs::read(path)
+        .map(|b| Lock::from_bytes(&b))
+        .map_err(|_| format!("--lock file not found: {path}"))
 }
 
 fn open_tgz(path: &str) -> Result<Vec<tar::Entry>, String> {
@@ -46,7 +48,9 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             let v = read_lock(lock)?.value(key);
             use std::io::Write;
             let mut out = std::io::stdout().lock();
-            out.write_all(&v).and_then(|()| out.write_all(b"\n")).map_err(|e| e.to_string())?;
+            out.write_all(&v)
+                .and_then(|()| out.write_all(b"\n"))
+                .map_err(|e| e.to_string())?;
             Ok(ExitCode::SUCCESS)
         }
         ["plan", lock, sha] => {
@@ -57,7 +61,9 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             for c in Component::ALL {
                 match plan::resolve(&lock, c, sha)? {
                     Resolution::SelfExport => println!("{}\tself", c.dir()),
-                    Resolution::Pinned { reference, sha256 } => println!("{}\t{reference}\t{sha256}", c.dir()),
+                    Resolution::Pinned { reference, sha256 } => {
+                        println!("{}\t{reference}\t{sha256}", c.dir())
+                    }
                 }
             }
             match plan::resolve_rs(&lock, sha)? {
@@ -89,9 +95,23 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                 [r] => (*r).to_string(),
                 _ => return Ok(usage()),
             };
-            let resolved = Resolved { web: (*web).into(), core: (*core).into(), services: (*services).into(), rs };
-            let mtime = std::env::var("SOURCE_DATE_EPOCH").ok().and_then(|v| v.parse().ok()).unwrap_or(0);
-            let out = tree::finish(Path::new(tree_dir), sha, &resolved, Path::new(out_dir), mtime)?;
+            let resolved = Resolved {
+                web: (*web).into(),
+                core: (*core).into(),
+                services: (*services).into(),
+                rs,
+            };
+            let mtime = std::env::var("SOURCE_DATE_EPOCH")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
+            let out = tree::finish(
+                Path::new(tree_dir),
+                sha,
+                &resolved,
+                Path::new(out_dir),
+                mtime,
+            )?;
             println!("ok: {}", out.display());
             Ok(ExitCode::SUCCESS)
         }

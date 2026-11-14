@@ -36,10 +36,19 @@ pub const REQUIRED: [&str; 13] = [
 ];
 
 /// The tarball's top-level members, in the shell's order.
-pub const TOP: [&str; 7] = [".dockerignore", "release-refs", "noevia", "web", "core", "services", "rs"];
+pub const TOP: [&str; 7] = [
+    ".dockerignore",
+    "release-refs",
+    "noevia",
+    "web",
+    "core",
+    "services",
+    "rs",
+];
 
 /// The `.dockerignore` the shell writes.
-pub const DOCKERIGNORE: &str = "noevia\n!noevia/build/web-supervisor.sh\nservices\n**/server/ui-data\n";
+pub const DOCKERIGNORE: &str =
+    "noevia\n!noevia/build/web-supervisor.sh\nservices\n**/server/ui-data\n";
 
 /// `[ -e "$tree/$need" ] || die "assembled tree lacks $need"` (`-e` follows symlinks).
 pub fn check_required(tree: &Path) -> Result<(), String> {
@@ -90,10 +99,17 @@ pub fn prune_ui_data(tree: &Path) -> io::Result<usize> {
 /// Steps 1 to 5 over a tree whose components are in place. Writes `<out_dir>/noevia-release-<sha>.tar.gz`
 /// through `<out>.partial` (removed on failure) and returns its path.
 #[cfg(unix)]
-pub fn finish(tree: &Path, sha: &str, resolved: &Resolved, out_dir: &Path, mtime: u64) -> Result<std::path::PathBuf, String> {
+pub fn finish(
+    tree: &Path,
+    sha: &str,
+    resolved: &Resolved,
+    out_dir: &Path,
+    mtime: u64,
+) -> Result<std::path::PathBuf, String> {
     check_required(tree)?;
     let io_err = |what: &str, e: io::Error| format!("{what}: {e}");
-    fs::write(tree.join("release-refs"), release_refs(sha, resolved)).map_err(|e| io_err("release-refs", e))?;
+    fs::write(tree.join("release-refs"), release_refs(sha, resolved))
+        .map_err(|e| io_err("release-refs", e))?;
     prune_ui_data(tree).map_err(|e| io_err("ui-data prune", e))?;
     fs::write(tree.join(".dockerignore"), DOCKERIGNORE).map_err(|e| io_err(".dockerignore", e))?;
     let out = out_dir.join(format!("noevia-release-{sha}.tar.gz"));
@@ -110,7 +126,9 @@ pub fn finish(tree: &Path, sha: &str, resolved: &Resolved, out_dir: &Path, mtime
 #[cfg(unix)]
 pub fn pack(root: &Path, members: &[&str], out: &Path, mtime: u64) -> io::Result<()> {
     let file = fs::File::create(out)?;
-    let gz = flate2::GzBuilder::new().mtime(0).write(io::BufWriter::new(file), flate2::Compression::default());
+    let gz = flate2::GzBuilder::new()
+        .mtime(0)
+        .write(io::BufWriter::new(file), flate2::Compression::default());
     let mut w = Writer::new(gz, mtime);
     for m in members {
         w.add_path(root, m.as_bytes())?;
@@ -123,7 +141,8 @@ pub fn pack(root: &Path, members: &[&str], out: &Path, mtime: u64) -> io::Result
 /// One line per member, sorted: `<d|f|x|l> <size> <sha256|-> <name>[ -> <target>]`, where `x` is an
 /// executable file. A name listed twice keeps its last member (what an extraction leaves).
 pub fn manifest(entries: &[tar::Entry]) -> Vec<String> {
-    let mut by_name: std::collections::BTreeMap<Vec<u8>, String> = std::collections::BTreeMap::new();
+    let mut by_name: std::collections::BTreeMap<Vec<u8>, String> =
+        std::collections::BTreeMap::new();
     for e in entries {
         let mut name: Vec<u8> = e.name.clone();
         while name.starts_with(b"./") {
@@ -141,7 +160,9 @@ pub fn manifest(entries: &[tar::Entry]) -> Vec<String> {
                 data.len(),
                 crate::digest::sha256_hex(data)
             ),
-            Kind::Symlink { target } => format!("l 0 - {shown} -> {}", String::from_utf8_lossy(target)),
+            Kind::Symlink { target } => {
+                format!("l 0 - {shown} -> {}", String::from_utf8_lossy(target))
+            }
         };
         by_name.insert(name, line);
     }
@@ -154,7 +175,12 @@ mod tests {
 
     #[test]
     fn refs_text() {
-        let r = Resolved { web: "w".into(), core: "c".into(), services: "s".into(), rs: String::new() };
+        let r = Resolved {
+            web: "w".into(),
+            core: "c".into(),
+            services: "s".into(),
+            rs: String::new(),
+        };
         assert_eq!(
             release_refs("abc1234", &r),
             "NOEVIA_SHA=abc1234\nNOEVIA_WEB_SHA=w\nNOEVIA_CORE_SHA=c\nNOEVIA_SERVICES_SHA=s\nNOEVIA_RS_SHA=\n"

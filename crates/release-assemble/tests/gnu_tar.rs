@@ -11,7 +11,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn have(tool: &str) -> bool {
-    Command::new(tool).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new(tool)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 fn write(path: &Path, data: &[u8], exec: bool) {
@@ -19,20 +23,43 @@ fn write(path: &Path, data: &[u8], exec: bool) {
         fs::create_dir_all(p).ok();
     }
     fs::write(path, data).ok();
-    fs::set_permissions(path, fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 })).ok();
+    fs::set_permissions(
+        path,
+        fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 }),
+    )
+    .ok();
 }
 
 /// A tree with the shapes a release carries: nested dirs, executables, empty files and dirs, long and
 /// non-ASCII names, a relative symlink, a 1 MiB file.
 fn sample(root: &Path) {
-    write(&root.join("noevia/build/web.Dockerfile"), b"FROM scratch\n", false);
-    write(&root.join("noevia/deploy/tools/assemble-release.sh"), b"#!/bin/sh\n", true);
-    let deep = format!("web/{}/{}/file-{}.txt", "d".repeat(60), "e".repeat(70), "f".repeat(90));
+    write(
+        &root.join("noevia/build/web.Dockerfile"),
+        b"FROM scratch\n",
+        false,
+    );
+    write(
+        &root.join("noevia/deploy/tools/assemble-release.sh"),
+        b"#!/bin/sh\n",
+        true,
+    );
+    let deep = format!(
+        "web/{}/{}/file-{}.txt",
+        "d".repeat(60),
+        "e".repeat(70),
+        "f".repeat(90)
+    );
     write(&root.join(deep), b"long", false);
-    write(&root.join("web/src/caf\u{e9} na\u{ef}ve.ts"), "export {};\n".as_bytes(), false);
+    write(
+        &root.join("web/src/caf\u{e9} na\u{ef}ve.ts"),
+        "export {};\n".as_bytes(),
+        false,
+    );
     write(&root.join("web/src/empty"), b"", false);
     fs::create_dir_all(root.join("core/server/empty-dir")).ok();
-    let big: Vec<u8> = (0..(1u32 << 20)).map(|i| (i.wrapping_mul(2654435761) >> 24) as u8).collect();
+    let big: Vec<u8> = (0..(1u32 << 20))
+        .map(|i| (i.wrapping_mul(2654435761) >> 24) as u8)
+        .collect();
     write(&root.join("core/server/blob.bin"), &big, false);
     std::os::unix::fs::symlink("../server/blob.bin", root.join("core/server/link")).ok();
     let long_target = format!("../{}", "t".repeat(140));
@@ -46,18 +73,33 @@ fn walk(root: &Path) -> Vec<String> {
         let Ok(rd) = fs::read_dir(dir) else { return };
         for e in rd.flatten() {
             let p = e.path();
-            let rel = p.strip_prefix(root).map(|r| r.to_string_lossy().into_owned()).unwrap_or_default();
-            let Ok(m) = fs::symlink_metadata(&p) else { continue };
+            let rel = p
+                .strip_prefix(root)
+                .map(|r| r.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let Ok(m) = fs::symlink_metadata(&p) else {
+                continue;
+            };
             if m.file_type().is_symlink() {
-                let t = fs::read_link(&p).map(|t| t.to_string_lossy().into_owned()).unwrap_or_default();
+                let t = fs::read_link(&p)
+                    .map(|t| t.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 out.push(format!("l 0 - {rel} -> {t}"));
             } else if m.is_dir() {
                 out.push(format!("d 0 - {rel}"));
                 go(root, &p, out);
             } else {
                 let data = fs::read(&p).unwrap_or_default();
-                let x = if m.permissions().mode() & 0o111 != 0 { "x" } else { "f" };
-                out.push(format!("{x} {} {} {rel}", data.len(), release_assemble::digest::sha256_hex(&data)));
+                let x = if m.permissions().mode() & 0o111 != 0 {
+                    "x"
+                } else {
+                    "f"
+                };
+                out.push(format!(
+                    "{x} {} {} {rel}",
+                    data.len(),
+                    release_assemble::digest::sha256_hex(&data)
+                ));
             }
         }
     }
@@ -78,7 +120,11 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
 }
 
 fn manifest_of(tgz: &Path) -> Vec<String> {
-    let mut f = fs::File::open(tgz).ok().unwrap_or_else(|| fs::File::open("/dev/null").ok().unwrap_or_else(|| unreachable_file()));
+    let mut f = fs::File::open(tgz).ok().unwrap_or_else(|| {
+        fs::File::open("/dev/null")
+            .ok()
+            .unwrap_or_else(unreachable_file)
+    });
     sorted(tree::manifest(&tar::read_gz(&mut f).unwrap_or_default()))
 }
 
@@ -88,7 +134,7 @@ fn unreachable_file() -> fs::File {
 }
 
 fn tmp() -> tempfile::TempDir {
-    tempfile::tempdir().ok().unwrap_or_else(|| unreachable_tmp())
+    tempfile::tempdir().ok().unwrap_or_else(unreachable_tmp)
 }
 
 #[allow(clippy::panic)]
@@ -109,8 +155,16 @@ fn rust_tarball_extracts_with_gnu_tar() {
     assert!(tree::pack(&src, &["noevia", "web", "core", "rs"], &tgz, 0).is_ok());
     let dst = d.path().join("dst");
     fs::create_dir_all(&dst).ok();
-    let st = Command::new("tar").arg("-xzf").arg(&tgz).arg("-C").arg(&dst).status();
-    assert!(st.map(|s| s.success()).unwrap_or(false), "GNU tar could not extract the Rust tarball");
+    let st = Command::new("tar")
+        .arg("-xzf")
+        .arg(&tgz)
+        .arg("-C")
+        .arg(&dst)
+        .status();
+    assert!(
+        st.map(|s| s.success()).unwrap_or(false),
+        "GNU tar could not extract the Rust tarball"
+    );
     assert_eq!(walk(&dst), walk(&src));
     // And the manifest of the archive is what an extraction gives.
     assert_eq!(manifest_of(&tgz), walk(&src));
@@ -155,7 +209,14 @@ fn git(dir: &Path, args: &[&str]) -> bool {
     Command::new("git")
         .arg("-C")
         .arg(dir)
-        .args(["-c", "user.name=QA Release", "-c", "user.email=qa@example.invalid", "-c", "core.symlinks=true"])
+        .args([
+            "-c",
+            "user.name=QA Release",
+            "-c",
+            "user.email=qa@example.invalid",
+            "-c",
+            "core.symlinks=true",
+        ])
         .args(args)
         .status()
         .map(|s| s.success())
@@ -175,12 +236,24 @@ fn git_archive_strip_matches_gnu_tar() {
     sample(&repo.join("apps/web"));
     fs::remove_dir_all(repo.join("apps/web/core/server/empty-dir")).ok();
     fs::remove_dir_all(repo.join("apps/web/rs")).ok();
-    assert!(git(&repo, &["init", "-q"]) && git(&repo, &["add", "-A"]) && git(&repo, &["commit", "-qm", "qa"]));
-    for (strip, prefix, gz) in [(1usize, "noevia-web-0123/", true), (2, "", false), (3, "", false)] {
+    assert!(
+        git(&repo, &["init", "-q"])
+            && git(&repo, &["add", "-A"])
+            && git(&repo, &["commit", "-qm", "qa"])
+    );
+    for (strip, prefix, gz) in [
+        (1usize, "noevia-web-0123/", true),
+        (2, "", false),
+        (3, "", false),
+    ] {
         let archive = d.path().join(format!("a{strip}"));
         let mut cmd = Command::new("git");
         cmd.arg("-C").arg(&repo).arg("archive");
-        cmd.arg(if gz { "--format=tar.gz" } else { "--format=tar" });
+        cmd.arg(if gz {
+            "--format=tar.gz"
+        } else {
+            "--format=tar"
+        });
         if !prefix.is_empty() {
             cmd.arg(format!("--prefix={prefix}"));
         }
@@ -204,8 +277,14 @@ fn git_archive_strip_matches_gnu_tar() {
             .map(|s| s.success())
             .unwrap_or(false);
         assert!(ok);
-        let mut f = fs::File::open(&archive).ok().unwrap_or_else(unreachable_file);
-        let entries = if gz { tar::read_gz(&mut f) } else { tar::read_all(&mut f) };
+        let mut f = fs::File::open(&archive)
+            .ok()
+            .unwrap_or_else(unreachable_file);
+        let entries = if gz {
+            tar::read_gz(&mut f)
+        } else {
+            tar::read_all(&mut f)
+        };
         let entries = entries.unwrap_or_default();
         assert!(!entries.is_empty());
         assert!(tar::extract(&entries, strip, &r).is_ok());
@@ -224,8 +303,16 @@ fn release_tree(root: &Path) {
             write(&p, need.as_bytes(), false);
         }
     }
-    write(&root.join("core/server/ui-data/projects.json"), b"{}", false);
-    write(&root.join("noevia/apps/web/server/ui-data/state"), b"s", false);
+    write(
+        &root.join("core/server/ui-data/projects.json"),
+        b"{}",
+        false,
+    );
+    write(
+        &root.join("noevia/apps/web/server/ui-data/state"),
+        b"s",
+        false,
+    );
     write(&root.join("web/server/ui-data-not/keep"), b"k", false);
     // A symlink named ui-data is not a directory to find -type d: it stays.
     fs::create_dir_all(root.join("services/x/server")).ok();
@@ -233,13 +320,21 @@ fn release_tree(root: &Path) {
 }
 
 fn copy_tree(from: &Path, to: &Path) -> bool {
-    Command::new("cp").arg("-a").arg(from).arg(to).status().map(|s| s.success()).unwrap_or(false)
+    Command::new("cp")
+        .arg("-a")
+        .arg(from)
+        .arg(to)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 fn shell_finish(tree_dir: &Path, out_dir: &Path, sha: &str, r: &Resolved) -> Result<(), String> {
     let excerpt = include_str!("../fixtures/assemble-release-excerpt.sh");
     let finish = excerpt.split("#@finish\n").nth(1).unwrap_or_default();
-    let script = format!("set -euo pipefail\ndie() {{ echo \"assemble-release: $*\" >&2; exit 1; }}\n{finish}");
+    let script = format!(
+        "set -euo pipefail\ndie() {{ echo \"assemble-release: $*\" >&2; exit 1; }}\n{finish}"
+    );
     let out = Command::new("bash")
         .arg("-c")
         .arg(script)
@@ -281,13 +376,20 @@ fn finish_matches_the_shell() {
     fs::create_dir_all(&rs_out).ok();
     assert_eq!(shell_finish(&sh_tree, &sh_out, "11bf2da7", &r), Ok(()));
     let got = tree::finish(&rs_tree, "11bf2da7", &r, &rs_out, 0);
-    assert_eq!(got.as_ref().ok(), Some(&rs_out.join("noevia-release-11bf2da7.tar.gz")));
+    assert_eq!(
+        got.as_ref().ok(),
+        Some(&rs_out.join("noevia-release-11bf2da7.tar.gz"))
+    );
     let name = "noevia-release-11bf2da7.tar.gz";
     let sh_manifest = manifest_of(&sh_out.join(name));
     assert!(sh_manifest.iter().any(|l| l.ends_with(" release-refs")));
     assert!(!sh_manifest.iter().any(|l| l.contains("server/ui-data/")));
     assert_eq!(manifest_of(&rs_out.join(name)), sh_manifest);
-    assert_eq!(walk(&rs_tree), walk(&sh_tree), "the trees after the finish step");
+    assert_eq!(
+        walk(&rs_tree),
+        walk(&sh_tree),
+        "the trees after the finish step"
+    );
     assert!(!rs_out.join(format!("{name}.partial")).exists());
 }
 
@@ -299,16 +401,30 @@ fn missing_entry_refusal_matches_the_shell() {
     let d = tmp();
     let base = d.path().join("base");
     release_tree(&base);
-    let r = Resolved { web: "a".into(), core: "b".into(), services: "c".into(), rs: "d".into() };
-    for drop in ["core/contracts", "services/ocr/Dockerfile", "web/package.json"] {
-        let (sh_tree, rs_tree) = (d.path().join(format!("sh-{}", drop.len())), d.path().join(format!("rs-{}", drop.len())));
+    let r = Resolved {
+        web: "a".into(),
+        core: "b".into(),
+        services: "c".into(),
+        rs: "d".into(),
+    };
+    for drop in [
+        "core/contracts",
+        "services/ocr/Dockerfile",
+        "web/package.json",
+    ] {
+        let (sh_tree, rs_tree) = (
+            d.path().join(format!("sh-{}", drop.len())),
+            d.path().join(format!("rs-{}", drop.len())),
+        );
         assert!(copy_tree(&base, &sh_tree) && copy_tree(&base, &rs_tree));
         let _ = fs::remove_dir_all(sh_tree.join(drop));
         let _ = fs::remove_file(sh_tree.join(drop));
         let _ = fs::remove_dir_all(rs_tree.join(drop));
         let _ = fs::remove_file(rs_tree.join(drop));
         let sh = shell_finish(&sh_tree, d.path(), "11bf2da7", &r);
-        let rs = tree::finish(&rs_tree, "11bf2da7", &r, d.path(), 0).map(|_| ()).map_err(|e| format!("assemble-release: {e}"));
+        let rs = tree::finish(&rs_tree, "11bf2da7", &r, d.path(), 0)
+            .map(|_| ())
+            .map_err(|e| format!("assemble-release: {e}"));
         assert_eq!(rs, sh, "dropping {drop}");
     }
 }
@@ -323,8 +439,14 @@ fn header_tar(build: impl FnOnce(&mut Writer<Vec<u8>>)) -> Vec<u8> {
 fn hostile_archives_are_refused() {
     let d = tmp();
     let cases: Vec<(&str, Vec<u8>)> = vec![
-        ("dotdot", header_tar(|w| drop(w.file(b"top/../../escape", false, b"x")))),
-        ("absolute", header_tar(|w| drop(w.file(b"/top/abs", false, b"x")))),
+        (
+            "dotdot",
+            header_tar(|w| drop(w.file(b"top/../../escape", false, b"x"))),
+        ),
+        (
+            "absolute",
+            header_tar(|w| drop(w.file(b"/top/abs", false, b"x"))),
+        ),
         (
             "through a symlink",
             header_tar(|w| {
@@ -345,7 +467,10 @@ fn hostile_archives_are_refused() {
         fs::create_dir_all(&dst).ok();
         let entries = tar::read_all(&mut bytes.as_slice()).unwrap_or_default();
         assert!(!entries.is_empty(), "{what}: archive did not parse");
-        assert!(tar::extract(&entries, 1, &dst).is_err(), "{what}: extracted");
+        assert!(
+            tar::extract(&entries, 1, &dst).is_err(),
+            "{what}: extracted"
+        );
     }
     // A corrupted header checksum and a truncated member are read errors.
     let good = header_tar(|w| drop(w.file(b"top/f", false, &[7u8; 1000])));
@@ -370,7 +495,13 @@ fn gnu_hardlinks_are_refused() {
     write(&src.join("top/a"), b"a", false);
     fs::hard_link(src.join("top/a"), src.join("top/b")).ok();
     let tgz = d.path().join("h.tar.gz");
-    let ok = Command::new("tar").arg("-czf").arg(&tgz).arg("-C").arg(&src).arg("top").status();
+    let ok = Command::new("tar")
+        .arg("-czf")
+        .arg(&tgz)
+        .arg("-C")
+        .arg(&src)
+        .arg("top")
+        .status();
     assert!(ok.map(|s| s.success()).unwrap_or(false));
     let mut f = fs::File::open(&tgz).ok().unwrap_or_else(unreachable_file);
     assert!(tar::read_gz(&mut f).is_err());

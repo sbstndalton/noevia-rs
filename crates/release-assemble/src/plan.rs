@@ -70,9 +70,18 @@ impl Component {
             ),
             Component::Core => (
                 "apps/web",
-                &["server", "contracts", "tests/server", "tests/fixtures", "tests/hermetic-network.cjs"],
+                &[
+                    "server",
+                    "contracts",
+                    "tests/server",
+                    "tests/fixtures",
+                    "tests/hermetic-network.cjs",
+                ],
             ),
-            Component::Services => ("services", &["diary", "docling", "laya", "model-manager", "ocr"]),
+            Component::Services => (
+                "services",
+                &["diary", "docling", "laya", "model-manager", "ocr"],
+            ),
         }
     }
 }
@@ -95,7 +104,13 @@ pub trait Source {
     /// `export_self DEST PREFIX PATHS…`: Err is the full refusal (already worded like `die`).
     fn export_self(&mut self, dest: &Path, prefix: &str, paths: &[&str]) -> Result<(), String>;
     /// `fetch_remote REPO REF SUM DEST`.
-    fn fetch(&mut self, repo: &str, reference: &str, sha256: &str, dest: &Path) -> Result<(), String>;
+    fn fetch(
+        &mut self,
+        repo: &str,
+        reference: &str,
+        sha256: &str,
+        dest: &Path,
+    ) -> Result<(), String>;
     /// `[ -f PATH ]`.
     fn is_file(&self, path: &Path) -> bool;
 }
@@ -114,34 +129,35 @@ fn shown(v: &[u8]) -> String {
     String::from_utf8_lossy(v).into_owned()
 }
 
-/// `die` text without the `assemble-release: ` prefix.
-fn refuse(msg: String) -> String {
-    msg
-}
-
 /// Pure decision of `resolve_component` for one component (no tree work).
 pub fn resolve(lock: &Lock, component: Component, sha: &str) -> Result<Resolution, String> {
     let key = component.key();
     let mut reference = lock.value(&format!("{key}_REF"));
     let sum = lock.value(&format!("{key}_SHA256"));
     // Locks from before #952 have no NOEVIA_SERVICES_REF: services were always exported from noevia.
-    if reference.is_empty() && component == Component::Services && !lock.has_key("NOEVIA_SERVICES_REF") {
+    if reference.is_empty()
+        && component == Component::Services
+        && !lock.has_key("NOEVIA_SERVICES_REF")
+    {
         reference = b"self".to_vec();
     }
     if reference == b"self" {
         Ok(Resolution::SelfExport)
     } else if lower_hex(&reference, 40) {
         if !lower_hex(&sum, 64) {
-            return Err(refuse(format!(
+            return Err(format!(
                 "{key}_REF is pinned but {key}_SHA256 is missing or not 64 lowercase hex"
-            )));
+            ));
         }
-        Ok(Resolution::Pinned { reference: shown(&reference), sha256: shown(&sum) })
+        Ok(Resolution::Pinned {
+            reference: shown(&reference),
+            sha256: shown(&sum),
+        })
     } else {
-        Err(refuse(format!(
+        Err(format!(
             "{key}_REF in versions.lock at {sha} must be 'self' or a 40-char lowercase sha, got: '{}'",
             shown(&reference)
-        )))
+        ))
     }
 }
 
@@ -153,13 +169,15 @@ pub fn resolve_rs(lock: &Lock, sha: &str) -> Result<Option<(String, String)>, St
         return Ok(None);
     }
     if !lower_hex(&reference, 40) {
-        return Err(refuse(format!(
+        return Err(format!(
             "NOEVIA_RS_REF in versions.lock at {sha} must be a 40-char lowercase sha, got: '{}'",
             shown(&reference)
-        )));
+        ));
     }
     if !lower_hex(&sum, 64) {
-        return Err(refuse(format!("NOEVIA_RS_SHA256 in versions.lock at {sha} is not 64 lowercase hex")));
+        return Err(format!(
+            "NOEVIA_RS_SHA256 in versions.lock at {sha} is not 64 lowercase hex"
+        ));
     }
     Ok(Some((shown(&reference), shown(&sum))))
 }

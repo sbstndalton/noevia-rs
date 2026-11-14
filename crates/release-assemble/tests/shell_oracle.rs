@@ -12,13 +12,22 @@ const EXCERPT: &str = include_str!("../fixtures/assemble-release-excerpt.sh");
 
 fn section(name: &str) -> String {
     let start = format!("#@{name}\n");
-    let from = EXCERPT.find(&start).map(|i| i + start.len()).unwrap_or(EXCERPT.len());
+    let from = EXCERPT
+        .find(&start)
+        .map(|i| i + start.len())
+        .unwrap_or(EXCERPT.len());
     let rest = EXCERPT.get(from..).unwrap_or_default();
     rest.split("\n#@").next().unwrap_or_default().to_string()
 }
 
 fn bash() -> Option<&'static str> {
-    Command::new("bash").arg("-c").arg("true").status().ok().filter(|s| s.success()).map(|_| "bash")
+    Command::new("bash")
+        .arg("-c")
+        .arg("true")
+        .status()
+        .ok()
+        .filter(|s| s.success())
+        .map(|_| "bash")
 }
 
 /// The stubs: every tree operation is logged; a fetched noevia-rs gets a Cargo.toml unless its ref
@@ -39,21 +48,39 @@ struct Recorder {
 
 impl Source for Recorder {
     fn export_self(&mut self, dest: &Path, prefix: &str, paths: &[&str]) -> Result<(), String> {
-        self.log.push(format!("export {} {prefix} {}", dest.display(), paths.join(" ")));
+        self.log.push(format!(
+            "export {} {prefix} {}",
+            dest.display(),
+            paths.join(" ")
+        ));
         Ok(())
     }
-    fn fetch(&mut self, repo: &str, reference: &str, sha256: &str, dest: &Path) -> Result<(), String> {
+    fn fetch(
+        &mut self,
+        repo: &str,
+        reference: &str,
+        sha256: &str,
+        dest: &Path,
+    ) -> Result<(), String> {
         if reference.starts_with("bad") {
             return Err(format!("could not download {repo} at {reference}"));
         }
-        self.log.push(format!("fetch {repo} {reference} {sha256} {}", dest.display()));
+        self.log.push(format!(
+            "fetch {repo} {reference} {sha256} {}",
+            dest.display()
+        ));
         Ok(())
     }
     fn is_file(&self, path: &Path) -> bool {
         // The stub's rule: the rs fetch made a Cargo.toml unless its ref starts with "dead".
-        let rs_fetch = self.log.iter().rev().find(|l| l.starts_with("fetch noevia-rs "));
+        let rs_fetch = self
+            .log
+            .iter()
+            .rev()
+            .find(|l| l.starts_with("fetch noevia-rs "));
         path.ends_with("rs/Cargo.toml")
-            && rs_fetch.is_some_and(|l| !l.trim_start_matches("fetch noevia-rs ").starts_with("dead"))
+            && rs_fetch
+                .is_some_and(|l| !l.trim_start_matches("fetch noevia-rs ").starts_with("dead"))
     }
 }
 
@@ -85,11 +112,23 @@ fn run_shell(lock: &[u8], sha: &str, full: &str, dir: &Path) -> Outcome {
         .env("full_sha", full)
         .env("work", dir)
         .output();
-    let Ok(out) = out else { return Outcome { log: vec![], result: Err("bash did not run".into()) } };
+    let Ok(out) = out else {
+        return Outcome {
+            log: vec![],
+            result: Err("bash did not run".into()),
+        };
+    };
     if std::env::var("RELEASE_ASSEMBLE_DEBUG").is_ok() {
-        eprintln!("script:\n{script}\nstderr: {}", String::from_utf8_lossy(&out.stderr));
+        eprintln!(
+            "script:\n{script}\nstderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
-    let log = std::fs::read_to_string(&log).unwrap_or_default().lines().map(str::to_string).collect();
+    let log = std::fs::read_to_string(&log)
+        .unwrap_or_default()
+        .lines()
+        .map(str::to_string)
+        .collect();
     let result = if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
     } else {
@@ -104,24 +143,42 @@ fn run_rust(lock: &[u8], sha: &str, full: &str, dir: &Path) -> Outcome {
     let result = assemble_components(&Lock::from_bytes(lock), sha, full, &tree, &mut rec)
         .map(|r| format!("refs {}|{}|{}|{}", r.web, r.core, r.services, r.rs))
         .map_err(|e| format!("assemble-release: {e}"));
-    Outcome { log: rec.log, result }
+    Outcome {
+        log: rec.log,
+        result,
+    }
 }
 
 /// A small deterministic generator (no rand dependency).
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         self.0 >> 33
     }
     fn pick<'a>(&mut self, items: &[&'a str]) -> &'a str {
         let n = items.len() as u64;
-        items.get(usize::try_from(self.next() % n).unwrap_or(0)).copied().unwrap_or("")
+        items
+            .get(usize::try_from(self.next() % n).unwrap_or(0))
+            .copied()
+            .unwrap_or("")
     }
 }
 
 fn hex(n: usize, seed: u64) -> String {
-    (0..n).map(|i| char::from(b"0123456789abcdef".get(((seed as usize) + i * 7) % 16).copied().unwrap_or(b'0'))).collect()
+    (0..n)
+        .map(|i| {
+            char::from(
+                b"0123456789abcdef"
+                    .get(((seed as usize) + i * 7) % 16)
+                    .copied()
+                    .unwrap_or(b'0'),
+            )
+        })
+        .collect()
 }
 
 fn values(rng: &mut Lcg, sum: bool) -> String {
@@ -130,7 +187,7 @@ fn values(rng: &mut Lcg, sum: bool) -> String {
     let choice = rng.next() % 16;
     let v = match (sum, choice) {
         (_, 0) => String::new(),
-        (false, 1 | 2 | 3) => "self".into(),
+        (false, 1..=3) => "self".into(),
         (false, 4) => "self ".into(),
         (false, 5) => "self\r".into(),
         (false, 6) => h40.to_uppercase(),
@@ -163,7 +220,7 @@ fn random_lock(rng: &mut Lcg) -> Vec<u8> {
                 lines.push(format!("{style}{k}{suffix}={}", values(rng, sum)));
             }
         }
-        if rng.next() % 9 == 0 {
+        if rng.next().is_multiple_of(9) {
             lines.push(format!("{k}_REFX=self"));
         }
     }
@@ -173,7 +230,7 @@ fn random_lock(rng: &mut Lcg) -> Vec<u8> {
         lines.swap(i, j);
     }
     let mut text = lines.join("\n").into_bytes();
-    if rng.next() % 2 == 0 {
+    if rng.next().is_multiple_of(2) {
         text.extend_from_slice(b"\n\n");
     }
     text
@@ -182,8 +239,18 @@ fn random_lock(rng: &mut Lcg) -> Vec<u8> {
 fn compare(lock: &[u8], sha: &str, full: &str, dir: &Path) {
     let sh = run_shell(lock, sha, full, dir);
     let rs = run_rust(lock, sha, full, dir);
-    assert_eq!(rs.result, sh.result, "verdict differs for lock:\n{}", String::from_utf8_lossy(lock));
-    assert_eq!(rs.log, sh.log, "tree calls differ for lock:\n{}", String::from_utf8_lossy(lock));
+    assert_eq!(
+        rs.result,
+        sh.result,
+        "verdict differs for lock:\n{}",
+        String::from_utf8_lossy(lock)
+    );
+    assert_eq!(
+        rs.log,
+        sh.log,
+        "tree calls differ for lock:\n{}",
+        String::from_utf8_lossy(lock)
+    );
 }
 
 #[test]
@@ -229,8 +296,13 @@ fn generated_locks_match_the_shell() {
         eprintln!("shell_oracle: bash not installed, skipped");
         return;
     }
-    let Some(dir) = tempfile::tempdir().ok() else { return };
-    let rounds: u64 = std::env::var("RELEASE_ASSEMBLE_ROUNDS").ok().and_then(|v| v.parse().ok()).unwrap_or(600);
+    let Some(dir) = tempfile::tempdir().ok() else {
+        return;
+    };
+    let rounds: u64 = std::env::var("RELEASE_ASSEMBLE_ROUNDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(600);
     let mut rng = Lcg(0x5eed_0005);
     let full = "11bf2da7bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     for _ in 0..rounds {
@@ -244,8 +316,14 @@ fn lock_value_matches_sed() {
     if bash().is_none() {
         return;
     }
-    let Some(dir) = tempfile::tempdir().ok() else { return };
-    let lock_value = section("resolve").lines().next().unwrap_or_default().to_string();
+    let Some(dir) = tempfile::tempdir().ok() else {
+        return;
+    };
+    let lock_value = section("resolve")
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_string();
     let mut rng = Lcg(0x10c4);
     for _ in 0..200 {
         let lock = random_lock(&mut rng);
@@ -254,11 +332,22 @@ fn lock_value_matches_sed() {
         let script = format!(
             "set -euo pipefail\nlock=\"$(cat -- \"$LOCK\")\"\n{lock_value}\nfor k in NOEVIA_WEB_REF NOEVIA_WEB_SHA256 NOEVIA_CORE_REF NOEVIA_SERVICES_REF NOEVIA_RS_REF NOEVIA_RS_SHA256; do printf '%s=[%s]\\n' \"$k\" \"$(lock_value $k)\"; done\n"
         );
-        let out = Command::new("bash").arg("-c").arg(&script).env("LOCK", &file).output();
+        let out = Command::new("bash")
+            .arg("-c")
+            .arg(&script)
+            .env("LOCK", &file)
+            .output();
         let Ok(out) = out else { return };
         let l = Lock::from_bytes(&lock);
         let mut want = Vec::new();
-        for k in ["NOEVIA_WEB_REF", "NOEVIA_WEB_SHA256", "NOEVIA_CORE_REF", "NOEVIA_SERVICES_REF", "NOEVIA_RS_REF", "NOEVIA_RS_SHA256"] {
+        for k in [
+            "NOEVIA_WEB_REF",
+            "NOEVIA_WEB_SHA256",
+            "NOEVIA_CORE_REF",
+            "NOEVIA_SERVICES_REF",
+            "NOEVIA_RS_REF",
+            "NOEVIA_RS_SHA256",
+        ] {
             want.extend_from_slice(format!("{k}=[").as_bytes());
             let mut v = l.value(k);
             while v.last() == Some(&b'\n') {
@@ -287,6 +376,9 @@ fn excerpt_is_verbatim() {
     let real = std::fs::read_to_string(path).unwrap_or_default();
     for section_name in ["resolve", "finish"] {
         let s = section(section_name);
-        assert!(real.contains(s.trim_end()), "the {section_name} excerpt no longer appears verbatim");
+        assert!(
+            real.contains(s.trim_end()),
+            "the {section_name} excerpt no longer appears verbatim"
+        );
     }
 }

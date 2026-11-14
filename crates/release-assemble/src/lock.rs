@@ -55,12 +55,17 @@ impl Lock {
 }
 
 fn plain_key(key: &str) -> bool {
-    !key.is_empty() && key.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+    !key.is_empty()
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
 }
 
 /// `[[ "$v" =~ ^[0-9a-f]{N}$ ]]`.
 pub fn lower_hex(v: &[u8], n: usize) -> bool {
-    v.len() == n && v.iter().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b))
+    v.len() == n
+        && v.iter()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b))
 }
 
 /// `[[ "$sha" =~ ^[0-9a-f]{7,40}$ ]]` (the usage check of the noevia sha).
@@ -74,7 +79,8 @@ mod tests {
 
     #[test]
     fn last_line_wins_and_bytes_are_kept() {
-        let l = Lock::from_bytes(b"# NOEVIA_RS_REF=x\nNOEVIA_RS_REF=a\nNOEVIA_RS_REF=b # c\r\n\n\n");
+        let l =
+            Lock::from_bytes(b"# NOEVIA_RS_REF=x\nNOEVIA_RS_REF=a\nNOEVIA_RS_REF=b # c\r\n\n\n");
         assert_eq!(l.value("NOEVIA_RS_REF"), b"b # c\r".to_vec());
         assert_eq!(l.value("NOEVIA_RS"), Vec::<u8>::new());
         assert!(l.has_key("NOEVIA_RS_REF"));
