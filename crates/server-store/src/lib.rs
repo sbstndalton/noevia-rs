@@ -1324,6 +1324,24 @@ impl WriteTx<'_> {
         ])?)
     }
 
+    /// Exactly core rust-storage-connection.cjs `RESEAL_SQL`, the secrets rotation's compare-and-swap
+    /// (track R12): the account's secret, re-sealed under the current key, replaces the ciphertext the
+    /// rotation read, only while the row still holds it. `0`: another writer changed it meanwhile.
+    pub fn reseal_storage_connection(
+        &self,
+        _storage: RustStorageIntegrations,
+        user_id: &str,
+        next: &str,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.storage_open.store(true, Ordering::SeqCst);
+        let _close = SettingsWindow(self.storage_open);
+        let mut stmt = self
+            .conn
+            .prepare("UPDATE storage_connections SET secret=? WHERE user_id=? AND secret=?")?;
+        Ok(stmt.execute(rusqlite::params![next, user_id, previous])?)
+    }
+
     /// Exactly core tool-policy.cjs `set()`'s statement for one tool: the account's mode upsert.
     pub fn upsert_tool_policy(
         &self,
@@ -1378,6 +1396,22 @@ impl WriteTx<'_> {
         self.chatgpt_statement(
             "UPDATE chatgpt_oauth_tokens SET data_enc=?, updated_at=? WHERE user_id=? AND state='connected' AND data_enc=?",
             rusqlite::params![next, updated_at, user_id, previous],
+        )
+    }
+
+    /// Exactly the secrets rotation's compare-and-swap (core secrets-rotate.cjs `sqlTable` write, track
+    /// R12): the tokens re-sealed under the current key replace the ciphertext the rotation read, only
+    /// while the row still holds it (any state; `updated_at` is left as it was).
+    pub fn reseal_chatgpt_tokens(
+        &self,
+        _cap: RustChatgptOAuth,
+        user_id: &str,
+        next: &str,
+        previous: &str,
+    ) -> Result<usize, StoreError> {
+        self.chatgpt_statement(
+            "UPDATE chatgpt_oauth_tokens SET data_enc=? WHERE user_id=? AND data_enc=?",
+            rusqlite::params![next, user_id, previous],
         )
     }
 
