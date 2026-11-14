@@ -134,13 +134,13 @@ fn backups(dir: &Path) -> Vec<String> {
     names
 }
 
-/// The scripted Node: maintenance leases, and the inference budget when the case has one.
-async fn node(budget: Option<f64>) -> (u16, Arc<std::sync::Mutex<Vec<Req>>>) {
+/// The scripted Node: maintenance leases (of `ttl_ms`), and the inference budget when the case has one.
+async fn node(budget: Option<f64>, ttl_ms: u64) -> (u16, Arc<std::sync::Mutex<Vec<Req>>>) {
     engine(Arc::new(move |req: &Req| {
         if req.method == "POST" && req.target == "/internal/model-maintenance/lease" {
             return Answer::Reply(
                 201,
-                json!({"lease": TOKEN, "ttlMs": 600_000, "renewMs": 200_000, "hardMs": 3_600_000})
+                json!({"lease": TOKEN, "ttlMs": ttl_ms, "renewMs": 200_000, "hardMs": 3_600_000})
                     .to_string(),
             );
         }
@@ -165,6 +165,11 @@ struct Front {
 
 /// The front over `dir` for one recorded case, with the switch as given.
 async fn front_for(case: &Value, dir: &Path, switch: bool) -> Front {
+    front_with(case, dir, switch, 600_000).await
+}
+
+/// [`front_for`] with Node's maintenance leases lasting `ttl_ms`.
+async fn front_with(case: &Value, dir: &Path, switch: bool, ttl_ms: u64) -> Front {
     let ini = dir.join("models.ini");
     std::fs::write(&ini, case["ini"].as_str().unwrap()).unwrap();
     if let Some(roles) = case["roles"].as_str() {
@@ -203,7 +208,7 @@ async fn front_for(case: &Value, dir: &Path, switch: bool) -> Front {
         env.push(("NOEVIA_RUST_MODEL_WRITES".into(), "rust".into()));
         // With no gate's hold the front leases Node's own maintenance gate (Node's answer to that
         // was its own hold in the recording); the budget is Core's figure over the facts bridge.
-        let (node_port, _) = node(case["budget"].as_f64()).await;
+        let (node_port, _) = node(case["budget"].as_f64(), ttl_ms).await;
         env.push((
             "NOEVIA_LEGACY_UPSTREAM".into(),
             format!("http://127.0.0.1:{node_port}"),
@@ -431,6 +436,52 @@ async fn no_arbiter_changes_nothing() {
     assert!(router.is_empty(), "{router:?}");
     assert_eq!(
         std::fs::read_to_string(&ini).unwrap(),
+        case["ini"].as_str().unwrap()
+    );
+}
+
+/// Node's `assertCovered(PRESET_STEP_MS)` before the commit: a lease of Node's gate that cannot
+/// cover the write and its re-read (here: its TTL is shorter than the step) refuses with nothing
+/// written, as Node's thrown coverage error is answered.
+#[tokio::test]
+async fn a_lease_that_cannot_cover_the_write_changes_nothing() {
+    let case = case_named("no admin token: this process holds alone");
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed_database(d.path());
+    let f = front_with(&case, d.path(), true, 100_000).await;
+    let (status, _, body) = call(f.addr, "PUT", PATH, Some(ADMIN), &request_body(&case)).await;
+    let _ = f.stop.send(());
+    assert_eq!(
+        (status, body.as_str()),
+        (503, r#"{"error":"Internal error"}"#)
+    );
+    let (router, gate) = lines(&f.seen.lock().unwrap());
+    assert_eq!(router, ["GET /models nohold", "GET /models nohold"]);
+    assert!(gate.is_empty(), "{gate:?}");
+    assert_eq!(
+        std::fs::read_to_string(&f.ini).unwrap(),
+        case["ini"].as_str().unwrap()
+    );
+    assert!(backups(d.path()).is_empty());
+    assert!(std::fs::read_to_string(&f.state).is_err(), "no reload");
+}
+
+/// Named difference: a router answer nested deeper than the port's JSON reader follows is read as
+/// text, so it is passed on as a JSON string (Node passes on the parsed value).
+#[tokio::test]
+async fn a_router_answer_too_deep_to_hold_is_passed_on_as_text() {
+    let mut case = case_named("the router listing fails: its answer is passed on");
+    let deep = format!("{}{}", "[".repeat(200), "]".repeat(200));
+    case["router"]["listings"] = json!([{ "status": 503, "text": deep }]);
+    let d = tempfile::tempdir().unwrap();
+    let _db = seed_database(d.path());
+    let f = front_for(&case, d.path(), true).await;
+    let (status, _, body) = call(f.addr, "PUT", PATH, Some(ADMIN), &request_body(&case)).await;
+    let _ = f.stop.send(());
+    assert_eq!(status, 503);
+    assert_eq!(body, serde_json::to_string(&deep).unwrap());
+    assert_eq!(
+        std::fs::read_to_string(&f.ini).unwrap(),
         case["ini"].as_str().unwrap()
     );
 }

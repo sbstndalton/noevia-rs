@@ -21,19 +21,28 @@
 //! The router's answers are read from their bytes as `fetchJson` does (`JSON.parse`, or the text),
 //! so a passed-on body keeps the router's key order and number text.
 //!
-//! Named differences (each tested in tests/model_preset.rs):
+//! A hold that cannot cover the write and its re-read (Node's lease of the front's authority near its
+//! end) refuses before the commit, as Node's `assertCovered` does: 503 `Internal error`, nothing
+//! written (tests/model_preset.rs `a_lease_that_cannot_cover_the_write_changes_nothing`).
+//!
+//! Named differences (tests/model_preset.rs):
 //! - **No budget.** With a models mount the budget is Core's figure over the facts bridge; when the
 //!   bridge gives none, the save is refused (503 `The inference memory budget could not be read.`)
 //!   rather than written unchecked. Core always has a budget, so its answer never depends on this.
+//!   Tested: `no_budget_from_core_refuses_the_save_with_a_mount`.
 //! - **No arbiter.** With no gate hold and no answer from Node's maintenance gate (the front's
 //!   lease), nothing is done: 503 with the reload's text. Core holds its own gate in that case.
-//! - **A lease lost before the re-read.** Core registers a recovery (chat paused until it restores
-//!   under a fresh lease) and throws (503 `Internal error`). The front's lease cannot end under a
-//!   call in flight, so a lost lease is only ever found before the router is asked: the router never
-//!   saw the new text, and the front puts its own previous text back at once (compare-and-swap)
-//!   and answers the same 503. Not recorded (Core's lease authority is the front itself).
-//! - A router answer the port's JSON reader cannot hold (nested past its depth, a number outside
-//!   `f64`) is read as text.
+//!   Tested: `no_arbiter_changes_nothing`.
+//! - **A router answer the port's JSON reader cannot hold** (nested past its depth, a number
+//!   outside `f64`) is read as text, so a passed-on one is answered as a JSON string. Tested:
+//!   `a_router_answer_too_deep_to_hold_is_passed_on_as_text`.
+//! - **A lease lost after the write, before the re-read.** Core registers a recovery (chat paused
+//!   until it restores under a fresh lease) and throws (503 `Internal error`). The front's lease
+//!   cannot end under a call in flight, so a lost lease is only ever found before the router is
+//!   asked: the router never saw the new text, and the front puts its own previous text back at
+//!   once (compare-and-swap, no re-read) and answers the same 503. Not tested: the coverage check
+//!   right before the commit asks for more than the re-read's, so only a lease the authority ends
+//!   between the two reaches it, which no test can time.
 
 use super::{Hold, HoldError, Maint};
 use crate::model_sizing::{parse_presets, read_presets, strict, Presets};
