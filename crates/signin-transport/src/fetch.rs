@@ -338,8 +338,7 @@ pub async fn fetch<W: Wire>(
                 if step == Step::Pass {
                     break r;
                 }
-                // A 401: its body is dropped (cancelled) before the next step.
-                drop(r);
+                // A 401: `r` and its body are dropped (cancelled) here, before the next step.
             }
             Step::Reject { generation, then } => {
                 // Only the sign-in that failed: forget its cached session, tell the broker.
