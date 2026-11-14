@@ -825,11 +825,19 @@ impl<H: Host> Turn<'_, H> {
         if host.engine_busy().await {
             return;
         }
-        if let Ok(mut a) = self.process.titles.lock() {
-            a.record(&key);
+        // noevia#2591: re-checked with the record under one lock (another turn of this chat may have
+        // recorded while the busy check was awaited); Node's check and record have no await between them.
+        if !self
+            .process
+            .titles
+            .lock()
+            .is_ok_and(|mut a| a.try_record(&key))
+        {
+            return;
         }
-        // chat-title.cjs generateTitle: nothing to name without a message and a reply.
-        if !js::has_text(&p.message) || !js::has_text(&s.last.content) {
+        // chat-title.cjs generateTitle: no request without a url, a model, a message and a reply
+        // (noevia#2591: an empty model was sent before). The attempt stays recorded, as in Node.
+        if p.upstream_url.is_empty() || !title::can_request(&p.model, &p.message, &s.last.content) {
             return;
         }
         let body = title::title_request_body(&p.model, &p.message, &s.last.content);
