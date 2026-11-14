@@ -22,7 +22,9 @@ const MAX_CHAIN: usize = 512;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     /// `plain` is false for the contiguous-file type, which the reference reads as regular but refuses.
-    File { plain: bool },
+    File {
+        plain: bool,
+    },
     Directory,
     Symlink,
     /// Hard links, devices, FIFOs and unknown types.
@@ -63,12 +65,18 @@ fn block_len(size: i128) -> Result<usize, Refused> {
 
 /// Bytes up to the first NUL (`tarfile.nts`).
 fn nts(field: &[u8]) -> &[u8] {
-    let end = field.iter().position(|byte| *byte == 0).unwrap_or(field.len());
+    let end = field
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(field.len());
     field.get(..end).unwrap_or_default()
 }
 
 fn is_py_space(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r' | 0x1c..=0x1f)
+    matches!(
+        byte,
+        b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r' | 0x1c..=0x1f
+    )
 }
 
 /// Python `int(text, radix)` for ASCII text with radix 8 or 10: surrounding whitespace, a sign, for radix 8
@@ -85,7 +93,11 @@ pub fn py_int(text: &[u8], radix: u32) -> Option<i128> {
         }
     }
     let mut underscore_ok = false;
-    if radix == 8 && rest.len() >= 2 && rest.first() == Some(&b'0') && matches!(rest.get(1), Some(b'o' | b'O')) {
+    if radix == 8
+        && rest.len() >= 2
+        && rest.first() == Some(&b'0')
+        && matches!(rest.get(1), Some(b'o' | b'O'))
+    {
         rest = rest.get(2..)?;
         underscore_ok = true;
     }
@@ -101,7 +113,9 @@ pub fn py_int(text: &[u8], radix: u32) -> Option<i128> {
             continue;
         }
         let digit = char::from(*byte).to_digit(radix)?;
-        value = value.checked_mul(i128::from(radix))?.checked_add(i128::from(digit))?;
+        value = value
+            .checked_mul(i128::from(radix))?
+            .checked_add(i128::from(digit))?;
         digits += 1;
         last_underscore = false;
     }
@@ -117,10 +131,15 @@ fn nti(field: &[u8]) -> Result<i128, Refused> {
         Some((lead @ (0o200 | 0o377), rest)) => {
             let mut value: i128 = 0;
             for byte in rest {
-                value = value.checked_mul(256).and_then(|v| v.checked_add(i128::from(*byte))).ok_or_else(invalid)?;
+                value = value
+                    .checked_mul(256)
+                    .and_then(|v| v.checked_add(i128::from(*byte)))
+                    .ok_or_else(invalid)?;
             }
             if *lead == 0o377 {
-                let span = 1i128.checked_shl(8 * u32::try_from(rest.len()).map_err(|_| invalid())?).ok_or_else(invalid)?;
+                let span = 1i128
+                    .checked_shl(8 * u32::try_from(rest.len()).map_err(|_| invalid())?)
+                    .ok_or_else(invalid)?;
                 value = -(span - value);
             }
             Ok(value)
@@ -149,7 +168,13 @@ fn pax_records(buf: &[u8], into: &mut BTreeMap<Vec<u8>, Vec<u8>>) -> Result<(), 
         if byte == 0 {
             break;
         }
-        let digits = buf.get(pos..).unwrap_or_default().iter().take(21).take_while(|b| b.is_ascii_digit()).count();
+        let digits = buf
+            .get(pos..)
+            .unwrap_or_default()
+            .iter()
+            .take(21)
+            .take_while(|b| b.is_ascii_digit())
+            .count();
         if digits == 0 || digits > 20 || buf.get(pos + digits) != Some(&b' ') {
             return Err(invalid());
         }
@@ -165,7 +190,10 @@ fn pax_records(buf: &[u8], into: &mut BTreeMap<Vec<u8>, Vec<u8>>) -> Result<(), 
         let body = buf.get(pos + digits + 1..last).unwrap_or_default();
         let equals = body.iter().position(|b| *b == b'=');
         let (key, value) = match equals {
-            Some(at) => (body.get(..at).unwrap_or_default(), body.get(at + 1..).unwrap_or_default()),
+            Some(at) => (
+                body.get(..at).unwrap_or_default(),
+                body.get(at + 1..).unwrap_or_default(),
+            ),
             None => return Err(invalid()),
         };
         if key.is_empty() || buf.get(last) != Some(&b'\n') {
@@ -178,7 +206,9 @@ fn pax_records(buf: &[u8], into: &mut BTreeMap<Vec<u8>, Vec<u8>>) -> Result<(), 
 }
 
 fn has_sparse_key(headers: &BTreeMap<Vec<u8>, Vec<u8>>) -> bool {
-    headers.keys().any(|key| key.starts_with(b"GNU.sparse.") || key.as_slice() == b"SCHILY.realsize")
+    headers
+        .keys()
+        .any(|key| key.starts_with(b"GNU.sparse.") || key.as_slice() == b"SCHILY.realsize")
 }
 
 fn rstrip_slashes(name: &mut Vec<u8>) {
@@ -216,7 +246,12 @@ impl Member {
 
 impl<'a> Reader<'a> {
     pub fn new(data: &'a [u8]) -> Self {
-        Reader { data, offset: 0, global: BTreeMap::new(), first: true }
+        Reader {
+            data,
+            offset: 0,
+            global: BTreeMap::new(),
+            first: true,
+        }
     }
 
     /// The next member, or `None` at the first all-zero block or at the end of the data on a block boundary.
@@ -226,7 +261,11 @@ impl<'a> Reader<'a> {
             return Err(invalid());
         };
         if rest.is_empty() {
-            return if first { Err(Refused::new("empty file")) } else { Ok(None) };
+            return if first {
+                Err(Refused::new("empty file"))
+            } else {
+                Ok(None)
+            };
         }
         match rest.get(..BLOCK) {
             None => Err(invalid()),
@@ -246,7 +285,11 @@ impl<'a> Reader<'a> {
     }
 
     fn header(&mut self) -> Result<&'a [u8], Refused> {
-        let header = self.data.get(self.offset..).and_then(|rest| rest.get(..BLOCK)).ok_or_else(invalid)?;
+        let header = self
+            .data
+            .get(self.offset..)
+            .and_then(|rest| rest.get(..BLOCK))
+            .ok_or_else(invalid)?;
         if header.iter().all(|byte| *byte == 0) {
             return Err(invalid());
         }
@@ -335,7 +378,9 @@ impl<'a> Reader<'a> {
                 if headers.contains_key(b"size".as_slice()) {
                     let mut offset = next.data_offset;
                     if next.is_reg() || !known_type(next.type_byte) {
-                        offset = offset.checked_add(block_len(next.size)?).ok_or_else(invalid)?;
+                        offset = offset
+                            .checked_add(block_len(next.size)?)
+                            .ok_or_else(invalid)?;
                     }
                     self.offset = offset;
                 }
@@ -343,7 +388,16 @@ impl<'a> Reader<'a> {
             }
             b'S' => {
                 // Refused by the caller once its name is checked; its data layout never matters.
-                Ok(Member { name, linkname, mode, size, kind: Kind::File { plain: false }, sparse: true, type_byte: kind_byte, data_offset: self.offset })
+                Ok(Member {
+                    name,
+                    linkname,
+                    mode,
+                    size,
+                    kind: Kind::File { plain: false },
+                    sparse: true,
+                    type_byte: kind_byte,
+                    data_offset: self.offset,
+                })
             }
             _ => {
                 let kind = match kind_byte {
@@ -355,9 +409,21 @@ impl<'a> Reader<'a> {
                 };
                 let data_offset = self.offset;
                 if matches!(kind, Kind::File { .. }) || !known_type(kind_byte) {
-                    self.offset = self.offset.checked_add(block_len(size)?).ok_or_else(invalid)?;
+                    self.offset = self
+                        .offset
+                        .checked_add(block_len(size)?)
+                        .ok_or_else(invalid)?;
                 }
-                let mut member = Member { name, linkname, mode, size, kind, sparse: false, type_byte: kind_byte, data_offset };
+                let mut member = Member {
+                    name,
+                    linkname,
+                    mode,
+                    size,
+                    kind,
+                    sparse: false,
+                    type_byte: kind_byte,
+                    data_offset,
+                };
                 let global = self.global.clone();
                 member.apply_pax(&global);
                 if member.kind == Kind::Directory {
@@ -375,7 +441,10 @@ impl<'a> Reader<'a> {
         let start = self.offset;
         let end = start.checked_add(length).ok_or_else(invalid)?;
         // A short read is what the reference gets too; the following header read then fails.
-        let buf = self.data.get(start..end.min(self.data.len())).ok_or_else(invalid)?;
+        let buf = self
+            .data
+            .get(start..end.min(self.data.len()))
+            .ok_or_else(invalid)?;
         self.offset = end.min(self.data.len());
         Ok(buf)
     }
@@ -383,7 +452,10 @@ impl<'a> Reader<'a> {
 
 /// Types the reference supports without skipping data blocks for (besides the regular ones).
 fn known_type(kind_byte: u8) -> bool {
-    matches!(kind_byte, b'0' | 0 | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' | b'L' | b'K' | b'S')
+    matches!(
+        kind_byte,
+        b'0' | 0 | b'1' | b'2' | b'3' | b'4' | b'5' | b'6' | b'7' | b'L' | b'K' | b'S'
+    )
 }
 
 #[cfg(test)]
@@ -406,7 +478,10 @@ mod tests {
         assert_eq!(nti(b"\0\0\0\0\0\0\0\0").ok(), Some(0));
         assert_eq!(nti(b"       \0").ok(), Some(0));
         assert_eq!(nti(&[0o200, 0, 0, 0, 0, 0, 1, 0]).ok(), Some(256));
-        assert_eq!(nti(&[0o377, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]).ok(), Some(-1));
+        assert_eq!(
+            nti(&[0o377, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]).ok(),
+            Some(-1)
+        );
         assert!(nti(b"12x4567\0").is_err());
     }
 }

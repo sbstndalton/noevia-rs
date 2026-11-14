@@ -41,7 +41,10 @@ mod tests {
         // Expected values are json.dumps(x, ensure_ascii=True) from Python 3.12.
         assert_eq!(enc("src/main.rs"), r#""src/main.rs""#);
         assert_eq!(enc("a\"b\\c"), r#""a\"b\\c""#);
-        assert_eq!(enc("\n\r\t\u{8}\u{c}\u{1}\u{1f}\u{7f}"), "\"\\n\\r\\t\\b\\f\\u0001\\u001f\u{7f}\"");
+        assert_eq!(
+            enc("\n\r\t\u{8}\u{c}\u{1}\u{1f}\u{7f}"),
+            "\"\\n\\r\\t\\b\\f\\u0001\\u001f\u{7f}\""
+        );
         assert_eq!(enc("\u{e9}"), r#""\u00e9""#);
         assert_eq!(enc("\u{2028}"), r#""\u2028""#);
         assert_eq!(enc("\u{1f600}"), r#""\ud83d\ude00""#);

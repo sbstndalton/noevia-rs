@@ -70,8 +70,13 @@ impl std::error::Error for Refused {}
 pub enum Entry {
     Directory,
     /// `exec` is the header mode masked with 0o111.
-    File { exec: u32, content: Vec<u8> },
-    Symlink { target: String },
+    File {
+        exec: u32,
+        content: Vec<u8>,
+    },
+    Symlink {
+        target: String,
+    },
 }
 
 /// A validated archive: its digest and its entries by relative name.
@@ -101,7 +106,8 @@ pub fn path_ok(name: &str) -> Result<(), Refused> {
 
 /// Parent directories of a relative canonical name, nearest last (`a/b/c` gives `a`, `a/b`).
 fn parents(name: &str) -> impl Iterator<Item = &str> {
-    name.match_indices('/').filter_map(move |(at, _)| name.get(..at))
+    name.match_indices('/')
+        .filter_map(move |(at, _)| name.get(..at))
 }
 
 /// Bounded read of an expanded gzip stream: at most `limit + 1` bytes, so an over-limit stream is detected
@@ -115,7 +121,9 @@ pub fn gunzip_bounded(data: &[u8], limit: u64) -> Result<Vec<u8>, Refused> {
         let mut decoder = flate2::bufread::GzDecoder::new(rest);
         let room = cap.saturating_sub(out.len() as u64);
         let mut taken = (&mut decoder).take(room);
-        taken.read_to_end(&mut out).map_err(|_| Refused::new("invalid compressed source"))?;
+        taken
+            .read_to_end(&mut out)
+            .map_err(|_| Refused::new("invalid compressed source"))?;
         if out.len() as u64 >= cap {
             break;
         }
@@ -140,7 +148,11 @@ pub fn inspect(data: &[u8], prefix: &str, limits: &Limits) -> Result<Inspected, 
         return Err(Refused::new("invalid source root"));
     }
     let compressed = data.starts_with(&[0x1f, 0x8b]);
-    let bound = if compressed { limits.max_archive } else { limits.max_expanded };
+    let bound = if compressed {
+        limits.max_archive
+    } else {
+        limits.max_expanded
+    };
     if data.len() as u64 > bound {
         return Err(Refused::new("source size limit"));
     }
@@ -164,8 +176,13 @@ pub fn inspect(data: &[u8], prefix: &str, limits: &Limits) -> Result<Inspected, 
         if entries.len() + usize::from(root_seen) >= limits.max_entries {
             return Err(Refused::new("source entry limit"));
         }
-        let raw = String::from_utf8(member.name.clone()).map_err(|_| Refused::new("invalid source name encoding"))?;
-        let full = if member.kind == tar::Kind::Directory { raw.trim_end_matches('/').to_owned() } else { raw };
+        let raw = String::from_utf8(member.name.clone())
+            .map_err(|_| Refused::new("invalid source name encoding"))?;
+        let full = if member.kind == tar::Kind::Directory {
+            raw.trim_end_matches('/').to_owned()
+        } else {
+            raw
+        };
         if full == prefix && member.kind == tar::Kind::Directory {
             if root_seen {
                 return Err(Refused::new("duplicate source root"));
@@ -200,19 +217,28 @@ pub fn inspect(data: &[u8], prefix: &str, limits: &Limits) -> Result<Inspected, 
                 if content.len() as u64 != size {
                     return Err(Refused::new("truncated source file"));
                 }
-                Entry::File { exec: (member.mode & 0o111) as u32, content: content.to_vec() }
+                Entry::File {
+                    exec: (member.mode & 0o111) as u32,
+                    content: content.to_vec(),
+                }
             }
             tar::Kind::Directory => Entry::Directory,
             tar::Kind::Symlink => {
                 let target = String::from_utf8(member.linkname.clone())
                     .map_err(|_| Refused::new("invalid source link encoding"))?;
-                if target.is_empty() || target.len() > 4096 || target.contains('\0') || target.starts_with('/') {
+                if target.is_empty()
+                    || target.len() > 4096
+                    || target.contains('\0')
+                    || target.starts_with('/')
+                {
                     return Err(Refused::new("unsafe source link"));
                 }
                 let mut depth = parents(name).count();
                 for part in target.split('/') {
                     if part == ".." {
-                        depth = depth.checked_sub(1).ok_or_else(|| Refused::new("escaping source link"))?;
+                        depth = depth
+                            .checked_sub(1)
+                            .ok_or_else(|| Refused::new("escaping source link"))?;
                     } else if !part.is_empty() && part != "." {
                         depth += 1;
                     }
@@ -249,7 +275,11 @@ fn digest_of(entries: &BTreeMap<String, Entry>) -> String {
         match entry {
             Entry::Directory => canonical.push_str(",\"directory\""),
             Entry::File { exec, content } => {
-                canonical.push_str(&format!(",\"file\",{exec},{},\"{}\"", content.len(), hex(&Sha256::digest(content))));
+                canonical.push_str(&format!(
+                    ",\"file\",{exec},{},\"{}\"",
+                    content.len(),
+                    hex(&Sha256::digest(content))
+                ));
             }
             Entry::Symlink { target } => {
                 canonical.push_str(",\"symlink\",");
@@ -271,18 +301,30 @@ fn hex(bytes: &[u8]) -> String {
 
 /// True for 64 lowercase hex digits.
 pub fn is_digest(text: &str) -> bool {
-    text.len() == 64 && text.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    text.len() == 64
+        && text
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// True for 40 lowercase hex digits (a full Git commit id).
 pub fn is_ref(text: &str) -> bool {
-    text.len() == 40 && text.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    text.len() == 40
+        && text
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// The reference's `extract`: refuse unless the archive's digest equals `expected`, then write it into the
 /// fresh directory `destination` (created 0700; its parent must exist). Directories are made shallowest
 /// first, files are created exclusively and set to 0755 or 0644, links are made last and never followed.
-pub fn extract(data: &[u8], prefix: &str, expected: &str, destination: &Path, limits: &Limits) -> Result<String, Error> {
+pub fn extract(
+    data: &[u8],
+    prefix: &str,
+    expected: &str,
+    destination: &Path,
+    limits: &Limits,
+) -> Result<String, Error> {
     if !is_digest(expected) {
         return Err(Refused::new("invalid reviewed digest").into());
     }
@@ -298,13 +340,18 @@ fn write_tree(entries: &BTreeMap<String, Entry>, destination: &Path) -> std::io:
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     std::fs::DirBuilder::new().mode(0o700).create(destination)?;
     let mut order: Vec<&String> = entries.keys().collect();
-    order.sort_by(|a, b| (a.matches('/').count(), a.as_str()).cmp(&(b.matches('/').count(), b.as_str())));
+    order.sort_by(|a, b| {
+        (a.matches('/').count(), a.as_str()).cmp(&(b.matches('/').count(), b.as_str()))
+    });
     for name in &order {
         let path = destination.join(name);
         match entries.get(*name) {
             Some(Entry::Directory) => std::fs::DirBuilder::new().mode(0o755).create(&path)?,
             Some(Entry::File { exec, content }) => {
-                let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&path)?;
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&path)?;
                 std::io::Write::write_all(&mut file, content)?;
                 drop(file);
                 let mode = if *exec != 0 { 0o755 } else { 0o644 };
@@ -354,7 +401,9 @@ impl std::error::Error for Error {}
 /// Read at most `limit + 1` bytes of `reader`; refuse when more than `limit` arrive (the reference's `bounded`).
 pub fn read_bounded(reader: impl Read, limit: u64) -> Result<Vec<u8>, Error> {
     let mut data = Vec::new();
-    reader.take(limit.saturating_add(1)).read_to_end(&mut data)?;
+    reader
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut data)?;
     if data.len() as u64 > limit {
         return Err(Refused::new("source size limit").into());
     }

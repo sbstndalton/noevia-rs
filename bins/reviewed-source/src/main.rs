@@ -19,23 +19,39 @@ fn read(path: &str, limits: &Limits) -> Result<Vec<u8>, Error> {
 fn run(args: &[String]) -> Result<String, Error> {
     let limits = Limits::DEFAULT;
     match args {
-        [command, archive, root] if command == "digest" => Ok(inspect(&read(archive, &limits)?, root, &limits)?.digest),
-        [command, archive, root, digest, destination] if command == "extract" => {
-            extract(&read(archive, &limits)?, root, digest, Path::new(destination), &limits)
+        [command, archive, root] if command == "digest" => {
+            Ok(inspect(&read(archive, &limits)?, root, &limits)?.digest)
         }
+        [command, archive, root, digest, destination] if command == "extract" => extract(
+            &read(archive, &limits)?,
+            root,
+            digest,
+            Path::new(destination),
+            &limits,
+        ),
         [command, archive, reference, digest, destination] if command == "extract-ref" => {
             if !is_ref(reference) {
                 return Err(Refused("invalid reviewed ref".into()).into());
             }
             let data = read_bounded(std::fs::File::open(archive)?, limits.max_archive)?;
-            extract(&data, &format!("noevia-rs-{reference}"), digest, Path::new(destination), &limits)
+            extract(
+                &data,
+                &format!("noevia-rs-{reference}"),
+                digest,
+                Path::new(destination),
+                &limits,
+            )
         }
         _ => Err(Refused("invalid source verifier arguments".into()).into()),
     }
 }
 
 fn main() -> std::process::ExitCode {
-    let args: Vec<String> = match std::env::args_os().skip(1).map(|arg| arg.into_string()).collect() {
+    let args: Vec<String> = match std::env::args_os()
+        .skip(1)
+        .map(|arg| arg.into_string())
+        .collect()
+    {
         Ok(args) => args,
         Err(_) => {
             eprintln!("{REFUSED}");
