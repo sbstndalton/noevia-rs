@@ -85,8 +85,14 @@ pub fn from_env(get: impl Fn(&str) -> Option<String>) -> Result<GateConfig, Stri
         .map_err(|e| format!("gate limits: {e}"))?;
     let max_body_bytes = count("GATE_MAX_BODY_BYTES", 64 * MIB, 1024 * MIB)?;
     let max_buffered_bytes = count("GATE_MAX_BUFFERED_BYTES", 256 * MIB, 8 * 1024 * MIB)?;
-    if max_buffered_bytes < max_body_bytes {
-        return Err("GATE_MAX_BUFFERED_BYTES must be at least GATE_MAX_BODY_BYTES".into());
+    // Waiting requests may hold at most half of the buffer (counted in KiB, each body rounded up;
+    // lib.rs admit_request): below twice the body limit, a body near the limit could never queue
+    // and would always be refused as gate_busy (noevia#2133 item 5).
+    if max_buffered_bytes.div_ceil(1024) / 2 < max_body_bytes.div_ceil(1024) {
+        return Err(
+            "GATE_MAX_BUFFERED_BYTES must be at least twice GATE_MAX_BODY_BYTES (waiting requests may hold half of it)"
+                .into(),
+        );
     }
     Ok(GateConfig {
         listen,
@@ -172,6 +178,17 @@ mod tests {
                 ("GATE_UPSTREAM", "http://router:8080"),
                 ("GATE_MAX_BODY_BYTES", "1000"),
                 ("GATE_MAX_BUFFERED_BYTES", "10"),
+            ],
+            // Room for one full body, but not in the waiting half (noevia#2133 item 5).
+            vec![
+                ("GATE_UPSTREAM", "http://router:8080"),
+                ("GATE_MAX_BODY_BYTES", "1000"),
+                ("GATE_MAX_BUFFERED_BYTES", "1500"),
+            ],
+            vec![
+                ("GATE_UPSTREAM", "http://router:8080"),
+                ("GATE_MAX_BODY_BYTES", "4097"),
+                ("GATE_MAX_BUFFERED_BYTES", "8194"),
             ],
             vec![
                 ("GATE_UPSTREAM", "http://router:8080"),
