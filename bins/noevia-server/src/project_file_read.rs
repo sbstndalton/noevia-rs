@@ -83,22 +83,28 @@ pub fn account_active(data_dir: &Path, user: &str) -> bool {
         .is_some()
 }
 
-/// The tool's text and failure flag when the front answers this call; `None` leaves it to core.
-/// `active(user)` is core's account check ([`account_active`]).
-pub fn answer(
+/// What core's bridge (`/internal/chat/tools/execute`) gives the toolboxes' built-in branch for `name`
+/// when it would run exactly that branch: the parsed arguments object, the account's folder and the
+/// project as stored now. `None` for every call core answers otherwise: another tool, not offered
+/// (`allowed`), routed to an MCP server, a chat-wide grant or an edit target, ids or the body beyond
+/// the bridge's caps, arguments that are not a JSON object, an unknown project (404) or an account
+/// core's asUser refuses (`active(user)`, [`account_active`]). Shared with the other built-in tools
+/// the front answers (current_time_tool.rs).
+pub(crate) fn bridge_scope(
     data_dir: &Path,
     user: &str,
     run: &ToolRun,
+    name: &str,
     active: impl FnOnce(&str) -> bool,
-) -> Option<(String, bool)> {
+) -> Option<(JValue, std::path::PathBuf, Option<JValue>)> {
     let listed = |v: &str| wtf16::len(v) <= ID_CAP;
-    if run.name != NAME
-        || !run.allowed.iter().any(|a| a == NAME)
+    if run.name != name
+        || !run.allowed.iter().any(|a| a == name)
         || run.allowed.len() > LIST_CAP
         || !run.allowed.iter().all(|a| listed(a))
         || run.routes.len() > LIST_CAP
         || !run.routes.iter().all(|(a, b)| listed(a) && listed(b))
-        || run.routes.iter().any(|(tool, _)| tool == NAME)
+        || run.routes.iter().any(|(tool, _)| tool == name)
         || run.grant.is_some()
         || run.edit_target.is_some()
         || !body_fits(run)
@@ -146,6 +152,18 @@ pub fn answer(
     if !dir.is_dir() {
         return None;
     }
+    Some((args, dir, project))
+}
+
+/// The tool's text and failure flag when the front answers this call; `None` leaves it to core.
+/// `active(user)` is core's account check ([`account_active`]).
+pub fn answer(
+    data_dir: &Path,
+    user: &str,
+    run: &ToolRun,
+    active: impl FnOnce(&str) -> bool,
+) -> Option<(String, bool)> {
+    let (args, dir, project) = bridge_scope(data_dir, user, run, NAME, active)?;
     match read_project_file(&dir, project.as_ref(), &args) {
         Outcome::Done(r) => Some((r.text, r.failed)),
         Outcome::Core => None,

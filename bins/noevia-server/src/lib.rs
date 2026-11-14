@@ -36,6 +36,8 @@ pub mod code_net;
 pub mod code_routes;
 pub mod config;
 pub mod connector_routes;
+// Track R5: the chat's get_current_time in the front (NOEVIA_RUST_CURRENT_TIME).
+pub mod current_time_tool;
 pub mod decision_settings_routes;
 pub mod delete_model;
 pub mod diary_backup;

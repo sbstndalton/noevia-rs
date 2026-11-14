@@ -37,8 +37,14 @@ pub const ENGINE: &str = "NOEVIA_BROWSER_ENGINE";
 const UNAVAILABLE: &str = "Browser tasks are unavailable right now. Try again shortly.";
 /// core `readJson`'s limit.
 const BODY_LIMIT: usize = 1024 * 1024;
+/// How long a body may take to arrive here: Node's default `server.requestTimeout` is 300 s too,
+/// counted from the request's start, and answers 408; here the read fails with the route's 500
+/// (a named difference).
+const BODY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(300);
 
-/// The deployment's Browser configuration.
+/// The deployment's Browser configuration. Both processes read the engine: core's Browser mode
+/// facts need `NOEVIA_BROWSER_ENGINE` in core's environment too (a mismatch refuses safely: the front
+/// without it answers 404 "not enabled", core without it 503 for every start).
 #[derive(Debug, Clone, Default)]
 pub struct Settings {
     pub executor: bool,
@@ -132,7 +138,9 @@ fn failed() -> Response<Body> {
 /// The body as core's `readJson` reads it, parsed only when the route reads it.
 fn parsed(read: &Result<server_account::Body, ()>) -> ReadBody {
     match read {
-        Err(()) => ReadBody::Invalid,
+        // A body that could not be read (the client went, or BODY_DEADLINE): core's readJson rejects
+        // with a plain error, the route's 500.
+        Err(()) => ReadBody::Failed(Fail::plain(None, "the request body could not be read")),
         Ok(r) if r.over => ReadBody::Failed(Fail::public(413, "Request exceeds size limit")),
         Ok(r) if r.bytes.is_empty() => ReadBody::Json(JValue::Obj(Vec::new())),
         Ok(r) => match wtf16::parse(&String::from_utf8_lossy(&r.bytes)) {
@@ -153,7 +161,31 @@ pub async fn serve(
 ) -> Response<Body> {
     let admin = authn.user.role == server_auth::Role::Admin;
     let user = authn.user.id.as_str().to_owned();
-    let enabled = match task_routes::browser_flag(app, &user, admin).await {
+    let Some(target) = browser::parse(&path) else {
+        return failed();
+    };
+    // `/browser/{task}/cancel` (`/browser/cancel`, without a task, is a start in core's pattern).
+    let cancel =
+        method == "POST" && target.task.is_some() && target.action.as_deref() == Some("cancel");
+    let facts = match task_routes::browser_flag(app, &user, admin).await {
+        // Core cannot be asked: a cancel of a task this front runs for this admin's workspace still
+        // goes ahead (sbstndalton/noevia#2698), so a running browser session stays stoppable while
+        // core is away. Whose task it is is still the service's check; every other answer waits for
+        // core as before.
+        None if admin && cancel => {
+            let (service, task) = (service(app), target.task.clone());
+            let dir = server_projects::store::user_dir(&data_dir, &user).ok();
+            // Off the async worker: the store map may be held by another workspace's recovery.
+            let live = tokio::task::spawn_blocking(
+                move || matches!((&dir, &task), (Some(d), Some(t)) if service.has_live(d, t)),
+            )
+            .await
+            .unwrap_or(false);
+            live.then_some(Facts::Front)
+        }
+        facts => facts,
+    };
+    let enabled = match facts {
         None => return task_routes::unreachable(),
         Some(Facts::Off) => false,
         Some(Facts::Member | Facts::Front) => true,
@@ -162,9 +194,6 @@ pub async fn serve(
         Some(Facts::Admin(_)) => {
             return reply::error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE, true)
         }
-    };
-    let Some(target) = browser::parse(&path) else {
-        return failed();
     };
     // The project, looked up before anything blocks (core's `getProject` after the flag and the role).
     let project = if enabled && admin {
@@ -183,7 +212,19 @@ pub async fn serve(
     } else {
         None
     };
-    let read = crate::account_routes::read_body(body, BODY_LIMIT).await;
+    // A cancel reads no body (core answers it before readJson), so a slow body never delays a stop.
+    // Other refusals (404, 403, 405, project not found) are answered after the body here and before
+    // it in core: the same answers, later (a named difference in timing only).
+    let read = if cancel {
+        Err(())
+    } else {
+        tokio::time::timeout(
+            BODY_DEADLINE,
+            crate::account_routes::read_body(body, BODY_LIMIT),
+        )
+        .await
+        .unwrap_or(Err(()))
+    };
     let Ok(dir) = server_projects::store::user_dir(&data_dir, &user) else {
         return failed();
     };

@@ -728,6 +728,48 @@ impl FrontHost {
         }
     }
 
+    /// Whether core's Node is the one current_time's recording was made with (core's native op
+    /// `runtime`, asked until it answers 200; current_time_tool.rs).
+    async fn core_runtime_recorded(&self) -> bool {
+        if let Some(known) = crate::current_time_tool::runtime_known() {
+            return known.recorded;
+        }
+        let asked = self
+            .core_full(
+                "/internal/chat/native/runtime",
+                &js::obj([("user", js::s(self.user.clone()))]),
+                BRIDGE_TIMEOUT,
+            )
+            .await;
+        crate::current_time_tool::runtime_answered(asked)
+    }
+
+    /// A built-in tool call the front answered: core counts it (recordToolUse, its native op
+    /// `tool-used`) before the answer goes on, as its bridge counts a call it runs.
+    async fn answered_here(&self, run: &ToolRun, text: String, failed: bool) -> Ran {
+        let counted = self
+            .core_full(
+                "/internal/chat/native/tool-used",
+                &js::obj([
+                    ("user", js::s(self.user.clone())),
+                    ("name", js::s(run.name.clone())),
+                ]),
+                BRIDGE_TIMEOUT,
+            )
+            .await;
+        if !matches!(counted, Some((204, _))) {
+            eprintln!(
+                "chat native: a {} the front answered was not counted",
+                run.name
+            );
+        }
+        Ran::Done {
+            text,
+            failed,
+            not_run: false,
+        }
+    }
+
     /// [`Self::core`] that runs to its answer whatever the client does.
     async fn core_full(
         &self,
@@ -1466,27 +1508,27 @@ impl Host for FrontHost {
                 })
             });
             if let Ok(Some((text, failed))) = native.await {
-                // Core counts it (recordToolUse) before the answer goes on, as its bridge counts a call it runs.
-                let counted = self
-                    .core_full(
-                        "/internal/chat/native/tool-used",
-                        &js::obj([
-                            ("user", js::s(self.user.clone())),
-                            ("name", js::s(run.name.clone())),
-                        ]),
-                        BRIDGE_TIMEOUT,
-                    )
-                    .await;
-                if !matches!(counted, Some((204, _))) {
-                    eprintln!(
-                        "chat native: a read_project_file the front answered was not counted"
-                    );
-                }
-                return Ran::Done {
-                    text,
-                    failed,
-                    not_run: false,
-                };
+                return self.answered_here(run, text, failed).await;
+            }
+        }
+        // Track R5: get_current_time answered here when NOEVIA_RUST_CURRENT_TIME is on and the recording
+        // proves the answer equal to core's (current_time_tool.rs); core still counts it.
+        if crate::current_time_tool::enabled()
+            && run.name == crate::current_time_tool::NAME
+            && self.core_runtime_recorded().await
+        {
+            let (data, user, call) = (self.data_dir.clone(), self.user.clone(), run.clone());
+            let native = tokio::task::spawn_blocking(move || {
+                crate::current_time_tool::answer(
+                    &data,
+                    &user,
+                    &call,
+                    crate::identity::now_ms() as f64,
+                    |u| crate::project_file_read::account_active(&data, u),
+                )
+            });
+            if let Ok(Some((text, failed))) = native.await {
+                return self.answered_here(run, text, failed).await;
             }
         }
         let mut body = vec![
