@@ -90,5 +90,38 @@ class RoutesCheck(unittest.TestCase):
         self.assertEqual([r["path"] for r in doc["route"] if r.get("executor") == "node"], ["/api/chat"])
 
 
+
+    def routes_text(self, *rows):
+        return "".join(
+            f'[[route]]\npath = "{path}"\nowner = "{owner}"\n' + (f"methods = {methods}\n" if methods else "") + "\n"
+            for path, owner, methods in rows
+        )
+
+    def with_rows(self, *rows):
+        d = self.tree([])
+        (d / "routes.toml").write_text(
+            self.routes_text(("/api/profile", "node", None), ("/api/projects/{id}/files", "node", None), ("/api/integrations/storage/files{*?}", "node", None), *rows)
+        )
+        return self.run_check(d)
+
+    def test_a_repeated_path_with_every_method_fails(self):
+        # The auto-merge case in sbstndalton/noevia#2354: a second all-methods row for a path the Rust front already owns.
+        r = self.with_rows(("/api/models/assignments", "rust", '["GET"]'), ("/api/models/assignments", "node", None))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("/api/models/assignments twice", r.stdout)
+
+    def test_a_repeated_path_under_another_parameter_name_fails(self):
+        r = self.with_rows(("/api/chats/{id}/export", "node", None), ("/api/chats/{chatId}/export", "rust", '["GET"]'))
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_a_repeated_path_with_a_shared_method_fails(self):
+        r = self.with_rows(("/api/x", "rust", '["GET", "POST"]'), ("/api/x", "node", '["POST", "PUT"]'))
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_a_repeated_path_with_disjoint_methods_passes(self):
+        r = self.with_rows(("/api/x", "rust", '["GET"]'), ("/api/x", "node", '["POST"]'))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
