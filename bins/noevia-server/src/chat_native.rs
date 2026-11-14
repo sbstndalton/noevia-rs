@@ -482,7 +482,7 @@ async fn drive(
     };
     // Track R8 P7a: the same turn prepared natively beside core's frame, compared and logged only.
     if let Some(body) = shadow {
-        crate::chat_prepare_shadow::spawn(user_dir.clone(), body, frame);
+        crate::chat_prepare_shadow::spawn(Arc::clone(&app), user_dir.clone(), body, frame);
     }
     let host = Arc::new(FrontHost {
         app: Arc::clone(&app),

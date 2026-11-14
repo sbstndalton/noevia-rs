@@ -19,6 +19,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use chat_prepare::shadow::{compare, ShadowTurn, Verdict};
 use js_json::{wtf16, JValue};
+use server_features::Feature;
 
 use crate::App;
 
@@ -87,7 +88,7 @@ pub(crate) fn wanted(app: &Arc<App>, user: &str) -> bool {
 
 /// Prepares the turn in shadow and logs the verdict, on a blocking thread; returns at once.
 /// `body` is the request body core was sent, `frame` core's `prepared` frame.
-pub(crate) fn spawn(user_dir: PathBuf, body: Bytes, frame: JValue) {
+pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue) {
     /// One running shadow, counted until it is dropped (also when the blocking task never runs).
     struct Slot;
     impl Drop for Slot {
@@ -102,14 +103,29 @@ pub(crate) fn spawn(user_dir: PathBuf, body: Bytes, frame: JValue) {
         return;
     }
     drop(tokio::task::spawn_blocking(move || {
-        let verdict = run(&user_dir, &body, &frame, &server_time_zone());
+        // index.cjs: chatFramingEnabled() and brainContext.enabled() (brainContext and chatFraming).
+        let framing = crate::code_routes::feature(&app, Feature::ChatFraming);
+        let flags = Flags {
+            chat_framing: Some(framing),
+            brain_context: Some(
+                framing && crate::code_routes::feature(&app, Feature::BrainContext),
+            ),
+        };
+        let verdict = run(&user_dir, &body, &frame, &server_time_zone(), flags);
         drop(slot);
         eprintln!("chat prepare shadow: {}", verdict.line());
     }));
 }
 
+/// The feature flags the preparation reads (`None`: unknown).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Flags {
+    pub chat_framing: Option<bool>,
+    pub brain_context: Option<bool>,
+}
+
 /// One shadow preparation: the account's files read as core reads them.
-pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str) -> Verdict {
+pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str, flags: Flags) -> Verdict {
     let Some(body) = std::str::from_utf8(body)
         .ok()
         .and_then(|t| wtf16::parse(t).ok())
@@ -134,6 +150,8 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str) -> Ver
         memory: memory.as_deref(),
         free_chats: free_chats.as_ref(),
         time_zone,
+        chat_framing: flags.chat_framing,
+        brain_context: flags.brain_context,
         history_cap: HISTORY_CAP,
         catalogue: None,
     })
@@ -166,7 +184,7 @@ fn zone_from(tz: Option<&str>, localtime: Option<&str>, timezone: Option<&str>) 
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -218,10 +236,91 @@ mod tests {
     fn an_unreadable_body_is_skipped() {
         let dir = std::env::temp_dir();
         let frame = JValue::Null;
+        let flags = Flags::default();
         assert_eq!(
-            run(&dir, b"{not json", &frame, "UTC"),
+            run(&dir, b"{not json", &frame, "UTC", flags),
             Verdict::Skip("body")
         );
-        assert_eq!(run(&dir, b"{}", &frame, "UTC"), Verdict::Skip("frame"));
+        assert_eq!(
+            run(&dir, b"{}", &frame, "UTC", flags),
+            Verdict::Skip("frame")
+        );
+    }
+
+    /// Recorded free-chat hand-offs (crates/chat-prepare's node-shadow.v1.json) prepared from the files
+    /// as core's workspace holds them: the account's instructions and memory and the free list.
+    #[test]
+    fn recorded_hand_offs_match_from_the_account_s_files() {
+        let f = wtf16::parse(include_str!(
+            "../../../crates/chat-prepare/tests/fixtures/node-shadow.v1.json"
+        ))
+        .unwrap();
+        let JValue::Arr(turns) = f.get("turns") else {
+            panic!("no turns")
+        };
+        let base = std::env::temp_dir().join(format!("qa-shadow-{}", std::process::id()));
+        let (mut matched, mut framed) = (0, 0);
+        for (i, t) in turns.iter().enumerate() {
+            let frame = t.get("prepared");
+            let input = t.get("input");
+            if !frame.is_object() || t.get("threw").as_str().is_some() {
+                continue;
+            }
+            let dir = base.join(i.to_string());
+            std::fs::create_dir_all(&dir).unwrap();
+            // What Node's fs.writeFileSync wrote (a lone surrogate as U+FFFD).
+            let write = |name: &str, v: &JValue| {
+                if let Some(text) = v.as_str() {
+                    let text: String = text
+                        .chars()
+                        .map(|c| {
+                            if wtf16::lone_unit(c).is_some() {
+                                '\u{FFFD}'
+                            } else {
+                                c
+                            }
+                        })
+                        .collect();
+                    std::fs::write(dir.join(name), text).unwrap();
+                }
+            };
+            write("account-instructions.json", input.get("instructions"));
+            write("account-memory.json", input.get("memory"));
+            if input.get("freeChats").is_object()
+                || matches!(input.get("freeChats"), JValue::Arr(_))
+            {
+                let list = wtf16::stringify(input.get("freeChats")).unwrap();
+                std::fs::write(dir.join(server_projects::chats::FREE_CHATS_FILE), list).unwrap();
+            }
+            let body = wtf16::stringify(input.get("body")).unwrap();
+            let flags = Flags {
+                chat_framing: input.get("chatFraming").as_bool(),
+                brain_context: Some(false),
+            };
+            let verdict = run(
+                &dir,
+                body.as_bytes(),
+                frame,
+                input.get("tz").as_str().unwrap(),
+                flags,
+            );
+            // The front has no toolbox catalogue: a history that needs it is skipped.
+            assert!(
+                matches!(verdict, Verdict::Match | Verdict::Skip("tool-history")),
+                "{}: {}",
+                t.get("name").as_str().unwrap_or_default(),
+                verdict.line()
+            );
+            if verdict == Verdict::Match {
+                matched += 1;
+                let system = wtf16::stringify(frame.get("messages")).unwrap_or_default();
+                framed += usize::from(system.contains("Chat frame (set by the user)"));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&base);
+        assert!(
+            matched >= 150 && framed >= 5,
+            "{matched} matched, {framed} framed"
+        );
     }
 }
