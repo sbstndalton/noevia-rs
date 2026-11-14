@@ -656,7 +656,7 @@ impl Maint {
         };
         // Row J review P1 (#2608): the write and its re-read are one step; it starts only while the
         // hold can still cover it, or nothing is written (Node throws its 503 coverage error here).
-        if !holding.may_start(PRESET_STEP) {
+        if !holding.covers(PRESET_STEP) {
             return (Applied::Uncovered, 503);
         }
         if let Err(e) = ini.commit(&candidate, backup).await {

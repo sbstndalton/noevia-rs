@@ -273,9 +273,12 @@ fn opaque<'a>(v: &'a JValue, key: &str) -> Option<&'a str> {
 /// Core's own `/api/models/*` writes and its auto-tune resume bridge do. `false`: Core did not
 /// confirm (an older Core has no such op).
 pub async fn clear(app: &App) -> bool {
-    cache(app, "clear", &serde_json::json!({}))
-        .await
-        .is_some_and(|v| v.get("cleared") == &JValue::Bool(true))
+    tokio::time::timeout(
+        crate::auto_roles_routes::CORE_CACHE_LIMIT,
+        cache(app, "clear", &serde_json::json!({})),
+    )
+    .await
+    .is_ok_and(|v| v.is_some_and(|v| v.get("cleared") == &JValue::Bool(true)))
 }
 async fn cache(app: &App, op: &str, body: &serde_json::Value) -> Option<JValue> {
     let (status, bytes) = app

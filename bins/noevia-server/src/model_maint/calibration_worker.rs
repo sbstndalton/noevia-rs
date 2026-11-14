@@ -6574,9 +6574,9 @@ mod tests {
         hold.release().await;
     }
 
-    /// #2608: a run whose lease cannot cover a profile write and its re-read (each renewal confirms
-    /// it for 160 s: it keeps excluding everyone, but 150 s of Node's `PRESET_STEP_MS` and the
-    /// 15 s margin do not fit) writes nothing and ends as a lost lease does
+    /// #2608: a run whose lease cannot cover a profile write (each renewal confirms it for only
+    /// 10 s: it keeps excluding everyone, but Node's `assertCovered` sees it lapse within its 15 s
+    /// margin) writes nothing and ends as a lost lease does
     /// (llamacpp-calibration.cjs: the coverage error is `e.coverageLost`, so the step fails, the run
     /// restores nothing on that lease, and a recovery is owed only once a write has happened; this
     /// was the run's first write, so none is).
@@ -6588,7 +6588,7 @@ mod tests {
         std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
         let (port, engine) = synthetic_engine(ini.clone(), false).await;
         let (lease, _) =
-            lease_stub_options(None, Arc::new(AtomicBool::new(false)), None, None, 160_000).await;
+            lease_stub_options(None, Arc::new(AtomicBool::new(false)), None, None, 10_000).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
         let job = settled_or_recovering(&w).await;

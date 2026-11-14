@@ -579,6 +579,13 @@ impl Shared {
             .is_none_or(|(a, g)| a.covers(&g.id, g.generation, step))
     }
 
+    /// [`Shared::fenced`] with Node's `assertCovered` rule ([`Hold::covers`]).
+    fn fenced_for(&self, step: Duration) -> bool {
+        self.auth.as_ref().is_none_or(|(a, g)| {
+            a.covers_step(&g.id, g.generation, STEP_MARGIN, step)
+        })
+    }
+
     /// Gives the authority's lease back at once; idempotent, synchronous.
     fn release_authority(&self) {
         if let Some((a, g)) = self.auth.as_ref() {
@@ -853,6 +860,29 @@ impl Hold {
                 .lock()
                 .is_ok_and(|at| covered(*at + ttl))
             && self.shared.lease_end.is_none_or(covered)
+    }
+
+    /// inference-maintenance.cjs `assertCovered(step)` (Delta review P2): not lost, the last
+    /// confirmation not lapsing within the margin, and the step plus the margin inside the hard
+    /// limit. A long step is covered by renewal, not by its whole length fitting one confirmation
+    /// (that stricter rule is [`Hold::may_start`]'s, for a call that must not outlive Node hearing
+    /// no renewal). Always true for the gate's hold.
+    pub fn covers(&self, step: Duration) -> bool {
+        let Some(ttl) = self.shared.lease_ttl else {
+            return true;
+        };
+        let now = Instant::now();
+        !self.shared.lost.load(Ordering::Acquire)
+            && self.shared.fenced_for(step)
+            && self
+                .shared
+                .confirmed
+                .lock()
+                .is_ok_and(|at| now + STEP_MARGIN < *at + ttl)
+            && self
+                .shared
+                .lease_end
+                .is_none_or(|end| now + step + STEP_MARGIN < end)
     }
 
     /// Whether the hold still excludes everyone else: not lost, and for Node's lease, Node's last

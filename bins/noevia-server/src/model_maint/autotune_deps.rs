@@ -335,7 +335,7 @@ async fn hold_lost(hold: Option<&Arc<Hold>>) {
 /// `assertCovered(step)` for the hold in `current`.
 fn covered(current: &Current, step: Duration) -> Result<(), Fail> {
     match current.get() {
-        Some(hold) if !hold.may_start(step) => Err(coverage_error()),
+        Some(hold) if !hold.covers(step) => Err(coverage_error()),
         _ => Ok(()),
     }
 }
