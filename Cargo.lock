@@ -2303,6 +2303,7 @@ dependencies = [
  "context-fit",
  "dav-parse",
  "drive-tools",
+ "edit-target-lookup",
  "egress",
  "egress-issuer",
  "embedding-worker",

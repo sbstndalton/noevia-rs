@@ -37,6 +37,7 @@ pub mod decision_settings_routes;
 pub mod delete_model;
 pub mod diary_backup;
 pub mod diary_routes;
+pub mod edit_target_native;
 pub mod embedding_background;
 pub mod export_routes;
 pub mod extraction;
