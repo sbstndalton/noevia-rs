@@ -57,6 +57,8 @@ const APPROVE = verdict({ verdict: 'approve', summary: 'QA change looks right.',
 
 const SCENARIOS = {
   'approved-and-accepted': { capabilities: ['read_repository', 'edit_file'], answers: ['approve'], call: APPROVE, script: WRITES },
+  // The reviewer approves; the owner denies the review_change card: the change is not accepted.
+  'reviewed-and-denied': { capabilities: ['read_repository', 'edit_file'], answers: ['deny'], call: APPROVE, script: WRITES },
   'changes-requested-on-a-network-task': {
     capabilities: ['read_repository', 'edit_file', 'network'], domains: ['registry.example.invalid'],
     egress: { confirmed: true, report: { available: true, state: 'closed', final: false, partial: false, requests: 0 } },
