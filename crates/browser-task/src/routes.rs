@@ -36,7 +36,10 @@ pub fn parse(path: &str) -> Option<Target> {
     let mut rest = rest.strip_prefix("browser")?;
     let mut task = None;
     if let Some(after) = rest.strip_prefix('/') {
-        let candidate = after.get(..36).filter(|c| c.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || b == b'-'));
+        let candidate = after.get(..36).filter(|c| {
+            c.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b) || b == b'-')
+        });
         if let Some(c) = candidate {
             let tail = after.get(36..).unwrap_or("");
             if tail.is_empty() || tail.starts_with('/') {
@@ -53,7 +56,11 @@ pub fn parse(path: &str) -> Option<Target> {
         "/cancel" => Some("cancel"),
         _ => return None,
     };
-    Some(Target { project: project.to_string(), task, action: action.map(str::to_string) })
+    Some(Target {
+        project: project.to_string(),
+        task,
+        action: action.map(str::to_string),
+    })
 }
 
 /// What reading the body gave (core `readJson`).
@@ -70,8 +77,20 @@ pub struct Caller {
     pub admin: bool,
 }
 
+/// One request as the route sees it: the method, the path, the caller and
+/// `features.enabled('browserExecutor')`.
+pub struct Request<'a> {
+    pub method: &'a str,
+    pub path: &'a str,
+    pub caller: Option<&'a Caller>,
+    pub enabled: bool,
+}
+
 fn error(status: u16, text: &str) -> (u16, JValue) {
-    (status, JValue::obj([("error", JValue::Str(text.to_string()))]))
+    (
+        status,
+        JValue::obj([("error", JValue::Str(text.to_string()))]),
+    )
 }
 
 fn mapped(f: &Fail) -> (u16, JValue) {
@@ -84,15 +103,13 @@ fn mapped(f: &Fail) -> (u16, JValue) {
 /// `body` is read only when core reads it.
 pub fn handle(
     service: &Arc<Service>,
-    method: &str,
-    path: &str,
-    caller: Option<&Caller>,
-    enabled: bool,
+    req: &Request<'_>,
     project: &dyn Fn(&str) -> Option<String>,
     dir: &Path,
     body: &mut dyn FnMut() -> Body,
 ) -> Option<(u16, JValue)> {
-    let target = parse(path)?;
+    let (method, caller, enabled) = (req.method, req.caller, req.enabled);
+    let target = parse(req.path)?;
     if !enabled {
         return Some(error(404, NOT_ENABLED));
     }
@@ -119,21 +136,39 @@ pub fn handle(
                 return Ok(error(405, "method not allowed"));
             }
             let b = read(body)?;
-            return service.start(dir, &project_id, &b).map(|v| (202, v)).map_err(|f| mapped(&f));
+            return service
+                .start(dir, &project_id, &b)
+                .map(|v| (202, v))
+                .map_err(|f| mapped(&f));
         };
         let Some(action) = target.action.as_deref().filter(|_| method == "POST") else {
             return Ok(error(405, "method not allowed"));
         };
         if action == "cancel" {
-            return service.cancel(dir, &project_id, task).map(|v| (200, v)).map_err(|f| mapped(&f));
+            return service
+                .cancel(dir, &project_id, task)
+                .map(|v| (200, v))
+                .map_err(|f| mapped(&f));
         }
         let b = read(body)?;
         let outcome = match action {
             "act" => service.act(dir, &project_id, task, &b),
             "finish" => service.finish(dir, &project_id, task, b.get("result")),
             _ => {
-                let text = |v: &JValue| if v.truthy() { crate::executor::js_string(v) } else { String::new() };
-                service.decide(dir, &project_id, task, &text(b.get("decision")), &text(b.get("approvalId")))
+                let text = |v: &JValue| {
+                    if v.truthy() {
+                        crate::executor::js_string(v)
+                    } else {
+                        String::new()
+                    }
+                };
+                service.decide(
+                    dir,
+                    &project_id,
+                    task,
+                    &text(b.get("decision")),
+                    &text(b.get("approvalId")),
+                )
             }
         };
         outcome.map(|v| (200, v)).map_err(|f| mapped(&f))
@@ -151,10 +186,19 @@ mod tests {
     fn pattern() {
         let t = |p: &str| parse(p).map(|t| (t.project, t.task, t.action));
         assert_eq!(t("/api/projects/p/browser"), Some(("p".into(), None, None)));
-        assert_eq!(t(&format!("/api/projects/p/browser/{T}/act")), Some(("p".into(), Some(T.into()), Some("act".into()))));
-        assert_eq!(t(&format!("/api/projects/p/browser/{T}")), Some(("p".into(), Some(T.into()), None)));
+        assert_eq!(
+            t(&format!("/api/projects/p/browser/{T}/act")),
+            Some(("p".into(), Some(T.into()), Some("act".into())))
+        );
+        assert_eq!(
+            t(&format!("/api/projects/p/browser/{T}")),
+            Some(("p".into(), Some(T.into()), None))
+        );
         // The task is optional in the pattern: an action straight after `browser` is a start.
-        assert_eq!(t("/api/projects/p/browser/act"), Some(("p".into(), None, Some("act".into()))));
+        assert_eq!(
+            t("/api/projects/p/browser/act"),
+            Some(("p".into(), None, Some("act".into())))
+        );
         assert_eq!(t("/api/projects/p/browserx"), None);
         assert_eq!(t("/api/projects/p/browser/not-a-uuid/act"), None);
         assert_eq!(t(&format!("/api/projects/p/browser/{T}/run")), None);

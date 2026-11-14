@@ -8,7 +8,8 @@ use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 pub const UNCHECKED_ACTION: &str = "This action could not be double-checked, so it asks first.";
-pub const UNCHECKED_ADDRESS: &str = "This address could not be double-checked, so it is not opened.";
+pub const UNCHECKED_ADDRESS: &str =
+    "This address could not be double-checked, so it is not opened.";
 pub const UNCHECKED_SECRETS: &str =
     "The secrets in this value could not be double-checked, so nothing was typed.";
 
@@ -25,7 +26,9 @@ static WARNED: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 /// `portWarn`: once per event and reason, with no input.
 fn warn(event: &str, reason: &str) {
     let key = format!("{event}:{reason}");
-    let mut warned = WARNED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut warned = WARNED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if warned.insert(key) {
         eprintln!("[browser-policy] {event} ({reason}); the stricter answer was used");
     }
@@ -68,7 +71,9 @@ fn ask(op: u8, args: JValue) -> Option<JValue> {
 
 fn keys_are(v: &JValue, keys: &[&str]) -> bool {
     match v {
-        JValue::Obj(items) => items.len() == keys.len() && keys.iter().all(|k| items.iter().any(|(n, _)| n == k)),
+        JValue::Obj(items) => {
+            items.len() == keys.len() && keys.iter().all(|k| items.iter().any(|(n, _)| n == k))
+        }
         _ => false,
     }
 }
@@ -95,29 +100,71 @@ pub struct Verdict {
 
 /// `classifyAction(facts, { origin, allowedDomains })`: `facts` is the executor's
 /// `{ type, url, method, key, element }`.
-pub fn classify(kind: &str, action: &JValue, element: &JValue, origin: &str, allowed: &[String]) -> Verdict {
+pub fn classify(
+    kind: &str,
+    action: &JValue,
+    element: &JValue,
+    origin: &str,
+    allowed: &[String],
+) -> Verdict {
     let projected = (|| {
-        let field = |when: bool, v: Option<String>| if when { v.map(JValue::Str) } else { Some(JValue::Null) };
+        let field = |when: bool, v: Option<String>| {
+            if when {
+                v.map(JValue::Str)
+            } else {
+                Some(JValue::Null)
+            }
+        };
         let url = field(kind == "navigate", to_js_string(action.get("url")).ok())?;
         let method_value = action.get("method");
         let method = field(
             kind == "navigate",
-            if method_value.truthy() { to_js_string(method_value).ok() } else { Some("GET".into()) },
+            if method_value.truthy() {
+                to_js_string(method_value).ok()
+            } else {
+                Some("GET".into())
+            },
         )?;
         let key_value = action.get("key");
         let key = field(
             kind == "press",
-            if key_value.is_nullish() { Some(String::new()) } else { to_js_string(key_value).ok() },
+            if key_value.is_nullish() {
+                Some(String::new())
+            } else {
+                to_js_string(key_value).ok()
+            },
         )?;
-        let action = JValue::obj([("type", s(kind)), ("url", url), ("method", method), ("key", key)]);
+        let action = JValue::obj([
+            ("type", s(kind)),
+            ("url", url),
+            ("method", method),
+            ("key", key),
+        ]);
         let mut el = Vec::new();
-        for (name, value) in [("tag", "tag"), ("type", "type"), ("role", "role"), ("name", "name"), ("text", "text"), ("value", "value")] {
+        for (name, value) in [
+            ("tag", "tag"),
+            ("type", "type"),
+            ("role", "role"),
+            ("name", "name"),
+            ("text", "text"),
+            ("value", "value"),
+        ] {
             el.push((name.to_string(), JValue::Str(text_of(element.get(value))?)));
         }
-        el.push(("inForm".to_string(), JValue::Bool(element.get("inForm").truthy())));
+        el.push((
+            "inForm".to_string(),
+            JValue::Bool(element.get("inForm").truthy()),
+        ));
         let page = JValue::obj([
             ("origin", s(origin)),
-            ("allowedDomains", if kind == "navigate" { strings(allowed) } else { JValue::Arr(Vec::new()) }),
+            (
+                "allowedDomains",
+                if kind == "navigate" {
+                    strings(allowed)
+                } else {
+                    JValue::Arr(Vec::new())
+                },
+            ),
         ]);
         Some(JValue::Arr(vec![action, JValue::Obj(el), page]))
     })();
@@ -147,9 +194,15 @@ pub fn classify(kind: &str, action: &JValue, element: &JValue, origin: &str, all
         warn("browser_policy.unknown", "classify");
     }
     if kind == "navigate" {
-        Verdict { status: "blocked".into(), reason: UNCHECKED_ADDRESS.into() }
+        Verdict {
+            status: "blocked".into(),
+            reason: UNCHECKED_ADDRESS.into(),
+        }
     } else {
-        Verdict { status: "needs_approval".into(), reason: UNCHECKED_ACTION.into() }
+        Verdict {
+            status: "needs_approval".into(),
+            reason: UNCHECKED_ACTION.into(),
+        }
     }
 }
 
@@ -157,10 +210,18 @@ pub fn classify(kind: &str, action: &JValue, element: &JValue, origin: &str, all
 pub fn navigation(url: &str, allowed: &[String]) -> Result<String, String> {
     let reply = ask(2, JValue::Arr(vec![s(url), strings(allowed)]));
     match reply {
-        Some(r) if keys_are(&r, &["ok", "origin"]) && r.get("ok").as_bool() == Some(true) && non_empty(r.get("origin")) => {
+        Some(r)
+            if keys_are(&r, &["ok", "origin"])
+                && r.get("ok").as_bool() == Some(true)
+                && non_empty(r.get("origin")) =>
+        {
             Ok(r.get("origin").as_str().unwrap_or("").to_string())
         }
-        Some(r) if keys_are(&r, &["ok", "reason"]) && r.get("ok").as_bool() == Some(false) && non_empty(r.get("reason")) => {
+        Some(r)
+            if keys_are(&r, &["ok", "reason"])
+                && r.get("ok").as_bool() == Some(false)
+                && non_empty(r.get("reason")) =>
+        {
             Err(r.get("reason").as_str().unwrap_or("").to_string())
         }
         Some(_) => {
@@ -182,13 +243,19 @@ fn placeholders(text: &str) -> Vec<(usize, usize, String)> {
         let mut end = name_start;
         while end < bytes.len()
             && end - name_start < 65
-            && bytes.get(end).is_some_and(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+            && bytes
+                .get(end)
+                .is_some_and(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
         {
             end += 1;
         }
         let len = end - name_start;
         if (1..=64).contains(&len) && text.get(end..end + 2) == Some("}}") {
-            out.push((start, end + 2, text.get(name_start..end).unwrap_or("").to_string()));
+            out.push((
+                start,
+                end + 2,
+                text.get(name_start..end).unwrap_or("").to_string(),
+            ));
             i = end + 2;
         } else {
             i = start + 1;
@@ -206,13 +273,20 @@ pub enum Substituted {
 
 /// `substituteSecrets(text, secrets, origin)`.
 pub fn substitute(text: &str, secrets: &[Secret], origin: &str) -> Substituted {
-    let valid = |n: &str| (1..=64).contains(&n.len()) && n.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'));
+    let valid = |n: &str| {
+        (1..=64).contains(&n.len())
+            && n.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+    };
     let projection: Vec<JValue> = secrets
         .iter()
         .filter(|sec| valid(&sec.name))
         .map(|sec| JValue::Arr(vec![s(&sec.name), strings(&sec.domains)]))
         .collect();
-    let reply = ask(3, JValue::Arr(vec![s(text), JValue::Arr(projection), s(origin)]));
+    let reply = ask(
+        3,
+        JValue::Arr(vec![s(text), JValue::Arr(projection), s(origin)]),
+    );
     let Some(r) = reply else {
         return Substituted::Refused(UNCHECKED_SECRETS.into());
     };
@@ -220,7 +294,10 @@ pub fn substitute(text: &str, secrets: &[Secret], origin: &str) -> Substituted {
         JValue::Arr(items) => items.iter().all(non_empty),
         _ => false,
     };
-    if keys_are(&r, &["ok", "reason"]) && r.get("ok").as_bool() == Some(false) && non_empty(r.get("reason")) {
+    if keys_are(&r, &["ok", "reason"])
+        && r.get("ok").as_bool() == Some(false)
+        && non_empty(r.get("reason"))
+    {
         return Substituted::Refused(r.get("reason").as_str().unwrap_or("").to_string());
     }
     if !(keys_are(&r, &["ok", "used"]) && r.get("ok").as_bool() == Some(true) && used_ok) {
@@ -228,11 +305,19 @@ pub fn substitute(text: &str, secrets: &[Secret], origin: &str) -> Substituted {
         return Substituted::Refused(UNCHECKED_SECRETS.into());
     }
     let used: Vec<String> = match r.get("used") {
-        JValue::Arr(items) => items.iter().filter_map(|u| u.as_str().map(str::to_string)).collect(),
+        JValue::Arr(items) => items
+            .iter()
+            .filter_map(|u| u.as_str().map(str::to_string))
+            .collect(),
         _ => Vec::new(),
     };
     let found = placeholders(text);
-    let value_of = |name: &str| secrets.iter().find(|sec| sec.name == name).map(|sec| sec.value.as_str());
+    let value_of = |name: &str| {
+        secrets
+            .iter()
+            .find(|sec| sec.name == name)
+            .map(|sec| sec.value.as_str())
+    };
     let known = found.iter().all(|(_, _, n)| value_of(n).is_some());
     if !known || found.len() != used.len() || found.iter().zip(&used).any(|((_, _, n), u)| n != u) {
         warn("browser_policy.impl_mismatch", "used");
@@ -253,7 +338,12 @@ pub fn substitute(text: &str, secrets: &[Secret], origin: &str) -> Substituted {
 fn encode_uri_component(text: &str) -> String {
     let mut out = String::new();
     for b in text.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')') {
+        if b.is_ascii_alphanumeric()
+            || matches!(
+                b,
+                b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')'
+            )
+        {
             out.push(b as char);
         } else {
             out.push_str(&format!("%{b:02X}"));
@@ -265,7 +355,10 @@ fn encode_uri_component(text: &str) -> String {
 /// `maskSecrets(text, secrets)`: every value of four or more UTF-16 units, longest first, as typed
 /// and as it travels in a URL or a form body, replaced by its placeholder.
 pub fn mask(text: &str, secrets: &[Secret]) -> String {
-    let mut entries: Vec<&Secret> = secrets.iter().filter(|sec| js_json::js_len(&sec.value) >= 4).collect();
+    let mut entries: Vec<&Secret> = secrets
+        .iter()
+        .filter(|sec| js_json::js_len(&sec.value) >= 4)
+        .collect();
     // A stable sort, longest first, as Array.prototype.sort is.
     entries.sort_by_key(|sec| std::cmp::Reverse(js_json::js_len(&sec.value)));
     let mut out = text.to_string();
@@ -299,17 +392,40 @@ mod tests {
 
     #[test]
     fn masking() {
-        let secrets = [Secret { name: "qa".into(), value: "qa secret".into(), domains: vec![] }];
-        assert_eq!(mask("x qa secret y qa%20secret z qa+secret", &secrets), "x {{secret:qa}} y {{secret:qa}} z {{secret:qa}}");
-        assert_eq!(mask("abc", &[Secret { name: "s".into(), value: "abc".into(), domains: vec![] }]), "abc");
+        let secrets = [Secret {
+            name: "qa".into(),
+            value: "qa secret".into(),
+            domains: vec![],
+        }];
+        assert_eq!(
+            mask("x qa secret y qa%20secret z qa+secret", &secrets),
+            "x {{secret:qa}} y {{secret:qa}} z {{secret:qa}}"
+        );
+        assert_eq!(
+            mask(
+                "abc",
+                &[Secret {
+                    name: "s".into(),
+                    value: "abc".into(),
+                    domains: vec![]
+                }]
+            ),
+            "abc"
+        );
     }
 
     #[test]
     fn nothing_typed_without_secrets() {
         assert_eq!(
             substitute("plain text", &[], "https://shop.example.test"),
-            Substituted::Ok { value: "plain text".into(), used: vec![] }
+            Substituted::Ok {
+                value: "plain text".into(),
+                used: vec![]
+            }
         );
-        assert!(matches!(substitute("{{secret:qa}}", &[], "https://shop.example.test"), Substituted::Refused(_)));
+        assert!(matches!(
+            substitute("{{secret:qa}}", &[], "https://shop.example.test"),
+            Substituted::Refused(_)
+        ));
     }
 }

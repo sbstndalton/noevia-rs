@@ -23,7 +23,10 @@ impl Signal {
     }
 
     pub fn is_aborted(&self) -> bool {
-        self.state.lock().unwrap_or_else(PoisonError::into_inner).aborted
+        self.state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .aborted
     }
 
     /// `controller.abort()`: false when it already was.
@@ -75,7 +78,10 @@ pub struct Slot<T: Clone> {
 
 impl<T: Clone> Default for Slot<T> {
     fn default() -> Self {
-        Slot { value: Mutex::new(None), set: std::sync::Condvar::new() }
+        Slot {
+            value: Mutex::new(None),
+            set: std::sync::Condvar::new(),
+        }
     }
 }
 
@@ -117,11 +123,18 @@ impl<T: Clone> Slot<T> {
             if left.is_zero() {
                 return None;
             }
-            slot = self.set.wait_timeout(slot, left).unwrap_or_else(PoisonError::into_inner).0;
+            slot = self
+                .set
+                .wait_timeout(slot, left)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
         }
     }
 
     pub fn peek(&self) -> Option<T> {
-        self.value.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.value
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }

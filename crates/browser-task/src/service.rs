@@ -11,7 +11,7 @@
 //! synchronous and the rest is not.
 
 use crate::engine::{Launch, Proxy};
-use crate::executor::{self, Executor, Flight, Open};
+use crate::executor::{self, Executor, Flight, Held, Open};
 use crate::signal::{Signal, Slot};
 use crate::Fail;
 use js_json::{js_slice, wtf16, JValue};
@@ -88,7 +88,11 @@ pub struct Options {
 
 impl Options {
     /// The defaults core runs with.
-    pub fn new(launch: Arc<dyn Launch>, egress: Option<Arc<dyn Egress>>, log: Arc<dyn Fn(JValue) + Send + Sync>) -> Options {
+    pub fn new(
+        launch: Arc<dyn Launch>,
+        egress: Option<Arc<dyn Egress>>,
+        log: Arc<dyn Fn(JValue) + Send + Sync>,
+    ) -> Options {
         Options {
             launch,
             egress,
@@ -110,17 +114,25 @@ pub fn parse_domains(list: &JValue) -> Vec<String> {
         return Vec::new();
     };
     let shaped = |d: &str| {
-        let Some(dot) = d.rfind('.') else { return false };
+        let Some(dot) = d.rfind('.') else {
+            return false;
+        };
         let (head, tld) = (d.get(..dot).unwrap_or(""), d.get(dot + 1..).unwrap_or(""));
         !head.is_empty()
-            && head.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+            && head
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
             && tld.len() >= 2
             && tld.bytes().all(|b| b.is_ascii_lowercase())
     };
     items
         .iter()
         .map(|d| {
-            let raw = if d.truthy() { executor::js_string(d) } else { String::new() };
+            let raw = if d.truthy() {
+                executor::js_string(d)
+            } else {
+                String::new()
+            };
             raw.trim_matches(js_space).to_lowercase()
         })
         .filter(|d| shaped(d))
@@ -151,7 +163,10 @@ impl Registry {
     fn finish(&self, id: &str, decision: &str) {
         let taken = {
             let mut pending = lock(&self.pending);
-            pending.iter().position(|w| w.id == id).map(|i| pending.remove(i))
+            pending
+                .iter()
+                .position(|w| w.id == id)
+                .map(|i| pending.remove(i))
         };
         let Some(waiting) = taken else { return };
         if decision == "timeout" {
@@ -166,7 +181,11 @@ impl Registry {
     }
 
     fn of_task(&self, task_id: &str) -> Vec<String> {
-        lock(&self.pending).iter().filter(|w| w.task_id == task_id).map(|w| w.id.clone()).collect()
+        lock(&self.pending)
+            .iter()
+            .filter(|w| w.task_id == task_id)
+            .map(|w| w.id.clone())
+            .collect()
     }
 
     fn abort_task(&self, task_id: &str) {
@@ -195,8 +214,13 @@ fn card_view(id: &str, request: &JValue) -> JValue {
 }
 
 enum Item {
-    Act { action: JValue, reply: Arc<Slot<Result<JValue, Fail>>> },
-    Finish { result: JValue },
+    Act {
+        action: JValue,
+        reply: Arc<Slot<Result<JValue, Fail>>>,
+    },
+    Finish {
+        result: JValue,
+    },
 }
 
 /// One live task (core's per-start closure state).
@@ -213,9 +237,9 @@ struct Run {
     wake: Condvar,
     open: AtomicBool,
     executor: Mutex<Option<Arc<Executor>>>,
-    opening: Mutex<Option<Arc<Flight<Result<String, Fail>>>>>,
+    opening: Held<Result<String, Fail>>,
     executor_closed: AtomicBool,
-    cleanup: Mutex<Option<Arc<Flight<JValue>>>>,
+    cleanup: Held<JValue>,
     close_timeout: Duration,
     /// `activeAction`: the type of the action running, while it runs.
     active: Mutex<Option<String>>,
@@ -224,7 +248,10 @@ struct Run {
 impl Run {
     fn append(&self, kind: &str, data: JValue) -> Result<(), Fail> {
         drop(lock(&self.gate));
-        self.store.append(&self.id, kind, data).map(|_| ()).map_err(refused)
+        self.store
+            .append(&self.id, kind, data)
+            .map(|_| ())
+            .map_err(refused)
     }
 
     fn uncertain(&self, data: JValue) {
@@ -251,7 +278,10 @@ impl Run {
             let mut queue = lock(&self.queue);
             while let Some(item) = queue.pop_front() {
                 if let Item::Act { reply, .. } = item {
-                    reply.settle(Err(Fail::public(409, "This task ended before this action ran.")));
+                    reply.settle(Err(Fail::public(
+                        409,
+                        "This task ended before this action ran.",
+                    )));
                 }
             }
         }
@@ -270,7 +300,13 @@ impl Run {
         if let Some(closer) = closer {
             if closer.wait_for(self.close_timeout) != Some(true) {
                 self.executor_closed.store(false, Ordering::SeqCst);
-                self.uncertain(JValue::obj([("tool", s("network")), ("reason", s("Browser executor closure could not be confirmed."))]));
+                self.uncertain(JValue::obj([
+                    ("tool", s("network")),
+                    (
+                        "reason",
+                        s("Browser executor closure could not be confirmed."),
+                    ),
+                ]));
             }
         }
         report
@@ -281,7 +317,10 @@ impl Run {
             return JValue::Null;
         };
         let taken = egress.revoke(grant).ok();
-        let base = taken.as_ref().map(|t| t.get("report")).filter(|r| r.truthy());
+        let base = taken
+            .as_ref()
+            .map(|t| t.get("report"))
+            .filter(|r| r.truthy());
         let mut items: Vec<(String, JValue)> = match base {
             Some(JValue::Obj(items)) => items.clone(),
             Some(_) => Vec::new(),
@@ -292,18 +331,27 @@ impl Run {
                 ("state".into(), s("uncertain")),
             ],
         };
-        let confirmed = taken.as_ref().is_some_and(|t| t.get("confirmed").as_bool() == Some(true));
+        let confirmed = taken
+            .as_ref()
+            .is_some_and(|t| t.get("confirmed").as_bool() == Some(true));
         wtf16::set(&mut items, "cleanupConfirmed", JValue::Bool(confirmed));
         let report = JValue::Obj(items);
         if !confirmed {
-            self.uncertain(JValue::obj([("tool", s("network")), ("reason", s("Native egress cleanup could not be confirmed."))]));
+            self.uncertain(JValue::obj([
+                ("tool", s("network")),
+                ("reason", s("Native egress cleanup could not be confirmed.")),
+            ]));
         }
         let retained = self
             .store
             .append(
                 &self.id,
                 "artifact.created",
-                JValue::obj([("name", s("network.cleanup")), ("kind", s("native-network-report")), ("network", report.clone())]),
+                JValue::obj([
+                    ("name", s("network.cleanup")),
+                    ("kind", s("native-network-report")),
+                    ("network", report.clone()),
+                ]),
             )
             .is_ok();
         let snapshot = report.get("snapshotId");
@@ -337,8 +385,18 @@ fn is_terminal(job: &Job) -> bool {
 
 impl Service {
     pub fn new(options: Options) -> Arc<Service> {
-        let registry = Arc::new(Registry { pending: Mutex::new(Vec::new()), expired: Mutex::new(HashMap::new()), now: options.now.clone() });
-        Arc::new(Service { options, registry, stores: Mutex::new(HashMap::new()), live: Mutex::new(HashMap::new()), sessions: Mutex::new(HashMap::new()) })
+        let registry = Arc::new(Registry {
+            pending: Mutex::new(Vec::new()),
+            expired: Mutex::new(HashMap::new()),
+            now: options.now.clone(),
+        });
+        Arc::new(Service {
+            options,
+            registry,
+            stores: Mutex::new(HashMap::new()),
+            live: Mutex::new(HashMap::new()),
+            sessions: Mutex::new(HashMap::new()),
+        })
     }
 
     fn log(&self, entry: JValue) {
@@ -355,13 +413,23 @@ impl Service {
         let (now, new_id) = (self.options.now.clone(), self.options.new_id.clone());
         let store = Arc::new(Store::with(
             dir,
-            StoreOptions { kinds: Some(vec!["browser".into()]), durable: false, retain_ms: RETAIN_MS, max_jobs: MAX_JOBS },
+            StoreOptions {
+                kinds: Some(vec!["browser".into()]),
+                durable: false,
+                retain_ms: RETAIN_MS,
+                max_jobs: MAX_JOBS,
+            },
             Box::new(move || now()),
             Box::new(move || new_id()),
         ));
         let live: Vec<String> = lock(&self.live).keys().cloned().collect();
-        store.recover(&|id| live.iter().any(|l| l == id)).map_err(refused)?;
-        let tenant = Arc::new(Tenant { store, starting: Mutex::new(()) });
+        store
+            .recover(&|id| live.iter().any(|l| l == id))
+            .map_err(refused)?;
+        let tenant = Arc::new(Tenant {
+            store,
+            starting: Mutex::new(()),
+        });
         stores.insert(dir.to_path_buf(), tenant.clone());
         Ok(tenant)
     }
@@ -370,7 +438,12 @@ impl Service {
     fn owned(&self, tenant: &Tenant, project_id: &str, task_id: &str) -> Result<Job, Fail> {
         let job = tenant.store.get(task_id).map_err(refused)?;
         match job {
-            Some(job) if job.kind.as_str() == Some("browser") && job.project_id.as_str() == Some(project_id) => Ok(job),
+            Some(job)
+                if job.kind.as_str() == Some("browser")
+                    && job.project_id.as_str() == Some(project_id) =>
+            {
+                Ok(job)
+            }
             _ => Err(Fail::public(404, "Task not found")),
         }
     }
@@ -392,19 +465,29 @@ impl Service {
     pub fn facts(&self, dir: &Path) -> Result<JValue, Fail> {
         let tenant = self.tenant(dir)?;
         let mut approvals: Vec<(String, JValue)> = Vec::new();
-        let pending: Vec<(String, String, JValue)> =
-            lock(&self.registry.pending).iter().map(|w| (w.task_id.clone(), w.id.clone(), w.request.clone())).collect();
+        let pending: Vec<(String, String, JValue)> = lock(&self.registry.pending)
+            .iter()
+            .map(|w| (w.task_id.clone(), w.id.clone(), w.request.clone()))
+            .collect();
         for (task, id, request) in pending {
             if approvals.iter().any(|(k, _)| *k == task) {
                 continue;
             }
-            let own = tenant.store.get(&task).ok().flatten().is_some_and(|j| j.kind.as_str() == Some("browser"));
+            let own = tenant
+                .store
+                .get(&task)
+                .ok()
+                .flatten()
+                .is_some_and(|j| j.kind.as_str() == Some("browser"));
             if own {
                 approvals.push((task, card_view(&id, &request)));
             }
         }
         Ok(JValue::obj([
-            ("capabilities", JValue::Arr(GRANTABLE.iter().map(|c| s(c)).collect())),
+            (
+                "capabilities",
+                JValue::Arr(GRANTABLE.iter().map(|c| s(c)).collect()),
+            ),
             ("network", JValue::Bool(self.network())),
             ("networkState", s(self.network_state())),
             ("approvals", JValue::Obj(approvals)),
@@ -426,25 +509,41 @@ impl Service {
     fn active(&self, tenant: &Tenant, project_id: &str) -> bool {
         tenant.store.ids().iter().any(|id| {
             tenant.store.get(id).ok().flatten().is_some_and(|j| {
-                j.kind.as_str() == Some("browser") && j.project_id.as_str() == Some(project_id) && !is_terminal(&j)
+                j.kind.as_str() == Some("browser")
+                    && j.project_id.as_str() == Some(project_id)
+                    && !is_terminal(&j)
             })
         })
     }
 
     /// `start(workspace, project, body)`: `{ taskId, domains }` (202) once the session is open.
-    pub fn start(self: &Arc<Self>, dir: &Path, project_id: &str, body: &JValue) -> Result<JValue, Fail> {
+    pub fn start(
+        self: &Arc<Self>,
+        dir: &Path,
+        project_id: &str,
+        body: &JValue,
+    ) -> Result<JValue, Fail> {
         if body.is_nullish() && !matches!(body, JValue::Undefined) {
-            return Err(Fail::plain(None, "Cannot read properties of null (reading 'domains')"));
+            return Err(Fail::plain(
+                None,
+                "Cannot read properties of null (reading 'domains')",
+            ));
         }
         let domains = parse_domains(body.get("domains"));
         if domains.is_empty() {
-            return Err(Fail::public(400, "A browser task needs at least one domain it may reach."));
+            return Err(Fail::public(
+                400,
+                "A browser task needs at least one domain it may reach.",
+            ));
         }
         let tenant = self.tenant(dir)?;
         let id = {
             let _one = lock(&tenant.starting);
             if self.active(&tenant, project_id) {
-                return Err(Fail::public(409, "This project already has a browser task running."));
+                return Err(Fail::public(
+                    409,
+                    "This project already has a browser task running.",
+                ));
             }
             // Refused up front, without a job: a job created and refused at once would sit queued.
             if self.options.egress.is_none() && !self.options.direct {
@@ -453,7 +552,12 @@ impl Service {
             let capabilities = vec!["open_browser".to_string()];
             tenant
                 .store
-                .create(NewJob { kind: "browser", project_id: Some(project_id), parent_id: None, capabilities: &capabilities })
+                .create(NewJob {
+                    kind: "browser",
+                    project_id: Some(project_id),
+                    parent_id: None,
+                    capabilities: &capabilities,
+                })
                 .map_err(refused)?
         };
         let store = tenant.store.clone();
@@ -463,7 +567,10 @@ impl Service {
                 Ok(g) => Some(g).filter(|g| g.truthy()),
                 Err(e) => {
                     let _ = store.cancel(&id, &|_| false);
-                    let text = e.public.filter(|p| !p.is_empty()).unwrap_or_else(|| "The egress proxy refused this task.".into());
+                    let text = e
+                        .public
+                        .filter(|p| !p.is_empty())
+                        .unwrap_or_else(|| "The egress proxy refused this task.".into());
                     return Err(Fail::public(503, &text));
                 }
             },
@@ -488,7 +595,15 @@ impl Service {
             active: Mutex::new(None),
         });
         let proxy = grant.as_ref().map(|g| Proxy {
-            server: format!("http://{}", self.options.egress.as_ref().and_then(|e| e.endpoint()).filter(|e| !e.is_empty()).unwrap_or_else(|| "egress".into())),
+            server: format!(
+                "http://{}",
+                self.options
+                    .egress
+                    .as_ref()
+                    .and_then(|e| e.endpoint())
+                    .filter(|e| !e.is_empty())
+                    .unwrap_or_else(|| "egress".into())
+            ),
             username: "task".into(),
             password: executor::js_string(g.get("token")),
         });
@@ -501,11 +616,24 @@ impl Service {
         // jobs.cjs `run`: `job.started` before the work is live.
         if let Err(error) = run.append("job.started", JValue::Undefined) {
             run.cleanup().wait();
-            if store.get(&id).ok().flatten().is_some_and(|j| j.status.as_str() == Some("queued")) {
-                let _ = store.append(&id, "job.failed", JValue::obj([("error", s("The browser could not start."))]));
+            if store
+                .get(&id)
+                .ok()
+                .flatten()
+                .is_some_and(|j| j.status.as_str() == Some("queued"))
+            {
+                let _ = store.append(
+                    &id,
+                    "job.failed",
+                    JValue::obj([("error", s("The browser could not start."))]),
+                );
             }
             ready.settle(Err(error.clone()));
-            self.log(JValue::obj([("event", s("browser.job.error")), ("jobId", s(&id)), ("error", s(&error.message))]));
+            self.log(JValue::obj([
+                ("event", s("browser.job.error")),
+                ("jobId", s(&id)),
+                ("error", s(&error.message)),
+            ]));
         } else {
             lock(&self.live).insert(id.clone(), run.clone());
             let (me, run2, ready2) = (self.clone(), run.clone(), ready.clone());
@@ -516,10 +644,19 @@ impl Service {
             });
         }
         match ready.wait() {
-            Ok(()) => Ok(JValue::obj([("taskId", s(&id)), ("domains", JValue::Arr(domains.iter().map(|d| s(d)).collect()))])),
+            Ok(()) => Ok(JValue::obj([
+                ("taskId", s(&id)),
+                (
+                    "domains",
+                    JValue::Arr(domains.iter().map(|d| s(d)).collect()),
+                ),
+            ])),
             Err(error) => {
                 let status = error.status.filter(|st| *st != 0).unwrap_or(502);
-                let text = error.public.filter(|p| !p.is_empty()).unwrap_or_else(|| "The browser could not open.".into());
+                let text = error
+                    .public
+                    .filter(|p| !p.is_empty())
+                    .unwrap_or_else(|| "The browser could not open.".into());
                 Err(Fail::public(status, &text))
             }
         }
@@ -529,12 +666,30 @@ impl Service {
     fn end(&self, run: &Arc<Run>, outcome: Result<JValue, Fail>) {
         let aborted = run.signal.is_aborted();
         let (kind, data) = match outcome {
-            Ok(result) if aborted => ("job.cancelled", if matches!(result, JValue::Undefined) { JValue::obj::<&str>([]) } else { JValue::obj([("result", result)]) }),
+            Ok(result) if aborted => (
+                "job.cancelled",
+                if matches!(result, JValue::Undefined) {
+                    JValue::obj::<&str>([])
+                } else {
+                    JValue::obj([("result", result)])
+                },
+            ),
             Ok(result) => ("job.completed", JValue::obj([("result", result)])),
             Err(_) if aborted => ("job.cancelled", JValue::Undefined),
             Err(e) => {
-                let text = e.public.clone().filter(|p| !p.is_empty()).or_else(|| Some(e.message.clone()).filter(|m| !m.is_empty())).unwrap_or_else(|| "failed".into());
-                ("job.failed", JValue::obj([("error", s(&js_slice(&text, 500))), ("result", e.result.clone().unwrap_or(JValue::Null))]))
+                let text = e
+                    .public
+                    .clone()
+                    .filter(|p| !p.is_empty())
+                    .or_else(|| Some(e.message.clone()).filter(|m| !m.is_empty()))
+                    .unwrap_or_else(|| "failed".into());
+                (
+                    "job.failed",
+                    JValue::obj([
+                        ("error", s(&js_slice(&text, 500))),
+                        ("result", e.result.clone().unwrap_or(JValue::Null)),
+                    ]),
+                )
             }
         };
         let _ = run.append(kind, data);
@@ -560,7 +715,10 @@ impl Service {
                     r.uncertain(JValue::obj([
                         ("tool", s("browser")),
                         ("action", s(&kind)),
-                        ("reason", s("The action was still pending when cancellation was accepted.")),
+                        (
+                            "reason",
+                            s("The action was still pending when cancellation was accepted."),
+                        ),
                     ]));
                 }
             })
@@ -601,9 +759,20 @@ impl Service {
         proxy: Option<Proxy>,
     ) -> Result<JValue, Fail> {
         let id = run.id.clone();
-        run.append("checkpoint.created", JValue::obj([("domains", JValue::Arr(domains.iter().map(|d| s(d)).collect()))]))?;
+        run.append(
+            "checkpoint.created",
+            JValue::obj([(
+                "domains",
+                JValue::Arr(domains.iter().map(|d| s(d)).collect()),
+            )]),
+        )?;
         let ask = {
-            let (r, registry, timeout, new_id) = (run.clone(), self.registry.clone(), self.options.timeout, self.options.new_id.clone());
+            let (r, registry, timeout, new_id) = (
+                run.clone(),
+                self.registry.clone(),
+                self.options.timeout,
+                self.options.new_id.clone(),
+            );
             Arc::new(move |card: &JValue| -> Result<String, Fail> {
                 let mut card = card.clone();
                 if let JValue::Obj(items) = &mut card {
@@ -611,7 +780,13 @@ impl Service {
                 }
                 r.append("approval.requested", card.clone())?;
                 let answer = ask_approval(&registry, &new_id, timeout, &card, &r.signal);
-                r.append("approval.decided", JValue::obj([("decision", s(&answer)), ("action", card.get("action").clone())]))?;
+                r.append(
+                    "approval.decided",
+                    JValue::obj([
+                        ("decision", s(&answer)),
+                        ("action", card.get("action").clone()),
+                    ]),
+                )?;
                 Ok(answer)
             })
         };
@@ -689,9 +864,18 @@ impl Service {
                     let left = deadline.saturating_duration_since(Instant::now());
                     if left.is_zero() {
                         drop(queue);
-                        return Err(Fail { status: None, message: TIMEOUT_REASON.into(), public: Some(TIMEOUT_REASON.into()), result: None });
+                        return Err(Fail {
+                            status: None,
+                            message: TIMEOUT_REASON.into(),
+                            public: Some(TIMEOUT_REASON.into()),
+                            result: None,
+                        });
                     }
-                    queue = run.wake.wait_timeout(queue, left).unwrap_or_else(PoisonError::into_inner).0;
+                    queue = run
+                        .wake
+                        .wait_timeout(queue, left)
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .0;
                 }
             };
             let Some(item) = item else { break };
@@ -700,7 +884,9 @@ impl Service {
                     output = result;
                     break;
                 }
-                Item::Act { action, reply } => self.act_one(run, &exec, &session_id, &action, &reply),
+                Item::Act { action, reply } => {
+                    self.act_one(run, &exec, &session_id, &action, &reply)
+                }
             }
         }
         let network = run.cleanup().wait();
@@ -714,7 +900,8 @@ impl Service {
             wtf16::set(&mut items, "network", network.clone());
             JValue::Obj(items)
         };
-        let unconfirmed = !network.is_nullish() && network.get("cleanupConfirmed").as_bool() != Some(true);
+        let unconfirmed =
+            !network.is_nullish() && network.get("cleanupConfirmed").as_bool() != Some(true);
         if unconfirmed || !run.executor_closed.load(Ordering::SeqCst) {
             let mut fail = Fail::public(503, "Browser cleanup could not be confirmed.");
             fail.result = Some(result);
@@ -724,7 +911,14 @@ impl Service {
     }
 
     /// One queued action, raced against a cancel (`whileActive`).
-    fn act_one(&self, run: &Arc<Run>, exec: &Arc<Executor>, session_id: &str, action: &JValue, reply: &Arc<Slot<Result<JValue, Fail>>>) {
+    fn act_one(
+        &self,
+        run: &Arc<Run>,
+        exec: &Arc<Executor>,
+        session_id: &str,
+        action: &JValue,
+        reply: &Arc<Slot<Result<JValue, Fail>>>,
+    ) {
         if run.signal.is_aborted() {
             reply.settle(Err(Fail::public(499, "Cancelled")));
             return;
@@ -771,7 +965,13 @@ impl Service {
     }
 
     /// `act(workspace, project, taskId, action)`: runs one action and waits for its outcome.
-    pub fn act(&self, dir: &Path, project_id: &str, task_id: &str, action: &JValue) -> Result<JValue, Fail> {
+    pub fn act(
+        &self,
+        dir: &Path,
+        project_id: &str,
+        task_id: &str,
+        action: &JValue,
+    ) -> Result<JValue, Fail> {
         let tenant = self.tenant(dir)?;
         let job = self.owned(&tenant, project_id, task_id)?;
         if !Service::running(&job) {
@@ -781,21 +981,34 @@ impl Service {
         if !action.truthy() || kind.as_str().is_none_or(str::is_empty) {
             return Err(Fail::public(400, "Name an action to run."));
         }
-        let run = lock(&self.sessions).get(task_id).cloned().filter(|r| r.open.load(Ordering::SeqCst));
+        let run = lock(&self.sessions)
+            .get(task_id)
+            .cloned()
+            .filter(|r| r.open.load(Ordering::SeqCst));
         let Some(run) = run else {
             return Err(Fail::public(409, "This task is not open for actions."));
         };
         let reply = Arc::new(Slot::new());
         {
             let mut queue = lock(&run.queue);
-            queue.push_back(Item::Act { action: action.clone(), reply: reply.clone() });
+            queue.push_back(Item::Act {
+                action: action.clone(),
+                reply: reply.clone(),
+            });
             run.wake.notify_all();
         }
         reply.wait()
     }
 
     /// `decide(workspace, project, taskId, decision, approvalId)`.
-    pub fn decide(&self, dir: &Path, project_id: &str, task_id: &str, decision: &str, approval_id: &str) -> Result<JValue, Fail> {
+    pub fn decide(
+        &self,
+        dir: &Path,
+        project_id: &str,
+        task_id: &str,
+        decision: &str,
+        approval_id: &str,
+    ) -> Result<JValue, Fail> {
         let tenant = self.tenant(dir)?;
         self.owned(&tenant, project_id, task_id)?;
         if !matches!(decision, "approve" | "approve_all" | "deny") {
@@ -804,31 +1017,61 @@ impl Service {
         if approval_id.is_empty() {
             return Err(Fail::public(400, "Which approval is this answer for?"));
         }
-        let waiting = lock(&self.registry.pending).iter().any(|w| w.id == approval_id && w.task_id == task_id);
+        let waiting = lock(&self.registry.pending)
+            .iter()
+            .any(|w| w.id == approval_id && w.task_id == task_id);
         if !waiting {
             let now = (self.options.now)();
-            let expired = lock(&self.registry.expired).get(approval_id).is_some_and(|until| *until > now);
+            let expired = lock(&self.registry.expired)
+                .get(approval_id)
+                .is_some_and(|until| *until > now);
             return Err(Fail::public(
                 409,
-                if expired { "This approval expired before anyone answered it." } else { "That approval is no longer waiting." },
+                if expired {
+                    "This approval expired before anyone answered it."
+                } else {
+                    "That approval is no longer waiting."
+                },
             ));
         }
-        self.registry.finish(approval_id, if decision == "deny" { "deny" } else { "approve" });
+        self.registry.finish(
+            approval_id,
+            if decision == "deny" {
+                "deny"
+            } else {
+                "approve"
+            },
+        );
         Ok(JValue::obj([("ok", JValue::Bool(true))]))
     }
 
     /// `finish(workspace, project, taskId, result)`: ends the task cleanly with the caller's result.
-    pub fn finish(&self, dir: &Path, project_id: &str, task_id: &str, result: &JValue) -> Result<JValue, Fail> {
+    pub fn finish(
+        &self,
+        dir: &Path,
+        project_id: &str,
+        task_id: &str,
+        result: &JValue,
+    ) -> Result<JValue, Fail> {
         let tenant = self.tenant(dir)?;
         let job = self.owned(&tenant, project_id, task_id)?;
         if !Service::running(&job) {
             return Err(Fail::public(409, "This task is not running."));
         }
-        let result = if matches!(result, JValue::Undefined) { JValue::Null } else { result.clone() };
-        if !result.is_nullish() && wtf16::stringify(&result).is_some_and(|t| t.len() > MAX_RESULT_BYTES) {
+        let result = if matches!(result, JValue::Undefined) {
+            JValue::Null
+        } else {
+            result.clone()
+        };
+        if !result.is_nullish()
+            && wtf16::stringify(&result).is_some_and(|t| t.len() > MAX_RESULT_BYTES)
+        {
             return Err(Fail::public(413, "That result is too large to record."));
         }
-        let run = lock(&self.sessions).get(task_id).cloned().filter(|r| r.open.load(Ordering::SeqCst));
+        let run = lock(&self.sessions)
+            .get(task_id)
+            .cloned()
+            .filter(|r| r.open.load(Ordering::SeqCst));
         let Some(run) = run else {
             return Err(Fail::public(409, "This task is not open for actions."));
         };
@@ -904,5 +1147,9 @@ fn ask_approval(
         }
     };
     signal.off(hook);
-    if decision == "approve" { "approve".into() } else { "deny".into() }
+    if decision == "approve" {
+        "approve".into()
+    } else {
+        "deny".into()
+    }
 }

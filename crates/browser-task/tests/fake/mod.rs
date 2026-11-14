@@ -1,11 +1,17 @@
 //! The scripted fake browser of tools/gen-service-fixtures.cjs (handoff spec
 //! `R5-browser-fixture-spec.md`), behind crate browser-task's engine traits: the same synthetic
 //! pages, the same answers and the same call log.
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::panic, dead_code)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    dead_code
+)]
 
 use browser_task::engine::{
-    Browser, CloseHook, Context, Download, DownloadHook, EngineError, Handle, Launch, Page, PageHook, Proxy, Request, Result,
-    Route, RouteGate, Socket, SocketGate,
+    Browser, CloseHook, Context, Download, DownloadHook, EngineError, Handle, Launch, Page,
+    PageHook, Proxy, Request, Result, Route, RouteGate, Socket, SocketGate,
 };
 use browser_task::Fail;
 use js_json::JValue;
@@ -45,18 +51,33 @@ impl World {
 
     /// `{ page, selector, facts?, remove? }`.
     pub fn mutate(&mut self, op: &JValue) {
-        let (url, sel) = (op.get("page").as_str().unwrap().to_string(), op.get("selector").as_str().unwrap().to_string());
-        let JValue::Obj(pages) = &mut self.pages else { panic!("pages") };
+        let (url, sel) = (
+            op.get("page").as_str().unwrap().to_string(),
+            op.get("selector").as_str().unwrap().to_string(),
+        );
+        let JValue::Obj(pages) = &mut self.pages else {
+            panic!("pages")
+        };
         let page = &mut pages.iter_mut().find(|(k, _)| *k == url).expect("page").1;
-        let JValue::Obj(fields) = page else { panic!("page") };
-        let elements = &mut fields.iter_mut().find(|(k, _)| k == "elements").expect("elements").1;
-        let JValue::Obj(els) = elements else { panic!("elements") };
+        let JValue::Obj(fields) = page else {
+            panic!("page")
+        };
+        let elements = &mut fields
+            .iter_mut()
+            .find(|(k, _)| k == "elements")
+            .expect("elements")
+            .1;
+        let JValue::Obj(els) = elements else {
+            panic!("elements")
+        };
         if op.get("remove").as_bool() == Some(true) {
             els.retain(|(k, _)| *k != sel);
             return;
         }
         let el = &mut els.iter_mut().find(|(k, _)| *k == sel).expect("element").1;
-        let JValue::Obj(ef) = el else { panic!("element") };
+        let JValue::Obj(ef) = el else {
+            panic!("element")
+        };
         if op.get("facts").is_object() {
             js_json::wtf16::set(ef, "facts", op.get("facts").clone());
         }
@@ -78,8 +99,8 @@ impl Fake {
     }
 }
 
-impl Launch for Arc<Fake> {
-    fn launch(&self) -> std::result::Result<Arc<dyn Browser>, Fail> {
+impl Fake {
+    fn start(self: &Arc<Self>) -> std::result::Result<Arc<dyn Browser>, Fail> {
         self.push(vec![s("launch")]);
         if let Some(f) = &self.launch_fails {
             return Err(Fail {
@@ -97,7 +118,7 @@ pub struct Launcher(pub Arc<Fake>);
 
 impl Launch for Launcher {
     fn launch(&self) -> std::result::Result<Arc<dyn Browser>, Fail> {
-        self.0.launch()
+        self.0.start()
     }
 }
 
@@ -107,12 +128,25 @@ struct FakeBrowser {
 
 impl Browser for FakeBrowser {
     fn new_context(&self, proxy: Option<&Proxy>) -> Result<Arc<dyn Context>> {
-        let mut opts = vec![("acceptDownloads", JValue::Bool(true)), ("serviceWorkers", s("block"))];
+        let mut opts = vec![
+            ("acceptDownloads", JValue::Bool(true)),
+            ("serviceWorkers", s("block")),
+        ];
         if let Some(p) = proxy {
-            opts.push(("proxy", JValue::obj([("server", s(&p.server)), ("username", s(&p.username)), ("password", s(&p.password))])));
+            opts.push((
+                "proxy",
+                JValue::obj([
+                    ("server", s(&p.server)),
+                    ("username", s(&p.username)),
+                    ("password", s(&p.password)),
+                ]),
+            ));
         }
         self.fake.push(vec![s("newContext"), JValue::obj(opts)]);
-        Ok(Arc::new(FakeContext { fake: self.fake.clone(), inner: Arc::new(Mutex::new(Ctx::default())) }))
+        Ok(Arc::new(FakeContext {
+            fake: self.fake.clone(),
+            inner: Arc::new(Mutex::new(Ctx::default())),
+        }))
     }
     fn close(&self) -> Result<()> {
         self.fake.push(vec![s("browserClose")]);
@@ -125,7 +159,7 @@ struct Ctx {
     gate: Option<RouteGate>,
     ws: Option<SocketGate>,
     page_hook: Option<PageHook>,
-    pages: Vec<Arc<FakePage>>,
+    pages: Vec<FakePage>,
 }
 
 struct FakeContext {
@@ -149,23 +183,33 @@ impl Context for FakeContext {
     }
     fn new_page(&self) -> Result<Arc<dyn Page>> {
         self.fake.push(vec![s("newPage")]);
-        let page = Arc::new(FakePage {
+        let page = FakePage(Arc::new(PageInner {
             fake: self.fake.clone(),
             ctx: self.inner.clone(),
-            state: Mutex::new(PageState { url: "about:blank".into(), previous: "about:blank".into(), download: None }),
-        });
+            state: Mutex::new(PageState {
+                url: "about:blank".into(),
+                previous: "about:blank".into(),
+                download: None,
+            }),
+        }));
         let hook = {
             let mut ctx = self.inner.lock().unwrap();
             ctx.pages.push(page.clone());
             ctx.page_hook.clone()
         };
         if let Some(h) = hook {
-            h(page.clone());
+            h(Arc::new(page.clone()));
         }
-        Ok(page)
+        Ok(Arc::new(page))
     }
     fn pages(&self) -> Vec<Arc<dyn Page>> {
-        self.inner.lock().unwrap().pages.iter().map(|p| p.clone() as Arc<dyn Page>).collect()
+        self.inner
+            .lock()
+            .unwrap()
+            .pages
+            .iter()
+            .map(|p| Arc::new(p.clone()) as Arc<dyn Page>)
+            .collect()
     }
     fn close(&self) -> Result<()> {
         self.fake.push(vec![s("contextClose")]);
@@ -179,13 +223,24 @@ struct PageState {
     download: Option<DownloadHook>,
 }
 
-pub struct FakePage {
+pub struct PageInner {
     fake: Arc<Fake>,
     ctx: Arc<Mutex<Ctx>>,
     state: Mutex<PageState>,
 }
 
-impl FakePage {
+/// One page; its clones are the same page.
+#[derive(Clone)]
+pub struct FakePage(Arc<PageInner>);
+
+impl std::ops::Deref for FakePage {
+    type Target = Arc<PageInner>;
+    fn deref(&self) -> &Arc<PageInner> {
+        &self.0
+    }
+}
+
+impl PageInner {
     fn url_now(&self) -> String {
         self.state.lock().unwrap().url.clone()
     }
@@ -194,13 +249,17 @@ impl FakePage {
     fn route_request(&self, url: &str, nav: bool) -> bool {
         let gate = self.ctx.lock().unwrap().gate.clone();
         let Some(gate) = gate else { return true };
-        match gate(&Request { url: url.to_string(), main_frame_navigation: nav }) {
+        match gate(&Request {
+            url: url.to_string(),
+            main_frame_navigation: nav,
+        }) {
             Route::Continue => {
                 self.fake.push(vec![s("continue"), s(url)]);
                 true
             }
             Route::Abort => {
-                self.fake.push(vec![s("abort"), s(url), s("blockedbyclient")]);
+                self.fake
+                    .push(vec![s("abort"), s(url), s("blockedbyclient")]);
                 false
             }
         }
@@ -214,7 +273,10 @@ impl FakePage {
         let world = self.fake.world.lock().unwrap();
         let page = world.page(url);
         drop(world);
-        let landed = page.get("redirect").as_str().map_or(url.to_string(), str::to_string);
+        let landed = page
+            .get("redirect")
+            .as_str()
+            .map_or(url.to_string(), str::to_string);
         {
             let mut st = self.state.lock().unwrap();
             st.previous = std::mem::replace(&mut st.url, landed.clone());
@@ -232,7 +294,10 @@ impl FakePage {
                 if let Some(g) = &gate {
                     match g(u) {
                         Socket::Connect => self.fake.push(vec![s("wsConnect"), s(u)]),
-                        Socket::Close { code, .. } => self.fake.push(vec![s("wsClose"), s(u), JValue::Num(f64::from(code))]),
+                        Socket::Close { code, .. } => {
+                            self.fake
+                                .push(vec![s("wsClose"), s(u), JValue::Num(f64::from(code))])
+                        }
                     }
                 }
             }
@@ -241,13 +306,18 @@ impl FakePage {
     }
 
     fn handle(self: &Arc<Self>, selector: &str, url: &str, body: bool) -> Arc<dyn Handle> {
-        Arc::new(FakeHandle { page: self.clone(), selector: selector.to_string(), url: url.to_string(), body })
+        Arc::new(FakeHandle {
+            page: self.clone(),
+            selector: selector.to_string(),
+            url: url.to_string(),
+            body,
+        })
     }
 }
 
-impl Page for Arc<FakePage> {
+impl Page for FakePage {
     fn id(&self) -> u64 {
-        Arc::as_ptr(self) as usize as u64
+        Arc::as_ptr(&self.0) as usize as u64
     }
     fn on_download(&self, hook: DownloadHook) {
         self.state.lock().unwrap().download = Some(hook);
@@ -262,7 +332,13 @@ impl Page for Arc<FakePage> {
     fn locate(&self, selector: &str, _timeout: Duration) -> Result<Option<Arc<dyn Handle>>> {
         self.fake.push(vec![s("locate"), s(selector)]);
         let url = self.url_now();
-        let found = self.fake.world.lock().unwrap().element(&url, selector).is_some();
+        let found = self
+            .fake
+            .world
+            .lock()
+            .unwrap()
+            .element(&url, selector)
+            .is_some();
         Ok(found.then(|| self.handle(selector, &url, false)))
     }
     fn active_element(&self) -> Result<Option<Arc<dyn Handle>>> {
@@ -270,7 +346,10 @@ impl Page for Arc<FakePage> {
         let url = self.url_now();
         let page = self.fake.world.lock().unwrap().page(&url);
         if let JValue::Obj(els) = page.get("elements") {
-            if let Some((sel, _)) = els.iter().find(|(_, e)| e.get("focused").as_bool() == Some(true)) {
+            if let Some((sel, _)) = els
+                .iter()
+                .find(|(_, e)| e.get("focused").as_bool() == Some(true))
+            {
                 return Ok(Some(self.handle(sel, &url, false)));
             }
         }
@@ -279,18 +358,43 @@ impl Page for Arc<FakePage> {
     fn locator_text(&self, selector: &str, _timeout: Duration) -> Result<String> {
         self.fake.push(vec![s("innerText"), s(selector)]);
         let url = self.url_now();
-        let el = self.fake.world.lock().unwrap().element(&url, selector).ok_or_else(|| EngineError::new("not found"))?;
+        let el = self
+            .fake
+            .world
+            .lock()
+            .unwrap()
+            .element(&url, selector)
+            .ok_or_else(|| EngineError::new("not found"))?;
         let text = el.get("text");
-        Ok(text.as_str().map_or_else(|| el.get("facts").get("text").as_str().unwrap_or("").to_string(), str::to_string))
+        Ok(text.as_str().map_or_else(
+            || {
+                el.get("facts")
+                    .get("text")
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string()
+            },
+            str::to_string,
+        ))
     }
     fn body_text(&self, _timeout: Duration) -> Result<String> {
         self.fake.push(vec![s("innerText"), s("body")]);
         let url = self.url_now();
-        Ok(self.fake.world.lock().unwrap().page(&url).get("text").as_str().unwrap_or("").to_string())
+        Ok(self
+            .fake
+            .world
+            .lock()
+            .unwrap()
+            .page(&url)
+            .get("text")
+            .as_str()
+            .unwrap_or("")
+            .to_string())
     }
     fn goto(&self, url: &str, _timeout: Duration) -> Result<()> {
         self.fake.push(vec![s("goto"), s(url)]);
-        self.navigate(url).map_err(|()| EngineError::new(format!("net::ERR_BLOCKED_BY_CLIENT at {url}")))
+        self.navigate(url)
+            .map_err(|()| EngineError::new(format!("net::ERR_BLOCKED_BY_CLIENT at {url}")))
     }
     fn go_back(&self, _timeout: Duration) -> Result<()> {
         self.fake.push(vec![s("goBack")]);
@@ -313,7 +417,16 @@ impl Page for Arc<FakePage> {
     fn screenshot(&self) -> Result<Vec<u8>> {
         self.fake.push(vec![s("screenshot")]);
         let url = self.url_now();
-        if self.fake.world.lock().unwrap().page(&url).get("screenshot").as_str() == Some("fail") {
+        if self
+            .fake
+            .world
+            .lock()
+            .unwrap()
+            .page(&url)
+            .get("screenshot")
+            .as_str()
+            == Some("fail")
+        {
             return Err(EngineError::new("screenshot failed"));
         }
         Ok(format!("png:{url}").into_bytes())
@@ -325,7 +438,7 @@ impl Page for Arc<FakePage> {
 }
 
 struct FakeHandle {
-    page: Arc<FakePage>,
+    page: Arc<PageInner>,
     selector: String,
     url: String,
     body: bool,
@@ -333,7 +446,12 @@ struct FakeHandle {
 
 impl FakeHandle {
     fn element(&self) -> Option<JValue> {
-        self.page.fake.world.lock().unwrap().element(&self.url, &self.selector)
+        self.page
+            .fake
+            .world
+            .lock()
+            .unwrap()
+            .element(&self.url, &self.selector)
     }
     fn act(&self, method: &str, extra: Vec<JValue>) -> Result<Option<JValue>> {
         let mut parts = vec![s(method), s(&self.selector)];
@@ -342,7 +460,9 @@ impl FakeHandle {
         let el = self.element();
         if let Some(el) = &el {
             if el.get("fail").as_str() == Some(method) {
-                return Err(EngineError::new(el.get("failMessage").as_str().unwrap_or("")));
+                return Err(EngineError::new(
+                    el.get("failMessage").as_str().unwrap_or(""),
+                ));
             }
         }
         Ok(el)
@@ -383,15 +503,21 @@ impl Handle for FakeHandle {
                 ("frameOrigin", s(&browser_task_origin(&self.url))),
             ]));
         }
-        self.element().map(|e| e.get("facts").clone()).ok_or_else(|| EngineError::new("detached"))
+        self.element()
+            .map(|e| e.get("facts").clone())
+            .ok_or_else(|| EngineError::new("detached"))
     }
     fn is_connected(&self) -> Result<bool> {
-        self.page.fake.push(vec![s("isConnected"), s(&self.selector)]);
+        self.page
+            .fake
+            .push(vec![s("isConnected"), s(&self.selector)]);
         Ok(self.body || self.element().is_some())
     }
     fn is_focused(&self) -> Result<bool> {
         self.page.fake.push(vec![s("isFocused"), s(&self.selector)]);
-        Ok(self.element().is_some_and(|e| e.get("focused").as_bool() == Some(true)))
+        Ok(self
+            .element()
+            .is_some_and(|e| e.get("focused").as_bool() == Some(true)))
     }
     fn click(&self, _t: Duration) -> Result<()> {
         let el = self.act("click", vec![])?;
@@ -411,7 +537,10 @@ impl Handle for FakeHandle {
         self.act("press", vec![s(key)]).map(|_| ())
     }
     fn set_input_files(&self, file: &Path, _t: Duration) -> Result<()> {
-        let base = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let base = file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         self.act("setInputFiles", vec![s(&base)]).map(|_| ())
     }
     fn submit(&self) -> Result<()> {
@@ -449,7 +578,10 @@ impl Download for FakeDownload {
         self.url.clone()
     }
     fn save_as(&self, target: &Path) -> Result<()> {
-        let base = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let base = target
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         self.fake.push(vec![s("saveAs"), s(&base)]);
         std::fs::write(target, "qa-download").map_err(|e| EngineError::new(e.to_string()))
     }

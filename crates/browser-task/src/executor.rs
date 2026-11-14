@@ -14,7 +14,9 @@
 //!
 //! [`Engine`]: crate::engine
 
-use crate::engine::{self, Browser, Context, Download, Handle, Launch, Page, Proxy, Request, Route, Socket};
+use crate::engine::{
+    self, Browser, Context, Download, Handle, Launch, Page, Proxy, Request, Route, Socket,
+};
 use crate::policy::{self, Secret, Substituted};
 use crate::signal::Signal;
 use crate::Fail;
@@ -28,19 +30,43 @@ use std::time::Duration;
 
 /// `ACTIONS`.
 pub const ACTIONS: [&str; 12] = [
-    "navigate", "click", "type", "select", "press", "upload", "submit", "extract", "screenshot", "scroll", "hover", "wait",
+    "navigate",
+    "click",
+    "type",
+    "select",
+    "press",
+    "upload",
+    "submit",
+    "extract",
+    "screenshot",
+    "scroll",
+    "hover",
+    "wait",
 ];
 /// `ACTION_TIMEOUT_MS`.
 pub const ACTION_TIMEOUT: Duration = Duration::from_millis(15_000);
 const MAX_EXTRACT: usize = 20_000;
-const SECRET_SCREENSHOT_REASON: &str = "Screenshot omitted because this browser session has handled a secret.";
+const SECRET_SCREENSHOT_REASON: &str =
+    "Screenshot omitted because this browser session has handled a secret.";
 const FAILED_SCREENSHOT_REASON: &str = "Screenshot omitted because capture failed.";
 const DECLINED: &str = "Declined.";
 const PAGE_CHANGED: &str = "The page changed while approval was pending; review the action again.";
-const TARGET_CHANGED: &str = "The approved target changed while approval was pending; review the action again.";
+const TARGET_CHANGED: &str =
+    "The approved target changed while approval was pending; review the action again.";
 const NOT_ON_LIST: &str = "Not on this task\u{2019}s allowed list.";
 /// `sameElement`'s keys.
-const SAME_KEYS: [&str; 10] = ["tag", "type", "role", "name", "text", "value", "inForm", "formMethod", "formAction", "frameOrigin"];
+const SAME_KEYS: [&str; 10] = [
+    "tag",
+    "type",
+    "role",
+    "name",
+    "text",
+    "value",
+    "inForm",
+    "formMethod",
+    "formAction",
+    "frameOrigin",
+];
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
@@ -50,6 +76,12 @@ fn s(text: &str) -> JValue {
     JValue::Str(text.to_string())
 }
 
+/// What a field holds once it is there (the page the session follows, the launched browser).
+type Current<T> = Mutex<Option<Arc<T>>>;
+
+/// A flight a field holds once it is started.
+pub type Held<T> = Mutex<Option<Arc<Flight<T>>>>;
+
 /// A result computed once on its own thread and waited for by anyone (a promise kept in a field).
 pub struct Flight<T: Clone + Send + 'static> {
     slot: Mutex<Option<T>>,
@@ -58,7 +90,10 @@ pub struct Flight<T: Clone + Send + 'static> {
 
 impl<T: Clone + Send + 'static> Flight<T> {
     pub fn spawn(work: impl FnOnce() -> T + Send + 'static) -> Arc<Flight<T>> {
-        let flight = Arc::new(Flight { slot: Mutex::new(None), done: Condvar::new() });
+        let flight = Arc::new(Flight {
+            slot: Mutex::new(None),
+            done: Condvar::new(),
+        });
         let f = flight.clone();
         std::thread::spawn(move || {
             let value = work();
@@ -90,7 +125,11 @@ impl<T: Clone + Send + 'static> Flight<T> {
             if left.is_zero() {
                 return None;
             }
-            slot = self.done.wait_timeout(slot, left).unwrap_or_else(PoisonError::into_inner).0;
+            slot = self
+                .done
+                .wait_timeout(slot, left)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
         }
     }
 }
@@ -124,10 +163,19 @@ fn string_number(text: &str) -> f64 {
     }
     let radix = |prefix: &str, base: u32| -> Option<f64> {
         let digits = t.get(2..)?;
-        (t.len() > 2 && t.get(..2)?.eq_ignore_ascii_case(prefix) && digits.chars().all(|c| c.is_digit(base)))
-            .then(|| digits.chars().fold(0.0, |acc, c| acc * f64::from(base) + f64::from(c.to_digit(base).unwrap_or(0))))
+        (t.len() > 2
+            && t.get(..2)?.eq_ignore_ascii_case(prefix)
+            && digits.chars().all(|c| c.is_digit(base)))
+        .then(|| {
+            digits.chars().fold(0.0, |acc, c| {
+                acc * f64::from(base) + f64::from(c.to_digit(base).unwrap_or(0))
+            })
+        })
     };
-    if let Some(n) = radix("0x", 16).or_else(|| radix("0o", 8)).or_else(|| radix("0b", 2)) {
+    if let Some(n) = radix("0x", 16)
+        .or_else(|| radix("0o", 8))
+        .or_else(|| radix("0b", 2))
+    {
         return n;
     }
     match t {
@@ -137,8 +185,13 @@ fn string_number(text: &str) -> f64 {
     }
     let body = t.strip_prefix(['+', '-']).unwrap_or(t);
     let ok = !body.is_empty()
-        && body.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
-        && body.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '.');
+        && body
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
+        && body
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit() || c == '.');
     if !ok {
         return f64::NAN;
     }
@@ -159,15 +212,21 @@ fn origin_of(page: &Arc<dyn Page>) -> String {
 
 /// `/^https?:/i`.
 fn http_like(url: &str) -> bool {
-    let lower = url.get(..6).map(str::to_ascii_lowercase).unwrap_or_default();
+    let lower = url
+        .get(..6)
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
     lower.starts_with("http:") || lower.starts_with("https:")
 }
+
+/// `askApproval(card)`: `approve`, or anything else (refused). A failure is a refusal.
+pub type Ask = Arc<dyn Fn(&JValue) -> Result<String, Fail> + Send + Sync>;
 
 /// The executor's dependencies.
 pub struct Deps {
     pub launch: Arc<dyn Launch>,
     /// `askApproval(card)`: `approve`, or anything else (refused). A failure is a refusal.
-    pub ask: Arc<dyn Fn(&JValue) -> Result<String, Fail> + Send + Sync>,
+    pub ask: Ask,
     pub secrets: Vec<Secret>,
     pub log: Arc<dyn Fn(JValue) + Send + Sync>,
     pub timeout: Duration,
@@ -189,15 +248,17 @@ pub struct Open {
 
 struct Saved {
     name: String,
-    path: PathBuf,
     from: String,
 }
+
+/// The signal a session's close hangs on, and its hook.
+type Hooked = (Arc<Signal>, Option<u64>);
 
 struct Session {
     id: String,
     job_id: String,
     context: Arc<dyn Context>,
-    page: Mutex<Option<Arc<dyn Page>>>,
+    page: Current<dyn Page>,
     allowed: Vec<String>,
     downloads_dir: PathBuf,
     uploads: HashSet<PathBuf>,
@@ -207,8 +268,8 @@ struct Session {
     secret_typed: AtomicBool,
     nav_blocked: Mutex<Option<String>>,
     download_seq: AtomicU64,
-    abort: Mutex<Option<(Arc<Signal>, Option<u64>)>>,
-    close_flight: Mutex<Option<Arc<Flight<bool>>>>,
+    abort: Mutex<Option<Hooked>>,
+    close_flight: Held<bool>,
 }
 
 impl Session {
@@ -222,8 +283,8 @@ pub struct Executor {
     deps: Deps,
     me: Weak<Executor>,
     sessions: Mutex<Vec<Arc<Session>>>,
-    browser: Mutex<Option<Arc<dyn Browser>>>,
-    shutdown_flight: Mutex<Option<Arc<Flight<bool>>>>,
+    browser: Current<dyn Browser>,
+    shutdown_flight: Held<bool>,
 }
 
 fn status_error(status: u16, message: &str) -> Fail {
@@ -263,18 +324,28 @@ impl Executor {
             return Err(status_error(409, "Browser executor is shut down."));
         }
         if task.allowed_domains.is_empty() {
-            return Err(status_error(400, "A browser task needs at least one allowed domain."));
+            return Err(status_error(
+                400,
+                "A browser task needs at least one allowed domain.",
+            ));
         }
         if task.downloads_dir.as_os_str().is_empty() {
-            return Err(status_error(400, "A browser task needs its own downloads directory."));
+            return Err(status_error(
+                400,
+                "A browser task needs its own downloads directory.",
+            ));
         }
         if task.proxy.is_none() && !self.deps.direct {
-            return Err(status_error(409, "A browser task needs an egress proxy grant for its domains."));
+            return Err(status_error(
+                409,
+                "A browser task needs an egress proxy grant for its domains.",
+            ));
         }
         make_private_dir(&task.downloads_dir).map_err(|e| Fail::plain(None, &e.to_string()))?;
         let mut uploads = HashSet::new();
         for f in &task.upload_files {
-            uploads.insert(std::fs::canonicalize(f).map_err(|e| Fail::plain(None, &e.to_string()))?);
+            uploads
+                .insert(std::fs::canonicalize(f).map_err(|e| Fail::plain(None, &e.to_string()))?);
         }
         let aborted = || task.signal.as_ref().is_some_and(|sig| sig.is_aborted());
         if aborted() {
@@ -294,7 +365,9 @@ impl Executor {
         if aborted() {
             return Err(cancelled());
         }
-        let context = browser.new_context(task.proxy.as_ref()).map_err(|e| Fail::plain(None, &e.message))?;
+        let context = browser
+            .new_context(task.proxy.as_ref())
+            .map_err(|e| Fail::plain(None, &e.message))?;
         let id = (self.deps.new_id)();
         let session = Arc::new(Session {
             id: id.clone(),
@@ -337,7 +410,11 @@ impl Executor {
                     let (Some(session), Some(me)) = (weak.upgrade(), me.upgrade()) else {
                         return Route::Abort;
                     };
-                    let lower = req.url.get(..5).map(str::to_ascii_lowercase).unwrap_or_default();
+                    let lower = req
+                        .url
+                        .get(..5)
+                        .map(str::to_ascii_lowercase)
+                        .unwrap_or_default();
                     if lower.starts_with("data:") || lower.starts_with("blob:") {
                         return Route::Continue;
                     }
@@ -358,7 +435,10 @@ impl Executor {
             context
                 .route_websocket(Arc::new(move |url: &str| {
                     let (Some(session), Some(me)) = (weak.upgrade(), me.upgrade()) else {
-                        return Socket::Close { code: 1008, reason: NOT_ON_LIST.into() };
+                        return Socket::Close {
+                            code: 1008,
+                            reason: NOT_ON_LIST.into(),
+                        };
                     };
                     let as_http = if url.get(..2).is_some_and(|p| p.eq_ignore_ascii_case("ws")) {
                         format!("http{}", url.get(2..).unwrap_or(""))
@@ -369,7 +449,10 @@ impl Executor {
                         Ok(_) => Socket::Connect,
                         Err(reason) => {
                             me.refuse(&session, None, url, &reason);
-                            Socket::Close { code: 1008, reason: NOT_ON_LIST.into() }
+                            Socket::Close {
+                                code: 1008,
+                                reason: NOT_ON_LIST.into(),
+                            }
                         }
                     }
                 }))
@@ -381,7 +464,9 @@ impl Executor {
             let me = self.me.clone();
             let ctx = Arc::downgrade(&context);
             context.on_page(Arc::new(move |page: Arc<dyn Page>| {
-                let Some(session) = weak.upgrade() else { return };
+                let Some(session) = weak.upgrade() else {
+                    return;
+                };
                 // Popups share the context's routing; the session follows the newest page, and falls
                 // back to the most recent one still open when it closes.
                 *lock(&session.page) = Some(page.clone());
@@ -393,11 +478,17 @@ impl Executor {
                 }));
                 let (w, c, pid) = (Arc::downgrade(&session), ctx.clone(), page.id());
                 page.on_close(Arc::new(move || {
-                    let (Some(session), Some(context)) = (w.upgrade(), c.upgrade()) else { return };
+                    let (Some(session), Some(context)) = (w.upgrade(), c.upgrade()) else {
+                        return;
+                    };
                     if session.page().map(|p| p.id()) != Some(pid) {
                         return;
                     }
-                    let open: Vec<Arc<dyn Page>> = context.pages().into_iter().filter(|p| !p.is_closed()).collect();
+                    let open: Vec<Arc<dyn Page>> = context
+                        .pages()
+                        .into_iter()
+                        .filter(|p| !p.is_closed())
+                        .collect();
                     *lock(&session.page) = open.last().cloned();
                 }));
             }));
@@ -417,7 +508,10 @@ impl Executor {
             ("event", s("browser.opened")),
             ("jobId", s(&task.job_id)),
             ("session", s(&id)),
-            ("allowedDomains", JValue::Arr(task.allowed_domains.iter().map(|d| s(d)).collect())),
+            (
+                "allowedDomains",
+                JValue::Arr(task.allowed_domains.iter().map(|d| s(d)).collect()),
+            ),
         ]);
         Ok(id)
     }
@@ -431,7 +525,12 @@ impl Executor {
                 blocked.push(JValue::obj([("url", s(&shown)), ("reason", s(reason))]));
             }
         }
-        self.log(vec![("event", s("browser.blocked")), ("jobId", s(&session.job_id)), ("url", s(&shown)), ("reason", s(reason))]);
+        self.log(vec![
+            ("event", s("browser.blocked")),
+            ("jobId", s(&session.job_id)),
+            ("url", s(&shown)),
+            ("reason", s(reason)),
+        ]);
         // A page leaving for a host it may not visit: the action that caused it reports blocked.
         if req.is_some_and(|r| r.main_frame_navigation) {
             *lock(&session.nav_blocked) = Some(reason.to_string());
@@ -442,15 +541,26 @@ impl Executor {
     /// own directory. A failed save is dropped (core's `.catch(() => {})`).
     fn save(&self, session: &Session, download: &dyn Download) {
         let suggested = download.suggested_filename();
-        let suggested = if suggested.is_empty() { "download".to_string() } else { suggested };
-        let base = Path::new(&suggested).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let suggested = if suggested.is_empty() {
+            "download".to_string()
+        } else {
+            suggested
+        };
+        let base = Path::new(&suggested)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let trimmed = base.trim_start_matches('.');
-        let name = if trimmed.is_empty() { "download".to_string() } else { trimmed.to_string() };
+        let name = if trimmed.is_empty() {
+            "download".to_string()
+        } else {
+            trimmed.to_string()
+        };
         let seq = session.download_seq.fetch_add(1, Ordering::SeqCst) + 1;
         let target = session.downloads_dir.join(format!("{seq}-{name}"));
         if download.save_as(&target).is_ok() {
             let from = js_slice(&self.mask(&download.url()), 300);
-            lock(&session.downloads).push(Saved { name, path: target, from });
+            lock(&session.downloads).push(Saved { name, from });
         }
     }
 
@@ -458,14 +568,23 @@ impl Executor {
         if session.secret_typed.load(Ordering::SeqCst) {
             return vec![
                 ("screenshotOmitted".into(), JValue::Bool(true)),
-                ("screenshotOmissionReason".into(), s(SECRET_SCREENSHOT_REASON)),
+                (
+                    "screenshotOmissionReason".into(),
+                    s(SECRET_SCREENSHOT_REASON),
+                ),
             ];
         }
         match page.screenshot() {
-            Ok(png) => vec![("screenshot".into(), s(&base64::engine::general_purpose::STANDARD.encode(png)))],
+            Ok(png) => vec![(
+                "screenshot".into(),
+                s(&base64::engine::general_purpose::STANDARD.encode(png)),
+            )],
             Err(_) => vec![
                 ("screenshotOmitted".into(), JValue::Bool(true)),
-                ("screenshotOmissionReason".into(), s(FAILED_SCREENSHOT_REASON)),
+                (
+                    "screenshotOmissionReason".into(),
+                    s(FAILED_SCREENSHOT_REASON),
+                ),
             ],
         }
     }
@@ -473,7 +592,9 @@ impl Executor {
     /// `act(sessionId, action)`: `{ status: 'done'|'blocked'|'needs_approval'|'uncertain', origin,
     /// reason?, evidence?, downloads? }`. An unknown session is an error (404).
     pub fn act(&self, session_id: &str, action: &JValue) -> Result<JValue, Fail> {
-        let session = self.session(session_id).ok_or_else(|| status_error(404, "No such browser session."))?;
+        let session = self
+            .session(session_id)
+            .ok_or_else(|| status_error(404, "No such browser session."))?;
         let mut target: Option<Arc<dyn Handle>> = None;
         let out = self.act_with(&session, action, &mut target);
         // One action owns at most one handle, and every outcome releases it.
@@ -483,8 +604,16 @@ impl Executor {
         Ok(out)
     }
 
-    fn result(&self, session: &Session, kind: &str, status: &str, origin: &str, extra: Vec<(String, JValue)>) -> JValue {
-        let mut out: Vec<(String, JValue)> = vec![("status".into(), s(status)), ("origin".into(), s(origin))];
+    fn result(
+        &self,
+        session: &Session,
+        kind: &str,
+        status: &str,
+        origin: &str,
+        extra: Vec<(String, JValue)>,
+    ) -> JValue {
+        let mut out: Vec<(String, JValue)> =
+            vec![("status".into(), s(status)), ("origin".into(), s(origin))];
         for (k, v) in extra {
             js_json::wtf16::set(&mut out, &k, v);
         }
@@ -513,25 +642,58 @@ impl Executor {
         JValue::Obj(out)
     }
 
-    fn act_with(&self, session: &Arc<Session>, action: &JValue, target: &mut Option<Arc<dyn Handle>>) -> JValue {
-        let kind = if action.get("type").truthy() { js_string(action.get("type")) } else { String::new() };
+    fn act_with(
+        &self,
+        session: &Arc<Session>,
+        action: &JValue,
+        target: &mut Option<Arc<dyn Handle>>,
+    ) -> JValue {
+        let kind = if action.get("type").truthy() {
+            js_string(action.get("type"))
+        } else {
+            String::new()
+        };
         if session.closed.load(Ordering::SeqCst) {
-            return self.result(session, &kind, "blocked", "", vec![("reason".into(), s("The browser session is closed."))]);
+            return self.result(
+                session,
+                &kind,
+                "blocked",
+                "",
+                vec![("reason".into(), s("The browser session is closed."))],
+            );
         }
         let Some(page) = session.page() else {
-            return self.result(session, &kind, "blocked", "", vec![("reason".into(), s("No page is open in this session."))]);
+            return self.result(
+                session,
+                &kind,
+                "blocked",
+                "",
+                vec![("reason".into(), s("No page is open in this session."))],
+            );
         };
         let origin = origin_of(&page);
         let blocked = |reason: &str| vec![("reason".to_string(), s(reason))];
-        let done = |me: &Executor, status: &str, extra: Vec<(String, JValue)>| me.result(session, &kind, status, &origin, extra);
+        let done = |me: &Executor, status: &str, extra: Vec<(String, JValue)>| {
+            me.result(session, &kind, status, &origin, extra)
+        };
         if !ACTIONS.contains(&kind.as_str()) {
             let shown = js_slice(&self.mask(&kind), 40);
-            return done(self, "blocked", blocked(&format!("Unknown action \u{201c}{shown}\u{201d}.")));
+            return done(
+                self,
+                "blocked",
+                blocked(&format!("Unknown action \u{201c}{shown}\u{201d}.")),
+            );
         }
         // Navigation is a GET here; data is sent by submitting the page's own form, which asks.
         let method = action.get("method");
         if kind == "navigate" && method.truthy() && js_string(method).to_uppercase() != "GET" {
-            return done(self, "blocked", blocked("Only plain navigation is supported; submit the page\u{2019}s form instead."));
+            return done(
+                self,
+                "blocked",
+                blocked(
+                    "Only plain navigation is supported; submit the page\u{2019}s form instead.",
+                ),
+            );
         }
         let timeout = self.deps.timeout;
         // The element as it really is, never as the model described it.
@@ -558,12 +720,18 @@ impl Executor {
             *target = page.active_element().ok().flatten();
             element = target.as_ref().and_then(|h| h.describe().ok());
             // Unknown focus, or focus inside a frame: assume the worst, so any Enter asks.
-            if element.as_ref().is_some_and(|e| matches!(e.get("tag").as_str(), Some("iframe" | "frame" | "object" | "embed")))
-                || element.as_ref().is_some_and(|e| !e.truthy())
+            if element.as_ref().is_some_and(|e| {
+                matches!(
+                    e.get("tag").as_str(),
+                    Some("iframe" | "frame" | "object" | "embed")
+                )
+            }) || element.as_ref().is_some_and(|e| !e.truthy())
             {
                 element = None;
             }
-            facts_element = element.clone().unwrap_or_else(|| JValue::obj([("inForm", JValue::Bool(true))]));
+            facts_element = element
+                .clone()
+                .unwrap_or_else(|| JValue::obj([("inForm", JValue::Bool(true))]));
         }
         let verdict = policy::classify(&kind, action, &facts_element, &origin, &session.allowed);
         if verdict.status == "blocked" {
@@ -578,9 +746,21 @@ impl Executor {
                 _ => origin.clone(),
             };
             let text = action.get("text");
-            let raw = if !text.is_nullish() { text } else { action.get("value") };
-            let raw = if raw.is_nullish() { String::new() } else { js_string(raw) };
-            let into = if into.is_empty() { "about:blank".to_string() } else { into };
+            let raw = if !text.is_nullish() {
+                text
+            } else {
+                action.get("value")
+            };
+            let raw = if raw.is_nullish() {
+                String::new()
+            } else {
+                js_string(raw)
+            };
+            let into = if into.is_empty() {
+                "about:blank".to_string()
+            } else {
+                into
+            };
             match policy::substitute(&raw, &self.deps.secrets, &into) {
                 Substituted::Refused(reason) => return done(self, "blocked", blocked(&reason)),
                 Substituted::Ok { value, used } => {
@@ -594,10 +774,18 @@ impl Executor {
         let mut file: Option<PathBuf> = None;
         if kind == "upload" {
             let raw = action.get("file");
-            let raw = if raw.truthy() { js_string(raw) } else { String::new() };
+            let raw = if raw.truthy() {
+                js_string(raw)
+            } else {
+                String::new()
+            };
             file = std::fs::canonicalize(&raw).ok();
             if !file.as_ref().is_some_and(|f| session.uploads.contains(f)) {
-                return done(self, "blocked", blocked("Only files given to this task can be uploaded."));
+                return done(
+                    self,
+                    "blocked",
+                    blocked("Only files given to this task can be uploaded."),
+                );
             }
         }
 
@@ -609,7 +797,11 @@ impl Executor {
                 };
                 for key in ["text", "name", "value", "formAction"] {
                     let v = e.get(key);
-                    let raw = if v.is_nullish() { String::new() } else { js_string(v) };
+                    let raw = if v.is_nullish() {
+                        String::new()
+                    } else {
+                        js_string(v)
+                    };
                     js_json::wtf16::set(&mut items, key, s(&self.mask(&raw)));
                 }
                 JValue::Obj(items)
@@ -621,8 +813,18 @@ impl Executor {
                 ("action".into(), s(&kind)),
                 ("reason".into(), s(&verdict.reason)),
                 ("element".into(), masked_element),
-                ("url".into(), if url.truthy() { s(&self.mask(&js_string(url))) } else { JValue::Null }),
-                ("typed".into(), typed.as_ref().map_or(JValue::Null, |t| s(&self.mask(t)))),
+                (
+                    "url".into(),
+                    if url.truthy() {
+                        s(&self.mask(&js_string(url)))
+                    } else {
+                        JValue::Null
+                    },
+                ),
+                (
+                    "typed".into(),
+                    typed.as_ref().map_or(JValue::Null, |t| s(&self.mask(t))),
+                ),
                 (
                     "file".into(),
                     file.as_ref()
@@ -645,14 +847,30 @@ impl Executor {
             // Approval binds the page origin and the exact node that supplied the card: keep and
             // re-check the original handle, then dispatch through it.
             let current = session.page();
-            if current.as_ref().map(|p| p.id()) != Some(page.id()) || page.is_closed() || origin_of(&page) != origin {
+            if current.as_ref().map(|p| p.id()) != Some(page.id())
+                || page.is_closed()
+                || origin_of(&page) != origin
+            {
                 let now = current.unwrap_or_else(|| page.clone());
-                return done(self, "blocked", vec![("reason".into(), s(PAGE_CHANGED)), ("origin".into(), s(&origin_of(&now)))]);
+                return done(
+                    self,
+                    "blocked",
+                    vec![
+                        ("reason".into(), s(PAGE_CHANGED)),
+                        ("origin".into(), s(&origin_of(&now))),
+                    ],
+                );
             }
             if let Some(handle) = target.as_ref() {
                 let connected = handle.is_connected().unwrap_or(false);
-                let now = if connected { handle.describe().ok() } else { None };
-                let same = now.as_ref().is_some_and(|n| n.truthy() && same_element(element.as_ref(), n));
+                let now = if connected {
+                    handle.describe().ok()
+                } else {
+                    None
+                };
+                let same = now
+                    .as_ref()
+                    .is_some_and(|n| n.truthy() && same_element(element.as_ref(), n));
                 if !connected || !same {
                     return done(self, "blocked", blocked(TARGET_CHANGED));
                 }
@@ -664,7 +882,9 @@ impl Executor {
 
         *lock(&session.nav_blocked) = None;
         let mut dispatched = false;
-        let null_read = |m: &str| engine::EngineError::new(format!("Cannot read properties of null (reading '{m}')"));
+        let null_read = |m: &str| {
+            engine::EngineError::new(format!("Cannot read properties of null (reading '{m}')"))
+        };
         let on = |m: &str| target.clone().ok_or_else(|| null_read(m));
         let step: engine::Result<Option<JValue>> = (|| {
             match kind.as_str() {
@@ -735,14 +955,21 @@ impl Executor {
                 let _ = page.wait_for_load_state(timeout);
                 // Where the page actually is, whatever the routing saw.
                 let landed = now_page().url();
-                let refused = if http_like(&landed) { policy::navigation(&landed, &session.allowed).err() } else { None };
+                let refused = if http_like(&landed) {
+                    policy::navigation(&landed, &session.allowed).err()
+                } else {
+                    None
+                };
                 {
                     let mut nav = lock(&session.nav_blocked);
                     if let (Some(reason), true) = (&refused, nav.is_none()) {
                         *nav = Some(reason.clone());
                         let mut list = lock(&session.blocked);
                         if list.len() < 100 {
-                            list.push(JValue::obj([("url", s(&js_slice(&self.mask(&landed), 300))), ("reason", s(reason))]));
+                            list.push(JValue::obj([
+                                ("url", s(&js_slice(&self.mask(&landed), 300))),
+                                ("reason", s(reason)),
+                            ]));
                         }
                     }
                 }
@@ -753,14 +980,25 @@ impl Executor {
                         let _ = now_page().go_back(timeout);
                     }
                     let at = origin_of(&now_page());
-                    return done(self, "blocked", vec![("reason".into(), s(&reason)), ("origin".into(), s(&at))]);
+                    return done(
+                        self,
+                        "blocked",
+                        vec![("reason".into(), s(&reason)), ("origin".into(), s(&at))],
+                    );
                 }
                 let downloads: Vec<JValue> = lock(&session.downloads)
                     .iter()
                     .map(|d| JValue::obj([("name", s(&d.name)), ("from", s(&d.from))]))
                     .collect();
                 let at = origin_of(&now_page());
-                done(self, "done", vec![("origin".into(), s(&at)), ("downloads".into(), JValue::Arr(downloads))])
+                done(
+                    self,
+                    "done",
+                    vec![
+                        ("origin".into(), s(&at)),
+                        ("downloads".into(), JValue::Arr(downloads)),
+                    ],
+                )
             }
             Err(error) => {
                 let nav = lock(&session.nav_blocked).clone();
@@ -769,13 +1007,21 @@ impl Executor {
                         let _ = now_page().go_back(timeout);
                     }
                     let at = origin_of(&now_page());
-                    return done(self, "blocked", vec![("reason".into(), s(&reason)), ("origin".into(), s(&at))]);
+                    return done(
+                        self,
+                        "blocked",
+                        vec![("reason".into(), s(&reason)), ("origin".into(), s(&at))],
+                    );
                 }
                 // Once an action with effects was dispatched, a failure does not prove it did not happen.
                 let first = error.message.split('\n').next().unwrap_or("");
                 let reason = js_slice(first, 200);
                 let at = origin_of(&now_page());
-                done(self, if dispatched { "uncertain" } else { "blocked" }, vec![("reason".into(), s(&reason)), ("origin".into(), s(&at))])
+                done(
+                    self,
+                    if dispatched { "uncertain" } else { "blocked" },
+                    vec![("reason".into(), s(&reason)), ("origin".into(), s(&at))],
+                )
             }
         }
     }
@@ -791,10 +1037,19 @@ impl Executor {
         if let Some((signal, hook)) = lock(&session.abort).take() {
             signal.off(hook);
         }
-        let (context, log, job, sid) = (session.context.clone(), self.deps.log.clone(), session.job_id.clone(), session.id.clone());
+        let (context, log, job, sid) = (
+            session.context.clone(),
+            self.deps.log.clone(),
+            session.job_id.clone(),
+            session.id.clone(),
+        );
         let f = Flight::spawn(move || match context.close() {
             Ok(()) => {
-                log(JValue::obj([("event", s("browser.closed")), ("jobId", s(&job)), ("session", s(&sid))]));
+                log(JValue::obj([
+                    ("event", s("browser.closed")),
+                    ("jobId", s(&job)),
+                    ("session", s(&sid)),
+                ]));
                 true
             }
             Err(_) => false,
@@ -810,8 +1065,13 @@ impl Executor {
 
     /// `closeTask(jobId)`: every session of the task closed, confirmed.
     pub fn close_task(&self, job_id: &str) -> bool {
-        let ids: Vec<String> = lock(&self.sessions).iter().filter(|s| s.job_id == job_id).map(|s| s.id.clone()).collect();
-        let flights: Vec<Option<Arc<Flight<bool>>>> = ids.iter().map(|id| self.close_flight(id)).collect();
+        let ids: Vec<String> = lock(&self.sessions)
+            .iter()
+            .filter(|s| s.job_id == job_id)
+            .map(|s| s.id.clone())
+            .collect();
+        let flights: Vec<Option<Arc<Flight<bool>>>> =
+            ids.iter().map(|id| self.close_flight(id)).collect();
         flights.into_iter().all(|f| f.is_some_and(|f| f.wait()))
     }
 
@@ -825,7 +1085,8 @@ impl Executor {
                 let me = self.me.clone();
                 let f = Flight::spawn(move || {
                     let Some(me) = me.upgrade() else { return false };
-                    let ids: Vec<String> = lock(&me.sessions).iter().map(|s| s.id.clone()).collect();
+                    let ids: Vec<String> =
+                        lock(&me.sessions).iter().map(|s| s.id.clone()).collect();
                     let flights: Vec<_> = ids.iter().filter_map(|id| me.close_flight(id)).collect();
                     for f in flights {
                         f.wait();
@@ -857,7 +1118,9 @@ fn same_element(before: Option<&JValue>, after: &JValue) -> bool {
             x.clone()
         }
     };
-    SAME_KEYS.iter().all(|k| strict_equal(&read(before, k), &read(Some(after), k)))
+    SAME_KEYS
+        .iter()
+        .all(|k| strict_equal(&read(before, k), &read(Some(after), k)))
 }
 
 /// `===` over JSON values (objects and arrays by identity: two read separately never are).
@@ -876,7 +1139,10 @@ fn make_private_dir(dir: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
-        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
     }
     #[cfg(not(unix))]
     {
@@ -902,24 +1168,42 @@ mod tests {
         ] {
             assert_eq!(js_number(&v), want, "{v:?}");
         }
-        for v in [JValue::Undefined, JValue::Str("abc".into()), JValue::Str("inf".into()), JValue::Str("1 2".into())] {
+        for v in [
+            JValue::Undefined,
+            JValue::Str("abc".into()),
+            JValue::Str("inf".into()),
+            JValue::Str("1 2".into()),
+        ] {
             assert!(js_number(&v).is_nan(), "{v:?}");
         }
     }
 
     #[test]
     fn origins() {
-        assert_eq!(origin_of_url("https://Shop.Example.TEST:443/a?b"), "https://shop.example.test");
+        assert_eq!(
+            origin_of_url("https://Shop.Example.TEST:443/a?b"),
+            "https://shop.example.test"
+        );
         assert_eq!(origin_of_url("about:blank"), "");
         assert_eq!(origin_of_url("chrome-error://chromewebdata/"), "");
     }
 
     #[test]
     fn same_elements() {
-        let a = JValue::obj([("tag", JValue::Str("button".into())), ("inForm", JValue::Bool(true))]);
-        let b = JValue::obj([("tag", JValue::Str("button".into())), ("inForm", JValue::Bool(true)), ("text", JValue::Null)]);
+        let a = JValue::obj([
+            ("tag", JValue::Str("button".into())),
+            ("inForm", JValue::Bool(true)),
+        ]);
+        let b = JValue::obj([
+            ("tag", JValue::Str("button".into())),
+            ("inForm", JValue::Bool(true)),
+            ("text", JValue::Null),
+        ]);
         assert!(same_element(Some(&a), &b));
-        let c = JValue::obj([("tag", JValue::Str("button".into())), ("inForm", JValue::Bool(false))]);
+        let c = JValue::obj([
+            ("tag", JValue::Str("button".into())),
+            ("inForm", JValue::Bool(false)),
+        ]);
         assert!(!same_element(Some(&a), &c));
         assert!(!same_element(None, &a));
     }

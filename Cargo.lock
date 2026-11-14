@@ -391,6 +391,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "browser-task"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "browser-policy",
+ "js-json",
+ "server-projects",
+ "tempfile",
+ "url",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2281,6 +2293,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "brotli",
+ "browser-task",
  "bytes",
  "chat-mirror-sched",
  "chat-turn",

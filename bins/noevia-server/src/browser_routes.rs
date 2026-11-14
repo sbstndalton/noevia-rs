@@ -173,7 +173,8 @@ pub async fn serve(
         let caller = Caller { admin };
         let lookup = |_: &str| project.clone();
         let mut body = || parsed(&read);
-        browser::handle(&service, &method, &path, Some(&caller), enabled, &lookup, &dir, &mut body)
+        let req = browser::Request { method: &method, path: &path, caller: Some(&caller), enabled };
+        browser::handle(&service, &req, &lookup, &dir, &mut body)
     })
     .await;
     match work {
