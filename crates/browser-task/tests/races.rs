@@ -193,6 +193,16 @@ fn rig(close_timeout: Duration) -> Rig {
     }
 }
 
+/// `h.join()` once the thread has finished, within a deadline (a hang fails the test).
+fn joined<T>(h: std::thread::JoinHandle<T>) -> T {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !h.is_finished() {
+        assert!(Instant::now() < deadline, "a thread never answered");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    h.join().unwrap()
+}
+
 fn obj(text: &str) -> JValue {
     js_json::parse(text).unwrap()
 }
@@ -287,7 +297,7 @@ fn a_cancel_ends_the_task_even_when_an_engine_call_never_returns() {
         std::thread::sleep(Duration::from_millis(10));
     }
     r.service.cancel(&r.base, PROJECT, &t).unwrap();
-    let answer = acting.join().unwrap();
+    let answer = joined(acting);
     assert!(
         matches!(&answer, Err(f) if f.status == Some(499)),
         "{answer:?}"
@@ -381,7 +391,7 @@ fn a_card_cannot_be_answered_after_the_cancel() {
         matches!(&late, Err(f) if f.status == Some(409) && f.message == "That approval is no longer waiting."),
         "{late:?}"
     );
-    let answer = acting.join().unwrap();
+    let answer = joined(acting);
     let declined = matches!(&answer, Ok(v) if v.get("reason").as_str() == Some("Declined."));
     let cancelled = matches!(&answer, Err(f) if f.status == Some(499));
     assert!(declined || cancelled, "{answer:?}");
@@ -441,6 +451,28 @@ fn a_full_queue_refuses_more_actions_but_takes_a_finish() {
         }
     }
     assert_eq!(refused, extra);
-    assert!(first.join().unwrap().is_err());
+    assert!(joined(first).is_err());
     r.until(&t, "cancelled");
+    r.knobs.hang_click.store(false, Ordering::SeqCst);
+}
+
+/// has_live answers for the caller's own open workspace only, and never opens one.
+#[test]
+fn has_live_is_the_open_workspaces_own_task() {
+    let r = rig(Duration::from_secs(5));
+    let other = tempfile::tempdir().unwrap();
+    let other = other.path().canonicalize().unwrap();
+    assert!(!r.service.has_live(&r.base, "0123abcd-0123-4abc-8def-0123456789ab"));
+    let t = r.start();
+    assert!(r.service.has_live(&r.base, &t));
+    // Another workspace: never opened here, and not its task.
+    assert!(!r.service.has_live(&other, &t));
+    assert!(!other.join("jobs").exists(), "nothing opened or recovered");
+    r.service.cancel(&r.base, PROJECT, &t).unwrap();
+    r.until(&t, "cancelled");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while r.service.has_live(&r.base, &t) {
+        assert!(Instant::now() < deadline, "the run never ended");
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }

@@ -173,10 +173,14 @@ pub async fn serve(
         // core is away. Whose task it is is still the service's check; every other answer waits for
         // core as before.
         None if admin && cancel => {
-            let live = target.task.as_deref().is_some_and(|t| {
-                server_projects::store::user_dir(&data_dir, &user)
-                    .is_ok_and(|dir| service(app).has_live(&dir, t))
-            });
+            let (service, task) = (service(app), target.task.clone());
+            let dir = server_projects::store::user_dir(&data_dir, &user).ok();
+            // Off the async worker: the store map may be held by another workspace's recovery.
+            let live = tokio::task::spawn_blocking(move || {
+                matches!((&dir, &task), (Some(d), Some(t)) if service.has_live(d, t))
+            })
+            .await
+            .unwrap_or(false);
             live.then_some(Facts::Front)
         }
         facts => facts,
@@ -209,6 +213,8 @@ pub async fn serve(
         None
     };
     // A cancel reads no body (core answers it before readJson), so a slow body never delays a stop.
+    // Other refusals (404, 403, 405, project not found) are answered after the body here and before
+    // it in core: the same answers, later (a named difference in timing only).
     let read = if cancel {
         Err(())
     } else {
