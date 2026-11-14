@@ -404,6 +404,14 @@ fn pairings_excerpt_is_verbatim() {
         "research",
         "task_reads",
         "model_scan",
+        "autotune_settings",
+        "idle_unload_read",
+        "model_assignments",
+        "preset_read",
+        "autotune_clear",
+        "autotune_resume",
+        "autotune_cancel",
+        "autotune_untuned",
     ];
     for name in names {
         let block = section(name);
@@ -419,9 +427,7 @@ fn pairings_excerpt_is_verbatim() {
 /// Hand-made trees: today's old/old pins, a full new/new pair, each mixed generation.
 #[test]
 fn pairing_named_trees() {
-    let Some(dir) = tempfile::tempdir().ok() else {
-        return;
-    };
+    let dir = tempfile::tempdir().expect("a temporary directory");
     let t = dir.path();
     let p = &guard::MODEL_READ_OWNERSHIP;
     assert_eq!(guard::namespace_pairing(t, p), Ok(()));
