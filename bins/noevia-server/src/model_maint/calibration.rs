@@ -935,6 +935,9 @@ pub struct LongPrompt {
     prompt_tokens: Option<f64>,
     prompt_per_second: Option<f64>,
     prompt_ms: Option<f64>,
+    /// The record when a save fell due in the chunk being fed (Node saves inside its read loop,
+    /// so a stop later in that chunk comes after the save).
+    due_save: Option<Progress>,
 }
 
 impl LongPrompt {
@@ -948,7 +951,14 @@ impl LongPrompt {
             prompt_tokens: None,
             prompt_per_second: None,
             prompt_ms: None,
+            due_save: None,
         }
+    }
+
+    /// After a [`Feed::Stop`]: the record as it was when Node's loop saved earlier in the chunk
+    /// that stopped (it saves, then stops), if a save fell due there.
+    pub fn save_before_stop(&mut self) -> Option<Progress> {
+        self.due_save.take()
     }
 
     /// One chunk of the body. `now` is read per event, as Node reads its clock.
@@ -959,6 +969,7 @@ impl LongPrompt {
         record: &mut Progress,
     ) -> Feed {
         self.buffer.extend_from_slice(chunk);
+        self.due_save = None;
         let mut save = false;
         while let Some(cut) = self.buffer.windows(2).position(|w| w == b"\n\n") {
             let event: Vec<u8> = self.buffer.drain(..cut + 2).take(cut).collect();
@@ -1020,6 +1031,7 @@ impl LongPrompt {
                         if t - self.last_save > 1500.0 {
                             self.last_save = t;
                             save = true;
+                            self.due_save = Some(record.clone());
                         }
                     }
                 }
