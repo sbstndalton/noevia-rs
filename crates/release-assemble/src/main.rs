@@ -14,13 +14,17 @@
 //! release-assemble move-capability FILE NAME VALUE KIND
 //!                                                 exit 0 when the marker is declared (move_capability)
 //! release-assemble project-routes-core FILE [NAME] a Core module's OWNED_ROUTES (project_routes_core)
+//! release-assemble core-requires FILE MODULE     yes, no or invalid: does the Core module call
+//!                                                 require(MODULE) (core_requires, without node)
+//! release-assemble code-body FILE                 the code lines a pairing reads (code_body)
 //! release-assemble pairing NAME TREE              one ownership pairing over an assembled tree; NAME is
 //!                                                 feature, model-reads, project-reads, project-lifecycle,
 //!                                                 project-files, project-config, code-egress,
 //!                                                 calibration-cancel, calibration-routes, research
 //!                                                 task-reads, model-scan, document-pages,
 //!                                                 conversation-import, project-documents,
-//!                                                 public-pages, plugin-directory, or one of the facts
+//!                                                 public-pages, plugin-directory, model-writes,
+//!                                                 model-manager, embedding-admin, or one of the facts
 //!                                                 pairings (facts::ALL: autotune-settings,
 //!                                                 idle-unload-read, model-assignments, preset-read,
 //!                                                 autotune-clear, autotune-resume, autotune-cancel,
@@ -31,11 +35,11 @@
 use release_assemble::guard::{self, MoveKind};
 use release_assemble::lock::Lock;
 use release_assemble::plan::{self, Component, Resolution, Resolved};
-use release_assemble::{bridged, digest, facts, tar, tree};
+use release_assemble::{bridged, core_requires, digest, facts, model_pairings, tar, tree};
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | pairing NAME TREE";
+const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | core-requires FILE MODULE | code-body FILE | pairing NAME TREE";
 
 fn write_out(bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
@@ -189,6 +193,19 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             write_lines(&guard::project_routes_core(src.as_deref(), name))?;
             Ok(ExitCode::SUCCESS)
         }
+        ["core-requires", file, module] => {
+            let verdict = core_requires::core_requires_file(Path::new(file), module);
+            write_out(verdict.word().as_bytes())?;
+            Ok(ExitCode::SUCCESS)
+        }
+        ["code-body", file] => {
+            let mut body = model_pairings::code_body(guard::read_file(Path::new(file)).as_deref());
+            if !body.is_empty() {
+                body.push(b'\n');
+            }
+            write_out(&body)?;
+            Ok(ExitCode::SUCCESS)
+        }
         ["pairing", which, tree_dir] => {
             let t = Path::new(tree_dir);
             match *which {
@@ -226,6 +243,9 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                 "calibration-routes" => {
                     bridged::calibration_pairing(t, &bridged::CALIBRATION_ROUTES)?
                 }
+                "model-writes" => model_pairings::model_writes_pairing(t)?,
+                "model-manager" => model_pairings::model_manager_pairing(t)?,
+                "embedding-admin" => model_pairings::embedding_admin_pairing(t)?,
                 other => match facts::by_name(other) {
                     Some(p) => facts::facts_pairing(t, p)?,
                     None => return Ok(usage()),

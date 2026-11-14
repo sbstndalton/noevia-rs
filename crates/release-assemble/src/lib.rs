@@ -39,6 +39,7 @@ pub mod digest;
 pub mod facts;
 pub mod guard;
 pub mod lock;
+pub mod model_pairings;
 pub mod plan;
 pub mod source;
 pub mod tar;
