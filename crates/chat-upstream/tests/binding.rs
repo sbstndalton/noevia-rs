@@ -144,6 +144,7 @@ fn debug_output_carries_no_key_or_address_secret() {
         format!("{turn:?}"),
     ] {
         for secret in [
+            "qa-user",
             "qa-key",
             "qa-row-key",
             "qa-pass",
@@ -154,6 +155,16 @@ fn debug_output_carries_no_key_or_address_secret() {
         }
     }
     assert!(format!("{req:?}").contains("https://qa.example/v1/chat/completions"));
+    // Without a scheme the userinfo would parse as an opaque path: not printed at all.
+    for odd in [
+        "qa-user:qa-pass@qa.example/v1/chat/completions",
+        "qa-user:qa-pass@10.0.0.5:8080/v1",
+        "mailto:qa-user:qa-pass@qa.example",
+        "not a url qa-pass",
+    ] {
+        let printed = chat_upstream::target::printable_url(odd);
+        assert!(!printed.contains("qa-pass"), "{printed}");
+    }
     assert!(format!("{now:?}").contains("qa-own"));
 }
 

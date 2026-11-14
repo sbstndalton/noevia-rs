@@ -43,17 +43,18 @@ pub fn authorization(api_key: Option<&str>) -> Option<String> {
 }
 
 /// `raw` for Debug output and logs: without user, password, query and fragment (a base address may
-/// carry a key in any of them); an address that does not parse prints as a placeholder.
+/// carry a key in any of them). Anything but a parsed `http:`/`https:` address prints as a
+/// placeholder: without a scheme, `user:pass@host` parses as an opaque path the setters cannot clear.
 pub fn printable_url(raw: &str) -> String {
     match url::Url::parse(raw) {
-        Ok(mut u) => {
+        Ok(mut u) if matches!(u.scheme(), "http" | "https") && !u.cannot_be_a_base() => {
             let _ = u.set_username("");
             let _ = u.set_password(None);
             u.set_query(None);
             u.set_fragment(None);
             u.to_string()
         }
-        Err(_) => "<address not printed>".to_string(),
+        _ => "<address not printed>".to_string(),
     }
 }
 
