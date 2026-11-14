@@ -197,6 +197,14 @@ fn cases() -> Vec<Case> {
         case("port not digits", 1, &[], || Built { ui_port: Some("abc".to_string()), seen: Seen::default() }),
         case("port too large", 1, &[], || Built { ui_port: Some("65536".to_string()), seen: Seen::default() }),
         case("port with a space", 1, &[], || Built { ui_port: Some(" 1".to_string()), seen: Seen::default() }),
+        case("bad port", 1, &[], || Built { ui_port: Some("6000".to_string()), seen: Seen::default() }),
+        case("redirect to a bad port", 1, &[S], || single(vec![redirect(302, "http://127.0.0.1:10080/")])),
+        case("repeated location", 0, &[S, "/api/setup/a,%20b"], || {
+            single(vec![
+                reply("HTTP/1.1 302 Found\r\nLocation: a\r\nLocation: b"),
+                reply("HTTP/1.1 200 OK"),
+            ])
+        }),
         case("leading zero port", 0, &[S], || {
             let mut built = single(vec![reply("HTTP/1.1 200 OK")]);
             built.ui_port = built.ui_port.map(|p| format!("000{p}"));
@@ -233,13 +241,14 @@ fn cases() -> Vec<Case> {
         build: Box::new(|| single((0..21).map(|_| redirect(302, "/again")).collect())),
     });
     // Not yet confirmed against Node's HTTP parser: checked for this binary only.
-    for (name, bytes) in [
-        ("100 then 200", b"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_vec()),
-        ("bare LF head", b"HTTP/1.1 200 OK\nContent-Length: 0\n\n".to_vec()),
+    for (name, expect, bytes) in [
+        ("103 then 200", 0, b"HTTP/1.1 103 Early Hints\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_vec()),
+        ("100 then 200", 1, b"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_vec()),
+        ("bare LF head", 1, b"HTTP/1.1 200 OK\nContent-Length: 0\n\n".to_vec()),
     ] {
         cases.push(Case {
             name,
-            expect: 0,
+            expect,
             seen: vec![S.to_string()],
             oracle: false,
             build: Box::new(move || single(vec![Step::Reply(bytes.clone())])),
@@ -379,7 +388,7 @@ fn node_probe_agrees() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
-    assert!(compared >= 30, "only {compared} cases compared");
+    assert!(compared >= 34, "only {compared} cases compared");
     // The five-second deadline, both sides.
     let built = single(vec![Step::Hold(Duration::from_secs(8))]);
     let (node, took) = node_probe(built.ui_port.as_deref());

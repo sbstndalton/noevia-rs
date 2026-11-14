@@ -19,8 +19,11 @@
 //! - redirects (301, 302, 303, 307, 308 with a Location) are followed, at most 20, against the
 //!   current URL (absolute, scheme-relative, absolute-path, query-only and relative references,
 //!   dot segments removed); a 3xx without a Location is final (not ok);
-//! - interim 1xx answers (except 101) are skipped; a 101, a broken or missing status line, a
-//!   head over 16 KiB (Node's default header limit), a reset or an early close are failures (exit 1).
+//! - fetch's bad ports (6000, 10080, ...) are refused before connecting, on every hop;
+//! - Location values repeated are joined with ", " (as fetch's headers.get) before resolving;
+//! - interim 102/103 answers are skipped; a 100 or 101, a broken or missing status line, a
+//!   head not ended by CRLF CRLF, a head over 16 KiB (Node's default header limit), a reset or an
+//!   early close are failures (exit 1).
 //!
 //! Known differences, all ending in exit 1 where Node might have reached a healthy answer:
 //! - a redirect to `https:` (no TLS here; the front never sends one, it answers itself);
@@ -79,8 +82,8 @@ pub struct Head {
 /// Why a probe failed (all of them exit 1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Failure {
-    /// The URL (port) is invalid; nothing was connected.
-    InvalidUrl,
+    /// A port fetch refuses to connect to (its "bad port" list); nothing was connected.
+    BadPort,
     /// Connect, write or read failed, or the peer closed before a full head.
     Network,
     /// The deadline passed.
@@ -147,28 +150,23 @@ pub fn parse_head(head: &[u8]) -> Result<Head, Failure> {
         let Some((name, value)) = line.split_once(':') else {
             continue;
         };
-        if name.eq_ignore_ascii_case("location") && location.is_none() {
-            location = Some(value.trim_matches(|c| c == ' ' || c == '\t').to_string());
+        if name.eq_ignore_ascii_case("location") {
+            // Fetch's headers.get joins repeated values with ", ".
+            let value = value.trim_matches([' ', '\t']);
+            location = Some(match location {
+                None => value.to_string(),
+                Some(first) => format!("{first}, {value}"),
+            });
         }
     }
     Ok(Head { status, location })
 }
 
-/// Finds the end of the first head in `buf`: (head length, bytes up to and including the blank line).
+/// Finds the end of the first head in `buf`: (head length, bytes up to and including the blank
+/// line). Only CRLF ends a head: Node's parser refuses a bare LF, so such an answer never completes
+/// and ends as a network error or the deadline.
 fn head_end(buf: &[u8]) -> Option<(usize, usize)> {
-    let mut i = 0;
-    while i < buf.len() {
-        if buf.get(i) == Some(&b'\n') {
-            if buf.get(i + 1) == Some(&b'\n') {
-                return Some((i, i + 2));
-            }
-            if buf.get(i + 1) == Some(&b'\r') && buf.get(i + 2) == Some(&b'\n') {
-                return Some((i, i + 3));
-            }
-        }
-        i += 1;
-    }
-    None
+    buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| (i + 1, i + 4))
 }
 
 fn remaining(deadline: Instant) -> Result<Duration, Failure> {
@@ -187,7 +185,20 @@ fn io_failure(e: &std::io::Error) -> Failure {
     }
 }
 
+/// Fetch's "bad port" list (Fetch standard, port blocking): a request to one of these is a
+/// network error before any connection, on the first URL and on every redirect.
+pub const BAD_PORTS: &[u16] = &[
+    1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79, 87, 95, 101, 102,
+    103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137, 139, 143, 161, 179, 389, 427, 465,
+    512, 513, 514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993,
+    995, 1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668,
+    6669, 6679, 6697, 10080,
+];
+
 fn connect(target: &Target, deadline: Instant) -> Result<TcpStream, Failure> {
+    if BAD_PORTS.contains(&target.port) {
+        return Err(Failure::BadPort);
+    }
     let addrs: Vec<SocketAddr> = (target.host.as_str(), target.port)
         .to_socket_addrs()
         .map_err(|_| Failure::Network)?
@@ -222,7 +233,9 @@ pub fn exchange(target: &Target, deadline: Instant) -> Result<Head, Failure> {
                 return Err(Failure::BadResponse);
             }
             let head = parse_head(buf.get(..len).unwrap_or_default())?;
-            if head.status == 101 {
+            // Node's client destroys the socket on a 100 ("bad response") and refuses a 101
+            // nobody asked for; other interim answers (102, 103) are skipped.
+            if head.status == 100 || head.status == 101 {
                 return Err(Failure::BadResponse);
             }
             if head.status >= 200 {
@@ -489,7 +502,7 @@ mod tests {
         );
         assert_eq!(
             parse_head(b"HTTP/1.0 302 Found\r\nlOcAtIoN:  /next \r\nLocation: /second"),
-            Ok(Head { status: 302, location: Some("/next".to_string()) })
+            Ok(Head { status: 302, location: Some("/next, /second".to_string()) })
         );
         assert_eq!(parse_head(b"HTTP/1.1 204"), Ok(Head { status: 204, location: None }));
         assert_eq!(parse_head(b"HTTP/1.1 200 OK\nX: y"), Ok(Head { status: 200, location: None }));
@@ -504,8 +517,19 @@ mod tests {
     #[test]
     fn head_end_finds_crlf_and_lf_blank_lines() {
         assert_eq!(head_end(b"HTTP/1.1 200 OK\r\n\r\nbody"), Some((16, 19)));
-        assert_eq!(head_end(b"HTTP/1.1 200 OK\n\nbody"), Some((15, 17)));
+        assert_eq!(head_end(b"HTTP/1.1 200 OK\n\nbody"), None);
+        assert_eq!(head_end(b"HTTP/1.1 200 OK\r\nX: y\r\n\r\n"), Some((22, 25)));
         assert_eq!(head_end(b"HTTP/1.1 200 OK\r\nX: y\r\n"), None);
+    }
+
+    #[test]
+    fn bad_ports_are_refused_before_connecting() {
+        for port in [6000, 10080, 22, 1, 6697] {
+            let target = t("127.0.0.1", port, PATH);
+            let deadline = Instant::now() + Duration::from_secs(1);
+            assert_eq!(connect(&target, deadline).err(), Some(Failure::BadPort), "{port}");
+        }
+        assert!(!BAD_PORTS.contains(&8021) && !BAD_PORTS.contains(&80) && !BAD_PORTS.contains(&0));
     }
 
     #[test]
