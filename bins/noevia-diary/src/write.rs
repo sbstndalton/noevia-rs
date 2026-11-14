@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// ManagedCorpusBackend(debounce=3.0): `due = now + debounce` after every save.
@@ -95,20 +95,62 @@ impl<E: std::fmt::Display> From<E> for Error {
 
 // ------------------------------------------------------------------ per-tenant writer
 
-/// One lock per tenant, plus the tenants Python is deleting.
+/// One writer slot per tenant, plus the tenants Python is deleting.
+///
+/// R9 main mode (front.rs): the slot is also what the Python child's tenant writer lock holds, as a
+/// LEASE (`lease_acquire` / `lease_release` on the control port), so a tenant has one writer across
+/// both processes. A request that names the lease its caller holds (`x-noevia-diary-lease`: the
+/// re-index Python asks for, the deletion fence) JOINS it instead of waiting for itself. Without
+/// leases (Python as the main process, today) every slot is taken only by `with_lock`, as before.
 #[derive(Default)]
 pub struct Writers {
-    locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    slots: Mutex<HashMap<String, Arc<Slot>>>,
     fenced: Mutex<HashMap<String, Instant>>,
+    /// Live leases: id → (tenant, since, the caller's holder nonce).
+    leases: Mutex<HashMap<u64, (String, Instant, String)>>,
+    next: std::sync::atomic::AtomicU64,
+    /// R9 main mode: per tenant, (native writes served, the highest the Python child was told of).
+    native_writes: Mutex<HashMap<String, (u64, u64)>>,
+    /// Holder nonces whose caller gave up (`lease_release_holder`): a grant to one is returned.
+    cancelled: Mutex<HashMap<String, Instant>>,
+}
+
+#[derive(Default)]
+struct Slot {
+    state: Mutex<SlotState>,
+    freed: Condvar,
+}
+
+#[derive(Default)]
+struct SlotState {
+    /// The holder: a native operation's or a lease's id (ids are never reused).
+    holder: Option<u64>,
+    /// Operations running joined to the holding lease.
+    joins: usize,
+    /// The holding lease was released while joined operations ran: the last one frees the slot.
+    released: bool,
+}
+
+/// Why a slot was not taken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refused {
+    /// The tenant is fenced (being deleted): native writes only.
+    Fenced,
+    /// Another holder kept it past the deadline.
+    Busy,
 }
 
 /// The held writer slot of one tenant, lent to the operation `with_lock` runs. It is the same
 /// slot `fence` waits for, so while any `WriteGuard` (and every `Journal` borrowing it) exists,
-/// Python's tenant deletion cannot pass its fence and remove the tenant root. Only `with_lock`
-/// constructs one.
+/// Python's tenant deletion cannot pass its fence and remove the tenant root. Only `Writers`
+/// constructs one. A guard joined to a lease keeps the slot even when the lease is returned
+/// meanwhile (a caller that gave up waiting): the slot is free only when the operation ends.
 pub struct WriteGuard<'a> {
     uid: String,
-    _guard: MutexGuard<'a, ()>,
+    slot: Arc<Slot>,
+    id: u64,
+    joined: bool,
+    _writers: std::marker::PhantomData<&'a Writers>,
 }
 
 impl WriteGuard<'_> {
@@ -117,26 +159,140 @@ impl WriteGuard<'_> {
     }
 }
 
+impl Drop for WriteGuard<'_> {
+    fn drop(&mut self) {
+        if self.joined {
+            self.slot.unjoin(self.id);
+        } else {
+            self.slot.free(self.id);
+        }
+    }
+}
+
+impl Slot {
+    fn state(&self) -> MutexGuard<'_, SlotState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Take the slot for `id`, waiting until `until` (None: without limit). False: still held.
+    fn take(&self, id: u64, until: Option<Instant>) -> bool {
+        let mut state = self.state();
+        while state.holder.is_some() {
+            match until {
+                None => state = self.freed.wait(state).unwrap_or_else(|e| e.into_inner()),
+                Some(at) => {
+                    let left = at.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return false;
+                    }
+                    state = self
+                        .freed
+                        .wait_timeout(state, left)
+                        .unwrap_or_else(|e| e.into_inner())
+                        .0;
+                }
+            }
+        }
+        state.holder = Some(id);
+        true
+    }
+
+    fn free(&self, id: u64) {
+        let mut state = self.state();
+        if state.holder == Some(id) {
+            state.holder = None;
+            self.freed.notify_all();
+        }
+    }
+
+    /// Join the lease `id` when it holds the slot (and was not returned).
+    fn join(&self, id: u64) -> bool {
+        let mut state = self.state();
+        if state.holder != Some(id) || state.released {
+            return false;
+        }
+        state.joins += 1;
+        true
+    }
+
+    fn unjoin(&self, id: u64) {
+        let mut state = self.state();
+        if state.holder != Some(id) {
+            return;
+        }
+        state.joins = state.joins.saturating_sub(1);
+        if state.joins == 0 && state.released {
+            state.holder = None;
+            state.released = false;
+            self.freed.notify_all();
+        }
+    }
+
+    /// The lease `id` is returned: the slot is free now, or when its last joined operation ends.
+    fn release_lease(&self, id: u64) {
+        let mut state = self.state();
+        if state.holder != Some(id) {
+            return;
+        }
+        if state.joins > 0 {
+            state.released = true;
+        } else {
+            state.holder = None;
+            self.freed.notify_all();
+        }
+    }
+}
+
 impl Writers {
-    fn slot(&self, uid: &str) -> Arc<Mutex<()>> {
-        let mut map = self.locks.lock().unwrap_or_else(|e| e.into_inner());
+    fn slot(&self, uid: &str) -> Arc<Slot> {
+        let mut map = self.slots.lock().unwrap_or_else(|e| e.into_inner());
         map.entry(uid.to_string()).or_default().clone()
+    }
+
+    fn id(&self) -> u64 {
+        self.next.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
     }
 
     /// Hold the tenant's writer for one operation, lending its guard to `f`. None: the tenant is
     /// fenced (being deleted).
     pub fn with_lock<T>(&self, uid: &str, f: impl FnOnce(&WriteGuard<'_>) -> T) -> Option<T> {
+        self.with_lock_as(uid, None, None, f).ok()
+    }
+
+    /// `with_lock` for main mode: `lease` is the lease the caller says it holds (joined when it is
+    /// the tenant's current holder, so the caller never waits for itself), `wait` bounds the wait
+    /// (None: without limit).
+    pub fn with_lock_as<T>(
+        &self,
+        uid: &str,
+        lease: Option<u64>,
+        wait: Option<Duration>,
+        f: impl FnOnce(&WriteGuard<'_>) -> T,
+    ) -> Result<T, Refused> {
         let slot = self.slot(uid);
-        let guard = slot.lock().unwrap_or_else(|e| e.into_inner());
-        // Checked under the tenant lock: a fence taken before this point is always seen.
-        if self.is_fenced(uid) {
-            return None;
-        }
+        let joined = lease.filter(|l| self.lease_holds(*l, uid) && slot.join(*l));
+        let (id, joined) = match joined {
+            Some(l) => (l, true),
+            None => {
+                let id = self.id();
+                if !slot.take(id, wait.map(|w| Instant::now() + w)) {
+                    return Err(Refused::Busy);
+                }
+                (id, false)
+            }
+        };
         let held = WriteGuard {
             uid: uid.to_string(),
-            _guard: guard,
+            slot,
+            id,
+            joined,
+            _writers: std::marker::PhantomData,
         };
-        Some(f(&held))
+        // Checked under the tenant lock: a fence taken before this point is always seen.
+        if self.is_fenced(uid) {
+            return Err(Refused::Fenced);
+        }
+        Ok(f(&held))
     }
 
     pub fn is_fenced(&self, uid: &str) -> bool {
@@ -148,12 +304,148 @@ impl Writers {
     /// Python's DELETE /api/internal/tenant: refuse every later write for `uid` and wait for the
     /// one in flight (if any) to finish before Python removes the tenant root.
     pub fn fence(&self, uid: &str) {
+        self.fence_as(uid, None);
+    }
+
+    /// `fence` from a caller holding `lease` (Python deletes under its writer lock): when that lease
+    /// is the tenant's holder nothing else can be in flight, so it does not wait for itself.
+    pub fn fence_as(&self, uid: &str, lease: Option<u64>) {
         self.fenced
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(uid.to_string(), Instant::now());
         let slot = self.slot(uid);
-        drop(slot.lock().unwrap_or_else(|e| e.into_inner()));
+        if lease.is_some_and(|l| self.lease_holds(l, uid) && slot.join(l)) {
+            slot.unjoin(lease.unwrap_or_default());
+            return;
+        }
+        let id = self.id();
+        slot.take(id, None);
+        slot.free(id);
+    }
+
+    /// A lease on the tenant's writer slot for the Python child (main mode), waiting at most
+    /// `wait`. A fence does not refuse it: the fence stops this process's own writes, and Python's
+    /// own deletion and its 410s run under its lock.
+    pub fn lease_acquire(&self, uid: &str, wait: Duration) -> Result<u64, Refused> {
+        self.lease_acquire_for(uid, wait, "")
+    }
+
+    /// `lease_acquire` naming the caller's `holder` nonce, so a caller that never learnt its lease
+    /// id (a lost reply) can still return it (`lease_release_holder`).
+    pub fn lease_acquire_for(
+        &self,
+        uid: &str,
+        wait: Duration,
+        holder: &str,
+    ) -> Result<u64, Refused> {
+        let slot = self.slot(uid);
+        let id = self.id();
+        if !slot.take(id, Some(Instant::now() + wait)) {
+            return Err(Refused::Busy);
+        }
+        let cancelled = {
+            let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+            leases.insert(id, (uid.to_string(), Instant::now(), holder.to_string()));
+            // Checked after the insert, under the same lock `lease_release_holder` records under:
+            // a cancel either sees this lease or is seen here.
+            !holder.is_empty()
+                && self
+                    .cancelled
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .contains_key(holder)
+        };
+        if cancelled {
+            self.lease_release(id);
+            return Err(Refused::Busy);
+        }
+        Ok(id)
+    }
+
+    /// Return every live lease granted to `holder` (a non-empty nonce). The count returned.
+    pub fn lease_release_holder(&self, holder: &str) -> usize {
+        if holder.is_empty() {
+            return 0;
+        }
+        let ids: Vec<u64> = {
+            let leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+            let mut cancelled = self.cancelled.lock().unwrap_or_else(|e| e.into_inner());
+            cancelled.retain(|_, at| at.elapsed() < Duration::from_secs(600));
+            // A grant still waiting for the slot is returned as soon as it is made.
+            cancelled.insert(holder.to_string(), Instant::now());
+            leases
+                .iter()
+                .filter(|(_, (_, _, h))| h == holder)
+                .map(|(id, _)| *id)
+                .collect()
+        };
+        ids.into_iter().filter(|id| self.lease_release(*id)).count()
+    }
+
+    /// End a lease. False when it is not live (already released, or never issued).
+    pub fn lease_release(&self, id: u64) -> bool {
+        let entry = self
+            .leases
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&id);
+        match entry {
+            Some((uid, _, _)) => {
+                self.slot(&uid).release_lease(id);
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn lease_holds(&self, id: u64, uid: &str) -> bool {
+        self.leases
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&id)
+            .is_some_and(|(u, _, _)| u == uid)
+    }
+
+    /// R9 main mode: a native write of `uid` ran (whatever its reply; counted inside the blocking
+    /// write, so a caller that went away does not hide it). The child's state for it is stale.
+    pub fn note_native_write(&self, uid: &str) {
+        let mut map = self.native_writes.lock().unwrap_or_else(|e| e.into_inner());
+        map.entry(uid.to_string()).or_insert((0, 0)).0 += 1;
+    }
+
+    /// (native writes so far, whether the child has still to be told of some).
+    pub fn native_writes(&self, uid: &str) -> (u64, bool) {
+        let map = self.native_writes.lock().unwrap_or_else(|e| e.into_inner());
+        map.get(uid).map_or((0, false), |(n, told)| (*n, told < n))
+    }
+
+    /// The child answered a request sent at write count `sent` (`told`: it carried the news). True
+    /// when its view is current: no native write since, and it knew of every one.
+    pub fn child_current(&self, uid: &str, sent: u64, told: bool) -> bool {
+        let mut map = self.native_writes.lock().unwrap_or_else(|e| e.into_inner());
+        match map.get_mut(uid) {
+            None => true,
+            Some((n, delivered)) => {
+                if told && *delivered < sent {
+                    *delivered = sent;
+                }
+                *n == sent && *delivered >= sent
+            }
+        }
+    }
+
+    /// The live leases (tenant, seconds held), longest first: a leak is visible.
+    pub fn lease_report(&self) -> Vec<(String, u64)> {
+        let mut out: Vec<(String, u64)> = self
+            .leases
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .map(|(u, at, _)| (u.clone(), at.elapsed().as_secs()))
+            .collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        out
     }
 }
 
@@ -655,6 +947,12 @@ impl<'h> Journal<'h> {
     /// One index/journal publication under its own primary reservation.
     fn publication<T>(&self, effect: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
         self.primary_reservation(|r| r.publish(effect))
+    }
+
+    /// R9 S4: an index write of the embedding migration under the primary reservation (Python's
+    /// `tenant_writer.index_publication`: refused while a backup effect is unsettled).
+    pub fn publish_effect<T>(&self, effect: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+        self.publication(effect)
     }
 
     pub fn enqueue(&self, kind: &str, payload: &str) -> Result<String, Error> {

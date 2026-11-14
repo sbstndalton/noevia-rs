@@ -8,7 +8,26 @@ fn main() -> ExitCode {
         println!("{}", noevia_diary::version_line());
         return ExitCode::SUCCESS;
     }
+    // R9 S2a: the container's main process (DIARY_MAIN=rust), with the Python app as its child.
+    let args: Vec<String> = std::env::args_os()
+        .skip(1)
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    if args.first().is_some_and(|a| a == "--main") {
+        return match noevia_diary::front::parse_args(&args) {
+            Ok(a) => serve_main(a),
+            Err(e) => {
+                eprintln!("noevia-diary: {e}");
+                ExitCode::from(2)
+            }
+        };
+    }
     serve_from_stdin()
+}
+
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
+async fn serve_main(args: noevia_diary::front::Args) -> ExitCode {
+    ExitCode::from(noevia_diary::front::run(args).await)
 }
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]

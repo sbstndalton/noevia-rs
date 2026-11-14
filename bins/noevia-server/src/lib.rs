@@ -38,6 +38,7 @@ pub mod decision_settings_routes;
 pub mod delete_model;
 pub mod diary_backup;
 pub mod diary_routes;
+pub mod edit_target_native;
 pub mod embedding_background;
 pub mod export_routes;
 pub mod extraction;
@@ -50,6 +51,8 @@ pub mod identity;
 pub mod idle_unload_read;
 pub mod inference_machines;
 pub mod legacy_proxy;
+#[cfg(feature = "rust-storage-reads")]
+pub mod legacy_webdav;
 pub mod load_model;
 pub mod machine_service;
 #[cfg(feature = "rust-storage-reads")]
@@ -97,6 +100,8 @@ pub mod offsite_store;
 pub mod plugin_directory_routes;
 pub mod preset_read_routes;
 pub mod project_config_routes;
+// Track R13: the chat's read_project_file in the front (NOEVIA_RUST_READ_FILE).
+pub mod project_file_read;
 pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod project_storage_io;
@@ -122,6 +127,8 @@ pub mod routes;
 pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod secrets_rotate_routes;
 pub mod serve;
 pub mod snapshot;
 pub mod source_job_routes;
@@ -1006,6 +1013,16 @@ async fn handle(
             native = Some(routes::Native::ReasoningSettings);
         }
     }
+    // Track R12: with NOEVIA_RUST_SECRETS_ROTATE=1 the front answers POST /api/admin/secrets/rotate
+    // (secrets_rotate_routes.rs, no routes-file row); unset, the rotation stays Node's.
+    #[cfg(feature = "rust-storage-reads")]
+    if native.is_none()
+        && app.config.secrets_rotate
+        && req.method() == axum::http::Method::POST
+        && whatwg.as_deref().unwrap_or(&path) == secrets_rotate_routes::ROUTE
+    {
+        return secrets_rotate_routes::serve(&app, req).await;
+    }
     let served_bundle = match native {
         Some(routes::Native::Ready) => true,
         Some(routes::Native::Static) => static_files::canonical(&path),
@@ -1068,8 +1085,20 @@ async fn handle(
         // for its change journal reader (chat_activity.rs).
         let api = whatwg.as_deref().unwrap_or(&path).starts_with("/api/");
         let activity = Arc::clone(&app.activity);
+        #[cfg(feature = "rust-storage-reads")]
+        let legacy = (!legacy_webdav::bearer(
+            req.headers()
+                .get(axum::http::header::AUTHORIZATION)
+                .map(|v| v.as_bytes()),
+        ))
+        .then(|| Arc::clone(&app));
         let _ = tokio::task::spawn_blocking(move || {
             let user = writes.upkeep_blocking(identity.authenticator(), &creds, now);
+            // Track R14: core's legacy WebDAV storage setup for this account (NOEVIA_RUST_LEGACY_WEBDAV).
+            #[cfg(feature = "rust-storage-reads")]
+            if let (Some(user), Some(app)) = (&user, &legacy) {
+                legacy_webdav::nudge(app, user);
+            }
             if let Some(user) = user.filter(|_| api) {
                 activity.record(&user, now);
             }

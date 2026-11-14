@@ -391,6 +391,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "browser-task"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "browser-policy",
+ "js-json",
+ "server-projects",
+ "tempfile",
+ "url",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1115,6 +1127,17 @@ dependencies = [
  "sha2",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "edit-target-lookup"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "project-edit-target",
+ "project-file-names",
+ "prompt-framing",
+ "sha2",
 ]
 
 [[package]]
@@ -2192,8 +2215,11 @@ dependencies = [
  "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",
+ "futures-util",
  "http-body",
  "http-body-util",
+ "hyper-util",
+ "nix",
  "regex",
  "reqwest",
  "rusqlite",
@@ -2338,6 +2364,7 @@ dependencies = [
  "context-fit",
  "dav-parse",
  "drive-tools",
+ "edit-target-lookup",
  "egress",
  "egress-issuer",
  "embedding-worker",
@@ -2376,6 +2403,7 @@ dependencies = [
  "rustls",
  "s3-sign",
  "secret-envelope",
+ "secrets-rotate",
  "serde",
  "serde_json",
  "server-account",
@@ -3330,6 +3358,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "secrets-rotate"
+version = "0.1.0"
+dependencies = [
+ "google-token-seal",
+ "js-json",
+ "secret-envelope",
+ "serde_json",
+ "zeroize",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3591,8 +3630,10 @@ name = "server-projects"
 version = "0.1.0"
 dependencies = [
  "completeness-report",
+ "document-read",
  "js-json",
  "libc",
+ "project-file-names",
  "prompt-framing",
  "proptest",
  "rand_core 0.6.4",
