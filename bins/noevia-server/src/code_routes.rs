@@ -781,13 +781,11 @@ async fn resolve(
             code_facts::shadow(&app, &user, &record, &core).await;
             core
         }
-        Mode::Rust => code_facts::native(&app, &user, &record, || async {
-            core_facts(&app, &user, &project)
+        Mode::Rust => {
+            code_facts::native(&app, &user, &record, || core_facts(&app, &user, &project))
                 .await
-                .map(|f| f.get("paused").clone())
-        })
-        .await
-        .map_err(|_| down())?,
+                .map_err(|_| down())?
+        }
     };
     if facts.get("machine").as_bool() == Some(true) {
         return Err(fail(409, ON_A_MACHINE));

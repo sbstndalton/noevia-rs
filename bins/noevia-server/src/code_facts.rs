@@ -6,16 +6,19 @@
 //! - `shadow`: core's answer is used; the front also builds its own from the same start and logs
 //!   one `[code]` line saying whether they agree and, if not, which fields differ (field names
 //!   only: an engine key is never logged);
-//! - `rust`: the front's answer is used. The tune state (`paused`, core's
-//!   `modelManager.tuningActive()`: the maintenance hold, calibration and auto-tune) is still core's,
-//!   asked over the same bridge only when the Code role is on this machine, until the auto-tune
-//!   runner's track publishes it in the front; core unreachable is the same 503 as today.
+//! - `rust`: the front's answer is used. Two inputs are still core's, read from its answer on the
+//!   same bridge, asked only when the Code role is on this machine (core unreachable is the same 503
+//!   as today): the tune state (`paused`, core's `modelManager.tuningActive()`: the maintenance
+//!   hold, calibration and auto-tune) until the auto-tune runner's track publishes it in the front,
+//!   and, when the account's roles name neither a Code nor a Smart model, the last loaded model
+//!   (core's `lastLoadedModel()`, which core also adopts on its own installed reads, so the front's
+//!   copy can lag it) until the chat path is the front's.
 //!
 //! What the front reads for its answer: the deployment's default provider row from the environment
 //! (it always leads the provider view, so no provider file is read), the account's
 //! `auto-roles.json`, the no-model-selected default the front keeps (model_maint `last_loaded`, which
 //! the front adopts on its own installed reads while core also adopts on its own: a known source
-//! of shadow differences when no Code or Smart role is set), the inference machines registry
+//! of shadow differences when no Code or Smart role is set; `rust` takes core's), the inference machines registry
 //! (`chatTarget` for Code, then Smart), the features codePipeline and plannerReview, and the
 //! project's stored record (its chats for the shared context).
 use crate::{auto_roles_routes, inference_machines as registry, machine_service, App};
@@ -208,28 +211,38 @@ pub async fn shadow(app: &Arc<App>, user: &str, record: &JValue, core: &JValue) 
 /// Why the front's own answer could not be given (the start answers core's 503).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Failed {
-    /// core was asked for the tune state and did not answer.
+    /// core was asked for the tune state and the last loaded model and did not answer.
     Core,
     /// the answer itself is core's 503 (logged with core's reason).
     Unavailable,
 }
 
-/// `rust`: the front's answer. `core_paused` asks core's bridge for the tune state; it is asked
-/// only when the Code role is on this machine.
+/// `rust`: the front's answer. `core` asks core's bridge for its whole answer, which gives the tune
+/// state and (when no Code or Smart role is set) the last loaded model; it is asked only when the
+/// Code role is on this machine.
 pub async fn native<F, Fut>(
     app: &Arc<App>,
     user: &str,
     record: &JValue,
-    core_paused: F,
+    core: F,
 ) -> Result<JValue, Failed>
 where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = Option<JValue>>,
 {
     let settings = &app.config.code.facts;
-    let r = read(app, user).await;
+    let mut r = read(app, user).await;
     let paused = match r.remote() {
-        Ok(false) => core_paused().await.ok_or(Failed::Core)?,
+        Ok(false) => {
+            let answer = core().await.ok_or(Failed::Core)?;
+            if !r.roles.get("code").truthy() && !r.roles.get("smart").truthy() {
+                r.last_loaded = match answer.get("engine").get("model") {
+                    JValue::Undefined => JValue::Null,
+                    model => model.clone(),
+                };
+            }
+            answer.get("paused").clone()
+        }
         _ => JValue::Bool(false),
     };
     match r.answer(settings, record, paused) {

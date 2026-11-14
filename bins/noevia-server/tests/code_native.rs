@@ -1207,23 +1207,48 @@ async fn the_front_s_engine_facts_ask_core_only_for_the_tune_state() {
 
         // `rust` with the Code role here, and `shadow`: core is asked once (the tune state; the
         // comparison) and the task runs.
-        for mode in ["rust", "shadow"] {
+        // The model the task's admission lease names tells whose facts decided: core's synthetic
+        // answer names `qa-model`; the account's roles file names another (or none, when the last
+        // loaded model, core's, decides).
+        for (mode, roles, want) in [
+            (
+                "rust",
+                Some(r#"{"code":"qa-front-model"}"#),
+                "qa-front-model",
+            ),
+            ("rust", None, "qa-model"),
+            ("shadow", Some(r#"{"code":"qa-front-model"}"#), "qa-model"),
+        ] {
             let r = rig(Opts {
                 executor: true,
                 facts: Some(mode),
                 ..Opts::default()
             })
             .await;
-            // The account's Code role names the model core's synthetic answer names.
-            std::fs::write(
-                r.data.join("users").join(OWNER).join("auto-roles.json"),
-                r#"{"code":"qa-model"}"#,
-            )
-            .unwrap();
+            if let Some(roles) = roles {
+                std::fs::write(
+                    r.data.join("users").join(OWNER).join("auto-roles.json"),
+                    roles,
+                )
+                .unwrap();
+            }
             let (status, started) = r.run_once().await;
             assert_eq!(status, 202, "{mode}: {started}");
             assert_eq!(r.sandbox.lock().unwrap().prompts, 1, "{mode}");
             assert_eq!(r.engine_asked(), 1, "{mode}");
+            let leased: Vec<Value> = r
+                .core_seen
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(m, p, _)| m == "PUT" && p.starts_with(LEASE_PATH))
+                .map(|(_, _, b)| b["model"].clone())
+                .collect();
+            assert!(!leased.is_empty(), "{mode}: no lease");
+            assert!(
+                leased.iter().all(|m| m == want),
+                "{mode} {roles:?}: {leased:?}"
+            );
         }
     })
     .await;
