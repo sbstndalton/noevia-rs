@@ -53,5 +53,6 @@ case("encrypted-empty", lambda: f.encrypted_pdf(b"", b""))
 case("encrypted-long", lambda: f.encrypted_pdf(b"u" * 40, b"o"))
 case("oversized", f.oversized_text_pdf)
 case("malformed", f.malformed_pdf)
+case("serialise-empty", lambda: f._serialise({}))
 for name, size, chunk in (("ballast-300k", 300000, 1024 * 1024), ("ballast-tiny", 10, 1024 * 1024), ("ballast-chunked", 300000, 7777)):
     case(name, lambda n=name, s=size, c=chunk: f.write_ballast_pdf(f"{out}/{n}", s, chunk=c) and None)

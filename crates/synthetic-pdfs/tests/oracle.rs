@@ -230,6 +230,12 @@ fn live_reference_agrees() {
         ),
         ("oversized", Kind::Exact, oversized_text_pdf()),
         ("malformed", Kind::Exact, Ok(malformed_pdf())),
+        // Both refuse: ValueError from max() of no objects; Error::NoObjects (noevia#2727 item 4).
+        (
+            "serialise-empty",
+            Kind::Exact,
+            synthetic_pdfs::serialise(&Default::default(), b"", 0),
+        ),
         (
             "ballast-300k",
             Kind::Semantic,
