@@ -294,6 +294,7 @@ pub fn origins_now() -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use chat_upstream::binding::{recheck, Now, Recheck};
@@ -629,5 +630,94 @@ mod tests {
     #[test]
     fn the_provider_client_is_built() {
         assert!(provider_client().is_some());
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod http_tests {
+    use super::provider_client;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// A one-answer-per-connection HTTP stub on loopback: counts the requests it got, answers `reply`.
+    async fn stub(reply: String) -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&hits);
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = listener.accept().await else {
+                    return;
+                };
+                counted.fetch_add(1, Ordering::SeqCst);
+                let reply = reply.clone();
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 16 * 1024];
+                    let mut got = Vec::new();
+                    // Read the head and the declared body (the client sends a small JSON body).
+                    loop {
+                        let Ok(n) = s.read(&mut buf).await else { return };
+                        if n == 0 {
+                            return;
+                        }
+                        got.extend_from_slice(buf.get(..n).unwrap_or_default());
+                        let text = String::from_utf8_lossy(&got);
+                        if let Some(end) = text.find("\r\n\r\n") {
+                            let len = text
+                                .lines()
+                                .find_map(|l| {
+                                    l.to_ascii_lowercase()
+                                        .strip_prefix("content-length:")
+                                        .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                                })
+                                .unwrap_or(0);
+                            if got.len() >= end + 4 + len {
+                                break;
+                            }
+                        }
+                    }
+                    let _ = s.write_all(reply.as_bytes()).await;
+                    let _ = s.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), hits)
+    }
+
+    /// undici `redirect: 'error'`: every redirect status comes back as the answer and its Location is never
+    /// asked (chat-upstream's ProviderHost then ends the request with `fetch failed`); a 200 is read as sent.
+    #[tokio::test]
+    async fn the_provider_client_follows_no_redirect() {
+        let (elsewhere, elsewhere_hits) =
+            stub("HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok".into()).await;
+        let client = provider_client().unwrap();
+        for status in [301u16, 302, 303, 307, 308] {
+            let (base, hits) = stub(format!(
+                "HTTP/1.1 {status} Moved\r\nlocation: {elsewhere}/v1/chat/completions\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+            ))
+            .await;
+            let answer = client
+                .post(format!("{base}/v1/chat/completions"))
+                .header("content-type", "application/json")
+                .body(r#"{"model":"qa-model"}"#)
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(answer.status().as_u16(), status);
+            assert_eq!(hits.load(Ordering::SeqCst), 1);
+        }
+        assert_eq!(elsewhere_hits.load(Ordering::SeqCst), 0, "a redirect was followed");
+        let ok = client
+            .post(format!("{elsewhere}/v1/chat/completions"))
+            .body("{}")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(ok.status().as_u16(), 200);
+        assert_eq!(ok.text().await.unwrap(), "ok");
     }
 }
