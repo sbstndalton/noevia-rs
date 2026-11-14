@@ -12,7 +12,7 @@
     clippy::indexing_slicing
 )]
 
-use chat_prepare::shadow::{compare, Catalogue, ShadowTurn, Verdict};
+use chat_prepare::shadow::{compare, Catalogue, Settings, ShadowTurn, Verdict};
 use chat_prepare::toolboxes::Toolbox;
 use chat_prepare::tools_mode::{is_public_tool_name, PRIVATE_CORE_TOOLS};
 use js_json::{wtf16, JValue};
@@ -85,6 +85,11 @@ fn replay(f: &JValue) -> Vec<Replayed> {
             continue;
         }
         let input = t.get("input");
+        // getProject(body.projectId): the recorded projects.
+        let pid = input.get("body").get("projectId");
+        let project = items(input, "projects")
+            .iter()
+            .find(|p| !pid.is_nullish() && p.get("id") == pid);
         let boxes: Vec<Toolbox> = items(input, "toolboxes").iter().map(toolbox).collect();
         let known =
             |name: &str| PRIVATE_CORE_TOOLS.contains(&name) || boxes.iter().any(|b| b.offers(name));
@@ -103,10 +108,19 @@ fn replay(f: &JValue) -> Vec<Replayed> {
                 instructions: instructions.as_deref(),
                 memory: memory.as_deref(),
                 free_chats: Some(free),
+                project,
+                roles: Some(input.get("roles")),
                 time_zone: input.get("tz").as_str().unwrap(),
                 chat_framing: input.get("chatFraming").as_bool(),
                 brain_context: Some(false),
                 history_cap: cap,
+                titles: true,
+                workspace: true,
+                // No settings database is the same as no rows: both read `undefined`.
+                settings: Some(Settings {
+                    effort_default: input.get("settings").get("reasoning_effort_default"),
+                    sampling_presets: input.get("settings").get("auto_sampling_presets_enabled"),
+                }),
                 catalogue,
             })
         };
@@ -145,8 +159,10 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     let wrong: Vec<String> = replayed
         .iter()
         .filter(|r| {
-            matches!(r.verdict, Verdict::Diff(_) | Verdict::Failed(_))
-                || matches!(r.without_catalogue, Verdict::Diff(_) | Verdict::Failed(_))
+            matches!(
+                r.verdict,
+                Verdict::Diff(_) | Verdict::Failed(_) | Verdict::Skip("project-store")
+            ) || matches!(r.without_catalogue, Verdict::Diff(_) | Verdict::Failed(_))
         })
         .map(|r| {
             format!(
@@ -164,10 +180,41 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
         replayed.len(),
         wrong[..wrong.len().min(8)].join("\n")
     );
-    let matched = replayed
+    // Everything built is core's: a match, or (P7d) all but a Manual turn's default model.
+    let covered = |v: Verdict| matches!(v, Verdict::Match | Verdict::Skip("manual-default"));
+    let matched = replayed.iter().filter(|r| covered(r.verdict)).count();
+    // The model is compared for Automatic turns and projects with their own model: they match.
+    let modelled: Vec<&Replayed> = replayed
         .iter()
-        .filter(|r| r.verdict == Verdict::Match)
+        .filter(|r| r.name.starts_with("auto_") || r.name.starts_with("project_own_model"))
+        .collect();
+    assert!(
+        modelled.len() >= 30,
+        "{} turns with a compared model",
+        modelled.len()
+    );
+    for r in &modelled {
+        assert_eq!(r.verdict, Verdict::Match, "{}", r.name);
+    }
+    // P7c: project turns are covered; the ones with what is not ported yet are skipped by name.
+    let project_matched = replayed
+        .iter()
+        .filter(|r| r.name.contains("project") && covered(r.verdict))
         .count();
+    assert!(
+        project_matched >= 40,
+        "{project_matched} project turns matched"
+    );
+    for (name, reason) in [
+        ("project_files_skipped", "files"),
+        ("project_shared_context_skipped", "shared-context"),
+        ("project_assets_skipped", "assets"),
+        ("free_chat_context_project_skipped", "context-project"),
+        ("project_context_high_skipped", "context-profile"),
+    ] {
+        let r = replayed.iter().find(|r| r.name == name).unwrap();
+        assert_eq!(r.verdict, Verdict::Skip(reason), "{name}");
+    }
     let mut counts = std::collections::BTreeMap::new();
     for r in &replayed {
         *counts.entry(r.verdict.line()).or_insert(0) += 1;
@@ -193,7 +240,7 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
                 "{}",
                 r.name
             );
-            assert_eq!(r.verdict, Verdict::Match, "{}", r.name);
+            assert!(covered(r.verdict), "{}", r.name);
         }
     }
     assert!(replayed
@@ -202,7 +249,7 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     // A confirmed frame with chat framing on: its block is built and matches.
     let framed: Vec<&Replayed> = replayed.iter().filter(|r| r.framed).collect();
     assert!(framed.len() >= 5, "{} framed", framed.len());
-    assert!(framed.iter().all(|r| r.verdict == Verdict::Match));
+    assert!(framed.iter().all(|r| covered(r.verdict)));
 }
 
 /// A frame whose messages are not the native ones is reported where they first differ, and a
@@ -228,10 +275,15 @@ fn a_difference_is_located_without_its_text() {
             instructions: None,
             memory: memory.as_deref(),
             free_chats: Some(&free),
+            project: None,
+            roles: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
             history_cap: f.get("historyCap").as_num().unwrap() as usize,
+            titles: true,
+            workspace: true,
+            settings: None,
             catalogue: None,
         })
     };
@@ -275,6 +327,21 @@ fn a_difference_is_located_without_its_text() {
         other => panic!("{other:?}"),
     }
     assert!(!check(&frame).line().contains(&content));
+    // A `chat` or `turn` field that is not the native one is named by its field.
+    for (field, key) in [("chat", "key"), ("turn", "streamIdleMs")] {
+        let JValue::Obj(mut items) = frame.clone() else {
+            panic!()
+        };
+        let JValue::Obj(mut inner) = frame.get(field).clone() else {
+            panic!()
+        };
+        wtf16::set(&mut inner, key, JValue::from("qa-other"));
+        wtf16::set(&mut items, field, JValue::Obj(inner));
+        match check(&JValue::Obj(items)) {
+            Verdict::Diff(d) => assert_eq!((d.field, d.message), (field, 0)),
+            other => panic!("{field}: {other:?}"),
+        }
+    }
 }
 
 /// What the recording cannot show: an Automatic turn routed to the Code role (chat.cjs adds its route
@@ -296,10 +363,15 @@ fn a_code_route_and_an_unreadable_free_list_are_skipped() {
             instructions: None,
             memory: None,
             free_chats: free,
+            project: None,
+            roles: None,
             time_zone: "UTC",
             chat_framing: framing,
             brain_context: Some(false),
             history_cap: 1000,
+            titles: true,
+            workspace: true,
+            settings: None,
             catalogue: None,
         })
     };
@@ -316,4 +388,145 @@ fn a_code_route_and_an_unreadable_free_list_are_skipped() {
     assert_eq!(check(frame, None, Some(true)), Verdict::Skip("free-list"));
     assert_eq!(check(frame, None, None), Verdict::Skip("free-list"));
     assert_ne!(check(frame, None, Some(false)), Verdict::Skip("free-list"));
+}
+
+/// The effort, Fast thinking switch and sampling presets of the recorded frames (settings rows varied)
+/// are the native ones, and one that is not is named by its field.
+#[test]
+fn the_effort_and_sampling_follow_the_settings_rows() {
+    let f = fixture();
+    let frames: Vec<&JValue> = items(&f, "turns")
+        .iter()
+        .map(|t| t.get("prepared"))
+        .filter(|p| p.is_object())
+        .collect();
+    assert!(frames
+        .iter()
+        .any(|p| p.get("effort").as_str() == Some("high")));
+    assert!(frames
+        .iter()
+        .any(|p| p.get("effort").as_str() == Some("low")));
+    assert!(frames
+        .iter()
+        .any(|p| matches!(p.get("sampling"), JValue::Obj(items) if !items.is_empty())));
+    assert!(frames
+        .iter()
+        .any(|p| matches!(p.get("sampling"), JValue::Obj(items) if items.is_empty())));
+    // Automatic turns (recorded with roles and a classifier verdict): a Fast route at the account
+    // default effort runs with thinking off and the effort lowered.
+    assert!(frames
+        .iter()
+        .any(|p| p.get("thinkingOff") == &JValue::Bool(true)));
+    assert!(frames.iter().any(|p| p.get("auto") == &JValue::Bool(true)
+        && p.get("role").as_str() == Some("fast")
+        && p.get("effort").as_str() == Some("low")));
+    assert!(frames
+        .iter()
+        .any(|p| p.get("auto") == &JValue::Bool(true) && p.get("role").as_str() == Some("smart")));
+    // The same write twice, and once with its arguments in another key order: one fingerprint.
+    let dedupe = items(&f, "turns")
+        .iter()
+        .find(|t| t.get("name").as_str() == Some("history_applied_dedupe"))
+        .unwrap();
+    assert_eq!(
+        items(dedupe.get("prepared").get("chat"), "recentWrites").len(),
+        3
+    );
+    let t = items(&f, "turns")
+        .iter()
+        .find(|t| t.get("prepared").is_object() && t.get("input").get("settings").is_object())
+        .unwrap();
+    let input = t.get("input");
+    let empty = JValue::Arr(Vec::new());
+    let check = |frame: &JValue| {
+        compare(&ShadowTurn {
+            body: input.get("body"),
+            frame,
+            instructions: None,
+            memory: None,
+            free_chats: Some(&empty),
+            project: None,
+            roles: None,
+            time_zone: input.get("tz").as_str().unwrap(),
+            chat_framing: Some(false),
+            brain_context: Some(false),
+            history_cap: 1000,
+            titles: true,
+            workspace: true,
+            settings: Some(Settings {
+                effort_default: input.get("settings").get("reasoning_effort_default"),
+                sampling_presets: input.get("settings").get("auto_sampling_presets_enabled"),
+            }),
+            catalogue: None,
+        })
+    };
+    let JValue::Obj(mut items) = t.get("prepared").clone() else {
+        panic!()
+    };
+    wtf16::set(&mut items, "effort", JValue::from("qa-other"));
+    match check(&JValue::Obj(items)) {
+        Verdict::Diff(d) => assert_eq!(d.field, "effort"),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A new project chat's id is core's (its random part cannot be made again), but only one of the
+/// shape chat.cjs makes during the turn is taken: another shows as a diff in `chat`.
+#[test]
+fn a_new_project_chat_takes_only_an_id_chat_cjs_makes() {
+    let f = fixture();
+    let t = items(&f, "turns")
+        .iter()
+        .find(|t| t.get("name").as_str() == Some("project_no_chat_id"))
+        .unwrap();
+    let input = t.get("input");
+    let project = items(input, "projects").first().unwrap();
+    let empty = JValue::Arr(Vec::new());
+    let check = |frame: &JValue| {
+        compare(&ShadowTurn {
+            body: input.get("body"),
+            frame,
+            instructions: None,
+            memory: None,
+            free_chats: Some(&empty),
+            project: Some(project),
+            roles: None,
+            time_zone: input.get("tz").as_str().unwrap(),
+            chat_framing: Some(false),
+            brain_context: Some(false),
+            history_cap: 1000,
+            titles: true,
+            workspace: true,
+            settings: Some(Settings {
+                effort_default: &JValue::Undefined,
+                sampling_presets: &JValue::Undefined,
+            }),
+            catalogue: None,
+        })
+    };
+    // A Manual project turn with no project model: everything but the model is compared.
+    assert_eq!(check(t.get("prepared")), Verdict::Skip("manual-default"));
+    let started = t.get("prepared").get("startedAt").as_num().unwrap();
+    for bad in [
+        "qa-chat".to_string(),
+        format!("p-{}-ABC", started as i64),
+        format!("p-{}-qa", started as i64 - 1),
+        format!("p-{}-qa", started as i64 + 700_000),
+        format!("p-{}-toolong", started as i64),
+    ] {
+        let JValue::Obj(mut items) = t.get("prepared").clone() else {
+            panic!()
+        };
+        let JValue::Obj(mut chat) = t.get("prepared").get("chat").clone() else {
+            panic!()
+        };
+        for key in ["id", "contextId", "key"] {
+            wtf16::set(&mut chat, key, JValue::from(bad.as_str()));
+        }
+        wtf16::set(&mut items, "chat", JValue::Obj(chat));
+        match check(&JValue::Obj(items)) {
+            Verdict::Diff(d) => assert_eq!(d.field, "chat", "{bad}"),
+            other => panic!("{bad}: {other:?}"),
+        }
+    }
 }

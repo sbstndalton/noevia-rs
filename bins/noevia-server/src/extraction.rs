@@ -139,20 +139,36 @@ impl HttpEngine {
         self
     }
 
-    /// document-workers.cjs `resolve(kind)`: (url, from a machine).
-    fn resolve(&self, kind: &str) -> Option<(String, bool)> {
-        if let Some(url) = self.data_dir.as_deref().and_then(|d| machine_url(d, kind)) {
-            return Some((url, true));
+    /// document-workers.cjs `resolve(kind)`: (url, from a machine); `Err` where core throws
+    /// `machinesUnavailable` (the machine store cannot be read: core fails closed and never falls back
+    /// to the environment's worker, noevia#2614).
+    fn route(&self, kind: &str) -> Result<Option<(String, bool)>, ()> {
+        if let Some(url) = match self.data_dir.as_deref() {
+            Some(d) => machine_url(d, kind)?,
+            None => None,
+        } {
+            return Ok(Some((url, true)));
         }
         let env = if kind == "ocr" {
             "OCR_BASE_URL"
         } else {
             "DOCLING_BASE_URL"
         };
-        std::env::var(env)
+        Ok(std::env::var(env)
             .ok()
             .filter(|u| !u.is_empty())
-            .map(|u| (u, false))
+            .map(|u| (u, false)))
+    }
+
+    /// [`Self::route`] where the machine store being unreadable reads as "cannot be asked".
+    fn resolve(&self, kind: &str) -> Option<(String, bool)> {
+        self.route(kind).ok().flatten()
+    }
+
+    /// document-workers.cjs `configured(kind)`: core's throw (the store unreadable) is not "not
+    /// configured" here, so a document is still routed as one and its read fails as busy.
+    fn configured(&self, kind: &str) -> bool {
+        !matches!(self.route(kind), Ok(None))
     }
 
     fn send(
@@ -161,6 +177,7 @@ impl HttpEngine {
         machine: bool,
         req: reqwest::RequestBuilder,
         cap: usize,
+        body: Option<&[u8]>,
     ) -> Result<(u16, Option<Vec<u8>>), EngineError> {
         if machine && !on_this_network(url) {
             return Err(EngineError::new("fetch failed"));
@@ -168,7 +185,7 @@ impl HttpEngine {
         if self.cancelled() {
             return Err(EngineError::new("background extraction cancelled"));
         }
-        self.rt.block_on(async {tokio::select! {r=fetch(req,cap)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}})
+        self.rt.block_on(async {tokio::select! {r=fetch_with(req,cap,body)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}})
     }
 
     /// [`Self::send`] for a request that may legitimately wait for minutes: while it waits, the
@@ -179,6 +196,7 @@ impl HttpEngine {
         machine: bool,
         req: reqwest::RequestBuilder,
         cap: usize,
+        body: Option<&[u8]>,
     ) -> Result<(u16, Option<Vec<u8>>), EngineError> {
         if machine && !on_this_network(url) {
             return Err(EngineError::new("fetch failed"));
@@ -190,7 +208,7 @@ impl HttpEngine {
             return Err(EngineError::new("background extraction cancelled"));
         }
         self.rt.block_on(async move {
-            let work = async {tokio::select! {r=fetch(req,cap)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}};
+            let work = async {tokio::select! {r=fetch_with(req,cap,body)=>r,_=self.cancellation()=>Err(EngineError::new("background extraction cancelled"))}};
             tokio::pin!(work);
             let mut ticks = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
             let mut missed = 0u32;
@@ -224,10 +242,67 @@ impl HttpEngine {
             .client
             .get(format!("{}/health", url.trim_end_matches('/')))
             .timeout(Duration::from_secs(10));
-        match self.send(&url, machine, req, HEALTH_CAP) {
+        match self.send(&url, machine, req, HEALTH_CAP, None) {
             Ok((_, Some(body))) => wtf16::parse(&String::from_utf8_lossy(&body)).ok(),
             _ => None,
         }
+    }
+}
+
+/// upload-body.cjs `SLICE`: the document goes out this many bytes at a time.
+const BODY_SLICE: usize = 1024 * 1024;
+
+/// [`fetch`] with `body` as the request body. upload-body.cjs `uploadInit` (#1885, noevia#2615): the
+/// document is sent as a stream of [`BODY_SLICE`] copies with an explicit Content-Length (the sidecars
+/// refuse a chunked body), so a request never holds a second full copy of a file of up to 96 MiB; at
+/// most a couple of slices are alive at once. A request that ends early (an answer, an error, a
+/// cancellation) drops the stream and the rest is never copied.
+async fn fetch_with(
+    req: reqwest::RequestBuilder,
+    cap: usize,
+    body: Option<&[u8]>,
+) -> Result<(u16, Option<Vec<u8>>), EngineError> {
+    let Some(bytes) = body else {
+        return fetch(req, cap).await;
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel::<::bytes::Bytes>(1);
+    let req = req
+        .header(reqwest::header::CONTENT_LENGTH, bytes.len())
+        .body(reqwest::Body::wrap(Slices(rx)));
+    let feed = async move {
+        for slice in bytes.chunks(BODY_SLICE) {
+            if tx
+                .send(::bytes::Bytes::copy_from_slice(slice))
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+    };
+    let work = fetch(req, cap);
+    tokio::pin!(work);
+    tokio::select! {
+        done = &mut work => done,
+        () = feed => work.await,
+    }
+}
+
+/// The request body of [`fetch_with`]: the slices as they are sent. A tokio channel hands over every
+/// slice it holds before it reports its end, so the last one is never lost to the sender's drop.
+struct Slices(tokio::sync::mpsc::Receiver<::bytes::Bytes>);
+
+impl http_body::Body for Slices {
+    type Data = ::bytes::Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        self.0
+            .poll_recv(cx)
+            .map(|slice| slice.map(|s| Ok(http_body::Frame::data(s))))
     }
 }
 
@@ -267,20 +342,42 @@ fn transport(e: reqwest::Error) -> EngineError {
     }
 }
 
+/// native-machines-client.cjs `unavailable()`: what core throws when the machine store cannot be read
+/// (503: a passing failure, so the document is read again later).
+fn machines_error() -> EngineError {
+    EngineError {
+        status: Some(503),
+        ..EngineError::new(server_projects::extract::MACHINES_UNAVAILABLE)
+    }
+}
+
 /// inference-machines.cjs `urlFor(service)` from the saved state.
-fn machine_url(data_dir: &Path, kind: &str) -> Option<String> {
-    let store = server_store::Store::open(data_dir).ok()?;
+/// `Ok(None)`: nothing assigned (or no `cowork.db` yet); `Err`: the store cannot be read.
+fn machine_url(data_dir: &Path, kind: &str) -> Result<Option<String>, ()> {
+    match std::fs::metadata(data_dir.join(server_store::DB_FILE)) {
+        Ok(m) if m.is_file() => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        // A store that cannot be looked at is unreadable (the native registry core asks fails closed too).
+        _ => return Err(()),
+    }
+    let store = server_store::Store::open(data_dir).map_err(|_| ())?;
     let raw: Option<String> = store
         .read(|r| {
             r.row(
-                "SELECT value FROM settings WHERE key='inference:machines'",
+                // As the registry core asks reads it (machine_service.rs read_row): a value stored
+                // as another type is its text, not an unreadable store.
+                "SELECT CAST(value AS TEXT) FROM settings WHERE key='inference:machines'",
                 [],
                 |row| row.get(0),
             )
         })
-        .ok()
-        .flatten();
-    let state = wtf16::parse(&raw?).ok()?;
+        .map_err(|_| ())?;
+    Ok(raw.and_then(|raw| assigned_url(&raw, kind)))
+}
+
+/// The saved state's address for `kind`, if one is assigned.
+fn assigned_url(raw: &str, kind: &str) -> Option<String> {
+    let state = wtf16::parse(raw).ok()?;
     if state.get("version").as_num() != Some(1.0) {
         return None;
     }
@@ -379,8 +476,12 @@ fn header_safe_name(name: &str) -> reqwest::header::HeaderValue {
 }
 
 impl Engine for HttpEngine {
+    fn machines_unavailable(&self) -> bool {
+        self.route("documents").is_err()
+    }
+
     fn docling_configured(&self) -> bool {
-        self.resolve("documents").is_some()
+        self.configured("documents")
     }
 
     fn docling(
@@ -390,7 +491,7 @@ impl Engine for HttpEngine {
         figures: bool,
         pages: Option<(u32, u32)>,
     ) -> Result<JValue, EngineError> {
-        let Some((url, machine)) = self.resolve("documents") else {
+        let Some((url, machine)) = self.route("documents").map_err(|()| machines_error())? else {
             return Err(EngineError::new(server_projects::extract::NOT_CONFIGURED));
         };
         let range = pages.filter(|(a, b)| *a >= 1 && b >= a && b - a < 200);
@@ -403,8 +504,7 @@ impl Engine for HttpEngine {
             .post(format!("{}/extract", url.trim_end_matches('/')))
             .header("Content-Type", "application/octet-stream")
             .header("X-Document-Name", header_safe_name(&document_name(name)))
-            .timeout(Duration::from_millis(timeout))
-            .body(bytes.to_vec());
+            .timeout(Duration::from_millis(timeout));
         if figures {
             req = req.header("X-Document-Figures", "1");
         }
@@ -412,7 +512,8 @@ impl Engine for HttpEngine {
             req = req.header("X-Document-Pages", format!("{a}-{b}"));
         }
         let invalid = || EngineError::new("Invalid extraction response; refresh to retry.");
-        let (status, body) = self.send_watched(&url, machine, req, DOCLING_REPLY_CAP)?;
+        let (status, body) =
+            self.send_watched(&url, machine, req, DOCLING_REPLY_CAP, Some(bytes))?;
         match status {
             200..=299 => {}
             503 => {
@@ -498,12 +599,12 @@ impl Engine for HttpEngine {
     }
 
     fn ocr_configured(&self) -> bool {
-        self.resolve("ocr").is_some()
+        self.configured("ocr")
     }
 
     /// docx.cjs `extract(bytes)`: the OCR worker's `/extract-docx` (60 s, a 2 MiB reply).
     fn extract_docx(&self, bytes: &[u8]) -> Result<JValue, EngineError> {
-        let Some((url, machine)) = self.resolve("ocr") else {
+        let Some((url, machine)) = self.route("ocr").map_err(|()| machines_error())? else {
             return Err(EngineError::new(
                 "DOCX reader is unavailable. Re-upload after the document worker is configured.",
             ));
@@ -515,9 +616,8 @@ impl Engine for HttpEngine {
                 "Content-Type",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             )
-            .timeout(Duration::from_secs(60))
-            .body(bytes.to_vec());
-        let (status, body) = self.send(&url, machine, req, 2 * 1024 * 1024)?;
+            .timeout(Duration::from_secs(60));
+        let (status, body) = self.send(&url, machine, req, 2 * 1024 * 1024, Some(bytes))?;
         if !(200..300).contains(&status) {
             return Err(EngineError::new(if status == 503 {
                 "Document reader is busy. Re-upload or refresh connected storage to retry."
@@ -532,31 +632,36 @@ impl Engine for HttpEngine {
 
     /// pdf-reduce.cjs: the OCR worker's `/reduce-pdf` (180 s); `None` without an OCR worker.
     fn reduce_pdf(&self, bytes: &[u8]) -> Option<Result<JValue, EngineError>> {
-        let (url, machine) = self.resolve("ocr")?;
+        // core's pdf-reduce.cjs: the machine store unreadable is its 503, not "no OCR worker".
+        let (url, machine) = match self.route("ocr") {
+            Err(()) => return Some(Err(machines_error())),
+            Ok(found) => found?,
+        };
         // The largest honest answer is a base64 PDF at 25 MiB plus a small JSON envelope.
         let cap = (25 * 1024 * 1024usize).div_ceil(3) * 4 + 64 * 1024;
         let req = self
             .client
             .post(format!("{}/reduce-pdf", url.trim_end_matches('/')))
             .header("Content-Type", "application/pdf")
-            .timeout(Duration::from_secs(180))
-            .body(bytes.to_vec());
-        Some(match self.send_watched(&url, machine, req, cap) {
-            Err(e) => Err(e),
-            Ok((status, _)) if !(200..300).contains(&status) => Err(EngineError {
-                message: format!("storage returned {status}"),
-                status: Some(status),
-                ..Default::default()
-            }),
-            Ok((_, None)) => Err(EngineError {
-                message: "Document processor response was too large.".into(),
-                status: Some(502),
-                permanent: true,
-                ..Default::default()
-            }),
-            Ok((_, Some(body))) => wtf16::parse(&String::from_utf8_lossy(&body))
-                .map_err(|_| EngineError::new("Invalid PDF reduction response")),
-        })
+            .timeout(Duration::from_secs(180));
+        Some(
+            match self.send_watched(&url, machine, req, cap, Some(bytes)) {
+                Err(e) => Err(e),
+                Ok((status, _)) if !(200..300).contains(&status) => Err(EngineError {
+                    message: format!("storage returned {status}"),
+                    status: Some(status),
+                    ..Default::default()
+                }),
+                Ok((_, None)) => Err(EngineError {
+                    message: "Document processor response was too large.".into(),
+                    status: Some(502),
+                    permanent: true,
+                    ..Default::default()
+                }),
+                Ok((_, Some(body))) => wtf16::parse(&String::from_utf8_lossy(&body))
+                    .map_err(|_| EngineError::new("Invalid PDF reduction response")),
+            },
+        )
     }
 
     fn ocr_pages(
@@ -566,7 +671,7 @@ impl Engine for HttpEngine {
         dpi: Option<u32>,
         timeout_ms: Option<u64>,
     ) -> Result<Vec<JValue>, EngineError> {
-        let Some((url, machine)) = self.resolve("ocr") else {
+        let Some((url, machine)) = self.route("ocr").map_err(|()| machines_error())? else {
             return Ok(Vec::new());
         };
         let list: Vec<String> = pages.iter().take(50).map(u32::to_string).collect();
@@ -579,12 +684,11 @@ impl Engine for HttpEngine {
             .post(format!("{}/extract", url.trim_end_matches('/')))
             .header("Content-Type", "application/pdf")
             .header("X-OCR-Pages", format!("[{}]", list.join(",")))
-            .timeout(Duration::from_millis(timeout))
-            .body(bytes.to_vec());
+            .timeout(Duration::from_millis(timeout));
         if dpi == Some(400) {
             req = req.header("X-OCR-DPI", "400");
         }
-        let (status, body) = self.send_watched(&url, machine, req, OCR_REPLY_CAP)?;
+        let (status, body) = self.send_watched(&url, machine, req, OCR_REPLY_CAP, Some(bytes))?;
         if !(200..300).contains(&status) {
             return Err(EngineError {
                 message: if status == 503 {
@@ -682,6 +786,11 @@ fn now_ms() -> i64 {
 /// One pass over every user's queue: the due jobs run, one user after another (one extraction at a
 /// time in this process, as one Docling slot serves them all).
 pub fn pass(data_dir: &Path, engine: &dyn Engine, switch: server_store::RustProjects) -> usize {
+    // The machine store unreadable: core reads nothing then; the jobs wait as they are, with no attempt
+    // counted, so their backoff does not grow (noevia#2614).
+    if engine.machines_unavailable() {
+        return 0;
+    }
     let limits = Limits::from_env();
     let mut ran = 0;
     for user in server_projects::extract_queue::users_with_jobs(data_dir) {
@@ -766,7 +875,7 @@ mod tests {
             .unwrap()
             .with_background_control(control.clone());
         let pending = tokio::task::spawn_blocking(move || {
-            engine.send_watched(&url, false, engine.client.post(&url), 1024)
+            engine.send_watched(&url, false, engine.client.post(&url), 1024, None)
         });
         tokio::time::timeout(Duration::from_secs(2), received)
             .await

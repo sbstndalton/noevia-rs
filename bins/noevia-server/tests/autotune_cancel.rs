@@ -11,6 +11,15 @@ use support::*;
 const PATH: &str = "/api/models/autotune/cancel";
 const FACTS: &str = "/internal/autotune-cancel/facts";
 const ABORT: &str = "/internal/autotune-cancel/abort";
+const INVALIDATE: &str = "/internal/auto-roles/invalidate";
+const SCAN_CLEAR: &str = "/internal/model-manager-scan/clear";
+/// What the route asked the actor (Core's model-read invalidation and scan clear left out).
+fn actor(up: &Upstream) -> Vec<Seen> {
+    up.seen()
+        .into_iter()
+        .filter(|r| r.path != INVALIDATE && r.path != SCAN_CLEAR)
+        .collect()
+}
 fn job() -> Value {
     // The complete oracle includes a lone-surrogate case: read it losslessly, then select the
     // ordinary synthetic job before converting that one case to serde_json for the HTTP stub.
@@ -64,7 +73,7 @@ async fn native_public_response_and_the_only_abort_selector_is_the_checked_opaqu
     .await;
     assert_eq!(s, 202, "{v}");
     assert_eq!(v, job());
-    let seen = up.seen();
+    let seen = actor(&up);
     assert_eq!(seen.len(), 2);
     assert_eq!(seen[0].path, FACTS);
     assert_eq!(j(&seen[0].body), json!({}));
@@ -98,7 +107,7 @@ async fn auth_account_role_and_csrf_precede_every_actor_call() {
     assert_eq!(write(f.addr, "POST", PATH, MEMBER, "").await.0, 403);
     assert_eq!(get(f.addr, PATH, MEMBER).await.0, 403);
     assert_eq!(raw(f.addr, "POST", PATH, ADMIN, "", b"").await.0, 403);
-    assert!(up.seen().is_empty());
+    assert!(actor(&up).is_empty());
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn availability_and_method_precedence_then_no_running_job_policy() {
@@ -232,4 +241,32 @@ async fn selected_response_omits_private_actor_fields_and_round_trips_wtf16_with
     assert!(body.contains(r#"m\ud800"#));
     assert!(!body.contains("never-public"));
     assert!(noevia_server::FEATURES.contains(&"rust-autotune-cancel"));
+}
+
+/// #2618, core routes/models.cjs at cc74c6f3 (lines 196-202 and 244): every request Core served
+/// under /api/models/ but a GET or HEAD invalidated its shared model reads first (a member's
+/// too), then, past the administrator check, cleared its cached folder scan (not for OPTIONS);
+/// a signed-out or CSRF-refused request never reached it. Both come before the actor is asked.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn writes_drop_cores_model_reads_then_past_the_admin_check_its_scan() {
+    let (_d, f, up) = rig().await;
+    let calls = || (up.count(INVALIDATE), up.count(SCAN_CLEAR));
+    assert_eq!(write(f.addr, "POST", PATH, "", "{}").await.0, 401);
+    assert_eq!(raw(f.addr, "POST", PATH, ADMIN, "", b"{}").await.0, 403);
+    assert_eq!(calls(), (0, 0));
+    assert_eq!(get(f.addr, PATH, MEMBER).await.0, 403);
+    assert_eq!(calls(), (0, 0));
+    assert_eq!(write(f.addr, "POST", PATH, MEMBER, "{}").await.0, 403);
+    assert_eq!(calls(), (1, 0));
+    assert_eq!(get(f.addr, PATH, ADMIN).await.0, 405);
+    assert_eq!(calls(), (1, 0));
+    assert_eq!(write(f.addr, "OPTIONS", PATH, ADMIN, "").await.0, 405);
+    assert_eq!(calls(), (2, 0));
+    assert_eq!(write(f.addr, "PUT", PATH, ADMIN, "").await.0, 405);
+    assert_eq!(calls(), (3, 1));
+    let before = up.seen().len();
+    assert_eq!(write(f.addr, "POST", PATH, ADMIN, "").await.0, 202);
+    assert_eq!(calls(), (4, 2));
+    let paths: Vec<String> = up.seen()[before..].iter().map(|r| r.path.clone()).collect();
+    assert_eq!(&paths[..3], [INVALIDATE, SCAN_CLEAR, FACTS], "{paths:?}");
 }

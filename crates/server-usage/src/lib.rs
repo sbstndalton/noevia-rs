@@ -1,4 +1,5 @@
-//! Native read-only usage reporting (M6). Node remains the recording owner.
+//! Native usage reporting (M6) and, since track R12, the recording (`write`, used by the front only
+//! with NOEVIA_RUST_USAGE_WRITES=1; otherwise Node remains the recording owner).
 //! Inputs are synthetic in tests; production paths come only from validated identities.
 pub const FILE_CAP: u64 = 2 * 1024 * 1024;
 pub const ACCOUNT_CAP: usize = 1000;
@@ -16,5 +17,6 @@ pub enum Fault {
     Database,
 }
 pub mod read;
+pub mod write;
 
 pub mod input;
