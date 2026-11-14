@@ -129,7 +129,10 @@ pub trait Machines: Send + Sync + 'static {
     fn connect_error(&self, target: &Target, error: Option<&Self::Error>) -> String;
 }
 
-pub type TargetFn = Arc<dyn Fn() -> Option<Target> + Send + Sync>;
+/// The Code task's machine now for the lease's owner (the account whose task opened it: Node's
+/// `autoRoles()` reads that request's context). It may block (a settings row, a roles file): the
+/// relay calls it on the blocking pool, never on the listener's tasks.
+pub type TargetFn = Arc<dyn Fn(&str) -> Option<Target> + Send + Sync>;
 pub type LogFn = Arc<dyn Fn(JValue) + Send + Sync>;
 
 /// `createEngineRelay`'s options.
@@ -175,6 +178,8 @@ fn refusal(code: &str, message: String) -> Refusal {
 
 struct Lease {
     task_id: String,
+    /// The account whose task opened the lease: every request is re-checked against its roles.
+    owner: String,
     target: Target,
     key: Option<String>,
     active: Mutex<usize>,
@@ -496,11 +501,18 @@ impl<M: Machines> Relay<M> {
         }
     }
 
-    fn current(&self) -> Option<Target> {
+    /// `target()` for `owner`, on the blocking pool (a panic or a lost task is "no target").
+    async fn current(&self, owner: &str) -> Option<Target> {
         let target = Arc::clone(&self.target);
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| target()))
-            .ok()
-            .flatten()
+        let owner = owner.to_string();
+        tokio::task::spawn_blocking(move || {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| target(&owner)))
+                .ok()
+                .flatten()
+        })
+        .await
+        .ok()
+        .flatten()
     }
 
     /// The relay's URL, or `None` (no relay, or a listener that could not bind).
@@ -530,7 +542,19 @@ impl<M: Machines> Relay<M> {
         model: Option<&str>,
         expect: Option<Option<&str>>,
     ) -> Result<Opened, Refusal> {
-        let Some(t) = self.current() else {
+        self.open_for("", task_id, model, expect).await
+    }
+
+    /// [`Relay::open`] for `owner`'s task: the lease keeps the owner, and each relayed request is
+    /// re-checked against the target as that owner sees it (two accounts' leases never share one).
+    pub async fn open_for(
+        &self,
+        owner: &str,
+        task_id: &str,
+        model: Option<&str>,
+        expect: Option<Option<&str>>,
+    ) -> Result<Opened, Refusal> {
+        let Some(t) = self.current(owner).await else {
             return Err(refusal(
                 "model_mismatch",
                 "The Code role moved back to this machine while the task was starting, and one task runs on one model. Start the task again.".into(),
@@ -584,6 +608,7 @@ impl<M: Machines> Relay<M> {
         let hashed = hash(&token);
         let lease = Arc::new(Lease {
             task_id: task_id.to_string(),
+            owner: owner.to_string(),
             target: t.clone(),
             key,
             active: Mutex::new(0),
@@ -678,7 +703,7 @@ impl<M: Machines> Relay<M> {
         let JValue::Obj(mut items) = payload else {
             return error_reply(400, "The request is not a JSON object.", None);
         };
-        let t = match self.current() {
+        let t = match or_cut!(self.current(&lease.owner)) {
             Some(t) if target_key(Some(&t)) == lease.key => t,
             _ => {
                 self.refused(&lease, Some("model_mismatch"));
@@ -799,7 +824,7 @@ mod tests {
         };
         let relay = Relay::new(Options::new(
             Arc::new(QaMachine),
-            Arc::new(move || Some(t.clone())),
+            Arc::new(move |_: &str| Some(t.clone())),
             Some("http://qa-relay.invalid:8095/v1".into()),
         ));
         let table = Arc::clone(&relay.table);

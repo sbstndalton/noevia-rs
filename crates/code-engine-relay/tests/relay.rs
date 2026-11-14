@@ -18,6 +18,7 @@ use code_engine_relay::{
 use js_json::{wtf16, JValue};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -138,7 +139,7 @@ fn rig_with(f: impl FnOnce(&mut Options<Fake>), fake: Fake) -> Rig {
     let l = Arc::clone(&logs);
     let mut o = Options::new(
         Arc::clone(&fake),
-        Arc::new(move || w.lock().unwrap().clone()),
+        Arc::new(move |_: &str| w.lock().unwrap().clone()),
         Some("http://egress:8095/v1".into()),
     );
     o.log = Arc::new(move |e| l.lock().unwrap().push(e));
@@ -964,4 +965,88 @@ async fn a_slow_head_is_dropped_and_connections_are_capped() {
     )
     .await;
     assert_eq!(over, "", "the connection over the limit got an answer");
+}
+
+/// noevia#2720 item 1: the target is read for the lease's own account. Two accounts' tasks at once
+/// never see each other's target: A's lease keeps relaying while B's roles put Code elsewhere, and
+/// B's lease is refused on B's view only.
+#[tokio::test]
+async fn each_lease_is_rechecked_for_its_own_account() {
+    let fake = Arc::new(Fake::default());
+    let other = Target {
+        machine_id: "qa-m2".into(),
+        machine_name: "QA machine 2".into(),
+        base_url: "http://qa-machine-2.invalid:8080".into(),
+        model: MODEL.into(),
+    };
+    let views: Arc<Mutex<HashMap<String, Target>>> = Arc::default();
+    views.lock().unwrap().insert("qa-a".into(), target());
+    views.lock().unwrap().insert("qa-b".into(), target());
+    let v = Arc::clone(&views);
+    let o = Options::new(
+        Arc::clone(&fake),
+        Arc::new(move |owner: &str| v.lock().unwrap().get(owner).cloned()),
+        Some("http://egress:8095/v1".into()),
+    );
+    let relay = Relay::new(o);
+    let a = relay.open_for("qa-a", "own-a", None, None).await.unwrap();
+    let b = relay.open_for("qa-b", "own-b", None, None).await.unwrap();
+    // B's roles move Code to another machine; A's do not.
+    views.lock().unwrap().insert("qa-b".into(), other);
+    let body = r#"{"messages":[]}"#;
+    let moved = error(
+        409,
+        "The Code role moved to another machine or model during this task; one task runs on one model.",
+        Some("model_mismatch"),
+    );
+    assert_eq!(
+        json(relay.handle(req("POST", CHAT, Some(&b.token), body)).await),
+        moved
+    );
+    // A's request is not refused by B's view (it reaches the machine: the fake's fetch answers).
+    let r = relay.handle(req("POST", CHAT, Some(&a.token), body)).await;
+    assert!(
+        matches!(&r, Reply::Stream(_)),
+        "A's lease was re-checked against B's roles: {r:?}"
+    );
+    drop(r);
+    // An account the target function does not know has no target: refused at open.
+    assert!(relay.open_for("qa-c", "own-c", None, None).await.is_err());
+    // The plain `open` is the empty owner.
+    assert!(relay.open("own-d", None, None).await.is_err());
+    a.close();
+    b.close();
+}
+
+/// noevia#2720 item 2: the target function may block (a settings row, a roles file) without
+/// stalling the listener: it runs on the blocking pool, so a current-thread runtime still makes
+/// progress on other work while it waits.
+#[tokio::test(flavor = "current_thread")]
+async fn the_target_function_runs_off_the_async_tasks() {
+    let fake = Arc::new(Fake::default());
+    let seen: Arc<Mutex<Option<std::thread::ThreadId>>> = Arc::default();
+    let s = Arc::clone(&seen);
+    let o = Options::new(
+        Arc::clone(&fake),
+        Arc::new(move |_: &str| {
+            *s.lock().unwrap() = Some(std::thread::current().id());
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            Some(target())
+        }),
+        Some("http://egress:8095/v1".into()),
+    );
+    let relay = Relay::new(o);
+    let ticks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let t = Arc::clone(&ticks);
+    let ticker = tokio::spawn(async move {
+        loop {
+            t.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            tokio::task::yield_now().await;
+        }
+    });
+    let lease = relay.open_for("qa-a", "blocking-1", None, None).await.unwrap();
+    ticker.abort();
+    assert_ne!(*seen.lock().unwrap(), Some(std::thread::current().id()));
+    assert!(ticks.load(std::sync::atomic::Ordering::SeqCst) > 0);
+    lease.close();
 }

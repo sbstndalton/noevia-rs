@@ -113,7 +113,7 @@ fn relay(port: u16) -> (Arc<FrontMachines>, Relay<FrontMachines>, Target) {
     let fixed = target.clone();
     let relay = Relay::new(Options::new(
         Arc::clone(&machines),
-        Arc::new(move || Some(fixed.clone())),
+        Arc::new(move |_: &str| Some(fixed.clone())),
         Some("http://egress:8095/v1".into()),
     ));
     (machines, relay, target)

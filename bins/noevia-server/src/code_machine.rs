@@ -599,12 +599,13 @@ impl Machines for FrontMachines {
 /// The front's relay.
 pub type FrontRelay = code_engine_relay::Relay<FrontMachines>;
 
-/// The relay's state in the front: the relay, and the account whose task last opened a lease (the
-/// per-request re-check reads its roles).
+/// The relay's state in the front: the relay and its machine client. Each lease keeps the account
+/// whose task opened it, and every relayed request re-reads the target for that account on the
+/// blocking pool (noevia#2720 items 1 and 2).
 pub struct RelayState {
     pub relay: Arc<FrontRelay>,
     pub machines: Arc<FrontMachines>,
-    user: Arc<Mutex<Option<String>>>,
+    app: std::sync::Weak<App>,
 }
 
 fn log_relay(entry: &JValue) {
@@ -614,6 +615,17 @@ fn log_relay(entry: &JValue) {
     );
 }
 
+/// The Code task's machine as `user` sees it now (`codeTargetFrom(chatMachines, autoRoles)`):
+/// the registry row and the account's roles file. Blocking (SQLite, a file).
+pub fn target_for(app: &App, user: &str) -> Option<CodeTarget> {
+    let roles = if user.is_empty() {
+        JValue::Null
+    } else {
+        account_roles(app, user)
+    };
+    code_target(registry_row(app).as_deref(), &roles)
+}
+
 /// Build the relay over the front's registry. `url` is the relay as the sandbox reaches it (`None`:
 /// no relay; a Machine Code start then refuses with `machineRelayOff`).
 pub fn relay_over(
@@ -621,16 +633,10 @@ pub fn relay_over(
     machines: Arc<FrontMachines>,
     url: Option<String>,
 ) -> RelayState {
-    let user: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let (who, m) = (Arc::clone(&user), Arc::clone(&machines));
-    let target: code_engine_relay::TargetFn = Arc::new(move || {
-        let app = app.upgrade()?;
-        let roles = who
-            .lock()
-            .ok()
-            .and_then(|u| u.clone())
-            .map_or(JValue::Null, |u| account_roles(&app, &u));
-        let t = code_target(registry_row(&app).as_deref(), &roles)?;
+    let (weak, m) = (app.clone(), Arc::clone(&machines));
+    let target: code_engine_relay::TargetFn = Arc::new(move |user: &str| {
+        let app = weak.upgrade()?;
+        let t = target_for(&app, user)?;
         m.remember(&t);
         Some(t.relay())
     });
@@ -639,7 +645,7 @@ pub fn relay_over(
     RelayState {
         relay: Arc::new(code_engine_relay::Relay::new(o)),
         machines,
-        user,
+        app,
     }
 }
 
@@ -651,10 +657,22 @@ impl RelayState {
         task_id: &str,
         model: Option<&str>,
     ) -> Result<code_engine_relay::Opened, code_engine_relay::Refusal> {
-        if let Ok(mut u) = self.user.lock() {
-            *u = Some(user.to_string());
-        }
-        self.relay.open(task_id, model, None).await
+        self.relay.open_for(user, task_id, model, None).await
+    }
+
+    /// The Code task's machine for `user` now, read on the blocking pool (`None`: this machine,
+    /// or the front is going away).
+    pub async fn target(&self, user: &str) -> Option<CodeTarget> {
+        let (app, user) = (self.app.clone(), user.to_string());
+        let m = Arc::clone(&self.machines);
+        tokio::task::spawn_blocking(move || {
+            let t = target_for(&app.upgrade()?, &user)?;
+            m.remember(&t);
+            Some(t)
+        })
+        .await
+        .ok()
+        .flatten()
     }
 }
 
