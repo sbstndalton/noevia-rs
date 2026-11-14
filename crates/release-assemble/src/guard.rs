@@ -891,3 +891,124 @@ pub fn read_file(path: &Path) -> Option<Vec<u8>> {
     }
     fs::read(path).ok()
 }
+
+/// `grep -qF NEEDLE FILE 2>/dev/null`: some line contains the needle (a needle without a newline); a missing
+/// or unreadable file is false.
+pub fn grep_fixed(path: &Path, needle: &str) -> bool {
+    match fs::read(path) {
+        Ok(b) => contains(&b, needle.as_bytes()),
+        Err(_) => false,
+    }
+}
+
+/// Which methods of a namespace's routes a pairing needs Rust to own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Methods {
+    /// No `switch` and no `methods` key: every method is Rust's.
+    All,
+    /// No `switch` and `methods` naming exactly `GET` (Node keeps every other method).
+    OnlyGet,
+}
+
+/// One namespace ownership pairing: Core's refusal module (found by a fixed string in
+/// `core/server/index.cjs`) and the front's FEATURES capability move together, and when they have moved,
+/// `rs/contracts/http/routes.toml` gives Rust exactly `paths` (each once) under `methods`.
+#[derive(Clone, Copy, Debug)]
+pub struct NamespacePairing<'a> {
+    /// The refusal prefix, e.g. `feature ownership pairing`.
+    pub label: &'a str,
+    pub core_marker: &'a str,
+    pub rs_feature: &'a str,
+    pub paths: &'a [&'a str],
+    pub methods: Methods,
+    /// The refusal when a route row breaks the rule (or routes.toml is refused).
+    pub rule_text: &'a str,
+    /// The refusal when the set of paths differs.
+    pub incomplete_text: &'a str,
+}
+
+/// The feature namespace (`assemble-release.sh`: "Feature authority moves as one three-namespace owner").
+pub const FEATURE_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "feature ownership pairing",
+    core_marker: ".createReadOnlyFeatures(",
+    rs_feature: "rust-feature-owner",
+    paths: &[
+        "/api/features",
+        "/api/admin/features",
+        "/api/admin/features/{name}",
+    ],
+    methods: Methods::All,
+    rule_text: "all methods must belong to Rust",
+    incomplete_text: "incomplete namespace ownership",
+};
+
+/// The two model reads (`rust-models.cjs` + the front's `rust-model-reads`): GET only.
+pub const MODEL_READ_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "model read ownership pairing",
+    core_marker: "require('./rust-models.cjs')",
+    rs_feature: "rust-model-reads",
+    paths: &["/api/models/capabilities", "/api/models/hardware"],
+    methods: Methods::OnlyGet,
+    rule_text: "exactly GET of both routes must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// Run one namespace pairing over an assembled tree (`web/`, `core/`, `rs/`, ...). `Err` holds the `die`
+/// text without the `assemble-release: ` prefix.
+pub fn namespace_pairing(tree: &Path, p: &NamespacePairing) -> Result<(), String> {
+    let core = grep_fixed(&tree.join("core/server/index.cjs"), p.core_marker);
+    let rs = move_capability(
+        read_file(&tree.join("rs/bins/noevia-server/src/lib.rs")).as_deref(),
+        "FEATURES",
+        p.rs_feature,
+        MoveKind::Features,
+    );
+    if core != rs {
+        return Err(format!("{}: Core and Rust must move together", p.label));
+    }
+    if !rs {
+        // Historic old/old pins remain valid rollback pairs.
+        return Ok(());
+    }
+    let contract = tree.join("rs/contracts/http/routes.toml");
+    if !contract.is_file() {
+        return Err(format!("{}: missing route contract", p.label));
+    }
+    let rule = || format!("{}: {}", p.label, p.rule_text);
+    let rt = routes_toml_file(&contract);
+    if rt.error.is_some() {
+        // set -o pipefail: a refused routes.toml fails the pipeline.
+        return Err(rule());
+    }
+    let mut got: Vec<Vec<u8>> = Vec::new();
+    for r in &rt.routes {
+        let [path, owner, switch, methods] = tab_fields(r);
+        if !p.paths.iter().any(|w| w.as_bytes() == path.as_slice()) {
+            continue;
+        }
+        if owner != b"rust" || switch != b"-" {
+            return Err(rule());
+        }
+        let ok = match p.methods {
+            Methods::All => methods == b"-",
+            Methods::OnlyGet => {
+                let runs: Vec<&[u8]> = methods
+                    .split(|c| !c.is_ascii_uppercase())
+                    .filter(|m| !m.is_empty())
+                    .collect();
+                runs.len() == 1 && runs.iter().all(|m| *m == b"GET")
+            }
+        };
+        if !ok {
+            return Err(rule());
+        }
+        got.push(path);
+    }
+    let mut want: Vec<Vec<u8>> = p.paths.iter().map(|s| s.as_bytes().to_vec()).collect();
+    got.sort();
+    want.sort();
+    if got != want {
+        return Err(format!("{}: {}", p.label, p.incomplete_text));
+    }
+    Ok(())
+}
