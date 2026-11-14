@@ -12,7 +12,7 @@ use std::time::Duration;
 use nix::sys::signal::{killpg, Signal};
 use nix::sys::wait::{waitid, Id, WaitPidFlag, WaitStatus};
 use nix::unistd::{getpgid, getsid, Pid};
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::process::{Child, Command};
@@ -256,10 +256,15 @@ async fn read_start(stream: &mut TcpStream) -> Result<(String, Vec<u8>), &'stati
     .map_err(|_| "start line timed out")?
 }
 
+/// One JSON-RPC error line, keys in the Node supervisor's order (`jsonrpc`, `id`, `error`):
+/// `json!` would sort them, which the Node differential (tests/node_parity.rs) caught.
+fn error_line(message: &str) -> String {
+    let message = serde_json::to_string(message).unwrap_or_else(|_| "\"\"".to_owned());
+    format!(r#"{{"jsonrpc":"2.0","id":null,"error":{{"code":-32000,"message":{message}}}}}"#) + "\n"
+}
+
 async fn refuse(stream: &mut TcpStream, message: &str) {
-    let line = json!({"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":message}})
-        .to_string()
-        + "\n";
+    let line = error_line(message);
     let _ = tokio::time::timeout(Duration::from_secs(1), stream.write_all(line.as_bytes())).await;
     let _ = stream.shutdown().await;
 }
@@ -633,10 +638,7 @@ async fn connection(
         }
     }
     if matches!(reason, Stop::Wall) {
-        let message = json!({"jsonrpc":"2.0","id":null,"error":{"code":-32000,
-            "message":"The agent ran past the sandbox time limit and was stopped."}})
-        .to_string()
-            + "\n";
+        let message = error_line("The agent ran past the sandbox time limit and was stopped.");
         if let Ok(mut sink) = tokio::time::timeout(Duration::from_millis(200), writer.lock()).await
         {
             let _ = tokio::time::timeout(
@@ -733,6 +735,19 @@ pub async fn serve(
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn error_lines_keep_the_node_key_order() {
+        // JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32000, message } }) + '\n'
+        assert_eq!(
+            error_line("start line too long"),
+            "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32000,\"message\":\"start line too long\"}}\n"
+        );
+        assert_eq!(
+            error_line("a\"b\\c\nd’"),
+            "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32000,\"message\":\"a\\\"b\\\\c\\nd’\"}}\n"
+        );
+    }
 
     #[test]
     fn parse_start_filters_environment_and_symlink_escape() {
