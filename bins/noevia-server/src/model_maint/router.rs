@@ -22,6 +22,14 @@ pub struct Reply {
     pub body: Option<Value>,
 }
 
+/// An answer with its bytes as they came: `bytes` is `None` when the response was too large to read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawReply {
+    pub ok: bool,
+    pub status: u16,
+    pub bytes: Option<Vec<u8>>,
+}
+
 /// A request that did not settle: the engine did not answer, answered after the timeout, or
 /// redirected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,6 +173,39 @@ impl Router {
                 }
             }
         }
+        let raw = self
+            .send_raw(method, path, body, hold, extra, timeout)
+            .await?;
+        let Some(bytes) = raw.bytes else {
+            return Ok(Reply {
+                ok: false,
+                status: raw.status,
+                body: None,
+            });
+        };
+        let (ok, status) = (raw.ok, raw.status);
+        let body = match serde_json::from_slice::<Value>(&bytes) {
+            Ok(v) => v,
+            Err(_) => Value::String(String::from_utf8_lossy(&bytes).into_owned()),
+        };
+        Ok(Reply {
+            ok,
+            status,
+            body: Some(body),
+        })
+    }
+
+    /// One request, its answer's bytes as they came (`bytes` is `None` over [`MAX_RESPONSE_BYTES`]):
+    /// for a caller that reads the body the way `JSON.parse` does (key order, number text).
+    pub async fn send_raw(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+        hold: Option<&str>,
+        extra: &[(HeaderName, HeaderValue)],
+        timeout: Duration,
+    ) -> Result<RawReply, Fault> {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         if let Some(a) = &self.authorization {
@@ -187,26 +228,21 @@ impl Router {
         let res = req.send().await.map_err(|_| Fault)?;
         let status = res.status().as_u16();
         let ok = res.status().is_success();
-        let bytes = match read_capped(res).await {
-            Ok(Some(b)) => b,
-            Ok(None) => {
-                return Ok(Reply {
-                    ok: false,
-                    status,
-                    body: None,
-                })
-            }
-            Err(()) => return Err(Fault),
-        };
-        let body = match serde_json::from_slice::<Value>(&bytes) {
-            Ok(v) => v,
-            Err(_) => Value::String(String::from_utf8_lossy(&bytes).into_owned()),
-        };
-        Ok(Reply {
-            ok,
-            status,
-            body: Some(body),
-        })
+        let bytes = read_capped(res).await.map_err(|()| Fault)?;
+        Ok(RawReply { ok, status, bytes })
+    }
+
+    /// `rawModels()` with the answer's bytes (see [`Router::send_raw`]).
+    pub async fn models_raw(&self, hold: Option<&str>) -> Result<RawReply, Fault> {
+        self.send_raw(
+            reqwest::Method::GET,
+            "/models",
+            None,
+            hold,
+            &[],
+            DEFAULT_TIMEOUT,
+        )
+        .await
     }
 
     pub async fn get(

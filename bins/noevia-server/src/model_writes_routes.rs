@@ -1,8 +1,9 @@
-//! Track R11: `PUT /api/models/inference-budget` and `PUT /api/models/idle-unload` answered by the
-//! front (crates/model-writes, recorded from core), behind `NOEVIA_RUST_MODEL_WRITES`, which is off
-//! by default: unset, both PUTs go to core exactly as before (their route rows list GET only). With
-//! `rust`, lib.rs hands them to the models routes and they are answered here; core, told the same
-//! switch, refuses its own PUTs (a direct request on its port cannot write beside the front).
+//! Track R11: `PUT /api/models/inference-budget`, `PUT /api/models/idle-unload` and `PUT
+//! /api/models/preset` answered by the front (crates/model-writes and model_maint preset.rs,
+//! recorded from core), behind `NOEVIA_RUST_MODEL_WRITES`, which is off by default: unset, the PUTs
+//! go to core exactly as before (their route rows list GET only). With `rust`, lib.rs hands them to
+//! the models routes and they are answered here; core, told the same switch, refuses its own PUTs
+//! (a direct request on its port cannot write beside the front).
 //!
 //! - The budget: the body read as core's `readJson`, the administrator check, the validation
 //!   against this host's `/proc/meminfo` (the front and core run in one container), then the
@@ -20,6 +21,12 @@
 //! auto-roles bridge (`/internal/auto-roles/invalidate`) right after the session check, as its own
 //! auto-roles write does.
 //!
+//! - The preset save: the administrator check, then (core `routes/models.cjs`) 404 without a
+//!   llama.cpp manager, the body read as core's `readJson` uncaught there (413 `Request exceeds size
+//!   limit` over 1 MiB, 400 `invalid JSON`, as index.cjs answers a thrown error), then the save
+//!   itself on its own task (model_maint preset.rs, whose module documentation names its
+//!   differences), so a client that leaves strands neither the work nor its hold.
+//!
 //! Named difference: a request body core's `JSON.parse` reads but the port cannot hold is passed to
 //! core unchanged (and so refused by it under the switch: 503).
 use crate::{identity, reply, App};
@@ -36,6 +43,7 @@ use std::time::Duration;
 pub const SWITCH: &str = "NOEVIA_RUST_MODEL_WRITES";
 pub const BUDGET: &str = "/api/models/inference-budget";
 pub const IDLE: &str = crate::idle_unload_read::PATH;
+pub const PRESET: &str = crate::preset_read_routes::PATH;
 /// fetchJson's answer cap (http.cjs `DEFAULT_MAX_RESPONSE_BYTES`).
 const MANAGER_ANSWER_CAP: usize = 8 * 1024 * 1024;
 
@@ -73,7 +81,7 @@ impl Settings {
 
     /// Whether the front answers this request (lib.rs's dispatch and the models routes ask).
     pub fn answers(&self, method: &Method, path: &str) -> bool {
-        self.on && method == Method::PUT && (path == BUDGET || path == IDLE)
+        self.on && method == Method::PUT && (path == BUDGET || path == IDLE || path == PRESET)
     }
 }
 
@@ -137,6 +145,12 @@ pub async fn serve(
             Duration::from_secs(2),
         )
         .await;
+    if path == PRESET {
+        if !admin {
+            return answer(403, &model_writes::body::administrator_required());
+        }
+        return preset(app, conn, parts, body).await;
+    }
     // readBody's limit, one byte over to tell "too large" apart.
     let bytes = axum::body::to_bytes(body, model_writes::body::LIMIT + 1)
         .await
@@ -222,6 +236,62 @@ pub async fn serve(
                 JValue::from("Could not change the idle unload time"),
             )]),
         ),
+    }
+}
+
+fn preset_answer(a: &crate::model_maint::preset::Answer) -> Response<Body> {
+    reply::json_text(
+        StatusCode::from_u16(a.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        a.body.clone(),
+        true,
+    )
+}
+
+/// `PUT /api/models/preset` for an administrator (routes/models.cjs, after the write prelude).
+async fn preset(
+    app: &Arc<App>,
+    conn: crate::serve::Conn,
+    parts: axum::http::request::Parts,
+    body: Body,
+) -> Response<Body> {
+    use crate::model_maint::preset::{thrown, Answer};
+    if app.config.maint.kind != server_stats::Kind::LlamaCpp {
+        return answer(
+            404,
+            &JValue::obj([("error", JValue::from("Native presets are unavailable"))]),
+        );
+    }
+    // readJson, uncaught here: http.cjs readBody's 413 and readJson's 400 as index.cjs answers them.
+    let bytes = match axum::body::to_bytes(body, model_writes::body::LIMIT + 1).await {
+        Ok(b) if b.len() <= model_writes::body::LIMIT => b,
+        _ => return preset_answer(&thrown(Some(413), "Request exceeds size limit")),
+    };
+    let request = match model_writes::body::read_json(Some(&bytes)) {
+        model_writes::body::Read::Value(v) => v,
+        model_writes::body::Read::Invalid => {
+            return preset_answer(&thrown(Some(400), "invalid JSON"))
+        }
+        model_writes::body::Read::Unsupported => {
+            let req = Request::from_parts(parts, Body::from(bytes));
+            return app.proxy.forward(conn.peer, req).await;
+        }
+    };
+    let app = Arc::clone(app);
+    let work = tokio::spawn(async move {
+        let maint = Arc::clone(&app.config.maint);
+        maint
+            .apply_preset(&request, || async {
+                crate::model_state_routes::sizing_budget(&app).await
+            })
+            .await
+    });
+    match work.await {
+        Ok(a) => preset_answer(&a),
+        // A panic in the work (its hold given back as it drops): core's answer to a throw.
+        Err(_) => preset_answer(&Answer {
+            status: 500,
+            body: r#"{"error":"Internal error"}"#.into(),
+        }),
     }
 }
 
@@ -407,7 +477,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_switch_is_off_unless_named_and_covers_two_puts() {
+    fn the_switch_is_off_unless_named_and_covers_three_puts() {
         let settings = |v: Option<&str>| {
             let v = v.map(str::to_string);
             Settings::from_lookup(&move |k: &str| (k == SWITCH).then(|| v.clone()).flatten())
@@ -420,7 +490,11 @@ mod tests {
         assert!(on.answers(&Method::PUT, IDLE));
         assert!(!on.answers(&Method::GET, BUDGET));
         assert!(!on.answers(&Method::POST, IDLE));
-        assert!(!on.answers(&Method::PUT, "/api/models/preset"));
+        assert!(on.answers(&Method::PUT, PRESET));
+        assert!(!settings(None).answers(&Method::PUT, PRESET));
+        assert!(!on.answers(&Method::GET, PRESET));
+        assert!(!on.answers(&Method::PUT, "/api/models/preset/"));
+        assert!(!on.answers(&Method::PUT, "/api/models/preset/suggest"));
     }
 
     #[test]
