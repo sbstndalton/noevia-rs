@@ -988,6 +988,22 @@ async fn handle(
             native = Some(routes::Native::Models);
         }
     }
+    // #2550: unless the native runner runs here, the auto-tune start's POST is Node's, unparsed
+    // (the legacy proxy, as before #2516), so no spelling of its path meets the front's checks.
+    if native == Some(routes::Native::Models)
+        && [Some(path.as_str()), whatwg.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|p| {
+                autotune_read_routes::start_is_nodes(
+                    req.method().as_str(),
+                    p,
+                    app.config.autotune.is_some(),
+                )
+            })
+    {
+        native = None;
+    }
     // Track R12: with NOEVIA_RUST_SETTINGS_ROUTES=1 the front answers PUT /api/routing-default
     // (routing_default_routes.rs) and GET /api/reasoning-settings (reasoning_settings_routes.rs);
     // unset, both stay Node's, as the routes file says.

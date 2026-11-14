@@ -22,6 +22,7 @@
 //! session, a legacy Node still writes the file itself (shared mode); the file is re-read on every
 //! use, never cached, so its writes are seen either way.
 
+use super::calibration::PRESET_STEP;
 use super::router::{rows, Router};
 use super::{Hold, HoldError, Maint};
 use js_json::{wtf16, JValue};
@@ -49,8 +50,6 @@ const NEEDS_TOKEN: &str = "An inference gate fronts the engine and INFERENCE_GAT
 /// `POST /models/unload` and `GET /models?reload=1`, as the router client bounds them, plus the rest.
 const UNLOAD_LIMIT: Duration = Duration::from_secs(60);
 const RELOAD_LIMIT: Duration = Duration::from_secs(120);
-/// llamacpp-manager.cjs `PRESET_STEP_MS`: the lease a models.ini write needs left.
-const PRESET_STEP: Duration = Duration::from_millis(150_000);
 const PRESETS_BUSY: &str = "Models are busy, so nothing was changed. Try again shortly.";
 const OTHER_STEPS: Duration = Duration::from_secs(60);
 
