@@ -820,16 +820,20 @@ async fn dropping_the_reply_closes_the_backend_connection() {
         client: client().unwrap(),
     };
     let cache = Mutex::new(SessionCache::default());
-    let answer = fetch_for(
-        &mut wire,
-        &cache,
-        &transport,
-        "qa-user",
-        Some("chat-1"),
-        "http://x/v1/chat/completions",
-        QA_BODY,
+    let answer = tokio::time::timeout(
+        DEADLINE,
+        fetch_for(
+            &mut wire,
+            &cache,
+            &transport,
+            "qa-user",
+            Some("chat-1"),
+            "http://x/v1/chat/completions",
+            QA_BODY,
+        ),
     )
-    .await;
+    .await
+    .unwrap();
     let res = into_response(answer).unwrap();
     assert_eq!(res.status(), 200);
     let mut body = res.into_body();

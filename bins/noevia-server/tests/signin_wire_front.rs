@@ -2,6 +2,7 @@
 //! seeded data directory), the broker's change signal, and a synthetic backend on 127.0.0.1 (the
 //! loopback QA override). No real account, token or credential. Nothing in the shipped front calls
 //! src/signin_wire.rs yet; this pins what it does once a caller exists.
+#![cfg(feature = "rust-chatgpt-status")]
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
