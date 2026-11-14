@@ -42,6 +42,19 @@
 //! - `meta-error-at-cap`: a revision reply whose stream fails right after exactly 4 MiB is read by
 //!   Node as complete (its look past the cap swallows the error); the host reports the failure
 //!   ([`artifact::Fetched::body`] is `Err` before `max_bytes`), and the reason is its message.
+//!
+//! # Kept as core does (recorded; worth a look upstream)
+//!
+//! - The artifact check runs for any signed-in user (a GET passes the models prelude), and each one
+//!   may fetch up to four 16 MiB prefixes from Hugging Face; only two run at once.
+//! - The variants request (llama.cpp) refuses redirects while the artifact check follows them.
+//! - A llama.cpp pull whose request throws (no answer, the deadline) leaves the download tracker at
+//!   `requested`: only a refused answer marks it `rejected`.
+//! - Refreshing an expired cache entry still drops the oldest entry when 100 are kept, and expired
+//!   entries are never purged otherwise.
+//! - A revision `sha` that is an array of one hex string passes (`String([sha])`), and is echoed
+//!   as an array; `?variant` absent matches a variant named `null`.
+//! - The `Content-Range` test reads the header as `Headers` normalizes it (outer white space dropped).
 
 pub mod artifact;
 pub mod gguf;

@@ -293,7 +293,13 @@ fn prefix(url: String, host: &mut impl Fetcher) -> Result<Vec<u8>, String> {
     }
     if fetched.status == 206
         && !js::starts_with_ci(
-            fetched.content_range.as_deref().unwrap_or("").as_bytes(),
+            fetched
+                .content_range
+                .as_deref()
+                .unwrap_or("")
+                // `Headers` normalizes a value: leading and trailing HTTP white space is dropped.
+                .trim_matches([' ', '\t', '\r', '\n'])
+                .as_bytes(),
             "bytes 0-",
         )
     {

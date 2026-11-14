@@ -476,7 +476,7 @@ fn compare_mtp(
     body: &JValue,
     hf: &JValue,
     seen: &mut BTreeMap<&'static str, usize>,
-) {
+) -> bool {
     let node_body = node.get("body");
     assert_eq!(
         status.map_or(JValue::Undefined, |s| JValue::Num(f64::from(s))),
@@ -484,8 +484,9 @@ fn compare_mtp(
         "{}",
         show(node)
     );
-    if node_body == body {
-        return;
+    // Compared as sent: `[undefined]` is written `[null]`, as JSON.stringify writes it.
+    if wtf16::stringify(node_body) == wtf16::stringify(body) {
+        return false;
     }
     let reason = body.get("reason").as_str().unwrap_or("");
     let meta = hf
@@ -511,10 +512,12 @@ fn compare_mtp(
         assert!(wtf16::parse(&text).is_err(), "{}", show(node));
         same_but(&[]);
         *seen.entry("meta-not-json").or_default() += 1;
+        true
     } else if reason == artifact::META_NOT_JSON {
         assert!(text.contains("1e400"), "{}", show(node));
         same_but(&["status"]);
         *seen.entry("meta-unsupported").or_default() += 1;
+        true
     } else if reason == "terminated" && node_body.get("status").as_str() != Some("unknown") {
         assert_eq!(
             from_parts(meta.get("parts")).len(),
@@ -525,6 +528,7 @@ fn compare_mtp(
         assert!(meta.get("error").as_str().is_some());
         same_but(&["status"]);
         *seen.entry("meta-error-at-cap").or_default() += 1;
+        true
     } else {
         panic!("{}\n!= {}", show(body), show(node));
     }
@@ -541,6 +545,7 @@ fn the_mtp_artifact_check_matches_node() {
             let now = step.get("at").as_num().unwrap() as i64;
             let hf = step.get("hf");
             let mut fetches = Vec::new();
+            let mut differs = false;
             if step.get("wave").as_bool() == Some(true) {
                 // At once: every request reaches the check before any fetch answers.
                 enum Pending {
@@ -587,7 +592,7 @@ fn the_mtp_artifact_check_matches_node() {
                             answers.iter().find(|(k, _)| *k == key).unwrap().1.clone(),
                         ),
                     };
-                    compare_mtp(r, Some(status), &body, hf, &mut seen);
+                    differs |= compare_mtp(r, Some(status), &body, hf, &mut seen);
                     assert_eq!(
                         JValue::Arr(host.calls.clone()),
                         *r.get("calls"),
@@ -611,7 +616,7 @@ fn the_mtp_artifact_check_matches_node() {
                     };
                     let out = handle(&config, &mut artifacts, call, &mut host);
                     let (status, body) = outcome_parts(&out);
-                    compare_mtp(r, status, &body, hf, &mut seen);
+                    differs |= compare_mtp(r, status, &body, hf, &mut seen);
                     assert_eq!(
                         host.invalidated,
                         r.get("invalidated").as_num().unwrap_or(0.0)
@@ -628,6 +633,12 @@ fn the_mtp_artifact_check_matches_node() {
                     }
                     requests += 1;
                 }
+            }
+            if differs {
+                // A named difference stops the port earlier: its fetches are the first of Node's.
+                let node = items(step.get("fetches"));
+                assert!(fetches.len() <= node.len() && fetches[..] == node[..fetches.len()]);
+                continue;
             }
             assert_eq!(
                 JValue::Arr(fetches),
