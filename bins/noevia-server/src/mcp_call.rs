@@ -182,6 +182,18 @@ pub trait Backend: Send + Sync {
     ) -> Option<String>;
     /// Whether a directory server's address is still a public host.
     fn url_public(&self, url: &str) -> impl Future<Output = bool> + Send;
+    /// Track R13: the in-app server's result answered by this front for `name` (the token's
+    /// `uid`/`pid`), or `None` for a call to the server as before (project_file_read.rs
+    /// `inapp_answer`, behind NOEVIA_RUST_INAPP_READS).
+    fn inapp_read(
+        &self,
+        _uid: &str,
+        _pid: Option<&str>,
+        _name: &str,
+        _arguments: &JValue,
+    ) -> impl Future<Output = Option<JValue>> + Send {
+        std::future::ready(None)
+    }
     /// One round: connect, call, close.
     fn call(
         &self,
@@ -297,6 +309,8 @@ pub async fn execute<B: Backend>(b: &B, limits: &Mutex<RateLimit>, req: &Request
     }
     let user = req.user.as_str();
     let mut session: Option<Session> = None;
+    // The in-process server's call identity (the token's uid and pid), for the front's own answer.
+    let mut inapp: Option<(String, Option<String>)> = None;
     let headers: Vec<(String, String)> = match server.auth.as_str() {
         "personal" => {
             let needs = || {
@@ -356,6 +370,7 @@ pub async fn execute<B: Backend>(b: &B, limits: &Mutex<RateLimit>, req: &Request
                 .filter(|t| req.write && !t.is_empty());
             let uid = Some(workspace).filter(|u| !u.is_empty());
             let pid = req.project.as_deref().filter(|p| !p.is_empty());
+            inapp = uid.map(|u| (u.to_string(), pid.map(str::to_string)));
             match b.internal_token(uid, pid, req.write, target) {
                 Some(token) => bearer(&token),
                 None => return Answer::plain(format!("ERROR calling {name}: {UNAVAILABLE}")),
@@ -385,7 +400,17 @@ pub async fn execute<B: Backend>(b: &B, limits: &Mutex<RateLimit>, req: &Request
     if cooling > 0.0 {
         return Answer::plain(tool_rate_limit::cooling_down_text(name, cooling));
     }
-    let mut outcome = b.call(&server, &headers, name, &req.arguments).await;
+    let native = match &inapp {
+        Some((uid, pid)) => {
+            b.inapp_read(uid, pid.as_deref(), name, &req.arguments)
+                .await
+        }
+        None => None,
+    };
+    let mut outcome = match native {
+        Some(result) => Ok(result),
+        None => b.call(&server, &headers, name, &req.arguments).await,
+    };
     // A server that refuses the token it was just given: ask the broker for one past it and try once more.
     if let (Err(first), Some(old)) = (&outcome, &session) {
         if first.http_status == Some(401) {
@@ -530,6 +555,38 @@ struct AppBackend {
 impl Backend for AppBackend {
     fn now_ms(&self) -> f64 {
         crate::identity::now_ms() as f64
+    }
+
+    async fn inapp_read(
+        &self,
+        uid: &str,
+        pid: Option<&str>,
+        name: &str,
+        arguments: &JValue,
+    ) -> Option<JValue> {
+        if !crate::project_file_read::inapp_enabled() {
+            return None;
+        }
+        let data = self.app.config.data_dir.clone()?;
+        let (uid, pid, name, arguments) = (
+            uid.to_string(),
+            pid.map(str::to_string),
+            name.to_string(),
+            arguments.clone(),
+        );
+        tokio::task::spawn_blocking(move || {
+            crate::project_file_read::inapp_answer(
+                &data,
+                &uid,
+                pid.as_deref(),
+                &name,
+                &arguments,
+                |u| crate::project_file_read::account_active(&data, u),
+            )
+        })
+        .await
+        .ok()
+        .flatten()
     }
 
     async fn servers(&self) -> Vec<ServerSpec> {
