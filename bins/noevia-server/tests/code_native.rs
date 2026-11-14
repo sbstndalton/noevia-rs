@@ -1698,3 +1698,102 @@ async fn a_planner_start_on_a_machine_plans_on_that_machine() {
     })
     .await;
 }
+
+/// A synthetic inference machine serving `qa-code` that answers the role engine's three roles as
+/// core's recording did (`standins.answers`), and keeps which role it was asked, in order.
+async fn qa_role_machine() -> (SocketAddr, Seen, Arc<Mutex<Vec<&'static str>>>) {
+    let answers = fixture(PIPELINE)["standins"]["answers"].clone();
+    let (seen, roles): (Seen, Arc<Mutex<Vec<&'static str>>>) = (Arc::default(), Arc::default());
+    let asked = Arc::clone(&roles);
+    let handler: Handler = Arc::new(move |_method, path, body| match path.split('?').next() {
+        Some("/health") => (200, "application/json", "{}".into()),
+        Some("/v1/models") => (200, "application/json", r#"{"data":[{"id":"qa-code"}]}"#.into()),
+        Some("/props") => (200, "application/json", r#"{"default_generation_settings":{"n_ctx":16384}}"#.into()),
+        Some("/v1/chat/completions") => {
+            let text = body.to_string();
+            let role = if text.contains("You are the Auditor.") {
+                "auditor"
+            } else if text.contains("reviewing a finished code change") {
+                "reviewer"
+            } else if text.contains("Write a bounded execution plan") {
+                "planner"
+            } else {
+                return (404, "application/json", "{}".into());
+            };
+            asked.lock().unwrap().push(role);
+            (200, "text/event-stream", sse(&answers[role]))
+        }
+        _ => (404, "application/json", "{}".into()),
+    });
+    (stub(Arc::clone(&seen), handler).await, seen, roles)
+}
+
+/// Council p9 (p6-3 CONTINUE 3): a Planner pipeline start whose Code role is on an inference
+/// machine runs the whole way there: the plan, the agent's run under the relay lease, the
+/// verifier's measurement, the review and the audit, all with the machine's model and the stream
+/// on, none on this server's role endpoint; approved on its review card it completes as the same
+/// flow does on this machine, and the relay lease is closed once the run is over.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_planner_task_on_a_machine_plans_runs_reviews_and_completes_there() {
+    within(async {
+        let (machine, seen, machine_roles) = qa_role_machine().await;
+        let r = rig(Opts {
+            executor: true,
+            pipeline: true,
+            relay_machine: Some(machine),
+            relay_port: true,
+            ..Opts::default()
+        })
+        .await;
+        let relay = r.relay.clone().unwrap();
+        let (status, started) = r
+            .start(json!({"repository": "qa-repo", "prompt": GREET, "promptPreparation": "planner", "approvePlan": true}))
+            .await;
+        assert_eq!(status, 202, "{started}");
+        let task = started["taskId"].as_str().unwrap().to_string();
+        let branch = started["branch"].as_str().unwrap().to_string();
+        let base = r.base_sha();
+
+        let card = r.card(&task, "approve_plan").await;
+        assert_eq!(*machine_roles.lock().unwrap(), vec!["planner"]);
+        let decide = |id: &str| json!({"decision": "approve", "approvalId": id});
+        let approve = r.code(&format!("/{task}/approve"));
+        let (status, _) = r.call(OWNER, "POST", &approve, Some(decide(card["id"].as_str().unwrap()))).await;
+        assert_eq!(status, 200);
+
+        // The agent committed, the verifier measured that commit, and the review and the audit
+        // were asked of the machine (the same roles, in the same order, as on this machine).
+        let card = r.card(&task, "review_change").await;
+        let head = git(&r.repo, &["rev-parse", &branch]);
+        assert_ne!(head, base);
+        assert_eq!(r.sandbox.lock().unwrap().prompts, 1);
+        let asked = r.verified.lock().unwrap().clone();
+        assert_eq!(asked.len(), 1);
+        assert_eq!(asked[0].2["headSha"], json!(head));
+        assert_eq!(*machine_roles.lock().unwrap(), vec!["planner", "reviewer", "auditor"]);
+        let calls: Vec<Value> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, p, _)| p == "/v1/chat/completions")
+            .map(|(_, _, b)| b.clone())
+            .collect();
+        assert_eq!(calls.len(), 3, "three role calls on the machine");
+        for c in &calls {
+            assert_eq!((&c["model"], &c["stream"]), (&json!("qa-code"), &json!(true)), "{c}");
+        }
+        // This server's role endpoint (core's `role` fact) was never called, and no local
+        // inference lease was taken for a machine task.
+        assert!(r.roles.lock().unwrap().is_empty());
+        assert!(r.core.lock().unwrap().leases.is_empty(), "no inference lease on a machine");
+        assert!(card["evidence"]["completeness"]["reportHash"].is_string(), "{card}");
+
+        let (status, _) = r.call(OWNER, "POST", &approve, Some(decide(card["id"].as_str().unwrap()))).await;
+        assert_eq!(status, 200);
+        let end = r.ended(&task).await;
+        assert_eq!(end["status"], "completed", "{end}");
+        assert_eq!(relay.relay.active(), 0, "the run is over: its relay lease is closed");
+        r.quiet().await;
+    })
+    .await;
+}
