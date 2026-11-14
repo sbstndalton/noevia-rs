@@ -95,6 +95,8 @@ pub mod offsite_store;
 pub mod plugin_directory_routes;
 pub mod preset_read_routes;
 pub mod project_config_routes;
+// Track R13: the chat's read_project_file in the front (NOEVIA_RUST_READ_FILE).
+pub mod project_file_read;
 pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod project_storage_io;
