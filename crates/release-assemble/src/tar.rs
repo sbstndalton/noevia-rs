@@ -490,13 +490,14 @@ pub fn extract(entries: &[Entry], strip: usize, dest: &Path) -> io::Result<usize
                 set_mode(&path, if *executable { 0o755 } else { 0o644 })?;
             }
             Kind::Symlink { target } => {
+                // noevia#2738 item 3: refuse before anything on disk changes.
+                link_stays_inside(kept.len(), target)?;
                 if let Some(m) = existing {
                     if m.file_type().is_dir() {
                         return Err(bad(format!("tar: {} is a directory", path.display())));
                     }
                     fs::remove_file(&path)?;
                 }
-                link_stays_inside(kept.len(), target)?;
                 std::os::unix::fs::symlink(std::ffi::OsStr::from_bytes(target), &path)?;
             }
         }

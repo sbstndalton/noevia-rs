@@ -3,7 +3,7 @@
 //! primitives and the script's `die`, over generated release trees: the verdict and the refusal text must
 //! be equal. `RELEASE_ASSEMBLE_GUARD_ROUNDS` sets the number of trees per pairing (default 400).
 #![cfg(unix)]
-#![allow(clippy::indexing_slicing)]
+#![allow(clippy::indexing_slicing, clippy::expect_used)]
 
 mod common;
 use release_assemble::guard::{self, NamespacePairing};
@@ -104,7 +104,24 @@ fn gen_tree(r: &mut Rng, root: &Path, p: &NamespacePairing) {
     if let Some(lib) = lib {
         write(&root.join("rs/bins/noevia-server/src/lib.rs"), &lib);
     }
-    // The route contract.
+    // The route contract: often exactly right when the pair moved, so the checks after it are reached.
+    if paired && r.chance(35) {
+        let mut toml = String::from("# routes\n");
+        for (i, path) in p.paths.iter().enumerate() {
+            toml.push_str(&format!("[[route]]\npath = \"{path}\"\nowner = \"rust\"\n"));
+            let methods = match p.methods {
+                guard::Methods::All => None,
+                guard::Methods::OnlyGet => Some("[\"GET\"]".to_string()),
+                guard::Methods::Each(sets) => sets.get(i).map(|w| methods_array(w, r.chance(30))),
+            };
+            if let Some(m) = methods {
+                toml.push_str(&format!("methods = {m}\n"));
+            }
+        }
+        toml.push_str("[[route]]\npath = \"/api/other\"\nowner = \"node\"\n");
+        write(&root.join("rs/contracts/http/routes.toml"), &toml);
+        return;
+    }
     if r.chance(8) {
         return;
     }
@@ -138,15 +155,81 @@ fn gen_tree(r: &mut Rng, root: &Path, p: &NamespacePairing) {
             3 => Some("[]"),
             _ => None,
         };
+        let index = p.paths.iter().position(|w| *w == path);
         let methods = match (p.methods, methods) {
-            (guard::Methods::OnlyGet, None) if r.chance(85) => Some("[\"GET\"]"),
-            (_, m) => m,
+            (guard::Methods::OnlyGet, None) if r.chance(85) => Some("[\"GET\"]".to_string()),
+            (guard::Methods::Each(sets), None) if r.chance(85) => index
+                .and_then(|i| sets.get(i))
+                .map(|w| methods_array(w, r.chance(20))),
+            (_, m) => m.map(str::to_string),
         };
         if let Some(m) = methods {
             toml.push_str(&format!("methods = {m}\n"));
         }
     }
     write(&root.join("rs/contracts/http/routes.toml"), &toml);
+}
+
+/// `methods = [...]` for a comma-separated set, reversed when asked (the guard reads it as a set).
+fn methods_array(set: &str, reverse: bool) -> String {
+    let mut m: Vec<String> = set.split(',').map(|x| format!("\"{x}\"")).collect();
+    if reverse {
+        m.reverse();
+    }
+    format!("[{}]", m.join(", "))
+}
+
+/// The project configuration pairing's Core side beyond the marker: the refusal module's OWNED_ROUTES,
+/// the old route mount and the toolbox publication, each right or bent.
+fn gen_project_config_extra(r: &mut Rng, root: &Path) {
+    let mut routes: Vec<&str> = vec![
+        "'GET /api/projects/{projectId}/instruction-skills'",
+        "'PUT /api/projects/{projectId}/instruction-skills'",
+        "'GET /api/projects/{id}/instruction-skills/manifests'",
+        "'GET /api/projects/{p}/instruction-skills/manifests/{skillId}/content'",
+        "'POST /api/projects/{projectId}/config'",
+        "'POST /api/projects/{project}/skills/install'",
+    ];
+    match r.below(10) {
+        0 => {}
+        1 => {
+            routes.remove(r.below(routes.len()));
+        }
+        2 => routes.push("'DELETE /api/projects/{projectId}/config'"),
+        3 => routes.push("'GET /api/projects/{projectId}/config'"),
+        _ => {}
+    }
+    if r.chance(90) {
+        let mut src = String::from("'use strict';\n");
+        if r.chance(50) {
+            src.push_str(&format!(
+                "const OWNED_ROUTES = new Set(([\n  {},\n]));\n",
+                routes.join(",\n  ")
+            ));
+        } else {
+            src.push_str(&format!(
+                "const OWNED_ROUTES = new Set(([{}]));\n",
+                routes.join(", ")
+            ));
+        }
+        src.push_str("module.exports = { OWNED_ROUTES };\n");
+        write(&root.join("core/server/rust-project-config.cjs"), &src);
+    }
+    if r.chance(10) {
+        write(
+            &root.join("core/server/routes/projects.cjs"),
+            "module.exports = {};\n",
+        );
+    }
+    let index = root.join("core/server/index.cjs");
+    let mut src = fs::read_to_string(&index).unwrap_or_default();
+    if r.chance(8) {
+        src.push_str("const projects = require('./routes/projects.cjs');\n");
+    }
+    if r.chance(88) {
+        src.push_str("const toolboxes = { known: allToolboxes() };\n");
+    }
+    write(&index, &src);
 }
 
 fn shell_verdict(dir: &Path, block: &str, tree: &Path) -> String {
@@ -179,21 +262,35 @@ fn shell_verdict(dir: &Path, block: &str, tree: &Path) -> String {
     }
 }
 
-fn rust_verdict(tree: &Path, p: &NamespacePairing) -> String {
-    match guard::namespace_pairing(tree, p) {
+fn verdict(got: Result<(), String>) -> String {
+    match got {
         Ok(()) => "PASS".to_string(),
         Err(e) => format!("assemble-release: {e} (status Some(1))"),
     }
 }
 
 fn compare(name: &str, p: &NamespacePairing, seed: u64) {
+    compare_with(name, p, seed, 5, &|_, _| false, &|t, _| {
+        guard::namespace_pairing(t, p)
+    });
+}
+
+/// One pairing over generated trees. `extra` adds the pairing's own files and returns a flag the block
+/// reads from an earlier pairing (sent to the shell as `project_storage_rs_owner`); `rust` is the port.
+/// `verdicts` is the number of distinct verdicts the guard has (PASS and each refusal).
+fn compare_with(
+    name: &str,
+    p: &NamespacePairing,
+    seed: u64,
+    verdicts: usize,
+    extra: &dyn Fn(&mut Rng, &Path) -> bool,
+    rust: &dyn Fn(&Path, bool) -> Result<(), String>,
+) {
     if !have_bash() {
         common::skip("guard_pairing: bash is not installed");
         return;
     }
-    let Some(dir) = tempfile::tempdir().ok() else {
-        return;
-    };
+    let dir = tempfile::tempdir().expect("a temporary directory");
     let block = section(name);
     assert!(
         block.contains(p.label),
@@ -206,14 +303,18 @@ fn compare(name: &str, p: &NamespacePairing, seed: u64) {
     let n = rounds();
     for _ in 0..n {
         gen_tree(&mut r, &tree, p);
-        let want = shell_verdict(dir.path(), &block, &tree);
-        let got = rust_verdict(&tree, p);
+        let flag = extra(&mut r, &tree);
+        let prefix = format!(
+            "project_storage_rs_owner={}\n",
+            if flag { "rust" } else { "\"\"" }
+        );
+        let want = shell_verdict(dir.path(), &format!("{prefix}{block}"), &tree);
+        let got = verdict(rust(&tree, flag));
         assert_eq!(got, want, "{name} pairing over the generated tree");
         *seen.entry(want).or_default() += 1;
     }
     eprintln!("COUNTS guard_pairing {name} trees={n} verdicts={seen:?}");
-    // Every verdict of the guard is reached: PASS, the four refusals.
-    assert_eq!(seen.len(), 5, "verdicts reached: {seen:?}");
+    assert_eq!(seen.len(), verdicts, "verdicts reached: {seen:?}");
 }
 
 #[test]
@@ -228,6 +329,81 @@ fn model_read_pairing_matches_the_shell() {
         &guard::MODEL_READ_OWNERSHIP,
         0x0FED_CBA9_8765_4321,
     );
+}
+
+#[test]
+fn project_read_pairing_matches_the_shell() {
+    compare(
+        "project_reads",
+        &guard::PROJECT_READ_OWNERSHIP,
+        0x5EED_0000_0000_0001,
+    );
+}
+
+#[test]
+fn project_lifecycle_pairing_matches_the_shell() {
+    compare(
+        "project_lifecycle",
+        &guard::PROJECT_LIFECYCLE_OWNERSHIP,
+        0x5EED_0000_0000_0002,
+    );
+}
+
+#[test]
+fn project_files_pairing_matches_the_shell() {
+    // PASS, move together, needs the storage pair, missing contract, rule, incomplete.
+    compare_with(
+        "project_files",
+        &guard::PROJECT_FILES_OWNERSHIP,
+        0x5EED_0000_0000_0003,
+        6,
+        &|r, _| r.chance(80),
+        &guard::project_files_pairing,
+    );
+}
+
+#[test]
+fn project_config_pairing_matches_the_shell() {
+    // PASS, the four namespace refusals, refused set, old mount, toolbox ids.
+    compare_with(
+        "project_config",
+        &guard::PROJECT_CONFIG_OWNERSHIP,
+        0x5EED_0000_0000_0004,
+        8,
+        &|r, t| {
+            gen_project_config_extra(r, t);
+            false
+        },
+        &|t, _| guard::project_config_pairing(t),
+    );
+}
+
+/// The pairings excerpt's sections must still be contiguous blocks of the real script (when
+/// `ASSEMBLE_RELEASE_SH` names it).
+#[test]
+fn pairings_excerpt_is_verbatim() {
+    let Ok(path) = std::env::var("ASSEMBLE_RELEASE_SH") else {
+        common::skip("pairings_excerpt_is_verbatim: ASSEMBLE_RELEASE_SH not set");
+        return;
+    };
+    let real = fs::read_to_string(path).expect("ASSEMBLE_RELEASE_SH is readable");
+    let names = [
+        "feature",
+        "model_reads",
+        "project_reads",
+        "project_lifecycle",
+        "project_files",
+        "project_config",
+    ];
+    for name in names {
+        let block = section(name);
+        assert!(block.lines().count() > 10, "section {name} is short");
+        assert!(
+            real.contains(&block),
+            "section {name} is not a block of the script"
+        );
+    }
+    assert_eq!(PAIRINGS.matches("\n#@").count(), names.len());
 }
 
 /// Hand-made trees: today's old/old pins, a full new/new pair, each mixed generation.

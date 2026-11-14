@@ -228,3 +228,18 @@ fn symlinks_that_leave_the_tree_are_refused() {
         assert!(got.is_ok(), "{name:?} -> {target:?} strip {strip}: {got:?}");
     }
 }
+
+/// noevia#2738 item 3: a refused symlink leaves the file already at its path untouched.
+#[test]
+fn a_refused_symlink_keeps_the_existing_file() {
+    let mut w = Writer::new(Vec::new(), 0);
+    assert!(w.dir(b"top").is_ok());
+    assert!(w.file(b"top/f", false, b"kept\n").is_ok());
+    assert!(w.symlink(b"top/f", b"/etc/passwd").is_ok());
+    let raw = w.finish().unwrap_or_default();
+    let entries = tar::read_all(&mut &raw[..]).unwrap_or_default();
+    assert_eq!(entries.len(), 3);
+    let d = tempfile::tempdir().unwrap();
+    assert!(tar::extract(&entries, 0, d.path()).is_err());
+    assert_eq!(std::fs::read(d.path().join("top/f")).unwrap(), b"kept\n");
+}

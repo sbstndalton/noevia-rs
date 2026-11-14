@@ -86,7 +86,10 @@ fn checksum_extract_and_manifest() {
 
 #[test]
 fn guard_subcommands() {
-    let Ok(d) = tempfile::tempdir() else { return };
+    // noevia#2738 item 4: no temporary directory is a failure, not a silent pass.
+    let d = tempfile::tempdir();
+    assert!(d.is_ok(), "a temporary directory: {:?}", d.err());
+    let Ok(d) = d else { return };
     let toml = d.path().join("routes.toml");
     fs::write(
         &toml,

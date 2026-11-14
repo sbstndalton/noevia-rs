@@ -903,11 +903,41 @@ pub fn grep_fixed(path: &Path, needle: &str) -> bool {
 
 /// Which methods of a namespace's routes a pairing needs Rust to own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Methods {
+pub enum Methods<'a> {
     /// No `switch` and no `methods` key: every method is Rust's.
     All,
     /// No `switch` and `methods` naming exactly `GET` (Node keeps every other method).
     OnlyGet,
+    /// No `switch` and `methods` naming exactly the comma-separated set at the same index as the path in
+    /// [`NamespacePairing::paths`], each method once (Node keeps every other method).
+    Each(&'a [&'a str]),
+}
+
+impl Methods<'_> {
+    /// The awk rule over `$4` for the path at `index` in the pairing's paths.
+    fn allow(&self, index: usize, methods: &[u8]) -> bool {
+        let want: &str = match self {
+            Methods::All => return methods == b"-",
+            Methods::OnlyGet => "GET",
+            Methods::Each(sets) => match sets.get(index) {
+                Some(w) => w,
+                None => return false,
+            },
+        };
+        // split(w, e, ","): the wanted set; split($4, m, /[^A-Z]+/): the runs of capitals.
+        let wanted: Vec<&[u8]> = want.as_bytes().split(|c| *c == b',').collect();
+        let mut seen: Vec<&[u8]> = Vec::new();
+        for m in methods
+            .split(|c| !c.is_ascii_uppercase())
+            .filter(|m| !m.is_empty())
+        {
+            if !wanted.contains(&m) || seen.contains(&m) {
+                return false;
+            }
+            seen.push(m);
+        }
+        seen.len() == wanted.len()
+    }
 }
 
 /// One namespace ownership pairing: Core's refusal module (found by a fixed string in
@@ -920,7 +950,7 @@ pub struct NamespacePairing<'a> {
     pub core_marker: &'a str,
     pub rs_feature: &'a str,
     pub paths: &'a [&'a str],
-    pub methods: Methods,
+    pub methods: Methods<'a>,
     /// The refusal when a route row breaks the rule (or routes.toml is refused).
     pub rule_text: &'a str,
     /// The refusal when the set of paths differs.
@@ -956,6 +986,16 @@ pub const MODEL_READ_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
 /// Run one namespace pairing over an assembled tree (`web/`, `core/`, `rs/`, ...). `Err` holds the `die`
 /// text without the `assemble-release: ` prefix.
 pub fn namespace_pairing(tree: &Path, p: &NamespacePairing) -> Result<(), String> {
+    if !pairing_owner(tree, p)? {
+        // Historic old/old pins remain valid rollback pairs.
+        return Ok(());
+    }
+    pairing_routes(tree, p)
+}
+
+/// The first half of every pairing: Core's marker and the front's FEATURES capability must agree. `Ok(true)`
+/// when both have moved.
+pub fn pairing_owner(tree: &Path, p: &NamespacePairing) -> Result<bool, String> {
     let core = grep_fixed(&tree.join("core/server/index.cjs"), p.core_marker);
     let rs = move_capability(
         read_file(&tree.join("rs/bins/noevia-server/src/lib.rs")).as_deref(),
@@ -966,10 +1006,12 @@ pub fn namespace_pairing(tree: &Path, p: &NamespacePairing) -> Result<(), String
     if core != rs {
         return Err(format!("{}: Core and Rust must move together", p.label));
     }
-    if !rs {
-        // Historic old/old pins remain valid rollback pairs.
-        return Ok(());
-    }
+    Ok(rs)
+}
+
+/// The route half of a moved pairing: `rs/contracts/http/routes.toml` gives Rust exactly the pairing's
+/// paths (each once) under its methods rule.
+pub fn pairing_routes(tree: &Path, p: &NamespacePairing) -> Result<(), String> {
     let contract = tree.join("rs/contracts/http/routes.toml");
     if !contract.is_file() {
         return Err(format!("{}: missing route contract", p.label));
@@ -983,23 +1025,14 @@ pub fn namespace_pairing(tree: &Path, p: &NamespacePairing) -> Result<(), String
     let mut got: Vec<Vec<u8>> = Vec::new();
     for r in &rt.routes {
         let [path, owner, switch, methods] = tab_fields(r);
-        if !p.paths.iter().any(|w| w.as_bytes() == path.as_slice()) {
+        let Some(index) = p
+            .paths
+            .iter()
+            .position(|w| w.as_bytes() == path.as_slice())
+        else {
             continue;
-        }
-        if owner != b"rust" || switch != b"-" {
-            return Err(rule());
-        }
-        let ok = match p.methods {
-            Methods::All => methods == b"-",
-            Methods::OnlyGet => {
-                let runs: Vec<&[u8]> = methods
-                    .split(|c| !c.is_ascii_uppercase())
-                    .filter(|m| !m.is_empty())
-                    .collect();
-                runs.len() == 1 && runs.iter().all(|m| *m == b"GET")
-            }
         };
-        if !ok {
+        if owner != b"rust" || switch != b"-" || !p.methods.allow(index, &methods) {
             return Err(rule());
         }
         got.push(path);
@@ -1009,6 +1042,136 @@ pub fn namespace_pairing(tree: &Path, p: &NamespacePairing) -> Result<(), String
     want.sort();
     if got != want {
         return Err(format!("{}: {}", p.label, p.incomplete_text));
+    }
+    Ok(())
+}
+
+/// A project source's stored reads (`rust-project-reads.cjs` + the front's `rust-project-reads`): GET of the
+/// three routes.
+pub const PROJECT_READ_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "project source read ownership pairing",
+    core_marker: "require('./rust-project-reads.cjs')",
+    rs_feature: "rust-project-reads",
+    paths: &[
+        "/api/projects/{id}/sources/text",
+        "/api/projects/{id}/documents/original",
+        "/api/projects/{id}/{*}/original",
+    ],
+    methods: Methods::OnlyGet,
+    rule_text: "exactly GET of the three routes must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// A project's create and delete (`rust-project-lifecycle.cjs` + `rust-project-lifecycle`): POST of
+/// `/api/projects`, DELETE of `/api/projects/{projectId}`.
+pub const PROJECT_LIFECYCLE_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "project create/delete ownership pairing",
+    core_marker: "require('./rust-project-lifecycle.cjs')",
+    rs_feature: "rust-project-lifecycle",
+    paths: &["/api/projects", "/api/projects/{projectId}"],
+    methods: Methods::Each(&["POST", "DELETE"]),
+    rule_text: "exactly POST /api/projects and DELETE /api/projects/{projectId} must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// A project source file's delete (`rust-project-files.cjs` + `rust-project-files`): DELETE of
+/// `/api/projects/{id}/files`. Run it with [`project_files_pairing`]: it needs the project storage pair.
+pub const PROJECT_FILES_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "project file delete ownership pairing",
+    core_marker: "require('./rust-project-files.cjs')",
+    rs_feature: "rust-project-files",
+    paths: &["/api/projects/{id}/files"],
+    methods: Methods::Each(&["DELETE"]),
+    rule_text: "exactly DELETE /api/projects/{id}/files must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// A project's configuration, instruction skills and skill install (`rust-project-config.cjs` +
+/// `rust-project-config`): the methods Node answered. Run it with [`project_config_pairing`].
+pub const PROJECT_CONFIG_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "project configuration ownership pairing",
+    core_marker: "require('./rust-project-config.cjs')",
+    rs_feature: "rust-project-config",
+    paths: &[
+        "/api/projects/{projectId}/config",
+        "/api/projects/{projectId}/instruction-skills",
+        "/api/projects/{projectId}/instruction-skills/manifests",
+        "/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content",
+        "/api/projects/{project}/skills/install",
+    ],
+    methods: Methods::Each(&["POST", "GET,PUT", "GET", "GET", "POST"]),
+    rule_text: "exactly the methods Node answered must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// The six routes Core's `rust-project-config.cjs` must refuse (its `OWNED_ROUTES`, params collapsed).
+pub const PROJECT_CONFIG_REFUSED: &[&str] = &[
+    "GET /api/projects/{}/instruction-skills",
+    "GET /api/projects/{}/instruction-skills/manifests",
+    "GET /api/projects/{}/instruction-skills/manifests/{}/content",
+    "POST /api/projects/{}/config",
+    "POST /api/projects/{}/skills/install",
+    "PUT /api/projects/{}/instruction-skills",
+];
+
+/// The project file delete pairing. `storage_rs_owner` is the project storage write pairing's front verdict
+/// (`project_storage_rs_owner`: the front's FEATURES names `rust-project-storage`), which the script reaches
+/// through Core's `require` chain and is not ported yet.
+pub fn project_files_pairing(tree: &Path, storage_rs_owner: bool) -> Result<(), String> {
+    let p = &PROJECT_FILES_OWNERSHIP;
+    if !pairing_owner(tree, p)? {
+        return Ok(());
+    }
+    if !storage_rs_owner {
+        return Err(format!("{}: needs the project storage pair", p.label));
+    }
+    pairing_routes(tree, p)
+}
+
+/// The front half of the project storage write pairing: `rust-project-storage` in the front's FEATURES.
+pub fn project_storage_rs_owner(tree: &Path) -> bool {
+    move_capability(
+        read_file(&tree.join("rs/bins/noevia-server/src/lib.rs")).as_deref(),
+        "FEATURES",
+        "rust-project-storage",
+        MoveKind::Features,
+    )
+}
+
+/// The project configuration pairing: the routes, then Core refuses exactly the six routes, no longer mounts
+/// `server/routes/projects.cjs`, and publishes its toolbox ids.
+pub fn project_config_pairing(tree: &Path) -> Result<(), String> {
+    let p = &PROJECT_CONFIG_OWNERSHIP;
+    if !pairing_owner(tree, p)? {
+        return Ok(());
+    }
+    pairing_routes(tree, p)?;
+    let refused = project_routes_core(
+        read_file(&tree.join("core/server/rust-project-config.cjs")).as_deref(),
+        "OWNED_ROUTES",
+    );
+    let mut want: Vec<Vec<u8>> = PROJECT_CONFIG_REFUSED
+        .iter()
+        .map(|s| s.as_bytes().to_vec())
+        .collect();
+    want.sort();
+    if refused != want {
+        return Err(format!(
+            "{}: Core must refuse exactly the six routes the front answers",
+            p.label
+        ));
+    }
+    let index = tree.join("core/server/index.cjs");
+    if tree.join("core/server/routes/projects.cjs").exists()
+        || grep_fixed(&index, "routes/projects.cjs")
+    {
+        return Err(format!("{}: Core still mounts the project routes", p.label));
+    }
+    if !grep_fixed(&index, "known: allToolboxes()") {
+        return Err(format!(
+            "{}: Core does not publish the toolbox ids the front validates skills against",
+            p.label
+        ));
     }
     Ok(())
 }
