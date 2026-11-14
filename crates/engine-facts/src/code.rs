@@ -95,7 +95,10 @@ impl std::fmt::Debug for CodeEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CodeEnv")
             .field("engine_url", &self.engine_url)
-            .field("engine_api_key", &self.engine_api_key.as_ref().map(|_| "<redacted>"))
+            .field(
+                "engine_api_key",
+                &self.engine_api_key.as_ref().map(|_| "<redacted>"),
+            )
             .field("context_tokens", &self.context_tokens)
             .finish()
     }
@@ -284,19 +287,24 @@ pub fn answer<E>(
     let engine = if remote {
         JValue::Null
     } else {
-        match engine(inputs.env, inputs.provider, inputs.roles, inputs.last_loaded) {
+        match engine(
+            inputs.env,
+            inputs.provider,
+            inputs.roles,
+            inputs.last_loaded,
+        ) {
             Ok(e) => JValue::obj(
-                ["baseUrl", "apiKey", "model", "contextTokens"]
-                    .map(|k| (k, nullish(e.get(k)))),
+                ["baseUrl", "apiKey", "model", "contextTokens"].map(|k| (k, nullish(e.get(k)))),
             ),
             Err(Thrown) => return Answer::Unavailable("TypeError"),
         }
     };
     let paused = !remote && paused() == JValue::Bool(true);
-    let context = match shared::load_chats(project).and_then(|chats| shared::for_code(project, &chats)) {
-        Ok(text) => text,
-        Err(Thrown) => return Answer::Unavailable("TypeError"),
-    };
+    let context =
+        match shared::load_chats(project).and_then(|chats| shared::for_code(project, &chats)) {
+            Ok(text) => text,
+            Err(Thrown) => return Answer::Unavailable("TypeError"),
+        };
     let mut items = vec![
         ("engine".to_string(), engine),
         ("machine".to_string(), JValue::Bool(remote)),
@@ -308,7 +316,12 @@ pub fn answer<E>(
         let facts = if remote {
             JValue::Null
         } else {
-            match role(inputs.provider, inputs.roles, inputs.last_loaded, inputs.external) {
+            match role(
+                inputs.provider,
+                inputs.roles,
+                inputs.last_loaded,
+                inputs.external,
+            ) {
                 Ok(r) => r,
                 Err(Thrown) => return Answer::Unavailable("TypeError"),
             }

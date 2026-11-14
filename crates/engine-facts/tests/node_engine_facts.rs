@@ -1,5 +1,11 @@
 //! Replays `fixtures/node-engine-facts.v1.json` (written by `record_engine_facts.cjs` from
 //! noevia-core's own modules and index.cjs's own lines) through the crate.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 use engine_facts::code::{self, Answer, CodeEnv, Deployment, Inputs};
 use engine_facts::{provider, shared};
@@ -117,7 +123,9 @@ fn the_code_target_matches_node() {
             let asked = std::cell::RefCell::new(&mut asked);
             code::code_target(
                 |role: &str| {
-                    asked.borrow_mut().push(JValue::Str(format!("target:{role}")));
+                    asked
+                        .borrow_mut()
+                        .push(JValue::Str(format!("target:{role}")));
                     let t = c.get(role);
                     if t.as_str() == Some("throw") {
                         Err("machinesUnavailable")
@@ -201,7 +209,10 @@ fn the_bridge_answer_matches_node() {
         );
         assert_eq!(c.get("handled"), &JValue::Bool(true));
         let (status, body) = match &got {
-            Answer::NotFound => (404, JValue::obj([("error", JValue::from("project not found"))])),
+            Answer::NotFound => (
+                404,
+                JValue::obj([("error", JValue::from("project not found"))]),
+            ),
             Answer::Unavailable(_) => (
                 503,
                 JValue::obj([("error", JValue::from("Code engine facts are unavailable."))]),
@@ -211,7 +222,12 @@ fn the_bridge_answer_matches_node() {
                 (200, json(facts))
             }
         };
-        assert_eq!(c.get("status").as_num(), Some(f64::from(status)), "{}", show(c));
+        assert_eq!(
+            c.get("status").as_num(),
+            Some(f64::from(status)),
+            "{}",
+            show(c)
+        );
         assert_eq!(show(&body), show(c.get("answer")), "{}", show(c));
     }
     assert!(answered > cases.len() / 2);
