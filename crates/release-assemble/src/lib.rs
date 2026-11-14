@@ -19,10 +19,16 @@
 //!   configuration); [`bridged`]: the calibration cancel and start/read pairings and the code egress issuer
 //!   pairing, with `code_has` over real EREs.
 //!
+//! - [`facts`] (council p10): the eight single-path pairings whose Core side is a refusal module plus a
+//!   facts or state bridge (auto-tune settings, dismissal, resume, cancellation and untuned discovery;
+//!   idle unload, model assignments and preset reads) as one table, and [`bridged::posix_ere`], which
+//!   gives `code_has` POSIX bracket expressions (`[[]`, `[]]`, a literal `\`) as grep reads them.
+//!
 //! Nothing in the release path calls this crate yet.
 
 pub mod bridged;
 pub mod digest;
+pub mod facts;
 pub mod guard;
 pub mod lock;
 pub mod plan;

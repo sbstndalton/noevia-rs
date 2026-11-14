@@ -18,14 +18,18 @@
 //!                                                 feature, model-reads, project-reads, project-lifecycle,
 //!                                                 project-files, project-config, code-egress,
 //!                                                 calibration-cancel, calibration-routes, research
-//!                                                 task-reads or model-scan
+//!                                                 task-reads, model-scan, or one of the facts
+//!                                                 pairings (facts::ALL: autotune-settings,
+//!                                                 idle-unload-read, model-assignments, preset-read,
+//!                                                 autotune-clear, autotune-resume, autotune-cancel,
+//!                                                 autotune-untuned)
 //! ```
 //! Refusals print `assemble-release: <reason>` on stderr and exit 1; bad usage exits 2.
 
 use release_assemble::guard::{self, MoveKind};
 use release_assemble::lock::Lock;
 use release_assemble::plan::{self, Component, Resolution, Resolved};
-use release_assemble::{bridged, digest, tar, tree};
+use release_assemble::{bridged, digest, facts, tar, tree};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -208,7 +212,10 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                 "calibration-routes" => {
                     bridged::calibration_pairing(t, &bridged::CALIBRATION_ROUTES)?
                 }
-                _ => return Ok(usage()),
+                other => match facts::by_name(other) {
+                    Some(p) => facts::facts_pairing(t, p)?,
+                    None => return Ok(usage()),
+                },
             }
             Ok(ExitCode::SUCCESS)
         }

@@ -17,8 +17,134 @@ use std::path::Path;
 /// which every caller reads as "no match"). The script does not export `LC_ALL`, so `code_has`, its `sed`
 /// and its awk run in the caller's locale; for the ASCII-only Core sources they read, that is the same.
 /// The parity tests pin `LC_ALL=C`.
-fn ere(pattern: &str) -> Option<Regex> {
-    RegexBuilder::new(pattern).unicode(false).build().ok()
+pub(crate) fn ere(pattern: &str) -> Option<Regex> {
+    let translated = posix_ere(pattern)?;
+    RegexBuilder::new(&translated).unicode(false).build().ok()
+}
+
+/// A POSIX extended regex in the regex crate's syntax (council p10). Inside a bracket expression POSIX has
+/// no escapes and no nesting: `\` and a `[` that does not open `[:class:]` are literals, and a `]` right
+/// after the opening `[` or `[^` is a literal. The regex crate reads `[` there as a nested class, `\` as an
+/// escape and `&&`, `--`, `~~` as set operations, so the guards' `[[]'GET …'[]]` failed to compile and read
+/// as "no match" where grep matches. Those characters are escaped. Outside brackets a `{` that does not
+/// start a valid interval is a literal for GNU grep, and `{,n}` is `{0,n}`. `[=x=]`, `[.x.]` and an
+/// unclosed bracket are refused (`None`, grep's status 2), as no guard uses them.
+pub fn posix_ere(pattern: &str) -> Option<String> {
+    let c: Vec<char> = pattern.chars().collect();
+    let at = |i: usize| c.get(i).copied();
+    let mut out = String::with_capacity(pattern.len() + 8);
+    let mut i = 0usize;
+    while let Some(ch) = at(i) {
+        match ch {
+            '\\' => {
+                out.push('\\');
+                if let Some(n) = at(i + 1) {
+                    out.push(n);
+                }
+                i += 2;
+            }
+            '[' => {
+                out.push('[');
+                i += 1;
+                if at(i) == Some('^') {
+                    out.push('^');
+                    i += 1;
+                }
+                if at(i) == Some(']') {
+                    out.push_str("\\]");
+                    i += 1;
+                }
+                let mut prev_dash = false;
+                loop {
+                    let b = at(i)?;
+                    let next = at(i + 1);
+                    let mut dash = false;
+                    match b {
+                        ']' => {
+                            out.push(']');
+                            i += 1;
+                            break;
+                        }
+                        '[' if next == Some(':') => {
+                            let mut j = i + 2;
+                            while !(at(j)? == ':' && at(j + 1) == Some(']')) {
+                                j += 1;
+                            }
+                            for k in i..j + 2 {
+                                out.push(at(k)?);
+                            }
+                            i = j + 2;
+                        }
+                        '[' if matches!(next, Some('=') | Some('.')) => return None,
+                        '[' | '\\' | '&' | '~' => {
+                            out.push('\\');
+                            out.push(b);
+                            i += 1;
+                        }
+                        '-' if prev_dash => {
+                            out.push_str("\\-");
+                            i += 1;
+                        }
+                        _ => {
+                            dash = b == '-';
+                            out.push(b);
+                            i += 1;
+                        }
+                    }
+                    prev_dash = dash;
+                }
+            }
+            '{' => match interval(&c, i + 1) {
+                Some((lo, hi, end)) => {
+                    out.push('{');
+                    out.push_str(if lo.is_empty() { "0" } else { &lo });
+                    if let Some(hi) = hi {
+                        out.push(',');
+                        out.push_str(&hi);
+                    }
+                    out.push('}');
+                    i = end;
+                }
+                None => {
+                    out.push_str("\\{");
+                    i += 1;
+                }
+            },
+            '}' => {
+                out.push_str("\\}");
+                i += 1;
+            }
+            _ => {
+                out.push(ch);
+                i += 1;
+            }
+        }
+    }
+    Some(out)
+}
+
+/// An interval body starting at `c[from]` (after the `{`): `n`, `n,`, `n,m` or `,m`, then `}`. Returns
+/// the low bound (maybe empty), the high part (`Some("")` for `n,`) and the index after the `}`.
+fn interval(c: &[char], from: usize) -> Option<(String, Option<String>, usize)> {
+    let digits = |mut i: usize| {
+        let mut s = String::new();
+        while let Some(d) = c.get(i).filter(|d| d.is_ascii_digit()) {
+            s.push(*d);
+            i += 1;
+        }
+        (s, i)
+    };
+    let (lo, mut i) = digits(from);
+    let mut hi = None;
+    if c.get(i) == Some(&',') {
+        let (h, j) = digits(i + 1);
+        hi = Some(h);
+        i = j;
+    }
+    if lo.is_empty() && hi.as_deref().is_none_or(str::is_empty) {
+        return None;
+    }
+    (c.get(i) == Some(&'}')).then_some((lo, hi, i + 1))
 }
 
 /// Lines as a here-string gives them to grep (`<<<"$x"`): every line of `text`, one empty line when empty.
