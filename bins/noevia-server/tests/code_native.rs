@@ -1049,6 +1049,24 @@ async fn the_planner_plans_runs_verifies_reviews_and_is_accepted_or_cancelled() 
         };
         let window: Vec<Value> = ours_rows[..=mine].iter().map(|j| norm(j, &pairs)).collect();
         assert_eq!(inputs(&window), inputs(&journal[..=theirs]), "what the report is built from, as Node's");
+        // noevia#2598 item 1: the rows the report's `plan` and `pendingApproval` are read from (the
+        // job's creation, the plan card and its decision) up to the gate, as Node's. Node's rows carry
+        // no approval id; one of ours would be a random uuid, so it is not compared.
+        let plan_rows = |rows: &[Value]| -> Vec<Value> {
+            rows.iter()
+                .filter(|j| matches!(j["type"].as_str(), Some("job.created" | "approval.requested" | "approval.decided")))
+                .map(|j| {
+                    let mut d = j["data"].clone();
+                    if let Some(m) = d.as_object_mut() {
+                        m.remove("id");
+                    }
+                    json!([j["type"], d])
+                })
+                .collect()
+        };
+        let node_plan_rows = plan_rows(&journal[..=theirs]);
+        assert_eq!(node_plan_rows.len(), 3, "the recording's creation, plan card and decision");
+        assert_eq!(plan_rows(&window), node_plan_rows, "the plan and approval rows the report reads, as Node's");
         // The checkpoint the report reads is the job's last: its task, branch and commits as Node's.
         let last_checkpoint = |rows: &[Value]| {
             let c = &rows.iter().rev().find(|j| j["type"] == "checkpoint.created").unwrap()["data"];
@@ -1059,11 +1077,14 @@ async fn the_planner_plans_runs_verifies_reviews_and_is_accepted_or_cancelled() 
         assert_eq!(measured["data"]["measuredBy"], "verifier", "code-verify.cjs's mark");
         let hash = ours_rows[mine]["data"]["reportHash"].clone();
         assert!(hash.as_str().is_some_and(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())), "{hash}");
+        // noevia#2598 item 3: the gate row's request is reused below; it is the one the pipeline sends.
+        assert_eq!(ours_rows[mine]["data"]["reason"], "Tests passed", "{}", ours_rows[mine]);
         // The hash is the report of exactly the journal compared above: the front's own lines up
         // to the gate, replayed into a fresh store (whose report hash replays Node's in
         // server-projects' task_store fixtures), must hash the same at the same stage request.
         let replayed = {
-            let text = std::fs::read_to_string(r.data.join("users").join(OWNER).join("jobs").join(format!("{task}.jsonl"))).unwrap();
+            let path = r.data.join("users").join(OWNER).join("jobs").join(format!("{task}.jsonl"));
+            let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
             let dir = tempfile::tempdir().unwrap();
             std::fs::create_dir_all(dir.path().join("jobs")).unwrap();
             let lines: String = text.split_inclusive('\n').take(mine).collect();
@@ -1082,7 +1103,9 @@ async fn the_planner_plans_runs_verifies_reviews_and_is_accepted_or_cancelled() 
                 ("reason", js_json::JValue::Str("Tests passed".into())),
                 ("expectedArtifacts", expected),
             ]);
-            let row = store.append_authority(&task, "task.stage", request, &authority).unwrap();
+            let row = store
+                .append_authority(&task, "task.stage", request, &authority)
+                .unwrap_or_else(|e| panic!("task {task}: the replayed gate move was refused: {e:?}"));
             let row: Value = serde_json::from_str(&js_json::wtf16::stringify(&row).unwrap()).unwrap();
             row["data"]["reportHash"].clone()
         };
