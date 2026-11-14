@@ -847,10 +847,10 @@ impl NativeIo {
             None => None,
         };
         let node = NodeBridge::new(
-            get("NOEVIA_LEGACY_UPSTREAM")
+            get(crate::node_link::BASE)
                 .filter(|v| !v.is_empty())
                 .as_deref(),
-            get("NOEVIA_PROJECT_STORE_TOKEN").as_deref(),
+            get(crate::node_link::SECRET).as_deref(),
         )?;
         Ok(Some(NativeIo {
             gate: maint.gate.clone(),

@@ -92,6 +92,7 @@ pub mod model_writes_routes;
 pub mod native_retrieval;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
+pub mod node_link;
 pub mod offsite_engine;
 pub mod offsite_mirror;
 pub mod offsite_routes;

@@ -79,7 +79,7 @@ impl Settings {
                 .unwrap_or_else(|| "http://host.docker.internal:11434".to_owned()),
             engine_key: first(&["INFERENCE_API_KEY", "LEMONADE_API_KEY"]),
             upstream,
-            token: first(&["NOEVIA_PROJECT_STORE_TOKEN"]),
+            token: first(&[crate::node_link::SECRET]),
             flag_env: server_features::parse_env(get(flag.env).as_deref())
                 .map_err(str::to_owned)?,
         })

@@ -38,8 +38,8 @@ impl Recheck {
         Ok(Self {
             slots: Arc::new(tokio::sync::Semaphore::new(1)),
             admission: Arc::new(Admission::new(
-                &get("NOEVIA_LEGACY_UPSTREAM").unwrap_or_default(),
-                get("NOEVIA_PROJECT_STORE_TOKEN").as_deref(),
+                &get(crate::node_link::BASE).unwrap_or_default(),
+                get(crate::node_link::SECRET).as_deref(),
             )?),
         })
     }

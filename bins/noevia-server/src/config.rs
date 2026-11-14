@@ -298,6 +298,10 @@ impl Config {
         // The front always owns them (Node no longer has them), so everything they need is a
         // startup requirement: a build without one of them, or an environment they cannot serve
         // from, refuses to start instead of leaving the route unanswered.
+        // A front alone builds its clients of Node from a lookup without Node's address and secret
+        // (node_link.rs): none of them dials the reserved port or sends the per-start secret.
+        let front_only = get(FRONT_ONLY).as_deref() == Some("1");
+        let node = crate::node_link::lookup(&get, front_only);
         let rust_auth = server_store::RustAuth::owned();
         let rust_projects = server_store::RustProjects::owned();
         let retired = retired_flags(&get);
@@ -327,7 +331,7 @@ impl Config {
                 engine.kind(),
                 &engine,
                 std::sync::Arc::clone(&sizing),
-                &get,
+                &node,
             )
             .map_err(|e| format!("model maintenance: {e}"))?,
         );
@@ -429,7 +433,7 @@ impl Config {
             crate::chat_prepare_shadow::Switch::parse(get("NOEVIA_CHAT_PREPARE").as_deref())?;
         let research = std::sync::Arc::new(crate::research_routes::Research::new(
             crate::research_routes::Settings::from_lookup(
-                &get,
+                &node,
                 format!("http://{}", upstream.authority()),
             )?,
         )?);
@@ -445,7 +449,7 @@ impl Config {
             research,
             approval_revocation: crate::approval_revocation::Revoker::new(
                 format!("http://{}", upstream.authority()),
-                get("NOEVIA_PROJECT_STORE_TOKEN"),
+                node(crate::node_link::SECRET),
             ),
             upstream,
             dist: get("NOEVIA_WEB_DIST")
@@ -516,7 +520,7 @@ impl Config {
             reasoning_defaults: server_reasoning_settings::read::Defaults::from_lookup(&get),
             secrets_rotate: get("NOEVIA_RUST_SECRETS_ROTATE").as_deref() == Some("1"),
             start_id,
-            front_only: get(FRONT_ONLY).as_deref() == Some("1"),
+            front_only,
             rust_chatgpt_status,
             #[cfg(feature = "rust-chatgpt-status")]
             chatgpt_oauth: Some(crate::chatgpt_oauth_routes::Settings::from_lookup(
