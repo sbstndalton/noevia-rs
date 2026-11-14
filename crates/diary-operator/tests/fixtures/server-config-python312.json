@@ -210,6 +210,7 @@
      },
      "retrieval": {
       "db_path": "/data/qa/diary.db",
+      "embedding_state_path": "/data/qa/embedding-config.json",
       "reindex_duty": "0.25"
      }
     }
@@ -346,6 +347,7 @@
      },
      "retrieval": {
       "db_path": "/data/qa/diary.db",
+      "embedding_state_path": "/data/qa/embedding-config.json",
       "reindex_duty": "0.25"
      }
     }
@@ -1648,6 +1650,310 @@
     "native_writers": []
    },
    "error": null
+  },
+  {
+   "case": "state-path-relative-db",
+   "yaml": "# Diary Companion portable defaults\n\nllm:\n  # Any OpenAI-compatible endpoint. Override for your provider.\n  base_url: http://host.docker.internal:11434/v1\n  api_key: \"\"\n  chat_model: default\n  embed_model: default\n  aux:\n    base_url: http://host.docker.internal:11434/v1\n    api_key: \"\"\n    model: default\n  timeout_s: 300\n  max_retries: 3\n  # Token cap of each companion answer (#127); a longer answer is cut off and marked as shortened.\n  max_answer_tokens: 1024\n\ncorpus:\n  # Daily files are stored as Entries/YYYY/Month/Month D, YYYY.md.\n  # Set to monthly for compatibility with older single-file-per-month corpora.\n  entry_layout: daily\n  entries_prefix: Entries\n  # Local storage works on a clean installation; select webdav explicitly for remote storage.\n  backend: local\n  root: \"\"\n  local:\n    root: data/corpus\n  webdav:\n    base_url: https://cloud.example.com/remote.php/dav/files/username/\n    username: \"\"\n    timeout_s: 60\n  # S3-compatible object storage (MinIO, Backblaze B2, AWS S3, Garage, ...).\n  # Path-style addressing; credentials optional (unsigned mode for public buckets).\n  s3:\n    endpoint_url: \"\"\n    bucket: \"\"\n    access_key: \"\"\n    secret_key: \"\"\n    session_token: \"\"\n    region: us-east-1\n    prefix: \"\"\n    timeout_s: 60\n  monthly_prefix: \"\"\n  month_file_template: \"{year}-{month02}.md\"\n  index_enabled: false\n  index_file: INDEX.md\n  redact_markers: true\n\nretrieval:\n  db_path: data/index.db\n  top_k: 8\n  max_context_tokens: 5200\n  min_score: 0.30\n  # services#116: lexical check of the hits against names and time anchors in the message (README).\n  entity_focus: true\n  # below_margin: drop hits naming no asked entity that score more than this below the best exact-name hit.\n  entity_focus_margin: 0.05\n  # services#114: drop hits scoring more than this below the best hit, for messages naming no entity (the entity\n  # focus decides otherwise). A number in (0, 1], or off. Off until a full gate run measures it (0.08 suggested).\n  score_gap: off\n\ncontext:\n  max_today_tokens: 4500\n  max_standing_tokens: 2200\n  # Used only when semantic retrieval yields no matches or is unavailable.\n  direct_past_days: 3\n  max_direct_past_tokens: 1200\n\nui:\n  host: 0.0.0.0\n  port: 8010\n  title: \"Diary Companion\"\n  # Set DIARY_AUTH_TOKEN before exposing this service beyond a trusted machine.\n  auth_token: \"\"\n\nlogging:\n  level: INFO\n  file: data/agent.log\n",
+   "env": {
+    "DIARY_PARENT": "rust",
+    "HOME": "/home/qa-synthetic",
+    "DIARY_RUST_EMBEDDING": "on",
+    "DB_PATH": "qa//sub/./qa.db"
+   },
+   "config": {
+    "port": 8010,
+    "control_token": "qa-control-token",
+    "forward_secret": "qa-forward-secret",
+    "auth_token": "",
+    "tenant_key": "",
+    "data_root": "qa//sub/.",
+    "legacy_user_id": "",
+    "corpus": {
+     "monthly_prefix": "",
+     "entry_layout": "daily",
+     "entries_prefix": "Entries",
+     "index_file": "INDEX.md",
+     "month_file_template": "{year}-{month02}.md",
+     "index_enabled": false
+    },
+    "llm": {
+     "main": {
+      "base_url": "http://host.docker.internal:11434/v1",
+      "api_key": "",
+      "chat_model": "default",
+      "fallback_model": "",
+      "setting_key": "LLM_CHAT_MODEL",
+      "fallback_setting_key": "LLM_CHAT_FALLBACK_MODEL"
+     },
+     "aux": {
+      "base_url": "http://host.docker.internal:11434/v1",
+      "api_key": "",
+      "chat_model": "default",
+      "fallback_model": "",
+      "setting_key": "LLM_AUX_MODEL",
+      "fallback_setting_key": "LLM_AUX_FALLBACK_MODEL"
+     },
+     "aux_prefers_main": true,
+     "configured": "default"
+    },
+    "corpus_write_impl": "python",
+    "workspace_export": {
+     "impl": "python",
+     "binary": "/usr/local/bin/diary-workspace-export",
+     "settings": {
+      "monthly_prefix": "",
+      "entry_layout": "daily",
+      "entries_prefix": "Entries",
+      "index_file": "INDEX.md",
+      "month_file_template": "{year}-{month02}.md",
+      "index_enabled": false
+     }
+    },
+    "external_sources": [],
+    "native_routes": [],
+    "native_writers": [],
+    "embedding": {
+     "llm": {
+      "embed_model": "default",
+      "timeout_s": 300,
+      "max_retries": 3
+     },
+     "retrieval": {
+      "db_path": "qa//sub/./qa.db",
+      "embedding_state_path": "qa/sub/embedding-config.json"
+     }
+    }
+   },
+   "error": null
+  },
+  {
+   "case": "state-path-memory-db",
+   "yaml": "# Diary Companion portable defaults\n\nllm:\n  # Any OpenAI-compatible endpoint. Override for your provider.\n  base_url: http://host.docker.internal:11434/v1\n  api_key: \"\"\n  chat_model: default\n  embed_model: default\n  aux:\n    base_url: http://host.docker.internal:11434/v1\n    api_key: \"\"\n    model: default\n  timeout_s: 300\n  max_retries: 3\n  # Token cap of each companion answer (#127); a longer answer is cut off and marked as shortened.\n  max_answer_tokens: 1024\n\ncorpus:\n  # Daily files are stored as Entries/YYYY/Month/Month D, YYYY.md.\n  # Set to monthly for compatibility with older single-file-per-month corpora.\n  entry_layout: daily\n  entries_prefix: Entries\n  # Local storage works on a clean installation; select webdav explicitly for remote storage.\n  backend: local\n  root: \"\"\n  local:\n    root: data/corpus\n  webdav:\n    base_url: https://cloud.example.com/remote.php/dav/files/username/\n    username: \"\"\n    timeout_s: 60\n  # S3-compatible object storage (MinIO, Backblaze B2, AWS S3, Garage, ...).\n  # Path-style addressing; credentials optional (unsigned mode for public buckets).\n  s3:\n    endpoint_url: \"\"\n    bucket: \"\"\n    access_key: \"\"\n    secret_key: \"\"\n    session_token: \"\"\n    region: us-east-1\n    prefix: \"\"\n    timeout_s: 60\n  monthly_prefix: \"\"\n  month_file_template: \"{year}-{month02}.md\"\n  index_enabled: false\n  index_file: INDEX.md\n  redact_markers: true\n\nretrieval:\n  db_path: data/index.db\n  top_k: 8\n  max_context_tokens: 5200\n  min_score: 0.30\n  # services#116: lexical check of the hits against names and time anchors in the message (README).\n  entity_focus: true\n  # below_margin: drop hits naming no asked entity that score more than this below the best exact-name hit.\n  entity_focus_margin: 0.05\n  # services#114: drop hits scoring more than this below the best hit, for messages naming no entity (the entity\n  # focus decides otherwise). A number in (0, 1], or off. Off until a full gate run measures it (0.08 suggested).\n  score_gap: off\n\ncontext:\n  max_today_tokens: 4500\n  max_standing_tokens: 2200\n  # Used only when semantic retrieval yields no matches or is unavailable.\n  direct_past_days: 3\n  max_direct_past_tokens: 1200\n\nui:\n  host: 0.0.0.0\n  port: 8010\n  title: \"Diary Companion\"\n  # Set DIARY_AUTH_TOKEN before exposing this service beyond a trusted machine.\n  auth_token: \"\"\n\nlogging:\n  level: INFO\n  file: data/agent.log\n",
+   "env": {
+    "DIARY_PARENT": "rust",
+    "HOME": "/home/qa-synthetic",
+    "DIARY_RUST_EMBEDDING": "on",
+    "DB_PATH": ":memory:"
+   },
+   "config": {
+    "port": 8010,
+    "control_token": "qa-control-token",
+    "forward_secret": "qa-forward-secret",
+    "auth_token": "",
+    "tenant_key": "",
+    "data_root": ".",
+    "legacy_user_id": "",
+    "corpus": {
+     "monthly_prefix": "",
+     "entry_layout": "daily",
+     "entries_prefix": "Entries",
+     "index_file": "INDEX.md",
+     "month_file_template": "{year}-{month02}.md",
+     "index_enabled": false
+    },
+    "llm": {
+     "main": {
+      "base_url": "http://host.docker.internal:11434/v1",
+      "api_key": "",
+      "chat_model": "default",
+      "fallback_model": "",
+      "setting_key": "LLM_CHAT_MODEL",
+      "fallback_setting_key": "LLM_CHAT_FALLBACK_MODEL"
+     },
+     "aux": {
+      "base_url": "http://host.docker.internal:11434/v1",
+      "api_key": "",
+      "chat_model": "default",
+      "fallback_model": "",
+      "setting_key": "LLM_AUX_MODEL",
+      "fallback_setting_key": "LLM_AUX_FALLBACK_MODEL"
+     },
+     "aux_prefers_main": true,
+     "configured": "default"
+    },
+    "corpus_write_impl": "python",
+    "workspace_export": {
+     "impl": "python",
+     "binary": "/usr/local/bin/diary-workspace-export",
+     "settings": {
+      "monthly_prefix": "",
+      "entry_layout": "daily",
+      "entries_prefix": "Entries",
+      "index_file": "INDEX.md",
+      "month_file_template": "{year}-{month02}.md",
+      "index_enabled": false
+     }
+    },
+    "external_sources": [],
+    "native_routes": [],
+    "native_writers": [],
+    "embedding": {
+     "llm": {
+      "embed_model": "default",
+      "timeout_s": 300,
+      "max_retries": 3
+     },
+     "retrieval": {
+      "db_path": ":memory:",
+      "embedding_state_path": "embedding-config.json"
+     }
+    }
+   },
+   "error": null
+  },
+  {
+   "case": "state-path-root-db",
+   "yaml": "# Diary Companion portable defaults\n\nllm:\n  # Any OpenAI-compatible endpoint. Override for your provider.\n  base_url: http://host.docker.internal:11434/v1\n  api_key: \"\"\n  chat_model: default\n  embed_model: default\n  aux:\n    base_url: http://host.docker.internal:11434/v1\n    api_key: \"\"\n    model: default\n  timeout_s: 300\n  max_retries: 3\n  # Token cap of each companion answer (#127); a longer answer is cut off and marked as shortened.\n  max_answer_tokens: 1024\n\ncorpus:\n  # Daily files are stored as Entries/YYYY/Month/Month D, YYYY.md.\n  # Set to monthly for compatibility with older single-file-per-month corpora.\n  entry_layout: daily\n  entries_prefix: Entries\n  # Local storage works on a clean installation; select webdav explicitly for remote storage.\n  backend: local\n  root: \"\"\n  local:\n    root: data/corpus\n  webdav:\n    base_url: https://cloud.example.com/remote.php/dav/files/username/\n    username: \"\"\n    timeout_s: 60\n  # S3-compatible object storage (MinIO, Backblaze B2, AWS S3, Garage, ...).\n  # Path-style addressing; credentials optional (unsigned mode for public buckets).\n  s3:\n    endpoint_url: \"\"\n    bucket: \"\"\n    access_key: \"\"\n    secret_key: \"\"\n    session_token: \"\"\n    region: us-east-1\n    prefix: \"\"\n    timeout_s: 60\n  monthly_prefix: \"\"\n  month_file_template: \"{year}-{month02}.md\"\n  index_enabled: false\n  index_file: INDEX.md\n  redact_markers: true\n\nretrieval:\n  db_path: data/index.db\n  top_k: 8\n  max_context_tokens: 5200\n  min_score: 0.30\n  # services#116: lexical check of the hits against names and time anchors in the message (README).\n  entity_focus: true\n  # below_margin: drop hits naming no asked entity that score more than this below the best exact-name hit.\n  entity_focus_margin: 0.05\n  # services#114: drop hits scoring more than this below the best hit, for messages naming no entity (the entity\n  # focus decides otherwise). A number in (0, 1], or off. Off until a full gate run measures it (0.08 suggested).\n  score_gap: off\n\ncontext:\n  max_today_tokens: 4500\n  max_standing_tokens: 2200\n  # Used only when semantic retrieval yields no matches or is unavailable.\n  direct_past_days: 3\n  max_direct_past_tokens: 1200\n\nui:\n  host: 0.0.0.0\n  port: 8010\n  title: \"Diary Companion\"\n  # Set DIARY_AUTH_TOKEN before exposing this service beyond a trusted machine.\n  auth_token: \"\"\n\nlogging:\n  level: INFO\n  file: data/agent.log\n",
+   "env": {
+    "DIARY_PARENT": "rust",
+    "HOME": "/home/qa-synthetic",
+    "DIARY_RUST_EMBEDDING": "on",
+    "DB_PATH": "/qa.db"
+   },
+   "config": {
+    "port": 8010,
+    "control_token": "qa-control-token",
+    "forward_secret": "qa-forward-secret",
+    "auth_token": "",
+    "tenant_key": "",
+    "data_root": "/",
+    "legacy_user_id": "",
+    "corpus": {
+     "monthly_prefix": "",
+     "entry_layout": "daily",
+     "entries_prefix": "Entries",
+     "index_file": "INDEX.md",
+     "month_file_template": "{year}-{month02}.md",
+     "index_enabled": false
+    },
+    "llm": {
+     "main": {
+      "base_url": "http://host.docker.internal:11434/v1",
+      "api_key": "",
+      "chat_model": "default",
+      "fallback_model": "",
+      "setting_key": "LLM_CHAT_MODEL",
+      "fallback_setting_key": "LLM_CHAT_FALLBACK_MODEL"
+     },
+     "aux": {
+      "base_url": "http://host.docker.internal:11434/v1",
+      "api_key": "",
+      "chat_model": "default",
+      "fallback_model": "",
+      "setting_key": "LLM_AUX_MODEL",
+      "fallback_setting_key": "LLM_AUX_FALLBACK_MODEL"
+     },
+     "aux_prefers_main": true,
+     "configured": "default"
+    },
+    "corpus_write_impl": "python",
+    "workspace_export": {
+     "impl": "python",
+     "binary": "/usr/local/bin/diary-workspace-export",
+     "settings": {
+      "monthly_prefix": "",
+      "entry_layout": "daily",
+      "entries_prefix": "Entries",
+      "index_file": "INDEX.md",
+      "month_file_template": "{year}-{month02}.md",
+      "index_enabled": false
+     }
+    },
+    "external_sources": [],
+    "native_routes": [],
+    "native_writers": [],
+    "embedding": {
+     "llm": {
+      "embed_model": "default",
+      "timeout_s": 300,
+      "max_retries": 3
+     },
+     "retrieval": {
+      "db_path": "/qa.db",
+      "embedding_state_path": "/embedding-config.json"
+     }
+    }
+   },
+   "error": null
+  },
+  {
+   "case": "state-path-set",
+   "yaml": "llm:\n  base_url: http://qa-engine.invalid/v1\n  aux:\n    base_url: http://qa-engine.invalid/v1\nretrieval:\n  db_path: /data/qa/index.db\n  embedding_state_path: ''\n",
+   "env": {
+    "DIARY_PARENT": "rust",
+    "HOME": "/home/qa-synthetic",
+    "DIARY_RUST_EMBEDDING": "on"
+   },
+   "config": {
+    "port": 8010,
+    "control_token": "qa-control-token",
+    "forward_secret": "qa-forward-secret",
+    "auth_token": "",
+    "tenant_key": "",
+    "data_root": "/data/qa",
+    "legacy_user_id": "",
+    "corpus": {
+     "monthly_prefix": null,
+     "entry_layout": null,
+     "entries_prefix": null,
+     "index_file": null,
+     "month_file_template": null,
+     "index_enabled": true
+    },
+    "llm": {
+     "main": {
+      "base_url": "http://qa-engine.invalid/v1",
+      "api_key": "",
+      "chat_model": "",
+      "fallback_model": "",
+      "setting_key": "LLM_CHAT_MODEL",
+      "fallback_setting_key": "LLM_CHAT_FALLBACK_MODEL"
+     },
+     "aux": {
+      "base_url": "http://qa-engine.invalid/v1",
+      "api_key": "",
+      "chat_model": "",
+      "fallback_model": "",
+      "setting_key": "LLM_AUX_MODEL",
+      "fallback_setting_key": "LLM_AUX_FALLBACK_MODEL"
+     },
+     "aux_prefers_main": true,
+     "configured": null
+    },
+    "corpus_write_impl": "python",
+    "workspace_export": {
+     "impl": "python",
+     "binary": "/usr/local/bin/diary-workspace-export",
+     "settings": {
+      "monthly_prefix": null,
+      "entry_layout": null,
+      "entries_prefix": null,
+      "index_file": null,
+      "month_file_template": null,
+      "index_enabled": null
+     }
+    },
+    "external_sources": [],
+    "native_routes": [],
+    "native_writers": [],
+    "embedding": {
+     "retrieval": {
+      "db_path": "/data/qa/index.db",
+      "embedding_state_path": "/data/qa/embedding-config.json"
+     }
+    }
+   },
+   "error": null
+  },
+  {
+   "case": "retrieval-not-a-mapping",
+   "yaml": "llm:\n  base_url: http://qa-engine.invalid/v1\n  aux:\n    base_url: http://qa-engine.invalid/v1\nretrieval: 5\n",
+   "env": {
+    "DIARY_PARENT": "rust",
+    "HOME": "/home/qa-synthetic"
+   },
+   "config": null,
+   "error": "TypeError"
   },
   {
    "case": "aux-base-missing",

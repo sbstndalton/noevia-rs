@@ -720,8 +720,15 @@ pub async fn control(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
 /// too and compares it with the child's; unset (or anything else) changes nothing.
 pub const CONFIG_SWITCH: &str = "DIARY_RUST_CONFIG";
 
-/// Where Python's `load_config` finds config.yaml by default (agent/../config in the image).
-pub const CONFIG_DIR: &str = "/app/config";
+/// Where Python's `load_config` finds config.yaml by default: `agent/../config`, the app root's
+/// `config` directory. The child runs from the app root (the image's WORKDIR /app), as this
+/// process does, so the directory is `config` under the current directory (`/app/config` when it
+/// cannot be read).
+pub fn config_dir() -> std::path::PathBuf {
+    std::env::current_dir()
+        .map(|d| d.join("config"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("/app/config"))
+}
 
 /// This process's own resolution of the child's start-up config (config.yaml and this process's
 /// environment, which the child inherits): diary_operator::server_config::main_mode with this
@@ -736,7 +743,7 @@ pub fn own_config(front: &Front, control_port: u16) -> Result<serde_json::Value,
         control_token: &front.control_token,
         forward_secret: &front.secret,
     };
-    diary_operator::config::load(None, std::path::Path::new(CONFIG_DIR), &env)
+    diary_operator::config::load(None, &config_dir(), &env)
         .and_then(|cfg| diary_operator::server_config::main_mode(&cfg.data, &env, &start))
         .map_err(|e| {
             e.split(':')

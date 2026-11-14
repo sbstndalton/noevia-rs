@@ -20,6 +20,8 @@
 //! - JSON cannot carry what Python's `json.dumps` would write as `NaN`/`Infinity`, integers beyond
 //!   64 bits or lone surrogates: an `Err` here;
 //! - `str()` of a list or mapping as `retrieval.db_path` is an `Err`;
+//! - app.py's import-time default of `retrieval.embedding_state_path` is applied (it reaches the
+//!   `embedding` subset);
 //! - `~user` in DIARY_EXTERNAL_SOURCES, or `~` without HOME, needs the password database:
 //!   `external_sources` is then absent (the route stays with the child), where Python resolves it.
 
@@ -85,6 +87,8 @@ const EXPORT_BINARY: &str = "/usr/local/bin/diary-workspace-export";
 pub fn main_mode(data: &Value, env: &BTreeMap<String, String>, start: &Start<'_>) -> Result<Json> {
     let cfg = |dotted: &str| get(data, dotted);
     let env_str = |key: &str| env.get(key).map(String::as_str);
+    // app.py at import, before anything else reads the configuration.
+    let state_path = embedding_state_default(data)?;
 
     // AppState: the two clients (llm.LLMClient.__init__ and what server_config reads of them).
     let timeout_s = py_float(&cfg("llm.timeout_s").unwrap_or_else(|| int(300)))?;
@@ -199,7 +203,7 @@ pub fn main_mode(data: &Value, env: &BTreeMap<String, String>, start: &Start<'_>
         json!(writers(env_str("DIARY_RUST_WRITES").unwrap_or(""))),
     );
     if strip(env_str("DIARY_RUST_EMBEDDING").unwrap_or("")).to_lowercase() == "on" {
-        out.insert("embedding".into(), embedding_config(data)?);
+        out.insert("embedding".into(), embedding_config(data, state_path)?);
     }
     Ok(Json::Object(out))
 }
@@ -297,8 +301,34 @@ fn is_uuid(s: &str) -> bool {
         })
 }
 
-/// rust_parent.embedding_config: the nested subset of EMBEDDING_KEYS that are not None.
-fn embedding_config(data: &Value) -> Result<Json> {
+/// app.py's import-time default: without a (truthy) `retrieval.embedding_state_path` it is set to
+/// `str(Path(db).parent / "embedding-config.json")` (the current directory for no or an in-memory
+/// database). A `retrieval` that is not a mapping fails that assignment, and the child's import.
+fn embedding_state_default(data: &Value) -> Result<Option<String>> {
+    if get(data, "retrieval.embedding_state_path").is_some_and(|v| v.truthy()) {
+        return Ok(None);
+    }
+    let db = py_str(&or_empty(get(data, "retrieval.db_path")))?;
+    if let Some(v) = data.get("retrieval").filter(|v| v.entries().is_none()) {
+        return Err(format!(
+            "TypeError: '{}' object does not support item assignment",
+            v.type_name()
+        ));
+    }
+    let (root, mut parts) = if !db.is_empty() && db != ":memory:" {
+        let (root, mut parts) = parse_path(&db);
+        parts.pop();
+        (root, parts)
+    } else {
+        ("", Vec::new())
+    };
+    parts.push("embedding-config.json");
+    Ok(Some(format_path(root, &parts)))
+}
+
+/// rust_parent.embedding_config: the nested subset of EMBEDDING_KEYS that are not None, with
+/// app.py's default state path (`state_path`) in place.
+fn embedding_config(data: &Value, state_path: Option<String>) -> Result<Json> {
     let mut out = Map::new();
     for &key in EMBEDDING_KEYS {
         let Some(value) = get(data, key).filter(|v| !matches!(v.kind(), Kind::Null)) else {
@@ -310,6 +340,14 @@ fn embedding_config(data: &Value) -> Result<Json> {
             .or_insert_with(|| Json::Object(Map::new()));
         if let Json::Object(map) = node {
             map.insert(leaf.to_owned(), to_json(&value)?);
+        }
+    }
+    if let Some(path) = state_path {
+        let node = out
+            .entry("retrieval".to_owned())
+            .or_insert_with(|| Json::Object(Map::new()));
+        if let Json::Object(map) = node {
+            map.insert("embedding_state_path".into(), Json::String(path));
         }
     }
     Ok(Json::Object(out))

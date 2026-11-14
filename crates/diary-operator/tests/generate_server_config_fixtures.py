@@ -41,6 +41,14 @@ from agent import rust_forward, rust_parent  # noqa: E402
 from agent.config import load_config  # noqa: E402
 from agent.workspace_files import MemoryBackend  # noqa: E402
 
+# app.py's import-time default of retrieval.embedding_state_path (its module-level `if`),
+# taken from the source and run on each case's loaded config as the child's import runs it.
+import ast  # noqa: E402
+_tree = ast.parse((diary / "agent/app.py").read_text(encoding="utf-8"))
+_default = [n for n in _tree.body if isinstance(n, ast.If) and "embedding_state_path" in ast.unparse(n.test)]
+assert len(_default) == 1, "app.py's embedding_state_path default moved"
+STATE_PATH_DEFAULT = compile(ast.Module(body=_default, type_ignores=[]), "app.py", "exec")
+
 shipped = (diary / "config/config.yaml").read_text(encoding="utf-8")
 UID_A, UID_B = "0b5f6c1e-3a2d-4c8e-9f10-1a2b3c4d5e6f", "00000000-0000-4000-8000-0000000000b9"
 BASE = {"DIARY_PARENT": "rust", "HOME": "/home/qa-synthetic"}
@@ -103,6 +111,13 @@ CASES = [
          "    base_url: http://qa-engine.invalid/v1\n    model: qa-aux\nretrieval:\n  db_path: /data/qa/index.db\n", {}),
     case("yaml-empty", "", {"LLM_BASE_URL": "http://qa-engine.invalid/v1", "LLM_AUX_BASE_URL": "http://qa-engine.invalid/v1",
                             "DB_PATH": "/data/qa/index.db"}),
+    case("state-path-relative-db", shipped, {"DIARY_RUST_EMBEDDING": "on", "DB_PATH": "qa//sub/./qa.db"}),
+    case("state-path-memory-db", shipped, {"DIARY_RUST_EMBEDDING": "on", "DB_PATH": ":memory:"}),
+    case("state-path-root-db", shipped, {"DIARY_RUST_EMBEDDING": "on", "DB_PATH": "/qa.db"}),
+    case("state-path-set", "llm:\n  base_url: http://qa-engine.invalid/v1\n  aux:\n    base_url: http://qa-engine.invalid/v1\n"
+         "retrieval:\n  db_path: /data/qa/index.db\n  embedding_state_path: ''\n", {"DIARY_RUST_EMBEDDING": "on"}),
+    case("retrieval-not-a-mapping", "llm:\n  base_url: http://qa-engine.invalid/v1\n  aux:\n    base_url: http://qa-engine.invalid/v1\n"
+         "retrieval: 5\n", {}),
     case("aux-base-missing", "llm:\n  base_url: http://qa-engine.invalid/v1\nretrieval:\n  db_path: /data/qa/index.db\n", {}),
 ]
 
@@ -115,6 +130,7 @@ def record(c):
     data_dir = scratch / ("data-" + c["case"])
     try:
         cfg = load_config(str(cfg_path))
+        exec(STATE_PATH_DEFAULT, {"_base_cfg": cfg, "Path": Path})
         # The index file goes to a scratch copy of retrieval.db_path; server_config reads the
         # configured value itself (data_root = its directory).
         real = cfg.get("retrieval.db_path")
