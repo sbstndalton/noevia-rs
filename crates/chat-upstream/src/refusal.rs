@@ -5,10 +5,17 @@
 //! with `provider` (a non-default or external row), never alone. Inference machines, the sign-in
 //! provider and route targets stay refused in this slice: they have their own transports
 //! ([`crate::target::Fetch`]) and their own checks (machine readiness, the broker, the cloud grant).
+//! The sign-in provider is lifted too, but only for a front that also names [`SIGNIN_CAP`] (it runs
+//! the broker's transport itself); machines and route targets stay refused in every case.
 
 /// The caps token a front sends when it runs this call path (not sent by any front yet; core
 /// does not know it yet, so it changes nothing).
 pub const CAP: &str = "providers";
+
+/// The caps token of a front that runs the sign-in provider's transport (the broker's fetch) for a
+/// turn itself. It lifts the sign-in row only together with [`CAP`]: the sign-in row is a provider
+/// row too, so alone it lifts nothing.
+pub const SIGNIN_CAP: &str = "signin-transport-v1";
 
 /// The facts `refusal()` reads for these two checks (`preparedTurn`'s `t`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -42,12 +49,15 @@ pub fn node_reason(f: &Facts) -> Option<&'static str> {
 
 /// The reason for a front that sends [`CAP`]: a provider row (non-default, external, with or
 /// without a key) runs natively; a machine, the sign-in provider or a route target still answers
-/// `provider`. Without the token, exactly [`node_reason`].
+/// `provider`. A front that sends [`SIGNIN_CAP`] as well runs the sign-in provider too; machines
+/// and route targets stay refused. Without [`CAP`], exactly [`node_reason`] ([`SIGNIN_CAP`] alone
+/// lifts nothing).
 pub fn with_caps(f: &Facts, caps: &[&str]) -> Option<&'static str> {
     if !caps.contains(&CAP) {
         return node_reason(f);
     }
-    if f.machine || f.sign_in || f.route_target {
+    let sign_in_held = f.sign_in && !caps.contains(&SIGNIN_CAP);
+    if f.machine || sign_in_held || f.route_target {
         return Some("provider");
     }
     None
