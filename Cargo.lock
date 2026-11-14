@@ -526,6 +526,7 @@ dependencies = [
 name = "chat-upstream"
 version = "0.1.0"
 dependencies = [
+ "chat-turn",
  "engine-facts",
  "hmac",
  "js-json",
@@ -2401,6 +2402,7 @@ dependencies = [
  "chat-mirror-sched",
  "chat-prepare",
  "chat-turn",
+ "chat-upstream",
  "code-acp",
  "code-harness",
  "code-net-guard",

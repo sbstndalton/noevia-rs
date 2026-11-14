@@ -401,7 +401,9 @@ pub(crate) fn handoff_headers(token: HeaderValue) -> [(&'static str, HeaderValue
         (HANDOFF_HEADER, token),
         (
             chat_turn::handoff::HANDOFF_CAPS_HEADER,
-            HeaderValue::from_static(chat_turn::handoff::HANDOFF_CAPS),
+            // chat_provider.rs: `providers` only with its switch on (off everywhere; no core reads it yet).
+            HeaderValue::from_str(&crate::chat_provider::caps(crate::chat_provider::offered()))
+                .unwrap_or_else(|_| HeaderValue::from_static(chat_turn::handoff::HANDOFF_CAPS)),
         ),
     ]
 }
@@ -489,6 +491,15 @@ async fn drive(
     if let Some(body) = shadow {
         crate::chat_prepare_shadow::spawn(Arc::clone(&app), user_dir.clone(), body, frame);
     }
+    // Council p6-1/p8-3: a provider row's turn (chat_provider.rs), only from a front that offered `providers`.
+    let provider = match crate::chat_provider::setup(&app, &data_dir, &user, &p).await {
+        crate::chat_provider::Setup::Plain => None,
+        crate::chat_provider::Setup::Refused => return failed(&tx),
+        crate::chat_provider::Setup::Provider(turn) => Some(turn),
+    };
+    let client = provider
+        .as_ref()
+        .map_or_else(engine_client, |turn| turn.client());
     let host = Arc::new(FrontHost {
         app: Arc::clone(&app),
         user,
@@ -501,7 +512,7 @@ async fn drive(
         lease: Mutex::new(None),
         lease_token: Mutex::new(None),
         approvals,
-        client: engine_client(),
+        client,
     });
     for v in &forwarded {
         host.observe(v, false);
@@ -522,7 +533,21 @@ async fn drive(
     };
     let process = process();
     let helpers = helpers();
-    let ended = native::run(&*host, process, &helpers, &p).await;
+    let ended = match provider {
+        None => native::run(&*host, process, &helpers, &p).await,
+        Some(turn) => match (*turn).run(&*host, process, &helpers, &p).await {
+            Ok(ended) => ended,
+            Err(e) => {
+                // plan() only cuts what ProviderHost takes; refused all the same if they ever differ.
+                eprintln!("chat native: provider turn not run: {e:?}");
+                host.emit(&js::obj([
+                    ("type", js::s("error")),
+                    ("text", js::s(native::FAILED_TEXT)),
+                ]));
+                native::Ended::Error
+            }
+        },
+    };
     ticks.abort();
     // A partial write in progress finishes before the turn's end is saved (review F1).
     let _ = ticks.await;
