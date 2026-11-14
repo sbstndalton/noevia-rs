@@ -1,0 +1,292 @@
+//! The artifact check over shared state through `handle`: the lock is held only to start and to
+//! finish: a third distinct check is refused while two run (asked from inside a check's fetch), a
+//! request for a running check waits for that check's answer (`unknown` included) or gets core's
+//! rejection when it panicked, and a run that panics does not stay counted as running.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
+use js_json::JValue;
+use model_pull::artifact::{self, Artifacts, FetchError, Fetched, Fetcher};
+use model_pull::manager::{Config, Kind, Reply, Request, Thrown};
+use model_pull::{handle, Call, Host, Outcome};
+use std::sync::{Arc, Mutex};
+
+fn config() -> Config {
+    Config {
+        kind: Kind::Lemonade,
+        base_url: "http://qa-manager.invalid".into(),
+        api_key: None,
+    }
+}
+
+fn call(repo: &str) -> String {
+    format!("repo=qa-org/{repo}&variant=Q4_K_M")
+}
+
+/// Answers every variants call with one variant, and every revision request with a 404 (a
+/// quick `unknown`); inside a fetch it makes the nested requests of its plan.
+struct Nested<'a> {
+    artifacts: &'a Mutex<Artifacts>,
+    nested: Vec<(String, Vec<String>)>,
+    seen: Vec<(String, Outcome)>,
+    panic_in_fetch: bool,
+}
+
+impl Fetcher for Nested<'_> {
+    fn fetch(&mut self, _: &artifact::Fetch) -> Result<Fetched, FetchError> {
+        assert!(
+            self.artifacts.try_lock().is_ok(),
+            "the lock is not held while a check fetches"
+        );
+        if self.panic_in_fetch {
+            panic!("qa: the fetch panicked");
+        }
+        for (repo, inner) in std::mem::take(&mut self.nested) {
+            let mut host = Nested {
+                artifacts: self.artifacts,
+                nested: vec![],
+                seen: vec![],
+                panic_in_fetch: false,
+            };
+            if let Some(next) = inner.first() {
+                host.nested.push((next.clone(), inner[1..].to_vec()));
+            }
+            let query = call(&repo);
+            let out = handle(&config(), self.artifacts, get(&query), &mut host);
+            self.seen.push((repo, out));
+            self.seen.extend(host.seen);
+        }
+        Ok(Fetched {
+            status: 404,
+            content_range: None,
+            body: Ok(Vec::new()),
+        })
+    }
+
+    fn now_ms(&self) -> i64 {
+        1_794_744_000_000
+    }
+}
+
+impl Host for Nested<'_> {
+    fn invalidate_model_reads(&mut self) {}
+    fn clear_model_scan(&mut self) -> Result<(), model_pull::Answered> {
+        Ok(())
+    }
+    fn send(&mut self, _: &Request) -> Result<Reply, Thrown> {
+        Ok(Reply {
+            ok: true,
+            status: 200,
+            body: JValue::obj([(
+                "variants",
+                JValue::Arr(vec![JValue::obj([
+                    ("name", JValue::from("Q4_K_M")),
+                    ("files", JValue::Arr(vec![JValue::from("qa.gguf")])),
+                ])]),
+            )]),
+        })
+    }
+    fn enter(&mut self) -> Result<(), Thrown> {
+        Ok(())
+    }
+    fn leave(&mut self) {}
+    fn downloads_requested(&mut self, _: &JValue) -> Result<(), model_pull::Answered> {
+        Ok(())
+    }
+    fn downloads_rejected(&mut self, _: &JValue) {}
+}
+
+fn get(query: &str) -> Call<'_> {
+    Call {
+        method: "GET",
+        path: "/api/models/mtp-artifact",
+        query,
+        admin: false,
+        body: None,
+    }
+}
+
+fn reason(out: &Outcome) -> &str {
+    match out {
+        Outcome::Answer { status: 200, body } => body.get("reason").as_str().unwrap(),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_third_check_is_refused_while_two_run() {
+    let artifacts = Mutex::new(Artifacts::new());
+    let mut host = Nested {
+        artifacts: &artifacts,
+        // While qa-one runs: qa-two (runs), and while that runs, qa-three (refused).
+        nested: vec![("qa-two".into(), vec!["qa-three".into()])],
+        seen: vec![],
+        panic_in_fetch: false,
+    };
+    let query = call("qa-one");
+    let out = handle(&config(), &artifacts, get(&query), &mut host);
+    assert_eq!(reason(&out), artifact::REVISION_UNAVAILABLE);
+    let seen: Vec<&str> = host.seen.iter().map(|(r, _)| r.as_str()).collect();
+    assert_eq!(seen, ["qa-two", "qa-three"]);
+    assert_eq!(reason(&host.seen[0].1), artifact::REVISION_UNAVAILABLE);
+    assert_eq!(reason(&host.seen[1].1), artifact::BUSY);
+    assert!(artifacts.lock().unwrap().running().is_empty());
+}
+
+/// A host on its own thread: the runner's fetch waits for `release` (then answers 404 or
+/// panics); a joiner's fetch must never be called.
+struct Threaded {
+    release: Option<std::sync::mpsc::Receiver<()>>,
+    panic_after_release: bool,
+}
+
+impl Fetcher for Threaded {
+    fn fetch(&mut self, _: &artifact::Fetch) -> Result<Fetched, FetchError> {
+        let Some(release) = self.release.take() else {
+            panic!("a joiner fetched: it must wait for the running check instead");
+        };
+        release.recv().unwrap();
+        if self.panic_after_release {
+            panic!("qa: the runner's fetch panicked");
+        }
+        Ok(Fetched {
+            status: 404,
+            content_range: None,
+            body: Ok(Vec::new()),
+        })
+    }
+    fn now_ms(&self) -> i64 {
+        1_794_744_000_000
+    }
+}
+
+impl Host for Threaded {
+    fn invalidate_model_reads(&mut self) {}
+    fn clear_model_scan(&mut self) -> Result<(), model_pull::Answered> {
+        Ok(())
+    }
+    fn send(&mut self, r: &Request) -> Result<Reply, Thrown> {
+        let mut nested = Nested {
+            artifacts: &Mutex::new(Artifacts::new()),
+            nested: vec![],
+            seen: vec![],
+            panic_in_fetch: false,
+        };
+        nested.send(r)
+    }
+    fn enter(&mut self) -> Result<(), Thrown> {
+        Ok(())
+    }
+    fn leave(&mut self) {}
+    fn downloads_requested(&mut self, _: &JValue) -> Result<(), model_pull::Answered> {
+        Ok(())
+    }
+    fn downloads_rejected(&mut self, _: &JValue) {}
+}
+
+/// The runner on one thread, a joiner on another (started once the runner is fetching); the runner
+/// is released once the joiner holds the running check's completion. Both answers.
+fn joined(
+    panic_after_release: bool,
+) -> (std::thread::Result<Outcome>, Outcome, Arc<Mutex<Artifacts>>) {
+    let artifacts = Arc::new(Mutex::new(Artifacts::new()));
+    let (release, gate) = std::sync::mpsc::channel();
+    let runner = {
+        let artifacts = Arc::clone(&artifacts);
+        std::thread::spawn(move || {
+            let mut host = Threaded {
+                release: Some(gate),
+                panic_after_release,
+            };
+            let query = call("qa-joined");
+            handle(&config(), &artifacts, get(&query), &mut host)
+        })
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while artifacts.lock().unwrap().running().is_empty() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the runner never started"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let joiner = {
+        let artifacts = Arc::clone(&artifacts);
+        std::thread::spawn(move || {
+            let mut host = Threaded {
+                release: None,
+                panic_after_release: false,
+            };
+            let query = call("qa-joined");
+            handle(&config(), &artifacts, get(&query), &mut host)
+        })
+    };
+    // The joiner holds the running check's completion once it waits: release the runner then.
+    let key = model_pull::artifact::Key {
+        repo: "qa-org/qa-joined".into(),
+        files: vec!["qa.gguf".into()],
+    };
+    while artifacts.lock().unwrap().waiting(&key) == 0 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the joiner never waited"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    release.send(()).unwrap();
+    let ran = runner.join();
+    let waited = joiner.join().expect("the joiner does not panic");
+    (ran, waited, artifacts)
+}
+
+#[test]
+fn a_joiner_gets_the_runner_s_unknown_answer() {
+    let (ran, waited, artifacts) = joined(false);
+    let ran = ran.expect("the runner answers");
+    assert_eq!(reason(&ran), artifact::REVISION_UNAVAILABLE);
+    assert_eq!(waited, ran, "the same answer, checkedAt included");
+    assert!(artifacts.lock().unwrap().running().is_empty());
+}
+
+#[test]
+fn a_joiner_of_a_run_that_panicked_gets_the_rejection() {
+    let (ran, waited, artifacts) = joined(true);
+    assert!(ran.is_err());
+    assert_eq!(
+        waited,
+        Outcome::Answer {
+            status: 500,
+            body: JValue::obj([("error", JValue::from("Internal error"))]),
+        }
+    );
+    assert!(artifacts.lock().unwrap().running().is_empty());
+}
+
+#[test]
+fn a_run_that_panics_is_abandoned() {
+    let artifacts = Mutex::new(Artifacts::new());
+    let query = call("qa-panics");
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut host = Nested {
+            artifacts: &artifacts,
+            nested: vec![],
+            seen: vec![],
+            panic_in_fetch: true,
+        };
+        handle(&config(), &artifacts, get(&query), &mut host)
+    }));
+    assert!(panicked.is_err());
+    assert!(artifacts.lock().unwrap().running().is_empty());
+    let mut host = Nested {
+        artifacts: &artifacts,
+        nested: vec![],
+        seen: vec![],
+        panic_in_fetch: false,
+    };
+    let out = handle(&config(), &artifacts, get(&query), &mut host);
+    assert_eq!(reason(&out), artifact::REVISION_UNAVAILABLE);
+}

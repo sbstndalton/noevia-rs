@@ -19,11 +19,22 @@
 //!   this path (a future `providers` caps token) may lift: external rows only, never machines,
 //!   the sign-in provider or a route target in this slice.
 //!
+//! - [`host`]: the native turn's host for a provider-row turn: wraps the front's host, sends each request to
+//!   the bound address with the row's key as it is now, re-checks the binding first, never sends the local
+//!   lease, refuses redirects, and skips the local model manager as chat.cjs does for a non-default row.
+//! - [`cut`]: what a front calls once at the cut (resolve, then bind) and before each request (the re-check's
+//!   facts by the same rules).
+//! - [`limit`]: the runtime limit of a provider-row turn (`hostedLimit`: the row's stated context, else the
+//!   hosted default), which a provider-row frame must carry.
+//!
 //! Nothing calls this crate yet: production behaviour is unchanged until a front wires it behind
 //! a caps token core also understands.
 
 pub mod binding;
+pub mod cut;
 pub mod envelope;
+pub mod host;
+pub mod limit;
 pub mod plan;
 pub mod refusal;
 pub mod relay;

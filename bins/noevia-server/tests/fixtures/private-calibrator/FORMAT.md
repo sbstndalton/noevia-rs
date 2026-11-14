@@ -15,7 +15,10 @@ reach: probe evidence and causes, `cancelProbe`, foreign clients (`foreignWait`/
 aborts during start and during a run, stale starts, refused writes and restores, the memory floor
 (per-call `readMemory`), engine failures, and (R6 shift 3) a rejected long prompt's error body (cut
 by its 2 s deadline, cut at the byte cap, ended normally) and the long prompt's 1.5x wall-clock stop
-(paced chunks past it, exactly at it with and without engine timings). Whatever Node does is the oracle; each scenario only
+(paced chunks past it, exactly at it with and without engine timings), and (#2619) a save that falls
+due in the middle of a chunk carrying several progress events (on a non-final event; before a forecast
+stop in the same chunk). Two saves cannot fall due in one chunk: the recorded clock only moves between
+reads, so every event of a chunk reads one `now()`. Whatever Node does is the oracle; each scenario only
 asserts that it reached the branch it is about. Every scenario has a 15 s node:test timeout (a
 scenario that never settles fails alone). That timeout cannot stop a loop that never yields to the
 event loop: without the recorder's clock the calibrator's time is real and the scenarios' sleeps

@@ -12,7 +12,7 @@
 // The output is deterministic; CI regenerates it and compares with the committed
 // tests/fixtures/node-chat-lists.v1.json, which tests/chat_lists_read.rs replays through the front.
 // Local-time Date strings read in the process zone; the front's tests run in UTC as CI does.
-process.env.TZ = 'UTC';
+process.env.TZ = process.env.ORACLE_TZ || 'UTC'; // ORACLE_TZ: a run in another zone, for the zone-dependent date cases
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
