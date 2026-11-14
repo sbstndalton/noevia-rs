@@ -35,6 +35,7 @@ pub mod bridges;
 pub mod methods_near;
 pub mod reach;
 pub mod recheck;
+pub mod train;
 
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
