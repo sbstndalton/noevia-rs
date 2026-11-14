@@ -15,19 +15,20 @@
 //!   row changed in between or core and this front differ).
 //! - [`FrontRows`] per request: the account and the row as they are now (the binding's re-check), and the row's
 //!   key unsealed now (a rotated key is picked up; an unreadable one sends no bearer, as `openProviderKey`).
-//! - [`provider_client`]: an engine client that follows no redirect (undici `redirect: 'error'`), so a 3xx
+//! - [`provider_client`]: an engine client that follows no redirect (Node's fetch with `redirect: 'error'`), so a 3xx
 //!   reaches [`ProviderHost`] as an answer and is refused instead of followed.
 //!
 //! Not in this slice (core keeps those turns, [`chat_upstream::refusal`]): Inference machines, the sign-in
 //! provider's broker and route targets.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
+use chat_turn::host::Host;
+use chat_turn::native::{Ended, Helpers, Process};
 use chat_turn::prepared::Prepared;
-use chat_upstream::binding::Binding;
 use chat_upstream::cut::{self, Cut, NotCut};
-use chat_upstream::host::{Rows, RowsNow};
+use chat_upstream::host::Unsupported;
 use chat_upstream::target::{Connection, Turn, User};
 use js_json::JValue;
 use server_auth::secrets::SecretKeys;
@@ -52,12 +53,15 @@ pub const ADDRESS: &str = "the frame's upstreamUrl is not the row's address";
 pub const LIMIT: &str = "the frame's runtimeLimit is not the row's hosted limit";
 pub const NODE_REFUSES: &str = "Node refuses this row's turn (sign-in or member origin)";
 pub const NODE_THROWS: &str = "the row has no text baseUrl";
+pub const EXTERNAL: &str =
+    "the row is an external provider (its tool calls need the external-provider rules at the tool bridge)";
 pub const UNSUPPORTED: &str =
     "the row needs a transport this front does not run (machine or broker)";
 
-/// Whether this front offers [`CAPS_TOKEN`].
+/// Whether this front offers [`CAPS_TOKEN`]: never in a build without the provider store (the
+/// `rust-storage-reads` feature, which holds provider_test_routes.rs's row reader).
 pub fn offered() -> bool {
-    offered_by(std::env::var(SWITCH).ok().as_deref())
+    cfg!(feature = "rust-storage-reads") && offered_by(std::env::var(SWITCH).ok().as_deref())
 }
 
 /// [`offered`] for a given value of [`SWITCH`].
@@ -144,6 +148,12 @@ pub fn plan(p: &Prepared, f: &Facts<'_>) -> Plan {
         Err(NotCut::NoUser) => return Plan::Refuse(NO_ACCOUNT),
         Err(NotCut::Unsupported(_)) => return Plan::Refuse(UNSUPPORTED),
     };
+    // After the cut (the sign-in row is Node's own refusal first). Core keeps an external row's turn (rust-chat-native.cjs refusals: `t.external`), and so does this front
+    // (noevia#2731 item 5): its tool calls run through core's bridges, where the external-provider rules of
+    // chat.cjs (`egressToolRefusal`) are not yet shown to apply to a handed-off turn.
+    if external_row(row) {
+        return Plan::Refuse(EXTERNAL);
+    }
     if c.target.url != p.upstream_url {
         return Plan::Refuse(ADDRESS);
     }
@@ -152,6 +162,179 @@ pub fn plan(p: &Prepared, f: &Facts<'_>) -> Plan {
         return Plan::Refuse(LIMIT);
     }
     Plan::Provider(c)
+}
+
+/// core provider-egress.cjs `isExternalProvider(row)`, an unknown answer counted as external: a row the server
+/// flagged external, a sign-in row, or a trial-terms host. The address is read without its user information, as
+/// provider-egress.cjs `providerProjection` reads it.
+pub fn external_row(row: &JValue) -> bool {
+    let text = js_json::to_js_string(row.get("baseUrl")).unwrap_or_default();
+    let text = match url::Url::parse(&text) {
+        Ok(mut u) if !u.username().is_empty() || u.password().is_some() => {
+            let _ = u.set_username("");
+            let _ = u.set_password(None);
+            u.to_string()
+        }
+        _ => text,
+    };
+    let provider = provider_egress::Provider {
+        kind: row.get("kind").as_str().map(|k| k.encode_utf16().collect()),
+        external: matches!(row.get("external"), JValue::Bool(true)),
+        base_url: text.encode_utf16().collect(),
+        label: Vec::new(),
+    };
+    provider_egress::external_strict(Some(&provider))
+}
+
+/// How chat_native.rs runs a handed-off frame ([`setup`]).
+pub enum Setup {
+    /// The front's host as it is: the default row, or a front not offering [`CAPS_TOKEN`] (today's path).
+    Plain,
+    /// Not run: the reason is logged here, the turn ends with the native failure text before a byte goes out.
+    Refused,
+    /// A provider row's turn, cut and bound.
+    Provider(ProviderTurn),
+}
+
+/// A provider row's turn as [`setup`] cut it: run it with [`ProviderTurn::run`] on a front host built with
+/// [`ProviderTurn::client`].
+#[cfg(feature = "rust-storage-reads")]
+pub struct ProviderTurn {
+    cut: Cut,
+    rows: FrontRows<AppAccounts>,
+    client: reqwest::Client,
+    default_id: String,
+}
+
+/// A build without the provider store never offers [`CAPS_TOKEN`], so it never has a provider row's turn.
+#[cfg(not(feature = "rust-storage-reads"))]
+pub enum ProviderTurn {}
+
+#[cfg(feature = "rust-storage-reads")]
+impl ProviderTurn {
+    /// The engine client the front host of this turn must use (no proxy, no redirect followed).
+    pub fn client(&self) -> reqwest::Client {
+        self.client.clone()
+    }
+
+    /// Runs the rest of the turn on `host` wrapped in the provider host. `Err`: the provider host does not take
+    /// this cut (never for what [`plan`] cuts; the caller refuses the turn all the same).
+    pub async fn run<H: Host>(
+        self,
+        host: &H,
+        process: &Process,
+        helpers: &Helpers<'_>,
+        p: &Prepared,
+    ) -> Result<Ended, Unsupported> {
+        let ProviderTurn {
+            cut,
+            rows,
+            default_id,
+            ..
+        } = self;
+        let wrapped = chat_upstream::host::ProviderHost::new(
+            host,
+            &rows,
+            cut.target,
+            cut.binding,
+            &default_id,
+        )?;
+        Ok(chat_turn::native::run(&wrapped, process, helpers, p).await)
+    }
+}
+
+#[cfg(not(feature = "rust-storage-reads"))]
+impl ProviderTurn {
+    /// Never called (no value of this type exists).
+    pub fn client(&self) -> reqwest::Client {
+        match *self {}
+    }
+
+    /// Never called (no value of this type exists).
+    pub async fn run<H: Host>(
+        self,
+        _host: &H,
+        _process: &Process,
+        _helpers: &Helpers<'_>,
+        _p: &Prepared,
+    ) -> Result<Ended, Unsupported> {
+        match self {}
+    }
+}
+
+/// The plan for `user`'s handed-off frame `p` as of now (the account store and the provider files read on a
+/// blocking thread). Without [`offered`], or on the default row, nothing is read and the frame runs as before.
+#[cfg(feature = "rust-storage-reads")]
+pub async fn setup(app: &Arc<App>, data_dir: &Path, user: &str, p: &Prepared) -> Setup {
+    if !offered() {
+        return Setup::Plain;
+    }
+    let default_id = crate::provider_test_routes::default_provider_id();
+    if p.provider.id == default_id {
+        return Setup::Plain;
+    }
+    let (app2, dir, who, id, def) = (
+        Arc::clone(app),
+        data_dir.to_path_buf(),
+        user.to_string(),
+        p.provider.id.clone(),
+        default_id.clone(),
+    );
+    let read = tokio::task::spawn_blocking(move || {
+        let accounts = AppAccounts(app2);
+        let (account, row) = read_facts(&accounts, &dir, &who, &id, &def);
+        let keys = row.is_some().then(|| load_keys(&dir)).flatten();
+        (account, row, keys)
+    })
+    .await;
+    let Ok((account, row, keys)) = read else {
+        eprintln!("chat native: provider turn not run: its facts could not be read");
+        return Setup::Refused;
+    };
+    let origins = origins_now();
+    #[allow(clippy::cast_precision_loss)]
+    let now_ms = crate::identity::now_ms() as f64;
+    let facts = Facts {
+        offered: true,
+        default_id: &default_id,
+        user: account.as_ref(),
+        row: row.as_ref(),
+        member_origins: &origins,
+        now_ms,
+    };
+    match plan(p, &facts) {
+        Plan::Plain => Setup::Plain,
+        Plan::Refuse(why) => {
+            eprintln!("chat native: provider turn not run: {why}");
+            Setup::Refused
+        }
+        Plan::Provider(cut) => {
+            let Some(client) = provider_client() else {
+                eprintln!("chat native: provider turn not run: {NO_CLIENT}");
+                return Setup::Refused;
+            };
+            let rows = FrontRows::new(
+                AppAccounts(Arc::clone(app)),
+                data_dir.to_path_buf(),
+                user.to_string(),
+                default_id.clone(),
+                keys,
+            );
+            Setup::Provider(ProviderTurn {
+                cut,
+                rows,
+                client,
+                default_id,
+            })
+        }
+    }
+}
+
+/// See the build with the provider store: this one never offers [`CAPS_TOKEN`], so every frame runs as before.
+#[cfg(not(feature = "rust-storage-reads"))]
+#[allow(clippy::unused_async)]
+pub async fn setup(_app: &Arc<App>, _data_dir: &Path, _user: &str, _p: &Prepared) -> Setup {
+    Setup::Plain
 }
 
 /// The account store as the re-check reads it.
@@ -183,6 +366,7 @@ impl Accounts for AppAccounts {
     }
 }
 
+#[cfg(feature = "rust-storage-reads")]
 /// The row with `id` as `user` sees it now (provider_test_routes.rs `find_row`: the shared file, then the
 /// account's own rows; the env-derived default row never), without its key.
 pub fn row_of(data_dir: &Path, user: &str, id: &str, default_id: &str) -> Option<JValue> {
@@ -192,20 +376,22 @@ pub fn row_of(data_dir: &Path, user: &str, id: &str, default_id: &str) -> Option
     crate::provider_test_routes::find_row(data_dir, user, id, None).map(|r| r.raw)
 }
 
-/// [`Rows`] over the front's provider store and account store, for one turn's account.
+#[cfg(feature = "rust-storage-reads")]
+/// [`chat_upstream::host::Rows`] over the front's provider store and account store, for one turn's account.
 pub struct FrontRows<A> {
     accounts: A,
-    data_dir: PathBuf,
+    data_dir: std::path::PathBuf,
     user: String,
     default_id: String,
     keys: Option<SecretKeys>,
 }
 
+#[cfg(feature = "rust-storage-reads")]
 impl<A: Accounts> FrontRows<A> {
     /// `keys`: the secrets keys as loaded at the cut (`None`: no key file; every row's key then reads as none).
     pub fn new(
         accounts: A,
-        data_dir: PathBuf,
+        data_dir: std::path::PathBuf,
         user: String,
         default_id: String,
         keys: Option<SecretKeys>,
@@ -220,8 +406,9 @@ impl<A: Accounts> FrontRows<A> {
     }
 }
 
-impl<A: Accounts> Rows for FrontRows<A> {
-    fn now(&self, binding: &Binding) -> RowsNow {
+#[cfg(feature = "rust-storage-reads")]
+impl<A: Accounts> chat_upstream::host::Rows for FrontRows<A> {
+    fn now(&self, binding: &chat_upstream::binding::Binding) -> chat_upstream::host::RowsNow {
         let user = self.accounts.active(&self.user);
         // The row only for an active account (an inactive one fails the re-check on the user anyway).
         let row = user.as_ref().and_then(|_| {
@@ -266,6 +453,7 @@ pub fn load_keys(data_dir: &Path) -> Option<SecretKeys> {
     server_auth::secrets::load_existing(data_dir, previous.as_deref().map(String::as_str)).ok()
 }
 
+#[cfg(feature = "rust-storage-reads")]
 /// The facts of [`plan`] for `user`'s turn on `provider_id`, read now (blocking: the account store and the
 /// provider files).
 pub fn read_facts<A: Accounts>(
@@ -283,7 +471,7 @@ pub fn read_facts<A: Accounts>(
 }
 
 /// One client for every provider-row turn's calls: no proxy from the environment (as Node's fetch) and no
-/// redirect followed (a 3xx comes back as the answer, which [`ProviderHost`] refuses as undici does).
+/// redirect followed (a 3xx comes back as the answer, which [`ProviderHost`] refuses as Node's fetch does).
 /// `None` when it cannot be built: the turn is refused, never sent with a client that follows redirects.
 ///
 /// [`ProviderHost`]: chat_upstream::host::ProviderHost
@@ -308,11 +496,12 @@ pub fn origins_now() -> String {
     member_origins()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "rust-storage-reads"))]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use chat_upstream::binding::{recheck, Now, Recheck};
+    use chat_upstream::binding::{recheck, Binding, Now, Recheck};
+    use chat_upstream::host::Rows;
     use std::sync::Mutex;
 
     const USER: &str = "00000000-0000-4000-8000-0000000000aa";
@@ -551,8 +740,52 @@ mod tests {
                 &frame(HOSTED),
                 &facts(Some(&u), Some(&sign_in), "https://qa-provider.example")
             ),
-            Plan::Refuse(NODE_REFUSES | UNSUPPORTED)
+            Plan::Refuse(NODE_REFUSES)
         ));
+    }
+
+    #[test]
+    fn an_external_row_is_refused_as_core_refuses_it() {
+        let u = member();
+        let origins = "https://qa-provider.example";
+        // Flagged external by the server (a route target's row).
+        let flagged = row(&own_row(
+            "",
+            "https://qa-provider.example/v1",
+            r#","external":true"#,
+        ));
+        assert_eq!(
+            plan(&frame(HOSTED), &facts(Some(&u), Some(&flagged), origins)),
+            Plan::Refuse(EXTERNAL)
+        );
+        // Only `true` flags it (provider-egress.cjs reads `external === true`).
+        for not_flagged in [r#","external":"yes""#, r#","external":1"#, r#","external":false"#] {
+            let r = row(&own_row("", "https://qa-provider.example/v1", not_flagged));
+            assert!(
+                matches!(
+                    plan(&frame(HOSTED), &facts(Some(&u), Some(&r), origins)),
+                    Plan::Provider(_)
+                ),
+                "{not_flagged}"
+            );
+        }
+        // A trial-terms host, also behind user information and in another case.
+        for base in [
+            "https://qa.nvidia.com/v1",
+            "https://NVIDIA.com/v1",
+            "https://qa:secret@qa.nvidia.com/v1",
+        ] {
+            let r = row(&own_row("", base, ""));
+            assert!(external_row(&r), "{base}");
+        }
+        assert!(!external_row(&row(&own_row("", "https://notnvidia.com/v1", ""))));
+        assert!(!external_row(&row(&own_row("", "https://qa-provider.example/v1", ""))));
+        // An address the rules cannot be sure about counts as external.
+        assert!(external_row(&row(&own_row("", "https://xn--qa-provider.example/v1", ""))));
+        // The sign-in kind is external too (refused before, by the cut, as Node refuses it).
+        assert!(external_row(&row(
+            r#"{"id":"qa-provider","kind":"chatgpt-oauth","baseUrl":"https://qa-provider.example"}"#
+        )));
     }
 
     fn rechecked(rows: &FrontRows<&Script>, b: &Binding) -> Recheck {
@@ -766,7 +999,7 @@ mod http_tests {
         (format!("http://{addr}"), hits)
     }
 
-    /// undici `redirect: 'error'`: every redirect status comes back as the answer and its Location is never
+    /// Node's fetch with `redirect: 'error'`: every redirect status comes back as the answer and its Location is never
     /// asked (chat-upstream's ProviderHost then ends the request with `fetch failed`); a 200 is read as sent.
     #[tokio::test]
     async fn the_provider_client_follows_no_redirect() {

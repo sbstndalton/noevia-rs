@@ -491,72 +491,15 @@ async fn drive(
     if let Some(body) = shadow {
         crate::chat_prepare_shadow::spawn(Arc::clone(&app), user_dir.clone(), body, frame);
     }
-    // Council p6-1: a provider row's turn (chat_provider.rs), only from a front that offered `providers`.
-    let offered = crate::chat_provider::offered();
-    let provider = if offered {
-        let default_id = crate::provider_test_routes::default_provider_id();
-        let (app2, dir, who, id, def) = (
-            Arc::clone(&app),
-            data_dir.clone(),
-            user.clone(),
-            p.provider.id.clone(),
-            default_id.clone(),
-        );
-        let read = tokio::task::spawn_blocking(move || {
-            let accounts = crate::chat_provider::AppAccounts(app2);
-            let (account, row) = crate::chat_provider::read_facts(&accounts, &dir, &who, &id, &def);
-            let keys = row
-                .is_some()
-                .then(|| crate::chat_provider::load_keys(&dir))
-                .flatten();
-            (account, row, keys)
-        })
-        .await;
-        let Ok((account, row, keys)) = read else {
-            return failed(&tx);
-        };
-        let origins = crate::chat_provider::origins_now();
-        #[allow(clippy::cast_precision_loss)]
-        let now_ms = crate::identity::now_ms() as f64;
-        let facts = crate::chat_provider::Facts {
-            offered,
-            default_id: &default_id,
-            user: account.as_ref(),
-            row: row.as_ref(),
-            member_origins: &origins,
-            now_ms,
-        };
-        match crate::chat_provider::plan(&p, &facts) {
-            crate::chat_provider::Plan::Plain => None,
-            crate::chat_provider::Plan::Refuse(why) => {
-                eprintln!("chat native: provider turn not run: {why}");
-                return failed(&tx);
-            }
-            crate::chat_provider::Plan::Provider(cut) => {
-                let Some(client) = crate::chat_provider::provider_client() else {
-                    eprintln!(
-                        "chat native: provider turn not run: {}",
-                        crate::chat_provider::NO_CLIENT
-                    );
-                    return failed(&tx);
-                };
-                let rows = crate::chat_provider::FrontRows::new(
-                    crate::chat_provider::AppAccounts(Arc::clone(&app)),
-                    data_dir.clone(),
-                    user.clone(),
-                    default_id,
-                    keys,
-                );
-                Some((cut, rows, client))
-            }
-        }
-    } else {
-        None
+    // Council p6-1/p8-3: a provider row's turn (chat_provider.rs), only from a front that offered `providers`.
+    let provider = match crate::chat_provider::setup(&app, &data_dir, &user, &p).await {
+        crate::chat_provider::Setup::Plain => None,
+        crate::chat_provider::Setup::Refused => return failed(&tx),
+        crate::chat_provider::Setup::Provider(turn) => Some(turn),
     };
-    let client = match &provider {
-        Some((_, _, c)) => c.clone(),
-        None => engine_client(),
-    };
+    let client = provider
+        .as_ref()
+        .map_or_else(engine_client, crate::chat_provider::ProviderTurn::client);
     let host = Arc::new(FrontHost {
         app: Arc::clone(&app),
         user,
@@ -592,27 +535,18 @@ async fn drive(
     let helpers = helpers();
     let ended = match provider {
         None => native::run(&*host, process, &helpers, &p).await,
-        Some((cut, rows, _)) => {
-            let default_id = crate::provider_test_routes::default_provider_id();
-            match chat_upstream::host::ProviderHost::new(
-                &*host,
-                &rows,
-                cut.target,
-                cut.binding,
-                &default_id,
-            ) {
-                Ok(wrapped) => native::run(&wrapped, process, &helpers, &p).await,
-                Err(e) => {
-                    // plan() only cuts what ProviderHost takes; refused all the same if they ever differ.
-                    eprintln!("chat native: provider turn not run: {e:?}");
-                    host.emit(&js::obj([
-                        ("type", js::s("error")),
-                        ("text", js::s(native::FAILED_TEXT)),
-                    ]));
-                    native::Ended::Error
-                }
+        Some(turn) => match turn.run(&*host, process, &helpers, &p).await {
+            Ok(ended) => ended,
+            Err(e) => {
+                // plan() only cuts what ProviderHost takes; refused all the same if they ever differ.
+                eprintln!("chat native: provider turn not run: {e:?}");
+                host.emit(&js::obj([
+                    ("type", js::s("error")),
+                    ("text", js::s(native::FAILED_TEXT)),
+                ]));
+                native::Ended::Error
             }
-        }
+        },
     };
     ticks.abort();
     // A partial write in progress finishes before the turn's end is saved (review F1).
