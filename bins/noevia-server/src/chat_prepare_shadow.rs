@@ -232,8 +232,20 @@ pub fn run(
             || boxes.is_some_and(|b| b.iter().any(|b| b.offers(name)))
     };
     let carry = |name: &str| is_public_tool_name(Some(name), boxes.unwrap_or_default());
+    // getProject(body.projectId): the account's projects.json as the store reads it.
+    let project_id = body.get("projectId").as_str();
+    let projects = project_id.and_then(|_| {
+        server_projects::store::read_json(&user_dir.join(server_projects::store::PROJECTS_FILE))
+            .ok()
+            .flatten()
+    });
+    let project = match (project_id, projects.as_ref().map(|p| p.get("projects"))) {
+        (Some(id), Some(JValue::Arr(list))) => list.iter().find(|p| p.get("id").as_str() == Some(id)),
+        _ => None,
+    };
     compare(&ShadowTurn {
         body: &body,
+        project,
         frame,
         instructions: instructions.as_deref(),
         memory: memory.as_deref(),
@@ -463,6 +475,14 @@ mod tests {
                 }
             };
             write("account-instructions.json", input.get("instructions"));
+            if let JValue::Arr(projects) = input.get("projects") {
+                let file = JValue::Obj(vec![("projects".into(), JValue::Arr(projects.clone()))]);
+                std::fs::write(
+                    dir.join(server_projects::store::PROJECTS_FILE),
+                    wtf16::stringify(&file).unwrap(),
+                )
+                .unwrap();
+            }
             write("account-memory.json", input.get("memory"));
             if input.get("freeChats").is_object()
                 || matches!(input.get("freeChats"), JValue::Arr(_))
@@ -525,12 +545,13 @@ mod tests {
                 Some(&boxes),
                 Some(&rows),
             );
-            assert_eq!(
-                verdict,
-                Verdict::Match,
-                "{}",
-                t.get("name").as_str().unwrap_or_default()
-            );
+            let name = t.get("name").as_str().unwrap_or_default();
+            // The recorded turns made to be skipped (what is not ported yet) say why; all others match.
+            if name.ends_with("_skipped") {
+                assert!(matches!(verdict, Verdict::Skip(_)), "{name}: {}", verdict.line());
+                continue;
+            }
+            assert_eq!(verdict, Verdict::Match, "{name}");
             // Without the catalogue (not ready yet): a history that needs it is skipped.
             let without = run(&dir, body.as_bytes(), frame, tz, flags, None, None);
             assert!(

@@ -35,7 +35,9 @@
 //                replay's carryOrphanTool and knownTool read it: tools-mode.cjs isPublicToolName, PRIVATE_CORE_TOOLS)
 //   settings     (left out: no settings database) the settings table's rows chat.cjs reads, key -> value (a missing
 //                key: no row; null: SQL NULL): reasoning_effort_default and auto_sampling_presets_enabled
-//   body         the POST /api/chat body (no projectId, skill, turnToolboxes or compactOnly)
+//   projects     (left out: none) the account's stored projects, what getProject(id) finds (P7c): no skills
+//   codeTasks    (left out: none) what codeTasksFor(project) answers (a project sharing into Chat)
+//   body         the POST /api/chat body (no skill, turnToolboxes or compactOnly; a projectId on the P7c cases)
 // HISTORY_CAP is 1000 (index.cjs). What a case records: `prepared` the whole frame or null, `refused` the logged
 // refusal reason or null, `threw` the message of what handleChat threw or null.
 // Each source file's sha256 is recorded, so a changed Node file needs a fresh recording. stdout is the fixture.
@@ -161,7 +163,8 @@ function handlerFor(dir) {
       } },
     HISTORY_CAP, DEFAULT_PROVIDER_ID: 'default', createToolExchange: () => async () => 'unused',
     currentWorkspace: () => ({ userId: 'qa-user', dir, assetDir: () => path.join(dir, 'qa-assets') }),
-    getProject: () => null, skillsIndexFor: () => [],
+    // The case's stored projects (getProject reads the account's projects.json; P7c).
+    getProject: (id) => structuredClone((S().projects || []).find((p) => p && p.id === id)), skillsIndexFor: () => [],
     freeChats: () => structuredClone(S().freeChats || []),
     chatFramingEnabled: () => S().chatFraming,
     getProvider: (id) => (id === 'default' ? { ...PROVIDER } : null),
@@ -183,7 +186,7 @@ function handlerFor(dir) {
     classifyFastOrSmart: async () => { throw new Error('QA: a Manual turn is not classified'); },
     missingRoles, staleRolesError,
     chatWideApproved: async () => null, recordUsage() {}, recordToolUse() {}, executeToolCall: async () => 'unused', awaitApproval: async () => 'deny',
-    codeTasksFor: () => [], sourceJobs: { settle: async () => ({ notReady: [], aborted: false }) },
+    codeTasksFor: () => structuredClone(S().codeTasks || []), sourceJobs: { settle: async () => ({ notReady: [], aborted: false }) },
     chatTitles: { save() {}, autoNamed: () => true },
     grantContext: async () => ({ holder: { kind: 'absent' } }),
     nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once']), supervising: () => false },
@@ -222,7 +225,9 @@ async function addTurn(name, raw) {
   const body = viaJson(spec.body);
   const input = { tz: spec.tz, nowMs: spec.nowMs, instructions: spec.instructions, memory: spec.memory,
     freeChats: spec.freeChats && spec.freeChats.length ? spec.freeChats : null, chatFraming: spec.chatFraming, toolboxes: TOOLBOXES,
-    ...(spec.settings === undefined ? {} : { settings: spec.settings }), body: viaJson(spec.body) };
+    ...(spec.settings === undefined ? {} : { settings: spec.settings }),
+    ...(spec.projects === undefined ? {} : { projects: spec.projects }), ...(spec.codeTasks === undefined ? {} : { codeTasks: spec.codeTasks }),
+    body: viaJson(spec.body) };
   const from = logged.length;
   let threw = null;
   const random = Math.random;
@@ -433,6 +438,51 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
     for (const [j, message] of ['QA hello', 'Write a QA poem about the sea', 'Fix this QA function: def f(x): return x +', 'What is 17 * 23?'].entries()) {
       await addTurn(`settings_${k}_${j}`, { settings, body: req({ message }) });
     }
+  }
+
+  // ── Project turns (P7c): a stored project with no files, skills or images ─────────────────────
+  const PID = 'qa-proj-1';
+  const PCHAT = 'p-1794571200000-qa2b7c';
+  const project = (extra = {}) => ({ id: PID, name: 'QA Project', chats: [{ id: PCHAT, title: 'QA chat' }], files: [], ...extra });
+  const preq = (extra = {}) => ({ message: 'QA hello', projectId: PID, chatId: PCHAT, ...extra });
+  await addTurn('project_minimal', { projects: [project()], body: preq() });
+  await addTurn('project_no_name', { projects: [project({ name: '' })], body: preq() });
+  await addTurn('project_name_quoted', { projects: [project({ name: 'QA "Alpha" \u2019s <b>proj</b>' })], body: preq() });
+  await addTurn('project_goal_instructions', { projects: [project({ goal: 'QA ship the launch notes', instructions: 'Answer in bullet points.\nCite the QA wiki.' })], body: preq() });
+  await addTurn('project_memories', { memory: MEMORIES[1], projects: [project({ memories: ['QA prefers tea', '  QA works Fridays  ', 5, null, 'QA prefers tea'] })], body: preq() });
+  await addTurn('project_memories_not_array', { projects: [project({ memories: 'QA one' })], body: preq() });
+  await addTurn('project_account_parts', { instructions: INSTRUCTIONS[2], memory: MEMORIES[2], tz: 'Europe/Berlin', projects: [project({ goal: 'QA goal' })], body: preq() });
+  await addTurn('project_no_chat_id', { projects: [project()], body: preq({ chatId: undefined }) });
+  await addTurn('project_other_chat_id', { projects: [project()], body: preq({ chatId: 'p-1794571200000-qa9zzz' }) });
+  await addTurn('project_effort_high', { projects: [project({ reasoningEffort: 'high' })], body: preq() });
+  await addTurn('project_effort_bogus', { projects: [project({ reasoningEffort: 'QA bogus' })], settings: { reasoning_effort_default: 'low' }, body: preq() });
+  await addTurn('project_sampling_explicit', { projects: [project({ sampling: { temperature: 0.3, top_p: 0.8 } })], body: preq({ message: 'Write a QA poem about the sea' }) });
+  await addTurn('project_sampling_bad', { projects: [project({ sampling: { temperature: 'hot', top_k: -5, seed: 7 } })], body: preq({ message: 'Write a QA poem about the sea' }) });
+  await addTurn('project_frame_confirmed', { chatFraming: true, projects: [project({ chats: [{ id: PCHAT, title: 'QA chat', frame: FRAMES.find((f) => f && f.confirmed) }] })], body: preq() });
+  await addTurn('project_frame_flag_off', { chatFraming: false, projects: [project({ chats: [{ id: PCHAT, title: 'QA chat', frame: FRAMES.find((f) => f && f.confirmed) }] })], body: preq() });
+  await addTurn('project_frame_scope', { chatFraming: true, projects: [project({ chats: [{ id: PCHAT, title: 'QA chat', frame: { ...FRAMES.find((f) => f && f.confirmed), projectId: PID } }] })], body: preq() });
+  await addTurn('project_history', { projects: [project()], body: preq({ history: [user('QA q1'), assistant('QA a1'), applied('append_project_file', 'QA done', { target: 'notes.md', args: '{"path":"notes.md"}' }), toolResult('web_search', 'QA web')] }) });
+  await addTurn('project_with_settings', { settings: { reasoning_effort_default: 'high', auto_sampling_presets_enabled: 'false' }, projects: [project()], body: preq({ message: 'Write a QA poem about the sea' }) });
+  // Not covered yet (the shadow skips them): knowledge files, a project sharing into Chat, attached images.
+  await addTurn('project_files_skipped', { projects: [project({ files: [{ name: 'qa.md', content: 'QA text', attachment: { state: 'ready' } }] })], body: preq() });
+  await addTurn('project_shared_context_skipped', { projects: [project({ sharedContext: { chat: true } })], codeTasks: [{ id: 'qa-task-1', title: 'QA task', status: 'done', updatedAt: 1794571000000 }], body: preq() });
+  await addTurn('project_assets_skipped', { projects: [project({ assets: [{ id: 'qa-img-1.png', name: 'qa.png', kind: 'image', mime: 'image/png' }] })], body: preq() });
+  // A free chat whose attachments project exists: a project turn by its context project (skipped).
+  await addTurn('free_chat_context_project_skipped', { projects: [{ id: `cowork-chat-context-${CHAT}`, name: 'QA hidden', chats: [], files: [{ name: 'qa.txt', content: 'QA', attachment: { state: 'ready' } }] }], body: req() });
+  for (let n = 0; n < 40; n += 1) {
+    const extra = {};
+    if (chance(0.5)) extra.goal = pick(['QA goal', 'QA goal with "quotes"', '']);
+    if (chance(0.5)) extra.instructions = pick(['QA be brief', 'QA line one\nQA line two', '']);
+    if (chance(0.4)) extra.memories = pick([['QA m1'], ['QA m1', 'QA m2'], [], 'QA']);
+    if (chance(0.3)) extra.reasoningEffort = pick(['low', 'high', 'default', 'QA']);
+    if (chance(0.2)) extra.sampling = pick([{ temperature: 0.2 }, { top_p: 0.5, min_p: 0.05 }, {}]);
+    const withChat = chance(0.8);
+    const framed = chance(0.3);
+    const p = project({ ...extra, ...(framed && withChat ? { chats: [{ id: PCHAT, title: 'QA chat', frame: pick(FRAMES) }] } : {}) });
+    const history = Array.from({ length: chance(0.4) ? 0 : 1 + Math.floor(rand() * 6) }, randomEntry);
+    await addTurn(`random_project_${n}`, { tz: pick(ZONES), instructions: pick(INSTRUCTIONS), memory: pick(MEMORIES), chatFraming: chance(0.6),
+      ...(chance(0.4) ? { settings: pick(SETTINGS) } : {}), projects: [p],
+      body: preq({ message: pick(MESSAGES), chatId: withChat ? PCHAT : undefined, ...(history.length ? { history } : {}) }) });
   }
 
   // ── Seeded random turns ──────────────────────────────────────────────────────────────────────

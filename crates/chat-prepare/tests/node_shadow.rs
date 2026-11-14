@@ -85,6 +85,11 @@ fn replay(f: &JValue) -> Vec<Replayed> {
             continue;
         }
         let input = t.get("input");
+        // getProject(body.projectId): the recorded projects.
+        let pid = input.get("body").get("projectId");
+        let project = items(input, "projects")
+            .iter()
+            .find(|p| !pid.is_nullish() && p.get("id") == pid);
         let boxes: Vec<Toolbox> = items(input, "toolboxes").iter().map(toolbox).collect();
         let known =
             |name: &str| PRIVATE_CORE_TOOLS.contains(&name) || boxes.iter().any(|b| b.offers(name));
@@ -103,6 +108,7 @@ fn replay(f: &JValue) -> Vec<Replayed> {
                 instructions: instructions.as_deref(),
                 memory: memory.as_deref(),
                 free_chats: Some(free),
+                project,
                 time_zone: input.get("tz").as_str().unwrap(),
                 chat_framing: input.get("chatFraming").as_bool(),
                 brain_context: Some(false),
@@ -152,7 +158,7 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     let wrong: Vec<String> = replayed
         .iter()
         .filter(|r| {
-            matches!(r.verdict, Verdict::Diff(_) | Verdict::Failed(_))
+            matches!(r.verdict, Verdict::Diff(_) | Verdict::Failed(_) | Verdict::Skip("project-store"))
                 || matches!(r.without_catalogue, Verdict::Diff(_) | Verdict::Failed(_))
         })
         .map(|r| {
@@ -235,6 +241,7 @@ fn a_difference_is_located_without_its_text() {
             instructions: None,
             memory: memory.as_deref(),
             free_chats: Some(&free),
+            project: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
@@ -321,6 +328,7 @@ fn a_code_route_and_an_unreadable_free_list_are_skipped() {
             instructions: None,
             memory: None,
             free_chats: free,
+            project: None,
             time_zone: "UTC",
             chat_framing: framing,
             brain_context: Some(false),
@@ -381,6 +389,7 @@ fn the_effort_and_sampling_follow_the_settings_rows() {
             instructions: None,
             memory: None,
             free_chats: Some(&empty),
+            project: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),

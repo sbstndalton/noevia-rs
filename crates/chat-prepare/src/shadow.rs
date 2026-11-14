@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use js_json::{wtf16, JValue};
 
 use crate::frame::{self, FrameTurn, Lookup};
-use crate::{account, js, memory, prepare, PartKind, PrepareError, Turn};
+use crate::{account, js, memory, prepare, PartKind, PrepareError, ProjectTurn, Turn};
 
 /// What the shadow is built from.
 pub struct ShadowTurn<'a> {
@@ -42,6 +42,9 @@ pub struct ShadowTurn<'a> {
     /// The account's free chat list (`free-chats.json`); `None` when it could not be read (the
     /// turn is skipped unless chat framing is off: Node's copy in memory may hold a frame).
     pub free_chats: Option<&'a JValue>,
+    /// The stored record of `body.projectId` (`getProject(id)`, the account's `projects.json`), when
+    /// the request names one and the caller found it; a project turn without it is skipped.
+    pub project: Option<&'a JValue>,
     /// `serverTimeZone()`.
     pub time_zone: &'a str,
     /// `features.enabled('chatFraming')` and `brainContext.enabled()` (`brainContext` and
@@ -131,14 +134,15 @@ fn covered(t: &ShadowTurn<'_>) -> Result<Option<(PartKind, String)>, &'static st
     if !turn.is_object() || !matches!(frame.get("messages"), JValue::Arr(_)) {
         return Err("frame");
     }
-    if !turn.get("projectId").is_nullish() || body.get("projectId").truthy() {
-        return Err("project");
-    }
     if turn.get("compactOnly") == &JValue::Bool(true) || body.get("compactOnly").truthy() {
         return Err("compact");
     }
-    if !frame.get("skills").is_nullish() {
-        return Err("skills");
+    let project = project_of(t)?;
+    match project {
+        // P7c: a project with no skills (frame.skills as chat.cjs builds it for none).
+        Some(_) if text(frame.get("skills")) != NO_SKILLS => return Err("skills"),
+        None if !frame.get("skills").is_nullish() => return Err("skills"),
+        _ => {}
     }
     // An Automatic turn routed to the Code role carries chat.cjs's CODE_ROUTE_NOTE (not built here).
     if frame.get("role").as_str() == Some("code") {
@@ -171,8 +175,8 @@ fn covered(t: &ShadowTurn<'_>) -> Result<Option<(PartKind, String)>, &'static st
         lookup: t.free_chats.map(|free| Lookup {
             enabled: t.chat_framing != Some(false),
             chat_id,
-            project_id: None,
-            project: &JValue::Null,
+            project_id: project.and_then(|p| p.get("id").as_str()),
+            project: project.unwrap_or(&JValue::Null),
             free_chats: free,
         }),
     });
@@ -181,6 +185,46 @@ fn covered(t: &ShadowTurn<'_>) -> Result<Option<(PartKind, String)>, &'static st
         (Some(f), Some(true), Some(false)) => Ok(frame::frame_part(Some(&f))),
         _ => Err("frame"),
     }
+}
+
+/// `frame.skills` of a project turn with no instruction skills.
+const NO_SKILLS: &str =
+    r#"{"loaded":[],"enabled":[],"revokedInHistory":[],"imageWarning":"","coverageWarning":""}"#;
+
+fn text(v: &JValue) -> String {
+    wtf16::stringify(v).unwrap_or_default()
+}
+
+/// The turn's project (P7c), or why it is not covered: core's frame names the project the turn
+/// ran in (`turn.projectId`); covered is the request's own stored project (not a free chat's
+/// attachments project) with no knowledge files (no retrieval, no source waits or notes), no
+/// sharing into Chat (no Code tasks part), no attached images (no vision step).
+fn project_of<'a>(t: &ShadowTurn<'a>) -> Result<Option<&'a JValue>, &'static str> {
+    let id = t.frame.get("turn").get("projectId");
+    if id.is_nullish() {
+        return if t.body.get("projectId").truthy() {
+            Err("project")
+        } else {
+            Ok(None)
+        };
+    }
+    if !t.body.get("projectId").truthy() {
+        return Err("context-project");
+    }
+    let project = t
+        .project
+        .filter(|p| p.get("id") == id && t.body.get("projectId") == id)
+        .ok_or("project-store")?;
+    if matches!(project.get("files"), JValue::Arr(f) if !f.is_empty()) {
+        return Err("files");
+    }
+    if crate::shared::read(project).0 {
+        return Err("shared-context");
+    }
+    if matches!(project.get("assets"), JValue::Arr(a) if !a.is_empty()) {
+        return Err("assets");
+    }
+    Ok(Some(project))
 }
 
 /// The first UTF-16 unit at which `a` and `b` differ (the shorter one's length when it is a prefix).
@@ -198,6 +242,8 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
         Ok(part) => part.into_iter().collect(),
         Err(reason) => return Verdict::Skip(reason),
     };
+    // Covered: the request's own stored project, or none.
+    let project = project_of(t).ok().flatten();
     let Some(now) = t.frame.get("startedAt").as_num() else {
         return Verdict::Skip("frame");
     };
@@ -222,7 +268,14 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
         message: t.body.get("message").as_str(),
         carry_orphan_tool,
         known_tool,
-        project: None,
+        project: project.map(|project| ProjectTurn {
+            project,
+            code_tasks: &[],
+            files_block: None,
+            not_ready: &[],
+            partial_reads: &[],
+            skills: &[],
+        }),
         trailing: &trailing,
     };
     let prepared = match prepare(&turn) {
@@ -251,10 +304,10 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
         }
     }
     if ours.len() == core.len() {
-        let (chat, turn) = chat_and_turn(t);
+        let (chat, turn) = chat_and_turn(t, project);
         let mut fields = vec![("chat", chat), ("turn", turn)];
         if let Some(settings) = t.settings {
-            fields.extend(route_fields(t, settings));
+            fields.extend(route_fields(t, settings, project.unwrap_or(&JValue::Null)));
         }
         for (field, ours) in fields {
             let (a, b) = (text(&ours), text(t.frame.get(field)));
@@ -300,10 +353,16 @@ fn or<'v>(a: &'v JValue, b: &'v JValue) -> &'v JValue {
 /// (recent-writes.cjs, in first-seen order), the title facts (chat-title.cjs), and the turn's
 /// message, space, record flag (#679), idle limit (createChatHandler's default 120 s) and its
 /// empty sources (no retrieval without a project).
-fn chat_and_turn(t: &ShadowTurn<'_>) -> (JValue, JValue) {
+fn chat_and_turn(t: &ShadowTurn<'_>, project: Option<&JValue>) -> (JValue, JValue) {
     let body = t.body;
     let null = JValue::Null;
-    let chat_id = or(body.get("chatId"), &null);
+    // A project turn without a chat id gets a new one (chat.cjs: `p-${Date.now()}-${Math.random()...}`):
+    // core's, read from its frame (the random part cannot be made again here).
+    let chat_id = match project {
+        Some(_) if !body.get("chatId").truthy() => t.frame.get("chat").get("id"),
+        _ => or(body.get("chatId"), &null),
+    };
+    let project_id = project.map_or(&null, |p| p.get("id"));
     let space = body.get("spaceId");
     let space_text = space.as_str().filter(|s| !s.is_empty());
     let mut writes: Vec<JValue> = Vec::new();
@@ -329,9 +388,22 @@ fn chat_and_turn(t: &ShadowTurn<'_>) -> (JValue, JValue) {
         ("key", or(or(chat_id, space), &null).clone()),
         (
             "grantScope",
-            JValue::from(format!("space:{}", space_text.unwrap_or("free"))),
+            JValue::from(match project_id.as_str() {
+                // `${body.projectId ? 'project' : 'context'}:${project.id}`: a covered project is the request's.
+                Some(id) => format!("project:{id}"),
+                None => format!("space:{}", space_text.unwrap_or("free")),
+            }),
         ),
-        ("grantHolder", obj(vec![("kind", JValue::from("free"))])),
+        (
+            "grantHolder",
+            match project {
+                Some(_) => obj(vec![
+                    ("kind", JValue::from("project")),
+                    ("id", project_id.clone()),
+                ]),
+                None => obj(vec![("kind", JValue::from("free"))]),
+            },
+        ),
         ("recentWrites", JValue::Arr(writes)),
         (
             "title",
@@ -340,7 +412,7 @@ fn chat_and_turn(t: &ShadowTurn<'_>) -> (JValue, JValue) {
                     "chatId",
                     JValue::from(body.get("chatId").as_str().unwrap_or("")),
                 ),
-                ("listId", JValue::Null),
+                ("listId", project_id.clone()),
                 (
                     "firstMessage",
                     JValue::from(chat_turn::title::first_user_message(history, message)),
@@ -360,7 +432,7 @@ fn chat_and_turn(t: &ShadowTurn<'_>) -> (JValue, JValue) {
     let turn = obj(vec![
         ("message", JValue::from(message)),
         ("spaceId", or(space, &null).clone()),
-        ("projectId", JValue::Null),
+        ("projectId", project_id.clone()),
         ("declineEndsReply", JValue::Bool(!diary)),
         ("record", JValue::Bool(record)),
         ("streamIdleMs", JValue::Num(STREAM_IDLE_MS)),
@@ -386,19 +458,29 @@ const STREAM_IDLE_MS: f64 = 120_000.0;
 /// is core's: the classification is a decision call; what follows from it is compared. The local
 /// engine verdict is core's too (`provider.localEngine`: a handed-off turn is on the default
 /// provider).
-fn route_fields(t: &ShadowTurn<'_>, settings: Settings<'_>) -> Vec<(&'static str, JValue)> {
+fn route_fields(
+    t: &ShadowTurn<'_>,
+    settings: Settings<'_>,
+    project: &JValue,
+) -> Vec<(&'static str, JValue)> {
     use crate::{effort, route, sampling};
     let frame = t.frame;
     let auto = frame.get("auto") == &JValue::Bool(true);
     let role = frame.get("role").as_str();
-    let resolved = effort::resolve_effort(&JValue::Null, settings.effort_default);
-    let chosen = effort::effort_for_route(resolved, role.filter(|_| auto));
-    let thinking_off = effort::fast_route_thinking_off(auto, role, &JValue::Undefined)
+    // chat.cjs: the project's own effort is kept; the account default is lowered on a Fast route.
+    let project_effort = project.get("reasoningEffort");
+    let resolved = effort::resolve_effort(project, settings.effort_default);
+    let chosen = if effort::valid_effort(project_effort) {
+        resolved
+    } else {
+        effort::effort_for_route(resolved, role.filter(|_| auto))
+    };
+    let thinking_off = effort::fast_route_thinking_off(auto, role, project_effort)
         && frame.get("provider").get("localEngine") == &JValue::Bool(true);
     let presets = sampling::select(
         role,
         t.body.get("message").as_str().unwrap_or_default(),
-        &JValue::Undefined,
+        project.get("sampling"),
         route::sampling_auto_enabled(settings.sampling_presets),
     );
     vec![
