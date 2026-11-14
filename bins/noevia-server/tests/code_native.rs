@@ -1863,16 +1863,8 @@ async fn a_code_role_moved_before_the_review_blocks_the_task_with_node_s_words()
         })
         .await;
         let relay = r.relay.clone().unwrap();
-        let db = server_store::db_path(&r.data);
-        *r.on_verify.lock().unwrap() = Some(Box::new(move || {
-            Connection::open(&db)
-                .unwrap()
-                .execute(
-                    "INSERT OR REPLACE INTO settings(key,value) VALUES('inference:machines',?1)",
-                    [format!(r#"{{"version":1,"machines":[{{"id":"qa-m2","name":"QA machine two","address":"http://{}"}}],"assignments":{{"chatCode":{{"machine":"qa-m2","port":{},"model":"qa-code"}}}}}}"#, other.ip(), other.port())],
-                )
-                .unwrap();
-        }));
+        let data = r.data.clone();
+        *r.on_verify.lock().unwrap() = Some(Box::new(move || move_code_role(&data, "qa-m2", other)));
         let (status, started) = r
             .start(json!({"repository": "qa-repo", "prompt": GREET, "promptPreparation": "planner", "approvePlan": true}))
             .await;
@@ -1906,6 +1898,69 @@ async fn a_code_role_moved_before_the_review_blocks_the_task_with_node_s_words()
         assert!(other_seen.lock().unwrap().iter().all(|(_, p, _)| p != "/v1/chat/completions"));
         assert!(r.roles.lock().unwrap().is_empty());
         assert_eq!(relay.relay.active(), 0, "the run is over: its relay lease is closed");
+        r.quiet().await;
+    })
+    .await;
+}
+
+/// The registry row that puts the Code role on `m` as machine `id`.
+fn move_code_role(data: &Path, id: &str, m: SocketAddr) {
+    Connection::open(server_store::db_path(data))
+        .unwrap()
+        .execute(
+            "INSERT OR REPLACE INTO settings(key,value) VALUES('inference:machines',?1)",
+            [format!(r#"{{"version":1,"machines":[{{"id":"{id}","name":"QA machine two","address":"http://{}"}}],"assignments":{{"chatCode":{{"machine":"{id}","port":{},"model":"qa-code"}}}}}}"#, m.ip(), m.port())],
+        )
+        .unwrap();
+}
+
+/// Council p11 (p9-1 CONTINUE 3, second case): the Code role moves to another machine between
+/// the plan card and its approval. Node's outcome, read from core (to be pinned by a recording):
+/// code-harness.cjs `runExecutor` opens the relay with `expect` = the machine the Planner pinned
+/// (l.136), code-machine.cjs `open` refuses before asking the new machine anything ("The Code role
+/// moved to another machine or model during this task, and one task runs on one model. Start the
+/// task again.", `model_mismatch`), the refusal leaves runExecutor unchanged, and code-pipeline.cjs
+/// blocks with "The coding agent stopped: <its public message>" (l.268-272), then the job fails
+/// with the same words. The agent is never prompted.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_code_role_moved_before_the_plan_is_approved_stops_the_agent_with_node_s_words() {
+    within(async {
+        let (machine, _seen, machine_roles) = qa_role_machine().await;
+        let (other, other_seen) = qa_machine().await;
+        let r = rig(Opts {
+            executor: true,
+            pipeline: true,
+            relay_machine: Some(machine),
+            relay_port: true,
+            ..Opts::default()
+        })
+        .await;
+        let relay = r.relay.clone().unwrap();
+        let (status, started) = r
+            .start(json!({"repository": "qa-repo", "prompt": GREET, "promptPreparation": "planner", "approvePlan": true}))
+            .await;
+        assert_eq!(status, 202, "{started}");
+        let task = started["taskId"].as_str().unwrap().to_string();
+        let card = r.card(&task, "approve_plan").await;
+        move_code_role(&r.data, "qa-m2", other);
+        let approve = r.code(&format!("/{task}/approve"));
+        let (status, _) = r
+            .call(OWNER, "POST", &approve, Some(json!({"decision": "approve", "approvalId": card["id"]})))
+            .await;
+        assert_eq!(status, 200);
+
+        let end = r.ended(&task).await;
+        let stopped = "The coding agent stopped: The Code role moved to another machine or model during this task, and one task runs on one model. Start the task again.";
+        assert_eq!(end["status"], "failed", "{end}");
+        assert_eq!(end["error"], json!(stopped), "{end}");
+        let stage = r.last(&task, "task.stage");
+        assert_eq!((&stage["to"], &stage["reason"]), (&json!("blocked"), &json!(stopped)), "{stage}");
+        assert_eq!(r.sandbox.lock().unwrap().prompts, 0, "the agent was never prompted");
+        assert!(r.verified.lock().unwrap().is_empty(), "nothing was measured");
+        assert_eq!(*machine_roles.lock().unwrap(), vec!["planner"]);
+        assert!(other_seen.lock().unwrap().iter().all(|(_, p, _)| p != "/v1/chat/completions"));
+        assert!(r.roles.lock().unwrap().is_empty());
+        assert_eq!(relay.relay.active(), 0, "no relay lease was left open");
         r.quiet().await;
     })
     .await;
