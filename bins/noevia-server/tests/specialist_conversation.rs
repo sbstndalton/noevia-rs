@@ -602,7 +602,11 @@ async fn no_project_route_may_name_the_hidden_project_in_any_spelling() {
     let cid = s["chatId"].as_str().unwrap().to_owned();
     let before = std::fs::read(r.user_dir(A).join("projects.json")).unwrap();
     let encoded = pid.replacen('s', "%73", 1);
-    for p in [&pid, &encoded] {
+    // noevia#2473: spellings only Node's WHATWG pathname resolves to the hidden id (the raw first
+    // segment is "qa-x"): a dot segment, and backslashes, which WHATWG reads as slashes.
+    let dotted = format!("qa-x/../{pid}");
+    let backslashed = format!("qa-x\\..\\{pid}");
+    for p in [&pid, &encoded, &dotted, &backslashed] {
         for (m, tail, body) in [
             (
                 "PATCH",
