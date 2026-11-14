@@ -21,5 +21,6 @@
 pub mod config;
 pub mod js;
 pub mod migration;
+pub mod routes;
 pub mod served;
 pub mod target;
