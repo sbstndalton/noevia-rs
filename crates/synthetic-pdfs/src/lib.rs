@@ -20,6 +20,19 @@
 //! Parity with the reference: every byte is the same except the deflate data of the scan image
 //! (the reference uses zlib level 9; this uses the locked pure-Rust deflate). The decoded pixels,
 //! and so what an OCR engine sees, are identical; `tests/oracle.rs` proves both.
+//!
+//! Deliberate differences from the reference (noevia#2727 item 4), none reachable through the six
+//! fixtures or the CLI:
+//! - a text band of fewer than two rows (text placed at the page's last row) is
+//!   [`Error::BandOffPage`]: the reference raises `IndexError` for zero rows and, for one row,
+//!   returns pixels one row longer than the height it declares;
+//! - [`rc4`] treats an empty key as one zero byte where the reference's `_rc4` raises
+//!   `ZeroDivisionError` (every key used here is 5 or 10 bytes);
+//! - [`write_ballast_pdf`] refuses a zero chunk ([`Error::ZeroChunk`]) where the reference loops
+//!   forever.
+//!
+//! Where the reference raises and this can say so cheaply, it does: an empty object map is
+//! [`Error::NoObjects`] (`max()` of an empty dict), a gap is [`Error::MissingObject`].
 
 mod engines;
 pub mod md5;
@@ -309,6 +322,8 @@ pub enum Error {
     MissingObject(u32),
     /// `write_ballast_pdf` with a zero chunk (the reference loops forever).
     ZeroChunk,
+    /// `serialise` of no objects at all (the reference raises `ValueError` from `max()`).
+    NoObjects,
     Io(std::io::Error),
 }
 
@@ -321,6 +336,7 @@ impl fmt::Display for Error {
             Error::BandOffPage => f.write_str("text band runs off the page"),
             Error::MissingObject(n) => write!(f, "object {n} is missing"),
             Error::ZeroChunk => f.write_str("chunk must be at least one byte"),
+            Error::NoObjects => f.write_str("a PDF needs at least one object"),
             Error::Io(e) => write!(f, "{e}"),
         }
     }
@@ -350,24 +366,25 @@ fn avg3(a: u8, b: u8, c: u8) -> u8 {
 }
 
 /// 3x3 box blur of equal-length rows; the outermost rows and columns keep their value (after the
-/// horizontal pass, as in the reference).
+/// horizontal pass, as in the reference). Byte for byte the reference's shapes too: a row is
+/// `row[:1] + mid + row[-1:]`, so a 1-pixel row comes back 2 bytes long, and the band is
+/// `[h[0]] + mid + [h[-1]]`, so one row comes back as two ([`render_lines_at`] never passes fewer
+/// than two rows; zero rows return zero, where the reference raises).
 fn box_blur(rows: &[Vec<u8>]) -> Vec<Vec<u8>> {
     let horizontal: Vec<Vec<u8>> = rows
         .iter()
         .map(|row| {
-            let mut out = Vec::with_capacity(row.len());
+            let mut out = Vec::with_capacity(row.len() + 1);
             out.extend(row.first().copied());
             out.extend(row.windows(3).map(|w| match w {
                 [a, b, c] => avg3(*a, *b, *c),
                 _ => 0,
             }));
-            if row.len() > 1 {
-                out.extend(row.last().copied());
-            }
+            out.extend(row.last().copied());
             out
         })
         .collect();
-    let mut out = Vec::with_capacity(horizontal.len());
+    let mut out = Vec::with_capacity(horizontal.len() + 1);
     out.extend(horizontal.first().cloned());
     out.extend(horizontal.windows(3).map(|w| {
         match w {
@@ -380,9 +397,7 @@ fn box_blur(rows: &[Vec<u8>]) -> Vec<Vec<u8>> {
             _ => Vec::new(),
         }
     }));
-    if horizontal.len() > 1 {
-        out.extend(horizontal.last().cloned());
-    }
+    out.extend(horizontal.last().cloned());
     out
 }
 
@@ -629,6 +644,9 @@ fn object_head(key: u32) -> Vec<u8> {
 /// The file bytes. `padding` > 0 adds a comment line of that many bytes after the header: a valid
 /// but oversized file whose xref offsets still match (the trailer stays at the end).
 pub fn serialise(objects: &Objects, trailer: &[u8], padding: usize) -> Result<Vec<u8>> {
+    if objects.is_empty() {
+        return Err(Error::NoObjects);
+    }
     let mut out = PDF_HEADER.to_vec();
     if padding > 0 {
         out.push(b'%');
@@ -661,7 +679,8 @@ pub const PAD: [u8; 32] = [
     0x2E, 0x2E, 0x00, 0xB6, 0xD0, 0x68, 0x3E, 0x80, 0x2F, 0x0C, 0xA9, 0xFE, 0x64, 0x53, 0x69, 0x7A,
 ];
 
-/// RC4 of `data` under `key` (an empty key is treated as one zero byte).
+/// RC4 of `data` under `key`. An empty key is treated as one zero byte; the reference raises
+/// `ZeroDivisionError` there (a named difference: every key used here is 5 or 10 bytes).
 pub fn rc4(key: &[u8], data: &[u8]) -> Vec<u8> {
     let key: &[u8] = if key.is_empty() { &[0] } else { key };
     let mut state: [u8; 256] = core::array::from_fn(|i| i as u8);
@@ -878,4 +897,42 @@ pub fn write_all(directory: &Path) -> Result<Vec<(&'static str, PathBuf)>> {
         paths.push((name, path));
     }
     Ok(paths)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod blur_shape_tests {
+    use super::box_blur;
+
+    // Shapes and values computed with the reference's `_box_blur` (services ocr/synthetic_pdfs.py).
+    #[test]
+    fn one_pixel_row_comes_back_two_bytes_like_the_reference() {
+        // _box_blur([b"\x10", b"\x20", b"\x30"]) == [b"\x10\x10", b"\x20\x20", b"\x30\x30"]
+        let out = box_blur(&[vec![0x10], vec![0x20], vec![0x30]]);
+        assert_eq!(
+            out,
+            vec![vec![0x10, 0x10], vec![0x20, 0x20], vec![0x30, 0x30]]
+        );
+    }
+
+    #[test]
+    fn one_row_band_comes_back_two_rows_like_the_reference() {
+        // _box_blur([b"\x00\x30\x60\x90"]) == [b"\x00\x30\x60\x90"] * 2
+        let row = vec![0x00, 0x30, 0x60, 0x90];
+        assert_eq!(box_blur(std::slice::from_ref(&row)), vec![row.clone(), row]);
+    }
+
+    #[test]
+    fn two_pixel_rows_and_three_row_band() {
+        // _box_blur([b"\x00\x09", b"\x03\x06", b"\x09\x00"]): no 3-wide window, so rows keep
+        // first+last; the middle row is the vertical mean of the three.
+        let out = box_blur(&[vec![0, 9], vec![3, 6], vec![9, 0]]);
+        assert_eq!(out, vec![vec![0, 9], vec![4, 5], vec![9, 0]]);
+    }
+
+    #[test]
+    fn zero_rows_return_zero_rows() {
+        assert!(box_blur(&[]).is_empty());
+        assert_eq!(box_blur(&[vec![]]), vec![Vec::<u8>::new(), Vec::new()]);
+    }
 }

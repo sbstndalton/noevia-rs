@@ -335,6 +335,23 @@ fn pages_with_nothing_on_them_and_no_pages_at_all() {
         serialise(&gap, b"", 0),
         Err(Error::MissingObject(4))
     ));
+    // The reference's `max(objects)` raises ValueError for no objects at all (noevia#2727 item 4).
+    assert!(matches!(
+        serialise(&Default::default(), b"", 0),
+        Err(Error::NoObjects)
+    ));
+}
+
+#[test]
+fn named_differences_from_the_reference_are_pinned() {
+    // `_rc4(b"", data)` raises ZeroDivisionError; the port keys an empty key as one zero byte.
+    assert_eq!(rc4(&[], b"abc"), rc4(&[0], b"abc"));
+    // Text on the page's last row: the reference's band would be one row and its pixels one row
+    // longer than the declared height; the port refuses instead.
+    assert!(matches!(
+        render_lines_at(&[], 0, IMAGE_H + 2 * CELL - 1, 0),
+        Err(Error::BandOffPage)
+    ));
 }
 
 #[test]
