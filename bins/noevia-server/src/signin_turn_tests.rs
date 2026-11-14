@@ -288,3 +288,37 @@ fn debug_names_the_kind_only() {
     assert!(d.contains("bytes"), "{d}");
     assert!(!d.contains("secret-qa"), "{d}");
 }
+
+#[tokio::test]
+async fn a_passed_deadline_wins_over_waiting_data_every_time() {
+    // The deadline is already past and data is ready: the read fails, every time (the order of a
+    // tie is fixed), and the body is let go.
+    for _ in 0..64 {
+        let past = Instant::now();
+        let mut a = turn_answer(
+            raw(200, &[], vec![Step::Chunk(b"a"), Step::Chunk(b"b")]),
+            Some(past),
+        )
+        .unwrap();
+        assert_eq!(
+            read(&mut a.body, std::future::pending()).await,
+            Read::Failed(ABORTED.to_owned())
+        );
+        for _ in 0..4 {
+            assert_eq!(read(&mut a.body, std::future::pending()).await, Read::End);
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_client_leaving_wins_over_a_passed_deadline_and_waiting_data() {
+    for _ in 0..64 {
+        let mut a =
+            turn_answer(raw(200, &[], vec![Step::Chunk(b"a")]), Some(Instant::now())).unwrap();
+        assert_eq!(
+            read(&mut a.body, std::future::ready(())).await,
+            Read::Aborted
+        );
+        assert_eq!(read(&mut a.body, std::future::pending()).await, Read::End);
+    }
+}

@@ -119,8 +119,11 @@ pub fn turn_answer<B>(
     }
 }
 
+/// Resolves at the deadline; at once (on its first poll) when it has already passed, which a
+/// timer does not promise (it fires on the timer's next tick).
 async fn until(deadline: Option<Instant>) {
     match deadline {
+        Some(d) if Instant::now() >= d => {}
         Some(d) => tokio::time::sleep_until(d).await,
         None => std::future::pending().await,
     }
@@ -184,6 +187,7 @@ pub async fn read<B: Body>(body: &mut TurnBody<B>, left: impl Future<Output = ()
         Ended::Left => {
             // The turn's own abort: the backend connection is let go.
             body.inner = Inner::Bytes(None);
+            body.deadline = None;
             Read::Aborted
         }
         Ended::Deadline => {
