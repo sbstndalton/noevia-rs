@@ -394,7 +394,7 @@ fn replay_with(name: &str, sc: &JValue, order: Option<Log>) {
         log: Box::new(move |e| sink.lock().unwrap().push(e)),
         now: Box::new(|| 5000.0),
         inference: order.clone().map(|o| {
-            Box::new(move || Ok(Box::new(OrderLease(o.clone())) as Lease))
+            Box::new(move || Ok::<Lease, Fail>(Box::new(OrderLease(o.clone()))))
                 as Box<dyn Fn() -> Result<Lease, Fail> + Send + Sync>
         }),
         guard: Box::new(|| false),

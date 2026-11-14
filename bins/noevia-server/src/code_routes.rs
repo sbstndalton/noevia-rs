@@ -618,7 +618,7 @@ impl code_harness::pipeline_host::RunRelay for FrontRunRelay {
                     model: Some(opened.model.clone()),
                     context_tokens: opened.context_tokens,
                 },
-                Box::new(RelayHeld(Some(opened))),
+                Box::new(RelayHeld(Some(opened))) as Lease,
             )),
             Err(r) => {
                 // Pinned on a machine with the role back here: code-harness.cjs's own words
