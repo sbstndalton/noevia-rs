@@ -7,6 +7,7 @@
 //!   noevia commit, which is fetched at a pinned ref, and the exact refusal text of each bad lock.
 //! - [`digest`]: `sha256_of` and the tarball checksum check of `fetch_remote`.
 //! - [`tar`]: a fail-closed reader (`tar -xzf … --strip-components=N`) and a deterministic writer.
+//! - [`source`]: `export_self` (git archive) and `fetch_remote` (curl, checksum, extract) as a [`plan::Source`].
 //! - [`tree`]: the end of the assembly (ui-data prune, `release-refs`, `.dockerignore`, the required
 //!   entries and the final `tar -czf`), plus a content manifest to compare two release tarballs.
 //!
@@ -15,5 +16,6 @@
 pub mod digest;
 pub mod lock;
 pub mod plan;
+pub mod source;
 pub mod tar;
 pub mod tree;

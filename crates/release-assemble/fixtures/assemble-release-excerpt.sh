@@ -1,7 +1,7 @@
 # Excerpts of noevia deploy/tools/assemble-release.sh at noevia origin/main 11bf2da7, verbatim (the oracle
 # of tests/shell_oracle.rs). Line 255 (lock_value), lines 297-342 (resolve_component, the component and
-# noevia-rs steps) and the end of the assembly (for need ... mv -f). tests/shell_oracle.rs checks they still
-# appear verbatim in the real script when ASSEMBLE_RELEASE_SH points to it.
+# noevia-rs steps), the end of the assembly (for need ... mv -f) and lines 269-294 (export_self, sha256_of,
+# fetch_remote). tests/shell_oracle.rs checks they still appear verbatim in the real script (ASSEMBLE_RELEASE_SH).
 #@resolve
 lock_value() { printf '%s\n' "$lock" | sed -n "s/^$1=//p" | tail -n 1; }
 resolve_component() {
@@ -68,3 +68,30 @@ out="$out_dir/noevia-release-$sha.tar.gz"
 out_partial="$out.partial"
 COPYFILE_DISABLE=1 tar -czf "$out_partial" -C "$tree" .dockerignore release-refs noevia web core services rs
 mv -f "$out_partial" "$out"
+#@sources
+export_self() {
+  local dest="$1" prefix="$2"; shift 2
+  local specs=() p strip
+  for p in "$@"; do
+    git -C "$repo" cat-file -e "$full_sha:$prefix/$p" 2>/dev/null || die "$prefix/$p is missing at $sha"
+    specs+=("$prefix/$p")
+  done
+  strip="$(printf '%s' "$prefix" | tr -cd / | wc -c)"
+  git -C "$repo" archive --format=tar "$full_sha" -- "${specs[@]}" | tar -x --strip-components="$((strip + 1))" -C "$dest"
+}
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+  else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
+# Fetch sbstndalton/<repo_name> at a pinned 40-hex ref into <dest> (repo root -> dest).
+fetch_remote() {
+  local repo_name="$1" ref="$2" want_sum="$3" dest="$4" tgz
+  tgz="$work/$repo_name.tar.gz"
+  curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$tgz" \
+    "https://codeload.github.com/sbstndalton/$repo_name/tar.gz/$ref" \
+    || die "could not download $repo_name at $ref"
+  [ "$(sha256_of "$tgz")" = "$want_sum" ] || die "$repo_name tarball checksum mismatch at $ref"
+  tar -xzf "$tgz" --strip-components=1 -C "$dest"
+}

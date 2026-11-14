@@ -374,7 +374,7 @@ fn excerpt_is_verbatim() {
         return;
     };
     let real = std::fs::read_to_string(path).unwrap_or_default();
-    for section_name in ["resolve", "finish"] {
+    for section_name in ["resolve", "finish", "sources"] {
         let s = section(section_name);
         assert!(
             real.contains(s.trim_end()),
