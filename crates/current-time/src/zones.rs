@@ -3,8 +3,12 @@
 //   noevia-core commit ed14631a15b0eabfada17c80a9f568bf02f2a19a
 //   toolboxes.cjs f2be13090ecb2efc3fb3e49c090108e94b7218e6dc3d6ff8b3224773f5d3b121
 //   current-time-part.cjs cc5ce4f15e9c3cf66de8debf087bc7faa1975077d8945ff350ae3d1b76ce9324
-//   gen-fixtures.cjs 83ba77f191d6a72e758ca1e897083e228f1a2cd1f7b049d86773e9bc3a45072b
+//   gen-fixtures.cjs e65d0789b2983b9f9f9f61b917d59821794050ed99598bb9ac1b0deae28cbc16
 // Names at 2026-01-15T12:00:00.000Z, 2026-07-15T12:00:00.000Z, 2026-12-15T12:00:00.000Z.
+
+/// The recording's `process.versions` node, icu and tz: a caller compares them with the Node it stands
+/// in for (see [`crate::runtime_recorded`]).
+pub(crate) const RECORDED_RUNTIME: (&str, &str, &str) = ("22.23.3", "78.3", "2026c");
 
 /// Every zone ID Intl.DateTimeFormat accepted among the candidates, lower-cased and sorted: the ID, the
 /// chrono-tz zone that holds its rules (its own name, else its ICU canonical ID; "" when chrono-tz has

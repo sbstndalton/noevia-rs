@@ -169,9 +169,10 @@ const DIVERGENT: &[&str] = &[
 /// without one) gives the text Node gave in the recording, as far as the recording can show: `now_ms`
 /// lies in 2026-01-01T00:00Z..=2027-12-31T00:00Z, and `zone` is a UTC offset or an ID this port knows
 /// whose offsets at every midnight and whose transition instants in that span equal Node's. A caller
-/// that must answer as Node does hands every other call to Node. Not covered: a zone whose offset
-/// changes twice between two midnights and back, and zone-name changes in 2027 (the names are the
-/// ones recorded for 2026, by offset).
+/// that must answer as Node does hands every other call to Node, and calls it only for a Node whose
+/// ICU and tz data are the recording's ([`runtime_recorded`]). Not covered: a zone whose offset
+/// changes two or more times between two midnights, and zone-name changes at an unchanged offset in
+/// 2027 (the names are the ones recorded for 2026, by offset; every offset of the span has one).
 pub fn verified(zone: &str, now_ms: f64) -> bool {
     let Some(t) = time_clip(now_ms) else {
         return false;
@@ -188,15 +189,46 @@ pub fn verified(zone: &str, now_ms: f64) -> bool {
     }
 }
 
+/// The process zones (`TZ`) the recording ran Node under; the answers without a `timezone`
+/// argument (`Date#toString`, V8's own zone name) are replayed for these only.
+const RECORDED_SERVER_ZONES: &[&str] = &[
+    "America/New_York",
+    "America/Punta_Arenas",
+    "Asia/Kolkata",
+    "Australia/Lord_Howe",
+    "Europe/Berlin",
+    "Europe/Moscow",
+    "UTC",
+];
+
 /// The server zone [`run`] needs for a call without a `timezone` argument, from the process's `TZ`
-/// environment value, when this port can be sure it is the one Node's ICU uses: an IANA zone ID
-/// spelled exactly as tzdb spells it (no leading `:`, no POSIX rule string, no offset) that this port
-/// knows. `None` otherwise (also for `TZ` unset, where ICU reads the system's zone file): a caller
-/// that must answer as Node does hands such calls to Node.
+/// environment value, when this port can be sure it is the one Node uses: one of the zone IDs the
+/// recording ran Node under, spelled exactly so (ICU treats some host IDs specially, such as a
+/// three- or four-letter ID whose raw offset differs from the system's). `None` otherwise (also for
+/// `TZ` unset, where ICU reads the system's zone file): a caller that must answer as Node does hands
+/// such calls to Node.
 pub fn server_zone_from_tz(tz: Option<&str>) -> Option<&str> {
     let tz = tz?;
-    let exact = tz.parse::<Tz>().is_ok_and(|z| z.name() == tz);
-    (exact && matches!(lookup(tz), Some(Zone::Named(..)))).then_some(tz)
+    (RECORDED_SERVER_ZONES.contains(&tz) && matches!(lookup(tz), Some(Zone::Named(..))))
+        .then_some(tz)
+}
+
+/// Whether a Node reporting these `process.versions` (`node`, `icu`, `tz`) has the recording's ICU
+/// and tz data and its Node major version: only then may a caller stand in for it with [`verified`]
+/// answers (a later ICU or tz release can move a zone's offsets or names; V8 parses the offset IDs).
+pub fn runtime_recorded(node: &str, icu: &str, tz: &str) -> bool {
+    let (n, i, t) = zones::RECORDED_RUNTIME;
+    let major = |v: &str| v.split('.').next().map(str::to_string);
+    icu == i && tz == t && major(node) == major(n)
+}
+
+/// The recorded offsets (minutes) that have names for this zone ID, for the tests.
+#[doc(hidden)]
+pub fn named_offsets(zone: &str) -> Option<Vec<i32>> {
+    match lookup(zone)? {
+        Zone::Named(_, names) => Some(names.iter().map(|(o, _, _)| *o).collect()),
+        Zone::Offset(_) => None,
+    }
 }
 
 /// The IDs [`verified`] leaves to Node, for the tests.
