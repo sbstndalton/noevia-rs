@@ -76,6 +76,11 @@ fn cases() -> Vec<(&'static str, Vec<u8>)> {
             base().file("root/build", b"#!/bin/sh\n", 0o755).end(),
         ),
         ("dup-root", base().dir("root").end()),
+        // DEL in a name: the digest's JSON writes it as \u007f, as Python's json.dumps does.
+        (
+            "del-in-name",
+            base().file("root/a\u{7f}b", b"x", 0o644).end(),
+        ),
         ("other-root", base().file("other/file", b"x", 0o644).end()),
         ("dotdot", base().file("root/../escape", b"x", 0o644).end()),
         (
@@ -589,8 +594,8 @@ fn agrees(name: &str, reference: &str, ours: &str) -> bool {
 #[test]
 fn every_case_matches_the_reference_verdict() {
     let cases = cases();
-    // noevia#2709: the case list is pinned (43 accepted, 35 refused by the reference).
-    assert_eq!(cases.len(), 78, "the pinned case count");
+    // noevia#2709: the case list is pinned.
+    assert_eq!(cases.len(), 79, "the pinned case count");
     let mut seen = std::collections::BTreeSet::new();
     for (name, _) in &cases {
         assert!(seen.insert(*name), "duplicate case {name}");
