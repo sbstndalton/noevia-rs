@@ -180,8 +180,8 @@ impl Host for Threaded {
     fn downloads_rejected(&mut self, _: &JValue) {}
 }
 
-/// The runner on one thread, a joiner on another (started once the runner is fetching, and
-/// given time to reach its wait), then the runner released: both answers.
+/// The runner on one thread, a joiner on another (started once the runner is fetching); the runner
+/// is released once the joiner holds the running check's completion. Both answers.
 fn joined(
     panic_after_release: bool,
 ) -> (std::thread::Result<Outcome>, Outcome, Arc<Mutex<Artifacts>>) {
@@ -217,7 +217,18 @@ fn joined(
             handle(&config(), &artifacts, get(&query), &mut host)
         })
     };
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    // The joiner holds the running check's completion once it waits: release the runner then.
+    let key = model_pull::artifact::Key {
+        repo: "qa-org/qa-joined".into(),
+        files: vec!["qa.gguf".into()],
+    };
+    while artifacts.lock().unwrap().waiting(&key) == 0 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the joiner never waited"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
     release.send(()).unwrap();
     let ran = runner.join();
     let waited = joiner.join().expect("the joiner does not panic");

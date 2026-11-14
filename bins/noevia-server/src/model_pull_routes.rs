@@ -26,11 +26,13 @@
 //!   `status: unknown`, "Two artifact checks are already running. Try again shortly.") with
 //!   `files: []`, since the files are not looked up. That includes a request that would have
 //!   joined a running check.
-//! - `hub-redirects`: core's fetch follows any redirect. The front follows at most 20, and only
-//!   to `https` URLs whose host is `huggingface.co` or `hf.co` or a subdomain of either (DNS label
-//!   boundary), on the default port, without credentials ([`hub_host_allowed`]). Any other
-//!   redirect fails the fetch (`fetch failed`, so the check answers `unknown`). The variants
-//!   lookup follows no redirect at all, as core's `fetchJson` (`redirect: 'error'`).
+//! - `hub-redirects`: core's fetch follows any redirect (at most 20). The front follows at most
+//!   20 too, but only to `https` URLs whose host is `huggingface.co` or `hf.co` or a subdomain of
+//!   either (DNS label boundary), on the default port, without credentials ([`hub_host_allowed`]).
+//!   Every hop, the first included, is looked up before it is contacted; all its addresses must be
+//!   public (ssrf-policy `addresses_public`) and the request is pinned to them. Anything else
+//!   fails the fetch (`fetch failed`, so the check answers `unknown`). The variants lookup follows
+//!   no redirect at all, as core's `fetchJson` (`redirect: 'error'`), and is vetted the same way.
 //!
 //! # Not here: `POST /api/models/pull` (next step)
 //!
@@ -51,6 +53,7 @@ use axum::response::IntoResponse;
 use js_json::{wtf16, JValue};
 use model_pull::artifact::{self, Artifacts, Checked, FetchError, Fetched, Fetcher};
 use model_pull::manager::{self, Reply, Target, Thrown};
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -119,13 +122,18 @@ impl Hub {
         }
     }
 
-    fn allows(&self, url: &reqwest::Url) -> bool {
-        if hub_host_allowed(url) {
-            return true;
-        }
+    /// The test hub's own origin (loopback in tests): reached without a lookup. Never true in
+    /// production.
+    fn is_test_origin(&self, url: &reqwest::Url) -> bool {
         self.test
-            && reqwest::Url::parse(&self.origin)
-                .is_ok_and(|o| o.origin() == url.origin() && url.username().is_empty())
+            && url.username().is_empty()
+            && url.password().is_none()
+            && reqwest::Url::parse(&self.origin).is_ok_and(|o| o.origin() == url.origin())
+    }
+
+    #[cfg(test)]
+    fn allows(&self, url: &reqwest::Url) -> bool {
+        hub_host_allowed(url) || self.is_test_origin(url)
     }
 }
 
@@ -135,7 +143,6 @@ pub struct State {
     hub: Hub,
     artifacts: Mutex<Artifacts>,
     permits: Arc<tokio::sync::Semaphore>,
-    hub_client: Option<reqwest::Client>,
     plain_client: Option<reqwest::Client>,
     scan_clears: AtomicU64,
 }
@@ -148,22 +155,49 @@ impl std::fmt::Debug for State {
     }
 }
 
+/// Why a hub request did not get an answer.
+enum HopError {
+    /// Refused (outside the hub rule, a private or unresolved address, too many redirects) or
+    /// failed: undici's `fetch failed`.
+    Failed,
+    Timeout,
+}
+
+/// One hop's target, vetted before it is contacted: `Ok(None)` for the test hub's own origin
+/// (no lookup), `Ok(Some(addresses))` for a hub host whose looked-up addresses are all public
+/// (ssrf-policy; the request is pinned to them), `Err` otherwise.
+pub(crate) async fn vet_hop<F, Fut>(
+    hub: &Hub,
+    url: &reqwest::Url,
+    lookup: F,
+) -> Result<Option<Vec<SocketAddr>>, ()>
+where
+    F: FnOnce(String, u16) -> Fut,
+    Fut: std::future::Future<Output = std::io::Result<Vec<SocketAddr>>>,
+{
+    if hub.is_test_origin(url) {
+        return Ok(None);
+    }
+    if !hub_host_allowed(url) {
+        return Err(());
+    }
+    let host = url.host_str().ok_or(())?.to_string();
+    let found = lookup(host, 443).await.map_err(|_| ())?;
+    let texts: Vec<String> = found.iter().map(|a| a.ip().to_string()).collect();
+    if found.is_empty() || !ssrf_policy::addresses_public(&texts) {
+        return Err(());
+    }
+    Ok(Some(found))
+}
+
+async fn system_lookup(host: String, port: u16) -> std::io::Result<Vec<SocketAddr>> {
+    Ok(tokio::net::lookup_host((host.as_str(), port))
+        .await?
+        .collect())
+}
+
 impl State {
     pub fn new(hub: Hub) -> State {
-        let rule = hub.clone();
-        let hub_client = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
-                if attempt.previous().len() >= MAX_REDIRECTS {
-                    attempt.error("too many redirects")
-                } else if rule.allows(attempt.url()) {
-                    attempt.follow()
-                } else {
-                    attempt.error("a redirect outside the public hub")
-                }
-            }))
-            .build()
-            .ok();
         let plain_client = reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
@@ -173,7 +207,6 @@ impl State {
             hub,
             artifacts: Mutex::new(Artifacts::new()),
             permits: Arc::new(tokio::sync::Semaphore::new(artifact::RUNNING)),
-            hub_client,
             plain_client,
             scan_clears: AtomicU64::new(0),
         }
@@ -185,32 +218,92 @@ impl State {
         self.scan_clears.load(Ordering::SeqCst)
     }
 
+    /// A GET to the public hub, following at most `redirects` redirects (fetch's 20; fetchJson's
+    /// none, where a redirect is returned for the caller to refuse). Every hop, the first and each
+    /// redirect target, is vetted ([`vet_hop`]) and pinned to its checked addresses; a refused
+    /// hop is never contacted. No credentials, no cookies, no maintenance header: only `range`.
+    async fn hub_get(
+        &self,
+        url: reqwest::Url,
+        range: Option<&'static str>,
+        redirects: usize,
+    ) -> Result<reqwest::Response, HopError> {
+        let mut url = url;
+        let mut followed = 0;
+        loop {
+            let pinned = vet_hop(&self.hub, &url, system_lookup)
+                .await
+                .map_err(|()| HopError::Failed)?;
+            let mut builder = reqwest::Client::builder()
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none());
+            if let (Some(found), Some(host)) = (pinned, url.host_str()) {
+                builder = builder.resolve_to_addrs(host, &found);
+            }
+            let client = builder.build().map_err(|_| HopError::Failed)?;
+            let mut req = client.get(url.clone());
+            if let Some(range) = range {
+                req = req.header(reqwest::header::RANGE, range);
+            }
+            let res = req.send().await.map_err(|e| {
+                if e.is_timeout() {
+                    HopError::Timeout
+                } else {
+                    HopError::Failed
+                }
+            })?;
+            if redirects == 0 || !res.status().is_redirection() {
+                return Ok(res);
+            }
+            // A redirect without a usable Location is fetch's answer as it is.
+            let Some(next) = res
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|loc| url.join(loc).ok())
+            else {
+                return Ok(res);
+            };
+            if followed >= redirects {
+                return Err(HopError::Failed);
+            }
+            followed += 1;
+            url = next;
+        }
+    }
+
     /// One fetchJson-style request: the manager's, or (PublicHub) the hub's file list.
     async fn send(&self, r: &manager::Request) -> Result<Reply, Thrown> {
+        let deadline = Duration::from_millis(u64::from(r.timeout_ms));
+        match tokio::time::timeout(deadline, self.send_within(r)).await {
+            Ok(answer) => answer,
+            Err(_) => Err(Thrown::internal("fetch failed")),
+        }
+    }
+
+    async fn send_within(&self, r: &manager::Request) -> Result<Reply, Thrown> {
         let failed = || Thrown::internal("fetch failed");
-        let url = match r.target {
-            Target::PublicHub => self.hub.rewrite(&r.url),
-            Target::Manager => r.url.clone(),
-        };
-        let url = reqwest::Url::parse(&url).map_err(|_| failed())?;
-        if r.target == Target::PublicHub && !self.hub.allows(&url) {
-            return Err(failed());
-        }
-        let client = self.plain_client.as_ref().ok_or_else(failed)?;
-        let method = reqwest::Method::from_bytes(r.method.as_bytes()).map_err(|_| failed())?;
-        let mut req = client
-            .request(method, url)
-            .timeout(Duration::from_millis(u64::from(r.timeout_ms)));
-        // A PublicHub request carries no headers by construction; nothing is added to it here.
-        if r.target == Target::Manager {
-            for (k, v) in &r.headers {
-                req = req.header(k.as_str(), v.as_str());
+        let mut res = match r.target {
+            // No headers by construction, no redirect (fetchJson's `redirect: 'error'`).
+            Target::PublicHub => {
+                let url = reqwest::Url::parse(&self.hub.rewrite(&r.url)).map_err(|_| failed())?;
+                self.hub_get(url, None, 0).await.map_err(|_| failed())?
             }
-        }
-        if let Some(body) = &r.body {
-            req = req.body(body.clone());
-        }
-        let mut res = req.send().await.map_err(|_| failed())?;
+            Target::Manager => {
+                let url = reqwest::Url::parse(&r.url).map_err(|_| failed())?;
+                let client = self.plain_client.as_ref().ok_or_else(failed)?;
+                let method =
+                    reqwest::Method::from_bytes(r.method.as_bytes()).map_err(|_| failed())?;
+                let mut req = client.request(method, url);
+                for (k, v) in &r.headers {
+                    req = req.header(k.as_str(), v.as_str());
+                }
+                if let Some(body) = &r.body {
+                    req = req.body(body.clone());
+                }
+                req.send().await.map_err(|_| failed())?
+            }
+        };
         // fetch with `redirect: 'error'` throws on a redirect.
         if res.status().is_redirection() {
             return Err(failed());
@@ -232,27 +325,22 @@ impl State {
         Ok(Reply { ok, status, body })
     }
 
-    /// One public hub fetch of the check (redirects followed within the hub rule).
+    /// One public hub fetch of the check (fetch's 20 redirects, each hop vetted and pinned), the
+    /// deadline over the hops and the body read.
     async fn fetch(&self, f: &artifact::Fetch) -> Result<Fetched, FetchError> {
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(u64::from(f.timeout_ms));
         let failed = || FetchError::Failed("fetch failed".into());
         let url = reqwest::Url::parse(&self.hub.rewrite(&f.url)).map_err(|_| failed())?;
-        if !self.hub.allows(&url) {
-            return Err(failed());
-        }
-        let client = self.hub_client.as_ref().ok_or_else(failed)?;
-        let mut req = client
-            .get(url)
-            .timeout(Duration::from_millis(u64::from(f.timeout_ms)));
-        if let Some(range) = f.range {
-            req = req.header(reqwest::header::RANGE, range);
-        }
-        let mut res = req.send().await.map_err(|e| {
-            if e.is_timeout() {
-                FetchError::Timeout
-            } else {
-                failed()
-            }
-        })?;
+        let mut res = match tokio::time::timeout_at(
+            deadline,
+            self.hub_get(url, f.range, MAX_REDIRECTS),
+        )
+        .await
+        {
+            Err(_) | Ok(Err(HopError::Timeout)) => return Err(FetchError::Timeout),
+            Ok(Err(HopError::Failed)) => return Err(failed()),
+            Ok(Ok(res)) => res,
+        };
         let status = res.status().as_u16();
         let content_range = res
             .headers()
@@ -261,17 +349,18 @@ impl State {
             .map(str::to_string);
         let mut buf = Vec::new();
         let body = loop {
-            match res.chunk().await {
-                Ok(Some(chunk)) => {
+            match tokio::time::timeout_at(deadline, res.chunk()).await {
+                Ok(Ok(Some(chunk))) => {
                     buf.extend_from_slice(&chunk);
                     if buf.len() >= f.max_bytes {
                         buf.truncate(f.max_bytes);
                         break Ok(buf);
                     }
                 }
-                Ok(None) => break Ok(buf),
-                Err(e) if e.is_timeout() => break Err(FetchError::Timeout),
-                Err(_) => break Err(FetchError::Failed("terminated".into())),
+                Ok(Ok(None)) => break Ok(buf),
+                Err(_) => break Err(FetchError::Timeout),
+                Ok(Err(e)) if e.is_timeout() => break Err(FetchError::Timeout),
+                Ok(Err(_)) => break Err(FetchError::Failed("terminated".into())),
             }
         };
         Ok(Fetched {
@@ -486,5 +575,73 @@ mod tests {
         assert!(hub.allows(&local));
         assert!(!Hub::default().allows(&local));
         assert!(!hub.allows(&reqwest::Url::parse("http://127.0.0.1:10/x").unwrap()));
+    }
+
+    async fn vet(
+        hub: &Hub,
+        url: &str,
+        answer: Result<Vec<&str>, ()>,
+    ) -> (Result<Option<Vec<SocketAddr>>, ()>, bool) {
+        let asked = std::sync::atomic::AtomicBool::new(false);
+        let url = reqwest::Url::parse(url).unwrap();
+        let out = vet_hop(hub, &url, |host, port| {
+            asked.store(true, Ordering::SeqCst);
+            assert_eq!(port, 443);
+            assert!(hub_host_allowed(
+                &reqwest::Url::parse(&format!("https://{host}/")).unwrap()
+            ));
+            let answer = answer
+                .map(|ips| {
+                    ips.iter()
+                        .map(|ip| SocketAddr::new(ip.parse().unwrap(), 443))
+                        .collect()
+                })
+                .map_err(|()| std::io::Error::other("qa: no answer"));
+            async move { answer }
+        })
+        .await;
+        (out, asked.load(Ordering::SeqCst))
+    }
+
+    #[tokio::test]
+    async fn every_hop_is_looked_up_and_must_be_public() {
+        let prod = Hub::default();
+        let ok = vet(
+            &prod,
+            "https://cdn-lfs.hf.co/x",
+            Ok(vec!["18.239.1.2", "2600:9000::1"]),
+        )
+        .await;
+        assert_eq!(
+            ok.0.unwrap().unwrap().len(),
+            2,
+            "pinned to the checked addresses"
+        );
+        for private in [
+            vec!["10.0.0.5"],
+            vec!["18.239.1.2", "127.0.0.1"],
+            vec!["169.254.169.254"],
+            vec!["::1"],
+            vec!["fd00::1"],
+            vec![],
+        ] {
+            let (out, asked) = vet(&prod, "https://huggingface.co/x", Ok(private.clone())).await;
+            assert!(out.is_err() && asked, "{private:?}");
+        }
+        assert!(vet(&prod, "https://huggingface.co/x", Err(()))
+            .await
+            .0
+            .is_err());
+        // Outside the hub rule: refused without a lookup.
+        let (out, asked) = vet(&prod, "https://evil.example/x", Ok(vec!["18.239.1.2"])).await;
+        assert!(out.is_err() && !asked);
+        let (out, asked) = vet(&prod, "http://127.0.0.1:9/x", Ok(vec!["127.0.0.1"])).await;
+        assert!(out.is_err() && !asked);
+        // The test hub's own origin only: no lookup, no pin.
+        let test = Hub::for_tests("http://127.0.0.1:9");
+        let (out, asked) = vet(&test, "http://127.0.0.1:9/x", Err(())).await;
+        assert_eq!((out, asked), (Ok(None), false));
+        let (out, asked) = vet(&test, "http://127.0.0.1:10/x", Ok(vec!["127.0.0.1"])).await;
+        assert!(out.is_err() && !asked);
     }
 }

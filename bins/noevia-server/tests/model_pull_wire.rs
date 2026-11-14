@@ -480,6 +480,35 @@ async fn hub_for(delay_ms: u64, elsewhere: u16) -> (u16, Seen) {
             }
             return Answer { delay_ms, ..meta() };
         }
+        // qa-chain<n>: the prefix redirects n times within the hub (/hop/<n-1> .. /hop/0).
+        if let Some(n) = target
+            .split("qa-chain")
+            .nth(1)
+            .filter(|_| target.contains("/resolve/"))
+            .map(|rest| {
+                rest.chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect::<String>()
+            })
+            .and_then(|n| n.parse::<u32>().ok())
+        {
+            return hop(n - 1);
+        }
+        if let Some(n) = target
+            .strip_prefix("/hop/")
+            .and_then(|n| n.parse::<u32>().ok())
+        {
+            if n == 0 {
+                return ranged(gguf(&[
+                    "blk.0.attn_q.weight",
+                    "blk.40.nextn.eh_proj.weight",
+                ]));
+            }
+            return hop(n - 1);
+        }
+        if target.contains("qa-missing-Q8_0") {
+            return json(404, "{}");
+        }
         if target.contains("qa-moved-Q8_0") {
             return Answer {
                 status: 302,
@@ -508,6 +537,15 @@ async fn hub_for(delay_ms: u64, elsewhere: u16) -> (u16, Seen) {
         ranged(gguf(&["blk.0.attn_q.weight"]))
     })
     .await
+}
+
+fn hop(to: u32) -> Answer {
+    Answer {
+        status: 302,
+        headers: vec![("Location".into(), format!("/hop/{to}"))],
+        body: Vec::new(),
+        delay_ms: 0,
+    }
 }
 
 fn query(repo: &str) -> String {
@@ -617,12 +655,17 @@ async fn a_second_request_for_a_running_check_gets_its_answer() {
     let (hub, seen) = hub_for(1500, elsewhere).await;
     let (addr, _) = front(dir.path(), node_port, hub, true).await;
     let first =
-        tokio::spawn(async move { call(addr, "GET", &query("qa-present"), ADMIN, "").await });
+        tokio::spawn(async move { call(addr, "GET", &query("qa-missing"), ADMIN, "").await });
     tokio::time::sleep(Duration::from_millis(500)).await;
-    let (status, joined) = call(addr, "GET", &query("qa-present"), ADMIN, "").await;
+    let (status, joined) = call(addr, "GET", &query("qa-missing"), ADMIN, "").await;
     let (first_status, first) = first.await.unwrap();
     assert_eq!((status, first_status), (200, 200));
-    assert_eq!(first.get("status").as_str(), Some("present"));
+    // An unknown answer is never cached: only the join can give the second request this one.
+    assert_eq!(first.get("status").as_str(), Some("unknown"));
+    assert_eq!(
+        first.get("reason").as_str(),
+        Some("Artifact metadata unavailable (404).")
+    );
     assert_eq!(
         joined, first,
         "the running check's answer, checkedAt included"
@@ -630,7 +673,43 @@ async fn a_second_request_for_a_running_check_gets_its_answer() {
     let heads = seen.lock().unwrap().clone();
     let revisions = heads
         .iter()
-        .filter(|h| h.starts_with("GET /api/models/qa-org/qa-present HTTP"))
+        .filter(|h| h.starts_with("GET /api/models/qa-org/qa-missing HTTP"))
         .count();
     assert_eq!(revisions, 1, "one check ran: {heads:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn twenty_redirects_are_followed_and_a_twenty_first_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let (node_port, _) = node().await;
+    let (elsewhere, _) = stub(|_| json(200, "{}")).await;
+    let (hub, seen) = hub_for(0, elsewhere).await;
+    let (addr, _) = front(dir.path(), node_port, hub, true).await;
+    let (_, twenty) = call(addr, "GET", &query("qa-chain20"), ADMIN, "").await;
+    assert_eq!(
+        twenty.get("status").as_str(),
+        Some("present"),
+        "{}",
+        wtf16::stringify(&twenty).unwrap()
+    );
+    let hops = |seen: &Seen| {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter(|h| h.starts_with("GET /hop/"))
+            .count()
+    };
+    assert_eq!(hops(&seen), 20);
+    // The Range header goes with every hop.
+    assert!(seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|h| h.starts_with("GET /hop/"))
+        .all(|h| h.to_ascii_lowercase().contains("range: bytes=0-16777215")));
+    let (_, twenty_one) = call(addr, "GET", &query("qa-chain21"), ADMIN, "").await;
+    assert_eq!(twenty_one.get("status").as_str(), Some("unknown"));
+    assert_eq!(twenty_one.get("reason").as_str(), Some("fetch failed"));
+    // 20 more hops reached; the 21st redirect's target (/hop/0) is never asked.
+    assert_eq!(hops(&seen), 40);
 }

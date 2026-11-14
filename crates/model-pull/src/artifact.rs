@@ -269,6 +269,15 @@ impl Artifacts {
         self.running.iter().map(|(k, _)| k.clone()).collect()
     }
 
+    /// How many requests hold a running check's completion, waiting for it (0 when the check is
+    /// not running).
+    pub fn waiting(&self, key: &Key) -> usize {
+        self.running
+            .iter()
+            .find(|(k, _)| k == key)
+            .map_or(0, |(_, c)| Arc::strong_count(&c.0) - 1)
+    }
+
     /// `check`'s synchronous part, at `now`.
     pub fn start(&mut self, repo: &str, files: &JValue, now: i64) -> Start {
         let key = match validate(repo, files) {
