@@ -6695,7 +6695,10 @@ mod tests {
         kept.release();
         let lost = tokio::time::timeout(WATCHDOG, async {
             loop {
-                if let Ok(r) = deps.hold_when_idle("synthetic tune", 10_000, Abort::default()).await {
+                if let Ok(r) = deps
+                    .hold_when_idle("synthetic tune", 10_000, Abort::default())
+                    .await
+                {
                     return r;
                 }
             }
@@ -6713,7 +6716,10 @@ mod tests {
         .unwrap();
         lost.release();
         assert_eq!(
-            tokio::time::timeout(WATCHDOG, rx.recv()).await.unwrap().as_deref(),
+            tokio::time::timeout(WATCHDOG, rx.recv())
+                .await
+                .unwrap()
+                .as_deref(),
             Some("settle")
         );
     }

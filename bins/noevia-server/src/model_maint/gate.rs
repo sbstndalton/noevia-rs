@@ -593,15 +593,14 @@ impl Shared {
             return false;
         }
         let now = Instant::now();
-        let alive = self
-            .auth
-            .as_ref()
-            .is_none_or(|(a, g)| a.covers_step(&g.id, g.generation, STEP_MARGIN, Duration::ZERO))
-            && self
+        let alive =
+            self.auth.as_ref().is_none_or(|(a, g)| {
+                a.covers_step(&g.id, g.generation, STEP_MARGIN, Duration::ZERO)
+            }) && self
                 .confirmed
                 .lock()
                 .is_ok_and(|at| now + STEP_MARGIN < *at + ttl)
-            && self.lease_end.is_none_or(|end| now + STEP_MARGIN < end);
+                && self.lease_end.is_none_or(|end| now + STEP_MARGIN < end);
         if !alive {
             self.lose_at_margin();
             return false;
@@ -1307,8 +1306,14 @@ mod tests {
         assert!(hour.covers(Duration::from_secs(180)));
         let short = s(160);
         assert!(short.covers(Duration::from_secs(140)));
-        assert!(!short.covers(Duration::from_secs(150)), "the step past the hard cap");
-        assert!(!short.lost.load(Ordering::Acquire), "a step that does not fit is no loss");
+        assert!(
+            !short.covers(Duration::from_secs(150)),
+            "the step past the hard cap"
+        );
+        assert!(
+            !short.lost.load(Ordering::Acquire),
+            "a step that does not fit is no loss"
+        );
         let lapsing = s(3600);
         if let (Ok(mut at), Some(old)) = (
             lapsing.confirmed.lock(),
@@ -1317,7 +1322,10 @@ mod tests {
             *at = old;
         }
         assert!(!lapsing.covers(Duration::ZERO), "a lapse within the margin");
-        assert!(lapsing.lost.load(Ordering::Acquire), "the lapse is the loss itself (sticky)");
+        assert!(
+            lapsing.lost.load(Ordering::Acquire),
+            "the lapse is the loss itself (sticky)"
+        );
         let lost = s(3600);
         lost.lost.store(true, Ordering::Release);
         assert!(!lost.covers(Duration::ZERO));
