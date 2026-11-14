@@ -8,7 +8,11 @@ use crate::{dockerfile, js};
 
 /// Byte offsets where JavaScript's multiline `^` matches: the start and after every line terminator.
 fn line_starts(text: &str) -> impl Iterator<Item = usize> + '_ {
-    std::iter::once(0).chain(text.char_indices().filter(|(_, c)| js::is_line_terminator(*c)).map(|(i, c)| i + c.len_utf8()))
+    std::iter::once(0).chain(
+        text.char_indices()
+            .filter(|(_, c)| js::is_line_terminator(*c))
+            .map(|(i, c)| i + c.len_utf8()),
+    )
 }
 
 /// End offsets of the matches of `/^\[features\]\s*$/gm` (greedy `\s*`, so a match ends at the last line end inside
@@ -22,12 +26,20 @@ fn feature_headers(cargo: &str) -> Vec<usize> {
         }
         let after = start + HEADER.len();
         let rest = cargo.get(after..).unwrap_or("");
-        let run = rest.char_indices().find(|(_, c)| !js::is_space(*c)).map_or(rest.len(), |(i, _)| i);
+        let run = rest
+            .char_indices()
+            .find(|(_, c)| !js::is_space(*c))
+            .map_or(rest.len(), |(i, _)| i);
         let end = if run == rest.len() {
             Some(cargo.len())
         } else {
             rest.get(..run)
-                .and_then(|ws| ws.char_indices().filter(|(_, c)| js::is_line_terminator(*c)).map(|(i, _)| i).next_back())
+                .and_then(|ws| {
+                    ws.char_indices()
+                        .filter(|(_, c)| js::is_line_terminator(*c))
+                        .map(|(i, _)| i)
+                        .next_back()
+                })
                 .map(|i| after + i)
         };
         ends.extend(end);
@@ -47,7 +59,13 @@ fn strip_comments(table: &str) -> String {
                 match chars.get(j) {
                     None => break None,
                     Some('"') => break Some(j),
-                    Some('\\') if chars.get(j + 1).is_some_and(|n| !js::is_line_terminator(*n)) => j += 2,
+                    Some('\\')
+                        if chars
+                            .get(j + 1)
+                            .is_some_and(|n| !js::is_line_terminator(*n)) =>
+                    {
+                        j += 2
+                    }
                     Some('\\') => break None,
                     Some(_) => j += 1,
                 }
@@ -72,9 +90,13 @@ fn strip_comments(table: &str) -> String {
 /// The `[features]` table as an ordered graph, or `None` for any manifest shape outside the supported subset.
 fn feature_graph(cargo: &str) -> Option<Vec<(String, Vec<String>)>> {
     let headers = feature_headers(cargo);
-    let [end] = headers.as_slice() else { return None };
+    let [end] = headers.as_slice() else {
+        return None;
+    };
     let tail = cargo.get(*end..)?;
-    let table_end = line_starts(tail).find(|&s| tail.get(s..).is_some_and(|r| r.starts_with('['))).unwrap_or(tail.len());
+    let table_end = line_starts(tail)
+        .find(|&s| tail.get(s..).is_some_and(|r| r.starts_with('[')))
+        .unwrap_or(tail.len());
     let clean = strip_comments(tail.get(..table_end)?);
     let entry = js_re!(r"^\s*([A-Za-z0-9_-]+)\s*=\s*\[([^\]]*)\]\s*").ok()?;
     let mut graph: Vec<(String, Vec<String>)> = Vec::new();
@@ -91,7 +113,10 @@ fn feature_graph(cargo: &str) -> Option<Vec<(String, Vec<String>)>> {
             None => list,
         };
         let values: Vec<serde_json::Value> = serde_json::from_str(&format!("[{list}]")).ok()?;
-        let values = values.into_iter().map(|v| v.as_str().map(str::to_string)).collect::<Option<Vec<_>>>()?;
+        let values = values
+            .into_iter()
+            .map(|v| v.as_str().map(str::to_string))
+            .collect::<Option<Vec<_>>>()?;
         graph.push((name.to_string(), values));
         rest = rest.get(m.get(0)?.end()..)?;
     }
@@ -116,7 +141,11 @@ pub fn derive_features(build: &str, cargo: &str) -> Option<BTreeSet<String>> {
         }
         let (_, deps) = graph.iter().find(|(n, _)| *n == name)?;
         enabled.insert(name);
-        stack.extend(deps.iter().filter(|d| !d.starts_with("dep:") && !d.contains('/')).cloned());
+        stack.extend(
+            deps.iter()
+                .filter(|d| !d.starts_with("dep:") && !d.contains('/'))
+                .cloned(),
+        );
     }
     Some(enabled)
 }

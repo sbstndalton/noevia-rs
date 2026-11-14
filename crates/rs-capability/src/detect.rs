@@ -41,7 +41,15 @@ const TOKEN_LIMIT: usize = 1_000_000;
 /// V8 ends deep recursion with a RangeError, which the Node detector reports as invalid. Rust would abort instead, so
 /// nested braced bodies are capped well below the main-thread stack.
 const SCOPE_DEPTH_LIMIT: usize = 2048;
-const HARMLESS: [&str; 7] = ["allow", "warn", "deny", "forbid", "doc", "deprecated", "must_use"];
+const HARMLESS: [&str; 7] = [
+    "allow",
+    "warn",
+    "deny",
+    "forbid",
+    "doc",
+    "deprecated",
+    "must_use",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -76,7 +84,12 @@ fn ident_char(c: char) -> bool {
 
 /// `detect(source, declaration, capability, enabledFeatures)`. `enabled` is `None` when the shipped build's features
 /// could not be derived: then only a queried literal under `#[cfg(feature = ...)]` refuses.
-pub fn detect(source: &str, declaration: &str, capability: &str, enabled: Option<&BTreeSet<String>>) -> Verdict {
+pub fn detect(
+    source: &str,
+    declaration: &str,
+    capability: &str,
+    enabled: Option<&BTreeSet<String>>,
+) -> Verdict {
     match run(source, declaration, capability, enabled) {
         Ok(true) => Verdict::V1,
         Ok(false) => Verdict::Legacy,
@@ -84,14 +97,27 @@ pub fn detect(source: &str, declaration: &str, capability: &str, enabled: Option
     }
 }
 
-fn run(source: &str, declaration: &str, capability: &str, enabled: Option<&BTreeSet<String>>) -> Result<bool, Fail> {
-    let valid_name = declaration.chars().next().is_some_and(ident_start) && declaration.chars().all(ident_char);
+fn run(
+    source: &str,
+    declaration: &str,
+    capability: &str,
+    enabled: Option<&BTreeSet<String>>,
+) -> Result<bool, Fail> {
+    let valid_name =
+        declaration.chars().next().is_some_and(ident_start) && declaration.chars().all(ident_char);
     if !valid_name || capability.is_empty() || source.encode_utf16().count() > SOURCE_LIMIT_UTF16 {
         return fail("input");
     }
     let tokens = tokenize(source)?;
     let pairs = balance(&tokens)?;
-    let mut reader = Reader { tokens: &tokens, pairs: &pairs, declaration, capability, enabled, found: None };
+    let mut reader = Reader {
+        tokens: &tokens,
+        pairs: &pairs,
+        declaration,
+        capability,
+        enabled,
+        found: None,
+    };
     reader.scope(0, tokens.len(), true, 0)?;
     Ok(reader.found.unwrap_or(false))
 }
@@ -108,7 +134,9 @@ impl Lexer {
     }
 
     fn starts(&self, i: usize, text: &str) -> bool {
-        text.chars().enumerate().all(|(k, c)| self.at(i + k) == Some(c))
+        text.chars()
+            .enumerate()
+            .all(|(k, c)| self.at(i + k) == Some(c))
     }
 
     fn find(&self, from: usize, text: &str) -> Option<usize> {
@@ -116,7 +144,10 @@ impl Lexer {
     }
 
     fn slice(&self, from: usize, to: usize) -> String {
-        self.s.get(from..to.min(self.s.len())).map(|cs| cs.iter().collect()).unwrap_or_default()
+        self.s
+            .get(from..to.min(self.s.len()))
+            .map(|cs| cs.iter().collect())
+            .unwrap_or_default()
     }
 
     fn push(&mut self, kind: Kind, value: String) {
@@ -168,20 +199,36 @@ impl Lexer {
                 self.i += 2;
             } else if e == Some('u') && self.at(self.i) == Some('{') && kind != Kind::Byte {
                 self.i += 1;
-                let Some(end) = self.find(self.i, "}") else { return fail("escape") };
-                let hex: String = self.slice(self.i, end).chars().filter(|&c| c != '_').collect();
-                if hex.is_empty() || hex.chars().count() > 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                let Some(end) = self.find(self.i, "}") else {
+                    return fail("escape");
+                };
+                let hex: String = self
+                    .slice(self.i, end)
+                    .chars()
+                    .filter(|&c| c != '_')
+                    .collect();
+                if hex.is_empty()
+                    || hex.chars().count() > 6
+                    || !hex.chars().all(|c| c.is_ascii_hexdigit())
+                {
                     return fail("escape");
                 }
                 let cp = u32::from_str_radix(&hex, 16).map_err(|_| "escape".to_string())?;
-                let Some(ch) = char::from_u32(cp) else { return fail("escape") };
+                let Some(ch) = char::from_u32(cp) else {
+                    return fail("escape");
+                };
                 value.push(ch);
                 self.i = end + 1;
-            } else if quote == '"' && (e == Some('\n') || (e == Some('\r') && self.at(self.i) == Some('\n'))) {
+            } else if quote == '"'
+                && (e == Some('\n') || (e == Some('\r') && self.at(self.i) == Some('\n')))
+            {
                 if e == Some('\r') {
                     self.i += 1;
                 }
-                while self.at(self.i).is_some_and(|c| matches!(c, ' ' | '\t' | '\r' | '\n')) {
+                while self
+                    .at(self.i)
+                    .is_some_and(|c| matches!(c, ' ' | '\t' | '\r' | '\n'))
+                {
                     self.i += 1;
                 }
             } else {
@@ -207,17 +254,25 @@ impl Lexer {
             (Some('r'), _) => i + 1,
             _ => return None,
         };
-        let hashes = (p..self.s.len()).take_while(|&k| self.at(k) == Some('#')).count();
+        let hashes = (p..self.s.len())
+            .take_while(|&k| self.at(k) == Some('#'))
+            .count();
         (hashes <= 255 && self.at(p + hashes) == Some('"')).then_some((hashes, p + hashes))
     }
 
     fn ident_end(&self, from: usize) -> usize {
-        (from..self.s.len()).find(|&k| !self.at(k).is_some_and(ident_char)).unwrap_or(self.s.len())
+        (from..self.s.len())
+            .find(|&k| !self.at(k).is_some_and(ident_char))
+            .unwrap_or(self.s.len())
     }
 }
 
 fn tokenize(source: &str) -> Result<Vec<Token>, Fail> {
-    let mut lx = Lexer { s: source.chars().collect(), i: 0, tokens: Vec::new() };
+    let mut lx = Lexer {
+        s: source.chars().collect(),
+        i: 0,
+        tokens: Vec::new(),
+    };
     while let Some(c) = lx.at(lx.i) {
         if js::is_space(c) {
             lx.i += 1;
@@ -249,7 +304,9 @@ fn tokenize(source: &str) -> Result<Vec<Token>, Fail> {
         if let Some((hashes, quote_at)) = lx.raw_prefix() {
             let close = format!("\"{}", "#".repeat(hashes));
             let start = quote_at + 1;
-            let Some(end) = lx.find(start, &close) else { return fail("unterminated-raw") };
+            let Some(end) = lx.find(start, &close) else {
+                return fail("unterminated-raw");
+            };
             let value = lx.slice(start, end);
             lx.push(Kind::Raw, value);
             lx.i = end + close.chars().count();
@@ -283,11 +340,13 @@ fn tokenize(source: &str) -> Result<Vec<Token>, Fail> {
             lx.quoted('\'', Kind::Char)?;
             continue;
         }
-        let ident_from = if c == 'r' && lx.at(lx.i + 1) == Some('#') && lx.at(lx.i + 2).is_some_and(ident_start) {
-            lx.i + 2
-        } else {
-            lx.i
-        };
+        let ident_from =
+            if c == 'r' && lx.at(lx.i + 1) == Some('#') && lx.at(lx.i + 2).is_some_and(ident_start)
+            {
+                lx.i + 2
+            } else {
+                lx.i
+            };
         if lx.at(ident_from).is_some_and(ident_start) {
             let end = lx.ident_end(ident_from);
             let value = lx.slice(ident_from, end);
@@ -408,7 +467,8 @@ impl Reader<'_> {
             for j in begin..stop {
                 if matches!(self.v(j), Some("const" | "static"))
                     && (self.v(j + 1) == Some(self.declaration)
-                        || (self.v(j + 1) == Some("mut") && self.v(j + 2) == Some(self.declaration)))
+                        || (self.v(j + 1) == Some("mut")
+                            && self.v(j + 2) == Some(self.declaration)))
                 {
                     target = Some(j);
                 }
@@ -483,7 +543,11 @@ impl Reader<'_> {
                 p = close + 1;
             }
             if self.kind(p) == Some(Kind::Str) {
-                let value = self.tokens.get(p).map(|t| t.value.as_str()).unwrap_or_default();
+                let value = self
+                    .tokens
+                    .get(p)
+                    .map(|t| t.value.as_str())
+                    .unwrap_or_default();
                 p += 1;
                 if value == self.capability {
                     matches += 1;
@@ -540,7 +604,8 @@ fn queried_cfg<'t>(attributes: &[&'t [Token]]) -> Result<Option<&'t str>, Fail> 
             continue;
         }
         let is = |i: usize, kind: Kind, value: Option<&str>| {
-            attr.get(i).is_some_and(|t| t.kind == kind && value.is_none_or(|v| t.value == v))
+            attr.get(i)
+                .is_some_and(|t| t.kind == kind && value.is_none_or(|v| t.value == v))
         };
         let exact = attr.len() == 6
             && is(0, Kind::Id, Some("cfg"))
