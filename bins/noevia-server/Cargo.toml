@@ -60,6 +60,8 @@ embedding-worker = { path = "../../crates/embedding-worker" }
 embedding-migration = { path = "../../crates/embedding-migration" }
 context-fit = { path = "../../crates/context-fit" }
 chat-turn = { path = "../../crates/chat-turn" }
+# Track R8 P7a: the native preparation in shadow (chat_prepare_shadow.rs; workspace crate).
+chat-prepare = { path = "../../crates/chat-prepare" }
 edit-target-lookup = { path = "../../crates/edit-target-lookup" }
 engine-admission = { path = "../../crates/engine-admission" }
 model-stream = { path = "../../crates/model-stream" }
@@ -75,6 +77,8 @@ zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
 s3-sign = { path = "../../crates/s3-sign" }
 storage-path = { path = "../../crates/storage-path", optional = true }
 rand_core = { version = "0.6", features = ["getrandom"] }
+rustix = { version = "=1.1.5", features = ["fs"] }
+boot-schema = { path = "../../crates/boot-schema" }
 google-token-seal = { path = "../../crates/google-token-seal" }
 egress-issuer = { path = "../../crates/egress-issuer" }
 offsite-backup-format = { path = "../../crates/offsite-backup-format" }
@@ -120,6 +124,9 @@ http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "client", "server"] }
 code-net-guard = { path = "../../crates/code-net-guard" }
 code-acp = { path = "../../crates/code-acp" }
+browser-cdp = { path = "../../crates/browser-cdp" }
+browser-task = { path = "../../crates/browser-task" }
+kiwix-tools = { path = "../../crates/kiwix-tools" }
 code-harness = { path = "../../crates/code-harness" }
 # Track R11: the Code engine facts the front can answer for itself (code_facts.rs).
 engine-facts = { path = "../../crates/engine-facts" }

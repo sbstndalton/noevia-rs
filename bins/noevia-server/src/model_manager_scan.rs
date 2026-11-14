@@ -269,6 +269,17 @@ pub(crate) fn opaque<'a>(v: &'a JValue, key: &str) -> Option<&'a str> {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     })
 }
+/// Core's `clear` op (#2550): its cached folder scan is dropped and a new generation starts, as
+/// Core's own `/api/models/*` writes and its auto-tune resume bridge do. `false`: Core did not
+/// confirm (an older Core has no such op).
+pub async fn clear(app: &App) -> bool {
+    tokio::time::timeout(
+        crate::auto_roles_routes::CORE_CACHE_LIMIT,
+        cache(app, "clear", &serde_json::json!({})),
+    )
+    .await
+    .is_ok_and(|v| v.is_some_and(|v| v.get("cleared") == &JValue::Bool(true)))
+}
 pub(crate) async fn cache(app: &App, op: &str, body: &serde_json::Value) -> Option<JValue> {
     let (status, bytes) = app
         .config

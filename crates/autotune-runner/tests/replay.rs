@@ -176,6 +176,9 @@ struct Shared {
     in_driver: std::collections::HashMap<Option<tokio::task::Id>, u32>,
     /// Each calibrator's callbacks, by id, for a callback Node's calibrator made outside a call.
     hooks: std::collections::HashMap<u64, StageHooks<Replay>>,
+    /// The token of each recorded `cancellationFacts` read (scenario traces), in order: what a
+    /// `"<facts-token:k>"` abort argument names.
+    facts_tokens: Vec<String>,
 }
 
 struct Inner {
@@ -482,7 +485,21 @@ impl Replay {
         match arg.as_str() {
             Some("<token>") => current(),
             Some("<stale-token>") => "0".repeat(64),
-            Some(other) => other.to_string(),
+            Some(other) => match other
+                .strip_prefix("<facts-token:")
+                .and_then(|k| k.strip_suffix('>'))
+                .and_then(|k| k.parse::<usize>().ok())
+            {
+                // The token the native runner answered at that recorded read.
+                Some(k) => match self.sh().facts_tokens.get(k).cloned() {
+                    Some(t) => t,
+                    None => {
+                        self.mismatch(format!("{other}: no such cancellationFacts read"));
+                        String::new()
+                    }
+                },
+                None => other.to_string(),
+            },
             None => String::new(),
         }
     }
@@ -532,6 +549,12 @@ impl Replay {
                         ("body", body),
                     ])
                 })
+            }
+            "cancellationFacts" => {
+                let facts = r.cancellation_facts();
+                let token = facts.get("token").as_str().unwrap_or("").to_string();
+                self.sh().facts_tokens.push(token);
+                Ok(facts)
             }
             "compareAndAbort" => {
                 let t = self.token_arg(&arg(0), || {
@@ -1438,6 +1461,7 @@ async fn replay(path: &std::path::Path) -> Result<(), String> {
             context_ids: 0,
             in_driver: Default::default(),
             hooks: Default::default(),
+            facts_tokens: Vec::new(),
         }),
         runner: OnceLock::new(),
     }));
@@ -1597,8 +1621,12 @@ fn recorded_node_traces_replay() {
         eprintln!("FAIL {name}\n  {}\n", r.as_ref().err().unwrap());
     }
     let passed = results.iter().filter(|(_, r)| r.is_ok()).count();
+    let scenarios = results
+        .iter()
+        .filter(|(n, r)| n.starts_with('S') && r.is_ok())
+        .count();
     eprintln!(
-        "replayed {} traces: {passed} passed, {} failed, {} not derivable",
+        "replayed {} traces: {passed} passed ({scenarios} scenario traces), {} failed, {} not derivable",
         results.len(),
         failed.len(),
         results.len() - passed - failed.len()
@@ -1606,8 +1634,12 @@ fn recorded_node_traces_replay() {
     assert!(failed.is_empty());
     if only.is_none() {
         assert!(
-            passed >= 149,
+            passed - scenarios >= 149,
             "fewer traces replay than when the runner landed: {passed}"
+        );
+        assert!(
+            scenarios >= 7,
+            "the scenario (S*) traces are missing: {scenarios}"
         );
     }
 }

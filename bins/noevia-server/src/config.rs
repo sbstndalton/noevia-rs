@@ -109,6 +109,10 @@ pub struct Config {
     pub code_egress: Option<crate::code_egress::Settings>,
     /// Code mode's deployment configuration and the executor switch (code_routes.rs).
     pub code: crate::code_routes::Settings,
+    /// Browser tasks in the front (browser_routes.rs, `NOEVIA_RUST_BROWSER=1`).
+    pub browser: crate::browser_routes::Settings,
+    /// The Offline Wikipedia tools in the front (kiwix_tools.rs, `NOEVIA_RUST_KIWIX_TOOLS=1`).
+    pub kiwix: crate::kiwix_tools::Settings,
     /// Track R11: the inference budget and idle unload PUTs (`NOEVIA_RUST_MODEL_WRITES`).
     pub model_writes: crate::model_writes_routes::Settings,
     /// Track R11: `/api/embedding`, every method (`NOEVIA_RUST_EMBEDDING_ADMIN`).
@@ -139,6 +143,9 @@ pub struct Config {
     /// Track R8: which accounts' chat turns the native executor runs (`NOEVIA_CHAT_EXECUTOR`, chat_native.rs);
     /// default: none (every turn relayed to core as before). A value it cannot read refuses startup.
     pub chat_executor: crate::chat_native::Switch,
+    /// Track R8 P7a: which accounts' handed-off turns are also prepared natively, in shadow
+    /// (`NOEVIA_CHAT_PREPARE`, chat_prepare_shadow.rs); off by default, logs only.
+    pub chat_prepare: crate::chat_prepare_shadow::Switch,
     /// GET /api/providers/chatgpt (M6, sbstndalton/noevia#1373). An invalid
     /// NOEVIA_FEATURE_CHATGPT_OAUTH refuses startup (Node does not start with one either).
     pub rust_chatgpt_status: Option<ChatgptStatus>,
@@ -420,6 +427,8 @@ impl Config {
         }
         let chat_executor =
             crate::chat_native::Switch::parse(get("NOEVIA_CHAT_EXECUTOR").as_deref())?;
+        let chat_prepare =
+            crate::chat_prepare_shadow::Switch::parse(get("NOEVIA_CHAT_PREPARE").as_deref())?;
         let research = std::sync::Arc::new(crate::research_routes::Research::new(
             crate::research_routes::Settings::from_lookup(
                 &get,
@@ -430,6 +439,7 @@ impl Config {
         let autotune = crate::autotune_runner::build(&maint, &research, &get);
         Ok(Config {
             chat_executor,
+            chat_prepare,
             host,
             port,
             trust_proxy: get("TRUST_PROXY").as_deref() == Some("true"),
@@ -501,6 +511,8 @@ impl Config {
             project_store,
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,
             code: crate::code_routes::Settings::from_lookup(&get),
+            browser: crate::browser_routes::Settings::from_lookup(&get),
+            kiwix: crate::kiwix_tools::Settings::from_lookup(&get),
             model_writes: crate::model_writes_routes::Settings::from_lookup(&get),
             embedding_admin: crate::embedding_admin_routes::Settings::from_lookup(&get),
             model_pull_hub: crate::model_pull_routes::Hub::default(),
