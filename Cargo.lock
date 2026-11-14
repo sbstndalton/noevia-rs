@@ -3566,10 +3566,12 @@ dependencies = [
 name = "server-reasoning-settings"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "serde_json",
  "server-store",
  "tempfile",
+ "url",
 ]
 
 [[package]]

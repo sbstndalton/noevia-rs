@@ -1,5 +1,6 @@
 //! Native administrator reasoning default write. Provider capability reads remain Node-owned.
 pub mod input;
+pub mod read;
 use serde_json::{json, Value};
 use server_store::{RustReasoningSettings, StoreError, Writer};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
