@@ -105,7 +105,6 @@ const projectFiles = [
   { name: 'QA-doc-nover.pdf', content: 'QA', document: doc({ availableVersion: undefined }) },
   { name: 'QA-doc-weird.pdf', content: 'QA', document: doc({ pageStatus: 'qa-not-a-list' }) },
   { name: 'QA-nocontent.md' },
-  { name: 'QA-numcontent.md', content: 5 },
   { name: 'QA-nocontent-queued.pdf', document: { state: 'queued' } },
   { name: 'skills/enabled/SKILL.md', content: enabledSkill },
   { name: 'skills/enabled/scripts/run.py', content: 'print("qa")' },
@@ -138,7 +137,7 @@ const project = {
 };
 const emptyProject = { id: 'qa-empty-r13', name: 'QA empty', files: [] };
 // Entries the pipeline never writes: core's skill listing throws on them, its name resolver skips them.
-const junkProject = { id: 'qa-junk-r13', name: 'QA junk', files: [{ name: 'QA-notes.md', content: 'QA junk notes' }, null, 5, { name: 7, content: 'numbered' },
+const junkProject = { id: 'qa-junk-r13', name: 'QA junk', files: [{ name: 'QA-notes.md', content: 'QA junk notes' }, null, 5, { name: 7, content: 'numbered' }, { name: 'QA-numcontent.md', content: 5 },
   { name: 'skills/j/SKILL.md', content: skill('qa-junk', 'A QA skill beside junk entries') }] };
 const projects = { [P]: project, 'qa-empty-r13': emptyProject, 'qa-junk-r13': junkProject };
 // The project as the workspace load hands it out: textRef files with core's content accessor.
@@ -177,7 +176,7 @@ const { executeToolCall } = req('toolboxes.cjs').createToolboxes({ documentSourc
 (async () => {
   const calls = [];
   for (const [projectId, argList] of [[P, ARGS], ['qa-empty-r13', [{ name: 'QA-notes.md' }, {}, { name: 5 }]], [null, [{ name: 'QA-notes.md' }]],
-    ['qa-junk-r13', [{ name: 'QA-notes.md' }, { name: 'skills/j/SKILL.md' }, { name: '7' }, { name: 'nope' }]]]) {
+    ['qa-junk-r13', [{ name: 'QA-notes.md' }, { name: 'skills/j/SKILL.md' }, { name: '7' }, { name: 'nope' }, { name: 'QA-numcontent.md' }]]]) {
     for (const a of argList) {
       const args = JSON.parse(JSON.stringify(a));
       const p = projectId ? live(projects[projectId]) : null;
