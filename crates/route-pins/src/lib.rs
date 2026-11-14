@@ -31,6 +31,7 @@
 //! The library has no I/O and no production caller: an inert leaf crate. The `route-pins-recheck` binary reads a
 //! core directory and prints Markdown; nothing ships or calls it.
 
+pub mod bridges;
 pub mod methods_near;
 pub mod reach;
 pub mod recheck;

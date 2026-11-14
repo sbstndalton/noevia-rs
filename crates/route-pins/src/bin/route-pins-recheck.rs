@@ -4,13 +4,15 @@
 //! ships) the verdicts use that front; without it, every recorded refusal counts as answered, so only the file facts
 //! decide. Then (council p12) the core server files the static require graph no longer reaches, today and once the
 //! delete list's file deletions are made (route_pins::reach); `--also noevia-rs=DIR --also noevia=DIR` adds the other
-//! repos to the name search, so a recorder input or a pairing marker there is kept. Reach does not change the exit code.
+//! repos to the name search, so a recorder input or a pairing marker there is kept. With a `noevia-rs` tree it also
+//! lists core's `/internal/*` bridge families no Rust source names (route_pins::bridges), with the noevia lines that
+//! name their files. Neither section changes the exit code.
 //!
 //! Exit codes: 0 no drift, 1 drift found (the list is printed either way), 2 usage or read error. Read-only: it
 //! never writes into DIR. Inert: nothing in a release or in CI calls it yet (the deletion train will).
 
-use route_pins::reach;
 use route_pins::recheck::{self, Tree};
+use route_pins::{bridges, reach};
 use route_pins::{classify, delete_list, embedded, Manifest, Verdict};
 use std::path::Path;
 use std::process::ExitCode;
@@ -183,6 +185,16 @@ fn main() -> ExitCode {
         .filter(|u| !today.contains(u.file.as_str()))
         .collect();
     print!("{}", reach::report(&stranded));
+    let tree_of = |label: &str| others.iter().find(|(l, _)| *l == label).map(|(_, t)| *t);
+    if let Some(rust) = tree_of("noevia-rs") {
+        println!();
+        println!("## Core bridge families no Rust source names");
+        println!();
+        print!(
+            "{}",
+            bridges::report(&bridges::bridges(&tree, rust), tree_of("noevia"))
+        );
+    }
     if checked.drift.is_empty() {
         ExitCode::SUCCESS
     } else {
