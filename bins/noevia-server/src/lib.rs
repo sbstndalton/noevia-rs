@@ -150,6 +150,7 @@ pub mod task_routes;
 pub mod text_write_op;
 pub mod tool_approval_routes;
 pub mod tool_dispatch_front;
+pub mod tool_dispatch_mcp;
 #[cfg(feature = "rust-storage-reads")]
 pub mod toolbox_picker;
 #[cfg(feature = "rust-storage-reads")]

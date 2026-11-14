@@ -48,7 +48,7 @@ fn a_decided_route_is_always_cores_whatever_the_host_does_not_know() {
     let JValue::Arr(cases) = f.get("cases") else {
         panic!("no cases")
     };
-    assert!(cases.len() > 3000);
+    assert_eq!(cases.len(), 3401);
     let (mut decided, mut offer_only_decided, mut with_offer) = (0usize, 0usize, 0usize);
     for c in cases {
         let name = c.get("name").as_str().unwrap();
@@ -102,6 +102,7 @@ fn a_decided_route_is_always_cores_whatever_the_host_does_not_know() {
         offer_only_decided > 500,
         "offer only decided {offer_only_decided}"
     );
+    eprintln!("COUNTS partial decided={decided} offer_only={offer_only_decided} with_offer={with_offer}");
     assert!(decided > cases.len() * 4, "decided {decided}");
     assert!(with_offer > 100, "cases with a full offer {with_offer}");
 }

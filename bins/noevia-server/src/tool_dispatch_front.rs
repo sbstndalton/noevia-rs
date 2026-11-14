@@ -43,7 +43,7 @@ pub const NAME_CAP: usize = 200;
 
 /// Whether core's bridge takes the name: a non-empty string within [`NAME_CAP`] UTF-16 units. Any
 /// other name is core's 400 (noevia#2711 item 1), so the front does not answer the call.
-fn name_taken(name: &str) -> bool {
+pub(crate) fn name_taken(name: &str) -> bool {
     !name.is_empty() && js_json::wtf16::len(name) <= NAME_CAP
 }
 
@@ -270,6 +270,8 @@ mod tests {
                 }
             }
         }
+        eprintln!("COUNTS front answered={answered} left={left}");
+        assert_eq!(answered + left, 1196, "every case with an offer is replayed");
         assert!(answered > 300, "answered {answered}");
         assert!(left > 300, "left {left}");
     }

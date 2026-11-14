@@ -497,6 +497,7 @@ async fn drive(
         lease_token: Mutex::new(None),
         approvals,
         client: engine_client(),
+        writes: crate::tool_dispatch_mcp::writes_of(&p),
     });
     for v in &forwarded {
         host.observe(v, false);
@@ -672,6 +673,8 @@ pub(crate) struct FrontHost {
     lease_token: Mutex<Option<String>>,
     approvals: Arc<dyn Approvals>,
     client: reqwest::Client,
+    /// The tools this turn treats as writes (tool_dispatch_mcp.rs: those stay core's).
+    writes: std::collections::HashSet<String>,
 }
 
 /// An engine answer being read.
@@ -1388,6 +1391,14 @@ impl Host for FrontHost {
                 };
             }
         }
+        // Council p6: a routed MCP read run here (tool_dispatch_mcp.rs) when NOEVIA_RUST_TOOL_DISPATCH and
+        // NOEVIA_RUST_MCP_CALLS are on, instead of core's bridge asking this front's /v1/mcp/call; core
+        // still counts it.
+        if crate::tool_dispatch_front::enabled() && self.app.config.mcp.calls {
+            if let Some(ran) = self.mcp_in_process(run).await {
+                return ran;
+            }
+        }
         // Track R13: read_project_file answered here when NOEVIA_RUST_READ_FILE is on and the call is one
         // the port answers as core would (project_file_read.rs); core still counts it.
         if crate::project_file_read::enabled() && run.name == crate::project_file_read::NAME {
@@ -1487,6 +1498,55 @@ impl Host for FrontHost {
             ),
             None => Ran::Threw("the tool bridge did not answer".into()),
         }
+    }
+}
+
+impl FrontHost {
+    /// A routed MCP read run in this front (tool_dispatch_mcp.rs), or `None` for core's bridge.
+    async fn mcp_in_process(&self, run: &ToolRun) -> Option<Ran> {
+        use crate::tool_dispatch_mcp::{outcome, plan, snapshot_offers, Facts, Plan};
+        let handle = crate::mcp_discovery_backend::handle(&self.app)?;
+        let snapshot = handle.source.current();
+        let servers = crate::mcp_discovery_backend::server_specs(&self.app).await;
+        let offered = |server: &str, name: &str| snapshot_offers(&snapshot, server, name);
+        let planned = plan(
+            &self.user,
+            run,
+            &Facts {
+                offered: &offered,
+                servers: &servers,
+                writes: &self.writes,
+            },
+        );
+        if planned == Plan::Core {
+            return None;
+        }
+        // core's bridge runs it as the user: the account active and the project found (else its 404).
+        let (data, user, call) = (self.data_dir.clone(), self.user.clone(), run.clone());
+        let scoped = tokio::task::spawn_blocking(move || {
+            crate::project_file_read::bridge_scope(&data, &user, &call, |u| {
+                crate::project_file_read::account_active(&data, u)
+            })
+            .is_some()
+        });
+        if !matches!(scoped.await, Ok(true)) {
+            return None;
+        }
+        let done = match planned {
+            Plan::Core => return None,
+            Plan::Answer(text) => tool_dispatch::finish(text, false),
+            Plan::Call(request) => {
+                let answer =
+                    crate::mcp_call::in_process(&self.app, request, closed(&self.tx)).await?;
+                outcome(answer)
+            }
+        };
+        self.count_tool_use(&run.name, "an MCP tool call").await;
+        Some(Ran::Done {
+            text: done.text,
+            failed: done.failed,
+            not_run: false,
+        })
     }
 }
 

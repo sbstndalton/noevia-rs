@@ -750,6 +750,54 @@ pub async fn op(app: &Arc<App>, mcp: &Arc<Mcp>, body: &JValue) -> Response<Body>
     }
 }
 
+/// The text core's native path answers when the front may have sent the call and then did not report
+/// (mcp-wiring.cjs `NATIVE_UNKNOWN`, after `ERROR calling <name>: `).
+pub const NOT_REPORTED: &str =
+    "the tool call did not report back, so it may or may not have run. Check before calling it again.";
+
+/// One call run by the front's own native turn (council p6, tool_dispatch_mcp.rs): what [`op`] runs for
+/// core, without the loopback hop. `gone` resolves when the turn's client leaves: the call is stopped
+/// (its session still closed by its own task) and the text is core's for a stopped native call
+/// (`ERROR calling <name>: This operation was aborted`). `None` when core would have been told 404 or 503
+/// (the switch off, no broker, no clients): the caller hands the call to core as before.
+pub(crate) async fn in_process(
+    app: &Arc<App>,
+    request: Request,
+    gone: impl Future<Output = ()>,
+) -> Option<Answer> {
+    if !app.config.mcp.calls {
+        return None;
+    }
+    let mcp = app.mcp.as_ref().map(Arc::clone)?;
+    let calls = calls_of(app, &mcp)?;
+    let servers = crate::mcp_discovery_backend::server_specs(app).await;
+    let name = request.name.clone();
+    let (held, stop) = tokio::sync::watch::channel(false);
+    let backend = AppBackend {
+        app: Arc::clone(app),
+        mcp,
+        calls,
+        servers,
+        stop,
+    };
+    let mut task = tokio::spawn(async move {
+        let answer = execute(&backend, &backend.calls.limits, &request).await;
+        drop(backend);
+        answer
+    });
+    tokio::pin!(gone);
+    let answer = tokio::select! {
+        a = &mut task => a,
+        () = &mut gone => {
+            // Dropping the sender stops the call; its task still closes the session.
+            drop(held);
+            return Some(Answer::plain(format!("ERROR calling {name}: This operation was aborted")));
+        }
+    };
+    drop(held);
+    Some(answer.unwrap_or_else(|_| Answer::plain(format!("ERROR calling {name}: {NOT_REPORTED}"))))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

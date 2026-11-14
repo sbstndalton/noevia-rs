@@ -1,0 +1,351 @@
+//! A native turn's routed MCP read, run by the front itself (council p6, behind
+//! `NOEVIA_RUST_TOOL_DISPATCH=1` and the front's own MCP executor `NOEVIA_RUST_MCP_CALLS=1`; with either
+//! off every call goes to core's tool bridge as before).
+//!
+//! Today such a call goes front → core's bridge (`/internal/chat/tools/execute`, `executeToolCall`) →
+//! core `mcp-wiring.cjs` `executeMcpToolCall` → back to this front's `/v1/mcp/call` (mcp_call.rs), and
+//! core reduces the answer. Here the front takes the same steps without the two loopback hops:
+//!
+//! 1. core's bridge would take the call as sent and run it as the user (tool_dispatch_front.rs: no grant,
+//!    no edit target, ids and name within the caps, the account active, the project found);
+//! 2. `runToolCall` settles it from the offer alone as a routed MCP call (`routes`, #865):
+//!    [`tool_dispatch::decide`] answers `Route::Mcp { server: Some(id) }`;
+//! 3. the tool is not one the turn treats as a write (the prepared frame's `writes`, `onceTools`,
+//!    `automaticOnlyWrites`, `editTools`): a read runs under no approval fence, so nothing about a
+//!    revoked grant or an approved edit target can be skipped here;
+//! 4. `routeMcpTool(name, serverId)`: the server's offer of that name in discovery's snapshot (this
+//!    front's, which core's `mcpState` mirrors), else core's `ERROR: unknown tool "<name>" on MCP server
+//!    "<id>"`;
+//! 5. the server is not one whose call needs what core holds: the Nextcloud pass-through (core holds the
+//!    storage credential, `mcpAuthHeaders`) or the in-app server (its capability token carries core's
+//!    call-time `isWriteTool`); those stay core's;
+//! 6. [`crate::mcp_call::execute`] with core's native payload (`user` and `workspaceUser` the bridge's
+//!    `asUser` account, `project`, `write: false`, no pass-through), then core's
+//!    `reduceToolResult(text, { maxChars: resultCap })` when the answer asks for it, then
+//!    `executeToolCall`'s failure rule ([`tool_dispatch::finish`]). Core still counts the call (its bridge
+//!    does, `recordToolUse`): chat_native.rs asks core's `tool-used` op.
+//!
+//! Named differences: the server's offer is read from this front's current snapshot, where core reads
+//! the generation it last applied (core asks for a newer one at most every few seconds); a call the
+//! turn's client leaves during answers core's stopped text at once, as core's native path does, and its
+//! session is still closed by its own task.
+use crate::mcp_call::Request;
+use crate::mcp_discovery_actor::{ServerSpec, Snapshot};
+use crate::project_file_read::bridge_takes;
+use crate::tool_dispatch_front::{name_taken, settled};
+use chat_turn::host::ToolRun;
+use std::collections::HashSet;
+use tool_dispatch::{finish, Decision, Outcome, Route};
+
+/// Core's `resultCap` for MCP results (toolboxes.cjs `TOOL_RESULT_CAP`, given to mcp-wiring.cjs).
+pub const RESULT_CAP: usize = 8000;
+
+/// Server modes whose call stays core's (step 5 of the module docs).
+const CORE_AUTH: [&str; 2] = ["nextcloud", "internal"];
+
+/// What the front knows when it plans one call.
+pub struct Facts<'a> {
+    /// Whether discovery's snapshot holds `server`'s offer of `name` (core `mcpState.offers`).
+    pub offered: &'a dyn Fn(&str, &str) -> bool,
+    /// The configured servers, the operator's then the directory's (core `MCP_SERVERS`).
+    pub servers: &'a [ServerSpec],
+    /// The tools the turn treats as writes (step 3).
+    pub writes: &'a HashSet<String>,
+}
+
+/// One call's plan.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Plan {
+    /// Core's bridge answers it, as before.
+    Core,
+    /// Core's answer before any server is asked (an executor text, failed by its `ERROR: ` prefix).
+    Answer(String),
+    /// Run here through [`crate::mcp_call::execute`].
+    Call(Request),
+}
+
+/// The plan for `run`, made for `user` (see the module docs for the order). Nothing here waits or reads
+/// a store: the account and project checks ([`crate::project_file_read::bridge_scope`]) come after.
+pub fn plan(user: &str, run: &ToolRun, facts: &Facts<'_>) -> Plan {
+    if user.is_empty() || !bridge_takes(run) || !name_taken(&run.name) {
+        return Plan::Core;
+    }
+    let Decision::Route(Route::Mcp {
+        server: Some(server),
+        args,
+    }) = settled(run)
+    else {
+        return Plan::Core;
+    };
+    if facts.writes.contains(&run.name) {
+        return Plan::Core;
+    }
+    if !(facts.offered)(&server, &run.name) {
+        return Plan::Answer(format!(
+            "ERROR: unknown tool \"{}\" on MCP server \"{server}\"",
+            run.name
+        ));
+    }
+    // `MCP_SERVER_BY_ID`: of two servers with one id the later wins. A server that is gone is
+    // mcp_call's own answer ("no longer configured"), as core's.
+    let spec = facts.servers.iter().rev().find(|s| s.id == server);
+    if spec.is_some_and(|s| CORE_AUTH.contains(&s.auth.as_str())) {
+        return Plan::Core;
+    }
+    Plan::Call(Request {
+        user: user.to_string(),
+        workspace_user: Some(user.to_string()),
+        server,
+        name: run.name.clone(),
+        arguments: args,
+        project: run.project_id.clone(),
+        edit_target: None,
+        write: false,
+        nextcloud: None,
+    })
+}
+
+/// Whether `snapshot` holds `server`'s offer of `name`.
+pub fn snapshot_offers(snapshot: &Snapshot, server: &str, name: &str) -> bool {
+    snapshot
+        .offers
+        .iter()
+        .any(|e| e.server == server && e.name == name)
+}
+
+/// The tools the prepared turn treats as writes (step 3 of the module docs).
+pub fn writes_of(p: &chat_turn::prepared::Prepared) -> HashSet<String> {
+    p.writes
+        .iter()
+        .chain(&p.once_tools)
+        .chain(&p.automatic_only_writes)
+        .chain(&p.edit_tools)
+        .cloned()
+        .collect()
+}
+
+/// How the call ends, from what the executor answered: core's native path reduces a successful result
+/// (`reduce`) and `executeToolCall` marks it failed by its prefix.
+pub fn outcome(answer: crate::mcp_call::Answer) -> Outcome {
+    let text = if answer.reduce {
+        chat_turn::reduce::reduce_tool_result(&answer.text, RESULT_CAP).text
+    } else {
+        answer.text
+    };
+    finish(text, false)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::mcp_call::Answer;
+    use js_json::JValue;
+
+    const USER: &str = "0000aaaa-1111-2222-3333-444455556666";
+
+    fn spec(id: &str, auth: &str) -> ServerSpec {
+        ServerSpec {
+            id: id.into(),
+            url: format!("https://{id}.example.test/mcp"),
+            auth: auth.into(),
+            directory: auth == "directory",
+            title: None,
+            added_by: None,
+            token_env: None,
+        }
+    }
+
+    fn servers() -> Vec<ServerSpec> {
+        vec![
+            spec("qa-open", "none"),
+            spec("qa-bearer", "bearer"),
+            spec("qa-nc", "nextcloud"),
+            spec("qa-inapp", "internal"),
+            spec("qa-dir", "directory"),
+            spec("qa-own", "personal"),
+            spec("qa-signin", "oauth"),
+        ]
+    }
+
+    fn run(name: &str, server: &str, args: &str) -> ToolRun {
+        ToolRun {
+            project_id: Some("qa-project".into()),
+            name: name.into(),
+            args: args.into(),
+            allowed: vec![name.into(), "qa_other".into()],
+            routes: vec![(name.into(), server.into())],
+            chat_key: Some("qa-chat".into()),
+            exchange_key: "qa-exchange".into(),
+            edit_target: None,
+            grant: None,
+        }
+    }
+
+    fn with<T>(writes: &[&str], f: impl FnOnce(&Facts<'_>) -> T) -> T {
+        let offered = |server: &str, name: &str| server != "qa-gone-offer" && name != "qa_unlisted";
+        let servers = servers();
+        let writes = writes.iter().map(|w| w.to_string()).collect();
+        f(&Facts {
+            offered: &offered,
+            servers: &servers,
+            writes: &writes,
+        })
+    }
+
+    #[test]
+    fn a_routed_read_on_a_server_the_front_calls_runs_here_with_cores_payload() {
+        for server in ["qa-open", "qa-bearer", "qa-dir", "qa-own", "qa-signin"] {
+            let p = with(&[], |f| plan(USER, &run("qa_lookup", server, r#"{"q":"qa"}"#), f));
+            let Plan::Call(r) = p else {
+                panic!("{server}: {p:?}")
+            };
+            assert_eq!(r.server, server);
+            assert_eq!(r.name, "qa_lookup");
+            assert_eq!((r.user.as_str(), r.workspace_user.as_deref()), (USER, Some(USER)));
+            assert_eq!(r.project.as_deref(), Some("qa-project"));
+            assert_eq!(r.edit_target, None);
+            assert!(!r.write);
+            assert_eq!(r.nextcloud, None);
+            assert_eq!(r.arguments, JValue::obj([("q", JValue::Str("qa".into()))]));
+        }
+        // Empty arguments are `{}`, as runToolCall reads them.
+        let Plan::Call(r) = with(&[], |f| plan(USER, &run("qa_lookup", "qa-open", ""), f)) else {
+            panic!()
+        };
+        assert_eq!(r.arguments, JValue::Obj(vec![]));
+    }
+
+    #[test]
+    fn a_server_core_holds_the_credential_or_the_write_flag_of_stays_cores() {
+        for server in ["qa-nc", "qa-inapp"] {
+            assert_eq!(
+                with(&[], |f| plan(USER, &run("qa_lookup", server, "{}"), f)),
+                Plan::Core,
+                "{server}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_write_of_any_kind_stays_cores() {
+        assert_eq!(
+            with(&["qa_lookup"], |f| plan(USER, &run("qa_lookup", "qa-open", "{}"), f)),
+            Plan::Core
+        );
+    }
+
+    #[test]
+    fn an_offer_the_snapshot_does_not_hold_is_cores_unknown_tool_text() {
+        // mcp-tool-routing-865.test.cjs: 'ERROR: unknown tool "search_files" on MCP server "gone"'.
+        assert_eq!(
+            with(&[], |f| plan(USER, &run("qa_unlisted", "qa-open", "{}"), f)),
+            Plan::Answer("ERROR: unknown tool \"qa_unlisted\" on MCP server \"qa-open\"".into())
+        );
+        assert_eq!(
+            with(&[], |f| plan(USER, &run("qa_lookup", "qa-gone-offer", "{}"), f)),
+            Plan::Answer(
+                "ERROR: unknown tool \"qa_lookup\" on MCP server \"qa-gone-offer\"".into()
+            )
+        );
+        // Failed, as executeToolCall marks a delegated `ERROR: ` text.
+        let o = finish(
+            "ERROR: unknown tool \"qa_unlisted\" on MCP server \"qa-open\"".into(),
+            false,
+        );
+        assert!(o.failed && !o.not_run);
+    }
+
+    #[test]
+    fn a_server_no_longer_configured_is_left_to_mcp_calls_own_answer() {
+        // The offer still names it, the server list does not: mcp_call::execute answers core's
+        // "no longer configured" text (its own tests and oracle hold it).
+        let Plan::Call(r) = with(&[], |f| plan(USER, &run("qa_lookup", "qa-removed", "{}"), f))
+        else {
+            panic!()
+        };
+        assert_eq!(r.server, "qa-removed");
+    }
+
+    #[test]
+    fn anything_but_a_routed_mcp_call_the_bridge_takes_stays_cores() {
+        let cases = [
+            // Not offered, not an object: tool_dispatch_front's refusals, not this path.
+            {
+                let mut r = run("qa_lookup", "qa-open", "{}");
+                r.allowed = vec!["qa_other".into()];
+                r
+            },
+            run("qa_lookup", "qa-open", "[1]"),
+            run("qa_lookup", "qa-open", "{nope"),
+            // No route (the executor would pick the server among the discovered ones).
+            {
+                let mut r = run("qa_lookup", "qa-open", "{}");
+                r.routes = vec![];
+                r
+            },
+            // A route with no server.
+            run("qa_lookup", "", "{}"),
+            // A grant or an edit target.
+            {
+                let mut r = run("qa_lookup", "qa-open", "{}");
+                r.edit_target = Some("a".repeat(64));
+                r
+            },
+            // A name core's bridge answers 400 for.
+            run(&"q".repeat(201), "qa-open", "{}"),
+            // Arguments this port does not read as JSON.parse does.
+            run("qa_lookup", "qa-open", r#"{"n":1e400}"#),
+        ];
+        for r in cases {
+            assert_eq!(with(&[], |f| plan(USER, &r, f)), Plan::Core, "{r:?}");
+        }
+        // No account.
+        assert_eq!(
+            with(&[], |f| plan("", &run("qa_lookup", "qa-open", "{}"), f)),
+            Plan::Core
+        );
+    }
+
+    #[test]
+    fn the_answer_is_reduced_when_it_asks_and_failed_by_its_prefix() {
+        let long = format!("[{}]", vec![r#"{"id":1,"path":"/qa"}"#; 600].join(","));
+        let o = outcome(Answer {
+            text: long.clone(),
+            reduce: true,
+        });
+        assert_eq!(o.text, chat_turn::reduce::reduce_tool_result(&long, 8000).text);
+        assert!(o.text.starts_with("[600 records, tab-separated"));
+        assert!(!o.failed);
+        // An error text is not reduced and is failed.
+        let o = outcome(Answer {
+            text: format!("ERROR calling qa_lookup: {}", "x".repeat(9000)),
+            reduce: false,
+        });
+        assert_eq!(js_json::wtf16::len(&o.text), 25 + 9000);
+        assert!(o.failed);
+        // A text that merely starts with "Error" is not failed.
+        let o = outcome(Answer {
+            text: "Error budget: fine".into(),
+            reduce: true,
+        });
+        assert_eq!((o.text.as_str(), o.failed), ("Error budget: fine", false));
+    }
+
+    #[test]
+    fn snapshot_offers_is_by_server_and_name() {
+        let entry = |server: &str, name: &str| crate::mcp_discovery_actor::Entry {
+            name: name.into(),
+            server: server.into(),
+            tool: JValue::Null,
+            read_only: Some(true),
+        };
+        let snap = Snapshot {
+            offers: vec![entry("qa-a", "one"), entry("qa-b", "two")],
+            ..Snapshot::default()
+        };
+        assert!(snapshot_offers(&snap, "qa-a", "one"));
+        assert!(!snapshot_offers(&snap, "qa-a", "two"));
+        assert!(!snapshot_offers(&snap, "qa-c", "one"));
+    }
+}

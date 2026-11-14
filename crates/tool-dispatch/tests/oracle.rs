@@ -114,7 +114,7 @@ fn every_recorded_call_routes_and_ends_as_in_core() {
     let JValue::Arr(cases) = f.get("cases") else {
         panic!("no cases")
     };
-    assert!(cases.len() > 3000);
+    assert_eq!(cases.len(), 3401);
     let (mut checked, mut not_ported) = (0usize, 0usize);
     for c in cases {
         let name = c.get("name").as_str().unwrap();
@@ -155,6 +155,7 @@ fn every_recorded_call_routes_and_ends_as_in_core() {
         assert_eq!(got, want, "name {name:?} args {raw:?} case {c:?}");
         checked += 1;
     }
+    eprintln!("COUNTS oracle checked={checked} not_ported={not_ported}");
     assert!(checked > 3000, "checked {checked}");
     assert!(not_ported < 200, "not ported {not_ported}");
 }
