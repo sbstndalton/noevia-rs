@@ -47,11 +47,24 @@ impl Features {
     }
 }
 
-/// The result of one `node -e` probe: whether it exited 0, and what it printed.
+/// The result of one `node -e` probe: whether it exited 0, what it printed, and whether its time
+/// limit stopped it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NodeOut {
     pub ok: bool,
     pub stdout: String,
+    pub timed_out: bool,
+}
+
+/// The time limit of one probe (noevia#2702 item 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bound {
+    /// The script's own `timeout -k 2 10` (auto-roles, source startup, DAV listener): a run cut
+    /// there reads as invalid, as in the script.
+    Script,
+    /// The script set no limit: a generous one here, and a run cut there refuses with its own
+    /// "did not finish" message instead of reading as a pairing mismatch.
+    Open,
 }
 
 /// The installed Core as the checks see it (paths relative to the Core directory, the working
@@ -63,8 +76,8 @@ pub trait CoreView {
     fn exists(&self, rel: &str) -> bool;
     /// `[ -f ]`.
     fn is_file(&self, rel: &str) -> bool;
-    /// `node -e <script> <args…>` in the Core directory, stderr dropped, bounded in time.
-    fn node(&self, script: &str, args: &[String]) -> NodeOut;
+    /// `node -e <script> <args…>` in the Core directory, stderr dropped, bounded by `bound`.
+    fn node(&self, script: &str, args: &[String], bound: Bound) -> NodeOut;
     /// `command -v node`.
     fn has_node(&self) -> bool;
     /// The absolute path of a Core file (for probes that take it as an argument).
@@ -383,14 +396,28 @@ const CALIBRATION_PROBE: &str = "try { const m = require('./server/rust-calibrat
 const SOURCE_CLIENT_PROBE: &str =
     "const c=require(process.argv[1]); if(c.SOURCE_JOBS_CLIENT_MARKER) process.stdout.write(c.SOURCE_JOBS_CLIENT_MARKER)";
 
-/// `$(node -e … 2>/dev/null || true)`: whatever it printed, success or not.
-fn probe(core: &dyn CoreView, script: &str) -> String {
-    core.node(script, &[]).stdout
+/// The refusal of a probe the open limit stopped: a slow or hung Core, not a mismatch.
+pub fn probe_timed_out(what: &str) -> Refusal {
+    Refusal(format!(
+        "web-supervisor: the {what} probe did not finish within {} s (a slow or hung Core require); this is not a pairing mismatch: retry the start or check the Core files",
+        crate::OPEN_PROBE_TIMEOUT.as_secs()
+    ))
 }
 
-/// A probe guarded by `|| x=invalid`: a failed or timed-out run reads as invalid.
+/// `$(node -e … 2>/dev/null || true)`: whatever it printed, success or not. The script set no
+/// limit; a run the open limit stops refuses with its own message.
+fn probe(core: &dyn CoreView, script: &str, what: &str) -> Result<String, Refusal> {
+    let out = core.node(script, &[], Bound::Open);
+    if out.timed_out {
+        return Err(probe_timed_out(what));
+    }
+    Ok(out.stdout)
+}
+
+/// A probe the script ran under `timeout -k 2 10 … || x=invalid`: a failed or timed-out run
+/// reads as invalid.
 fn probe_file(core: &dyn CoreView, script: &str, rel: &str) -> String {
-    let out = core.node(script, &[core.abs(rel)]);
+    let out = core.node(script, &[core.abs(rel)], Bound::Script);
     if out.ok {
         out.stdout
     } else {
@@ -501,7 +528,7 @@ pub fn check(
     }
     // #1638: Core's native-owner clients export their marker (loaded from routes, not index.cjs).
     pair(
-        probe(core, MACHINES_PROBE) == "rust",
+        probe(core, MACHINES_PROBE, "inference machines")? == "rust",
         features.has("rust-inference-machines"),
         "inference machines route ownership",
     )?;
@@ -538,7 +565,7 @@ pub fn check(
         "model maintenance route ownership",
     )?;
     // Embedding background: a new front beside an old Core stays idle; a new Core needs the front.
-    let embedding_core = probe(core, EMBEDDING_PROBE) == "rust";
+    let embedding_core = probe(core, EMBEDDING_PROBE, "embedding background")? == "rust";
     if requires(core, INDEX, "rust-embedding-background.cjs") && !embedding_core {
         return refuse("invalid embedding background ownership marker");
     }
@@ -547,7 +574,7 @@ pub fn check(
             "embedding background requires rust-embedding-background-v1; update the paired image",
         );
     }
-    let chat_mirror_core = probe(core, CHAT_MIRROR_PROBE) == "rust";
+    let chat_mirror_core = probe(core, CHAT_MIRROR_PROBE, "chat mirror")? == "rust";
     if requires(core, INDEX, "rust-chat-mirror.cjs") && !chat_mirror_core {
         return refuse("invalid chat mirror ownership marker");
     }
@@ -589,17 +616,17 @@ pub fn check(
         return refuse("this noevia-core asks the front for the preset reload baseline, but this noevia-server has no rust-preset-baseline; update the paired image");
     }
     pair(
-        probe(core, WEB_READ_PROBE) == "rust",
+        probe(core, WEB_READ_PROBE, "web-address read")? == "rust",
         features.has("rust-web-address-read"),
         "web-address GET ownership",
     )?;
     pair(
-        probe(core, WEB_WRITE_PROBE) == "rust",
+        probe(core, WEB_WRITE_PROBE, "web-address write")? == "rust",
         features.has("rust-web-address-write"),
         "web-address POST ownership",
     )?;
     pair(
-        probe(core, DIARY_BACKUP_PROBE) == "rust",
+        probe(core, DIARY_BACKUP_PROBE, "backup worker")? == "rust",
         features.has("rust-diary-backup-worker"),
         "diary backup worker ownership",
     )?;
@@ -613,7 +640,7 @@ pub fn check(
             budget_front = level;
         }
     }
-    if budget_front != probe(core, BUDGET_WATCH_PROBE) {
+    if budget_front != probe(core, BUDGET_WATCH_PROBE, "budget watch")? {
         return refuse(mismatch("budget watch ownership"));
     }
     let mut calibration_front = "";
@@ -625,7 +652,7 @@ pub fn check(
             calibration_front = level;
         }
     }
-    if calibration_front != probe(core, CALIBRATION_PROBE) {
+    if calibration_front != probe(core, CALIBRATION_PROBE, "calibration worker")? {
         return refuse(mismatch("calibration worker ownership"));
     }
     check_source_jobs(features, core)?;
@@ -678,7 +705,11 @@ pub fn check(
 fn check_source_jobs(features: &Features, core: &dyn CoreView) -> Result<(), Refusal> {
     const CLIENT: &str = "server/project-store-client.cjs";
     const CANONICAL: &str = "noevia-source-jobs-client/1";
-    let marker = core.node(SOURCE_CLIENT_PROBE, &[core.abs(CLIENT)]).stdout;
+    let out = core.node(SOURCE_CLIENT_PROBE, &[core.abs(CLIENT)], Bound::Open);
+    if out.timed_out {
+        return Err(probe_timed_out("source job client"));
+    }
+    let marker = out.stdout;
     let declares = core
         .read(CLIENT)
         .is_some_and(|t| t.contains("SOURCE_JOBS_CLIENT_MARKER") || t.contains("sourceJobsFor("))
@@ -731,6 +762,7 @@ mod tests {
                 NodeOut {
                     ok: true,
                     stdout: out.to_owned(),
+                    timed_out: false,
                 },
             );
             self
@@ -747,7 +779,7 @@ mod tests {
         fn is_file(&self, rel: &str) -> bool {
             self.files.contains_key(rel)
         }
-        fn node(&self, script: &str, args: &[String]) -> NodeOut {
+        fn node(&self, script: &str, args: &[String], _bound: Bound) -> NodeOut {
             let haystack = format!("{script} {}", args.join(" "));
             self.probes
                 .iter()
@@ -1010,10 +1042,60 @@ mod tests {
             NodeOut {
                 ok: false,
                 stdout: "v1".to_owned(),
+                timed_out: false,
             },
         );
         assert!(refusal(&failed, &features("rust-source-startup-v1"))
             .contains("source startup ownership mismatch"));
+    }
+
+    fn timed_out(module: &str, file: Option<&str>) -> Fake {
+        let mut core = Fake::default();
+        if let Some(rel) = file {
+            core = core.file(rel, "x");
+        }
+        core.probes.insert(
+            module.to_owned(),
+            NodeOut {
+                ok: false,
+                stdout: String::new(),
+                timed_out: true,
+            },
+        );
+        core
+    }
+
+    #[test]
+    fn a_probe_the_script_left_unbounded_refuses_as_slow_not_as_a_mismatch() {
+        // noevia#2702 item 1: every unbounded probe of the script, one at a time.
+        for (module, what) in [
+            ("rust-inference-machines.cjs", "inference machines"),
+            ("rust-embedding-background.cjs", "embedding background"),
+            ("rust-chat-mirror.cjs", "chat mirror"),
+            ("WEB_ADDRESS_READ_OWNER", "web-address read"),
+            ("WEB_ADDRESS_WRITE_OWNER", "web-address write"),
+            ("rust-diary.cjs", "backup worker"),
+            ("rust-budget-watch.cjs", "budget watch"),
+            ("rust-calibration-routes.cjs", "calibration worker"),
+            ("project-store-client.cjs", "source job client"),
+        ] {
+            let msg = refusal(&timed_out(module, None), &features(""));
+            assert!(
+                msg.contains(&format!("the {what} probe did not finish within 120 s")),
+                "{module}: {msg}"
+            );
+            assert!(!msg.contains("mismatch between"), "{module}: {msg}");
+        }
+    }
+
+    #[test]
+    fn a_probe_the_script_bounded_still_reads_invalid_when_cut() {
+        let core = timed_out("rust-source-startup.cjs", Some("server/rust-source-startup.cjs"));
+        assert!(refusal(&core, &features("rust-source-startup-v1"))
+            .contains("source startup ownership mismatch"));
+        let core = timed_out("rust-dav-listener.cjs", Some("server/rust-dav-listener.cjs"));
+        assert!(refusal(&core, &features("rust-dav-listener-v1"))
+            .contains("DAV listener ownership mismatch"));
     }
 
     #[test]

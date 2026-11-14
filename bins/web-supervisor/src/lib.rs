@@ -21,16 +21,29 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use env::Env;
-use pairing::{CoreView, Features, NodeOut, Refusal};
+use pairing::{Bound, CoreView, Features, NodeOut, Refusal};
 
-/// How long one `node -e` probe or the `--features` query may run before it is stopped (TERM, then
-/// KILL two seconds later, as the script's `timeout -k 2 10`). The script bounded only some probes;
-/// here every one is, so a hanging require cannot hold the container's start forever.
+/// The script's `timeout -k 2 10`, kept for the three probes it bounded (then KILL two seconds
+/// after the TERM).
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// The probes and the `--features` query the script left unbounded: a cold or loaded host may be
+/// slow there, so the limit is generous, and a run it stops refuses with its own message rather
+/// than reading as a pairing mismatch (noevia#2702 item 1). It still keeps a hung require from
+/// holding the container's start forever.
+pub const OPEN_PROBE_TIMEOUT: Duration = Duration::from_secs(120);
 const PROBE_KILL_AFTER: Duration = Duration::from_secs(2);
 
-/// Runs a command with the given environment, stdout captured, stderr dropped, bounded in time.
-pub fn run_bounded(mut cmd: Command, env: &Env, cwd: &Path) -> NodeOut {
+/// The time limit of a bound.
+pub fn limit(bound: Bound) -> Duration {
+    match bound {
+        Bound::Script => PROBE_TIMEOUT,
+        Bound::Open => OPEN_PROBE_TIMEOUT,
+    }
+}
+
+/// Runs a command with the given environment, stdout captured, stderr dropped, stopped at `limit`
+/// (TERM, then KILL two seconds later).
+pub fn run_bounded(mut cmd: Command, env: &Env, cwd: &Path, limit: Duration) -> NodeOut {
     cmd.env_clear()
         .envs(env.vars())
         .current_dir(cwd)
@@ -56,10 +69,10 @@ pub fn run_bounded(mut cmd: Command, env: &Env, cwd: &Path) -> NodeOut {
             Err(_) => break None,
         }
         let elapsed = started.elapsed();
-        if !termed && elapsed >= PROBE_TIMEOUT {
+        if !termed && elapsed >= limit {
             supervise::signal(child.id(), nix::sys::signal::Signal::SIGTERM);
             termed = true;
-        } else if elapsed >= PROBE_TIMEOUT + PROBE_KILL_AFTER {
+        } else if elapsed >= limit + PROBE_KILL_AFTER {
             let _ = child.kill();
             let _ = child.wait();
             break None;
@@ -70,6 +83,7 @@ pub fn run_bounded(mut cmd: Command, env: &Env, cwd: &Path) -> NodeOut {
     NodeOut {
         ok: status.is_some_and(|s| s.success()) && !termed,
         stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        timed_out: termed,
     }
 }
 
@@ -97,10 +111,10 @@ impl CoreView for FsCore<'_> {
     fn is_file(&self, rel: &str) -> bool {
         self.path(rel).is_file()
     }
-    fn node(&self, script: &str, args: &[String]) -> NodeOut {
+    fn node(&self, script: &str, args: &[String], bound: Bound) -> NodeOut {
         let mut cmd = Command::new("node");
         cmd.arg("-e").arg(script).args(args);
-        run_bounded(cmd, self.env, &self.dir)
+        run_bounded(cmd, self.env, &self.dir, limit(bound))
     }
     fn has_node(&self) -> bool {
         on_path(self.env.get("PATH"), "node")
@@ -154,7 +168,11 @@ pub fn prepare(
     }
     let mut cmd = Command::new(&bin);
     cmd.arg("--features");
-    let features = Features::parse(&run_bounded(cmd, env, cwd).stdout);
+    let answer = run_bounded(cmd, env, cwd, OPEN_PROBE_TIMEOUT);
+    if answer.timed_out {
+        return Err(Refusal(format!("web-supervisor: noevia-server --features did not answer within {} s; this is not a pairing mismatch: retry the start", OPEN_PROBE_TIMEOUT.as_secs())));
+    }
+    let features = Features::parse(&answer.stdout);
     let core = FsCore {
         dir: cwd.to_path_buf(),
         env,
