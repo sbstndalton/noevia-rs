@@ -30,6 +30,10 @@ async fn health(State(m): State<Arc<Machine>>) -> impl IntoResponse {
     StatusCode::from_u16(*m.health.lock().unwrap()).unwrap()
 }
 
+fn json(v: serde_json::Value) -> axum::response::Response {
+    ([("content-type", "application/json")], v.to_string()).into_response()
+}
+
 async fn models(State(m): State<Arc<Machine>>) -> impl IntoResponse {
     let data: Vec<_> = m
         .served
@@ -38,15 +42,12 @@ async fn models(State(m): State<Arc<Machine>>) -> impl IntoResponse {
         .iter()
         .map(|id| serde_json::json!({ "id": id }))
         .collect();
-    axum::Json(serde_json::json!({ "data": data }))
+    json(serde_json::json!({ "data": data }))
 }
 
 async fn props(State(m): State<Arc<Machine>>) -> impl IntoResponse {
     match *m.n_ctx.lock().unwrap() {
-        Some(n) => {
-            axum::Json(serde_json::json!({ "default_generation_settings": { "n_ctx": n } }))
-                .into_response()
-        }
+        Some(n) => json(serde_json::json!({ "default_generation_settings": { "n_ctx": n } })),
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -159,8 +160,9 @@ async fn a_ready_machine_opens_a_lease_and_relays_with_the_model_forced() {
     let body: serde_json::Value = serde_json::from_str(&seen[0].1).unwrap();
     assert_eq!(body["model"], "qa-coder");
     // The lease ends with the run: the token stops working.
+    let token = opened.token.clone();
     opened.close();
-    let after = relay.handle(completion("ncr_gone", "{}")).await;
+    let after = relay.handle(completion(&token, "{}")).await;
     assert!(matches!(after, Reply::Json { status: 401, .. }), "{after:?}");
 }
 

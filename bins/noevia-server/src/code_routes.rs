@@ -791,6 +791,7 @@ async fn resolve(
     user: String,
     project: String,
     record: JValue,
+    model: Option<String>,
 ) -> Result<Resolved, Fail> {
     use crate::code_facts::{self, Mode};
     let down = || fail(503, UNAVAILABLE);
@@ -808,7 +809,7 @@ async fn resolve(
         }
     };
     if facts.get("machine").as_bool() == Some(true) {
-        return on_a_machine(&app, &user, record, facts).await;
+        return on_a_machine(&app, &user, record, model.as_deref(), facts).await;
     }
     let e = facts.get("engine");
     let text = |v: &JValue| v.as_str().filter(|s| !s.is_empty()).map(str::to_string);
@@ -848,6 +849,7 @@ async fn on_a_machine(
     app: &Arc<App>,
     user: &str,
     record: JValue,
+    model: Option<&str>,
     facts: JValue,
 ) -> Result<Resolved, Fail> {
     let Some(state) = app.code_relay.get().and_then(Clone::clone) else {
@@ -855,7 +857,7 @@ async fn on_a_machine(
     };
     let task = record.get("id").as_str().unwrap_or("").to_string();
     let opened = state
-        .open(user, &task, None)
+        .open(user, &task, model)
         .await
         .map_err(|r| Fail {
             status: Some(409),
@@ -938,12 +940,19 @@ async fn start(
             id: &project_id,
             record: &record,
         };
+        // The task's model as the executor reads it (`String(body.model)` when truthy): a machine
+        // task naming another model is refused by the relay (code-harness.cjs `relay.open`).
+        let model = match body.get("model") {
+            v if v.truthy() => to_js_string(v).ok(),
+            _ => None,
+        };
         let resolve = || {
             rt.block_on(resolve(
                 Arc::clone(&app),
                 user.clone(),
                 project_id.clone(),
                 record.clone(),
+                model.clone(),
             ))
         };
         service.start(&dir, Some(&user), &project, &resolve, &body)
