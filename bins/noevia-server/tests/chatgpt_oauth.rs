@@ -263,7 +263,8 @@ async fn upstream() -> Upstream {
                 let (delay, text) = f(&request);
                 if delay == HELD {
                     // The deadline only ends a test that never released: it then fails on its own wait.
-                    let _ = tokio::time::timeout(Duration::from_secs(60), open.wait_for(|o| *o)).await;
+                    let _ =
+                        tokio::time::timeout(Duration::from_secs(60), open.wait_for(|o| *o)).await;
                 } else {
                     tokio::time::sleep(delay).await;
                 }
