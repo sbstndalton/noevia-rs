@@ -786,16 +786,17 @@ pub(crate) async fn in_process(
         answer
     });
     tokio::pin!(gone);
-    let answer = tokio::select! {
-        a = &mut task => a,
-        () = &mut gone => {
-            // Dropping the sender stops the call; its task still closes the session.
-            drop(held);
-            return Some(Answer::plain(format!("ERROR calling {name}: This operation was aborted")));
-        }
+    let answered = tokio::select! {
+        a = &mut task => Some(a),
+        () = &mut gone => None,
     };
+    // Dropping the sender stops a call still running; its task still closes the session.
     drop(held);
-    Some(answer.unwrap_or_else(|_| Answer::plain(format!("ERROR calling {name}: {NOT_REPORTED}"))))
+    Some(match answered {
+        Some(Ok(answer)) => answer,
+        Some(Err(_)) => Answer::plain(format!("ERROR calling {name}: {NOT_REPORTED}")),
+        None => Answer::plain(format!("ERROR calling {name}: This operation was aborted")),
+    })
 }
 
 #[cfg(test)]

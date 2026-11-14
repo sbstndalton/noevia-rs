@@ -6,9 +6,9 @@
 //! encyclopedia, Drive and discovered MCP names, nor whether the project is a coworker conversation, so
 //! it answers only what [`tool_dispatch::decide`] settles from the offer alone and that runs no executor:
 //! core's three refusals before any executor (a name the turn was not offered, arguments that are not
-//! JSON, arguments that are not an object). Every other call, including the routed MCP calls the offer
-//! settles (their executor still needs core's write check, Nextcloud pass-through and result reducer),
-//! goes to core's bridge as before.
+//! JSON, arguments that are not an object). A routed MCP read the offer settles is run by this front
+//! when its own MCP executor is on too (tool_dispatch_mcp.rs, council p6). Every other call goes to
+//! core's bridge as before.
 //!
 //! The call is answered here only when core's bridge would take it as sent and run it as the user
 //! ([`project_file_read::bridge_takes`] and [`project_file_read::bridge_scope`]: no grant, no edit

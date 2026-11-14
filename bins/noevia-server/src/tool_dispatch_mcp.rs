@@ -127,8 +127,19 @@ pub fn writes_of(p: &chat_turn::prepared::Prepared) -> HashSet<String> {
 /// How the call ends, from what the executor answered: core's native path reduces a successful result
 /// (`reduce`) and `executeToolCall` marks it failed by its prefix.
 pub fn outcome(answer: crate::mcp_call::Answer) -> Outcome {
+    outcome_with(answer, |text, cap| {
+        chat_turn::reduce::reduce_tool_result(text, cap).text
+    })
+}
+
+/// [`outcome`] with `reduce(text, maxChars)` standing for core's `reduceToolResult(...).text` (the MCP
+/// call oracle records core's executor with a marker in its place).
+pub fn outcome_with(
+    answer: crate::mcp_call::Answer,
+    reduce: impl FnOnce(&str, usize) -> String,
+) -> Outcome {
     let text = if answer.reduce {
-        chat_turn::reduce::reduce_tool_result(&answer.text, RESULT_CAP).text
+        reduce(&answer.text, RESULT_CAP)
     } else {
         answer.text
     };
@@ -197,7 +208,7 @@ mod tests {
     fn a_routed_read_on_a_server_the_front_calls_runs_here_with_cores_payload() {
         for server in ["qa-open", "qa-bearer", "qa-dir", "qa-own", "qa-signin"] {
             let p = with(&[], |f| plan(USER, &run("qa_lookup", server, r#"{"q":"qa"}"#), f));
-            let Plan::Call(r) = p else {
+            let Plan::Call(r) = p.clone() else {
                 panic!("{server}: {p:?}")
             };
             assert_eq!(r.server, server);

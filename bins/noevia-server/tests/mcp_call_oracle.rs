@@ -255,6 +255,20 @@ async fn every_recorded_call_answers_as_cores_executor_did() {
                 answer.text.clone()
             };
             assert_eq!(text, call["text"].as_str().unwrap(), "{at}");
+            // Council p6: the native turn's in-process path (tool_dispatch_mcp.rs) ends the call with
+            // core's text (the reducer at core's resultCap) and executeToolCall's failure rule.
+            let cap = f["resultCap"].as_u64().unwrap();
+            let ended = noevia_server::tool_dispatch_mcp::outcome_with(answer.clone(), |t, max| {
+                assert_eq!(max as u64, cap);
+                format!("{marker}{t}")
+            });
+            assert_eq!(ended.text, text, "{at}: in-process outcome");
+            assert_eq!(
+                ended.failed,
+                text.starts_with("ERROR: ") || text.starts_with("ERROR from tool: "),
+                "{at}"
+            );
+            assert!(!ended.not_run);
             assert_eq!(
                 Value::Array(b.broker.into_inner().unwrap()),
                 call["broker"],
