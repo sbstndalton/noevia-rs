@@ -699,8 +699,18 @@ async fn core_service(
                     &js::obj([("error", js::s("QA condense failed"))]),
                 ));
             }
+            for k in ["kind", "message", "tool", "resultText", "model"] {
+                if js::stringify(sent.get(k)) != js::stringify(rec.get(k)) {
+                    sc.errors.push(format!(
+                        "condense: {k} {} (Node {})",
+                        js::stringify(sent.get(k)),
+                        js::stringify(rec.get(k))
+                    ));
+                }
+            }
             if sc.case.get("input").get("reasoner").get("leave") == &JValue::Bool(true) {
-                // noevia#2663: the client leaves while core condenses; the answer comes once it has gone.
+                // noevia#2663: the client leaves while core condenses (its question checked above); the
+                // answer comes once it has gone.
                 let leaving = Arc::clone(&sc.leaving);
                 let answer = rec.get("answer").clone();
                 drop(sc);
@@ -715,15 +725,6 @@ async fn core_service(
                     .header("content-type", "application/json")
                     .body(b.boxed())
                     .unwrap());
-            }
-            for k in ["kind", "message", "tool", "resultText", "model"] {
-                if js::stringify(sent.get(k)) != js::stringify(rec.get(k)) {
-                    sc.errors.push(format!(
-                        "condense: {k} {} (Node {})",
-                        js::stringify(sent.get(k)),
-                        js::stringify(rec.get(k))
-                    ));
-                }
             }
             match rec.get("answer") {
                 a @ JValue::Obj(_) => {
