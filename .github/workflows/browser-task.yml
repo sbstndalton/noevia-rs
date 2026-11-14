@@ -55,3 +55,15 @@ jobs:
       - name: The core's own browser routes and service reproduce the committed recording
         # Synthetic QA pages behind a scripted fake browser, a fake egress proxy, a fixed clock and counted ids; no network.
         run: node crates/browser-task/tools/gen-service-fixtures.cjs "$PWD/core/server" --check crates/browser-task/tests/fixtures/service-node.v1.json
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          save-if: ${{ github.event_name == 'push' }}
+      - name: The DevTools engine drives a real headless Chromium on local synthetic pages
+        # The runner's own Chrome on 127.0.0.1 only; the test serves its QA pages from 127.0.0.1 and its route gate
+        # refuses every other host.
+        run: |
+          set -euo pipefail
+          google-chrome --headless=new --no-sandbox --no-first-run --remote-debugging-port=9222 \
+            --user-data-dir="$RUNNER_TEMP/chrome-profile" about:blank > "$RUNNER_TEMP/chrome.log" 2>&1 &
+          for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:9222/json/version > /dev/null && break; sleep 1; done
+          BROWSER_CDP_LIVE=http://127.0.0.1:9222 cargo test --locked -p browser-cdp --test live -- --ignored --nocapture
