@@ -201,7 +201,11 @@ fn every_recorded_target_cut_and_rechecked() {
             _ => None,
         };
         let machine = opt_text(c.get("machine"));
-        let row = if machine.is_some() { node.get("row") } else { c.get("row") };
+        let row = if machine.is_some() {
+            node.get("row")
+        } else {
+            c.get("row")
+        };
         let connection = match c.get("connection").as_str() {
             Some("connected") => Connection::Connected,
             Some("reconnect") => Connection::Reconnect,
@@ -234,13 +238,24 @@ fn every_recorded_target_cut_and_rechecked() {
             }
             Some(Ok(t)) => t,
         };
-        let has_user = user.as_ref().and_then(|u| u.id.as_deref()).is_some_and(|s| !s.is_empty());
+        let has_user = user
+            .as_ref()
+            .and_then(|u| u.id.as_deref())
+            .is_some_and(|s| !s.is_empty());
         if target.provider_id == "default" {
-            assert_eq!(got, Err(NotCut::Unsupported(Unsupported::DefaultProvider)), "case {i}");
+            assert_eq!(
+                got,
+                Err(NotCut::Unsupported(Unsupported::DefaultProvider)),
+                "case {i}"
+            );
             continue;
         }
         if target.fetch != Fetch::Direct {
-            assert_eq!(got, Err(NotCut::Unsupported(Unsupported::Transport)), "case {i}");
+            assert_eq!(
+                got,
+                Err(NotCut::Unsupported(Unsupported::Transport)),
+                "case {i}"
+            );
             continue;
         }
         if !has_user {
@@ -252,7 +267,14 @@ fn every_recorded_target_cut_and_rechecked() {
         assert_eq!(made.binding.url, target.url);
         assert_eq!(made.binding.fingerprint, binding::fingerprint(row));
         cuts += 1;
-        let now = cut::rows_now(user.as_ref(), true, Some(row), "default", origins, &made.binding);
+        let now = cut::rows_now(
+            user.as_ref(),
+            true,
+            Some(row),
+            "default",
+            origins,
+            &made.binding,
+        );
         assert_eq!(now.member_own, target.member_own, "case {i}");
         let check = |n: &chat_upstream::host::RowsNow| {
             binding::recheck(
@@ -268,15 +290,29 @@ fn every_recorded_target_cut_and_rechecked() {
         };
         assert_eq!(check(&now), Recheck::Ok, "case {i}: {c:?}");
         let none = cut::rows_now(user.as_ref(), true, Some(row), "default", "", &made.binding);
-        let want = if target.member_own { Recheck::OriginRefused } else { Recheck::Ok };
+        let want = if target.member_own {
+            Recheck::OriginRefused
+        } else {
+            Recheck::Ok
+        };
         assert_eq!(check(&none), want, "case {i}");
         if want == Recheck::OriginRefused {
             origin_refused += 1;
         }
         let gone = cut::rows_now(user.as_ref(), true, None, "default", origins, &made.binding);
         assert_eq!(check(&gone), Recheck::RowGone, "case {i}");
-        let inactive = cut::rows_now(user.as_ref(), false, Some(row), "default", origins, &made.binding);
+        let inactive = cut::rows_now(
+            user.as_ref(),
+            false,
+            Some(row),
+            "default",
+            origins,
+            &made.binding,
+        );
         assert_eq!(check(&inactive), Recheck::UserChanged, "case {i}");
     }
-    assert!(cuts > 100 && origin_refused > 10, "{cuts} cut, {origin_refused} origin-refused");
+    assert!(
+        cuts > 100 && origin_refused > 10,
+        "{cuts} cut, {origin_refused} origin-refused"
+    );
 }

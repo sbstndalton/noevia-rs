@@ -7,7 +7,9 @@ use js_json::JValue;
 
 use crate::binding::{fingerprint, Binding};
 use crate::host::{RowsNow, Unsupported};
-use crate::target::{endpoint_approved, member_own_provider, resolve, Fetch, KeyUse, Refused, Target, Turn, User};
+use crate::target::{
+    endpoint_approved, member_own_provider, resolve, Fetch, KeyUse, Refused, Target, Turn, User,
+};
 
 /// A settled, bound provider-row target.
 #[derive(Debug, Clone, PartialEq)]
@@ -76,9 +78,7 @@ pub fn rows_now(
     binding: &Binding,
 ) -> RowsNow {
     RowsNow {
-        user: user
-            .and_then(|u| u.id.clone())
-            .unwrap_or_default(),
+        user: user.and_then(|u| u.id.clone()).unwrap_or_default(),
         user_active: active,
         row: row.cloned(),
         member_own: row.is_some_and(|r| member_own_provider(user, r, default_id)),
