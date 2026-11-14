@@ -317,6 +317,56 @@ fn common(msg: &JValue, out: &mut Out) {
                 )]),
             )
         }
+        // The hit check's natives: element 7 is hit at the centre of its quad, in its page's frame.
+        "DOM.describeNode" => {
+            let params = msg.get("params");
+            let node = match params.get("backendNodeId").as_num() {
+                None => obj(vec![
+                    ("backendNodeId", JValue::Num(7.0)),
+                    ("localName", s("button")),
+                ]),
+                Some(30.0) => obj(vec![
+                    ("backendNodeId", JValue::Num(30.0)),
+                    ("localName", s("iframe")),
+                ]),
+                Some(n) => obj(vec![
+                    ("backendNodeId", JValue::Num(n)),
+                    ("localName", s("div")),
+                    (
+                        "attributes",
+                        JValue::Arr(vec![
+                            s("id"),
+                            s("cover"),
+                            s("class"),
+                            s("overlay"),
+                            s("style"),
+                            s("x"),
+                        ]),
+                    ),
+                ]),
+            };
+            out.reply(msg, obj(vec![("node", node)]))
+        }
+        "DOM.getContentQuads" => {
+            let quad: Vec<JValue> = [10.0, 10.0, 110.0, 10.0, 110.0, 50.0, 10.0, 50.0]
+                .into_iter()
+                .map(JValue::Num)
+                .collect();
+            out.reply(
+                msg,
+                obj(vec![("quads", JValue::Arr(vec![JValue::Arr(quad)]))]),
+            )
+        }
+        "DOM.getNodeForLocation" => {
+            let frame = format!("F{}", &sid.unwrap()[1..]);
+            out.reply(
+                msg,
+                obj(vec![
+                    ("backendNodeId", JValue::Num(7.0)),
+                    ("frameId", s(&frame)),
+                ]),
+            )
+        }
         _ => out.reply(msg, obj(vec![])),
     }
 }
@@ -596,8 +646,12 @@ fn drives_a_session_and_sends_the_expected_protocol() {
         "Runtime.evaluate",
         "Runtime.evaluate",
         "Runtime.callFunctionOn",
-        "Runtime.callFunctionOn",
+        "DOM.describeNode",
+        "DOM.enable",
+        "DOM.scrollIntoViewIfNeeded",
+        "DOM.getContentQuads",
         "Input.dispatchMouseEvent",
+        "DOM.getNodeForLocation",
         "Input.dispatchMouseEvent",
         "Input.dispatchMouseEvent",
         "Page.captureScreenshot",
@@ -661,27 +715,30 @@ fn drives_a_session_and_sends_the_expected_protocol() {
     assert_eq!(describe.get("objectId").as_str(), Some("O1"));
     assert_eq!(json(describe.get("arguments")), r#"[{"objectId":"O1"}]"#);
     assert_eq!(describe.get("returnByValue").as_bool(), Some(true));
-    assert!(p(19)
-        .get("functionDeclaration")
-        .as_str()
-        .unwrap()
-        .contains("scrollIntoView({ block: 'center', inline: 'center'"));
+    // The hit check: native calls only, the mouse moved before the browser is asked what it hits.
+    assert_eq!(json(&p(19)), r#"{"objectId":"O1"}"#);
+    assert_eq!(json(&p(21)), r#"{"objectId":"O1"}"#);
+    assert_eq!(json(&p(22)), r#"{"objectId":"O1"}"#);
     assert_eq!(
-        json(&p(20)),
+        json(&p(23)),
         r#"{"type":"mouseMoved","x":60,"y":30,"button":"none","buttons":0,"modifiers":0}"#
     );
     assert_eq!(
-        json(&p(21)),
+        json(&p(24)),
+        r#"{"x":60,"y":30,"includeUserAgentShadowDOM":true,"ignorePointerEventsNone":false}"#
+    );
+    assert_eq!(
+        json(&p(25)),
         r#"{"type":"mousePressed","x":60,"y":30,"button":"left","buttons":1,"modifiers":0,"clickCount":1}"#
     );
     assert_eq!(
-        json(&p(22)),
+        json(&p(26)),
         r#"{"type":"mouseReleased","x":60,"y":30,"button":"left","buttons":0,"modifiers":0,"clickCount":1}"#
     );
-    assert_eq!(json(&p(23)), r#"{"format":"png"}"#);
-    assert_eq!(json(&p(24)), r#"{"objectId":"O1"}"#);
-    assert_eq!(json(&p(25)), r#"{"browserContextId":"CTX1"}"#);
-    assert_eq!(sid(25), None);
+    assert_eq!(json(&p(27)), r#"{"format":"png"}"#);
+    assert_eq!(json(&p(28)), r#"{"objectId":"O1"}"#);
+    assert_eq!(json(&p(29)), r#"{"browserContextId":"CTX1"}"#);
+    assert_eq!(sid(29), None);
     // /json/version first, then the upgrade to the path it named, on the configured host.
     let heads = stub.heads.lock().unwrap().clone();
     assert!(
@@ -1047,15 +1104,7 @@ fn engine_errors() {
                     obj(vec![("result", obj(vec![])), ("exceptionDetails", thrown)]),
                 );
             }
-            "Runtime.callFunctionOn" => {
-                let empty = obj(vec![
-                    ("x", JValue::Num(0.0)),
-                    ("y", JValue::Num(0.0)),
-                    ("width", JValue::Num(0.0)),
-                    ("height", JValue::Num(10.0)),
-                ]);
-                out.reply(msg, obj(vec![("result", obj(vec![("value", empty)]))]));
-            }
+            "DOM.getContentQuads" => out.reply(msg, obj(vec![("quads", JValue::Arr(vec![]))])),
             _ => common(msg, out),
         }
     }));
@@ -1238,7 +1287,18 @@ fn children_are_gated_before_they_run() {
                     "Target.attachedToTarget",
                     child("S7", "P7", "page", Some("CTX1"), Some("prerender")),
                 );
+                out.event(
+                    sid,
+                    "Target.attachedToTarget",
+                    child("S10", "W10", "worker", None, None),
+                );
             }
+            // A worker terminated during its setup: it detaches, its Fetch.enable never answers.
+            ("Fetch.enable", Some("S10")) => out.event(
+                Some("S1"),
+                "Target.detachedFromTarget",
+                obj(vec![("sessionId", s("S10")), ("targetId", s("W10"))]),
+            ),
             ("Fetch.enable", Some("S2" | "S4" | "S8")) => {
                 error_reply(msg, out, "QA: Fetch refused")
             }
@@ -1300,6 +1360,8 @@ fn children_are_gated_before_they_run() {
             "Fetch.enable"
         ]
     );
+    // The worker that went mid-setup: not run, and its page is not closed for it.
+    assert_eq!(on("S10"), ["Fetch.enable"]);
     // The frame: never run; its page is closed.
     assert_eq!(on("S4"), ["Fetch.enable"]);
     let mut closed: Vec<String> = stub
@@ -1353,39 +1415,44 @@ fn children_are_gated_before_they_run() {
     stub.join();
 }
 
-fn point(hit: &str) -> JValue {
-    obj(vec![(
-        "result",
-        obj(vec![(
-            "value",
-            obj(vec![
-                ("x", JValue::Num(60.0)),
-                ("y", JValue::Num(30.0)),
-                ("width", JValue::Num(100.0)),
-                ("height", JValue::Num(40.0)),
-                ("hit", s(hit)),
-            ]),
-        )]),
-    )])
+/// The element's box: `O1` at x 10..110, `O2` at 210..310, `O3` at 410..510 (centres 60, 260, 460).
+fn quad_of(object: &str) -> JValue {
+    let dx = match object {
+        "O2" => 200.0,
+        "O3" => 400.0,
+        _ => 0.0,
+    };
+    let quad: Vec<JValue> = [
+        10.0 + dx,
+        10.0,
+        110.0 + dx,
+        10.0,
+        110.0 + dx,
+        50.0,
+        10.0 + dx,
+        50.0,
+    ]
+    .into_iter()
+    .map(JValue::Num)
+    .collect();
+    obj(vec![("quads", JValue::Arr(vec![JValue::Arr(quad)]))])
 }
 
+/// The hit check is the browser's (no page script), made after the mouse moved there, retried
+/// until the element itself (or one inside it) is hit in the page's own frame.
 #[test]
 fn click_waits_for_the_hit_target() {
-    let mut measured = 0;
+    let mut looks_at_o1 = 0;
     let stub = Stub::start(Box::new(move |msg, out| {
         let params = msg.get("params");
+        let object = params.get("objectId").as_str().unwrap_or("");
         match msg.get("method").as_str().unwrap() {
             "Runtime.evaluate" => {
-                let id = if params
-                    .get("expression")
-                    .as_str()
-                    .unwrap()
-                    .contains("#covered")
-                {
-                    "O2"
-                } else {
-                    "O1"
-                };
+                let expression = params.get("expression").as_str().unwrap();
+                let id = ["#covered", "#framed"]
+                    .iter()
+                    .position(|k| expression.contains(k))
+                    .map_or("O1", |i| ["O2", "O3"][i]);
                 let node = obj(vec![
                     ("type", s("object")),
                     ("subtype", s("node")),
@@ -1393,18 +1460,58 @@ fn click_waits_for_the_hit_target() {
                 ]);
                 out.reply(msg, obj(vec![("result", node)]));
             }
-            "Runtime.callFunctionOn" => {
-                measured += 1;
-                // O1 is covered for its first two looks; O2 always.
-                let covered = params.get("objectId").as_str() == Some("O2") || measured <= 2;
+            "DOM.describeNode" if !object.is_empty() => {
+                let backend = match object {
+                    "O2" => 17.0,
+                    "O3" => 27.0,
+                    _ => 7.0,
+                };
+                let node = obj(vec![
+                    ("backendNodeId", JValue::Num(backend)),
+                    ("localName", s("button")),
+                ]);
+                out.reply(msg, obj(vec![("node", node)]));
+            }
+            "DOM.getContentQuads" => out.reply(msg, quad_of(object)),
+            "DOM.getNodeForLocation" => {
+                // O1 is under a cover for its first two looks, then its own label (8, inside it) is
+                // hit; O2 is always under the cover (9); O3's centre is inside an ad frame.
+                let (node, frame) = match params.get("x").as_num().unwrap() as i64 {
+                    60 => {
+                        looks_at_o1 += 1;
+                        (if looks_at_o1 <= 2 { 9.0 } else { 8.0 }, "F1")
+                    }
+                    260 => (9.0, "F1"),
+                    _ => (30.0, "FR-AD"),
+                };
                 out.reply(
                     msg,
-                    point(if covered {
-                        "<div id=\"cover\">\u{2026}</div>"
-                    } else {
-                        ""
-                    }),
+                    obj(vec![
+                        ("backendNodeId", JValue::Num(node)),
+                        ("frameId", s(frame)),
+                    ]),
                 );
+            }
+            "Page.createIsolatedWorld" => {
+                out.reply(msg, obj(vec![("executionContextId", JValue::Num(5.0))]))
+            }
+            "DOM.resolveNode" => {
+                assert_eq!(params.get("executionContextId").as_num(), Some(5.0));
+                let id = format!("H{}", params.get("backendNodeId").as_num().unwrap());
+                out.reply(msg, obj(vec![("object", obj(vec![("objectId", s(&id))]))]));
+            }
+            "Runtime.callFunctionOn" => {
+                let outer = params.get("arguments");
+                let outer = match outer {
+                    JValue::Arr(a) => a[0].get("objectId").as_str().unwrap().to_string(),
+                    _ => String::new(),
+                };
+                let inside = object == "H8" && outer == "H7";
+                let value = obj(vec![
+                    ("type", s("boolean")),
+                    ("value", JValue::Bool(inside)),
+                ]);
+                out.reply(msg, obj(vec![("result", value)]));
             }
             _ => common(msg, out),
         }
@@ -1427,8 +1534,52 @@ fn click_waits_for_the_hit_target() {
         started.elapsed() >= Duration::from_millis(200),
         "retried every 100 ms"
     );
-    assert_eq!(stub.sent("Runtime.callFunctionOn").len(), 3);
-    assert_eq!(stub.sent("Input.dispatchMouseEvent").len(), 3);
+    let mouse: Vec<String> = stub
+        .sent("Input.dispatchMouseEvent")
+        .iter()
+        .map(|m| m.get("params").get("type").as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        mouse,
+        [
+            "mouseMoved",
+            "mouseMoved",
+            "mouseMoved",
+            "mousePressed",
+            "mouseReleased"
+        ]
+    );
+    // Every look comes after the mouse moved there; the press after the last look.
+    let methods = stub.methods();
+    let looks: Vec<usize> = (0..methods.len())
+        .filter(|i| methods[*i] == "DOM.getNodeForLocation")
+        .collect();
+    assert_eq!(looks.len(), 3);
+    for look in &looks {
+        assert_eq!(methods[look - 1], "Input.dispatchMouseEvent");
+    }
+    let log = stub.messages();
+    let pressed_at = log
+        .iter()
+        .position(|m| m.get("params").get("type").as_str() == Some("mousePressed"))
+        .unwrap();
+    assert!(pressed_at > looks[2]);
+    // No page script decides: the containment test runs in the isolated world on resolved nodes.
+    for call in stub.sent("Runtime.callFunctionOn") {
+        let params = call.get("params");
+        assert!(params.get("objectId").as_str().unwrap().starts_with('H'));
+        assert!(params
+            .get("functionDeclaration")
+            .as_str()
+            .unwrap()
+            .contains("n.parentNode || n.host"));
+    }
+    assert_eq!(
+        json(stub.sent("Page.createIsolatedWorld")[0].get("params")),
+        r#"{"frameId":"F1","worldName":"noevia-hit-check"}"#
+    );
+    assert_eq!(stub.sent("DOM.enable").len(), 1);
+
     let covered = page
         .locate("#covered", Duration::from_secs(5))
         .unwrap()
@@ -1436,17 +1587,30 @@ fn click_waits_for_the_hit_target() {
     let error = covered.click(Duration::from_millis(300)).unwrap_err();
     assert_eq!(
         error.message,
-        "<div id=\"cover\">\u{2026}</div> intercepts pointer events"
+        "<div id=\"cover\" class=\"overlay\">\u{2026}</div> intercepts pointer events"
     );
     assert_eq!(
         covered.hover(Duration::from_millis(0)).unwrap_err().message,
         error.message
     );
+    let framed = page
+        .locate("#framed", Duration::from_secs(5))
+        .unwrap()
+        .unwrap();
     assert_eq!(
-        stub.sent("Input.dispatchMouseEvent").len(),
-        3,
-        "nothing pressed on the cover"
+        framed
+            .click(Duration::from_millis(300))
+            .unwrap_err()
+            .message,
+        "<iframe>\u{2026}</iframe> intercepts pointer events"
     );
+    let pressed = stub
+        .sent("Input.dispatchMouseEvent")
+        .iter()
+        .filter(|m| m.get("params").get("type").as_str() == Some("mousePressed"))
+        .count();
+    assert_eq!(pressed, 1, "nothing pressed on the cover or the frame");
+    assert_eq!(stub.sent("DOM.enable").len(), 1);
     assert_eq!(
         button
             .set_input_files(std::path::Path::new("/tmp/qa.txt"), Duration::from_secs(5))

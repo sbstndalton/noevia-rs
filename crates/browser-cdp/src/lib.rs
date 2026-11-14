@@ -42,13 +42,17 @@
 //!   main world (as Playwright's `handle.evaluate` does), so a page could shadow the DOM APIs they
 //!   use there; an isolated world is not used.
 //! - Actionability: `click`/`hover` retry (every 100 ms until the action timeout) until the element
-//!   has a box and is what receives the pointer at its centre ("… intercepts pointer events"), but
-//!   do not wait for it to be stable or enabled; `fill`/`select_option` fail at once.
+//!   has a box and, with the mouse already moved there, is what the browser hits at its centre in
+//!   the page's main frame ("… intercepts pointer events"; decided by DOM.getNodeForLocation and an
+//!   isolated world, no page script), but do not wait for it to be stable or enabled;
+//!   `fill`/`select_option` fail at once.
 //! - The mouse wheel is turned at (400, 300), the centre of the default 800x600 viewport.
 //! - The WebSocket address `/json/version` gives is used for its path only: the connection goes to
 //!   the configured host and port. The Host header is the configured `host:port` when the host is an
 //!   IP literal or `localhost`, else the resolved IP and port (Chromium's DevTools server refuses
 //!   any other Host value).
+//! - A popup its opener scripts synchronously (writing into it before it is set up) can make a
+//!   request before its `Fetch.enable`; the egress proxy still applies.
 //! - Dialogs are dismissed (`beforeunload` accepted), as Playwright does without a listener.
 //!
 //! [`engine`]: browser_task::engine
@@ -81,6 +85,20 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(100);
 /// One poll's call never gets less than this, even at the deadline.
 const MIN_CALL: Duration = Duration::from_millis(500);
+/// The isolated world the hit check asks in.
+const HIT_WORLD: &str = "noevia-hit-check";
+
+/// The centre of a content quad (`[x1, y1, ..., x4, y4]`), `None` for one with no area.
+fn centre(quad: &[f64]) -> Option<(f64, f64)> {
+    let &[x1, y1, x2, y2, x3, y3, x4, y4] = quad.get(..8)? else {
+        return None;
+    };
+    let area =
+        ((x1 * y2 - x2 * y1) + (x2 * y3 - x3 * y2) + (x3 * y4 - x4 * y3) + (x4 * y1 - x1 * y4))
+            .abs()
+            / 2.0;
+    (area > 0.99).then(|| ((x1 + x2 + x3 + x4) / 4.0, (y1 + y2 + y3 + y4) / 4.0))
+}
 
 fn s(text: &str) -> JValue {
     JValue::Str(text.to_string())
@@ -104,6 +122,14 @@ pub(crate) fn deadline(timeout: Duration) -> Instant {
     now.checked_add(timeout)
         .or_else(|| now.checked_add(Duration::from_secs(100 * 365 * 86_400)))
         .unwrap_or(now)
+}
+
+/// `Network.enable` keeps no bodies: nothing here reads them.
+fn network_params() -> JValue {
+    JValue::obj([
+        ("maxTotalBufferSize", num(0)),
+        ("maxResourceBufferSize", num(0)),
+    ])
 }
 
 fn bypass_service_workers() -> JValue {
@@ -642,7 +668,7 @@ impl CdpContext {
         lock(&self.sessions).push(sid.clone());
         let setup = (|| -> Result<()> {
             page.call("Page.enable", none(), CALL_TIMEOUT)?;
-            page.call("Network.enable", none(), CALL_TIMEOUT)?;
+            page.call("Network.enable", network_params(), CALL_TIMEOUT)?;
             page.call(
                 "Network.setBypassServiceWorker",
                 bypass_service_workers(),
@@ -681,16 +707,20 @@ impl CdpContext {
             }
             if frame_like {
                 call("Page.enable", none())?;
-                call("Network.enable", none())?;
+                call("Network.enable", network_params())?;
                 call("Network.setBypassServiceWorker", bypass_service_workers())?;
                 call("Target.setAutoAttach", auto_attach())?;
             }
             Ok(())
         })();
+        // A child that went during its setup (a worker terminated, a frame removed) failed because
+        // it is gone, not because it could not be gated: its page stays.
+        let gone = || !lock(&self.browser.sessions).contains_key(sid) || self.conn().is_dead();
         match (ready, owner) {
             (Ok(()), _) => self
                 .conn()
                 .send(Some(sid), "Runtime.runIfWaitingForDebugger", none()),
+            (Err(_), _) if gone() => {}
             (Err(_), Some(page)) => {
                 self.conn()
                     .send(None, "Target.closeTarget", close_target(&page))
@@ -828,6 +858,8 @@ pub struct CdpPage {
     state: Mutex<PageState>,
     changed: Condvar,
     close_hooks: Mutex<Vec<CloseHook>>,
+    /// `DOM.enable` was sent (for `DOM.getNodeForLocation`).
+    dom_enabled: AtomicBool,
     /// Never called: downloads are denied (a named difference).
     #[allow(dead_code)]
     download_hooks: Mutex<Vec<DownloadHook>>,
@@ -849,6 +881,7 @@ impl CdpPage {
             state: Mutex::new(state),
             changed: Condvar::new(),
             close_hooks: Mutex::default(),
+            dom_enabled: AtomicBool::new(false),
             download_hooks: Mutex::default(),
         })
     }
@@ -1307,25 +1340,34 @@ impl CdpHandle {
         }
     }
 
-    /// Where a pointer action lands: scrolled into view, the centre of its box once the box is not
-    /// empty and the element (or one inside it) is what receives the pointer there. Retried every
-    /// 100 ms until the timeout, as Playwright's actionability checks are; the last refusal is the
-    /// error.
+    /// Where a pointer action lands, decided by the browser itself (no page script): scrolled into
+    /// view (`DOM.scrollIntoViewIfNeeded`), the centre of its first content quad, the mouse moved
+    /// there first (so whatever a `mousemove` handler does is seen), then the node the browser hit
+    /// there (`DOM.getNodeForLocation`) must be the element or inside it, in the page's own main
+    /// frame. Retried every 100 ms until the timeout, as Playwright's actionability checks are; the
+    /// last refusal is the error. Returns with the mouse at the point.
     fn point(&self, timeout: Duration) -> Result<(f64, f64)> {
         let deadline = deadline(timeout);
-        loop {
+        let call = |method: &str, params: JValue| {
             let left = deadline.saturating_duration_since(Instant::now());
-            let r = self.run(js::ACTION_POINT, Vec::new(), left.max(MIN_CALL))?;
-            let n = |k: &str| r.get(k).as_num().unwrap_or(0.0);
-            let hit = r.get("hit").as_str().unwrap_or("");
-            let refusal = if !(n("width") > 0.0 && n("height") > 0.0) {
-                "Element is not visible".to_string()
-            } else if hit == "outside" {
-                "Element is outside of the viewport".to_string()
-            } else if !hit.is_empty() {
-                format!("{hit} intercepts pointer events")
-            } else {
-                return Ok((n("x"), n("y")));
+            self.page.call(method, params, left.max(MIN_CALL))
+        };
+        let me = JValue::obj([("objectId", s(&self.object))]);
+        let target = call("DOM.describeNode", me.clone())?
+            .get("node")
+            .get("backendNodeId")
+            .as_num();
+        if !self.page.dom_enabled.swap(true, Ordering::SeqCst) {
+            if let Err(e) = call("DOM.enable", none()) {
+                self.page.dom_enabled.store(false, Ordering::SeqCst);
+                return Err(e);
+            }
+        }
+        loop {
+            let refusal = match self.hit_check(&call, &me, target) {
+                Ok(Ok(at)) => return Ok(at),
+                Ok(Err(refusal)) => refusal,
+                Err(e) => return Err(e),
             };
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
@@ -1333,6 +1375,135 @@ impl CdpHandle {
             }
             std::thread::sleep(POLL.min(left));
         }
+    }
+
+    /// One look: the point, or why not yet (`Ok(Err(refusal))`); `Err` ends the action.
+    fn hit_check(
+        &self,
+        call: &dyn Fn(&str, JValue) -> Result<JValue>,
+        me: &JValue,
+        target: Option<f64>,
+    ) -> Result<std::result::Result<(f64, f64), String>> {
+        if let Err(e) = call("DOM.scrollIntoViewIfNeeded", me.clone()) {
+            if e.message.contains("detached") || e.message.contains("not attached") {
+                return Err(EngineError::new("Element is not attached to the DOM"));
+            }
+            return Ok(Err("Element is not visible".into()));
+        }
+        let quads = call("DOM.getContentQuads", me.clone()).ok();
+        let quad: Vec<f64> = match quads.as_ref().map(|q| q.get("quads")) {
+            Some(JValue::Arr(all)) => match all.first() {
+                Some(JValue::Arr(points)) => points.iter().filter_map(JValue::as_num).collect(),
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        };
+        let Some((x, y)) = centre(&quad) else {
+            return Ok(Err("Element is not visible".into()));
+        };
+        self.page
+            .mouse("mouseMoved", (x, y), "none", 0, CALL_TIMEOUT)?;
+        let at = JValue::obj([
+            ("x", num(x.floor())),
+            ("y", num(y.floor())),
+            ("includeUserAgentShadowDOM", JValue::Bool(true)),
+            ("ignorePointerEventsNone", JValue::Bool(false)),
+        ]);
+        let Ok(found) = call("DOM.getNodeForLocation", at) else {
+            return Ok(Err("Element is outside of the viewport".into()));
+        };
+        let hit = found.get("backendNodeId").as_num();
+        let main_frame = lock(&self.page.state).main_frame.clone();
+        let same_frame = found
+            .get("frameId")
+            .as_str()
+            .is_none_or(|f| f == main_frame);
+        if same_frame && hit.is_some() && (hit == target || self.contains(call, target, hit)) {
+            return Ok(Ok((x, y)));
+        }
+        let shown = hit.map_or_else(|| "<unknown>".to_string(), |h| self.node_text(call, h));
+        Ok(Err(format!("{shown} intercepts pointer events")))
+    }
+
+    /// Whether `hit` is inside the element (shadow roots crossed), asked in an isolated world the
+    /// page's scripts cannot reach.
+    fn contains(
+        &self,
+        call: &dyn Fn(&str, JValue) -> Result<JValue>,
+        target: Option<f64>,
+        hit: Option<f64>,
+    ) -> bool {
+        let (Some(target), Some(hit)) = (target, hit) else {
+            return false;
+        };
+        let frame = lock(&self.page.state).main_frame.clone();
+        let world = JValue::obj([("frameId", s(&frame)), ("worldName", s(HIT_WORLD))]);
+        let Some(context) = call("Page.createIsolatedWorld", world)
+            .ok()
+            .and_then(|w| w.get("executionContextId").as_num())
+        else {
+            return false;
+        };
+        let resolve = |node: f64| {
+            let params = JValue::obj([
+                ("backendNodeId", num(node)),
+                ("executionContextId", num(context)),
+            ]);
+            call("DOM.resolveNode", params)
+                .ok()
+                .and_then(|r| r.get("object").get("objectId").as_str().map(str::to_string))
+        };
+        let (Some(inner), Some(outer)) = (resolve(hit), resolve(target)) else {
+            return false;
+        };
+        let params = JValue::obj([
+            ("functionDeclaration", s(js::INSIDE)),
+            ("objectId", s(&inner)),
+            (
+                "arguments",
+                JValue::Arr(vec![JValue::obj([("objectId", s(&outer))])]),
+            ),
+            ("returnByValue", JValue::Bool(true)),
+        ]);
+        let inside = call("Runtime.callFunctionOn", params)
+            .ok()
+            .is_some_and(|r| r.get("result").get("value").as_bool() == Some(true));
+        for object in [inner, outer] {
+            self.page.conn.send(
+                Some(&self.page.session),
+                "Runtime.releaseObject",
+                JValue::obj([("objectId", s(&object))]),
+            );
+        }
+        inside
+    }
+
+    /// `<tag id="…" class="…">…</tag>` for the node in the way.
+    fn node_text(&self, call: &dyn Fn(&str, JValue) -> Result<JValue>, node: f64) -> String {
+        let described = call(
+            "DOM.describeNode",
+            JValue::obj([("backendNodeId", num(node))]),
+        )
+        .unwrap_or(JValue::Null);
+        let n = described.get("node");
+        let tag = n
+            .get("localName")
+            .as_str()
+            .filter(|t| !t.is_empty())
+            .or_else(|| n.get("nodeName").as_str())
+            .unwrap_or("node")
+            .to_lowercase();
+        let mut attrs = String::new();
+        if let JValue::Arr(list) = n.get("attributes") {
+            for pair in list.chunks(2) {
+                if let [JValue::Str(k), JValue::Str(v)] = pair {
+                    if k == "id" || k == "class" {
+                        attrs.push_str(&format!(" {k}=\"{v}\""));
+                    }
+                }
+            }
+        }
+        format!("<{tag}{attrs}>\u{2026}</{tag}>")
     }
 
     fn flag(&self, function: &str) -> Result<bool> {
@@ -1355,14 +1526,12 @@ impl Handle for CdpHandle {
 
     fn click(&self, timeout: Duration) -> Result<()> {
         let at = self.point(timeout)?;
-        self.page.mouse("mouseMoved", at, "none", 0, timeout)?;
         self.page.mouse("mousePressed", at, "left", 1, timeout)?;
         self.page.mouse("mouseReleased", at, "left", 0, timeout)
     }
 
     fn hover(&self, timeout: Duration) -> Result<()> {
-        let at = self.point(timeout)?;
-        self.page.mouse("mouseMoved", at, "none", 0, timeout)
+        self.point(timeout).map(|_| ())
     }
 
     fn fill(&self, value: &str, timeout: Duration) -> Result<()> {
