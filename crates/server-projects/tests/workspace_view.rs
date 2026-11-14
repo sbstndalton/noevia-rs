@@ -49,6 +49,53 @@ fn json(v: &JValue) -> String {
     wtf16::stringify(v).expect("representable")
 }
 
+/// For INLINE: the projects without the fields #1806 moves (`content`, `textRef`, `chars`,
+/// `skillHeader` of each file).
+fn without_moved(v: &JValue) -> JValue {
+    match v {
+        JValue::Arr(items) => JValue::Arr(items.iter().map(without_moved).collect()),
+        JValue::Obj(items) => JValue::Obj(
+            items
+                .iter()
+                .map(|(k, v)| {
+                    if k == "files" {
+                        let files = match v {
+                            JValue::Arr(files) => JValue::Arr(
+                                files
+                                    .iter()
+                                    .map(|f| match f {
+                                        JValue::Obj(fields) => JValue::Obj(
+                                            fields
+                                                .iter()
+                                                .filter(|(k, _)| {
+                                                    !matches!(
+                                                        k.as_str(),
+                                                        "content"
+                                                            | "textRef"
+                                                            | "chars"
+                                                            | "skillHeader"
+                                                    )
+                                                })
+                                                .cloned()
+                                                .collect(),
+                                        ),
+                                        other => other.clone(),
+                                    })
+                                    .collect(),
+                            ),
+                            other => other.clone(),
+                        };
+                        (k.clone(), files)
+                    } else {
+                        (k.clone(), without_moved(v))
+                    }
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
 /// The bytes Node's `fs.writeFileSync(file, text)` writes: UTF-8, a lone surrogate as U+FFFD.
 fn utf8(text: &str) -> String {
     text.chars()
@@ -126,7 +173,15 @@ fn the_view_reads_what_core_reads() {
             continue;
         }
         let view = view.unwrap_or_else(|e| panic!("{name}: {e:?}"));
-        if !INLINE.contains(&name) {
+        if INLINE.contains(&name) {
+            assert_eq!(
+                json(&without_moved(&JValue::Arr(view.projects.clone()))),
+                json(&without_moved(
+                    &wtf16::parse(s(node.get("projects"))).unwrap()
+                )),
+                "{name}: projects"
+            );
+        } else {
             assert_eq!(
                 json(&JValue::Arr(view.projects.clone())),
                 s(node.get("projects")),
@@ -157,12 +212,7 @@ fn the_view_reads_what_core_reads() {
             let project = &view.projects[pi];
             let files = arr(project.get("files"));
             let got = view.text(project.get("id").as_str().unwrap_or_default(), &files[fi]);
-            // A text that is not a string (no pointer, an invalid one, a number) reads as ''.
-            assert_eq!(
-                got,
-                t[2].as_str().unwrap_or_default(),
-                "{name}: text {pi}/{fi}"
-            );
+            assert_eq!(got.as_deref(), t[2].as_str(), "{name}: text {pi}/{fi}");
         }
         for q in arr(node.get("queries")) {
             let id = s(q.get("id"));
@@ -177,7 +227,13 @@ fn the_view_reads_what_core_reads() {
                 None => assert!(got.is_none(), "{name}: {id} should be missing"),
                 Some(want) => {
                     let got = got.unwrap_or_else(|| panic!("{name}: {id} missing"));
-                    if !INLINE.contains(&name) {
+                    if INLINE.contains(&name) {
+                        assert_eq!(
+                            json(&without_moved(&got.project)),
+                            json(&without_moved(&wtf16::parse(want).unwrap())),
+                            "{name}: getProject {id}"
+                        );
+                    } else {
                         assert_eq!(json(&got.project), want, "{name}: getProject {id}");
                     }
                     assert_eq!(
@@ -187,6 +243,10 @@ fn the_view_reads_what_core_reads() {
                     );
                     if let Some(save) = &got.save {
                         assert_eq!(save, &got.project, "{name}: {id} saves what it answers");
+                        // ... and what Node's save wrote for it.
+                        if let Some(written) = q.get("written").as_str() {
+                            assert_eq!(json(save), written, "{name}: {id} written");
+                        }
                     }
                 }
             }
@@ -221,4 +281,28 @@ fn the_view_writes_nothing() {
     let view = workspace_view::load(absent.path(), user, "local").unwrap();
     assert!(view.projects.is_empty() && view.free_chats.is_empty());
     assert!(!absent.path().join("users").exists());
+}
+
+#[test]
+fn a_list_file_that_cannot_be_read_is_refused() {
+    // Node's readProjectsFile/readFreeChatsFile throw on anything but a missing file (here EISDIR).
+    let user = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    for name in ["projects.json", "free-chats.json"] {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join(user);
+        std::fs::create_dir_all(dir.join(name)).unwrap();
+        assert_eq!(
+            workspace_view::load(root.path(), user, "local").unwrap_err(),
+            Refused::Unreadable,
+            "{name}"
+        );
+    }
+    // The other two files fall back, as readJson does.
+    let root = tempfile::tempdir().unwrap();
+    let dir = root.path().join("users").join(user);
+    std::fs::create_dir_all(dir.join("preferences.json")).unwrap();
+    std::fs::create_dir_all(dir.join("auto-roles.json")).unwrap();
+    let view = workspace_view::load(root.path(), user, "local").unwrap();
+    assert_eq!(view.preferences, JValue::Obj(Vec::new()));
+    assert_eq!(view.auto_roles().unwrap(), JValue::Null);
 }

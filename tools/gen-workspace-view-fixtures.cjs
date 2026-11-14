@@ -44,6 +44,7 @@ const base = () => ({
     { id: 'qa-proj-b', name: 'QA Beta', modes: ['cowork'], provider: 'lemonade', chats: [] },
     { id: 'qa-proj-c', name: 'QA Gamma', chats: [], files: [{ name: 'bad-ref.txt', textRef: 'nothex' }, { name: 'num.txt', content: 5 }, { name: 'no-ref.txt' }] },
     { id: 'cowork-chat-context-qa-heal', name: 'Chat attachments qa-heal', modes: ['chat'], routing: 'manual', chats: [], instructionSkills: {} },
+    { id: 'cowork-chat-context-qa-bare', name: 'Chat attachments qa-bare', modes: ['chat'], routing: 'manual', chats: [] },
     { id: 'cowork-chat-context-qa-chosen', name: 'Chat attachments qa-chosen', modes: ['chat'], routing: 'manual', routingChosen: true, chats: [], instructionSkills: {} },
     { id: 'qa-skill-proj', name: 'QA skills', modes: ['chat'], chats: [], files: [{ name: 'docs/SKILL.md', textRef: ref(SKILL), chars: SKILL.length, skillHeader: true }] },
     { id: 'qa-skill-done', name: 'QA skills done', modes: ['chat'], chats: [], files: [{ name: 'docs/SKILL.md', textRef: ref(SKILL), chars: SKILL.length, skillHeader: true }],
@@ -53,7 +54,7 @@ const base = () => ({
   ],
 });
 const SOURCES = { 'qa-proj-a': [NOTE], 'qa-skill-proj': [SKILL], 'qa-skill-done': [SKILL], 'qa-surr': [SURR] };
-const ALL_IDS = ['qa-proj-a', 'qa-proj-b', 'qa-proj-c', 'cowork-chat-context-qa-heal', 'cowork-chat-context-qa-chosen', 'qa-skill-proj', 'qa-skill-done', 'qa-dup', 'qa-surr', 'qa-archived', 'qa-none', ''];
+const ALL_IDS = ['qa-proj-a', 'qa-proj-b', 'qa-proj-c', 'cowork-chat-context-qa-heal', 'cowork-chat-context-qa-bare', 'cowork-chat-context-qa-chosen', 'qa-skill-proj', 'qa-skill-done', 'qa-dup', 'qa-surr', 'qa-archived', 'qa-none', ''];
 const FREE = JSON.stringify([{ id: 'qa-free-1', title: 'QA free', updatedAt: 3 }, 'stray', null]);
 const ws = (mut = () => {}) => { const p = base(); mut(p); return pretty(p); };
 
@@ -95,8 +96,9 @@ add('invalid-user', {}, { user: 'not-a-user' });
 add('duplicate-ids', { 'projects.json': pretty({ projects: [{ id: 'qa-dup', name: 'QA first of two', modes: ['chat'] }, { id: 'qa-dup', name: 'QA second of two', modes: ['chat'] }] }) },
   { queries: ['qa-dup'] });
 // A source whose text is still inline (from before #1806): Node moves it to its file on load (and
-// saves); the view keeps it inline. The test compares the texts only (INLINE).
-add('inline-text', { 'projects.json': pretty({ projects: [{ id: 'qa-inline', modes: ['chat'], files: [{ name: 'inline.txt', content: 'QA inline text' }, { name: 'num.txt', content: 5 }] }] }) },
+// saves); the view keeps it inline. The test compares the texts, and the projects without the
+// fields that move (INLINE).
+add('inline-text', { 'projects.json': pretty({ projects: [{ id: 'qa-inline', modes: ['chat'], files: [{ name: 'inline.txt', content: 'QA inline text' }, { name: 'num.txt', content: 5 }, { name: 'obj.txt', content: { a: 1 } }, { name: 'list.txt', content: [1, null, 'x'] }, { name: 'zero.txt', content: 0 }] }] }) },
   { queries: ['qa-inline'] });
 
 // ── Node, one fresh workspace per case ──────────────────────────────────────
@@ -104,7 +106,7 @@ function stubStore(root, writes) {
   const file = (user, name) => path.join(root, 'users', user, name);
   return {
     async read(user, name) { try { return { version: 1, text: fs.readFileSync(file(user, name), 'utf8') }; } catch { return { version: 1, text: null }; } },
-    async write(user, name, _version, text) { writes.push(name); fs.writeFileSync(file(user, name), text); return { ok: true }; },
+    async write(user, name, _version, text) { writes.push({ name, text }); fs.writeFileSync(file(user, name), text); return { ok: true }; },
     grantContext() { throw Error('not used'); }, chatMove() { throw Error('not used'); },
   };
 }
@@ -134,7 +136,7 @@ async function run(c) {
     result.texts = [];
     workspace.projects.forEach((p, pi) => {
       if (!p || typeof p !== 'object' || !Array.isArray(p.files)) return;
-      p.files.forEach((f, fi) => { const t = f.content; result.texts.push([pi, fi, typeof t === 'string' ? t : null]); });
+      p.files.forEach((f, fi) => { result.texts.push([pi, fi, String(f.content || '')]); });
     });
     result.freeChats = JSON.stringify(workspace.freeChats);
     result.preferences = JSON.stringify(workspace.preferences);
@@ -153,7 +155,9 @@ async function run(c) {
       project = project === null ? null : JSON.stringify(project);
       for (let i = 0; i < 5; i += 1) await settle();
       while (workspace.pendingStoreWrites()) await workspace.pendingStoreWrites();
-      result.queries.push({ id, project, saved: writes.length > before });
+      // The project as getProject's save wrote it (the first entry with that id in the text written).
+      const written = writes.slice(before).filter((w) => w.name === 'projects.json').map((w) => JSON.parse(w.text).projects.find((p) => p && p.id === id));
+      result.queries.push({ id, project, saved: writes.length > before, written: written.length ? JSON.stringify(written[written.length - 1]) : null });
     }
   } catch (e) {
     result.threw = String(e && e.message ? e.message : e).slice(0, 120);
@@ -163,10 +167,10 @@ async function run(c) {
 }
 
 function sources() {
-  const server = `${path.join(core, 'server')}${path.sep}`;
-  const loaded = Object.keys(require.cache).filter((k) => k.startsWith(core + path.sep));
-  if (loaded.some((k) => k.includes(`${path.sep}node_modules${path.sep}`))) throw Error('a module from node_modules was loaded');
-  return Object.fromEntries(loaded.filter((k) => k.startsWith(server)).map((k) => path.relative(core, k).split(path.sep).join('/')).sort()
+  const all = Object.keys(require.cache);
+  if (all.some((k) => k.includes(`${path.sep}node_modules${path.sep}`))) throw Error('a module from node_modules was loaded');
+  const loaded = all.filter((k) => k.startsWith(core + path.sep));
+  return Object.fromEntries(loaded.map((k) => path.relative(core, k).split(path.sep).join('/')).sort()
     .map((f) => [f, crypto.createHash('sha256').update(fs.readFileSync(path.join(core, f))).digest('hex')]));
 }
 
