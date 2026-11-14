@@ -7,7 +7,18 @@ use embedding_worker::{
     sqlite::{open_vec_required, SqlStore},
     Options,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
+/// Whether this process's embedding background started (the front is the embedding owner).
+static RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// Whether [`start`] started the background (core `rust-health.cjs` `ownerReady`, as the front
+/// reads it for its own retrieval readiness, retrieval_status.rs).
+pub fn running() -> bool {
+    RUNNING.load(Ordering::SeqCst)
+}
+
 fn try_start(
     app: &Arc<App>,
     get: impl Fn(&str) -> Option<String>,
@@ -95,7 +106,10 @@ pub fn start(
     get: impl Fn(&str) -> Option<String>,
 ) -> Result<Option<Background>, String> {
     match try_start(app, get) {
-        Ok(worker) => Ok(worker),
+        Ok(worker) => {
+            RUNNING.store(worker.is_some(), Ordering::SeqCst);
+            Ok(worker)
+        }
         Err(_) => {
             eprintln!("noevia-server: embedding background idle (prerequisite unavailable or another owner)");
             Ok(None)

@@ -124,6 +124,8 @@ pub mod reasoning_settings_routes;
 pub mod reply;
 pub mod reranker_routes;
 pub mod reranker_settings;
+/// Native retrieval readiness for `GET /api/health` (council p11; `NOEVIA_RUST_RETRIEVAL`).
+pub mod retrieval_status;
 pub mod research_routes;
 mod residual_fallback;
 pub mod routes;
