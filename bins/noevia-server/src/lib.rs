@@ -84,6 +84,7 @@ pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
 pub mod model_writes_routes;
+pub mod model_pull_routes;
 pub mod native_retrieval;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
@@ -741,6 +742,8 @@ pub struct App {
     pub extraction: Option<Arc<extraction::HttpEngine>>,
     /// GET /api/plugins/directory: its client and hour-long cache (#2190).
     pub plugin_directory: plugin_directory_routes::Directory,
+    /// Track R11 (S11): GET /api/models/mtp-artifact's process-wide check state.
+    pub mtp_artifact: Arc<model_pull_routes::State>,
 }
 
 impl App {
@@ -860,6 +863,7 @@ impl App {
                 config.plugin_directory.clone(),
             ),
             auto_roles: auto_roles_routes::Writer::default(),
+            mtp_artifact: Arc::new(model_pull_routes::State::new(config.model_pull_hub.clone())),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -972,7 +976,8 @@ async fn handle(
         }
     }
     // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget, idle unload and preset
-    // PUTs are the models routes' too (model_writes_routes.rs); unset, they stay Node's.
+    // PUTs and GET /api/models/mtp-artifact are the models routes' too (model_writes_routes.rs,
+    // model_pull_routes.rs); unset, they stay Node's.
     if native.is_none() && app.config.model_writes.on {
         let at = whatwg.as_deref().unwrap_or(&path);
         if app.config.model_writes.answers(req.method(), at) {

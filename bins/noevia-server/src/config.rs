@@ -111,6 +111,9 @@ pub struct Config {
     pub code: crate::code_routes::Settings,
     /// Track R11: the inference budget and idle unload PUTs (`NOEVIA_RUST_MODEL_WRITES`).
     pub model_writes: crate::model_writes_routes::Settings,
+    /// Track R11 (S11): the public hub GET /api/models/mtp-artifact reads (always
+    /// `https://huggingface.co`; only a test sets another, through `Hub::for_tests`).
+    pub model_pull_hub: crate::model_pull_routes::Hub,
     /// Track R11 (S9b): the `/api/model-manager/*` proxy (`NOEVIA_RUST_MODEL_MANAGER`).
     pub model_manager: crate::model_manager_routes::Settings,
     /// Track R12, NOEVIA_RUST_SETTINGS_ROUTES=1: the front answers PUT /api/routing-default
@@ -494,6 +497,7 @@ impl Config {
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,
             code: crate::code_routes::Settings::from_lookup(&get),
             model_writes: crate::model_writes_routes::Settings::from_lookup(&get),
+            model_pull_hub: crate::model_pull_routes::Hub::default(),
             model_manager: crate::model_manager_routes::Settings::from_lookup(&get),
             settings_routes: get(SETTINGS_ROUTES).as_deref() == Some("1"),
             reasoning_defaults: server_reasoning_settings::read::Defaults::from_lookup(&get),

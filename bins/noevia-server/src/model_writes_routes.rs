@@ -27,6 +27,9 @@
 //!   itself on its own task (model_maint preset.rs, whose module documentation names its
 //!   differences), so a client that leaves strands neither the work nor its hold.
 //!
+//! The same switch also hands `GET /api/models/mtp-artifact` to the front (model_pull_routes.rs,
+//! which documents its named differences); `POST /api/models/pull` stays core's.
+//!
 //! Named difference: a request body core's `JSON.parse` reads but the port cannot hold is passed to
 //! core unchanged (and so refused by it under the switch: 503).
 use crate::{identity, reply, App};
@@ -81,7 +84,9 @@ impl Settings {
 
     /// Whether the front answers this request (lib.rs's dispatch and the models routes ask).
     pub fn answers(&self, method: &Method, path: &str) -> bool {
-        self.on && method == Method::PUT && (path == BUDGET || path == IDLE || path == PRESET)
+        self.on
+            && ((method == Method::PUT && (path == BUDGET || path == IDLE || path == PRESET))
+                || (method == Method::GET && path == crate::model_pull_routes::PATH))
     }
 }
 
@@ -495,6 +500,14 @@ mod tests {
         assert!(!on.answers(&Method::GET, PRESET));
         assert!(!on.answers(&Method::PUT, "/api/models/preset/"));
         assert!(!on.answers(&Method::PUT, "/api/models/preset/suggest"));
+        let mtp = crate::model_pull_routes::PATH;
+        assert!(on.answers(&Method::GET, mtp));
+        assert!(!settings(None).answers(&Method::GET, mtp));
+        for m in [Method::HEAD, Method::POST, Method::PUT, Method::DELETE] {
+            assert!(!on.answers(&m, mtp), "{m}");
+        }
+        assert!(!on.answers(&Method::POST, "/api/models/pull"));
+        assert!(!on.answers(&Method::GET, "/api/models/mtp-artifact/"));
     }
 
     #[test]
