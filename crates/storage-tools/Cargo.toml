@@ -1,7 +1,7 @@
 [package]
 name = "storage-tools"
 version = "0.1.0"
-description = "In-app storage file tools (list, read, find) over the account's storage connection, through server-storage-reads; inert first slice (noevia#2759)"
+description = "In-app storage file tools over the account's storage connection: reads (list, read, find) and writes (write, create folder, delete), through server-storage-reads; inert (noevia#2759)"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

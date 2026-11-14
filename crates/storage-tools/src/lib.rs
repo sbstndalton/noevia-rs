@@ -1,14 +1,17 @@
 //! In-app storage file tools (noevia#2759, first slice): the `storage-files` box definition, strict
 //! argument parsing, the Diary-folder refusal for calls bound for an external provider, and
-//! execution through `server-storage-reads` (`protocol::execute` over any [`Transport`]).
+//! execution through `server-storage-reads` (`protocol::execute` for the reads, its `writes`
+//! module for the writes, over any [`Transport`]).
 //!
-//! Inert: nothing depends on this crate yet. Every tool is a read; the output and every message
+//! Inert: nothing depends on this crate yet. The writes (`write: true`) are the host's to put
+//! behind the person's approval; nothing here asks for it. The output and every message
 //! are built from the requested paths, the listing and the read engine's fixed public failure
 //! texts only, never from the connection's base URL, user name or secret.
 #![forbid(unsafe_code)]
 
 use js_json::JValue;
 use server_storage_reads::protocol::{self, Connection, Kind, Operation, Transport};
+use server_storage_reads::writes::{self, Condition, StorageError, Version};
 use server_storage_reads::Failure;
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
@@ -24,6 +27,10 @@ pub const SERVER: &str = "noevia";
 pub const MAX_ARGUMENT_BYTES: usize = 500;
 /// The longest arguments object text accepted (three escaped strings fit well within it).
 pub const MAX_ARGUMENTS_TEXT: usize = 8 * 1024;
+/// The longest file content `storage_write_file` takes, in UTF-8 bytes.
+pub const MAX_CONTENT_BYTES: usize = 512 * 1024;
+/// The longest `storage_write_file` arguments text: the content at its worst JSON escaping.
+pub const MAX_WRITE_ARGUMENTS_TEXT: usize = 6 * MAX_CONTENT_BYTES + MAX_ARGUMENTS_TEXT;
 /// The longest extension, in characters.
 pub const MAX_EXTENSION_CHARS: usize = 16;
 /// `storage_find_files`: the most folder listings one search makes.
@@ -36,6 +43,9 @@ pub const MAX_DEPTH: usize = 6;
 /// began. It does not cut a listing already running, which keeps the read engine's own 31 s
 /// budget, so one search can take up to about 91 s.
 pub const FIND_DEADLINE: Duration = Duration::from_secs(60);
+
+/// What a write on a connection that has no writes (S3, local) answers.
+pub const WRITE_UNSUPPORTED: &str = "This storage connection cannot be changed from here.";
 
 /// What a refused private path answers.
 pub const PRIVATE_REFUSAL: &str = "This folder is private and cannot be used here.";
@@ -52,6 +62,9 @@ pub struct Tool {
 pub const LIST_FOLDER: &str = "storage_list_folder";
 pub const READ_FILE: &str = "storage_read_file";
 pub const FIND_FILES: &str = "storage_find_files";
+pub const WRITE_FILE: &str = "storage_write_file";
+pub const CREATE_FOLDER: &str = "storage_create_folder";
+pub const DELETE_FILE: &str = "storage_delete_file";
 
 /// The box's tools. Descriptions are terse: they are sent with every request.
 pub const TOOLS: &[Tool] = &[
@@ -73,6 +86,24 @@ pub const TOOLS: &[Tool] = &[
         input_schema: r#"{"type":"object","properties":{"name":{"type":"string","description":"Part of the file name."},"extension":{"type":"string","description":"File extension, e.g. \"md\"."},"folder":{"type":"string","description":"Folder to search from; empty or omitted for the storage root."}},"additionalProperties":false}"#,
         write: false,
     },
+    Tool {
+        name: WRITE_FILE,
+        description: "Create or replace a text file in the person's connected storage. Changes their storage; needs their approval. Paths are relative to the storage root.",
+        input_schema: r#"{"type":"object","properties":{"path":{"type":"string","description":"File path, e.g. \"Notes/plan.md\"."},"content":{"type":"string","description":"The whole file text."},"mode":{"type":"string","enum":["create","replace"],"description":"create: a new file only; replace: an existing file."}},"required":["path","content","mode"],"additionalProperties":false}"#,
+        write: true,
+    },
+    Tool {
+        name: CREATE_FOLDER,
+        description: "Create a folder in the person's connected storage. Changes their storage; needs their approval. Paths are relative to the storage root.",
+        input_schema: r#"{"type":"object","properties":{"path":{"type":"string","description":"Folder path, e.g. \"Notes/2026\"."}},"required":["path"],"additionalProperties":false}"#,
+        write: true,
+    },
+    Tool {
+        name: DELETE_FILE,
+        description: "Delete a file (not a folder) from the person's connected storage. Changes their storage; needs their approval. Paths are relative to the storage root.",
+        input_schema: r#"{"type":"object","properties":{"path":{"type":"string","description":"File path, e.g. \"Notes/old.md\"."}},"required":["path"],"additionalProperties":false}"#,
+        write: true,
+    },
 ];
 
 /// The box's line in the tool-box manifest: `{id, server, label, description, tools, reads}`.
@@ -92,7 +123,7 @@ pub fn manifest_line() -> String {
         ("label", JValue::from("Storage files")),
         (
             "description",
-            JValue::from("List, read and find files in your connected storage."),
+            JValue::from("List, read, find, write and delete files in your connected storage."),
         ),
         ("tools", JValue::Arr(tools)),
         ("reads", JValue::Arr(reads)),
@@ -100,8 +131,16 @@ pub fn manifest_line() -> String {
     js_json::stringify(&line).unwrap_or_default()
 }
 
-/// A parsed tool call. Paths are as given (the read engine applies the storage path rule);
-/// `extension` is lowercase without its leading dot.
+/// How `storage_write_file` may write: a new file only, or over an existing one (guarded by its
+/// version).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    Create,
+    Replace,
+}
+
+/// A parsed tool call. Paths are as given (the engine applies the storage path rule; a write's
+/// path is never the root); `extension` is lowercase without its leading dot.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Call {
     List {
@@ -114,6 +153,17 @@ pub enum Call {
         name: Option<String>,
         extension: Option<String>,
         folder: String,
+    },
+    Write {
+        path: String,
+        content: String,
+        mode: Mode,
+    },
+    CreateFolder {
+        path: String,
+    },
+    DeleteFile {
+        path: String,
     },
 }
 
@@ -146,15 +196,29 @@ impl From<Failure> for ToolError {
     }
 }
 
+impl From<StorageError> for ToolError {
+    /// The write engine's messages name only the requested path and a storage status.
+    fn from(error: StorageError) -> Self {
+        Self::new(error.message)
+    }
+}
+
 /// Parse one call: `tool` is the tool name, `arguments` the JSON text of its arguments object
 /// (empty text counts as `{}`).
 pub fn parse(tool: &str, arguments: &str) -> Result<Call, ToolError> {
     let allowed: &[&str] = match tool {
         LIST_FOLDER | READ_FILE => &["path"],
         FIND_FILES => &["name", "extension", "folder"],
+        WRITE_FILE => &["path", "content", "mode"],
+        CREATE_FOLDER | DELETE_FILE => &["path"],
         _ => return Err(ToolError::new("Unknown storage tool.")),
     };
-    if arguments.len() > MAX_ARGUMENTS_TEXT {
+    let cap = if tool == WRITE_FILE {
+        MAX_WRITE_ARGUMENTS_TEXT
+    } else {
+        MAX_ARGUMENTS_TEXT
+    };
+    if arguments.len() > cap {
         return Err(ToolError::new("The arguments are too long."));
     }
     let value = if arguments.trim().is_empty() {
@@ -183,6 +247,17 @@ pub fn parse(tool: &str, arguments: &str) -> Result<Call, ToolError> {
             Some(path) if !path.trim().is_empty() => Ok(Call::Read { path }),
             _ => Err(ToolError::new("path is required.")),
         },
+        WRITE_FILE => Ok(Call::Write {
+            path: write_path(&value)?,
+            content: content_arg(&value)?,
+            mode: mode_arg(&value)?,
+        }),
+        CREATE_FOLDER => Ok(Call::CreateFolder {
+            path: write_path(&value)?,
+        }),
+        DELETE_FILE => Ok(Call::DeleteFile {
+            path: write_path(&value)?,
+        }),
         _ => {
             let name = string_arg(&value, "name")?.filter(|s| !s.trim().is_empty());
             let extension = match string_arg(&value, "extension")? {
@@ -211,6 +286,45 @@ fn string_arg(value: &JValue, key: &str) -> Result<Option<String>, ToolError> {
         JValue::Str(s) => Ok(Some(s.clone())),
         _ => Err(ToolError::new(format!("{key} must be a string."))),
     }
+}
+
+/// A write's required path: never empty and never the storage root (`.`, `/`).
+fn write_path(value: &JValue) -> Result<String, ToolError> {
+    let Some(path) = string_arg(value, "path")? else {
+        return Err(ToolError::new("path is required."));
+    };
+    if shown(&path).is_empty() {
+        return Err(ToolError::new(
+            "path must be a relative path inside the storage, not its root.",
+        ));
+    }
+    Ok(path)
+}
+
+/// `storage_write_file`'s required content, at most [`MAX_CONTENT_BYTES`].
+fn content_arg(value: &JValue) -> Result<String, ToolError> {
+    match value.get("content") {
+        JValue::Undefined | JValue::Null => Err(ToolError::new("content is required.")),
+        JValue::Str(s) if s.len() > MAX_CONTENT_BYTES => Err(ToolError::new(format!(
+            "content is too long (at most {MAX_CONTENT_BYTES} bytes)."
+        ))),
+        JValue::Str(s) => Ok(s.clone()),
+        _ => Err(ToolError::new("content must be a string.")),
+    }
+}
+
+fn mode_arg(value: &JValue) -> Result<Mode, ToolError> {
+    match string_arg(value, "mode")?.as_deref() {
+        Some("create") => Ok(Mode::Create),
+        Some("replace") => Ok(Mode::Replace),
+        _ => Err(ToolError::new("mode must be \"create\" or \"replace\".")),
+    }
+}
+
+/// A path as the storage path rule normalises it ("" when refused or the root): the path the
+/// engine requests, and the one messages and answers name.
+fn shown(path: &str) -> String {
+    storage_path::safe_relative_path(path).unwrap_or_default()
 }
 
 /// The wanted extension, lowercase without its leading dot; empty is `None`. Matching compares
@@ -283,7 +397,11 @@ impl Guard {
 /// skips it (its `skip` argument).
 pub fn private_refusal(call: &Call, kind: Kind, corpus_root: &str) -> Option<String> {
     let path = match call {
-        Call::List { path } | Call::Read { path } => path,
+        Call::List { path }
+        | Call::Read { path }
+        | Call::Write { path, .. }
+        | Call::CreateFolder { path }
+        | Call::DeleteFile { path } => path,
         Call::Find { folder, .. } => folder,
     };
     Guard::new(Some(corpus_root), kind)
@@ -298,7 +416,9 @@ fn units(path: &str) -> Vec<u16> {
 /// Run one call over the connection. `skip`: a folder never read or descended into (the Diary
 /// folder for a call bound for an external provider); a call whose own path is inside it is
 /// refused, and a `skip` that normalises to nothing, or a `skip` on a connection that is not
-/// WebDAV/Nextcloud, refuses every call before any request.
+/// WebDAV/Nextcloud, refuses every call before any request. The host passes the Diary folder as
+/// `skip` for every write, whatever the provider: no write lands inside it. A write on a
+/// connection that is not WebDAV/Nextcloud is refused whatever `skip` is.
 pub fn run(
     call: &Call,
     c: &Connection,
@@ -335,6 +455,92 @@ pub fn run(
             };
             find(c, t, folder, &want, &guard)
         }
+        Call::Write {
+            path,
+            content,
+            mode,
+        } => {
+            write_allowed(c, &guard, path)?;
+            write(c, t, path, content, *mode)
+        }
+        Call::CreateFolder { path } => {
+            write_allowed(c, &guard, path)?;
+            let folder = writes::create_folder(c, path, t)?;
+            answer([
+                ("path", JValue::from(folder.path)),
+                ("existed", JValue::from(folder.existed)),
+            ])
+        }
+        Call::DeleteFile { path } => {
+            write_allowed(c, &guard, path)?;
+            let missing = writes::delete_file(c, path, t)?;
+            answer([
+                ("path", JValue::from(shown(path))),
+                ("deleted", JValue::from(!missing)),
+            ])
+        }
+    }
+}
+
+fn answer<const N: usize>(pairs: [(&str, JValue); N]) -> Result<String, ToolError> {
+    Ok(js_json::stringify(&JValue::obj(pairs)).unwrap_or_default())
+}
+
+/// Every write: only on a WebDAV/Nextcloud connection, never inside the skipped folder.
+fn write_allowed(c: &Connection, guard: &Guard, path: &str) -> Result<(), ToolError> {
+    if !matches!(c.kind, Kind::WebDav | Kind::Nextcloud) {
+        return Err(ToolError::new(WRITE_UNSUPPORTED));
+    }
+    if guard.blocks(path) {
+        return Err(ToolError::new(PRIVATE_REFUSAL));
+    }
+    Ok(())
+}
+
+/// `storage_write_file`: create under `If-None-Match: *`; replace only an existing file, under
+/// `If-Match` with the version it has now.
+fn write(
+    c: &Connection,
+    t: &mut impl Transport,
+    path: &str,
+    content: &str,
+    mode: Mode,
+) -> Result<String, ToolError> {
+    let name = shown(path);
+    let condition = match mode {
+        Mode::Create => Condition::IfNoneMatch,
+        Mode::Replace => match writes::file_version(c, path, t) {
+            Ok(Version::Missing) => {
+                return Err(ToolError::new(format!(
+                    "\"{name}\" does not exist; use mode \"create\"."
+                )));
+            }
+            Ok(Version::Present(etag)) if etag.is_empty() => {
+                return Err(ToolError::new(format!(
+                    "\"{name}\" has no version to guard the replace; nothing was written."
+                )));
+            }
+            Ok(Version::Present(etag)) => Condition::IfMatch(etag),
+            Err(error) if error.code == Some("folder") => {
+                return Err(ToolError::new(format!(
+                    "\"{name}\" is a folder; nothing was written."
+                )));
+            }
+            Err(error) => return Err(error.into()),
+        },
+    };
+    match writes::write_file(c, path, content.as_bytes(), &condition, t) {
+        Ok(written) => answer([
+            ("path", JValue::from(written.path)),
+            ("created", JValue::from(written.created)),
+        ]),
+        Err(error) if error.code == Some("changed") => Err(ToolError::new(match mode {
+            Mode::Create => format!("\"{name}\" already exists; nothing was overwritten."),
+            Mode::Replace => {
+                format!("\"{name}\" changed in storage meanwhile; nothing was written.")
+            }
+        })),
+        Err(error) => Err(error.into()),
     }
 }
 
