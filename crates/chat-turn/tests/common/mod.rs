@@ -32,6 +32,7 @@ pub fn client_left(case: &Value) -> bool {
     case["input"]["leaveOnCard"] == true
         || case["input"]["leaveInTool"].is_string()
         || case["input"]["approvalFront"]["leaveInGrant"] == true
+        || case["input"]["reasoner"]["leave"] == true
         || case["input"]["rounds"]
             .as_array()
             .unwrap()
