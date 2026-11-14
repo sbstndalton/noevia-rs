@@ -32,6 +32,7 @@
 //! core directory and prints Markdown; nothing ships or calls it.
 
 pub mod methods_near;
+pub mod reach;
 pub mod recheck;
 
 use serde::Deserialize;

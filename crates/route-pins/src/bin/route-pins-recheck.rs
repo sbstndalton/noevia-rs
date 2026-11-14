@@ -1,13 +1,17 @@
-//! `route-pins-recheck --core DIR [--manifest FILE]`: re-reads the recording's file facts from a core checkout (no
-//! Node; see route_pins::recheck) and prints the drift and the delete list recomputed with them, as Markdown on
-//! stdout. With `--manifest` (the output of `noevia-server --owned-routes` from the binary the train ships) the
-//! verdicts use that front; without it, every recorded refusal counts as answered, so only the file facts decide.
+//! `route-pins-recheck --core DIR [--manifest FILE] [--also LABEL=DIR]...`: re-reads the recording's file facts from
+//! a core checkout (no Node; see route_pins::recheck) and prints the drift and the delete list recomputed with them,
+//! as Markdown on stdout. With `--manifest` (the output of `noevia-server --owned-routes` from the binary the train
+//! ships) the verdicts use that front; without it, every recorded refusal counts as answered, so only the file facts
+//! decide. Then (council p12) the core server files the static require graph no longer reaches, today and once the
+//! delete list's file deletions are made (route_pins::reach); `--also noevia-rs=DIR --also noevia=DIR` adds the other
+//! repos to the name search, so a recorder input or a pairing marker there is kept. Reach does not change the exit code.
 //!
 //! Exit codes: 0 no drift, 1 drift found (the list is printed either way), 2 usage or read error. Read-only: it
 //! never writes into DIR. Inert: nothing in a release or in CI calls it yet (the deletion train will).
 
+use route_pins::reach;
 use route_pins::recheck::{self, Tree};
-use route_pins::{classify, delete_list, embedded, Manifest};
+use route_pins::{classify, delete_list, embedded, Manifest, Verdict};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -52,18 +56,28 @@ fn walk(
 }
 
 fn usage() -> ExitCode {
-    eprintln!("usage: route-pins-recheck --core DIR [--manifest FILE]");
+    eprintln!("usage: route-pins-recheck --core DIR [--manifest FILE] [--also LABEL=DIR]...");
     ExitCode::from(2)
 }
 
 fn main() -> ExitCode {
     let mut core = None;
     let mut manifest = None;
+    let mut also = Vec::new();
     let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
         match a.to_str() {
             Some("--core") => core = args.next(),
             Some("--manifest") => manifest = args.next(),
+            Some("--also") => match args.next().as_ref().and_then(|v| v.to_str()) {
+                Some(v) => match v.split_once('=') {
+                    Some((label, dir)) if !label.is_empty() && !dir.is_empty() => {
+                        also.push((label.to_string(), dir.to_string()));
+                    }
+                    _ => return usage(),
+                },
+                None => return usage(),
+            },
             _ => return usage(),
         }
     }
@@ -124,6 +138,51 @@ fn main() -> ExitCode {
     print!("{}", recheck::report(&checked.drift));
     println!();
     print!("{}", delete_list(&checked.recording, &list));
+    let mut others = Vec::new();
+    for (label, dir) in &also {
+        let (mut t, mut skipped_there) = (Tree::new(), Vec::new());
+        if let Err(e) = walk(Path::new(dir), Path::new(dir), &mut t, &mut skipped_there) {
+            eprintln!("route-pins-recheck: reading {dir}: {e}");
+            return ExitCode::from(2);
+        }
+        others.push((label.as_str(), t));
+    }
+    let others: Vec<(&str, &Tree)> = others.iter().map(|(l, t)| (*l, t)).collect();
+    let deleted: std::collections::BTreeSet<String> = list
+        .iter()
+        .filter(|a| {
+            matches!(
+                a.verdict,
+                Verdict::DeleteFile | Verdict::DeleteFileEditTests { .. }
+            )
+        })
+        .map(|a| a.file.clone())
+        .collect();
+    println!();
+    println!("## Core server files no production entry reaches");
+    println!();
+    println!(
+        "Static require graph from `{}`; a file is dead only when no non-test file in core{} names its stem.",
+        reach::ENTRY,
+        others
+            .iter()
+            .map(|(l, _)| format!(", {l}"))
+            .collect::<String>()
+    );
+    println!();
+    let now = reach::unreached(&tree, &Default::default(), &others);
+    println!("Today:");
+    println!();
+    print!("{}", reach::report(&now));
+    println!();
+    println!("Stranded by the {} file deletions above:", deleted.len());
+    println!();
+    let today: std::collections::BTreeSet<&str> = now.iter().map(|u| u.file.as_str()).collect();
+    let stranded: Vec<reach::Unreached> = reach::unreached(&tree, &deleted, &others)
+        .into_iter()
+        .filter(|u| !today.contains(u.file.as_str()))
+        .collect();
+    print!("{}", reach::report(&stranded));
     if checked.drift.is_empty() {
         ExitCode::SUCCESS
     } else {
