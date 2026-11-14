@@ -152,6 +152,7 @@ pub mod toolbox_picker;
 pub mod toolbox_routes;
 pub mod upkeep;
 pub mod usage_routes;
+pub mod usage_writes;
 pub mod web_address_routes;
 
 use axum::body::Body;
