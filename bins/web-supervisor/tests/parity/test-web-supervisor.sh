@@ -13,7 +13,7 @@ here="$(cd -- "$(dirname -- "$0")" && pwd)"
 sup="$here/web-supervisor.sh"
 # noevia-rs bins/web-supervisor: the same suite drives the native supervisor when WEB_SUPERVISOR_BIN
 # names it (tests/parity.rs), and the bash reference copied beside this file otherwise.
-if [ -n "${WEB_SUPERVISOR_BIN:-}" ]; then sup_cmd=("$WEB_SUPERVISOR_BIN"); else sup_cmd=("${sup_cmd[@]}"); fi
+if [ -n "${WEB_SUPERVISOR_BIN:-}" ]; then sup_cmd=("$WEB_SUPERVISOR_BIN"); else sup_cmd=(bash "$sup"); fi
 if [ "${BASH_VERSINFO[0]}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 3 ]; }; then
   echo "skip - bash ${BASH_VERSION} has no wait -n (the image's bash does)"; exit 0
 fi
