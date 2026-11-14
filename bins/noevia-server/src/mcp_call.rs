@@ -183,8 +183,8 @@ pub trait Backend: Send + Sync {
     /// Whether a directory server's address is still a public host.
     fn url_public(&self, url: &str) -> impl Future<Output = bool> + Send;
     /// Track R14: the in-app server's result for one of its project write tools, answered by this
-    /// front (inapp_writes.rs, behind NOEVIA_RUST_INAPP_WRITES), or `None` for a call to the
-    /// server as before. `uid`/`pid`/`target` are what the call's token carries.
+    /// front (inapp_writes.rs, behind NOEVIA_RUST_INAPP_WRITES), or `None`: then [`Backend::inapp_read`]
+    /// is asked, and the server as before. `uid`/`pid`/`target` are what the call's token carries.
     fn inapp_write(
         &self,
         _uid: &str,

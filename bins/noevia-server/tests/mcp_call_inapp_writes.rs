@@ -1,7 +1,7 @@
 //! Track R14 step 6: the front's MCP call path asks `Backend::inapp_write` for a call to the
 //! in-process server, with the token's account, project and edit pin and the write flag, and uses
-//! its result in place of the server's; `None` calls the server as before, and other servers are
-//! never asked.
+//! its result in place of the server's; `None` asks track R13's in-app read answer, then the server as
+//! before, and other servers are never asked.
 #![cfg(feature = "rust-storage-reads")]
 #![allow(
     clippy::unwrap_used,
@@ -196,4 +196,122 @@ async fn the_front_answers_an_in_app_write_and_otherwise_the_server_does() {
     nobody.workspace_user = Some(String::new());
     execute(&quiet, &limits, &nobody).await;
     assert_eq!(quiet.asked.lock().unwrap().len(), 1);
+}
+
+/// Both in-app hooks (R14's writes, R13's reads): the write answer is asked first, the read answer
+/// only when the write one declines, and the in-process server only when both do; a call is never
+/// answered twice.
+struct Both {
+    log: Mutex<Vec<String>>,
+}
+
+impl Backend for Both {
+    fn now_ms(&self) -> f64 {
+        1_700_000_000_000.0
+    }
+    async fn servers(&self) -> Vec<ServerSpec> {
+        Fake {
+            answer: None,
+            asked: Mutex::new(Vec::new()),
+            called: Mutex::new(Vec::new()),
+        }
+        .servers()
+        .await
+    }
+    async fn key_headers(&self, _: &str, _: &str) -> Credential<Vec<(String, String)>> {
+        Credential::Absent
+    }
+    async fn oauth_session(&self, _: &str, _: &str, _: Option<&str>) -> Credential<Session> {
+        Credential::Absent
+    }
+    async fn reject(&self, _: &str, _: &str, _: &str) {}
+    async fn directory_headers(&self, _: &str) -> Vec<(String, String)> {
+        Vec::new()
+    }
+    fn static_token(&self, _: &str) -> Option<String> {
+        None
+    }
+    fn internal_token(
+        &self,
+        _: Option<&str>,
+        _: Option<&str>,
+        _: bool,
+        _: Option<&str>,
+    ) -> Option<String> {
+        Some("qa-synthetic-token".into())
+    }
+    async fn url_public(&self, _: &str) -> bool {
+        true
+    }
+    async fn inapp_write(
+        &self,
+        _: &str,
+        _: Option<&str>,
+        name: &str,
+        _: &JValue,
+        _: Option<&str>,
+        write: bool,
+    ) -> Option<JValue> {
+        self.log.lock().unwrap().push(format!("write:{name}"));
+        (write
+            && matches!(
+                name,
+                "project_create_file" | "project_append_file" | "project_replace_text"
+            ))
+        .then(|| text_result("written by the front"))
+    }
+    async fn inapp_read(&self, _: &str, _: Option<&str>, name: &str, _: &JValue) -> Option<JValue> {
+        self.log.lock().unwrap().push(format!("read:{name}"));
+        matches!(name, "project_list_files" | "project_read_file")
+            .then(|| text_result("read by the front"))
+    }
+    async fn call(
+        &self,
+        server: &ServerSpec,
+        _: &[(String, String)],
+        name: &str,
+        _: &JValue,
+    ) -> Result<JValue, Failed> {
+        self.log
+            .lock()
+            .unwrap()
+            .push(format!("server:{}:{name}", server.id));
+        Ok(text_result("from the server"))
+    }
+}
+
+#[tokio::test]
+async fn the_write_hook_is_asked_first_then_the_read_hook_then_the_server() {
+    let limits = Mutex::new(RateLimit::default());
+    for (name, write, text, log) in [
+        (
+            "project_append_file",
+            true,
+            "written by the front",
+            vec!["write:project_append_file"],
+        ),
+        (
+            "project_read_file",
+            false,
+            "read by the front",
+            vec!["write:project_read_file", "read:project_read_file"],
+        ),
+        (
+            "project_search",
+            false,
+            "from the server",
+            vec![
+                "write:project_search",
+                "read:project_search",
+                "server:noevia:project_search",
+            ],
+        ),
+    ] {
+        let b = Both {
+            log: Mutex::new(Vec::new()),
+        };
+        let a = execute(&b, &limits, &request("noevia", name, write, None)).await;
+        assert!(a.text.contains(text), "{name}: {}", a.text);
+        assert_eq!(b.log.lock().unwrap().clone(), log, "{name}");
+    }
 }
