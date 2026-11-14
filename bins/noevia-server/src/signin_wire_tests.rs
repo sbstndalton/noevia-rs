@@ -514,8 +514,65 @@ async fn read_reply(answer: Answer<HttpBody>) -> Read {
     out
 }
 
+/// What the native turn reads of the same answer (src/signin_turn.rs): the engine answer's
+/// status and headers, and its body through `signin_turn::read` until it ends.
+async fn read_turn(answer: Answer<HttpBody>) -> Read {
+    use chat_turn::host::Read as TurnRead;
+    let a = match crate::signin_turn::turn_answer(answer, None) {
+        Ok(a) => a,
+        Err(m) => {
+            return Read {
+                thrown: Some(m),
+                ..Read::default()
+            }
+        }
+    };
+    let header = |n: &str| {
+        a.headers
+            .iter()
+            .find(|(k, _)| k == n)
+            .map(|(_, v)| v.clone())
+    };
+    let mut out = Read {
+        status: a.status,
+        content_type: header("content-type"),
+        provider_message: header("x-noevia-provider-message"),
+        ..Read::default()
+    };
+    let mut body = a.body;
+    let mut bytes = Vec::new();
+    loop {
+        match crate::signin_turn::read(&mut body, std::future::pending::<()>()).await {
+            TurnRead::Chunk(c) => bytes.extend_from_slice(&c),
+            TurnRead::End => break,
+            _ => {
+                out.read_error = true;
+                break;
+            }
+        }
+    }
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    out.text = text
+        .strip_prefix('\u{FEFF}')
+        .map_or(text.clone(), str::to_owned);
+    out
+}
+
+/// Which reader a replay reads the answer with.
+#[derive(Debug, Clone, Copy)]
+enum Via {
+    /// The HTTP reply (`into_response`).
+    Reply,
+    /// The native turn's engine answer (`signin_turn`).
+    Turn,
+}
+
 /// One recorded case through the front's client against the stub.
-async fn run_case(f: &JValue, input: &JValue) -> (Read, Vec<Received>, Vec<JValue>, bool) {
+async fn run_case(
+    f: &JValue,
+    input: &JValue,
+    via: Via,
+) -> (Read, Vec<Received>, Vec<JValue>, bool) {
     let default_stream = Scripted::of(&JValue::obj([
         ("status", JValue::Num(200.0)),
         ("chunks", f.get("streams").get("text").get("chunks").clone()),
@@ -562,7 +619,10 @@ async fn run_case(f: &JValue, input: &JValue) -> (Read, Vec<Received>, Vec<JValu
     };
     let read = tokio::time::timeout(DEADLINE, async {
         let answer = fetch::fetch(&mut wire, &cache, &call).await;
-        read_reply(answer).await
+        match via {
+            Via::Reply => read_reply(answer).await,
+            Via::Turn => read_turn(answer).await,
+        }
     })
     .await
     .expect("a case finished within the deadline");
@@ -604,6 +664,16 @@ fn skipped(input: &JValue) -> Option<&'static str> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn recorded_cases_over_real_http_match_core() {
+    replay(Via::Reply).await;
+}
+
+/// The same 93 cases read as the native turn reads the sign-in row's engine answer.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn recorded_cases_through_the_turn_reader_match_core() {
+    replay(Via::Turn).await;
+}
+
+async fn replay(via: Via) {
     let f = fixture();
     let JValue::Arr(cases) = f.get("fetch").clone() else {
         panic!()
@@ -620,7 +690,7 @@ async fn recorded_cases_over_real_http_match_core() {
             continue;
         }
         ran += 1;
-        let (got, received, calls, cache_empty) = run_case(&f, input).await;
+        let (got, received, calls, cache_empty) = run_case(&f, input, via).await;
         let mut check = |ok: bool, what: String| {
             if !ok {
                 wrong.push(format!("{name}: {what}"));
@@ -722,7 +792,7 @@ async fn recorded_cases_over_real_http_match_core() {
     }
     assert!(
         wrong.is_empty(),
-        "{} differences over {ran} cases:\n{}",
+        "{via:?}: {} differences over {ran} cases:\n{}",
         wrong.len(),
         wrong.join("\n")
     );
@@ -922,4 +992,300 @@ async fn the_cache_spans_calls_through_the_wire() {
         .count();
     assert_eq!(asks, 1, "{}", json(&JValue::Arr(calls)));
     assert_eq!(stub.lock().unwrap().received.len(), 3);
+}
+
+// ── noevia#2724 item 1 and the native turn's engine (src/signin_turn.rs) ────────────────────
+
+/// A labelled backend answer carrying cookies, a challenge, an encoding and its own headers.
+fn labelled_with_extra_headers() -> Scripted {
+    Scripted {
+        raw: Some(
+            "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\nx-noevia-provider-message: 1\r\nset-cookie: qa=1\r\nwww-authenticate: Bearer realm=qa\r\nx-noevia-gate-refusal: 1\r\nx-backend-qa: 1\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}"
+                .into(),
+        ),
+        ..Scripted::of(&JValue::Undefined)
+    }
+}
+
+async fn qa_answer(script: Scripted) -> Answer<HttpBody> {
+    let (base, _stub) = stub(StubState {
+        script: VecDeque::from([script]),
+        ..StubState::default()
+    })
+    .await;
+    let f = fixture();
+    let transport = fixture_transport(&f, base.trim_end_matches('/'));
+    let mut wire = SigninWire {
+        accounts: qa_accounts(1),
+        client: client().unwrap(),
+    };
+    let cache = Mutex::new(SessionCache::default());
+    tokio::time::timeout(
+        DEADLINE,
+        fetch_for(
+            &mut wire,
+            &cache,
+            &transport,
+            "qa-user",
+            None,
+            "http://x/v1/chat/completions",
+            QA_BODY,
+        ),
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_pass_through_reply_carries_only_the_allow_listed_headers() {
+    let res = into_response(qa_answer(labelled_with_extra_headers()).await).unwrap();
+    assert_eq!(res.status(), 400);
+    let mut names: Vec<String> = res
+        .headers()
+        .keys()
+        .map(|k| k.as_str().to_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["content-type", "x-noevia-provider-message"]);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(&body[..], b"{}");
+}
+
+#[tokio::test]
+async fn a_pass_through_engine_answer_carries_only_the_allow_listed_headers() {
+    let a = crate::signin_turn::turn_answer(qa_answer(labelled_with_extra_headers()).await, None)
+        .unwrap();
+    assert_eq!(a.status, 400);
+    let mut names: Vec<&str> = a.headers.iter().map(|(k, _)| k.as_str()).collect();
+    names.sort_unstable();
+    assert_eq!(names, ["content-type", "x-noevia-provider-message"]);
+    let (text, capped) = crate::signin_turn::text(a.body, 1024, std::future::pending()).await;
+    assert_eq!((text.as_str(), capped), ("{}", false));
+}
+
+fn qa_engine(base: &str, accounts: Arc<FakeAccounts>) -> crate::signin_turn::SigninEngine<Arc<FakeAccounts>> {
+    let f = fixture();
+    crate::signin_turn::SigninEngine {
+        accounts,
+        client: client().unwrap(),
+        transport: fixture_transport(&f, base.trim_end_matches('/')),
+        user: "qa-user".into(),
+        conversation: Some("chat-qa".into()),
+    }
+}
+
+fn qa_request(timeout_ms: Option<u64>) -> chat_turn::host::EngineRequest {
+    chat_turn::host::EngineRequest {
+        url: "http://x/v1/chat/completions".into(),
+        // A lease and a row key as the plain engine path would carry them: never sent here.
+        headers: vec![
+            ("authorization".into(), "Bearer qa-row-key".into()),
+            ("x-noevia-lease".into(), "qa-lease".into()),
+        ],
+        body: QA_BODY.into(),
+        stream: true,
+        timeout_ms,
+    }
+}
+
+#[tokio::test]
+async fn the_engine_sends_the_brokers_headers_only_and_streams_to_the_end() {
+    let f = fixture();
+    let (base, stub) = stub(StubState {
+        default: Some(Scripted::of(&JValue::obj([
+            ("status", JValue::Num(200.0)),
+            ("chunks", f.get("streams").get("text").get("chunks").clone()),
+        ]))),
+        ..StubState::default()
+    })
+    .await;
+    let accounts = Arc::new(qa_accounts(1));
+    let engine = qa_engine(&base, Arc::clone(&accounts));
+    let cache = Mutex::new(SessionCache::default());
+    let a = tokio::time::timeout(
+        DEADLINE,
+        engine.request_with(&cache, &qa_request(None), std::future::pending()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(a.status, 200);
+    assert_eq!(
+        a.headers,
+        [("content-type".to_owned(), "text/event-stream".to_owned())]
+    );
+    let (text, capped) = tokio::time::timeout(
+        DEADLINE,
+        crate::signin_turn::text(a.body, 1 << 20, std::future::pending()),
+    )
+    .await
+    .unwrap();
+    assert!(!capped);
+    assert!(text.contains("\"role\":\"assistant\""), "{text}");
+    assert!(text.ends_with("data: [DONE]\n\n"), "{text}");
+    let received = stub.lock().unwrap().received.clone();
+    assert_eq!(received.len(), 1);
+    let h = |n: &str| {
+        received[0]
+            .headers
+            .iter()
+            .find(|(k, _)| k == n)
+            .map(|(_, v)| v.clone())
+    };
+    assert_eq!(h("authorization").as_deref(), Some("Bearer tok-1"));
+    assert_eq!(h("x-noevia-lease"), None);
+    assert!(
+        received[0].headers.iter().all(|(_, v)| !v.contains("qa-row-key")),
+        "the caller's key reached the backend"
+    );
+    // The same body core's fetch would send for this request (the replay pins it byte for byte).
+    assert!(received[0].body.contains("\"stream\":true"), "{}", received[0].body);
+}
+
+#[tokio::test]
+async fn the_engine_answers_a_broker_refusal_as_cores_error() {
+    let (base, stub) = stub(StubState::default()).await;
+    // No session: the broker is not reached ("throw"), so the turn reads core's transient answer.
+    let engine = qa_engine(&base, Arc::new(qa_accounts(0)));
+    let cache = Mutex::new(SessionCache::default());
+    let a = tokio::time::timeout(
+        DEADLINE,
+        engine.request_with(&cache, &qa_request(None), std::future::pending()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(a.status, 503);
+    assert!(a
+        .headers
+        .contains(&("x-noevia-provider-message".to_owned(), "1".to_owned())));
+    let (text, _) = crate::signin_turn::text(a.body, 1 << 16, std::future::pending()).await;
+    let v = js_json::parse(&text).unwrap();
+    assert_eq!(v.get("error").get("code").as_str(), Some("transient"));
+    assert!(stub.lock().unwrap().received.is_empty(), "no backend call");
+}
+
+/// A stream whose backend sends its first part and then holds the connection.
+async fn held_stream() -> (String, Stub) {
+    let f = fixture();
+    let mut held = Scripted::of(&JValue::obj([
+        ("status", JValue::Num(200.0)),
+        ("chunks", f.get("streams").get("text").get("chunks").clone()),
+    ]));
+    held.hold_after = Some(1);
+    stub(StubState {
+        script: VecDeque::from([held]),
+        ..StubState::default()
+    })
+    .await
+}
+
+async fn wait_gone(stub: &Stub) -> bool {
+    tokio::time::timeout(DEADLINE, async {
+        loop {
+            if stub.lock().unwrap().client_gone {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .is_ok()
+}
+
+#[tokio::test]
+async fn a_read_past_the_request_deadline_fails_and_lets_the_backend_go() {
+    use chat_turn::host::Read as TurnRead;
+    let (base, stub) = held_stream().await;
+    let engine = qa_engine(&base, Arc::new(qa_accounts(1)));
+    let cache = Mutex::new(SessionCache::default());
+    let a = tokio::time::timeout(
+        DEADLINE,
+        engine.request_with(&cache, &qa_request(Some(1_500)), std::future::pending()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let mut body = a.body;
+    let last = tokio::time::timeout(DEADLINE, async {
+        loop {
+            match crate::signin_turn::read(&mut body, std::future::pending()).await {
+                TurnRead::Chunk(_) => continue,
+                other => return other,
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(last, TurnRead::Failed(crate::signin_turn::ABORTED.to_owned()));
+    // Later reads end; the backend connection was let go.
+    assert_eq!(
+        crate::signin_turn::read(&mut body, std::future::pending()).await,
+        TurnRead::End
+    );
+    assert!(wait_gone(&stub).await, "the backend never saw the client go away");
+}
+
+#[tokio::test]
+async fn the_client_leaving_aborts_the_read_and_lets_the_backend_go() {
+    use chat_turn::host::Read as TurnRead;
+    let (base, stub) = held_stream().await;
+    let engine = qa_engine(&base, Arc::new(qa_accounts(1)));
+    let cache = Mutex::new(SessionCache::default());
+    let a = tokio::time::timeout(
+        DEADLINE,
+        engine.request_with(&cache, &qa_request(None), std::future::pending()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let mut body = a.body;
+    // Read what the backend sent, then the client leaves while the backend holds the rest.
+    let (left_tx, left_rx) = tokio::sync::oneshot::channel::<()>();
+    let left = async move {
+        let _ = left_rx.await;
+    };
+    let mut left = std::pin::pin!(left);
+    let mut chunks = 0;
+    let last = tokio::time::timeout(DEADLINE, async {
+        let mut tx = Some(left_tx);
+        loop {
+            let r = tokio::time::timeout(
+                Duration::from_millis(500),
+                crate::signin_turn::read(&mut body, left.as_mut()),
+            )
+            .await;
+            match r {
+                Ok(TurnRead::Chunk(_)) => chunks += 1,
+                Ok(other) => return other,
+                // Nothing more is coming: the client goes away now.
+                Err(_) => {
+                    if let Some(t) = tx.take() {
+                        let _ = t.send(());
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert!(chunks >= 1, "the first part arrived");
+    assert_eq!(last, TurnRead::Aborted);
+    assert!(wait_gone(&stub).await, "the backend never saw the client go away");
+}
+
+#[tokio::test]
+async fn the_client_leaving_before_the_answer_ends_the_request() {
+    let (base, stub) = held_stream().await;
+    let engine = qa_engine(&base, Arc::new(qa_accounts(1)));
+    let cache = Mutex::new(SessionCache::default());
+    // Already gone: the request ends with the abort text, whatever the backend does.
+    let r = tokio::time::timeout(
+        DEADLINE,
+        engine.request_with(&cache, &qa_request(None), std::future::ready(())),
+    )
+    .await
+    .unwrap();
+    assert_eq!(r.err().as_deref(), Some(crate::signin_turn::ABORTED));
+    drop(stub);
 }

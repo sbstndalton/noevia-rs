@@ -92,6 +92,26 @@ pub trait Accounts: Send + Sync {
     fn catalogue(&self, user: &str) -> impl Future<Output = Option<JValue>> + Send;
 }
 
+/// A shared broker half (one turn's engine hands a clone to each call's wire).
+impl<T: Accounts> Accounts for Arc<T> {
+    fn signal(&self) -> Option<String> {
+        (**self).signal()
+    }
+    fn session(
+        &self,
+        user: &str,
+        rejected: Option<&str>,
+    ) -> impl Future<Output = BrokerAnswer> + Send {
+        (**self).session(user, rejected)
+    }
+    fn reject(&self, user: &str, generation: &str) -> impl Future<Output = ()> + Send {
+        (**self).reject(user, generation)
+    }
+    fn catalogue(&self, user: &str) -> impl Future<Output = Option<JValue>> + Send {
+        (**self).catalogue(user)
+    }
+}
+
 /// core's store client `chatgptRefusal(status, body)` over the broker's own failure.
 pub fn refusal_of(e: &Fail) -> BrokerAnswer {
     BrokerAnswer::Refused {
@@ -120,6 +140,7 @@ pub fn session_of(
 
 /// The front's sign-in broker as [`Accounts`]. Every ask first runs the broker's start sweep, as
 /// the internal store op does.
+#[derive(Clone)]
 pub struct FrontAccounts {
     app: Arc<App>,
     broker: Arc<Broker>,
@@ -363,7 +384,7 @@ pub async fn fetch_for<A: Accounts>(
 /// is dropped here: only the local gate may claim a gate refusal.
 pub const PASSED_ON: [&str; 2] = ["content-type", "x-noevia-provider-message"];
 
-fn passed_on(name: &str) -> bool {
+pub(crate) fn passed_on(name: &str) -> bool {
     PASSED_ON.iter().any(|p| name.eq_ignore_ascii_case(p))
 }
 
