@@ -118,13 +118,20 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
                     framing && crate::code_routes::feature(&app, Feature::BrainContext),
                 ),
             };
-            let boxes = catalogue.map(|c| toolboxes(&c.boxes));
+            let boxes = catalogue.as_ref().map(|c| toolboxes(&c.boxes));
+            let writes: Option<std::collections::HashSet<String>> = catalogue.as_ref().map(|c| {
+                c.boxes
+                    .iter()
+                    .flat_map(|b| b.tools.iter().filter(|t| t.write).map(|t| t.name.clone()))
+                    .collect()
+            });
             let settings = settings_rows(&app);
             let zone = server_time_zone();
             let facts = Facts {
                 time_zone: &zone,
                 flags,
                 boxes: boxes.as_deref(),
+                writes: writes.as_ref(),
                 settings: settings.as_ref(),
                 last_loaded: last_loaded.as_deref(),
             };
@@ -249,6 +256,8 @@ pub struct Facts<'a> {
     pub flags: Flags,
     /// `allToolboxes()`: without it a history that needs it is skipped.
     pub boxes: Option<&'a [Toolbox]>,
+    /// The tool names the catalogue classifies as writes (`isWriteTool`), with `boxes`.
+    pub writes: Option<&'a std::collections::HashSet<String>>,
     /// The settings rows `reasoning_effort_default` and `auto_sampling_presets_enabled`.
     pub settings: Option<&'a (JValue, JValue)>,
     /// The front's last-loaded model.
@@ -261,6 +270,7 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, facts: Facts<'_>) -> Ve
         time_zone,
         flags,
         boxes,
+        writes,
         settings,
         last_loaded,
     } = facts;
@@ -287,6 +297,11 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, facts: Facts<'_>) -> Ve
             || boxes.is_some_and(|b| b.iter().any(|b| b.offers(name)))
     };
     let carry = |name: &str| is_public_tool_name(Some(name), boxes.unwrap_or_default());
+    // isWriteTool, as the catalogue classified each tool (a name no box offers is a write).
+    let is_write = |name: &str| {
+        writes.is_some_and(|w| w.contains(name))
+            || !boxes.is_some_and(|b| b.iter().any(|b| b.offers(name)))
+    };
     // getProject(body.projectId): the account's projects.json as the store reads it.
     let project_id = body.get("projectId").as_str();
     let projects = project_id.and_then(|_| {
@@ -321,9 +336,11 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, facts: Facts<'_>) -> Ve
             effort_default,
             sampling_presets,
         }),
-        catalogue: boxes.map(|_| Catalogue {
+        catalogue: boxes.zip(writes).map(|(boxes, _)| Catalogue {
             known_tool: &known,
             carry_orphan_tool: &carry,
+            boxes,
+            is_write: &is_write,
         }),
     })
 }
@@ -491,6 +508,7 @@ mod tests {
             time_zone: "UTC",
             flags: Flags::default(),
             boxes: None,
+            writes: None,
             settings: None,
             last_loaded: None,
         };
@@ -596,6 +614,20 @@ mod tests {
                     .collect(),
                 _ => Vec::new(),
             };
+            // isWriteTool as core answered it per box.
+            let writes: std::collections::HashSet<String> = match input.get("toolboxes") {
+                JValue::Arr(list) => list
+                    .iter()
+                    .flat_map(|b| match b.get("writes") {
+                        JValue::Arr(names) => names
+                            .iter()
+                            .filter_map(|n| n.as_str().map(str::to_string))
+                            .collect::<Vec<_>>(),
+                        _ => Vec::new(),
+                    })
+                    .collect(),
+                _ => Default::default(),
+            };
             let tz = input.get("tz").as_str().unwrap();
             let rows = (
                 input
@@ -611,6 +643,7 @@ mod tests {
                 time_zone: tz,
                 flags,
                 boxes: Some(&boxes),
+                writes: Some(&writes),
                 settings: Some(&rows),
                 last_loaded: input.get("lastLoaded").as_str(),
             };
@@ -641,6 +674,7 @@ mod tests {
             // a turn whose compared fields are all core's says the settings were not read.
             let unknown = Facts {
                 boxes: None,
+                writes: None,
                 settings: None,
                 last_loaded: None,
                 ..known

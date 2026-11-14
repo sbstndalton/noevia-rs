@@ -91,6 +91,12 @@ fn replay(f: &JValue) -> Vec<Replayed> {
             .iter()
             .find(|p| !pid.is_nullish() && p.get("id") == pid);
         let boxes: Vec<Toolbox> = items(input, "toolboxes").iter().map(toolbox).collect();
+        // isWriteTool as core answered it per box (a name no box offers is a write, as in Node).
+        let writes: Vec<&str> = items(input, "toolboxes")
+            .iter()
+            .flat_map(|b| items(b, "writes").iter().filter_map(|n| n.as_str()))
+            .collect();
+        let is_write = |name: &str| writes.contains(&name) || !boxes.iter().any(|b| b.offers(name));
         let known =
             |name: &str| PRIVATE_CORE_TOOLS.contains(&name) || boxes.iter().any(|b| b.offers(name));
         let carry = |name: &str| is_public_tool_name(Some(name), &boxes);
@@ -135,6 +141,8 @@ fn replay(f: &JValue) -> Vec<Replayed> {
             verdict: run(Some(Catalogue {
                 known_tool: &known,
                 carry_orphan_tool: &carry,
+                boxes: &boxes,
+                is_write: &is_write,
             })),
             without_catalogue: run(None),
         });
@@ -245,11 +253,14 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     // Without the catalogue only a history that needs it is skipped; everything else is the same.
     for r in &replayed {
         if r.without_catalogue != r.verdict {
-            assert_eq!(
-                r.without_catalogue,
-                Verdict::Skip("tool-history"),
-                "{}",
-                r.name
+            assert!(
+                matches!(
+                    r.without_catalogue,
+                    Verdict::Skip("tool-history" | "catalogue")
+                ),
+                "{}: {}",
+                r.name,
+                r.without_catalogue.line()
             );
             assert!(covered(r.verdict), "{}", r.name);
         }
@@ -558,6 +569,14 @@ fn a_manual_default_model_is_the_front_s_last_loaded_one() {
     let input = t.get("input");
     let project = items(input, "projects").first().unwrap();
     let empty = JValue::Arr(Vec::new());
+    let boxes: Vec<Toolbox> = items(input, "toolboxes").iter().map(toolbox).collect();
+    let writes: Vec<&str> = items(input, "toolboxes")
+        .iter()
+        .flat_map(|b| items(b, "writes").iter().filter_map(|n| n.as_str()))
+        .collect();
+    let is_write = |name: &str| writes.contains(&name) || !boxes.iter().any(|b| b.offers(name));
+    let known = |name: &str| boxes.iter().any(|b| b.offers(name));
+    let carry = |name: &str| is_public_tool_name(Some(name), &boxes);
     let check = |last_loaded: Option<&str>| {
         compare(&ShadowTurn {
             body: input.get("body"),
@@ -578,7 +597,12 @@ fn a_manual_default_model_is_the_front_s_last_loaded_one() {
                 effort_default: &JValue::Undefined,
                 sampling_presets: &JValue::Undefined,
             }),
-            catalogue: None,
+            catalogue: Some(Catalogue {
+                known_tool: &known,
+                carry_orphan_tool: &carry,
+                boxes: &boxes,
+                is_write: &is_write,
+            }),
         })
     };
     assert_eq!(check(input.get("lastLoaded").as_str()), Verdict::Match);
@@ -587,4 +611,22 @@ fn a_manual_default_model_is_the_front_s_last_loaded_one() {
         other => panic!("{other:?}"),
     }
     assert_eq!(check(None), Verdict::Skip("manual-default"));
+}
+
+/// P7f: the frame's per-tool facts for core's tool list are the native ones; one that is not is
+/// named by its field, and without the catalogue they are not compared (`skip catalogue`).
+#[test]
+fn the_tool_facts_are_core_s() {
+    let f = fixture();
+    let frames: Vec<&JValue> = items(&f, "turns")
+        .iter()
+        .map(|t| t.get("prepared"))
+        .filter(|p| p.is_object())
+        .collect();
+    assert!(frames.iter().any(|p| !items(p, "writes").is_empty()));
+    assert!(frames.iter().any(|p| !items(p, "public").is_empty()));
+    let r = replay(&f);
+    assert!(r
+        .iter()
+        .any(|r| r.without_catalogue == Verdict::Skip("catalogue")));
 }

@@ -32,7 +32,8 @@
 //   freeChats    what the handler's freeChats() answers (the user's free chat list; index.cjs FREE_CHATS), or null
 //                when it answers an empty list
 //   chatFraming  what chatFramingEnabled() answers (index.cjs: features.enabled('chatFraming'))
-//   toolboxes    the toolbox catalogue allToolboxes() answers, as [{id, tools: [function names]}] (the history
+//   toolboxes    the toolbox catalogue allToolboxes() answers, as [{id, tools: [function names], writes: [the names
+//                isWriteTool calls writes]}] (the history
 //                replay's carryOrphanTool and knownTool read it: tools-mode.cjs isPublicToolName, PRIVATE_CORE_TOOLS)
 //   settings     (left out: no settings database) the settings table's rows chat.cjs reads, key -> value (a missing
 //                key: no row; null: SQL NULL): reasoning_effort_default and auto_sampling_presets_enabled
@@ -120,7 +121,11 @@ const MCP_TOOLS = new Map([['web_search', { readOnly: true, serverId: 'qa-search
 const driveTools = createDriveTools({ accounts: { forUser: () => ({ drive: { state: () => ({ state: 'none' }) } }) }, cap: 8000 });
 const TB = toolboxesLib.createToolboxes({ boxes: [driveTools.box], kiwixTools: null, driveTools, mcpBoxes: () => MCP, mcpTools: () => MCP_TOOLS, offered: () => true,
   prefill: { budgetFor: () => null, rateFor: () => 0.5 } });
-const TOOLBOXES = TB.allToolboxes().map((b) => ({ id: b.id, tools: (b.tools || []).map((t) => t.function.name) }));
+// Each box's ids and tool names, and (P7f) the ones chat.cjs's isWriteTool calls writes.
+const TOOLBOXES = TB.allToolboxes().map((b) => {
+  const tools = (b.tools || []).map((t) => t.function.name);
+  return { id: b.id, tools, writes: tools.filter((n) => TB.isWriteTool(n)) };
+});
 const PROVIDER = { id: 'default', label: 'QA engine', baseUrl: ENGINE };
 const MODEL = 'qa-model-9b';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-chat-shadow-'));
@@ -500,6 +505,10 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
   await addTurn('auto_distinct_unassigned', { roles: { fast: 'qa-fast-4b' }, pick: 'smart', models: ['qa-fast-4b'], body: req() });
   await addTurn('project_own_model', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b' })], body: preq() });
   await addTurn('project_own_model_default', { projects: [project({ model: MODEL })], body: preq() });
+  // P7f: a write tool offered (the QA notes box's save), from the turn's own pick and from the project's boxes.
+  await addTurn('tools_turn_pick_notes', { body: req({ turnToolboxes: ['qa-notes'] }) });
+  await addTurn('tools_project_notes', { projects: [project({ toolboxes: ['core', 'qa-notes', 'web-search'] })], body: preq() });
+  await addTurn('tools_project_notes_message', { projects: [project({ toolboxes: ['qa-notes'] })], body: preq({ message: 'Save a QA note that says hello' }) });
   await addTurn('project_own_model_context_low', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b', contextProfile: 'low' })], body: preq() });
   await addTurn('project_context_high_skipped', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b', contextProfile: 'high' })], body: preq() });
   // Not covered yet (the shadow skips them): knowledge files, a project sharing into Chat, attached images.

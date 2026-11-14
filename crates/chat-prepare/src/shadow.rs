@@ -89,16 +89,21 @@ pub struct Settings<'a> {
 /// One of the replay's questions about a tool name.
 pub type ToolQuestion<'a> = &'a (dyn Fn(&str) -> bool + Sync);
 
-/// The replay's two questions about the server's toolboxes (see [`crate::ReplayOptions`]).
+/// The server's toolboxes (`allToolboxes()`): the replay's two questions about a tool name (see
+/// [`crate::ReplayOptions`]), and (P7f) the boxes and chat.cjs's `isWriteTool` for the per-tool facts
+/// of the frame.
 pub struct Catalogue<'a> {
     pub known_tool: ToolQuestion<'a>,
     pub carry_orphan_tool: ToolQuestion<'a>,
+    pub boxes: &'a [crate::toolboxes::Toolbox],
+    pub is_write: ToolQuestion<'a>,
 }
 
 /// Where the native frame first differs from core's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Diff {
-    /// The frame field: `messages`, `chat`, `turn`, `effort`, `thinkingOff`, `sampling` or `model`.
+    /// The frame field: `messages`, `chat`, `turn`, `effort`, `thinkingOff`, `sampling`, `model`,
+    /// `writes`, `public`, `editTools` or `onceTools`.
     pub field: &'static str,
     /// The message index (`messages.len()` of the shorter list when one is a prefix of the other;
     /// 0 for `chat` and `turn`).
@@ -324,6 +329,9 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
         if let Ok(model) = model_field(t, project) {
             fields.push(("model", model));
         }
+        if let Some(c) = &t.catalogue {
+            fields.extend(tool_facts(t.frame, c));
+        }
         for (field, ours) in fields {
             let (a, b) = (text(&ours), text(t.frame.get(field)));
             if a != b {
@@ -346,6 +354,13 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
             // The same for the model: everything compared is core's, the model was not.
             return Verdict::Skip(reason);
         }
+    }
+    if ours.len() == core.len()
+        && t.catalogue.is_none()
+        && matches!(t.frame.get("tools"), JValue::Arr(tools) if !tools.is_empty())
+    {
+        // The same for the per-tool facts: everything compared is core's, they were not.
+        return Verdict::Skip("catalogue");
     }
     if ours.len() != core.len() {
         return Verdict::Diff(Diff {
@@ -531,6 +546,51 @@ fn model_field(t: &ShadowTurn<'_>, project: Option<&JValue>) -> Result<JValue, &
         // chat.cjs: no project model on the local default provider: `lastLoadedModel()`.
         _ => t.last_loaded.map(JValue::from).ok_or("manual-default"),
     }
+}
+
+/// specialist-page-save.cjs `NEVER_STANDING`: asked about on every call, never under a grant.
+const NEVER_STANDING: [&str; 1] = ["space_page_save"];
+
+/// The frame's per-tool facts for the tools core offered (`tools`, in its order; P7f): `writes`
+/// (`isWriteTool`), `public` (`isPublicTool`), `editTools` (project-edit-target.cjs `EDIT_TOOLS`)
+/// and `onceTools` (present only when some tool is never standing). The tool list itself is core's
+/// (the selection reads the tool router and prefill measurements of core's process).
+fn tool_facts(frame: &JValue, c: &Catalogue<'_>) -> Vec<(&'static str, JValue)> {
+    let names: Vec<&str> = match frame.get("tools") {
+        JValue::Arr(tools) => tools
+            .iter()
+            .filter_map(|t| t.get("function").get("name").as_str())
+            .collect(),
+        _ => Vec::new(),
+    };
+    let pick = |f: &dyn Fn(&str) -> bool| {
+        JValue::Arr(
+            names
+                .iter()
+                .filter(|n| f(n))
+                .map(|n| JValue::from(*n))
+                .collect(),
+        )
+    };
+    let once = pick(&|n| NEVER_STANDING.contains(&n));
+    vec![
+        ("writes", pick(&|n| (c.is_write)(n))),
+        (
+            "public",
+            pick(&|n| crate::tools_mode::is_public_tool_name(Some(n), c.boxes)),
+        ),
+        (
+            "editTools",
+            pick(&|n| crate::offer::EDIT_TOOLS.contains(&n)),
+        ),
+        (
+            "onceTools",
+            match once {
+                JValue::Arr(ref l) if l.is_empty() => JValue::Undefined,
+                other => other,
+            },
+        ),
+    ]
 }
 
 /// chat.cjs `createChatHandler`'s `streamIdleMs` default (index.cjs passes none).
