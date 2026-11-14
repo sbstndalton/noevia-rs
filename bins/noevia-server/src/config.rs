@@ -111,6 +111,8 @@ pub struct Config {
     pub code: crate::code_routes::Settings,
     /// Browser tasks in the front (browser_routes.rs, `NOEVIA_RUST_BROWSER=1`).
     pub browser: crate::browser_routes::Settings,
+    /// The Offline Wikipedia tools in the front (kiwix_tools.rs, `NOEVIA_RUST_KIWIX_TOOLS=1`).
+    pub kiwix: crate::kiwix_tools::Settings,
     /// NOEVIA_START_ID: the id the web supervisor makes for this container start (32 lowercase
     /// hex) and hands Node too, which writes it into a running reply's partial file
     /// (`running: { start }`, core chat-partial.cjs; sbstndalton/noevia#1071). A partial whose
@@ -485,6 +487,7 @@ impl Config {
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,
             code: crate::code_routes::Settings::from_lookup(&get),
             browser: crate::browser_routes::Settings::from_lookup(&get),
+            kiwix: crate::kiwix_tools::Settings::from_lookup(&get),
             start_id,
             rust_chatgpt_status,
             #[cfg(feature = "rust-chatgpt-status")]

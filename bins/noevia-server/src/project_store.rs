@@ -786,6 +786,22 @@ pub fn router_with_app(
             }),
         );
     }
+    // Track R5: the chat's Offline Wikipedia tools (kiwix_tools.rs), behind NOEVIA_RUST_KIWIX_TOOLS, same secret.
+    {
+        let (store, app) = (store.clone(), app.clone());
+        router = router.route(
+            "/v1/kiwix/tool",
+            post(move |headers: HeaderMap, raw: Bytes| {
+                let (store, app) = (store.clone(), app.clone());
+                async move {
+                    if !authorised(&store, &headers) {
+                        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+                    }
+                    crate::kiwix_tools::internal_op(app, &raw).await
+                }
+            }),
+        );
+    }
     // `rust-chat-mirror-v1`: Node's triggers for the chat mirror schedule (chat_mirror.rs), same secret.
     for op in ["schedule", "touch"] {
         let (store, app) = (store.clone(), app.clone());

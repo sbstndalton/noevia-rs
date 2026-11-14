@@ -15,6 +15,7 @@ pub mod autotune_runner;
 pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
 pub mod browser_routes;
+pub mod kiwix_tools;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
