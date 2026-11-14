@@ -415,10 +415,12 @@ fn has_collection(block: &str, attributes: bool) -> bool {
     false
 }
 
+/// The first `<[p:]getetag>`'s text, XML references decoded in one pass: `&quot;` as one server
+/// writes the quotes, `&#34;` as another (an XML encoder that writes numeric references) does.
 fn etag_text(block: &str) -> String {
     dav_parse::element_texts(block, "getetag", 1)
         .first()
-        .map(|t| t.trim().replace("&quot;", "\"").replace("&amp;", "&"))
+        .map(|t| dav_parse::decode_xml_entities(t.trim()))
         .unwrap_or_default()
 }
 
@@ -936,6 +938,38 @@ mod tests {
         assert_eq!(
             delete_file(&dav(), "a.md", &mut t).unwrap_err().message,
             "storage returned no file state"
+        );
+    }
+
+    #[test]
+    fn an_etag_written_with_numeric_references_reads_as_the_header_etag() {
+        let numeric = FILE.replace("&quot;", "&#34;");
+        let hex = FILE.replace("&quot;", "&#x22;");
+        for body in [FILE, numeric.as_str(), hex.as_str()] {
+            let mut t = Fake::new(vec![Ok((207, body)), Ok((204, ""))]);
+            assert_eq!(
+                file_version(&dav(), "a.md", &mut t).unwrap(),
+                Version::Present("\"e9\"".into()),
+                "{body}"
+            );
+            let mut t = Fake::new(vec![Ok((207, body)), Ok((204, ""))]);
+            assert!(!delete_file(&dav(), "a.md", &mut t).unwrap());
+            assert_eq!(t.header(1, "If-Match").as_deref(), Some("\"e9\""), "{body}");
+        }
+        // A collection's ETag too: the sweep's If-Match is the quoted value, not its escape.
+        let body = listing(&[], "&#34;d1&#34;");
+        let mut t = Fake::new(vec![Ok((207, &body)), Ok((204, ""))]);
+        assert_eq!(
+            remove_empty_folder(&dav(), "noevia projects/p", &mut t).unwrap(),
+            (true, "")
+        );
+        assert_eq!(t.header(1, "If-Match").as_deref(), Some("\"d1\""));
+        // Decoded once: an escaped reference stays one.
+        let body = FILE.replace("&quot;e9&quot;", "&amp;#34;e9&amp;#34;");
+        let mut t = Fake::new(vec![Ok((207, &body))]);
+        assert_eq!(
+            file_version(&dav(), "a.md", &mut t).unwrap(),
+            Version::Present("&#34;e9&#34;".into())
         );
     }
 
