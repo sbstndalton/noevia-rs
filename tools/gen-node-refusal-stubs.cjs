@@ -245,7 +245,9 @@ function methodsNear(hit) {
   const i = Number(hit.slice(at + 1)) - 1;
   if (!ls) return null;
   const near = ls[i] || '';
-  if (/method\s*!==?\s*['"]/.test(near) || /['"][A-Z]+['"]\s*!==?\s*(?:req\.)?method/.test(near)) return null;
+  // Council p12: a negated list (`!['GET', 'HEAD'].includes(req.method)`, routes/models.cjs) tests the other methods.
+  if (/method\s*!==?\s*['"]/.test(near) || /['"][A-Z]+['"]\s*!==?\s*(?:req\.)?method/.test(near)
+    || /!\s*\[[^\]]*\]\.includes\((?:req\.)?method\)/.test(near)) return null;
   const named = new Set();
   for (const m of near.matchAll(/method\s*===?\s*['"]([A-Z]+)['"]/g)) named.add(m[1]);
   for (const m of near.matchAll(/['"]([A-Z]+)['"]\s*===?\s*(?:req\.)?method\b/g)) named.add(m[1]);

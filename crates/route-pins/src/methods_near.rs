@@ -10,6 +10,9 @@
 //! Cargo.lock stays unchanged:
 //! - negation 1: `/method\s*!==?\s*['"]/`
 //! - negation 2: `/['"][A-Z]+['"]\s*!==?\s*(?:req\.)?method/`
+//! - negation 3 (council p12, in the recorder too): `/!\s*\[[^\]]*\]\.includes\((?:req\.)?method\)/`, a negated
+//!   list (`!['GET', 'HEAD'].includes(req.method)` applies to the *other* methods; reading it as naming GET and HEAD
+//!   could drop a real handler, the unsafe direction)
 //! - named 1: `/method\s*===?\s*['"]([A-Z]+)['"]/g`
 //! - named 2: `/['"]([A-Z]+)['"]\s*===?\s*(?:req\.)?method\b/g`
 //! - list: `/\[([^\]]*)\]\.includes\((?:req\.)?method\)/g`, then `/['"]([A-Z]+)['"]/g` inside the brackets.
@@ -92,6 +95,17 @@ fn quoted_compare_method(s: &[u8], i: usize, negated: bool) -> Option<(usize, St
     Some((j, name))
 }
 
+/// `\[[^\]]*\]\.includes\((?:req\.)?method\)` from `i` (a `[` there); the end and the bracket's inner bytes.
+fn includes_list(s: &[u8], i: usize) -> Option<(usize, Vec<u8>)> {
+    if at(s, i) != Some(b'[') {
+        return None;
+    }
+    let close = i + 1 + s.get(i + 1..)?.iter().position(|b| *b == b']')?;
+    let j = lit(s, close + 1, b".includes(")?;
+    let j = lit(s, req_method(s, j)?, b")")?;
+    Some((j, s.get(i + 1..close)?.to_vec()))
+}
+
 /// Every match of `try_at` in `s`, JavaScript `matchAll` style: leftmost first, the next search from the match's end
 /// (one past the start for an empty match, which none of these patterns can give).
 fn match_all<T>(s: &[u8], try_at: impl Fn(&[u8], usize) -> Option<(usize, T)>) -> Vec<T> {
@@ -113,7 +127,9 @@ fn match_all<T>(s: &[u8], try_at: impl Fn(&[u8], usize) -> Option<(usize, T)>) -
 pub fn negated(line: &str) -> bool {
     let s = line.as_bytes();
     (0..s.len()).any(|i| {
-        method_compare_quote(s, i, true).is_some() || quoted_compare_method(s, i, true).is_some()
+        method_compare_quote(s, i, true).is_some()
+            || quoted_compare_method(s, i, true).is_some()
+            || (at(s, i) == Some(b'!') && includes_list(s, skip_space(s, i + 1)).is_some())
     })
 }
 
@@ -134,15 +150,7 @@ pub fn named(line: &str) -> BTreeSet<String> {
         (!at(s, j).is_some_and(word)).then_some((j, name))
     }));
     // list: `[...]` (no `]` inside) directly followed by `.includes(` method `)`.
-    for inner in match_all(s, |s, i| {
-        if at(s, i) != Some(b'[') {
-            return None;
-        }
-        let close = i + 1 + s.get(i + 1..)?.iter().position(|b| *b == b']')?;
-        let j = lit(s, close + 1, b".includes(")?;
-        let j = lit(s, req_method(s, j)?, b")")?;
-        Some((j, s.get(i + 1..close)?.to_vec()))
-    }) {
+    for inner in match_all(s, includes_list) {
         out.extend(match_all(&inner, |s, i| {
             at(s, i).filter(|b| quote(*b))?;
             let (j, name) = caps(s, i + 1)?;

@@ -59,6 +59,11 @@ fn a_negation_anywhere_on_the_line_names_nothing() {
         "if ('GET' !== req.method)",
         "if (\"HEAD\"!=method)",
         "if (['GET'].includes(req.method) && req.method !== 'HEAD')",
+        // Negation 3 (council p12): a negated list tests the other methods.
+        "if (!['GET', 'POST', 'PUT'].includes(req.method)) return false;",
+        "if (! [\"GET\"].includes(method)) x();",
+        // routes/models.cjs:704 at core 538df471: POST-only protection, then a negated list.
+        "const protectedAction = req.method === 'POST' && ['/api/models/prune-missing', '/api/models/delete'].includes(ctx.path) || ctx.path.startsWith('/api/model-manager/') && !['GET', 'HEAD', 'OPTIONS'].includes(req.method);",
     ] {
         assert_eq!(near(line), None, "{line}");
     }
@@ -94,7 +99,8 @@ fn an_unknown_method_beside_a_known_one_keeps_the_known_one() {
 
 #[test]
 fn names_on_the_left_need_the_bare_word_or_req_dot() {
-    // `(?:req\.)?method`: `ctx.method` ends in `method` too, and a JS regex finds the bare word inside it.
+    // `(?:req\.)?method` right after the comparison: `ctx.method` there is neither, so nothing on the right; on the
+    // left the bare `method` inside `ctx.method` matches (named 1 has no `\b` before it).
     assert_eq!(near("if ('PUT' === ctx.method)"), None);
     assert_eq!(near("if (ctx.method === 'PUT')"), Some(vec!["PUT"]));
     // The left-hand form has no `\b` before `method`: `xmethod === 'GET'` names GET, as in the recorder.
