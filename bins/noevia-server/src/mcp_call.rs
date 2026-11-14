@@ -182,6 +182,20 @@ pub trait Backend: Send + Sync {
     ) -> Option<String>;
     /// Whether a directory server's address is still a public host.
     fn url_public(&self, url: &str) -> impl Future<Output = bool> + Send;
+    /// Track R14: the in-app server's result for one of its project write tools, answered by this
+    /// front (inapp_writes.rs, behind NOEVIA_RUST_INAPP_WRITES), or `None` for a call to the
+    /// server as before. `uid`/`pid`/`target` are what the call's token carries.
+    fn inapp_write(
+        &self,
+        _uid: &str,
+        _pid: Option<&str>,
+        _name: &str,
+        _arguments: &JValue,
+        _target: Option<&str>,
+        _write: bool,
+    ) -> impl Future<Output = Option<JValue>> + Send {
+        std::future::ready(None)
+    }
     /// Track R13: the in-app server's result answered by this front for `name` (the token's
     /// `uid`/`pid`), or `None` for a call to the server as before (project_file_read.rs
     /// `inapp_answer`, behind NOEVIA_RUST_INAPP_READS).
@@ -309,8 +323,9 @@ pub async fn execute<B: Backend>(b: &B, limits: &Mutex<RateLimit>, req: &Request
     }
     let user = req.user.as_str();
     let mut session: Option<Session> = None;
-    // The in-process server's call identity (the token's uid and pid), for the front's own answer.
-    let mut inapp: Option<(String, Option<String>)> = None;
+    // Track R13/R14: the in-process server's call identity (the token's uid, pid and edit pin),
+    // for the front's own answer (in-app writes, then reads; the two tool sets never overlap).
+    let mut inapp: Option<(String, Option<String>, Option<String>)> = None;
     let headers: Vec<(String, String)> = match server.auth.as_str() {
         "personal" => {
             let needs = || {
@@ -370,7 +385,7 @@ pub async fn execute<B: Backend>(b: &B, limits: &Mutex<RateLimit>, req: &Request
                 .filter(|t| req.write && !t.is_empty());
             let uid = Some(workspace).filter(|u| !u.is_empty());
             let pid = req.project.as_deref().filter(|p| !p.is_empty());
-            inapp = uid.map(|u| (u.to_string(), pid.map(str::to_string)));
+            inapp = uid.map(|u| (u.to_string(), pid.map(str::to_string), target.map(str::to_string)));
             match b.internal_token(uid, pid, req.write, target) {
                 Some(token) => bearer(&token),
                 None => return Answer::plain(format!("ERROR calling {name}: {UNAVAILABLE}")),
@@ -401,10 +416,23 @@ pub async fn execute<B: Backend>(b: &B, limits: &Mutex<RateLimit>, req: &Request
         return Answer::plain(tool_rate_limit::cooling_down_text(name, cooling));
     }
     let native = match &inapp {
-        Some((uid, pid)) => {
-            b.inapp_read(uid, pid.as_deref(), name, &req.arguments)
-                .await
-        }
+        Some((uid, pid, target)) => match b
+            .inapp_write(
+                uid,
+                pid.as_deref(),
+                name,
+                &req.arguments,
+                target.as_deref(),
+                req.write,
+            )
+            .await
+        {
+            Some(answer) => Some(answer),
+            None => {
+                b.inapp_read(uid, pid.as_deref(), name, &req.arguments)
+                    .await
+            }
+        },
         None => None,
     };
     let mut outcome = match native {
@@ -555,6 +583,53 @@ struct AppBackend {
 impl Backend for AppBackend {
     fn now_ms(&self) -> f64 {
         crate::identity::now_ms() as f64
+    }
+
+    async fn inapp_write(
+        &self,
+        uid: &str,
+        pid: Option<&str>,
+        name: &str,
+        arguments: &JValue,
+        target: Option<&str>,
+        write: bool,
+    ) -> Option<JValue> {
+        if !crate::inapp_writes::enabled()
+            || !write
+            || !edit_target_lookup::inapp::TOOLS.contains(&name)
+        {
+            return None;
+        }
+        let app = Arc::clone(&self.app);
+        let (uid, pid, name, arguments, target) = (
+            uid.to_string(),
+            pid.map(str::to_string),
+            name.to_string(),
+            arguments.clone(),
+            target.map(str::to_string),
+        );
+        match tokio::task::spawn_blocking(move || {
+            crate::inapp_writes::answer(
+                &app,
+                &uid,
+                pid.as_deref(),
+                &name,
+                &arguments,
+                target.as_deref(),
+                write,
+            )
+        })
+        .await
+        {
+            Ok(answer) => answer,
+            // The write may have begun: never let core's server write again (inapp_writes.rs).
+            Err(_) => {
+                eprintln!("noevia-server: an in-app project write task failed; answered as outcome unknown");
+                Some(edit_target_lookup::inapp::error_result(
+                "noevia could not finish this write, so it cannot tell whether it was saved. Outcome unknown: sync this project's Sources to check whether it was saved before trying again.",
+                ))
+            }
+        }
     }
 
     async fn inapp_read(

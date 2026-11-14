@@ -20,6 +20,9 @@ pub mod calibration_routes;
 pub mod chat_activity;
 pub mod chat_admission;
 pub mod chat_edge;
+// Track R14: core's toolbox chat facts built here (NOEVIA_RUST_CHAT_FACTS); part of the MCP discovery.
+#[cfg(feature = "rust-storage-reads")]
+pub mod chat_facts_native;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
 pub mod chat_native;
@@ -51,6 +54,8 @@ pub mod health;
 pub mod health_routes;
 pub mod identity;
 pub mod idle_unload_read;
+#[cfg(feature = "rust-storage-reads")]
+pub mod inapp_writes;
 pub mod inference_machines;
 pub mod kiwix_tools;
 pub mod legacy_proxy;
@@ -99,6 +104,7 @@ pub mod offsite_settings;
 pub mod offsite_store;
 pub mod plugin_directory_routes;
 pub mod preset_read_routes;
+pub mod project_catalogue;
 pub mod project_config_routes;
 // Track R13: the chat's read_project_file in the front (NOEVIA_RUST_READ_FILE).
 pub mod project_file_read;
