@@ -6,10 +6,12 @@
 //! Covered: a free-chat turn (no project, so the system message is the account, time and memory
 //! parts) whose chat has no confirmed frame in the free list, whose history needs no toolbox
 //! catalogue to replay (or the caller has the catalogue), on the local default provider (core
-//! hands off nothing else). Everything else is a [`Verdict::Skip`] with its reason, read from core's
-//! frame and the request, before anything is built: a project turn (`turn.projectId`, which is
-//! also a free chat's attachments project), a compaction, instruction skills, a confirmed frame
-//! (its block, and the brain block behind its flag, are not built here).
+//! hands off nothing else). A confirmed chat frame in the free list gives its block when chat
+//! framing is on ([`crate::frame::frame_part`]). Everything else is a [`Verdict::Skip`] with its
+//! reason, read from core's frame and the request, before anything is built: a project turn
+//! (`turn.projectId`, which is also a free chat's attachments project), a compaction, instruction
+//! skills, a stored frame when the flags are unknown or the brain context may be on (its block is
+//! not ported).
 //!
 //! The clock is core's `startedAt` (the time part states only the day, so the two differ only for a
 //! turn that started within milliseconds of midnight in the zone); the zone is the caller's
@@ -23,7 +25,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use js_json::{wtf16, JValue};
 
 use crate::frame::{self, FrameTurn, Lookup};
-use crate::{account, js, memory, prepare, PrepareError, Turn};
+use crate::{account, js, memory, prepare, PartKind, PrepareError, Turn};
 
 /// What the shadow is built from.
 pub struct ShadowTurn<'a> {
@@ -40,6 +42,11 @@ pub struct ShadowTurn<'a> {
     pub free_chats: Option<&'a JValue>,
     /// `serverTimeZone()`.
     pub time_zone: &'a str,
+    /// `features.enabled('chatFraming')` and `brainContext.enabled()` (`brainContext` and
+    /// `chatFraming`), `None` when the caller could not read them: a turn whose chat has a stored
+    /// frame is then skipped.
+    pub chat_framing: Option<bool>,
+    pub brain_context: Option<bool>,
     /// `HISTORY_CAP`.
     pub history_cap: usize,
     /// The history replay's `knownTool` and `carryOrphanTool` over the server's toolboxes, when the
@@ -95,49 +102,52 @@ impl Verdict {
     }
 }
 
-/// Why a turn is not covered, read from core's frame and the request (`None`: covered).
-fn uncovered(body: &JValue, frame: &JValue, free_chats: Option<&JValue>) -> Option<&'static str> {
+/// Why a turn is not covered, read from core's frame and the request, or the chat frame block it
+/// carries (`Ok(None)`: none).
+fn covered(t: &ShadowTurn<'_>) -> Result<Option<(PartKind, String)>, &'static str> {
+    let (body, frame) = (t.body, t.frame);
     let turn = frame.get("turn");
     if !turn.is_object() || !matches!(frame.get("messages"), JValue::Arr(_)) {
-        return Some("frame");
+        return Err("frame");
     }
     if !turn.get("projectId").is_nullish() || body.get("projectId").truthy() {
-        return Some("project");
+        return Err("project");
     }
     if turn.get("compactOnly") == &JValue::Bool(true) || body.get("compactOnly").truthy() {
-        return Some("compact");
+        return Err("compact");
     }
     if !frame.get("skills").is_nullish() {
-        return Some("skills");
+        return Err("skills");
     }
     let space = body.get("spaceId");
     if space.as_str().is_some_and(|s| s.starts_with("diary")) {
-        return Some("diary");
+        return Err("diary");
     }
     let Some(message) = body.get("message").as_str() else {
-        return Some("message");
+        return Err("message");
     };
     if turn.get("message").as_str() != Some(message) {
-        return Some("message");
+        return Err("message");
     }
-    // chat.cjs reads the stored frame with the flag; one that is there (confirmed) gives the frame
-    // block when the flag is on, and the brain block behind its own flag: not built here.
+    // chat.cjs reads the stored frame only with chat framing on; a confirmed one gives the frame
+    // block, and the brain block when brainContext is on too (not built here).
     let chat_id = body.get("chatId").as_str();
     let stored = frame::chat_frame(&FrameTurn {
         compact_only: false,
         diary_space: space.as_str() == Some("diary"),
-        lookup: free_chats.map(|free| Lookup {
-            enabled: true,
+        lookup: t.free_chats.map(|free| Lookup {
+            enabled: t.chat_framing != Some(false),
             chat_id,
             project_id: None,
             project: &JValue::Null,
             free_chats: free,
         }),
     });
-    if stored.is_some() {
-        return Some("frame");
+    match (stored, t.chat_framing, t.brain_context) {
+        (None, _, _) => Ok(None),
+        (Some(f), Some(true), Some(false)) => Ok(frame::frame_part(Some(&f))),
+        _ => Err("frame"),
     }
-    None
 }
 
 /// The first UTF-16 unit at which `a` and `b` differ (the shorter one's length when it is a prefix).
@@ -151,9 +161,10 @@ fn first_difference(a: &str, b: &str) -> usize {
 
 /// Builds the messages natively and compares them with core's frame.
 pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
-    if let Some(reason) = uncovered(t.body, t.frame, t.free_chats) {
-        return Verdict::Skip(reason);
-    }
+    let trailing: Vec<(PartKind, String)> = match covered(t) {
+        Ok(part) => part.into_iter().collect(),
+        Err(reason) => return Verdict::Skip(reason),
+    };
     let Some(now) = t.frame.get("startedAt").as_num() else {
         return Verdict::Skip("frame");
     };
@@ -179,7 +190,7 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
         carry_orphan_tool,
         known_tool,
         project: None,
-        trailing: &[],
+        trailing: &trailing,
     };
     let prepared = match prepare(&turn) {
         Ok(p) => p,
