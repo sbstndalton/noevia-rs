@@ -8,6 +8,8 @@ DELETE /api/admin/features/{name}
 DELETE /api/admin/mcp-directory
 DELETE /api/admin/mcp-directory/custom
 DELETE /api/admin/mcp-directory/custom/preview
+DELETE /api/admin/mcp-directory/{*}
+DELETE /api/admin/mcp-directory/{*}/keys
 DELETE /api/admin/mcp-directory/{id}/oauth-client
 DELETE /api/admin/offsite-backup
 DELETE /api/admin/offsite-backup/copy
@@ -46,6 +48,7 @@ DELETE /api/diary/workspace-import
 DELETE /api/diary/workspace-trash
 DELETE /api/features
 DELETE /api/freechats/{chatId}
+DELETE /api/mcp-keys/{*}
 DELETE /api/mcp-oauth/{id}
 DELETE /api/models/autotune/cancel
 DELETE /api/models/autotune/clear
@@ -57,7 +60,9 @@ DELETE /api/models/calibration/cancel
 DELETE /api/models/machines
 DELETE /api/models/reranker
 DELETE /api/plugins/directory
+DELETE /api/profile/app-passwords/{*}
 DELETE /api/profile/appearance
+DELETE /api/profile/diary-connectors/{*}
 DELETE /api/projects/{id}/assets/{assetId}
 DELETE /api/projects/{id}/files
 DELETE /api/projects/{projectId}
@@ -99,6 +104,8 @@ GET /api/admin/features/{name}
 GET /api/admin/mcp-directory
 GET /api/admin/mcp-directory/custom
 GET /api/admin/mcp-directory/custom/preview
+GET /api/admin/mcp-directory/{*}
+GET /api/admin/mcp-directory/{*}/keys
 GET /api/admin/mcp-directory/{id}/oauth-client
 GET /api/admin/offsite-backup
 GET /api/admin/offsite-backup/copy
@@ -187,6 +194,7 @@ GET /api/projects/{id}/documents/original
 GET /api/projects/{id}/documents/pages
 GET /api/projects/{id}/source-jobs/{jobId}
 GET /api/projects/{id}/sources/text
+GET /api/projects/{id}/{*}/original
 GET /api/projects/{projectId}/browser
 GET /api/projects/{projectId}/browser/{task}
 GET /api/projects/{projectId}/chats
@@ -236,6 +244,8 @@ HEAD /api/admin/features/{name}
 HEAD /api/admin/mcp-directory
 HEAD /api/admin/mcp-directory/custom
 HEAD /api/admin/mcp-directory/custom/preview
+HEAD /api/admin/mcp-directory/{*}
+HEAD /api/admin/mcp-directory/{*}/keys
 HEAD /api/admin/mcp-directory/{id}/oauth-client
 HEAD /api/admin/offsite-backup
 HEAD /api/admin/offsite-backup/copy
@@ -313,6 +323,8 @@ OPTIONS /api/admin/features/{name}
 OPTIONS /api/admin/mcp-directory
 OPTIONS /api/admin/mcp-directory/custom
 OPTIONS /api/admin/mcp-directory/custom/preview
+OPTIONS /api/admin/mcp-directory/{*}
+OPTIONS /api/admin/mcp-directory/{*}/keys
 OPTIONS /api/admin/mcp-directory/{id}/oauth-client
 OPTIONS /api/admin/offsite-backup
 OPTIONS /api/admin/offsite-backup/copy
@@ -389,6 +401,8 @@ PATCH /api/admin/features/{name}
 PATCH /api/admin/mcp-directory
 PATCH /api/admin/mcp-directory/custom
 PATCH /api/admin/mcp-directory/custom/preview
+PATCH /api/admin/mcp-directory/{*}
+PATCH /api/admin/mcp-directory/{*}/keys
 PATCH /api/admin/mcp-directory/{id}/oauth-client
 PATCH /api/admin/offsite-backup
 PATCH /api/admin/offsite-backup/copy
@@ -468,6 +482,8 @@ POST /api/admin/invitations
 POST /api/admin/mcp-directory
 POST /api/admin/mcp-directory/custom
 POST /api/admin/mcp-directory/custom/preview
+POST /api/admin/mcp-directory/{*}
+POST /api/admin/mcp-directory/{*}/keys
 POST /api/admin/mcp-directory/{id}/oauth-client
 POST /api/admin/offsite-backup
 POST /api/admin/offsite-backup/copy
@@ -532,7 +548,6 @@ POST /api/integrations/storage/nextcloud/poll
 POST /api/integrations/storage/nextcloud/start
 POST /api/integrations/storage/test
 POST /api/mcp-oauth/{id}/connect
-POST /api/models/autotune
 POST /api/models/autotune/cancel
 POST /api/models/autotune/clear
 POST /api/models/autotune/resume
@@ -602,6 +617,8 @@ PUT /api/admin/features/{name}
 PUT /api/admin/mcp-directory
 PUT /api/admin/mcp-directory/custom
 PUT /api/admin/mcp-directory/custom/preview
+PUT /api/admin/mcp-directory/{*}
+PUT /api/admin/mcp-directory/{*}/keys
 PUT /api/admin/mcp-directory/{id}/oauth-client
 PUT /api/admin/offsite-backup
 PUT /api/admin/offsite-backup/copy
@@ -642,6 +659,7 @@ PUT /api/diary/workspace-import
 PUT /api/diary/workspace-trash
 PUT /api/features
 PUT /api/integrations/storage
+PUT /api/mcp-keys/{*}
 PUT /api/models/autotune/cancel
 PUT /api/models/autotune/clear
 PUT /api/models/autotune/resume

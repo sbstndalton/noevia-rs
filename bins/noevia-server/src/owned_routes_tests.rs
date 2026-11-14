@@ -3,15 +3,21 @@
 use super::*;
 use crate::routes::{Owner, ROUTES};
 
+/// The default-feature build's manifest, as route-pins pins it. Rewrite it with
+/// `cargo run -p noevia-server -- --owned-routes > crates/route-pins/fixtures/front-owned-routes.txt` when a route
+/// moves (and re-run the route-pins golden).
+const PINNED: &str = include_str!("../../../crates/route-pins/fixtures/front-owned-routes.txt");
+
 #[test]
 fn fill_replaces_parameters_wildcards_and_keeps_literals() {
     assert_eq!(
         fill("/api/admin/users/{id}", "qa-1"),
         "/api/admin/users/qa-1"
     );
+    assert_eq!(fill("/api/models/{*}", "qa-1"), "/api/models/qa-seg");
     assert_eq!(
-        fill("/api/models/{*}", "qa-1"),
-        "/api/models/qa-seg/qa-rest"
+        fill("/api/projects/{id}/{*}/original", "qa-1"),
+        "/api/projects/qa-1/uploads/original"
     );
     assert_eq!(
         fill("/api/x/{a}/y/{*?}", FILLS[1]),
@@ -45,7 +51,9 @@ fn the_uuid_filling_has_the_uuid_shape_core_checks() {
 #[test]
 fn every_listed_pair_is_a_rust_row_method_the_front_dispatches() {
     let m = manifest();
-    assert!(m.len() > 100, "only {} owned pairs", m.len());
+    // sbstndalton/noevia#2725 item 3: the exact count is the pinned manifest's (see
+    // the_manifest_is_the_pinned_fixture for the lines).
+    assert_eq!(m.len(), PINNED.lines().count());
     for &(method, pattern) in &m {
         let row = ROUTES
             .iter()
@@ -150,4 +158,118 @@ fn normalised_manifest_covers_every_rust_row_core_lists_for_admin_users() {
         .collect();
     assert!(norm.contains("DELETE /api/admin/users/{}"));
     assert!(norm.len() <= m.len());
+}
+
+#[test]
+fn the_manifest_is_the_pinned_fixture() {
+    let mut out = Vec::new();
+    write(&mut out).unwrap();
+    let text = String::from_utf8(out).unwrap();
+    let want: BTreeSet<&str> = PINNED.lines().collect();
+    let got: BTreeSet<&str> = text.lines().collect();
+    let extra: Vec<&&str> = got.difference(&want).collect();
+    let gone: Vec<&&str> = want.difference(&got).collect();
+    assert!(
+        extra.is_empty() && gone.is_empty(),
+        "manifest moved; new {extra:?}, gone {gone:?} (rewrite the fixture, see PINNED)"
+    );
+    assert_eq!(text, PINNED);
+}
+
+#[test]
+fn wildcard_rows_are_filled_with_one_segment_and_listed() {
+    // council p7: `{*}` is one segment in routes::pattern_matches, so the old two-segment filling listed none.
+    let m = manifest();
+    for pair in [
+        ("GET", "/api/projects/{id}/{*}/original"),
+        ("DELETE", "/api/mcp-keys/{*}"),
+        ("PUT", "/api/mcp-keys/{*}"),
+        ("GET", "/api/admin/mcp-directory/{*}"),
+        ("GET", "/api/admin/mcp-directory/{*}/keys"),
+    ] {
+        assert!(m.contains(&pair), "{pair:?}");
+    }
+    // The table's methods still bound a wildcard row.
+    assert!(!m.contains(&("GET", "/api/mcp-keys/{*}")));
+    // Node's wildcard rows stay out.
+    assert!(!m.iter().any(|&(_, p)| p == "/api/models/{*}"));
+    for route in ROUTES.iter().filter(|r| r.path.contains("{*}") && !r.catch_all) {
+        let path = fill(route.path, FILLS[0]);
+        assert_eq!(
+            path.split('/').count(),
+            route.path.split('/').count(),
+            "{}",
+            route.path
+        );
+    }
+}
+
+#[test]
+fn handler_forwards_are_left_out() {
+    let m = manifest();
+    for &(method, pattern, why) in HANDLER_FORWARDS {
+        assert!(!why.is_empty());
+        assert!(!m.contains(&(method, pattern)), "{method} {pattern}");
+        // It is a pair the route table does give a native handler (else the entry is stale).
+        assert!(answers(method, &fill(pattern, FILLS[0])), "{method} {pattern}");
+    }
+    assert!(m.contains(&("GET", "/api/models/autotune")));
+}
+
+/// The handlers that pass a request on to Node unless it has a given method, with the methods the manifest may list
+/// for their rows (a method the row's table entry gives to a different handler, such as the provider registry's,
+/// counts as listed). sbstndalton/noevia#2725 item 4.
+const METHOD_GUARDS: &[(&str, &str, &[&str])] = &[
+    ("autotune_read_routes.rs", "/api/models/autotune", &["GET"]),
+    ("chatgpt_status_routes.rs", "/api/providers/chatgpt", &["DELETE", "GET"]),
+    ("connector_routes.rs", "/api/connectors", &["GET"]),
+    ("export_routes.rs", "/api/export/conversations", &["GET"]),
+    ("health_routes.rs", "/api/health", &["GET"]),
+    ("idle_unload_read.rs", "/api/models/idle-unload", &["GET"]),
+    ("model_assignments.rs", "/api/models/assignments", &["GET"]),
+    ("model_manager_scan.rs", "/api/model-manager/models", &["GET"]),
+    ("model_routes.rs", "/api/models/capabilities", &["GET"]),
+    ("model_routes.rs", "/api/models/hardware", &["GET"]),
+    ("provider_test_routes.rs", "/api/providers/test", &["DELETE", "POST", "PUT"]),
+    ("public_pages.rs", "/about", &["GET", "HEAD"]),
+    ("routing_default_routes.rs", "/api/routing-default", &["GET"]),
+    ("stats_routes.rs", "/api/stats", &["GET"]),
+    ("storage_integration_routes.rs", "/api/integrations/storage", &["GET", "PUT"]),
+    ("tool_approval_routes.rs", "/api/tool-approvals/{approvalId}", &["POST"]),
+];
+
+#[test]
+fn handlers_that_forward_by_method() {
+    // Every source file that hands requests to Node and tests a method is in METHOD_GUARDS: a new guard of that kind
+    // fails here until its row is checked against the manifest.
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut found = BTreeSet::new();
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if !name.ends_with(".rs") || name.ends_with("_tests.rs") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        if text.contains("app.proxy.forward")
+            && (text.contains("method() != Method") || text.contains("req.method() == Method::"))
+        {
+            found.insert(name);
+        }
+    }
+    let pinned: BTreeSet<String> = METHOD_GUARDS.iter().map(|g| g.0.to_string()).collect();
+    assert_eq!(found, pinned);
+    let m = manifest();
+    for &(file, pattern, methods) in METHOD_GUARDS {
+        let listed: Vec<&str> = METHODS
+            .iter()
+            .copied()
+            .filter(|meth| m.contains(&(*meth, pattern)))
+            .collect();
+        let mut want = methods.to_vec();
+        want.sort_unstable();
+        let mut got = listed.clone();
+        got.sort_unstable();
+        assert_eq!(got, want, "{file}: {pattern}");
+    }
 }
