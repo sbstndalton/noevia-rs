@@ -1,0 +1,16 @@
+[package]
+name = "model-pull"
+version = "0.1.0"
+description = "The model pull and the MTP artifact check noevia-core still answers, as pure functions (track R11): POST /api/models/pull (the body, the model name, the model manager's request and the answer) and GET /api/models/mtp-artifact (the variant's files, the public repository revision, the bounded GGUF tensor-directory inspection and its cache), over a host the front implements, replayed on recorded Node output."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+# The JS string helpers (white space, StringToNumber) the front already builds.
+chat-turn = { path = "../chat-turn" }
