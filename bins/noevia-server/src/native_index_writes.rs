@@ -301,7 +301,11 @@ impl IndexWrites {
         }
         let Some(data_dir) = get("UI_DATA_DIR").filter(|s| !s.is_empty()) else {
             eprintln!("noevia-server: native index writes have no data directory; every write defers to Node");
-            return Ok(IndexWrites { mode, indexer: None, http: None });
+            return Ok(IndexWrites {
+                mode,
+                indexer: None,
+                http: None,
+            });
         };
         let inference = get("INFERENCE_BASE_URL")
             .filter(|s| !s.is_empty())
@@ -409,7 +413,10 @@ pub async fn store_answer(app: Arc<crate::App>, op: &'static str, raw: &[u8]) ->
         Ok(Ok(answer)) => (200, answer.to_string()),
         Ok(Err(_)) => (200, json!({ "ok": false, "reason": "failed" }).to_string()),
         // Never a deferral: the run goes on and Node must not write the same file beside it.
-        Err(_) => (200, json!({ "ok": false, "reason": "deadline" }).to_string()),
+        Err(_) => (
+            200,
+            json!({ "ok": false, "reason": "deadline" }).to_string(),
+        ),
     }
 }
 
@@ -443,8 +450,9 @@ mod tests {
     fn the_outbox_names_the_generation_and_any_tombstone() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(outbox_facts(dir.path(), "qa-p"), Some((0, false)));
-        let db = server_store::rusqlite::Connection::open(server_projects::outbox::path(dir.path()))
-            .unwrap();
+        let db =
+            server_store::rusqlite::Connection::open(server_projects::outbox::path(dir.path()))
+                .unwrap();
         db.execute_batch(
             "CREATE TABLE meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
              CREATE TABLE tombstones (project TEXT PRIMARY KEY, generation INTEGER NOT NULL, at INTEGER NOT NULL);
@@ -471,6 +479,8 @@ mod tests {
         assert!(a.ends_with(Path::new("rag").join("qa-p.db")), "{a:?}");
         assert!(b.ends_with(Path::new(SHADOW_DIR).join("qa-p.db")), "{b:?}");
         assert_eq!(a.parent().unwrap().parent(), b.parent().unwrap().parent());
-        assert!(live.index_path("../x", Some(user)).starts_with(dir.path().join(".refused")));
+        assert!(live
+            .index_path("../x", Some(user))
+            .starts_with(dir.path().join(".refused")));
     }
 }

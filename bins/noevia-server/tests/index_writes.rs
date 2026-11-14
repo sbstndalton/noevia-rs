@@ -176,7 +176,10 @@ async fn post(r: &Rig, op: &str, token: &str, body: &Value) -> (u16, Value) {
         .unwrap();
     let status = res.status().as_u16();
     let bytes = res.into_body().collect().await.unwrap().to_bytes();
-    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
 }
 
 /// A synthetic document of several chunk windows.
@@ -257,7 +260,13 @@ async fn on_indexes_tails_and_deletes_the_live_index() {
 
     // A short file is injected directly: one row, no embedding.
     let before = r.embeds.load(Ordering::SeqCst);
-    let (_, short) = post(&r, "file", TOKEN, &file_body("qa-short.md", "QA short note.")).await;
+    let (_, short) = post(
+        &r,
+        "file",
+        TOKEN,
+        &file_body("qa-short.md", "QA short note."),
+    )
+    .await;
     assert_eq!(
         short,
         json!({ "ok": true, "stored": 1, "embedded": 0, "direct": true })
@@ -294,7 +303,10 @@ async fn shadow_writes_only_the_side_copy() {
     let (_, out) = post(&r, "file", TOKEN, &file_body("qa.md", &document())).await;
     assert_eq!(out["ok"], json!(true), "{out}");
     assert!(r.shadow().is_file());
-    assert!(!r.live().exists(), "the live index is Node's while shadowing");
+    assert!(
+        !r.live().exists(),
+        "the live index is Node's while shadowing"
+    );
     assert_eq!(
         chunks(&r.shadow(), "qa.md"),
         out["stored"].as_i64().unwrap()
@@ -331,7 +343,8 @@ async fn a_tombstoned_project_or_a_disabled_account_gets_no_index() {
 async fn node_keeps_the_shared_index_and_the_shared_engine() {
     let r = rig("on", false, true).await;
     for user in [json!(null), json!("")] {
-        let body = json!({ "projectId": PROJECT, "fileName": "qa.md", "text": "x", "userId": user });
+        let body =
+            json!({ "projectId": PROJECT, "fileName": "qa.md", "text": "x", "userId": user });
         let (_, out) = post(&r, "file", TOKEN, &body).await;
         assert_eq!(out, json!({ "defer": "shared index" }));
     }
