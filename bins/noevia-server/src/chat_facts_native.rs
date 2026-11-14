@@ -18,10 +18,12 @@
 //! built from core's prefill measurements, which only the chat process has (prefill.cjs, fed by the chat
 //! stream). The facts built here carry an empty measurement set.
 //!
-//! Named differences: core reads its `kiwix` feature once at its start (a construction flag that needs a
-//! restart: `selected().value`, not the runtime `enabled`); this process reads the same value once, at
-//! the first build that can read the setting (a failed read is not kept: that build is not ready). A
-//! `KIWIX_URL` core cannot parse stops core's start; here it only means no Offline Wikipedia box.
+//! The `kiwix` flag is a construction flag (it needs a restart): core reads `selected().value` once at
+//! its start. This process takes that very value from core's feature registration (boot facts), so a
+//! setting changed since core's start shows nowhere until core restarts; between two registrations it
+//! keeps the last value read, and with no registration ever read (no core) it reads the setting's
+//! selected value at each build. Named difference: a `KIWIX_URL` core cannot parse stops core's start;
+//! here it only means no Offline Wikipedia box.
 //! `KIWIX_URL` and `CODE_REPOS` are this process's environment and filesystem, the same container as
 //! core's.
 //!
@@ -142,33 +144,47 @@ fn selected_value(app: &App, feature: server_features::Feature) -> Option<bool> 
     )
 }
 
+/// core's own `kiwix` construction value, as core registered it at its start (the feature context's
+/// boot facts, `restart[1]`; crates/server-account features.rs reads it the same way). `None` while no
+/// registration can be read.
+fn registered_kiwix(app: &App) -> Option<bool> {
+    let controller = app.feature_context.as_ref()?.controller();
+    let view = app.writes.writer().ok()?.read(|r| controller.view(r)).ok()?;
+    view.facts.restart.get(1).copied()
+}
+
 /// Whether the Offline Wikipedia box exists here: the `kiwix` construction value and a `KIWIX_URL`
-/// createKiwixTools accepts. `None`: the setting could not be read.
+/// createKiwixTools accepts. The value is core's registered one; between two registrations (a lease
+/// renewal) the last one read; with none read yet, the setting's selected value. `None`: nothing could
+/// be read.
 fn kiwix_box(app: &App) -> Option<bool> {
+    static LAST: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
     let url = std::env::var("KIWIX_URL").unwrap_or_default();
     if url.is_empty() || !kiwix_url_ok(&url) {
         return Some(false);
+    }
+    if let Some(v) = registered_kiwix(app) {
+        if let Ok(mut last) = LAST.lock() {
+            *last = Some(v);
+        }
+        return Some(v);
+    }
+    if let Some(v) = LAST.lock().ok().and_then(|l| *l) {
+        return Some(v);
     }
     selected_value(app, server_features::Feature::Kiwix)
 }
 
 /// The facts for this deployment now. `None` while MCP discovery is not configured here (the caller
-/// then has no catalogue either), or while the `kiwix` setting cannot be read (not ready: the caller
+/// then has no catalogue either), or while the `kiwix` value cannot be read (not ready: the caller
 /// answers "being prepared"; a later build reads it again).
 pub async fn facts(app: &Arc<App>) -> Option<Arc<JValue>> {
     let handle = crate::mcp_discovery_backend::handle(app)?.clone();
     let app = Arc::clone(app);
     tokio::task::spawn_blocking(move || {
-        // Read once, as core reads them once at its start; a failed read is not kept.
-        static KIWIX: OnceLock<bool> = OnceLock::new();
+        // CODE_REPOS read once, as core's code service parses it once at its start.
         static REPOS: OnceLock<bool> = OnceLock::new();
-        let kiwix = match KIWIX.get() {
-            Some(v) => *v,
-            None => {
-                let v = kiwix_box(&app)?;
-                *KIWIX.get_or_init(|| v)
-            }
-        };
+        let kiwix = kiwix_box(&app)?;
         let has_repositories = *REPOS
             .get_or_init(|| !code_harness::service::parse_repos(&app.config.code.repos).is_empty());
         let harness_enabled =
