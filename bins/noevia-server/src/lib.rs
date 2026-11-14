@@ -37,6 +37,7 @@ pub mod decision_settings_routes;
 pub mod delete_model;
 pub mod diary_backup;
 pub mod diary_routes;
+pub mod edit_target_native;
 pub mod embedding_background;
 pub mod export_routes;
 pub mod extraction;
@@ -49,6 +50,8 @@ pub mod identity;
 pub mod idle_unload_read;
 pub mod inference_machines;
 pub mod legacy_proxy;
+#[cfg(feature = "rust-storage-reads")]
+pub mod legacy_webdav;
 pub mod load_model;
 pub mod machine_service;
 #[cfg(feature = "rust-storage-reads")]
@@ -1042,8 +1045,20 @@ async fn handle(
         // for its change journal reader (chat_activity.rs).
         let api = whatwg.as_deref().unwrap_or(&path).starts_with("/api/");
         let activity = Arc::clone(&app.activity);
+        #[cfg(feature = "rust-storage-reads")]
+        let legacy = (!legacy_webdav::bearer(
+            req.headers()
+                .get(axum::http::header::AUTHORIZATION)
+                .map(|v| v.as_bytes()),
+        ))
+        .then(|| Arc::clone(&app));
         let _ = tokio::task::spawn_blocking(move || {
             let user = writes.upkeep_blocking(identity.authenticator(), &creds, now);
+            // Track R14: core's legacy WebDAV storage setup for this account (NOEVIA_RUST_LEGACY_WEBDAV).
+            #[cfg(feature = "rust-storage-reads")]
+            if let (Some(user), Some(app)) = (&user, &legacy) {
+                legacy_webdav::nudge(app, user);
+            }
             if let Some(user) = user.filter(|_| api) {
                 activity.record(&user, now);
             }
