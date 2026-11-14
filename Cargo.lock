@@ -2149,6 +2149,7 @@ dependencies = [
  "futures-util",
  "http-body",
  "http-body-util",
+ "hyper-util",
  "nix",
  "regex",
  "reqwest",

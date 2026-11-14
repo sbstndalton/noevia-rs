@@ -120,6 +120,13 @@ async fn stub_child() -> (u16, Log) {
                     .collect(),
                 body,
             });
+            if parts.uri.path() == "/nostamp" {
+                // Starlette's error middleware: a 500 written outside the child's stamping.
+                return Response::builder()
+                    .status(500)
+                    .body(Body::from("Internal Server Error"))
+                    .unwrap();
+            }
             if parts.uri.path() == "/stream" {
                 let s = async_stream(vec![b"first".to_vec(), b"second".to_vec()]);
                 return Response::builder()
@@ -440,6 +447,22 @@ async fn native_reads_wait_for_the_childs_recovered_stamp() {
         .unwrap();
     assert_eq!(r.status(), 207);
     assert_eq!(s.log.lock().unwrap().len(), 2);
+    // A reply without a stamp (after a request that may change state) voids the stamp: the next
+    // read goes to the child again (and is stamped by it).
+    let r = client
+        .post(format!("http://{}/nostamp", s.public))
+        .header("authorization", format!("Bearer {TOKEN}"))
+        .header("x-cowork-user-id", UID)
+        .header("x-cowork-tenant-assertion", sign("POST", "/nostamp", "", b""))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 500);
+    let before = s.log.lock().unwrap().len();
+    assert_eq!(get().await.unwrap().status(), 207);
+    assert_eq!(s.log.lock().unwrap().len(), before + 1);
+    assert_eq!(get().await.unwrap().status(), 200);
+    assert_eq!(s.log.lock().unwrap().len(), before + 1);
     // A write is never native in S2a.
     let r = client
         .put(format!("http://{}/api/file", s.public))
@@ -455,7 +478,7 @@ async fn native_reads_wait_for_the_childs_recovered_stamp() {
         .await
         .unwrap();
     assert_eq!(r.status(), 207);
-    assert_eq!(s.log.lock().unwrap().len(), 3);
+    assert_eq!(s.log.lock().unwrap().len(), before + 2);
 }
 
 #[tokio::test]
@@ -789,4 +812,26 @@ fn leases_joins_and_fences_share_one_slot() {
     assert!(w
         .with_lock_as(third, None, Some(Duration::ZERO), |_| ())
         .is_ok());
+}
+
+#[tokio::test]
+async fn the_child_gets_the_exact_request_target() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let dir = tempfile::tempdir().unwrap();
+    let s = start(dir.path(), "", true).await;
+    // No client-side normalisation: a raw request line.
+    let mut c = tokio::net::TcpStream::connect(s.public).await.unwrap();
+    c.write_all(b"GET /x/../api/%2e%2e/health?q='a'&r=%27 HTTP/1.1\r\nhost: diary\r\nconnection: close\r\n\r\n")
+        .await
+        .unwrap();
+    let mut out = Vec::new();
+    c.read_to_end(&mut out).await.unwrap();
+    assert!(String::from_utf8_lossy(&out).starts_with("HTTP/1.1 207"));
+    let seen = s.log.lock().unwrap();
+    assert_eq!(
+        seen[0].target,
+        "http://127.0.0.1/x/../api/%2e%2e/health?q='a'&r=%27"
+            .replace("http://127.0.0.1", "")
+    );
+    assert_eq!(seen[0].header("host"), Some("diary"));
 }

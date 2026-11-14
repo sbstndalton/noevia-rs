@@ -35,6 +35,8 @@ use crate::config::Config;
 use crate::server::{self, App, DECLINE_HEADER, RECOVERED_HEADER};
 use axum::body::Body;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Request, Response, StatusCode};
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::Client;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -45,11 +47,17 @@ pub const PARENT_HEADER: &str = "x-noevia-diary-parent";
 /// "1" when this process verified the request's tenant assertion (the child's `tenant_asserted`).
 pub const ASSERTED_HEADER: &str = server::ASSERTED_HEADER;
 const INTERNAL_PREFIX: &str = "x-noevia-diary-";
-/// How long a child's "recovered" stamp lets a tenant's reads stay native.
-pub const RECOVERED_TTL: Duration = Duration::from_secs(600);
+/// How long a child's "recovered" stamp lets a tenant's reads stay native. Python checks it live on
+/// every read; the child may evict an idle tenant's state (its 128-tenant LRU) without telling this
+/// process, so a stamp is short-lived (named difference: for at most this long after an eviction a
+/// read is served here without Python's recovery; pending journal, dirty or outbox work still
+/// declines it).
+pub const RECOVERED_TTL: Duration = Duration::from_secs(60);
 /// How long the child gets after SIGTERM.
 pub const STOP_GRACE: Duration = Duration::from_secs(8);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Below uvicorn's keep-alive (5 s), so a pooled connection is never reused as the child closes it.
+const POOL_IDLE: Duration = Duration::from_secs(2);
 /// S3: how long a native write waits for the tenant's writer slot (Python's tenant_writer.DEADLINE_S).
 pub const WRITE_WAIT: Duration = Duration::from_secs(30);
 /// S3: how long a writer tenant's write body may take to arrive (Python's FORWARD_DEADLINE_S).
@@ -123,18 +131,19 @@ pub struct Front {
     native_routes: OnceLock<Vec<String>>,
     native_writers: OnceLock<Vec<String>>,
     recovered: Mutex<HashMap<String, Instant>>,
-    http: reqwest::Client,
+    http: Client<HttpConnector, Body>,
 }
 
 impl Front {
     pub fn new(control_token: String, secret: String, child_port: u16) -> Self {
-        let http = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(CONNECT_TIMEOUT)
-            .http1_only()
-            .build()
-            .unwrap_or_default();
+        // The child gets the exact request target this process verified and routed (no URL
+        // normalisation: a `..` segment or `%2e` reaches the child as the client sent it).
+        let mut connector = HttpConnector::new();
+        connector.set_connect_timeout(Some(CONNECT_TIMEOUT));
+        connector.set_nodelay(true);
+        let http = Client::builder(hyper_util::rt::TokioExecutor::new())
+            .pool_idle_timeout(POOL_IDLE)
+            .build(connector);
         Front {
             control_token,
             secret,
@@ -193,6 +202,10 @@ impl Front {
             }
             None => false,
         }
+    }
+
+    fn forget(&self, uid: &str) {
+        self.stamp(uid, false);
     }
 
     fn stamp(&self, uid: &str, recovered: bool) {
@@ -257,7 +270,8 @@ fn is_decline(resp: &Response<Body>) -> bool {
             .is_some_and(|v| v.as_bytes() == b"1")
 }
 
-/// The lower-cased tenant id a child stamp applies to (a UUID `x-cowork-user-id`), else None.
+/// The lower-cased tenant id a child stamp applies to (a UUID `x-cowork-user-id`, its first value
+/// as Starlette and the verifier read it), else None.
 fn stamp_tenant(headers: &HeaderMap) -> Option<String> {
     let uid = header_str(headers, "x-cowork-user-id").to_ascii_lowercase();
     server::is_uuid(&uid).then_some(uid)
@@ -384,9 +398,9 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         buffered = Some(bytes);
     }
     let body = match (buffered, stream) {
-        (Some(b), _) => reqwest::Body::from(b),
-        (None, Some(s)) => reqwest::Body::wrap_stream(s.into_data_stream()),
-        (None, None) => reqwest::Body::from(Vec::new()),
+        (Some(b), _) => Body::from(b),
+        (None, Some(s)) => s,
+        (None, None) => Body::empty(),
     };
     forward(
         &front,
@@ -407,7 +421,7 @@ async fn forward(
     raw_path: &str,
     query: &[u8],
     headers: HeaderMap,
-    body: reqwest::Body,
+    body: Body,
     asserted: bool,
 ) -> Response<Body> {
     let mut url = format!("http://127.0.0.1:{}{raw_path}", front.child_port);
@@ -415,7 +429,17 @@ async fn forward(
         url.push('?');
         url.push_str(&String::from_utf8_lossy(query));
     }
+    let Ok(uri) = url.parse::<axum::http::Uri>() else {
+        return raw(503, CHILD_DOWN);
+    };
     let tenant = stamp_tenant(&headers);
+    // A request that may change the tenant's state voids its stamp until the child's reply sets
+    // it again (a reply that never arrives, or one without a stamp, leaves the tenant forwarded).
+    if let Some(uid) = tenant.as_deref() {
+        if method != Method::GET && method != Method::HEAD {
+            front.forget(uid);
+        }
+    }
     let mut out = HeaderMap::new();
     for (k, v) in headers.iter() {
         if !HOP.contains(&k.as_str()) {
@@ -429,14 +453,11 @@ async fn forward(
         ASSERTED_HEADER,
         HeaderValue::from_static(if asserted { "1" } else { "0" }),
     );
-    let sent = front
-        .http
-        .request(method, url)
-        .headers(out)
-        .body(body)
-        .send()
-        .await;
-    let resp = match sent {
+    let mut req = Request::new(body);
+    *req.method_mut() = method;
+    *req.uri_mut() = uri;
+    *req.headers_mut() = out;
+    let resp = match front.http.request(req).await {
         Ok(r) => r,
         Err(e) => {
             eprintln!(
@@ -464,11 +485,12 @@ async fn forward(
         }
         builder = builder.header(k, v);
     }
-    if let (Some(uid), Some(recovered)) = (tenant, stamp) {
-        front.stamp(&uid, recovered);
+    // A reply without a stamp (one Starlette's error middleware wrote) leaves the tenant forwarded.
+    if let Some(uid) = tenant {
+        front.stamp(&uid, stamp == Some(true));
     }
     builder
-        .body(Body::from_stream(resp.bytes_stream()))
+        .body(Body::new(resp.into_body()))
         .unwrap_or_default()
 }
 
