@@ -38,7 +38,11 @@ async fn rig(with_facts: bool) -> (tempfile::TempDir, Front) {
     let f = front_env(
         d.path(),
         true,
-        &[("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into())],
+        &[
+            ("NOEVIA_PROJECT_STORE_TOKEN", STORE_TOKEN.into()),
+            // A background source job is bound to the container start (source work's store).
+            ("NOEVIA_START_ID", "0123456789abcdef0123456789abcdef".into()),
+        ],
     )
     .await;
     decoy(d.path());
@@ -186,4 +190,64 @@ async fn not_ready_is_not_published_even_with_a_file_present() {
     assert!(started.elapsed() < std::time::Duration::from_secs(2));
     assert!(!marker.exists());
     assert_eq!(by_name(d.path(), "QA late")["goal"], json!("QA goal"));
+}
+
+/// The inputs with a project documents box on offer (what the documents default turns on).
+fn facts_with_docs() -> Value {
+    let mut f = facts();
+    f["boxes"].as_array_mut().unwrap().push(json!({"id": "project-docs", "label": "QA documents", "description": "d", "source": "mcp", "inApp": true, "server": "qa-mcp", "tools": [tool("qa_docs_search")]}));
+    f
+}
+
+/// sbstndalton/noevia#2659: a project's first upload, in the foreground and as a background job, waits
+/// for a native catalogue that becomes ready meanwhile, so the project documents default is applied (a
+/// write without a catalogue would skip it for good).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_first_upload_waits_for_the_catalogue_and_keeps_the_documents_default() {
+    let (d, f) = rig(false).await;
+    std::fs::write(
+        d.path().join("users").join(A).join("projects.json"),
+        r#"{"projects":[{"id":"qa-fg","name":"QA foreground","files":[],"chats":[],"toolboxes":["core"]},{"id":"qa-bg","name":"QA background","files":[],"chats":[],"toolboxes":["core"]}]}"#,
+    )
+    .unwrap();
+    const UPLOAD: &str = r#"{"name":"qa-notes.txt","dataBase64":"UUEgbm90ZXM=","organized":true}"#;
+    let started = std::time::Instant::now();
+    let (s, v) = write(
+        f.addr,
+        "POST",
+        "/api/projects/qa-bg/upload?background=1",
+        ADMIN,
+        UPLOAD,
+    )
+    .await;
+    assert_eq!(s, 202, "{v}");
+    let poll = v["poll"].as_str().unwrap().to_owned();
+    let foreground = tokio::spawn({
+        let addr = f.addr;
+        async move { write(addr, "POST", "/api/projects/qa-fg/upload", ADMIN, UPLOAD).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    write_snapshot(&f, d.path(), facts_with_docs());
+    let (s, v) = foreground.await.unwrap();
+    assert_eq!(s, 200, "{v}");
+    assert!(started.elapsed() >= std::time::Duration::from_millis(400));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let (s, v) = get(f.addr, &poll, ADMIN).await;
+        assert_eq!(s, 200, "{v}");
+        if v["done"] == true {
+            assert_eq!(v["status"], 200, "{v}");
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the job never finished: {v}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    for name in ["QA foreground", "QA background"] {
+        let p = by_name(d.path(), name);
+        assert_eq!(p["toolboxes"], json!(["core", "project-docs"]), "{name}");
+        assert_eq!(p["docsToolboxDefaulted"], json!(true), "{name}");
+    }
 }
