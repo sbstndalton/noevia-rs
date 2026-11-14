@@ -2426,6 +2426,7 @@ dependencies = [
  "offsite-backup-format",
  "policy-leaves",
  "preset-reload",
+ "project-index",
  "project-retrieval",
  "prompt-framing",
  "provider-egress",
