@@ -969,6 +969,10 @@ mod export_tests {
 
     #[test]
     fn front_only_is_on_for_exactly_one() {
+        // A build without every front route feature refuses to configure (see above).
+        if !FRONT_ROUTE_FEATURES.iter().all(|(_, on)| *on) {
+            return;
+        }
         assert!(!lookup(&[UP, DATA]).unwrap().front_only);
         for off in ["", "0", "true", " 1", "1 ", "yes"] {
             assert!(
