@@ -99,6 +99,7 @@ provider-egress = { path = "../../crates/provider-egress" }
 server-chatgpt-status = { path = "../../crates/server-chatgpt-status", optional = true }
 # sbstndalton/noevia#2202: the MCP credential broker (mcp_broker.rs, mcp_egress.rs, mcp_routes.rs).
 secret-envelope = { path = "../../crates/secret-envelope" }
+secrets-rotate = { path = "../../crates/secrets-rotate" }
 ssrf-policy = { path = "../../crates/ssrf-policy" }
 mcp-frame = { path = "../../crates/mcp-frame" }
 tool-rate-limit = { path = "../../crates/tool-rate-limit" }

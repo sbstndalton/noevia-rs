@@ -94,9 +94,18 @@ pub struct Report {
 /// The key store: secrets.cjs `open` (current key first, then the previous one; a value that is not an
 /// envelope comes back as it is with [`KeyUsed::None`]) and `encrypt` under the current key (`''` for
 /// an empty value; `enc:v2:` bound to `user` when there is one, else `enc:v1:`).
+/// A key store refusal: the value does not open, or cannot be sealed. It carries no detail on
+/// purpose (a reason could name a key or a value).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyError;
+
 pub trait Keys {
-    fn open(&self, value: &str, user: Option<&str>) -> Result<(Zeroizing<String>, KeyUsed), ()>;
-    fn seal(&self, plain: &str, user: Option<&str>) -> Result<String, ()>;
+    fn open(
+        &self,
+        value: &str,
+        user: Option<&str>,
+    ) -> Result<(Zeroizing<String>, KeyUsed), KeyError>;
+    fn seal(&self, plain: &str, user: Option<&str>) -> Result<String, KeyError>;
 }
 
 /// One stored value to re-seal.
@@ -153,11 +162,11 @@ pub fn reseal<K: Keys + ?Sized>(
     if version == 2 && wanted == 1 {
         return Err(UNKNOWN_ACCOUNT);
     }
-    let (plain, used) = keys.open(value, user).map_err(|()| OPEN_FAILURE)?;
+    let (plain, used) = keys.open(value, user).map_err(|KeyError| OPEN_FAILURE)?;
     if used == KeyUsed::Current && version == wanted {
         return Ok((Status::Current, None));
     }
-    let next = keys.seal(&plain, user).map_err(|()| SEAL_FAILURE)?;
+    let next = keys.seal(&plain, user).map_err(|KeyError| SEAL_FAILURE)?;
     let status = if used == KeyUsed::Previous {
         Status::Rotated
     } else {
@@ -297,7 +306,12 @@ impl Report {
                 .map(|(n, c)| (n.clone(), c.json()))
                 .collect(),
         );
-        let failures = JValue::Arr(self.failures.iter().map(|f| failure_json(f, true)).collect());
+        let failures = JValue::Arr(
+            self.failures
+                .iter()
+                .map(|f| failure_json(f, true))
+                .collect(),
+        );
         let value = JValue::obj([
             ("tables", tables),
             ("totals", self.totals.json()),
@@ -318,8 +332,11 @@ pub fn audit_detail(report: &Report) -> String {
             .map(|f| failure_json(f, false))
             .collect(),
     );
-    wtf16::stringify(&JValue::obj([("totals", report.totals.json()), ("failed", failed)]))
-        .unwrap_or_default()
+    wtf16::stringify(&JValue::obj([
+        ("totals", report.totals.json()),
+        ("failed", failed),
+    ]))
+    .unwrap_or_default()
 }
 
 /// The audit row's action.
@@ -349,12 +366,12 @@ pub const DRIVE_NOT_CURRENT: &str =
 /// (Node's `sealer.open` parses the plaintext, so a sealed non-JSON value does not pass either).
 pub fn drive_check(
     text: &str,
-    open: impl Fn(&str) -> Result<Zeroizing<Vec<u8>>, ()>,
+    open: impl Fn(&str) -> Result<Zeroizing<Vec<u8>>, KeyError>,
 ) -> Result<Status, String> {
     if text.trim_matches(is_space).is_empty() {
         return Ok(Status::Empty);
     }
-    let plain = open(text).map_err(|()| DRIVE_NOT_CURRENT.to_string())?;
+    let plain = open(text).map_err(|KeyError| DRIVE_NOT_CURRENT.to_string())?;
     let parsed = wtf16::parse(&String::from_utf8_lossy(&plain));
     match parsed {
         Ok(_) | Err(wtf16::Refusal::Unsupported) => Ok(Status::Current),

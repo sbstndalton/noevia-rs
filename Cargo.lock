@@ -2326,6 +2326,7 @@ dependencies = [
  "rustls",
  "s3-sign",
  "secret-envelope",
+ "secrets-rotate",
  "serde",
  "serde_json",
  "server-account",

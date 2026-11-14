@@ -33,9 +33,9 @@ use axum::{
     response::IntoResponse,
 };
 use js_json::{wtf16, JValue};
-use secrets_rotate::{
-    audit_detail, drive_check, drive_front_error, merge, rotate, Counts, DriveFront, Failure,
-    Keys, Pass, Row, Status, Table, AUDIT_ACTION, DRIVE_TABLE,
+use secrets_rotate::{KeyError, 
+    audit_detail, drive_check, drive_front_error, merge, rotate, Counts, DriveFront, Failure, Keys,
+    Pass, Row, Status, Table, AUDIT_ACTION, DRIVE_TABLE,
 };
 use server_auth::secrets::SecretKeys;
 use std::path::{Path, PathBuf};
@@ -61,13 +61,13 @@ impl Keys for DiskKeys {
         &self,
         value: &str,
         user: Option<&str>,
-    ) -> Result<(Zeroizing<String>, secret_envelope::KeyUsed), ()> {
-        self.0.open(value, user).map_err(|_| ())
+    ) -> Result<(Zeroizing<String>, secret_envelope::KeyUsed), KeyError> {
+        self.0.open(value, user).map_err(|_| KeyError)
     }
-    fn seal(&self, plain: &str, user: Option<&str>) -> Result<String, ()> {
+    fn seal(&self, plain: &str, user: Option<&str>) -> Result<String, KeyError> {
         self.0
             .seal(plain, user, &crate::mcp_broker::random::<12>())
-            .map_err(|_| ())
+            .map_err(|_| KeyError)
     }
 }
 
@@ -145,7 +145,11 @@ impl Table for SqlTable<'_> {
         self.table
     }
     fn rows(&mut self) -> Result<Vec<Row>, String> {
-        let writer = self.app.writes.writer().map_err(|_| "the database could not be opened".to_string())?;
+        let writer = self
+            .app
+            .writes
+            .writer()
+            .map_err(|_| "the database could not be opened".to_string())?;
         let (table, column) = (self.table, self.column);
         writer
             .read(|r| {
@@ -177,7 +181,11 @@ impl Table for SqlTable<'_> {
             .map_err(|_| "the table could not be read".to_string())
     }
     fn write(&mut self, row: &Row, value: &str) -> Result<bool, String> {
-        let writer = self.app.writes.writer().map_err(|_| "the database could not be opened".to_string())?;
+        let writer = self
+            .app
+            .writes
+            .writer()
+            .map_err(|_| "the database could not be opened".to_string())?;
         let user = row.user.as_deref().unwrap_or_default();
         let changed = writer.write(|tx| match self.table {
             "storage_connections" => tx.reseal_storage_connection(
@@ -242,7 +250,7 @@ impl Table for DriveFiles {
         let text = String::from_utf8_lossy(&bytes);
         let sealer = self.sealer.as_ref();
         Some(drive_check(&text, |t| {
-            sealer.ok_or(())?.open(t).map_err(|_| ())
+            sealer.ok_or(KeyError)?.open(t).map_err(|_| KeyError)
         }))
     }
 }
@@ -256,12 +264,12 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
     let creds = identity::creds_of(&parts);
     let now = identity::now_ms();
     let layer = Arc::clone(&app.identity);
-    let id = match tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, ROUTE, now)).await
-    {
-        Ok(Ok(id)) => id,
-        Ok(Err(r)) => return r.into_response(),
-        Err(_) => return identity::Rejection::Unavailable.into_response(),
-    };
+    let id =
+        match tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, ROUTE, now)).await {
+            Ok(Ok(id)) => id,
+            Ok(Err(r)) => return r.into_response(),
+            Err(_) => return identity::Rejection::Unavailable.into_response(),
+        };
     // routes/auth.cjs: every /api/admin/ path is refused to members first.
     if id.user.role != server_auth::Role::Admin {
         return error(StatusCode::FORBIDDEN, "administrator required");
@@ -287,15 +295,23 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
         wtf16::parse(&report.json().to_string()).ok()
     })
     .await;
-    let Some(providers) = providers.ok().flatten().and_then(|b| pass_of(&b, provider_ref)) else {
-        return internal("the Rust front could not re-seal the provider keys (credential store unavailable)");
+    let Some(providers) = providers
+        .ok()
+        .flatten()
+        .and_then(|b| pass_of(&b, provider_ref))
+    else {
+        return internal(
+            "the Rust front could not re-seal the provider keys (credential store unavailable)",
+        );
     };
     // 2. The MCP credentials.
     let Some(mcp_pass) = (match mcp.reseal(app).await {
         Ok(report) => pass_of(&report.json(), mcp_ref),
         Err(_) => None,
     }) else {
-        return internal("the Rust front could not re-seal the MCP credentials (credential store unavailable)");
+        return internal(
+            "the Rust front could not re-seal the MCP credentials (credential store unavailable)",
+        );
     };
     // 3. The Google Drive token files (soft).
     let drive_front = match crate::gdrive::of(app) {
@@ -340,9 +356,9 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
 
 /// secrets.cjs `rotate({ tables: rotationTables(...) })`.
 fn own_tables(app: &App, data_dir: &Path, keys: &DiskKeys) -> secrets_rotate::Report {
-    let (current, _) = keys.0.derive_with(|k| {
-        google_token_seal::derive_secret_key(k, google_token_seal::USER_LABEL)
-    });
+    let (current, _) = keys
+        .0
+        .derive_with(|k| google_token_seal::derive_secret_key(k, google_token_seal::USER_LABEL));
     let mut storage = SqlTable {
         app,
         table: "storage_connections",
@@ -361,7 +377,7 @@ fn own_tables(app: &App, data_dir: &Path, keys: &DiskKeys) -> secrets_rotate::Re
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -369,7 +385,13 @@ mod tests {
     fn pass_reading_follows_core_clients() {
         let body = wtf16::parse(r#"{"ok":true,"tables":{"b":{"current":1,"rotated":0,"upgraded":0,"empty":0,"failed":1},"a":{"current":0,"rotated":0,"upgraded":0,"empty":0,"failed":0}},"failures":[{"table":"b","ref":1.5,"error":"x"}]}"#).unwrap();
         let pass = pass_of(&body, provider_ref).unwrap();
-        assert_eq!(pass.tables.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["b", "a"]);
+        assert_eq!(
+            pass.tables
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .collect::<Vec<_>>(),
+            ["b", "a"]
+        );
         assert_eq!(pass.failures[0].reference, JValue::Null);
         let bad = wtf16::parse(r#"{"ok":true,"tables":{"a":{"current":-1,"rotated":0,"upgraded":0,"empty":0,"failed":0}},"failures":[]}"#).unwrap();
         assert!(pass_of(&bad, provider_ref).is_none());
