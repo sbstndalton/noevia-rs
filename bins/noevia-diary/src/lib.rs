@@ -8,6 +8,7 @@ pub mod assertion;
 pub mod backup;
 pub mod config;
 pub mod corpus;
+pub mod front;
 pub mod health;
 pub mod managed;
 pub mod py;

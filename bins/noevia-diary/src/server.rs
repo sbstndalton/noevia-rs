@@ -177,7 +177,7 @@ fn header(headers: &HeaderMap, name: &str) -> String {
 }
 
 /// Starlette's decoded path: percent-decoding of the raw path, as UTF-8 (errors replaced).
-fn decoded_path(raw: &str) -> String {
+pub(crate) fn decoded_path(raw: &str) -> String {
     let bytes = raw.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -198,7 +198,7 @@ fn decoded_path(raw: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn is_uuid(s: &str) -> bool {
+pub(crate) fn is_uuid(s: &str) -> bool {
     let b = s.as_bytes();
     b.len() == 36
         && b.iter().enumerate().all(|(i, c)| match i {
@@ -551,7 +551,7 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
 /// names a tenant and its assertion is valid and unseen, Ok(false) when nothing is to be verified
 /// (no tenant header, or no tenant key: Python's middleware lets those through unverified), Err
 /// with a log reason otherwise.
-fn verify_assertion(
+pub(crate) fn verify_assertion(
     app: &App,
     headers: &HeaderMap,
     method: &str,
@@ -586,6 +586,18 @@ fn verify_assertion(
             now,
         )
         .map(|()| true)
+}
+
+/// R9 S2a (front.rs): a native read route for the main process, with the request's own headers
+/// (internal ones replaced by the parent's facts) and its verification verdict.
+pub(crate) async fn serve_native(
+    app: Arc<App>,
+    r: Route,
+    query: Vec<u8>,
+    headers: HeaderMap,
+    asserted: bool,
+) -> Response<Body> {
+    serve(app, Some(r), false, query, headers, None, asserted).await
 }
 
 async fn serve(
