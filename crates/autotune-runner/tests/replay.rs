@@ -1634,7 +1634,7 @@ fn recorded_node_traces_replay() {
     assert!(failed.is_empty());
     if only.is_none() {
         assert!(
-            passed >= 149,
+            passed - scenarios >= 149,
             "fewer traces replay than when the runner landed: {passed}"
         );
         assert!(

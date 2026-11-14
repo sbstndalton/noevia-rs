@@ -6385,10 +6385,13 @@ mod tests {
                 return;
             }
             end.store(true, Ordering::Release);
-            let deadline = std::time::Instant::now() + WATCHDOG;
-            while h.excluded() && std::time::Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(5));
-            }
+            // Off the worker, so the lease watch can run meanwhile.
+            tokio::task::block_in_place(|| {
+                let deadline = std::time::Instant::now() + WATCHDOG;
+                while h.excluded() && std::time::Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            });
         });
         super::super::calibration::AFTER_COMMIT
             .lock()

@@ -517,6 +517,8 @@ impl LoadAdvisor {
         let deadline = tokio::time::Instant::now() + ADVICE_BUDGET;
         match tokio::time::timeout_at(deadline, endpoint.choice(text, deadline)).await {
             Err(_) => Asked::Timeout,
+            // Node: an error once its signal was aborted (the budget) reads as a timeout.
+            Ok(Err(_)) if tokio::time::Instant::now() >= deadline => Asked::Timeout,
             Ok(Err(_)) => Asked::Error,
             Ok(Ok((label, confidence))) => Asked::Answered {
                 label,
