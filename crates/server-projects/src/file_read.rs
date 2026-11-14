@@ -478,6 +478,43 @@ pub fn inapp_result(
     name: &str,
     arguments: &JValue,
 ) -> Option<JValue> {
+    // The front reads the call's arguments with js_json::parse, where U+10F800..=U+10FFFF are real
+    // characters, not the lone surrogates [`wtf16`] holds there: such a call is core's.
+    if reserved_in(arguments) {
+        return None;
+    }
+    let result = inapp_answer(dir, project, name, arguments)?;
+    // A lone surrogate in the text (a cut through an astral character, or one stored in a name or a
+    // text): core's server sends it as `\udxxx`, which the front's MCP client refuses ("could not be
+    // checked"); answering it here would hand on a different text, so core answers it.
+    let lone = match result.get("content") {
+        JValue::Arr(items) => items.iter().any(|c| {
+            c.get("text")
+                .as_str()
+                .is_some_and(|t| t.chars().any(|ch| u32::from(ch) >= wtf16::LONE_BASE))
+        }),
+        _ => false,
+    };
+    (!lone).then_some(result)
+}
+
+/// Whether a string anywhere in `v` holds a character of U+10F800..=U+10FFFF.
+fn reserved_in(v: &JValue) -> bool {
+    let reserved = |s: &str| s.chars().any(|c| u32::from(c) >= wtf16::LONE_BASE);
+    match v {
+        JValue::Str(s) => reserved(s),
+        JValue::Arr(items) => items.iter().any(reserved_in),
+        JValue::Obj(items) => items.iter().any(|(k, v)| reserved(k) || reserved_in(v)),
+        _ => false,
+    }
+}
+
+fn inapp_answer(
+    dir: &Path,
+    project: Option<&JValue>,
+    name: &str,
+    arguments: &JValue,
+) -> Option<JValue> {
     match name {
         "project_list_files" => {
             let Some(project) = project else {

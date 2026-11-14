@@ -9,6 +9,11 @@
 //! saves it). Everything else, and every call `file_read` leaves to core
 //! ([`server_projects::file_read::Outcome::Core`]), goes to core's bridge as before.
 //!
+//! The in-app MCP project reads ([`inapp_answer`], NOEVIA_RUST_INAPP_READS) answer for any server the
+//! front's MCP configuration marks `internal`, also where core's listener would not answer (its port
+//! unset or another address, a key that differs): a configuration error, where the front is the more
+//! available side. Named difference, not copied.
+//!
 //! Core keeps counting the call: chat_native.rs asks core's native op `tool-used` (core's
 //! `recordToolUse`, the usage store's single writer), as core's bridge counts a call it runs; the
 //! release assembler pairs that op with core's NATIVE_OPS.
@@ -155,6 +160,15 @@ pub fn inapp_enabled() -> bool {
     *ON.get_or_init(|| std::env::var("NOEVIA_RUST_INAPP_READS").as_deref() == Ok("1"))
 }
 
+/// core's in-app listener reads at most 256 KiB of request body (mcp-internal.cjs MAX_BODY_BYTES, a
+/// 400 past it): a call whose JSON-RPC message would come near that is core's.
+fn inapp_body_fits(name: &str, arguments: &JValue) -> bool {
+    const LISTENER_BYTES: usize = 256 * 1024;
+    const ENVELOPE: usize = 1024;
+    let args = js_json::stringify(arguments).map_or(0, |a| a.len());
+    args.saturating_add(name.len()).saturating_add(ENVELOPE) <= LISTENER_BYTES
+}
+
 /// core's in-app server's JSON-RPC `result` for `name` called as `uid` in project `pid` (the
 /// capability token's claims), or `None` to leave the call to core's server: another tool, an account
 /// core's `runAs` would refuse or that is disabled, a project read that fails, or an answer the port
@@ -167,7 +181,10 @@ pub fn inapp_answer(
     arguments: &JValue,
     active: impl FnOnce(&str) -> bool,
 ) -> Option<JValue> {
-    if !matches!(name, "project_list_files" | "project_read_file") || uid.is_empty() || !active(uid)
+    if !matches!(name, "project_list_files" | "project_read_file")
+        || uid.is_empty()
+        || !inapp_body_fits(name, arguments)
+        || !active(uid)
     {
         return None;
     }

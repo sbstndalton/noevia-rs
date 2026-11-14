@@ -122,6 +122,9 @@ const projectFiles = [
   { name: 'QA-tracked.md', content: 'not a skill shape' },
   { name: 'QA-café.md', content: 'QA composed name' },
   { name: 'QA-line\u2028name.md', content: 'QA odd name' },
+  { name: 'Docs/QA-synced.md', content: 'QA synced text', source: 'Docs' },
+  textFile(P, 'QA-chars.md', 'QA text with a saved length', { chars: 999 }),
+  { ...textFile(P, 'QA-both.md', 'QA pointer text'), content: 'QA own content wins' },
   { name: 'dup.md', content: 'QA first dup' },
   { name: 'dup.md', content: 'QA second dup' },
 ];
@@ -139,7 +142,9 @@ const emptyProject = { id: 'qa-empty-r13', name: 'QA empty', files: [] };
 // Entries the pipeline never writes: core's skill listing throws on them, its name resolver skips them.
 const junkProject = { id: 'qa-junk-r13', name: 'QA junk', files: [{ name: 'QA-notes.md', content: 'QA junk notes' }, null, 5, { name: 7, content: 'numbered' }, { name: 'QA-numcontent.md', content: 5 },
   { name: 'skills/j/SKILL.md', content: skill('qa-junk', 'A QA skill beside junk entries') }] };
-const projects = { [P]: project, 'qa-empty-r13': emptyProject, 'qa-junk-r13': junkProject };
+// A listing longer than the tool cap (8 000 UTF-16 units): clipped.
+const manyProject = { id: 'qa-many-r13', name: 'QA many', files: Array.from({ length: 300 }, (_, i) => ({ name: `Folder ${i}/QA-file-${i}-é.md`, content: 'QA'.repeat(i) })) };
+const projects = { [P]: project, 'qa-empty-r13': emptyProject, 'qa-junk-r13': junkProject, 'qa-many-r13': manyProject };
 // The project as the workspace load hands it out: textRef files with core's content accessor.
 const live = (p) => {
   const copy = JSON.parse(JSON.stringify(p));
@@ -209,6 +214,8 @@ const { executeToolCall } = req('toolboxes.cjs').createToolboxes({ documentSourc
     for (const a of [{ name: 'QA-notes.md' }, { name: 'QA-doc.pdf', startPage: 1 }, { name: 'skills/enabled/SKILL.md', offset: 10 }, { name: 'nope.md' },
       { name: 'QA-nocontent.md' }, { name: 'QA-doc-bad.pdf', startPage: 1 }, { name: 'QA-long.txt' }, { name: 'QA-numcontent.md' }]) inappCalls.push([pid, 'project_read_file', a]);
   }
+  inappCalls.push([P, 'project_read_file', { name: 'QA-chars.md' }], [P, 'project_read_file', { name: 'QA-both.md' }], [P, 'project_read_file', { name: 'QA-synced.md' }],
+    ['qa-many-r13', 'project_list_files', {}], ['qa-many-r13', 'project_read_file', { name: 'QA-file-7-é.md' }]);
   inappCalls.push([P, 'project_read_file', [1]], [P, 'project_read_file', 'qa'], [P, 'project_read_file', null], [P, 'project_list_files', { extra: 1 }]);
   for (const [pid, name, a] of inappCalls) {
     const args = JSON.parse(JSON.stringify(a));
@@ -221,8 +228,10 @@ const { executeToolCall } = req('toolboxes.cjs').createToolboxes({ documentSourc
     const text = result && Array.isArray(result.content) && result.content[0] ? String(result.content[0].text) : '';
     // A throw other than requireProject's is core's own wording of an error the port does not copy.
     const threw = !!(result && result.isError) && !text.startsWith('ERROR: this chat is not in a project');
+    // A lone surrogate in the text: core's server sends it as an escape the front's MCP client refuses.
+    const lone = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(text);
     inapp.push({ projectId: pid, name, args, status: out.status, result: result ?? null,
-      ...(coreOnly || threw ? { coreOnly: true } : {}), ...(target && typeof target.content !== 'string' ? { contentless: true } : {}) });
+      ...(coreOnly || threw || lone ? { coreOnly: true } : {}), ...(target && typeof target.content !== 'string' ? { contentless: true } : {}) });
   }
   fs.rmSync(dataDir, { recursive: true, force: true });
   // The account directory as the port rebuilds it: every text file and stored result, by relative path.
