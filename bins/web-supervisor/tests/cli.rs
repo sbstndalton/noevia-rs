@@ -25,7 +25,7 @@ fn work() -> tempfile::TempDir {
         format!(
             r#"#!/usr/bin/env bash
 [ "${{1:-}}" = -e ] && exit 0
-case "${{1:-}}" in --ensure-*) echo "{name} ${{1#--}} UI_DATA_DIR=${{UI_DATA_DIR:-}}" >> "{log}"; [ "${{1:-}}" = "${{STUB_ENSURE_FAIL:-}}" ] && exit 4; if [ "${{1:-}}" = "${{STUB_ENSURE_SLOW:-}}" ]; then trap 'echo "{name} ensure TERM" >> "{log}"; exit 0' TERM; for _ in $(seq 1 400); do sleep 0.05; done; fi; exit 0;; esac
+case "${{1:-}}" in --ensure-*) echo "{name} ${{1#--}} UI_DATA_DIR=${{UI_DATA_DIR:-}}" >> "{log}"; [ "${{1:-}}" = "${{STUB_ENSURE_FAIL:-}}" ] && exit 4; if [ "${{1:-}}" = "${{STUB_ENSURE_SLOW:-}}" ]; then trap 'echo "{name} ensure TERM" >> "{log}"; exit 0' TERM; echo "{name} ensure ready" >> "{log}"; for _ in $(seq 1 400); do sleep 0.05; done; fi; exit 0;; esac
 if [ "${{1:-}}" = --features ]; then printf '%s\n' ${{STUB_FEATURES-{FEATURES}}}; exit 0; fi
 echo "{name} UI_HOST=${{UI_HOST:-}} UI_PORT=${{UI_PORT:-}} UPSTREAM=${{NOEVIA_LEGACY_UPSTREAM:-}} SPORT=${{NOEVIA_PROJECT_STORE_PORT:-}} TOK=${{#NOEVIA_PROJECT_STORE_TOKEN}} START=${{#NOEVIA_START_ID}} KCONF=${{NOEVIA_FRONT_CLIENT_IP-unset}} RETIRED=${{NOEVIA_RUST_AUTH-unset}}" >> "{log}"
 trap 'echo "{name} TERM" >> "{log}"; exit 0' TERM
@@ -391,8 +391,9 @@ fn a_stop_signal_during_preparation_stops_the_step_and_starts_nothing() {
         .env("STUB_ENSURE_SLOW", "--ensure-schema")
         .spawn()
         .unwrap_or_else(|e| unreachable!("{e}"));
+    // The stub logs this only once its TERM trap is set.
     assert!(
-        wait_for(w.path(), "front ensure-schema"),
+        wait_for(w.path(), "front ensure ready"),
         "{}",
         log(w.path())
     );

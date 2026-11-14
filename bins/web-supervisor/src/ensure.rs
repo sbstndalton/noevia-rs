@@ -127,7 +127,11 @@ async fn run_step<F: Future<Output = ()>>(
             spawn_failure_code(&e)
         )
     })?;
+    // Biased, the stop first: a signal sent to the whole group (an interactive Ctrl-C) ends the step
+    // too, and both branches are then ready; the stop path must win.
     let stopped = tokio::select! {
+        biased;
+        () = stop => true,
         waited = child.wait() => {
             return match waited {
                 Ok(status) if status.success() => Ok(Outcome::Done),
@@ -143,7 +147,6 @@ async fn run_step<F: Future<Output = ()>>(
             };
         }
         () = tokio::time::sleep(limit) => false,
-        () = stop => true,
     };
     if let Some(pid) = child.id() {
         signal(pid, nix::sys::signal::Signal::SIGTERM);
