@@ -28,6 +28,8 @@ pub const SCRUBBED: &[&str] = &[
     "NOEVIA_FRONT_CLIENT_IP",
     "NOEVIA_LEGACY_CLAIM_BIN",
     "NOEVIA_START_ID",
+    // Set only on the front the supervisor starts alone (front_only.rs).
+    "NOEVIA_FRONT_ONLY",
 ];
 
 /// Retired deployment switches (sbstndalton/noevia#1071): a leftover only warns and reaches no process.
@@ -57,6 +59,7 @@ pub const READ: &[&str] = &[
     "NOEVIA_FRONT",
     "NOEVIA_SERVER_BIN",
     "NOEVIA_SUPERVISOR_ENSURE",
+    "NOEVIA_SUPERVISOR_FRONT_ONLY",
     "PATH",
     "UI_DATA_DIR",
     "UI_HOST",
@@ -182,6 +185,7 @@ mod tests {
             include_str!("plan.rs"),
             include_str!("supervise.rs"),
             include_str!("ensure.rs"),
+            include_str!("front_only.rs"),
         ];
         let mut seen = 0;
         for src in sources {

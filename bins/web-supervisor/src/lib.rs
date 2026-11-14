@@ -7,11 +7,15 @@
 //! with a per-start store secret and start id; if either exits the other is stopped (the front
 //! first, bounded, then Core) and the container exits non-zero; SIGTERM/SIGINT exit 0.
 //!
+//! With `NOEVIA_SUPERVISOR_FRONT_ONLY=1` (off by default) there is no Core: the front is prepared
+//! and started alone (front_only.rs).
+//!
 //! Behaviour oracle: tests/parity/test-web-supervisor.sh (the script's own suite, copied with the
 //! script at noevia 11bf2da7) runs against this binary in tests/parity.rs.
 
 pub mod ensure;
 pub mod env;
+pub mod front_only;
 pub mod pairing;
 pub mod plan;
 pub mod supervise;
@@ -155,12 +159,19 @@ pub fn data_dir(env: &Env, cwd: &Path) -> PathBuf {
     }
 }
 
+/// What a start runs: the pair (the script's behaviour) or, behind its switch, the front alone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Start {
+    Pair(plan::Launch),
+    FrontOnly(front_only::Solo),
+}
+
 /// Everything before the launch: the refusal (exit 2) or the plan.
 pub fn prepare(
     env: &mut Env,
     cwd: &Path,
     warn: &mut dyn FnMut(String),
-) -> Result<plan::Launch, Refusal> {
+) -> Result<Start, Refusal> {
     for w in env.scrub() {
         warn(w);
     }
@@ -190,6 +201,21 @@ pub fn prepare(
         return Err(Refusal(format!("web-supervisor: noevia-server --features did not answer within {} s; this is not a pairing mismatch: retry the start", OPEN_PROBE_TIMEOUT.as_secs())));
     }
     let features = Features::parse(&answer.stdout);
+    if front_only::enabled(env) {
+        // No Core: none of its files, markers or `node` are looked at.
+        let solo = front_only::plan(
+            env,
+            &bin,
+            &features,
+            &data_dir(env, cwd),
+            &random(32),
+            &random(16),
+        )?;
+        for w in &solo.warnings {
+            warn(w.clone());
+        }
+        return Ok(Start::FrontOnly(solo));
+    }
     let core = FsCore {
         dir: cwd.to_path_buf(),
         env,
@@ -200,32 +226,54 @@ pub fn prepare(
     for w in &launch.warnings {
         warn(w.clone());
     }
-    Ok(launch)
+    Ok(Start::Pair(launch))
 }
 
-/// The secret-free summary `--check` prints: what each child would be told, never the store
-/// secret or the start id.
-pub fn describe(launch: &plan::Launch) -> String {
-    const SECRET: &[&str] = &["NOEVIA_PROJECT_STORE_TOKEN", "NOEVIA_START_ID"];
-    let mut out = String::from("web-supervisor: pair ok\n");
-    for (name, spec) in [("node", &launch.node), ("front", &launch.front)] {
-        out.push_str(format!("{name} {} {}", spec.program, spec.args.join(" ")).trim_end());
-        for (k, v) in spec
-            .set
-            .iter()
-            .filter(|(k, _)| !SECRET.contains(&k.as_str()))
-        {
-            out.push_str(&format!(" {k}={v}"));
-        }
-        out.push('\n');
+const SECRET: &[&str] = &["NOEVIA_PROJECT_STORE_TOKEN", "NOEVIA_START_ID"];
+
+fn describe_child(out: &mut String, name: &str, spec: &plan::ChildSpec) {
+    out.push_str(format!("{name} {} {}", spec.program, spec.args.join(" ")).trim_end());
+    for (k, v) in spec
+        .set
+        .iter()
+        .filter(|(k, _)| !SECRET.contains(&k.as_str()))
+    {
+        out.push_str(&format!(" {k}={v}"));
     }
-    for step in &launch.ensure {
+    out.push('\n');
+}
+
+fn describe_steps(out: &mut String, steps: &[plan::ChildSpec]) {
+    for step in steps {
         out.push_str(&format!(
             "ensure {} {}\n",
             step.program,
             step.args.join(" ")
         ));
     }
+}
+
+/// The secret-free summary `--check` prints for either kind of start.
+pub fn describe_start(start: &Start) -> String {
+    match start {
+        Start::Pair(launch) => describe(launch),
+        Start::FrontOnly(solo) => {
+            let mut out = String::from("web-supervisor: front only (no Core)\n");
+            describe_child(&mut out, "front", &solo.front);
+            describe_steps(&mut out, &solo.ensure);
+            out
+        }
+    }
+}
+
+/// The secret-free summary `--check` prints: what each child would be told, never the store
+/// secret or the start id.
+pub fn describe(launch: &plan::Launch) -> String {
+    let mut out = String::from("web-supervisor: pair ok\n");
+    for (name, spec) in [("node", &launch.node), ("front", &launch.front)] {
+        describe_child(&mut out, name, spec);
+    }
+    describe_steps(&mut out, &launch.ensure);
     out
 }
 
@@ -240,16 +288,20 @@ pub fn run() -> i32 {
         return 2;
     };
     let mut warn = |w: String| eprintln!("{w}");
-    let launch = match prepare(&mut env, &cwd, &mut warn) {
-        Ok(launch) => launch,
+    let start = match prepare(&mut env, &cwd, &mut warn) {
+        Ok(start) => start,
         Err(Refusal(msg)) => {
             eprintln!("{msg}");
             return 2;
         }
     };
     if check_only {
-        print!("{}", describe(&launch));
+        print!("{}", describe_start(&start));
         return 0;
     }
-    supervise::supervise(&env, &data_dir(&env, &cwd), &cwd, &launch)
+    let data = data_dir(&env, &cwd);
+    match &start {
+        Start::Pair(launch) => supervise::supervise(&env, &data, &cwd, launch),
+        Start::FrontOnly(solo) => supervise::supervise_solo(&env, &data, &cwd, solo),
+    }
 }

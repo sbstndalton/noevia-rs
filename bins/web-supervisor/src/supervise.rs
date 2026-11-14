@@ -13,6 +13,7 @@ use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 
 use crate::env::Env;
+use crate::front_only::Solo;
 use crate::plan::{ChildSpec, Launch};
 
 /// The front's share of Docker's default 10 s stop: Core keeps 3 s for its shutdown hooks.
@@ -109,46 +110,92 @@ pub fn supervise(env: &Env, data: &Path, cwd: &Path, launch: &Launch) -> i32 {
     runtime.block_on(run_pair(env, cwd, launch))
 }
 
-async fn run_pair(env: &Env, cwd: &Path, launch: &Launch) -> i32 {
+type Listeners = (
+    tokio::signal::unix::Signal,
+    tokio::signal::unix::Signal,
+);
+
+/// The stop signals, taken before any child exists (the script's trap came first too).
+fn listeners() -> Option<Listeners> {
     use tokio::signal::unix::{signal as listen, SignalKind};
-    // The stop signals are taken before either child exists (the script's trap came first too).
-    let (mut term, mut int) = match (
+    match (
         listen(SignalKind::terminate()),
         listen(SignalKind::interrupt()),
     ) {
-        (Ok(t), Ok(i)) => (t, i),
+        (Ok(t), Ok(i)) => Some((t, i)),
         _ => {
             eprintln!("web-supervisor: cannot listen for the stop signals");
-            return 2;
-        }
-    };
-    // Under the lock and the stop listeners, before either child: the front's start-up
-    // preparation (off by default; ensure.rs). A stop signal there ends the start with 0.
-    if !launch.ensure.is_empty() {
-        let stop = async {
-            tokio::select! {
-                _ = term.recv() => {}
-                _ = int.recv() => {}
-            }
-        };
-        tokio::pin!(stop);
-        let prepared = crate::ensure::run(
-            &launch.ensure,
-            env,
-            cwd,
-            crate::ensure::STEP_TIMEOUT,
-            stop.as_mut(),
-        )
-        .await;
-        match prepared {
-            Ok(crate::ensure::Outcome::Done) => {}
-            Ok(crate::ensure::Outcome::Stopped) => return 0,
-            Err(msg) => {
-                eprintln!("{msg}");
-                return 2;
-            }
+            None
         }
     }
+}
+
+/// Under the lock and the stop listeners, before any child: the front's start-up preparation
+/// (ensure.rs). `Some(code)` ends the start there: 0 for a stop signal, 2 for a failed step.
+async fn prepare_front(
+    steps: &[ChildSpec],
+    env: &Env,
+    cwd: &Path,
+    (term, int): &mut Listeners,
+) -> Option<i32> {
+    if steps.is_empty() {
+        return None;
+    }
+    let stop = async {
+        tokio::select! {
+            _ = term.recv() => {}
+            _ = int.recv() => {}
+        }
+    };
+    tokio::pin!(stop);
+    let prepared = crate::ensure::run(
+        steps,
+        env,
+        cwd,
+        crate::ensure::STEP_TIMEOUT,
+        stop.as_mut(),
+    )
+    .await;
+    match prepared {
+        Ok(crate::ensure::Outcome::Done) => None,
+        Ok(crate::ensure::Outcome::Stopped) => Some(0),
+        Err(msg) => {
+            eprintln!("{msg}");
+            Some(2)
+        }
+    }
+}
+
+/// A stop signal already received: the script's trap still marked a docker stop that landed during
+/// a crash's stop sequence, and then exited 0.
+async fn signalled_since((term, int): &mut Listeners) -> bool {
+    tokio::select! {
+        biased;
+        _ = term.recv() => true,
+        _ = int.recv() => true,
+        () = std::future::ready(()) => false,
+    }
+}
+
+/// docker stop: a clean exit. Anything else: non-zero, even when the process that left said 0.
+fn container_code(first: Option<i32>) -> i32 {
+    match first {
+        None => 0,
+        Some(0) => 1,
+        Some(code) => code,
+    }
+}
+
+async fn run_pair(env: &Env, cwd: &Path, launch: &Launch) -> i32 {
+    let Some(mut signals) = listeners() else {
+        return 2;
+    };
+    // The front's preparation (off by default for the pair). A stop signal there ends the start
+    // with 0.
+    if let Some(code) = prepare_front(&launch.ensure, env, cwd, &mut signals).await {
+        return code;
+    }
+    let (term, int) = &mut signals;
     let mut node = match command(&launch.node, env).spawn() {
         Ok(child) => child,
         Err(e) => {
@@ -189,21 +236,83 @@ async fn run_pair(env: &Env, cwd: &Path, launch: &Launch) -> i32 {
     stop(&mut front, &mut node).await;
     let _ = node.wait().await;
     let _ = front.wait().await;
-    // The script's trap still marks a docker stop that lands during a crash's stop sequence, and
-    // then exits 0: a stop signal received by now counts as signalled.
-    let late_signal = tokio::select! {
-        biased;
-        _ = term.recv() => true,
-        _ = int.recv() => true,
-        () = std::future::ready(()) => false,
+    // A stop signal received by now counts as signalled.
+    let first = if signalled_since(&mut signals).await {
+        None
+    } else {
+        first
     };
-    let first = if late_signal { None } else { first };
-    // docker stop: a clean exit. Anything else: non-zero, even when the process that left said 0.
-    match first {
-        None => 0,
-        Some(0) => 1,
-        Some(code) => code,
+    container_code(first)
+}
+
+/// The front alone (front_only.rs): the pair lock, the preparation, then only the front. Returns
+/// the container's exit code with the pair's rules: 0 after SIGTERM/SIGINT, otherwise the front's
+/// code (1 when that was 0).
+pub fn supervise_solo(env: &Env, data: &Path, cwd: &Path, solo: &Solo) -> i32 {
+    if let Err(msg) = take_pair_lock(data) {
+        eprintln!("{msg}");
+        return 2;
     }
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("web-supervisor: cannot start the runtime: {e}");
+            return 2;
+        }
+    };
+    runtime.block_on(run_solo(env, cwd, solo, crate::front_only::STOP_DEADLINE))
+}
+
+/// TERM the front and join it within `deadline`, or KILL it.
+async fn stop_front(front: &mut Child, deadline: Duration) {
+    if let (Ok(None), Some(pid)) = (front.try_wait(), pid_of(front)) {
+        signal(pid, Signal::SIGTERM);
+        if tokio::time::timeout(deadline, front.wait()).await.is_err() {
+            eprintln!("web-supervisor: front stop deadline reached; killing the front");
+            let _ = front.kill().await;
+        }
+    }
+    let _ = front.wait().await;
+}
+
+async fn run_solo(env: &Env, cwd: &Path, solo: &Solo, deadline: Duration) -> i32 {
+    let Some(mut signals) = listeners() else {
+        return 2;
+    };
+    // Always prepared: without Core nothing else makes the key or the schema.
+    if let Some(code) = prepare_front(&solo.ensure, env, cwd, &mut signals).await {
+        return code;
+    }
+    let mut front = match command(&solo.front, env).spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            let code = spawn_failure_code(&e);
+            eprintln!("web-supervisor: cannot start {}: {e}", solo.front.program);
+            eprintln!("web-supervisor: noevia-server exited ({code})");
+            return code;
+        }
+    };
+    let first = {
+        let (term, int) = &mut signals;
+        tokio::select! {
+            s = front.wait() => Some(s.map(status_code).unwrap_or(1)),
+            _ = term.recv() => None,
+            _ = int.recv() => None,
+        }
+    };
+    if let Some(code) = first {
+        eprintln!("web-supervisor: noevia-server exited ({code})");
+    }
+    stop_front(&mut front, deadline).await;
+    let first = if signalled_since(&mut signals).await {
+        None
+    } else {
+        first
+    };
+    container_code(first)
 }
 
 /// The exit status bash gives a command it could not start: 127 when the file is not there, 126

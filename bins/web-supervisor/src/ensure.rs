@@ -56,10 +56,16 @@ pub fn plan(
             "web-supervisor: {SWITCH}=1 but this noevia-server does not advertise {CAPABILITY} (an older front would start serving instead of preparing); unset {SWITCH} or update the image"
         )));
     }
+    steps(bin, data)
+}
+
+/// The steps themselves, for a front known to advertise [`CAPABILITY`] (also the front-only
+/// mode's preparation, which runs whatever the switch says; front_only.rs).
+pub fn steps(bin: &str, data: &Path) -> Result<Vec<ChildSpec>, Refusal> {
     // The children get the directory's own bytes; a lossy copy would prepare another one.
     let Some(data) = data.to_str().map(str::to_owned) else {
         return Err(Refusal(format!(
-            "web-supervisor: {SWITCH}=1 but the data directory {} is not valid UTF-8; set UI_DATA_DIR to a plain path",
+            "web-supervisor: the front's preparation needs a data directory that is valid UTF-8, not {}; set UI_DATA_DIR to a plain path",
             data.display()
         )));
     };
