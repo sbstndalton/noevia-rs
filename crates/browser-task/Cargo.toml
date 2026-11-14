@@ -1,0 +1,21 @@
+[package]
+name = "browser-task"
+version = "0.1.0"
+description = "noevia-core's browser-service.cjs and browser-executor.cjs in Rust: Browser mode's tasks (start, act, approve, finish, cancel) over the job store, the egress grant and the approval cards, with crate browser-policy deciding before every action; the browser engine is behind a Playwright-shaped trait"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22"
+url = "2"
+browser-policy = { path = "../browser-policy" }
+js-json = { path = "../js-json" }
+server-projects = { path = "../server-projects" }
+
+[dev-dependencies]
+tempfile = "3"
