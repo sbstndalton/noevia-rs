@@ -135,6 +135,7 @@ const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return
 const u64 = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
 const gstr = (s) => { const b = Buffer.isBuffer(s) ? s : Buffer.from(s, 'utf8'); return Buffer.concat([u64(b.length), b]); };
 function gval(type, v) {
+  if (type === 8) return gstr(v);
   if (Buffer.isBuffer(v)) return v; // raw bytes for a value
   // Integers are written as their two's-complement bytes.
   switch (type) {
@@ -499,7 +500,7 @@ async function mtps() {
     { status: 200, parts: [{ b64: Buffer.from(`{"sha":"${REV}"}`).toString('base64') }, { fill: 0x20, n: 4 * 1024 * 1024 - 50 }] },
     { status: 200, parts: [{ b64: Buffer.from(`{"sha":"${REV}"}`).toString('base64') }, { fill: 0x20, n: 4 * 1024 * 1024 - 50 }], chunk: 1024 * 1024, error: 'terminated' },
     { status: 200, json: { sha: REV }, error: 'terminated', chunk: 4 }, { status: 200, json: { sha: REV }, error: 'abort', chunk: 4 }, { throw: 'timeout' }, { throw: 'abort' }, { throw: 'network' }]) {
-    await one(`meta ${JSON.stringify(meta).slice(0, 120)}`, base(), { ...hf1(ggufAnswer(MTP_GGUF)), [metaUrl(repo)]: meta });
+    await one(`meta ${JSON.stringify(meta).slice(0, 120)}`, base(), { ...hf1(ggufAnswer(MTP_GGUF)), [fileUrl(repo, 'f'.repeat(64), files1[0])]: ggufAnswer(PLAIN_GGUF), [metaUrl(repo)]: meta });
   }
   // The prefix reply.
   for (const prefix of [{ status: 404 }, { status: 500 }, { status: 204 }, { status: 205 }, { status: 200, parts: toParts(MTP_GGUF) }, { status: 206, parts: toParts(MTP_GGUF) },

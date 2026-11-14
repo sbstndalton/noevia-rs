@@ -278,27 +278,29 @@ pub fn pull(config: &Config, body: Option<&[u8]>, host: &mut impl Host) -> Outco
 /// name.
 fn llamacpp_pull(config: &Config, checkpoint: &JValue, host: &mut impl Host) -> Result<Reply, Thrown> {
     host.enter()?;
-    let out = (|| {
-        // `/…/.test(checkpoint || '')` reads `String(checkpoint)`.
-        let text = js::to_string(checkpoint).ok_or_else(|| Thrown::internal(js::NO_PRIMITIVE))?;
-        if !manager::is_llamacpp_checkpoint(&text) {
-            return Ok(Reply {
-                ok: false,
-                status: 400,
-                body: JValue::obj([("error", JValue::from(manager::LLAMACPP_CHECKPOINT))]),
-            });
-        }
-        host.downloads_requested(checkpoint);
-        let reply = host.send(&manager::llamacpp_pull_request(config, checkpoint))?;
-        if !reply.ok {
-            host.downloads_rejected(checkpoint);
-            return Ok(reply);
-        }
-        Ok(Reply {
-            body: JValue::obj([("id", checkpoint.clone()), ("modelName", checkpoint.clone())]),
-            ..reply
-        })
-    })();
+    let out = llamacpp_pull_entered(config, checkpoint, host);
     host.leave();
     out
+}
+
+fn llamacpp_pull_entered(config: &Config, checkpoint: &JValue, host: &mut impl Host) -> Result<Reply, Thrown> {
+    // `/…/.test(checkpoint || '')` reads `String(checkpoint)`.
+    let text = js::to_string(checkpoint).ok_or_else(|| Thrown::internal(js::NO_PRIMITIVE))?;
+    if !manager::is_llamacpp_checkpoint(&text) {
+        return Ok(Reply {
+            ok: false,
+            status: 400,
+            body: JValue::obj([("error", JValue::from(manager::LLAMACPP_CHECKPOINT))]),
+        });
+    }
+    host.downloads_requested(checkpoint);
+    let reply = host.send(&manager::llamacpp_pull_request(config, checkpoint))?;
+    if !reply.ok {
+        host.downloads_rejected(checkpoint);
+        return Ok(reply);
+    }
+    Ok(Reply {
+        body: JValue::obj([("id", checkpoint.clone()), ("modelName", checkpoint.clone())]),
+        ..reply
+    })
 }
