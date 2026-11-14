@@ -1,7 +1,7 @@
 //! A turn's image parts and its vision pass (slice P2c): what noevia-core's `server/chat.cjs` does
-//! with a project's attached images (`projectImages`, ~866-914 at the pinned core) and, after the
-//! stream opened, what it puts on the wire for them or asks a Vision role to describe (~1461-1547,
-//! `describeImagesNow` ~783-860). In chat.cjs's order:
+//! with a project's attached images (`projectImages`, ~870-923 at the pinned core) and, after the
+//! stream opened, what it puts on the wire for them or asks a Vision role to describe (~1469-1555,
+//! `describeImagesNow` ~787-864). In chat.cjs's order:
 //! 1. [`images`], before routing: the attached assets (`body.turnImageIds`, #1512; all without
 //!    it) as `image_url` parts, the loaded, missing and unattached names, the `[assets]` lines.
 //!    [`Images::reading`] is the status line's `readingImages` ([`crate::reroute::status_event`]).

@@ -34,7 +34,7 @@ const PINNED: [(&str, &str); 6] = [
     ),
     (
         "server/rust-chat-native.cjs",
-        "dec3f3498a3c4b7b96b8d038219d468aaa3dbd78bf236067884e78f2cde1ae50",
+        "559d3722a29b280695cea98806626438e7282f8c3a6e4e9679d199b3f1efab4e",
     ),
     (
         "server/multimodal-rag.cjs",
@@ -55,32 +55,32 @@ const BLOCKS: [(&str, &str, [f64; 2]); 6] = [
     (
         "projectWait",
         "83b9773c3d2186d3a1f808d464be0f2bfd246aa2cf571cc694143232af09c11d",
-        [469.0, 485.0],
+        [472.0, 488.0],
     ),
     (
         "retrieval",
         "f6ebb4d93849cda2e35f11864dec1cfd2e7b42f962dbcdf15b3a207afd4e08ed",
-        [583.0, 612.0],
+        [587.0, 616.0],
     ),
     (
         "sourcesEvent",
         "28b462f447d656fc898eacd858340795dec9176f8987f9dbe51614690957e35a",
-        [1455.0, 1455.0],
+        [1463.0, 1463.0],
     ),
     (
         "injectedRefusal",
         "58022f5d802536cccd70c1f3c3353b048a4a0cb95a4a6fb18454ada5d7c32c33",
-        [1704.0, 1704.0],
+        [1743.0, 1743.0],
     ),
     (
         "frameSources",
         "36ac814c9047a4111be35bf147c7ef4d1076f02510e40389e943d2b32a0e333a",
-        [1737.0, 1737.0],
+        [1776.0, 1776.0],
     ),
     (
         "coverageWarning",
         "e0fcdb20e9e39c3c932774b11717db668d9f9230c1c6095b378c5478cc4f6c76",
-        [1742.0, 1742.0],
+        [1787.0, 1787.0],
     ),
 ];
 

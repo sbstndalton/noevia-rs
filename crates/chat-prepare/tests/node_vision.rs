@@ -31,32 +31,32 @@ const BLOCKS: [(&str, &str, [f64; 2]); 6] = [
     (
         "codeRouteNote",
         "7d72b1da3b0583cb7c3135d75e4db035ae821a41be2b4df86a3f54365ad9d2bc",
-        [210.0, 210.0],
+        [213.0, 213.0],
     ),
     (
         "describe",
         "32ae5d7cd1dbf23757144ac2365be277ca8eb4cc987049ba09f2c45dfe3dad4b",
-        [783.0, 860.0],
+        [787.0, 864.0],
     ),
     (
         "images",
-        "258911579779c218fb88c0f51407b402333d5dc0c5d81eb131da52a6b73518ef",
-        [866.0, 915.0],
+        "7a3f65494ec0b81893863bcc4c4cde0e975204da966cad2c55aa46283600e5d2",
+        [870.0, 923.0],
     ),
     (
         "pass",
         "c7a779371e4265304f65267626e8b88382dee3496ed511b01e514a46d416d816",
-        [1461.0, 1547.0],
+        [1469.0, 1555.0],
     ),
     (
         "replyWarning",
         "6e59e1b69262eba8572173bb53a0a8a18fb67503cb3cf76ae6f0df2f47370ec5",
-        [1616.0, 1619.0],
+        [1624.0, 1627.0],
     ),
     (
         "frameImageWarning",
         "b99f06cb0cacff7c4f34d1c116444e5155878ab94f5b91e397924de0874420ae",
-        [1740.0, 1742.0],
+        [1785.0, 1787.0],
     ),
 ];
 const DEFAULT: &str = "default";

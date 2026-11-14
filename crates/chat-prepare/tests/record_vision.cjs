@@ -511,8 +511,8 @@ async function addTurn(name, input) {
   delete process.env.NOEVIA_CONTRACT_FIXED_NOW;
 
   // ── Differences ─────────────────────────────────────────────────────────────────────────
-  // An asset is read only by a plain file name, in Node (#2595) as in the port: a read through any other id is a
-  // recording error, not a difference.
+  // An asset is read only by a plain file name, in Node (#2595) as in the port: a logged read (readFileSync of a path
+  // under the turn's directory) through any other id is a recording error, not a difference.
   const lone = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
   const plain = (id) => typeof id === 'string' && id !== '' && id !== '.' && id !== '..' && !/[/\\\u0000]/.test(id) && !lone.test(id);
   for (const t of turns) {

@@ -33,22 +33,22 @@ const BLOCKS: [(&str, &str, [f64; 2]); 4] = [
     (
         "toolMove",
         "cc7f626517c6e586f78ec33663fa2b1aab84643671c1be83b7b0d3f4c9e4f466",
-        [1337.0, 1382.0],
+        [1345.0, 1390.0],
     ),
     (
         "longProfile",
         "aa2fd6d02861fe2e975f94eb8281b17435de8d4b2eafe3e45d60c9d947187173",
-        [1387.0, 1400.0],
+        [1395.0, 1408.0],
     ),
     (
         "metaProfile",
         "6306fdbba9e6dea42b59bbe40dd83065ead6d2eca5d5011caf5b61ccb81b31e7",
-        [1453.0, 1452.0],
+        [1461.0, 1460.0],
     ),
     (
         "status",
         "f55b72f240e36557294663646aba29c84f2030ca9e870424dcd56076a6f3de7f",
-        [1459.0, 1460.0],
+        [1467.0, 1468.0],
     ),
 ];
 const DEFAULT: &str = "default";
