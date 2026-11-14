@@ -189,9 +189,6 @@ pub struct Project<'a> {
     pub record: &'a JValue,
 }
 
-/// What the host resolved for one start: the engine and the gate (else the service's own), and the
-/// project's shared context for Code.
-#[derive(Default)]
 /// The `facts` key under which a host keeps the inference machine a start runs on, when it runs
 /// the Code role there itself (the front, council p6): `{ key, owner, target }`. `key` is the
 /// relay's `targetKey` the run's lease was opened on; a pipeline Executor pinned elsewhere is
@@ -207,6 +204,9 @@ pub fn front_machine_key(facts: Option<&JValue>) -> Option<String> {
         .map(str::to_string)
 }
 
+/// What the host resolved for one start: the engine and the gate (else the service's own), and the
+/// project's shared context for Code.
+#[derive(Default)]
 pub struct Resolved {
     pub engine: Option<Engine>,
     pub inference: Option<Arc<dyn Inference>>,
